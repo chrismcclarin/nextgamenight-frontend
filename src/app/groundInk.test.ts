@@ -8,12 +8,12 @@
 // `environment` in `vitest.config.mts:56` — rejected, that would move EVERY suite, including
 // the ones that genuinely render. This plan's text called it the repo's FIRST such pragma;
 // re-measured at execution that is FALSE and the correction is recorded rather than quietly
-// dropped — `src/app/errorEnvelopeReads.test.ts:2` took the same pragma first, in plan 88.6-14
-// (wave 3), after this plan's 2026-09-14 census was taken. This is the SECOND, and it follows
-// that file's idiom deliberately instead of inventing a second one. The three shipped
-// source-scan suites were NOT converted, because converting a shipped, negative-checked suite
-// is a behaviour change this plan does not declare. Moving this back onto jsdom is a decision,
-// not a cleanup.
+// dropped — src/app/errorEnvelopeReads.test.ts ("* @vitest-environment node") took the same
+// pragma first, in plan 88.6-14 (wave 3), after this plan's 2026-09-14 census was taken. This is
+// the SECOND, and it follows that file's idiom deliberately instead of inventing a second one.
+// The three shipped source-scan suites were NOT converted, because converting a shipped,
+// negative-checked suite is a behaviour change this plan does not declare. Moving this back onto
+// jsdom is a decision, not a cleanup.
 //
 // ===================================================================================
 // D-16 / SPEC-88.6 R4 — no `text-content-muted` and no `text-content-link` may resolve
@@ -54,8 +54,9 @@
 //  * ALPHA IS INVISIBLE. The walk resolves TOKENS. An `opacity-*` utility, or a `text-*`/`bg-*`
 //    alpha modifier written with a slash, on the ink element OR ON ANY ANCESTOR composites the
 //    rendered colour — so a PASS here is NOT a WCAG 1.4.3 pass. Live specimen:
-//    `CalendarMonthView.js:324` (`isAdjacent ? 'opacity-60 ' : ''`) over the ink at `:444`
-//    (`isAdjacent ? 'text-content-muted' :`), the SAME condition, so genuinely co-live.
+//    src/app/components/CalendarMonthView.js ("isAdjacent ? 'opacity-60 ' : ''") over the ink at
+//    src/app/components/CalendarMonthView.js ("isAdjacent ? 'text-content-muted' :"), the SAME
+//    condition, so genuinely co-live.
 //    (Cites corrected in place by plan 88.6.1-02; they predated plan 88.6-27's moves.)
 //  * RAW-PALETTE INK IS INVISIBLE. Ink written `text-<hue>-<n>` (87 non-test occurrences) is
 //    not a semantic token and is `rawColorValues.test.ts`'s and plan 10's territory.
@@ -76,6 +77,7 @@
 // This suite starts RED-SHAPED-AS-EXEMPTIONS and shrinks to an EMPTY roster. Each sweep plan
 // flips its own site from "present as an offender" to "absent" and updates BOTH test 1's count
 // and test 3's by-name list in the SAME commit.
+// AMENDED Phase 88.6.2-18 (W055): test 3 no longer holds a by-name list; it pins OFFENDERS empty, so a newly rostered site also restores a by-name check in test 3 in the same commit (see the DECISION marker there).
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -112,16 +114,18 @@ const FORBIDDEN = FORBIDDEN_INK_CLASSES;
 
 // DECISION Phase 88.6-09 (AC-11, owner ruling 2026-09-09): the tree is enumerated, read and
 // comment-stripped exactly ONCE, here at module scope, and EVERY assertion below consumes this
-// constant. This deliberately diverges from the shipped un-hoisted idiom
-// (`surfaceHoverSweep.test.ts:137`, `function sitesOf`, which re-reads the tree at `:140`
-// inside a per-assertion helper). REJECTED arm, recorded on the same date: match the shipped
+// constant. This deliberately diverges from the shipped un-hoisted idiom, the function at
+// src/app/surfaceHoverSweep.test.ts ("function sitesOf("), which re-reads the tree at
+// src/app/surfaceHoverSweep.test.ts ("exactTokenLines(fs.readFileSync(file, 'utf8'), token)")
+// inside a per-assertion helper. REJECTED arm, recorded on the same date: match the shipped
 // idiom for consistency — rejected because one full pass measures ~353 ms over the real tree
 // (194 non-test files, 2.46 MB; the read+strip component of that is 204 ms) and this file
 // carries several assertions, each of which would pay that pass again on every `npm test`.
 // (amended 88.6.1-02: the suite goes 8 -> 9 here and back to 8 in plan 88.6.1-49, so no
 // count is written here. Cites amended too: the old surfaceHoverSweep cite had drifted, and
 // `controlSizeFloor.test.tsx` is no longer an example of the un-hoisted idiom — it has since
-// hoisted its own module-scope pass, `const SOURCES` at `controlSizeFloor.test.tsx:148`.)
+// hoisted its own module-scope pass, its const SOURCES at
+// src/app/components/controlSizeFloor.test.tsx ("const SOURCES: { rel: string").)
 // The divergence is confined to this NEW file; no shipped suite was touched.
 //
 // THE HOIST IS INTRA-FILE ONLY. `vitest.config.mts` sets `environment: 'jsdom'` at `:56` and
@@ -203,9 +207,6 @@ const FORBIDDEN_ON_MUTED = ROWS.filter((r) => FORBIDDEN.has(r.inkToken) && onMut
 // seeing a resolvable site that still exists, and test 6 goes red if a declared false positive
 // stops being reported or starts being real.
 // ===================================================================================
-
-const D16 = { kind: 'spec', id: 'SPEC-88.6 R4 / D-16' } as const;
-const D15 = { kind: 'spec', id: 'SPEC-88.6 R4 / D-15' } as const;
 
 /**
  * Seeded from the MEASUREMENT, not from CONTEXT's cites, and taken on the post-88.6-02 tree
@@ -395,9 +396,11 @@ const FP_FIP_SELECTED_GROUND = anchorKey(
 // lookup. REJECTED, each with its reason:
 //   - Re-pointing line keys by hand: five re-points in 88.6 (plans 22, 27, 40, 41, 58), and a
 //     stale key reds a correct tree (a declared false positive silently becomes a REAL offender).
-//   - Keying COUNTS on content: identical lines exist in one file (FriendInvitePanel.js:589 and
-//     :773 carry the same "or" label span), so content-keyed counting would merge two real
-//     sites. siteOf stays file plus line number for every count.
+//   - Keying COUNTS on content: identical lines exist in one file (the invite panel carries the
+//     same "or" label span twice, the pair its marker at
+//     src/app/components/FriendInvitePanel.js ("DECISION Phase 88.6-22 (D-03, UI-SPEC") names),
+//     so content-keyed counting would merge two real sites. siteOf stays file plus line number
+//     for every count.
 //   - Substring or RegExp anchors: they can match two lines silently.
 //   - A marker comment planted in the product file: that puts test plumbing in shipped code,
 //     in files this plan does not own.
@@ -550,9 +553,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // with their fix — the two badges now carry `text-content-accent`. The entries are keyed by
     // `file:line` and that file moved several hundred lines in the same plan, which is a second
     // reason a fixed row must LEAVE rather than be re-numbered.
-    // AMENDED AGAIN Phase 88.6-19 (2026-09-16): 2 -> 1. `app/friends/page.js:748` was fixed (the
-    // tab-count pill took `text-content-secondary`) and its row left with the fix, in the same
-    // commit that deleted its class-rule roster entry — a partial update reds, which is what
+    // AMENDED AGAIN Phase 88.6-19 (2026-09-16): 2 -> 1. The friends tab-count pill at
+    // src/app/friends/page.js ("rounded-full text-xs bg-surface-muted text-content-secondary")
+    // was fixed (the pill took `text-content-secondary`) and its row left with the fix, in the
+    // same commit that deleted its class-rule roster entry — a partial update reds, which is what
     // keeps the two halves together.
     // AMENDED AGAIN Phase 88.6-27 task 3 (2026-09-16): 1 -> 0. `CalendarMonthView.js`'s
     // "+N more" row was the LAST open D-16 CENSUS site; it took `text-content-secondary`
@@ -560,20 +564,26 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // shrank its class-rule roster entry. An empty by-name set is a real END STATE here, not a
     // broken scan — see the fan-out assertion below, which was RE-POINTED rather than deleted
     // precisely so this test keeps proving the walk can still SEE a multi-arm ground.
-    const byName: [string, string][] = [];
-    expect(
-      byName.length,
-      'the open D-16 by-name set: 5 at plan 88.6-09, 4 since plan 88.6-17 closed userProfile, ' +
-        '2 since plan 88.6-18 closed both gameDetail badges, ' +
-        '1 since plan 88.6-19 closed the friends tab-count pill, ' +
-        '0 since plan 88.6-27 closed the CalendarMonthView "+N more" row. ' +
-        'Shrink this number in the SAME commit that closes a site, and never grow it without a ' +
-        'roster entry to match',
-    ).toBe(0);
-    const missing = byName.filter(
-      ([site, ink]) => !FORBIDDEN_ON_MUTED.some((r) => siteOf(r) === site && r.inkToken === ink),
-    );
-    expect(missing.map(([s]) => s)).toEqual([]);
+    //
+    // DECISION Phase 88.6.2-18 (W055): the by-name list that stood here was a const bound to an
+    // empty array literal and never written, so its length pin and its filter passed on every
+    // tree (the vacuity is recorded in the 88.6.2-18 SUMMARY). It is REPLACED by an exact pin
+    // that OFFENDERS is empty.
+    //   Chosen OVER deleting both assertions (the 88.6 review's fix, IN-407): the list's own
+    //   contract was that it never grows without a roster entry to match, and only this pin
+    //   keeps a newly rostered open site from going unwatched by name. Test 1 is exact in both
+    //   directions, so a site rostered with an owner goes green there.
+    //   Chosen OVER keeping the empty list, which could not fail.
+    //   The two spec-owner constants deleted with it named the provenance a re-opened site
+    //   takes: SPEC-88.6 R4 / D-16 (or D-15).
+    //   The test-3 title is kept: nothing is renumbered or retitled, and this pin's message keeps
+    //   the by-name contract (a rostered site restores a by-name check).
+    //   Changing this is a decision, not a cleanup.
+    const openSetMessage =
+      'the open D-16 set is no longer empty (5 at plan 88.6-09, 0 since plan 88.6-27). Restore a ' +
+      'by-name visibility check for each rostered site (its file and line plus its ink, asserted ' +
+      'present in FORBIDDEN_ON_MUTED) in the same commit as its roster entry.';
+    expect(Object.keys(OFFENDERS), openSetMessage).toEqual([]);
 
     // The CalendarMonthView day cell is asserted by MEMBERSHIP, never by index. Its ground is
     // one of FIVE arms in the template ternary, and asserting on grounds[0] / first / last is
@@ -587,8 +597,8 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // now-fixed "+N more" row (:788) to the file's SURVIVING rostered site, the empty-day "+"
     // hint (:858), whose ground is the SAME five-arm ternary at the SAME muted arm (:263, was
     // :249). Deleting this block with the fixed site would have quietly retired the only thing
-    // proving the walk still produces candidate fan-out at all — and the by-name set above is
-    // empty now, so nothing else in this test would notice.
+    // proving the walk still produces candidate fan-out at all — and the OFFENDERS-empty pin
+    // above is empty now, so nothing else in this test would notice.
     // Re-derived by CONTENT after this plan's LAST edit to the component (:858 -> :888). A
     // line-keyed pin has to be re-derived after the final edit, not after the first: this plan
     // moved the file twice and the intermediate number was already stale when it was written.
@@ -601,7 +611,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // prove the five-arm ternary still produces candidate FAN-OUT and still offers a muted
     // candidate, which is a property of the WALK, not of whether the site is debt. Deleting the
     // block with the fixed site would quietly retire the only thing proving the walk fans out at
-    // all, and the by-name set above is empty now, so nothing else here would notice.
+    // all, and the OFFENDERS-empty pin above is empty now, so nothing else here would notice.
     const cell = FORBIDDEN_ON_MUTED.find((r) => anchorOf(r) === FP_CMV_ADJACENT_INK);
     expect(cell, 'the day cell\'s reported ink site must still be visible to the walk').toBeDefined();
     expect(
@@ -645,15 +655,17 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
   //   plans 88.6-27 and 88.6-40. None exists. Test 5 measured a FUNCTION-RETURNED muted ground,
   //   and a census of functions returning the muted ground class (plan 88.6.1-49's census C1,
   //   run 2026-10-16) found only the deleted file. The other function-returned className in the
-  //   tree, WriteCell.tsx's preferenceColor() (src/app/components/heatmap/WriteCell.tsx:156,
-  //   anchor `${preferenceColor(preference, disabled)}`), never returns the muted ground
-  //   (src/lib/availabilityColor.ts:245-248, its four returns).
+  //   tree, WriteCell.tsx's preferenceColor() (at
+  //   src/app/components/heatmap/WriteCell.tsx ("${preferenceColor(preference, disabled)}")),
+  //   never returns the muted ground (its four returns, in
+  //   src/lib/availabilityColor.ts ("export function preferenceColor(")).
   //   REJECTED (b): a fixture-only stand-in like test 8. It would pin a LIMITATION of the walk,
   //   so the day the walk learns to read function bodies it would red on an improvement.
   // STILL GUARDING: test 4's EMPTY pin, test 2's resolved-ground floor (a walk going blind) and
   // the header's declared limitation. Numbering: tests 6-9 keep their numbers so
   // cross-references in this file and in plan records stay true. The suite is back at 8, its
-  // drift-gate floor (periodictabletop/.github/workflows/ci.yml:363). Re-adding a blind-spot
+  // drift-gate floor, a gates row in
+  // scripts/drift-gate-registry.manifest.mjs ("file: 'src/app/groundInk.test.ts'"). Re-adding a blind-spot
   // measurement needs a live instance; that is a decision, not a cleanup.
 
   it('6. the false-positive list is exact, live, and disjoint from the offender roster', () => {
@@ -681,8 +693,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     const debt = new Set([
       ...REAL.map(anchorOf),
       // The two `app/gameDetail/page.js` rows left this set with their fix (plan 88.6-18), and
-      // `app/friends/page.js:748` left it with its fix (plan 88.6-19). A fixed site must LEAVE
-      // this set: it is no longer debt, and the disjointness check below is about what IS.
+      // the friends tab-count pill at
+      // src/app/friends/page.js ("rounded-full text-xs bg-surface-muted text-content-secondary")
+      // left it with its fix (plan 88.6-19). A fixed site must LEAVE this set: it is no longer
+      // debt, and the disjointness check below is about what IS.
       // RE-POINTED by plan 88.6-27 task 3 (2026-09-16): :788 was FIXED and left the debt set
       // with its fix (the rule this list's own comment states); the file's surviving debt is
       // the empty-day "+" hint, now at :858.
@@ -749,7 +763,8 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     //
     // D-29 floor note: this it takes the suite 8 -> 9. Plan 88.6.1-49 deletes test 5 (the
     // SuggestionCard blind spot, one of D-29's four reddening suites) and returns it to 8, the
-    // drift-gate floor at periodictabletop/.github/workflows/ci.yml:363. Never merge this it
+    // drift-gate floor, a gates row in
+    // scripts/drift-gate-registry.manifest.mjs ("file: 'src/app/groundInk.test.ts'"). Never merge this it
     // into test 6: that would leave plan 49 at 7, below the floor (P-8).
     for (const [key, entry] of Object.entries(FALSE_POSITIVES)) {
       const inkLines = anchorLines(key);

@@ -6,14 +6,14 @@ import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../../src/lib
  * Phase 88.3 plan 01 — the Playwright half of the contrast toolkit (Gate C, plan 12).
  *
  * WHY IT LIVES UNDER `e2e/support/` AND NOT NEXT TO THE SPECS. Same reason as its only
- * sibling, `diagnostics.ts:14-20`: Playwright's default `testMatch` collects only files whose
+ * sibling, e2e/support/diagnostics.ts ("NOT NEXT TO THE SPECS. Playwright"): Playwright's default `testMatch` collects only files whose
  * basename ends in `.spec` or `.test`, so a module named `contrast.ts` is importable without
  * ever being enumerated as a suite. `npx playwright test --list` is the proof — the case
  * count must not move when this file lands. (Measured for this plan: 131 tests in 16 files
  * before, 131 tests in 16 files after.)
  *
  * SECURITY (threat T-88.3-01) — the standing rule for probe modules, restated verbatim in
- * intent from `diagnostics.ts:32-35`. This module reads COLOURS and element TAG/CLASS NAMES
+ * intent from e2e/support/diagnostics.ts ("SECURITY (threat T-88.1-60)"). This module reads COLOURS and element TAG/CLASS NAMES
  * only. No cookies, no storage, no headers, no `.auth/` content ever enters a returned
  * object or an attachment. Anything a probe returns can end up in a Playwright artifact that
  * GitHub Actions retains, so the returned shape is the security boundary, not the caller.
@@ -35,7 +35,7 @@ import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../../src/lib
  * that the only place it could be disproved is CI. That is the failure shape this repo keeps
  * paying for: a thing that compiles under `tsc` and fails to resolve in the browser runner,
  * discovered by a red CI run rather than locally. A relative path removes the dependency
- * entirely rather than betting on it, and `src/lib/wcag.ts` is deliberately import-free so
+ * entirely rather than betting on it, and src/lib/wcag.ts is deliberately import-free so
  * Playwright's transpiler never pulls a transitive module behind it.
  *
  * Switching this to the alias is a decision, not a cleanup — and it is one that cannot be
@@ -79,18 +79,18 @@ export interface GroundResolution {
  * element would measure text against black and report a confidently wrong ratio.
  *
  * Structurally the same shape as the shipped `measurePaddingChain`
- * (`e2e/padding-budget.spec.ts:108-140`), and deliberately so — its three properties are
+ * (e2e/padding-budget.spec.ts ("async function measurePaddingChain(anchor: Locator)")), and deliberately so — its three properties are
  * copied in intent, not just in style:
  *   - the `document.body` STOP, so the walk terminates;
- *   - the `position: fixed` BREAK (`DECISION Phase 87.8-12` at `:129`). A fixed element's
+ *   - the `position: fixed` BREAK (`DECISION Phase 87.8-12` at e2e/padding-budget.spec.ts ("the chain STOPS at a position:fixed boundary")). A fixed element's
  *     containing block is the viewport, so an in-flow ancestor underneath a modal overlay is
  *     not what the user sees behind the modal. A modal's ground is the fixed box, not
  *     `<body>`. Walking past it measures a surface that is not on screen at that point;
- *   - the SVG `className` normalisation (`:135-136`), because SVG elements expose
+ *   - the SVG `className` normalisation (e2e/padding-budget.spec.ts ("SVG elements expose className as SVGAnimatedString")), because SVG elements expose
  *     `className` as an `SVGAnimatedString` and `String(...)` of one is useless in a report.
  *
  * The chain is returned alongside the answer because the breakdown is what makes a red run
- * self-diagnosing without a re-run (`padding-budget.spec.ts:172-192`). It is NOT optional
+ * self-diagnosing without a re-run (e2e/padding-budget.spec.ts ("function describeChain(surface: string")). It is NOT optional
  * output — do not trim it to just the colour.
  *
  * READ-ONLY: no scroll, no click, no style write. A probe that changed the page would
@@ -160,7 +160,7 @@ export async function resolveGroundColor(anchor: Locator): Promise<GroundResolut
   });
 }
 
-/** Render one rung the way `padding-budget.spec.ts:172-192` renders a padding level. */
+/** Render one rung the way e2e/padding-budget.spec.ts ("function describeChain(surface: string") renders a padding level. */
 function renderLevel(level: GroundLevel, index: number, resolvedAt: number): string {
   const marker = index === resolvedAt ? ' <== resolved ground' : '';
   return `  <${level.tagName}${level.className ? ` class="${level.className}"` : ''}> background-color=${level.backgroundColor}${level.transparent ? ' (transparent)' : ''}${marker}`;
@@ -169,7 +169,7 @@ function renderLevel(level: GroundLevel, index: number, resolvedAt: number): str
 /**
  * Failure message: which surface, what ground was resolved, and the full walked chain.
  *
- * Same contract as `describeChain` (`padding-budget.spec.ts:172-192`) — a contrast failure
+ * Same contract as `describeChain` (e2e/padding-budget.spec.ts ("function describeChain(surface: string")) — a contrast failure
  * that says only "expected 4.2 to be at least 4.5" cannot be acted on, because the argument
  * is always about WHICH ground was measured.
  */
@@ -184,7 +184,7 @@ export function describeGround(label: string, ground: GroundResolution): string 
 
 /**
  * Vacuity-guard message, in the `vacuityMessage` style
- * (`padding-budget.spec.ts:186-192` / `tailwind-v4-styles.spec.ts:139-143`).
+ * (e2e/padding-budget.spec.ts ("function vacuityMessage(surface: string") / e2e/tailwind-v4-styles.spec.ts ("every assertion below would pass vacuously")).
  *
  * Two ways a contrast assertion goes vacuous, and neither is a CSS failure:
  *   1. NOTHING RESOLVED — every rung was transparent, so there is no ground to measure
@@ -207,13 +207,13 @@ export function vacuityGround(label: string, ground: GroundResolution): string {
 /* =========================================================================================
  * Phase 88.3 plan 12 — the rendered half (Gate C).
  *
- * Everything below this line is what `e2e/contrast.spec.ts` needs in order to force a
+ * Everything below this line is what e2e/contrast.spec.ts needs in order to force a
  * theme, prove it landed, resolve a REAL ground and turn a computed-style string into a
  * number. It lives here rather than in the spec so the spec stays a list of surfaces and
  * floors.
  *
  * SECURITY, restated because this half returns more than the half above (threat
- * T-88.3-56, the standing rule from `diagnostics.ts:32-35`): every shape returned from
+ * T-88.3-56, the standing rule from e2e/support/diagnostics.ts ("SECURITY (threat T-88.1-60)")): every shape returned from
  * this module carries COLOURS and element TAG/CLASS NAMES only. No cookies, no storage
  * contents, no headers, no `.auth/` content, no URLs. What a probe returns is the security
  * boundary — a Playwright attachment is retained by GitHub Actions, so a field added here
@@ -227,7 +227,7 @@ export function vacuityGround(label: string, ground: GroundResolution): string {
  *
  * REJECTED: pinning the computed colour strings themselves, and screenshot baselines.
  *
- * WHY. It is the same goal `tailwind-v4-styles.spec.ts:37-40` had when it banned pinned
+ * WHY. It is the same goal e2e/tailwind-v4-styles.spec.ts ("DECISION Phase 87.7 Plan 10 (assertion shape)") had when it banned pinned
  * pixel values: a future re-tint that still clears its floor must not churn this file. A
  * ratio IS a value — that is the narrow exception being taken here, and it is taken
  * deliberately rather than by omission — but it is the value the requirement is written
@@ -252,14 +252,14 @@ export function vacuityGround(label: string, ground: GroundResolution): string {
  * WHY IT IS TAKEN ANYWAY, on the block's OWN logic rather than against it. Its test is "is
  * this the value the requirement is written in?" — that is why a ratio was allowed as the
  * narrow exception. SPEC Req 4's requirement here is not legibility; it is that the frontend
- * resolves `color_preset` THROUGH `src/lib/groupColourPresets.ts` rather than reading
+ * resolves `color_preset` THROUGH src/lib/groupColourPresets.ts rather than reading
  * `background_color`. A floor cannot see that difference: a wrong resolver, a stale table
  * or a legacy-hex fallback can all clear any lightness floor while the requirement fails.
  * The value IS the requirement in this one case, so an equality on it can only fail when the
  * requirement fails — which is precisely the block's own standard.
  *
  * AND THE CHURN OBJECTION IS DISSOLVED, NOT ACCEPTED. The expected value is IMPORTED from
- * `src/lib/groupColourPresets.ts` (relative path, same D-OQ-2 reasoning as this file's
+ * src/lib/groupColourPresets.ts (relative path, same D-OQ-2 reasoning as this file's
  * `wcag` import) and converted with `parseHex`. There is NO hex literal in the spec. A
  * future palette re-tune moves the assertion with the palette and churns nothing — the
  * failure mode the block above was written to prevent cannot occur here.
@@ -277,7 +277,7 @@ export interface NormalisedColor {
   /** Exactly what `getComputedStyle` returned, kept for failure messages. */
   raw: string;
   /**
-   * The opaque channels as `rgb(r, g, b)` — a form `src/lib/wcag.ts`'s `parseHex` accepts.
+   * The opaque channels as `rgb(r, g, b)` — a form the parser src/lib/wcag.ts ("function parseHex") accepts.
    * `null` when the raw value is not a colour at all (e.g. a `box-shadow` string).
    */
   css: string | null;
@@ -389,7 +389,7 @@ export async function probeElement(anchor: Locator, props: string[] = ['color'])
         break;
       }
       // Same `position: fixed` BREAK as `resolveGroundColor` above and
-      // `measurePaddingChain` (`padding-budget.spec.ts:129`): a fixed element's containing
+      // `measurePaddingChain` (e2e/padding-budget.spec.ts ("if (style.position === 'fixed') break;")): a fixed element's containing
       // block is the viewport, so an in-flow ancestor underneath a modal is not what the
       // user sees behind the modal.
       if (nodeStyle.position === 'fixed') {
@@ -431,7 +431,7 @@ export function groundResolutionOf(probe: ElementProbe): GroundResolution {
  *
  * WHY IT COMPOSITES rather than returning the first painting rung. `resolveGroundColor`
  * above stops at the first rung with a non-zero alpha, which is the right answer for the
- * common case and the WRONG one for a translucent wash — `LandingPage.js:31`'s
+ * common case and the WRONG one for a translucent wash — the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") button's
  * `bg-white/20` over the hero is exactly that, and it is UI-SPEC §11 OI-7, "the one value
  * not computable from tokens". A ratio computed against `rgba(255,255,255,0.2)` would be a
  * ratio against a colour nobody painted. So the walk continues to the first FULLY opaque
@@ -554,7 +554,7 @@ export async function lStarOfGround(anchor: Locator, label: string): Promise<{ v
  *     `attribute="class"`, `defaultTheme="dark"`, `storageKey="theme"`; `globals.css`
  *     declares ZERO `prefers-color-scheme` rules and the dark variant is a
  *     `@custom-variant dark` class selector. The media query is not wired to anything.
- *   - a post-load `evaluate` is too late. `e2e/auth.setup.ts` calls
+ *   - a post-load `evaluate` is too late. e2e/auth.setup.ts calls
  *     `storageState({ path: AUTH_FILE })`, which BAKES localStorage into `.auth/user.json`;
  *     next-themes reads that stored key on mount, so by the time a post-load script ran the
  *     page would already have applied the stored value and painted. An init script runs
@@ -571,7 +571,7 @@ export async function forceLightMode(page: Page): Promise<void> {
 /**
  * Assert the theme BEFORE any style is read. Mandatory, not defensive.
  *
- * Mirrors the D-11 pre-assertion marker at `tailwind-v4-styles.spec.ts:80-88`: a style
+ * Mirrors the D-11 pre-assertion marker at e2e/tailwind-v4-styles.spec.ts ("D-11, and this ordering is not negotiable"): a style
  * assertion that ran in the wrong theme is meaningless, and its failure would be
  * misdiagnosed as a colour bug in whichever theme the reader assumed was active. This
  * assertion is also the thing that converts `88.3-RESEARCH.md`'s UNVERIFIED assumption A2
@@ -595,7 +595,7 @@ export async function assertTheme(page: Page, theme: 'light' | 'dark'): Promise<
  * interaction was a KEYBOARD one — hence the `Tab` press first, purely to set that
  * modality. Without it the ring rules never apply and `--tw-ring-color` comes back empty,
  * which `requireColor` would (correctly) turn into a probe failure. A bare `:focus`
- * variant would not help: `Button.tsx:62` and `Input.tsx:80` both use `focus-visible:`
+ * variant would not help: src/components/ui/Button.tsx ("focus-visible:ring-offset-2") and src/components/ui/Input.tsx ("focus:outline-hidden focus-visible:border-line-strong") both use `focus-visible:`
  * deliberately, so that pointer and programmatic focus do NOT draw a ring.
  */
 export async function focusByKeyboard(page: Page, anchor: Locator): Promise<void> {
@@ -622,7 +622,7 @@ export async function focusByKeyboard(page: Page, anchor: Locator): Promise<void
  *
  * REJECTED: always measuring against the element's own background.
  *
- * WHY, and it is a measured reason rather than a tidy one. `88.3-SPEC.md:179-182` names
+ * WHY, and it is a measured reason rather than a tidy one. planning:.planning/phases/88.3-light-mode-design-implementation-inserted-2026-07-25/88.3-SPEC.md ("3.63 on the amber-500 primary button") names
  * "the amber-500 primary button" as Req 7's fourth ground at 3.63:1. The shipped
  * `--color-btn-primary` on this tree is a SLATE BLUE, not amber-500 (the hex is deliberately
  * not written here: this file's acceptance gate greps it for six-digit hex literals and
@@ -675,7 +675,7 @@ export async function focusRingMeasurement(
     // A non-inset, zero-offset ring is a box-shadow drawn just OUTSIDE the border box, so it
     // overlaps the PARENT's background, not the element's own fill. `compositeGround(probe, 1)`
     // gives that whenever the element itself is transparent — but when the element PAINTS (the
-    // `Input` primitive carries `bg-surface-input`, `Input.tsx:74`), the walk already stopped on
+    // `Input` primitive carries `bg-surface-input`, src/components/ui/Input.tsx ("rounded-btn border border-input bg-surface-input")), the walk already stopped on
     // the element's own rung and there is nothing above index 0 to composite. Probing the parent
     // is the only way to see what the ring actually sits on. Falling back to `compositeGround(probe, 0)`
     // here would silently report the ring's contrast against the fill it is drawn OUTSIDE OF.

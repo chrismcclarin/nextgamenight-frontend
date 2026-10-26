@@ -702,7 +702,7 @@ export default function EventDayModal({
                                are described rather than quoted, deliberately.
                                [AMENDED Phase 88.6.1-47 (D-35)] The control no longer carries the
                                native attribute: it is gated by `aria-disabled` plus the handler's
-                               per-row latch (see the marker at `handleShowGameQR`). */
+                               per-row latch (see the marker at `handleShowGameQR`). [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).] */
                             className="mt-2"
                             title="Share Game QR"
                           >

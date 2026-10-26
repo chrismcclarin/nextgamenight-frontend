@@ -69,7 +69,7 @@ export default function RootLayout({ children }) {
                         moved the modal onto the shared, PORTALLED <Modal>, so
                         that specific hazard is gone — but the mount point does
                         NOT move, because the dropdown's closed state carries
-                        `pointer-events-none` (Header.js:176) and a modal
+                        `pointer-events-none` (src/app/Header.js ("-translate-y-full opacity-0 pointer-events-none")) and a modal
                         rendered there would open inert. See
                         FeedbackModalProvider.tsx for the full record. */}
                     <FeedbackModalProvider>

@@ -29,6 +29,7 @@
  * without JSX, or a props spread on a nav tag is invisible to a scan anchored on the literal tag.
  * Nor is a crumb link rendered by a child component, or a separator drawn by CSS or by an icon
  * component: the body arms below read the literal JSX between the nav's opening and closing tags.
+ * AMENDED Phase 88.6.2-17 (R7-M3): a props spread on a nav tag is now COVERED — any spread on any nav opening tag fails (the spread tests below); the rest of the NOT COVERED list stands.
  * AMENDED Phase 88.6.1-55 (D-46 / AC-23 / R7-M7): the scan now reads each breadcrumb's BODY, the
  * comment-stripped source from its opening tag to its closing tag, and requires the house ring on
  * every crumb link (a Link or a raw anchor, whose className must be a literal) and aria-hidden on
@@ -97,6 +98,8 @@ type Nav = {
   separators: { site: string; hidden: boolean }[];
   /** False when the body has no closing tag, or another nav opens before it. */
   bodyReadable: boolean;
+  /** True when the opening tag carries a JSX spread attribute, in any position. */
+  spread: boolean;
 };
 
 /** The aria-label of one opening tag: a literal, or a same-file string constant; null otherwise. */
@@ -146,6 +149,36 @@ function readBody(rel: string, src: string, at: number): Pick<Nav, 'links' | 'se
   return { links, separators, bodyReadable: true };
 }
 
+// DECISION Phase 88.6.2-17 (R7-M3): fail a JSX spread on EVERY nav opening tag, in any position, over the review's narrower "a breadcrumb tag spreading after its className" — a later prop replaces the literal className, and a spread anywhere can add aria-labelledby, which outranks the aria-label the rosters read, on the Main landmark as much as on a breadcrumb. No live nav spreads, so nothing is rostered; a future one is a decision.
+// A spread attribute is a brace met at attribute depth 0 whose content opens with three dots.
+// The walk skips each double-quoted, single-quoted or template string to its closing quote
+// (backslash escapes skipped) and tracks brace depth, so an object spread anywhere inside an
+// attribute value (a nested object, a conditional, a call argument) does not count, and nor
+// does spread-looking text inside a string.
+const SPREAD_ATTR = /^\{\s*\.\.\./;
+
+function hasSpreadAttr(tag: string): boolean {
+  let depth = 0;
+  for (let i = 0; i < tag.length; i += 1) {
+    const c = tag[i];
+    if (c === '"' || c === "'" || c === '`') {
+      i += 1;
+      while (i < tag.length && tag[i] !== c) {
+        if (tag[i] === '\\') i += 1;
+        i += 1;
+      }
+      continue;
+    }
+    if (c === '{') {
+      if (depth === 0 && SPREAD_ATTR.test(tag.slice(i))) return true;
+      depth += 1;
+    } else if (c === '}') {
+      depth -= 1;
+    }
+  }
+  return false;
+}
+
 /** Every nav opening tag in one source file (pure: fixture sources go through the same path). */
 function navsIn(rel: string, rawSource: string): Nav[] {
   const src = withoutComments(rawSource);
@@ -162,6 +195,7 @@ function navsIn(rel: string, rawSource: string): Nav[] {
       isBreadcrumb,
       labelled: NAMED.test(tag),
       label: resolveLabel(tag, src),
+      spread: hasSpreadAttr(tag),
       ...(isBreadcrumb ? readBody(rel, src, at) : { links: [], separators: [], bodyReadable: true }),
     });
   }
@@ -184,6 +218,11 @@ function overflowFailures(crumbs: Nav[]): string[] {
   return crumbs
     .filter((n) => n.className === null || !REQUIRED.every((token) => n.className!.split(/\s+/).includes(token)))
     .map((n) => `${n.site} — ${n.className === null ? '(non-literal className)' : `"${n.className}"`}`);
+}
+
+/** Every nav, breadcrumb or not, whose opening tag spreads props. */
+function spreadFailures(navs: Nav[]): string[] {
+  return navs.filter((n) => n.spread).map((n) => `${n.site} — props spread on a nav tag`);
 }
 
 /** Every crumb link without the full RING (or with a non-literal className), plus every unreadable body. */
@@ -260,6 +299,10 @@ describe('breadcrumb pills cap at their container (UAT3-D1, 2026-09-30)', () => 
 
   it('the non-breadcrumb navs, by site file and resolved label, are exactly NAMED_NAVS (HEADER-NAV-LANDMARK-RULING 88.6.1)', () => {
     expect(navs.filter((n) => !n.isBreadcrumb).map((n) => ({ file: n.file, label: n.label }))).toEqual(NAMED_NAVS);
+  });
+
+  it('no nav opening tag in the tree spreads props — a spread can override the className or the name the rosters read (R7-M3/M6)', () => {
+    expect(spreadFailures(navs)).toEqual([]);
   });
 
   it('each arm of the rule catches its planted violation (fixture sources through navsIn)', () => {
@@ -380,5 +423,44 @@ describe('breadcrumb pills cap at their container (UAT3-D1, 2026-09-30)', () => 
     // A nav whose className is an expression.
     const navExpression = withLine(CLEAN, 1, '  <nav aria-label="Breadcrumb" className={navClass}>');
     expect(overflowFailures(crumbsOf(navExpression))).toEqual(['app/fixture.js:2 — (non-literal className)']);
+  });
+
+  it('the spread arm catches each planted violation and passes a clean nav (fixture sources through navsIn)', () => {
+    const PILL = 'className="inline-block max-w-full wrap-break-word min-w-0"';
+    expect(spreadFailures(crumbsOf(CLEAN))).toEqual([]);
+
+    // A spread after the className can replace it: the overflow arm still reads the literal and
+    // passes (the old rule's miss, pinned), so the spread arm is what fails it.
+    const after = crumbsOf(withLine(CLEAN, 1, `  <nav aria-label="Breadcrumb" ${PILL} {...navProps}>`));
+    expect(overflowFailures(after)).toEqual([]);
+    expect(spreadFailures(after)).toEqual([`${after[0].site} — props spread on a nav tag`]);
+
+    // A spread before the className fails too: it can still add aria-labelledby.
+    const before = crumbsOf(withLine(CLEAN, 1, `  <nav aria-label="Breadcrumb" {...navProps} ${PILL}>`));
+    expect(spreadFailures(before)).toEqual([`${before[0].site} — props spread on a nav tag`]);
+
+    // A spread on a named, non-breadcrumb nav fails: the Main landmark is covered as well.
+    const main = navsIn('app/Header.js', 'const A = () => <nav aria-label="Main" {...rest}>a</nav>;');
+    expect(main).toHaveLength(1);
+    expect(spreadFailures(main)).toEqual([`${main[0].site} — props spread on a nav tag`]);
+
+    // A spread with no space before it is valid TSX and fails.
+    const tight = navsIn('app/Header.js', 'const A = () => <nav aria-label="Main" className="x"{...p}>a</nav>;');
+    expect(tight).toHaveLength(1);
+    expect(spreadFailures(tight)).toEqual([`${tight[0].site} — props spread on a nav tag`]);
+
+    // An object spread inside an attribute value, or spread-looking text in a string, is not a
+    // spread attribute.
+    for (const attr of [
+      'style={ { ...base } }',
+      'style={{ ...base }}',
+      'style={open ? { ...a } : b}',
+      'data={fn(a, { ...b })}',
+      'aria-label="a {...b} c"',
+    ]) {
+      const found = navsIn('app/Header.js', `const A = () => <nav aria-label="Main" ${attr}>a</nav>;`);
+      expect(found).toHaveLength(1);
+      expect(spreadFailures(found)).toEqual([]);
+    }
   });
 });

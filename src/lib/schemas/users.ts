@@ -1,7 +1,10 @@
 // src/lib/schemas/users.ts
 //
-// Phase 82 (TS-02 / D-09). Domain source: api.js usersAPI (L341),
-// friendshipsAPI (L894), magicAuthAPI (L672), googleCalendarAPI (L592).
+// Phase 82 (TS-02 / D-09). Domain source:
+// src/lib/api.ts ("export const usersAPI = {"),
+// src/lib/api.ts ("export const friendshipsAPI = {"),
+// src/lib/api.ts ("export const magicAuthAPI = {"),
+// src/lib/api.ts ("export const googleCalendarAPI = {").
 // Zod v4. Typing only (z.infer) — no runtime .parse() this phase.
 
 import { z } from 'zod';
@@ -42,18 +45,19 @@ export const UserSchema = z.object({
   user_id: z.uuid().optional(),
   username: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
-  // `picture_url` — Phase 88.8 plan 12. The stored avatar URL (models/User.js:137,
+  // `picture_url` — Phase 88.8 plan 12. The stored avatar URL (backend:Sonnet/models/User.js ("picture_url: {"),
   // `DataTypes.STRING` = varchar(255)). Declared here because THIS schema types
   // the friendships nested Requester/Addressee rows too: FriendshipSchema below
   // embeds UserSchema rather than declaring its own nested user, and plan 08
-  // widened routes/friendships.js:36/:41 to the shared chip projection.
+  // widened backend:Sonnet/routes/friendships.js ("as: 'Requester',") and
+  // backend:Sonnet/routes/friendships.js ("as: 'Addressee',") to the shared chip projection.
   // Plain string, nullable, optional — the canonical reasoning (why NOT z.url(),
   // and why the declaration matters when nothing runtime-parses these schemas)
   // is the DECISION block above NestedUserIdentitySchema in events.ts. Read it
   // before changing the shape here.
   //
   // The former `profile_picture_url` field declared at this position was DELETED
-  // in the same edit: it is a **Group** column (models/Group.js:28), never a User
+  // in the same edit: it is a **Group** column (backend:Sonnet/models/Group.js ("profile_picture_url: {")), never a User
   // column, and no user route ever emitted it. Same defect and same remedy as the
   // `phone_number` removal noted below, and the same three-phantom class plan 08
   // cleared out of the backend PII allow-list. Every surviving
@@ -70,17 +74,18 @@ export const UserSchema = z.object({
   // ── SELF-READ-ONLY fields (Phase 88.8 plan 12; D-36, D-39) ─────────────────
   // Both reach the wire ONLY through GET /users/:user_id, which loads the caller
   // through `User.scope('withContactInfo')` (routes/users.js, the self GET handler) and returns
-  // `toSelfWire(user, pendingEmailChange)` (:403) — exactly like `email` above.
+  // `toSelfWire(user, pendingEmailChange, req.user)`
+  // (backend:Sonnet/routes/users.js ("res.json(toSelfWire(user, pendingEmailChange, req.user));")) — exactly like `email` above.
   // They are absent from every OTHER-user payload, and plan 08's wire sweep
   // asserts `email_changed_at` absent (recursively) on all six widened payloads.
   // Declaring them here is what lets plan 13's section read all three of its
   // hydration inputs off `SelfIdentity` without an `as` cast: `SelfIdentity` is
-  // `User & {...}` (src/lib/hooks/useSelfIdentity.ts:60) and `patchSelfCache`
-  // takes `Partial<SelfIdentity>` (src/lib/hooks/selfIdentityCache.ts:32-35).
+  // `User & {...}` (src/lib/hooks/useSelfIdentity.ts ("export type SelfIdentity = User & { id: string; user_id: string };"))
+  // and `patchSelfCache` takes `Partial<SelfIdentity>` (src/lib/hooks/selfIdentityCache.ts ("export function patchSelfCache(")).
   // `email` is ALREADY declared above and is deliberately not duplicated.
   //
   // `email_changed_at` — plan 02's Users column (D-36). EXCLUDED by the model
-  // defaultScope and restored by withContactInfo (models/User.js:196). Declared
+  // defaultScope and restored by withContactInfo (backend:Sonnet/models/User.js ("withContactInfo: {},")). Declared
   // as a PLAIN string, not a date type: it crosses as a serialised ISO timestamp
   // and the A10 lesson applies — one unexpected value must not fail the whole
   // parse.
@@ -109,7 +114,7 @@ export const UserSchema = z.object({
   revert_available: z.boolean().nullable().optional(),
   // `orphaned_at` also crosses on the self wire (it is not in the defaultScope
   // exclude list) and is DELIBERATELY left undeclared: it is operational state
-  // that is never non-null on a row that can log in (models/User.js:193-195), so
+  // that is never non-null on a row that can log in (backend:Sonnet/models/User.js ("never non-null on a live login")), so
   // no frontend consumer has any use for it. Recorded rather than left silent so
   // the next wire-truth sweep does not read the omission as an oversight.
   // ──────────────────────────────────────────────────────────────────────────
@@ -184,7 +189,7 @@ export type EmailChangeResponse = z.infer<typeof EmailChangeResponseSchema>;
 export const UserListSchema = z.array(UserSchema);
 export type UserList = z.infer<typeof UserListSchema>;
 
-// friendshipsAPI (L894) — friend relationships + requests.
+// friendshipsAPI — friend relationships + requests.
 export const FriendshipStatusSchema = z.enum(['pending', 'accepted', 'blocked']);
 export type FriendshipStatus = z.infer<typeof FriendshipStatusSchema>;
 
@@ -207,7 +212,7 @@ export type Friendship = z.infer<typeof FriendshipSchema>;
 export const FriendshipListSchema = z.array(FriendshipSchema);
 export type FriendshipList = z.infer<typeof FriendshipListSchema>;
 
-// magicAuthAPI (L672) — passwordless/magic-link auth results.
+// magicAuthAPI — passwordless/magic-link auth results.
 // NOTE (87.3 plan 10): deliberately NOT tightened — the magic-auth/availability
 // family is the phase's named 87.4-deferred exclusion (wire-sweep allowlist);
 // the validate response emits no user_id at all today.
@@ -219,7 +224,7 @@ export const MagicAuthResponseSchema = z.object({
 });
 export type MagicAuthResponse = z.infer<typeof MagicAuthResponseSchema>;
 
-// googleCalendarAPI (L592) — Google Calendar connection status + sync.
+// googleCalendarAPI — Google Calendar connection status + sync.
 export const GoogleCalendarStatusSchema = z.object({
   connected: z.boolean().optional(),
   email: z.string().nullable().optional(),

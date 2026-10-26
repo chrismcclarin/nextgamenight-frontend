@@ -5,7 +5,7 @@
 // DECISION Phase 88.6 (D-14b / D49-b): the pragma above is PER-FILE, chosen over two alternatives.
 //   REJECTED (a) leaving this suite on the global jsdom environment — the DOM is never used here,
 //   so the whole jsdom setup cost is paid for nothing on every run.
-//   REJECTED (b) changing `environment` in `vitest.config.mts:56` from `'jsdom'` to `'node'` — that
+//   REJECTED (b) changing `environment` in vitest.config.mts ("environment: 'jsdom',") from `'jsdom'` to `'node'` — that
 //   would move EVERY suite in the repo, including the many that do render.
 // Owner ruling #121 + #123, 2026-09-14, option (b) of that pair (per-file pragma).
 //
@@ -14,11 +14,11 @@
 // pragma in the repo". It is not, and was not by the time this file was written. Re-measured
 // 2026-09-15 — `grep -rln "@vitest-environment" src` returns THREE files, all landed earlier in
 // this same phase: `src/app/groundInk.test.ts` (plan 09), `src/app/errorEnvelopeReads.test.ts`
-// (which carries the full rejected-alternatives reasoning at its own `:8-19`), and
+// (which carries the full rejected-alternatives reasoning at its own src/app/errorEnvelopeReads.test.ts ("DECISION Phase 88.6-14 (R9 / AC-9")), and
 // `src/app/components/btnCensus.test.tsx` (plan 10). This file is the FOURTH. The plan's sentence
 // was written against a 2026-09-14 census and went stale inside one day; recording the stale number
 // would have made this marker the kind of unverifiable claim the project's Evidence Rule exists to
-// stop. `vitest.config.mts` is still `environment: 'jsdom'` at `:56` and is byte-unmodified here,
+// stop. vitest.config.mts ("environment: 'jsdom',") is still `environment: 'jsdom'` and is byte-unmodified here,
 // and `fetchErrorTreatment.test.ts` gains no pragma — the three SHIPPED scan suites that predate
 // this phase were deliberately NOT converted.
 /**
@@ -27,8 +27,8 @@
  * ======================================================================================
  * WHAT "THREE TIERS ONLY" MEANS, AND THE TWO WAYS A SITE LEAVES THE LADDER
  * ======================================================================================
- * The shipped ladder is `--shadow-theme-sm` / `-md` / `-lg` (`globals.css:514-516`), whose
- * values live in plain `:root` (`globals.css:1361-1363` light, `:1765-1767` dark, including
+ * The shipped ladder is `--shadow-theme-sm` / `-md` / `-lg` (src/app/globals.css ("--shadow-theme-sm: var(--shadow-sm);")), whose
+ * values live in plain `:root` (src/app/globals.css ("--shadow-md: 0 4px 6px rgba(120, 80, 40, 0.08)") light, src/app/globals.css ("--shadow-md: 0 0 0 1px var(--purple-700);") dark, including
  * the dark `-sm` / `-md` / `-lg` ring re-expression). A site can fall off that ladder in two
  * structurally different ways, and this suite flags both:
  *
@@ -53,7 +53,7 @@
  *   instead of reading the theme property.
  *
  * That sentence is not this file's invention: it is what `DECISION Phase 87.7 (Plan 06,
- * RESEARCH Pitfall 2)` at `globals.css:1281-1295` documents and actively RELIES on — it is the
+ * RESEARCH Pitfall 2)` at src/app/globals.css ("DECISION Phase 87.7 (Plan 06, RESEARCH Pitfall 2)") documents and actively RELIES on — it is the
  * whole reason the three project properties are allowed to sit in plain `:root` wearing v4's
  * built-in names without hijacking the built-in scale. So:
  *
@@ -61,7 +61,7 @@
  *   - compiled `.shadow-theme-lg` = the project's re-tinted warm light value, and in dark the
  *                                   purple hairline + glow.
  *
- * A third, independent confirmation sits in shipped source at `src/components/ui/Switch.tsx:90-102`,
+ * A third, independent confirmation sits in shipped source at src/components/ui/Switch.tsx ("original wording collapsed — CORRECTED Phase 88.6-02"),
  * which spells out the same asymmetry ("the CUSTOM PROPERTY `--shadow-sm` IS `none` … the UTILITY
  * `.shadow-sm` is NOT `none`. It is Tailwind v4's built-in default") and concludes that the alias
  * spelling "would silently reintroduce a black drop shadow in both".
@@ -105,7 +105,7 @@
  *   `shadow-sm|md|lg`  ->  `shadow-theme-sm|md|lg`
  *
  *   - a HOVER pin on a `.btn` / `<Button>` element takes plan 05's `enabled-hover:` custom
- *     variant (`globals.css:177-183`): `enabled-hover:shadow-theme-lg`;
+ *     variant (src/app/globals.css ("@custom-variant enabled-hover {")): `enabled-hover:shadow-theme-lg`;
  *   - a hover shadow on a NON-button surface (a card `div`) keeps plain `hover:shadow-theme-md`.
  *
  * TWO VISIBLE CONSEQUENCES EVERY CONSUMER PLAN MUST DISCLOSE:
@@ -136,21 +136,9 @@ import {
   assertRosterShape,
   type ExemptionRoster,
 } from '../test-utils/exemption';
-import { readOpeningTag, sourceFiles, withoutComments } from '../test-utils/sourceScan';
+import { STRIP_VARIANTS, readOpeningTag, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
-
-/**
- * Strip Tailwind variant prefixes and the `!` important marker.
- *
- * A LOCAL copy of `src/app/surfaceHoverSweep.test.ts:101`, and a constraint rather than a choice:
- * `DECISION Phase 88-29` (quoted in `sourceScan.ts`'s docblock) rejects exporting a lexer from a
- * test file, because a test module's body registers its `describe` blocks on import, and AC-12
- * forbids adding to the shared module this phase. `.planning/WINDOWS.md` entry 12 owns the
- * convergence. It is what makes `hover:shadow-xl` and `hover:shadow-md` both visible to the rules
- * below — a scan that only saw the bare spelling would miss the two live `hover:shadow-xl` sites.
- */
-const STRIP_VARIANTS = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 
 /** The genuine fourth tier: four base spellings whose custom properties are undeclared. */
 const OFF_TIER = /^shadow-(xs|xl|2xl|inner)$/;
@@ -181,9 +169,8 @@ interface Element {
 // positive control in test 2 needs to run THIS EXACT tokenizer over synthetic source — and
 // writing the loop a second time for the fixture would mean the fixture could agree with a
 // lexer the real scan no longer uses. One function, two callers.
-function elementsFrom(rel: string, raw: string): Element[] {
+function elementsFrom(rel: string, raw: string, scannable: string = withoutComments(raw)): Element[] {
   const out: Element[] = [];
-  const scannable = withoutComments(raw);
   // Both DOM tags and components: `<Button`, `<Link`, `<Modal.Action` all matter here.
   const opener = /<[A-Za-z][A-Za-z0-9.]*(?=[\s/>])/g;
   let match: RegExpExecArray | null;
@@ -199,9 +186,62 @@ function elementsFrom(rel: string, raw: string): Element[] {
   return out;
 }
 
-const ELEMENTS: Element[] = sourceFiles(SRC).flatMap((file) =>
-  elementsFrom(path.relative(SRC, file), fs.readFileSync(file, 'utf8')),
+// AC-11: this is the ONE enumeration, the ONE read and the ONE comment strip of the tree. Both
+// passes below derive from SOURCES: the opening-tag pass (ELEMENTS, rules 1-8) and the
+// string-chunk pass (CHUNK_SCANS, test 9). Neither may read or strip a file a second time, and
+// no cache may be added to sourceScan.ts to get the same effect (AC-12).
+//
+// DECISION Phase 88.6.2-18 (W046): a SECOND pass over string chunks, using this one read, so a
+// shadow-family class held in a module constant, a variant map or a cn() call OUTSIDE any JSX
+// opening tag is seen. The tag pass alone backed a tree-wide zero it could not see.
+//   Chosen OVER widening the opening-tag tokenizer, because rule 7 needs the element boundaries
+//   a string chunk does not carry.
+//   Chosen OVER declaring the blind spot plus a fixture (the 88.6 review's other option, WR-408),
+//   because that leaves a live off-tier class outside JSX unflagged.
+//   No dedup against tag hits: both passes assert zero. Removing either pass is a decision, not
+//   a cleanup.
+const SOURCES: { rel: string; raw: string; scannable: string }[] = sourceFiles(SRC).map((file) => {
+  const raw = fs.readFileSync(file, 'utf8');
+  return { rel: path.relative(SRC, file), raw, scannable: withoutComments(raw) };
+});
+
+const ELEMENTS: Element[] = SOURCES.flatMap(({ rel, raw, scannable }) =>
+  elementsFrom(rel, raw, scannable),
 );
+
+interface ChunkSite {
+  rel: string;
+  line: number;
+  token: string;
+  base: string;
+}
+
+/** The string-chunk pass over one file: how many chunks it read, and every shadow-family token. */
+function chunkScan(
+  rel: string,
+  raw: string,
+  scannable: string = withoutComments(raw),
+): { chunks: number; sites: ChunkSite[] } {
+  const chunks = stringChunks(scannable);
+  const sites: ChunkSite[] = [];
+  for (const { offset, text } of chunks) {
+    for (const token of text.split(/\s+/).filter(Boolean)) {
+      const base = token.replace(STRIP_VARIANTS, '');
+      if (!base.startsWith('shadow-')) continue;
+      sites.push({ rel, line: raw.slice(0, offset).split('\n').length, token, base });
+    }
+  }
+  return { chunks: chunks.length, sites };
+}
+
+const CHUNK_SCANS = SOURCES.map(({ rel, raw, scannable }) => chunkScan(rel, raw, scannable));
+const CHUNK_COUNT = CHUNK_SCANS.reduce((sum, scan) => sum + scan.chunks, 0);
+const CHUNK_SITES: ChunkSite[] = CHUNK_SCANS.flatMap((scan) => scan.sites);
+
+/** Every string-chunk token whose variant-stripped base matches family. */
+function chunkSitesMatching(family: RegExp, sites: readonly ChunkSite[] = CHUNK_SITES): ChunkSite[] {
+  return sites.filter((site) => family.test(site.base));
+}
 
 const FILE_COUNT = new Set(ELEMENTS.map((e) => e.rel)).size;
 
@@ -249,6 +289,16 @@ const FIXTURE_ALIAS_SOURCE = `
   );
 `;
 
+// The string-chunk pass's positive control (W046, plan 88.6.2-18). Every class in it sits
+// OUTSIDE any JSX opening tag: a module constant, a variant-map value and a cn() argument, plus
+// a shadow-theme-lg that must NOT be flagged. The div's className is an expression, not a string.
+const FIXTURE_OUTSIDE_JSX_SOURCE = `
+  const RAISED = 'shadow-md';
+  const VARIANTS = { hover: 'hover:shadow-xl', safe: 'shadow-theme-lg' };
+  const cls = cn(RAISED, on && 'shadow-inner');
+  export const F = () => <div className={cls} />;
+`;
+
 /** Per-file occurrence counts, keyed the way `ExemptionRoster` is keyed. */
 function countByFile(sites: { rel: string }[]): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -277,9 +327,9 @@ const ALIAS_ROSTER: ExemptionRoster = {
   // `shadow-lg` on the mobile nav panel, at this scanner's OPENING-TAG line `:248` with the
   // className at `:249` pre-edit. It is `shadow-theme-lg` now. The hue changes in BOTH themes and
   // that is the point of the snap, not a side effect: `--shadow-lg` is
-  // `0 10px 15px rgba(120, 80, 40, 0.10)` in light (`globals.css:1203`, a WARM tint) and
-  // `0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85, 247, 0.05)` in dark (`:1601`, a purple
-  // hairline PLUS glow) — NOT `none`; `none` is `--shadow-sm`'s value (`:1201`, `:1599`) and not
+  // `0 10px 15px rgba(120, 80, 40, 0.10)` in light (src/app/globals.css ("--shadow-lg: 0 10px 15px rgba(120, 80, 40, 0.10);"), a WARM tint) and
+  // `0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85, 247, 0.05)` in dark (src/app/globals.css ("--shadow-lg: 0 0 0 1px var(--purple-600)"), a purple
+  // hairline PLUS glow) — NOT `none`; `none` is `--shadow-sm`'s value and not
   // this token's. NO hover pin was added: UI-SPEC §3.4 rule 2 governs `.btn` elements, and this is
   // a panel `div` that carries no hover shadow today. Disclosed for `/gsd-ui-review` in
   // `88.6-34-SUMMARY.md`; the phase-level V-row is UI-SPEC §1.2's V-16, which already names this
@@ -294,14 +344,14 @@ const ALIAS_ROSTER: ExemptionRoster = {
   //
   // MEASURED before/after, re-derived from `globals.css` at execution rather than inherited —
   // the plan's own cites (`:1203` light, `:1601` dark) had DRIFTED and the live keys are
-  // `globals.css:1363` and `:1767`:
+  // src/app/globals.css ("--shadow-lg: 0 10px 15px rgba(120, 80, 40, 0.10);") and src/app/globals.css ("--shadow-lg: 0 0 0 1px var(--purple-600)"):
   //   BEFORE, both themes (Tailwind v4 INLINES its built-in scale — `DECISION Phase 87.7`):
   //     `0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`
-  //     (`node_modules/tailwindcss/theme.css:410`)
+  //     (node_modules:tailwindcss/theme.css ("--shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1)"))
   //   AFTER, light: `0 10px 15px rgba(120, 80, 40, 0.10)` — warm, single layer, no negative spread
   //   AFTER, dark:  `0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85, 247, 0.05)` — a purple
   //     hairline PLUS a faint glow. It is **not** `none`; `none`-equivalent (`0 0 #0000`) is
-  //     `--shadow-sm`'s value (`:1361` light, `:1765` dark) and not this token's.
+  //     `--shadow-sm`'s value (src/app/globals.css ("KEPT AS HISTORY AND STILL STANDS") light, src/app/globals.css ("the DARK half of the same change") dark) and not this token's.
   // `dialog.tsx` is the ground of every Radix dialog in the app, so its hue change is the widest
   // single visual delta in the D49-b set; disclosed for `/gsd-ui-review` in `88.6-36-SUMMARY.md`.
   // The phase-level V-row is UI-SPEC §1.2's V-16, whose D49-b amendment already names all three
@@ -318,7 +368,7 @@ const ALIAS_ROSTER: ExemptionRoster = {
   // THE HOVER HALF IS A RULE-2 PIN AND THE CENSUS COULD NOT SEE IT. RESEARCH's rule-2 subject
   // list was derived from `shadow-theme-*` sites; this control spelled its elevation with
   // Tailwind v4's BUILT-IN names, so it was invisible to that scan. `Button`'s cva base emits
-  // `enabled-hover:shadow-theme-md` (`Button.tsx:63`), which is SMALLER than the shipped `lg`,
+  // `enabled-hover:shadow-theme-md` (src/components/ui/Button.tsx ("'shadow-theme-sm enabled-hover:shadow-theme-md',")), which is SMALLER than the shipped `lg`,
   // so migrating without the pin would have INVERTED the hover. `enabled-hover:` and never a
   // bare `hover:` (D10) — a bare one does not dedupe against the base token and would re-lift a
   // control that is `disabled` while submitting. The blind spot is CLOSED, not merely recorded:
@@ -326,21 +376,21 @@ const ALIAS_ROSTER: ExemptionRoster = {
   //
   // MEASURED before/after, re-derived from `globals.css` and `node_modules/tailwindcss/theme.css`
   // at execution rather than inherited — the plan's own cites (`--shadow-sm: none` at `:1201` /
-  // `:1599`) had DRIFTED in BOTH the line and the value; live the keys are `globals.css:1361`
-  // (light) and `:1765` (dark) and the value is `0 0 #0000`, not the keyword `none`:
+  // `:1599`) had DRIFTED in BOTH the line and the value; live the keys are src/app/globals.css ("KEPT AS HISTORY AND STILL STANDS")
+  // (light) and src/app/globals.css ("the DARK half of the same change") (dark) and the value is `0 0 #0000`, not the keyword `none`:
   //   RESTING, `shadow-sm` -> `shadow-theme-sm`, both themes:
   //     BEFORE: `0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)`
-  //             (`node_modules/tailwindcss/theme.css:408` — v4 INLINES its built-in scale's
+  //             (node_modules:tailwindcss/theme.css ("--shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1)") — v4 INLINES its built-in scale's
   //              literals rather than reading `--shadow-*`, per the DECISION Phase 87.7 marker,
   //              which is why the project's value never reached this utility)
   //     AFTER:  `0 0 #0000` — none-equivalent, in light AND dark
   //     => a REAL visible delta: a black xs shadow is REMOVED. Not a respelling.
   //   HOVER, `hover:shadow-lg` -> `enabled-hover:shadow-theme-lg`:
   //     BEFORE: `0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`
-  //             (`theme.css:410`)
-  //     AFTER, light (`globals.css:1363`): `0 10px 15px rgba(120, 80, 40, 0.10)` — warm, single
+  //             (node_modules:tailwindcss/theme.css ("--shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1)"))
+  //     AFTER, light (src/app/globals.css ("--shadow-lg: 0 10px 15px rgba(120, 80, 40, 0.10);")): `0 10px 15px rgba(120, 80, 40, 0.10)` — warm, single
   //             layer, no negative spread
-  //     AFTER, dark  (`globals.css:1767`): `0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85,
+  //     AFTER, dark  (src/app/globals.css ("--shadow-lg: 0 0 0 1px var(--purple-600)")): `0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85,
   //             247, 0.05)` — a purple hairline plus a faint glow
   //     => `shadow-lg` was NOT byte-equal to `shadow-theme-lg`; the hue changes too. Plus the
   //        `enabled-hover:` gate means the control no longer lifts while it is `disabled`.
@@ -417,7 +467,7 @@ const ALIAS_ROSTER: ExemptionRoster = {
   // which this scanner strips). The both-theme hue change (warm tint in light; purple hairline
   // plus glow in dark) is a VALUE change, not a rename — Tailwind v4 inlines its built-in
   // scale's literals into the built-in utilities (`DECISION Phase 87.7`,
-  // `globals.css:1141-1155`) — and is disclosed in `88.6-37-SUMMARY.md` for `/gsd-ui-review`
+  // src/app/globals.css ("DECISION Phase 87.7 (Plan 06, RESEARCH Pitfall 2)")) — and is disclosed in `88.6-37-SUMMARY.md` for `/gsd-ui-review`
   // as a PHONE-PRIMARY surface. The RENDERED hue was NOT measured and nothing here claims it
   // was: Playwright cannot run locally (no `.auth/`, real Auth0) and this suite is a source
   // scanner. The pin against a revert is this roster's own exactness in both directions — a
@@ -517,6 +567,17 @@ function carriesPinnedTier(tokens: { base: string }[]): boolean {
   return tokens.some(({ base }) => base === PINNED_TIER);
 }
 
+// Rule 7's whole per-element predicate, extracted (plan 88.6.2-18, W055) so test 7 and test 8's
+// negative control run the SAME rule: a .btn or Button element carrying the pinned tier with no
+// satisfying enabled-hover pin.
+function isUnpinnedLgButton(element: Element): boolean {
+  return (
+    isButtonFamily(element) &&
+    carriesPinnedTier(element.tokens) &&
+    !hasSatisfyingHoverPin(element.tokens)
+  );
+}
+
 describe('D-14b / D49-b: the three-tier shadow rule', () => {
   const offTierSites = sitesMatching(OFF_TIER);
   const aliasSites = sitesMatching(ALIAS);
@@ -546,12 +607,12 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
     // the only form in which this floor may be lowered: `groupHomePage/page.js`'s "Plan Game
     // Session" CTA carried `hover:shadow-xl` and now carries `enabled-hover:shadow-theme-lg`.
     // Its OFF_TIER_ROSTER entry is deleted in this same commit. The two survivors are
-    // `LandingPage.js:23` (plan 35) and `EventDayModal.js:327` (plan 27).
+    // src/app/components/LandingPage.js (plan 35) and src/app/components/EventDayModal.js (plan 27).
     //
     // 2 -> 1, plan 88.6-27 task 2 (wave 7, 2026-09-16), same form and same rule: the DEPARTING
-    // SITE is `EventDayModal.js:327`'s 40px avatar disc, whose `shadow-xs` is now
+    // SITE is src/app/components/EventDayModal.js's 40px avatar disc, whose `shadow-xs` is now
     // `shadow-theme-sm` and whose OFF_TIER_ROSTER entry is deleted in this same commit. The one
-    // survivor is `LandingPage.js:23` (plan 35). When plan 35 closes it this floor reaches ZERO
+    // survivor is src/app/components/LandingPage.js (plan 35). When plan 35 closes it this floor reaches ZERO
     // and the rule becomes vacuous — at that point the anti-vacuity duty passes to a FIXTURE,
     // the shape test 11 already uses, not to deleting this assertion.
     //
@@ -585,6 +646,8 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
        `FIXTURE_ALIAS_SOURCE` below, NOT to deleting this assertion: a scan that walked nothing,
        or a `STRIP_VARIANTS` that stopped stripping, would otherwise leave tests 2 and 4 green
        forever. That is the same handover the off-tier half made one plan earlier. */
+    // This tag pass reads JSX opening tags only. The tree-wide zero above holds because test 9
+    // also finds zero over every string chunk of the same read, outside JSX included (W046).
     expect(
       aliasSites.map((s) => `${s.rel}:${s.line} ${s.token}`),
       'an alias-spelled `shadow-(sm|md|lg)` site appeared in the tree. Every known one was ' +
@@ -654,7 +717,7 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
       expect(
         ALIAS.test(themed),
         `${themed} matched the ALIAS pattern — the themed spelling is the CORRECT one and must ` +
-          'never be flagged. The two spellings are not equivalent (globals.css:1281-1295: v4 ' +
+          'never be flagged. The two spellings are not equivalent (src/app/globals.css ("DECISION Phase 87.7 (Plan 06, RESEARCH Pitfall 2)"): v4 ' +
           'inlines its built-in scale into its built-in utilities), and collapsing them is a ' +
           'decision, not a cleanup.',
       ).toBe(false);
@@ -696,13 +759,9 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
   });
 
   it('7. flags a `.btn`/`Button` element carrying `shadow-theme-lg` with no `enabled-hover:` pin (UI-SPEC §3.4 rule 2)', () => {
-    const offenders: { rel: string; line: number }[] = [];
-    for (const element of ELEMENTS) {
-      if (!isButtonFamily(element)) continue;
-      if (!carriesPinnedTier(element.tokens)) continue;
-      if (hasSatisfyingHoverPin(element.tokens)) continue;
-      offenders.push({ rel: element.rel, line: element.line });
-    }
+    const offenders: { rel: string; line: number }[] = ELEMENTS.filter(isUnpinnedLgButton).map(
+      (element) => ({ rel: element.rel, line: element.line }),
+    );
     const measured = countByFile(offenders);
     expect(assertRosterShape(HOVER_PIN_ROSTER)).toEqual([]);
     expect(
@@ -713,7 +772,7 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
   });
 
   it('8. NEGATIVE CONTROL: a `.btn` carrying `shadow-theme-md` with no hover rule is SAFE and is not flagged', () => {
-    // `groupHomePage/page.js:872` ("Manage Members", className `:877`) carries `shadow-theme-md`
+    // The "Manage Members" className, src/app/groupHomePage/page.js ("'shadow-theme-md' +"), carries `shadow-theme-md`
     // and no hover shadow. That is SAFE by construction: after migration the cva base gives it
     // `enabled-hover:shadow-theme-md`, i.e. hover resolves to the SAME tier it rests at — no
     // change, no inversion. Only a `-lg` pin can be shrunk by an `-md` base. A rule that flagged
@@ -739,14 +798,62 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
         'the "Manage Members" control in app/groupHomePage/page.js, a `<Button variant="ghost">` ' +
         'since 88.6-21.',
     ).toHaveLength(1);
-    // And it must be absent from rule 7's roster, in BOTH files it could have been filed under.
-    for (const [file, entry] of Object.entries(HOVER_PIN_ROSTER)) {
-      if (file !== 'app/groupHomePage/page.js') continue;
-      expect(
-        entry.sites,
-        'the groupHomePage hover-pin entry covers 3 sites, which would mean the ' +
-          '`shadow-theme-md` control was filed as debt. It carries no `-lg` pin and is safe.',
-      ).toBe(2);
-    }
+    // DECISION Phase 88.6.2-18 (W055): the hover-pin roster has been empty since plan 88.6-21
+    // closed its last entry, so the loop that stood here (over that roster's entries) never ran
+    // its body; the vacuity is recorded in the 88.6.2-18 SUMMARY. The loop is REPLACED by running
+    // rule 7's own predicate, isUnpinnedLgButton, on the located subject.
+    //   Chosen OVER deleting the loop (the 88.6 review's fix, IN-407), which would leave this
+    //   negative control asserting only that its subject exists, never that rule 7 leaves it alone.
+    //   Chosen OVER pinning the roster key absent, which test 7's exact count already covers.
+    //   Removing this check is a decision, not a cleanup.
+    expect(
+      mdInHeader.filter(isUnpinnedLgButton).map((s) => `${s.rel}:${s.line}`),
+      'rule 7 now flags the shadow-theme-md negative-control subject, so it has been widened past ' +
+        'shadow-theme-lg. A -md control is safe: the cva base hovers it to the same tier. Narrow ' +
+        'rule 7 back, or record why -md needs a pin.',
+    ).toEqual([]);
+  });
+
+  it('9. the string-chunk pass sees a shadow-family class outside any JSX opening tag (W046)', () => {
+    // Anti-vacuity floor: measured 11,272 chunks over 202 files at FE 995023d. The shape it must
+    // catch is a lexer that stopped emitting chunks, not a count that moved.
+    expect(
+      CHUNK_COUNT,
+      `the string-chunk pass read only ${CHUNK_COUNT} chunks — stringChunks stopped emitting, or ` +
+        'SOURCES stopped walking, and the exact zeros below would pass on nothing.',
+    ).toBeGreaterThanOrEqual(5000);
+
+    // Fixture positive control: the live population is zero, so this is the only thing standing
+    // between a broken chunk pass and a permanently green test. Tokens only, never a path:line.
+    const fixture = chunkScan('fixture/outsideJsx.tsx', FIXTURE_OUTSIDE_JSX_SOURCE).sites;
+    expect(
+      chunkSitesMatching(ALIAS, fixture).map((s) => s.token),
+      'the chunk pass no longer locates the alias constant in its own fixture',
+    ).toEqual(['shadow-md']);
+    expect(
+      chunkSitesMatching(OFF_TIER, fixture).map((s) => s.token),
+      'the chunk pass no longer locates the off-tier map value and cn() argument in its fixture, ' +
+        'or STRIP_VARIANTS stopped stripping',
+    ).toEqual(['hover:shadow-xl', 'shadow-inner']);
+
+    // The live tree: exact zero in both families. This test reads NO roster, by design (the
+    // rosters must be empty at phase close), so a roster entry alone cannot green it. toEqual
+    // over the empty list rather than a length check, so a red names the file, line and token.
+    const remedy =
+      'Snap the class to shadow-theme-sm, shadow-theme-md or shadow-theme-lg. A roster entry alone ' +
+      'cannot green this test: a deliberately rostered exception needs this test edited to subtract ' +
+      'the rostered per-file counts, in the same commit as the entry, with a DECISION marker.';
+    expect(
+      chunkSitesMatching(OFF_TIER).map((s) => `${s.rel}:${s.line} ${s.token}`),
+      'an off-tier shadow-(xs|xl|2xl|inner) class appeared in a string outside the opening-tag ' +
+        'pass. ' +
+        remedy,
+    ).toEqual([]);
+    expect(
+      chunkSitesMatching(ALIAS).map((s) => `${s.rel}:${s.line} ${s.token}`),
+      'an alias-spelled shadow-(sm|md|lg) class appeared in a string outside the opening-tag ' +
+        'pass. ' +
+        remedy,
+    ).toEqual([]);
   });
 });

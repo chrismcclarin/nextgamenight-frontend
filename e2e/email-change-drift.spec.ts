@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 /**
  * Phase 88.6.1-13 — the Email section when a Save's answer cannot be read (D-11, D-11a).
@@ -88,7 +89,7 @@ async function routeDriftedSave(page: Page, withPending: boolean): Promise<void>
         await route.continue();
         return;
       }
-      const response = await route.fetch();
+      const response = await scrubbedFetch(route);
       if (!posted || !withPending) {
         await route.fulfill({ response });
         return;
@@ -143,9 +144,14 @@ async function noHorizontalPageScroll(page: Page): Promise<void> {
 // DECISION Phase 88.6.1 code review WR-02: no capture of any kind on this spec, chosen OVER the
 // shared failure screenshot and the retry trace (playwright.config.ts use.screenshot
 // 'only-on-failure', use.trace 'on-first-retry', retries 1 in CI), which this spec's header
-// promised it did not take. the Email card shows the e2e account's real address, and a retry trace records the real self-row response this spec fetches with route.fetch(), and CI uploads test-results from a public repository: the
+// promised it did not take. the Email card shows the e2e account's real address, and a retry trace records the real self-row response this spec fetches with scrubbedFetch, and CI uploads test-results from a public repository: the
 // e2e/friend-invite-panel-header.spec.ts rule (DECISION Phase 88.6.1-27). Re-enabling capture
 // here is a decision, not a cleanup.
+// [AMENDED 2026-10-25, code review A-IN-03: the pass-through is scrubbedFetch since Phase
+// 88.6.2-20, and since Phase 88.6.2-27 test-results leave CI only as age ciphertext
+// (scripts/encrypt-evidence.sh), so the public-upload premise no longer holds. The choice
+// stands, as amended on the 88.6.1-27 rule: the real address would still reach a retained
+// artifact, and the encryption is a second net, not a reason to capture.]
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
 test.describe('Email change — an answer the app cannot read (88.6.1-13)', () => {

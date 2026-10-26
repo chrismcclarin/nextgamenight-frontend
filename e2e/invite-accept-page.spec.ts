@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1 plan 35 — the invite/accept page, proven in a real browser at phone width (outline
 // shared rule 9: the phone is the primary surface; the `phone` project is the iPhone SE preset,
@@ -10,10 +11,10 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 // Two routes are intercepted, both registered BEFORE `page.goto` and matched by pathname:
 // - `/api/auth/me` (same-origin, fetched by the root UserProvider): held until the test releases
 //   it, so the page's own loading line can be measured while it is on screen, then answered with
-//   the real response through `route.fetch()` (signed out, that is a 204).
+//   the real response through `scrubbedFetch(route)` (signed out, that is a 204).
 // - the PUBLIC invite-info GET (a direct, cross-origin `publicFetch` to the backend, not the
 //   same-origin proxy): the real response is fetched only to keep the backend's own CORS headers
-//   (the `e2e/padding-budget.spec.ts` rewrite idiom) and its body is replaced, because the token
+//   (the e2e/padding-budget.spec.ts rewrite idiom) and its body is replaced, because the token
 //   is made up and the real body is a 404.
 // Nothing is passed through to the network unmodified. Assertion messages carry fixed strings only.
 //
@@ -74,7 +75,7 @@ test.describe('invite/accept at phone width (88.6.1-35)', () => {
       async (route) => {
         authRequested.release();
         await authHold.released;
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         await route.fulfill({ response });
       },
     );
@@ -86,7 +87,7 @@ test.describe('invite/accept at phone width (88.6.1-35)', () => {
           await route.abort();
           return;
         }
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         await route.fulfill({ response, status: 200, json: INVITE_INFO });
       },
     );

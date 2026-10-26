@@ -84,7 +84,7 @@ describe('datetime — golden-string output pins (legacy dateUtils parity)', () 
 
   describe('formatLongDate (header formatter — EventDayModal / gameDetail pins)', () => {
     it('reproduces the bespoke tz-aware gameDetail header byte-for-byte', () => {
-      // Legacy gameDetail/page.js:947 raw call output, frozen as a literal.
+      // Legacy src/app/gameDetail/page.js raw call output, frozen as a literal.
       expect(formatLongDate(DIFF_YEAR, TZ)).toBe('Monday, March 9, 2020');
     });
 

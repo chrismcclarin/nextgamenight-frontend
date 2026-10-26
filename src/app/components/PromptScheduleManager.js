@@ -355,7 +355,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   }
 
   // Modal variant (default): hosted on the shared <Modal> (size="lg" == the
-  // legacy max-w-4xl; the 90vh cap is the primitive's own default).
+  // legacy max-w-4xl; the 90dvh cap, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"), is the primitive's own default).
   /* DECISION Phase 88-17 (Req 9 / Req 4): the bespoke backdrop, the
      `onClick={onClose}` + `stopPropagation` pair and the NAMELESS `&times;`
      button are gone rather than ported. That glyph was one of the two nameless

@@ -27,7 +27,7 @@
  *     `grep -rnE 'rgba\(0, *0, *0'` over `src` returns 19 lines today. ZERO are a
  *     `boxShadow`. Eighteen are `textShadow` / `WebkitTextStroke` / `borderColor` on the
  *     calendar tiles, which 88-22 deliberately preserved, plus `colorUtils.js`'s shadow
- *     constants. The nineteenth is `groupHomePage/page.js:453` — a DECISION comment whose
+ *     constants. The nineteenth is src/app/groupHomePage/page.js ("Dropping the ring would still pass 88-29") — a DECISION comment whose
  *     text is literally *"would still pass 88-29's zero-`rgba(0,0,0` gate while looking
  *     wrong"*. A grep for that token is red on the comment warning about it.
  *
@@ -116,7 +116,7 @@ export function rawHexIn(src: string): { line: number; value: string }[] {
   const hits: { line: number; value: string }[] = [];
   for (const m of code.matchAll(/#([0-9a-fA-F]+)\b/g)) {
     // An HTML numeric character reference is a `#` followed by digits and is NOT a colour.
-    // `GameSuggestionCard.js:58` renders the black star as `&#9733;`, which reads as a
+    // src/app/components/GameSuggestionCard.js ("&#9733;") renders the black star as `&#9733;`, which reads as a
     // valid 4-digit `#rgba` to any pattern that only looks at what FOLLOWS the `#`. This
     // is DEF-88-27-01's first predictor — "a token that must be told from a lookalike" —
     // and it was caught by running the detector before trusting it, not by reasoning

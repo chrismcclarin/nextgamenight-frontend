@@ -14,21 +14,30 @@
 // `createEvent.js`, and OVER parent `useState` in `createEvent`. All three were on the table.
 //
 //   1. NOT parent `useState`. A state update at gesture ENGAGE re-renders `createEvent`, and
-//      `EventScheduler` is rendered INLINE and unmemoized there (`createEvent.js:1096`), so that
-//      re-render reconciles ~196 memoized scheduler cells (`EventScheduler.tsx:807-819` is the
+//      `EventScheduler` is rendered INLINE and unmemoized there (src/app/components/createEvent.js ("<EventScheduler")), so that
+//      re-render reconciles ~196 memoized scheduler cells (src/app/components/EventScheduler.tsx ("DECISION Phase 88.1-11 (memo pressure") is the
 //      cache that exists because of it). The fix would cause a smaller copy of the bug it fixes,
 //      in the exact frame the user's finger goes down.
-//   2. NOT a store inside `createEvent.js`. `createEvent.js:10` imports `QuickSuggestions` and
-//      `:18` imports `TimezoneNudgeBanner`, and BOTH consumers have to read the flag from inside
+//   2. NOT a store inside `createEvent.js`. src/app/components/createEvent.js ("import QuickSuggestions from") imports `QuickSuggestions` and
+//      src/app/components/createEvent.js ("import TimezoneNudgeBanner from") imports `TimezoneNudgeBanner`, and BOTH consumers have to read the flag from inside
 //      themselves (see 1 — `createEvent` must never subscribe). They would therefore have to
 //      import back FROM `createEvent.js`: a module cycle, and a `const`-exported store read
 //      through one hits TDZ on first access. Independently of the cycle, it could not satisfy
 //      requirement 3 below at all.
 //   3. IMPORT-SAFE WITH AN INACTIVE DEFAULT. `TimezoneNudgeBanner` has three mount sites and
-//      only one of them has a scheduler (`createEvent.js:994`; the other two are
-//      `EventDayModal.js:77` and `gameDetail/page.js:1474`). Those two must render exactly as
+//      only one of them has a scheduler (src/app/components/createEvent.js ("<TimezoneNudgeBanner />"); the other two are
+//      src/app/components/EventDayModal.js ("<TimezoneNudgeBanner />") and src/app/gameDetail/page.js ("<TimezoneNudgeBanner />")). Those two must render exactly as
 //      they do today and must not pull the create-event module into their bundle. A leaf module
 //      that imports nothing from the component tree is the only shape that gives them that.
+//      AMENDED Phase 88.6.2-16 (W034; added 2026-10-25, built-in review B-WR-02), point 3 above
+//      KEPT AS HISTORY: "only one of them has a scheduler" and "must not pull the create-event
+//      module into their bundle" hold for EventDayModal.js only. gameDetail/page.js hosts the
+//      Edit Event form (a scheduler) in its event-only view and already imports createEvent
+//      itself, src/app/gameDetail/page.js ("import CreateEvent from")
+//      so its banner can hold during a paint there (harmless: it sits under the modal). The
+//      leaf-module shape is still the right one: it is what keeps EventDayModal's bundle clean.
+//      The banner carries the same correction,
+//      src/app/components/TimezoneNudgeBanner.js ("AMENDED Phase 88.6.2-16 (W034), every word above kept")
 //
 // DECISION Phase 88.6-39 (D-18): the read seam is an IMPERATIVE `isPaintGestureActive()` plus
 // `subscribePaintGestureActive()`, chosen OVER `useSyncExternalStore` at a consumer's top level.

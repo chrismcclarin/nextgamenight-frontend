@@ -18,6 +18,7 @@ import {
   vacuityGround,
   type Measurement,
 } from './support/contrast';
+import { switchToManualEntry } from './support/createEvent';
 // Phase 88.3.1-W. The PALETTE, imported rather than transcribed — the AMENDMENT W tests below
 // pin the preset-only group's rendered ground to the `blue` preset's own stored values, and
 // this import is what stops that from being a hex literal (see the AMENDED block in
@@ -46,7 +47,7 @@ import { presetByName } from '../src/lib/groupColourPresets';
  * THIS SPEC CANNOT BE RUN ON A LAPTOP, BY DESIGN.
  * ---------------------------------------------------------------------------------------
  * `.auth/user.json` is produced by the `setup` project against real Auth0, and the
- * credentials are deliberately absent locally (`playwright.config.ts:24-27`). The local
+ * credentials are deliberately absent locally (playwright.config.ts ("They are intentionally absent locally")). The local
  * proofs for this file are `npx playwright test --list` (it is collected, and the case
  * count grew by exactly the number of `test(` blocks here) and
  * `npx tsc --noEmit -p tsconfig.e2e.json` (it compiles and the relative helper import
@@ -56,8 +57,8 @@ import { presetByName } from '../src/lib/groupColourPresets';
  * ---------------------------------------------------------------------------------------
  * ASSERTION SHAPE: ratios and delta-L* only. No hex is ever asserted.
  * ---------------------------------------------------------------------------------------
- * The reasoning lives with the helper (`e2e/support/contrast.ts`, DECISION Phase 88.3
- * (Req 11)) so it sits next to the code that computes the numbers. In short: a floor can
+ * The reasoning lives with the helper (e2e/support/contrast.ts ("DECISION Phase 88.3 (Req 11)"),
+ * so it sits next to the code that computes the numbers. In short: a floor can
  * only fail when the requirement fails; a pinned colour fails whenever anyone changes a
  * colour, including improvements. 87.7 D-12 ruled out screenshot baselines for the same
  * reason, and Req 12's owner phone UAT owns "does it look right".
@@ -76,7 +77,7 @@ import { presetByName } from '../src/lib/groupColourPresets';
  * hover as available.
  *
  * ---------------------------------------------------------------------------------------
- * SELECTOR POLICY (`padding-budget.spec.ts:50-51`), and it matters MORE here than anywhere.
+ * SELECTOR POLICY (e2e/padding-budget.spec.ts ("SELECTOR POLICY")), and it matters MORE here than anywhere.
  * ---------------------------------------------------------------------------------------
  * Role, label, text and ARIA STATE only — never a Tailwind class. This phase RENAMES class
  * tokens (`text-status-*` -> `text-content-status-*`, `text-accent` ->
@@ -88,8 +89,8 @@ import { presetByName } from '../src/lib/groupColourPresets';
  */
 
 // Runs ONLY in the `phone` project — the same runtime skip shape as
-// `padding-budget.spec.ts:194-200`. Both `journeys` (playwright.config.ts:44) and `phone`
-// (playwright.config.ts:96) collect every `e2e/*.spec.ts`, so phone-only scoping is a
+// e2e/padding-budget.spec.ts ("SPEC R2: the 75px budget is 20% of a PHONE viewport"). Both `journeys` (playwright.config.ts ("name: 'journeys'")) and `phone`
+// (playwright.config.ts ("name: 'phone'")) collect every `e2e/*.spec.ts`, so phone-only scoping is a
 // RUNTIME skip, not a collection filter. D-07 pins one project for this gate: the ratios
 // are a phone-forward gate and re-measuring them at 1280px would double the runtime to
 // re-prove numbers that do not depend on width.
@@ -99,11 +100,11 @@ test.skip(
 );
 
 // Seeded fixtures minted by the backend's scripts/e2e-fixtures.js in CI. Same
-// obviously-fake fallback idiom as `padding-budget.spec.ts:69-76` and
-// `touch-targets.spec.ts:60-61`, and DELIBERATELY THE SAME VARIABLE NAMES as those
+// obviously-fake fallback idiom as e2e/padding-budget.spec.ts ("const E2E_GROUP_ID = process.env.E2E_GROUP_ID ??") and
+// e2e/touch-targets.spec.ts ("const E2E_GROUP_ID = process.env.E2E_GROUP_ID ??"), and DELIBERATELY THE SAME VARIABLE NAMES as those
 // siblings, so a fixture rename moves every spec together.
 //
-// `Group.id` is a UUID string (`models/Group.js:6-9`), not an integer PK, so the literal
+// `Group.id` is a UUID string (backend:Sonnet/models/Group.js ("defaultValue: DataTypes.UUIDV4,")), not an integer PK, so the literal
 // '1' below is an invalid value on purpose: a route guarded by `validateUUID` 400s loudly
 // on it rather than silently resolving to some other row. That is the whole point of an
 // obviously-fake fallback.
@@ -156,7 +157,7 @@ const CARD_LSTAR_FLOOR = 97; // distinguishes the white card (100) from the warm
  * colour, and it renders on this same page as a TINTED card whose border and muted text
  * read different ratios; `routes/groups.js`'s group-list query has no `ORDER BY`, so an
  * unnamed first-card locator is not a stable anchor and would silently measure whichever
- * row Postgres returned first. `padding-budget.spec.ts:209-214` already anchors this same
+ * row Postgres returned first. e2e/padding-budget.spec.ts ("page.getByRole('heading', { name: E2E_INVITE_GROUP_NAME })") already anchors this same
  * fixture group by name — this reuses that idiom rather than inventing one.
  *
  * ---------------------------------------------------------------------------------------
@@ -167,11 +168,11 @@ const CARD_LSTAR_FLOOR = 97; // distinguishes the white card (100) from the warm
  * nearest ancestor div carrying a button role, on the understanding that the ancestor was the
  * CARD. FE `f696732` ("fix(88.6-21): move the group card's keyboard target onto its title block
  * (W42/W62b)") deleted `role`/`tabIndex`/`onKeyDown` from the card div and put them on the TITLE
- * BLOCK (`grouplist.js:496`). From that commit on, the step resolved the title block — whose own
- * className (`grouplist.js:513`) carries NO shadow utility, so `box-shadow: none` is its CORRECT
- * computed value — while the card kept the shadow (`grouplist.js:408`). Gate C's resting-shadow
+ * BLOCK (src/app/components/grouplist.js). From that commit on, the step resolved the title block — whose own
+ * className (src/app/components/grouplist.js) carries NO shadow utility, so `box-shadow: none` is its CORRECT
+ * computed value — while the card kept the shadow (src/app/components/grouplist.js). Gate C's resting-shadow
  * pin then reported the bare keyword and its message accused `--shadow-sm` of a revert. The token
- * was intact in BOTH themes throughout (`globals.css:1455` light, `:1861` dark) and the compiled
+ * was intact in BOTH themes throughout (src/app/globals.css, light and dark) and the compiled
  * `.shadow-theme-sm` rule is a valid composite. The LOCATOR was the defect; nothing about the
  * focus ring was ever broken.
  *
@@ -183,7 +184,7 @@ const CARD_LSTAR_FLOOR = 97; // distinguishes the white card (100) from the warm
  * is re-pointed by the next restructure, which is the failure being fixed, not a variation of it.
  * A `data-testid` is neither a class nor an id, and it is the one shape whose whole purpose is to
  * be stable across restructures. The production side is pinned by
- * `src/app/groupColourRendering.test.ts` test 32 (exactly once, on the tag carrying
+ * src/app/groupColourRendering.test.ts ("32. the home card carries the") (exactly once, on the tag carrying
  * `shadow-theme-sm`), so the two cannot drift apart again in silence.
  * The `filter({ has: … })` is not decoration: plan 02 mints a SECOND, tinted fixture group that
  * also renders a `group-card`, so the heading filter is what still proves this is the FIXTURE
@@ -203,8 +204,8 @@ function fixtureCard(page: Page): Locator {
  * `fixtureCard`. The ONE surface whose subject is a CONTROL — Req 7's card-hosted focus ring —
  * takes this helper, because `f696732` moved `role`/`tabIndex`/`onKeyDown` off the card and the
  * card can no longer match `:focus-visible` at all. Handing the card to `focusRingMeasurement`
- * does not fail softly: it focuses the anchor (`e2e/support/contrast.ts:645`) and then
- * `requireColor`s `--tw-ring-color` (`:654`), which THROWS on an empty value (`:474`) — and the
+ * does not fail softly: it focuses the anchor (e2e/support/contrast.ts ("await focusByKeyboard(page, anchor);")) and then
+ * `requireColor`s `--tw-ring-color` (e2e/support/contrast.ts ("focus ring (--tw-ring-color; empty means the element never matched")), which THROWS on an empty value (e2e/support/contrast.ts ("the computed value did not normalise to a colour")) — and the
  * compiled stylesheet declares `@property --tw-ring-color` with `syntax: "*"` and NO
  * `initial-value`, so an element that never matched returns the empty string. Re-basing
  * `fixtureCard` without minting this second helper would have traded one red for another.
@@ -244,7 +245,7 @@ function headerControls(page: Page): { label: string; locator: Locator }[] {
 }
 
 /**
- * Vacuity guard, in the `padding-budget.spec.ts:212-214` spirit but NOT its literal rule.
+ * Vacuity guard, in the e2e/padding-budget.spec.ts ("vacuityMessage('home / group list', chain)") spirit but NOT its literal rule.
  *
  * ---------------------------------------------------------------------------------------
  * DECISION Phase 88.3 (Req 11): the guard is "landed on a real element AND found an opaque
@@ -339,7 +340,7 @@ function expectRestingShadowIsInvisibleButValid(raw: string, label: string): voi
       'stale LOCATOR rather than a token: a resting-card element that never carried a shadow ' +
       'utility at all ALSO computes exactly this value, so before suspecting `--shadow-sm`, ' +
       'check that the locator still resolves the element carrying `shadow-theme-sm` ' +
-      '(`grouplist.js:408`, handle `data-testid="group-card"`). A structural ancestor step ' +
+      '(src/app/components/grouplist.js ("rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm"), handle `data-testid="group-card"`). A structural ancestor step ' +
       're-pointed itself onto a nested block once already, and this message accused the token ' +
       'for ~25 plans.'
   ).not.toBe('none');
@@ -371,7 +372,7 @@ function expectRatio(label: string, m: Measurement, floor: number): void {
   expect(m.ratio, describeRatio(label, floor, m)).toBeGreaterThanOrEqual(floor);
 }
 
-/** The four-step journey to the create-event scheduler (`padding-budget.spec.ts:238-241`). */
+/** The journey to the create-event scheduler: the page, then the same open step as e2e/support/createEvent.ts ("export async function openCreateEventDialog("). */
 async function openCreateEvent(page: Page): Promise<void> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
   await page.getByRole('button', { name: /add new game event/i }).click();
@@ -383,7 +384,7 @@ async function openCreateEvent(page: Page): Promise<void> {
 
 /** The scheduler's today cell in the phone week strip, located by its ARIA state. */
 function todayStripCell(page: Page): Locator {
-  // `SchedulerWeekStrip.tsx:130` puts `aria-current="date"` on today's tab EXACTLY so that
+  // src/app/components/SchedulerWeekStrip.tsx ("aria-current={today ? 'date' : undefined}") puts `aria-current="date"` on today's tab EXACTLY so that
   // today is exposed to assistive tech rather than by tint alone. That makes it the honest
   // semantic handle here too. Playwright's `getByRole` has no `current` option, so this is
   // an ARIA ATTRIBUTE selector — not a class and not an id.
@@ -395,11 +396,11 @@ function todayStripCell(page: Page): Locator {
  * =========================================================================================
  * The plan names `EventScheduler.tsx`'s `renderDayHeader` span as Req 5/Req 7's today
  * target. VERIFIED 2026-08-26: that span is rendered by the DESKTOP day header only —
- * `EventScheduler.tsx:1121` gates the week strip on `isPhoneViewport` and the plain-column
+ * src/app/components/EventScheduler.tsx ("{isPhoneViewport && (") gates the week strip on `isPhoneViewport` and the plain-column
  * header on `!isPhoneViewport`, so at 375x667 the desktop day header DOES NOT EXIST. The
- * phone's today site is `SchedulerWeekStrip.tsx:188-198`, the OTHER half of the same paired
+ * phone's today site is src/app/components/SchedulerWeekStrip.tsx ("className={today ? 'bg-surface-accent-subtle' : 'bg-surface-card'}"), the OTHER half of the same paired
  * ternary, and it resolves the SAME `--color-bg-accent-subtle` token because
- * `TODAY_TINT_SCOPE` (`EventScheduler.tsx:274-276`) re-points it for the whole subtree.
+ * `TODAY_TINT_SCOPE` (src/app/components/EventScheduler.tsx ("const TODAY_TINT_SCOPE = {")) re-points it for the whole subtree.
  * Same token, same tint, same requirement — the reachable half. Substituting the desktop
  * span here would be an unreachable locator, not a stricter test.
  * ======================================================================================= */
@@ -436,7 +437,7 @@ function todayStripCell(page: Page): Locator {
  * ======================================================================================= */
 
 /**
- * The `blue` preset row — the one `scripts/e2e-fixtures.js` seeds on both coloured groups.
+ * The `blue` preset row — the one backend:Sonnet/scripts/e2e-fixtures.js seeds on both coloured groups.
  *
  * Resolved at module load and asserted present at module load. If the id ever leaves the
  * palette, this throws while Playwright is COLLECTING, which reds the run loudly; a lazy
@@ -535,8 +536,8 @@ async function assertPresetGroundLanded(page: Page, theme: 'light' | 'dark'): Pr
 }
 
 test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
-  // Pitfall 4: `colorScheme` is ORTHOGONAL to the theme class. `playwright.config.ts:51`
-  // and `:113` pin `colorScheme: 'dark'` on both projects and carry a D-11 marker saying
+  // Pitfall 4: `colorScheme` is ORTHOGONAL to the theme class. playwright.config.ts ("DECISION Phase 87.7 D-11: pin dark")
+  // and playwright.config.ts ("same D-11 reasoning as journeys") pin `colorScheme: 'dark'` on both projects and carry a D-11 marker saying
   // removing either half is a decision — this describe does not touch them, it overrides
   // the emulation FOR ITSELF. What that emulation governs is UA form-control chrome and
   // scrollbars (`globals.css` declares no `color-scheme` of its own, so the UA default
@@ -573,7 +574,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
 
     await test.step('surface 2 — Req 3: a resting card carries NO shadow', async () => {
       // A PROPERTY assertion, not a value assertion, so it sits comfortably inside the
-      // `tailwind-v4-styles.spec.ts:37-40` policy. `hover:shadow-theme-md` is inert on this
+      // e2e/tailwind-v4-styles.spec.ts ("DECISION Phase 87.7 Plan 10 (assertion shape)") policy. `hover:shadow-theme-md` is inert on this
       // project (see the hover note at the top), so what is measured here IS the rest state.
       const probe = await probeElement(card, ['box-shadow']);
       expectRestingShadowIsInvisibleButValid(
@@ -607,15 +608,15 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       //
       // CARD ground: the "Last Game:" row's date span inside the fixture card. It renders
       // unconditionally — `formatDate(undefined)` returns the string 'Never'
-      // (`src/lib/datetime.ts:194`), so the element is never empty and never invisible.
+      // (src/lib/datetime.ts ("if (!date) return 'Never';")), so the element is never empty and never invisible.
       const lastGameRow = card.getByText('Last Game:', { exact: true }).locator('xpath=ancestor::div[1]');
       const mutedOnCard = lastGameRow.locator('xpath=./span[last()]');
       await expect(mutedOnCard).toBeVisible({ timeout: 15_000 });
       const onCard = await ratioAgainstGround(mutedOnCard, 'muted text on a CARD (Req 8)');
       expectRatio('muted text on a CARD (Req 8)', onCard, AA_TEXT);
 
-      // PAGE ground: the footer's copyright line. `Footer.js:122` puts
-      // `text-content-muted` on the row and `Footer.js:81` puts `bg-surface-page` on the
+      // PAGE ground: the footer's copyright line. src/app/components/Footer.js ("function AuthFooter() {") puts
+      // `text-content-muted` on the row and src/app/components/Footer.js ("function AuthFooter() {") puts `bg-surface-page` on the
       // <footer>, so this element's ground chain terminates on the page surface.
       // Scoped to the <span> for the same parent-text reason as surface 12 below: the row div
       // wraps the logo plus this span, and a bare text locator can match both.
@@ -637,7 +638,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     });
 
     await test.step('surface 1 — Req 7: the Button primitive and a card-hosted control', async () => {
-      // Req 7 target 1 of 4 — the `Button` primitive. `UserHomePage.js:245` renders the
+      // Req 7 target 1 of 4 — the `Button` primitive. src/app/userHome/UserHomePage.js ("onClick={() => setCalendarSheetOpen(true)}") renders the
       // phone-only Calendar entry point through it (`md:hidden`, so it exists ONLY at this
       // width). Located by role and name; the Icon inside is decorative.
       // Phase 88.5: was an exact-string name match on "Calendar". Relaxed to a prefix
@@ -656,10 +657,10 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // DEVIATION FROM THE PLAN, recorded here rather than silently: the plan asks for a
       // "Card-hosted LINK" on this surface. VERIFIED 2026-08-26 — at 375px the home page
       // renders no `role=link` inside a card: `EventCalendar` and `UpcomingEventsCard` are
-      // both behind `hidden md:flex` (`UserHomePage.js:273`), `UpcomingEventsCard`'s rows
+      // both behind `hidden md:flex` (src/app/userHome/UserHomePage.js), `UpcomingEventsCard`'s rows
       // are `<button>`s, and the only links on the page are the
       // header nav and the footer, neither of which is card-hosted. The group card ITSELF
-      // is `role="button"` (`grouplist.js:303`) and its ground IS the white card, so it
+      // is `role="button"` (src/app/components/grouplist.js) and its ground IS the white card, so it
       // covers Req 7's card GROUND, which is what SPEC:179-182 actually enumerates (page,
       // card, today tint, primary button). The LINK component type is covered on
       // groupHomePage ("Plan Game Session") and in the header menu (surface 10).
@@ -669,20 +670,20 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // in plan 88.5-07, so it can no longer be cited as a reason the page has no
       // card-hosted link. RE-VERIFIED 2026-09-01 against the post-88.5 tree, and the
       // conclusion holds on the remaining grounds plus two new ones:
-      //   - the desktop column is still behind `hidden md:flex` (`UserHomePage.js:386` —
+      //   - the desktop column is still behind `hidden md:flex` (src/app/userHome/UserHomePage.js —
       //     the cite above moved with the removal, the gate did not change);
       //   - `NextGameNightCard`'s hero, the only new card-hosted control in the sheet, is a
-      //     `<button>` (`NextGameNightCard.tsx:280`), not a link;
+      //     `<button>` (src/app/components/NextGameNightCard.tsx), not a link;
       //   - `MemberChipStack`'s chips on the group card are `role="button"` spans
-      //     (`MemberChipStack.tsx:350`, `ClickableMemberName.js:438`), deliberately so —
+      //     (src/app/components/MemberChipStack.tsx, src/app/components/ClickableMemberName.js), deliberately so —
       //     see their nested-interactive markers.
       // So the count of `role=link` inside a card at 375px is still zero, and this step
       // still measures the Button primitive plus the card ground. Nothing here needs to
       // change; deleting this note would lose the re-verification.
       //
-      // AMENDED Phase 88.6-47 (row 4): the cite `grouplist.js:303` above is stale, and so is the
+      // AMENDED Phase 88.6-47 (row 4): the cite above once read `grouplist.js:303` (88.6.2-23 dropped the number); it was stale, and so is the
       // element it names. `f696732` moved `role="button"` / `tabIndex` / `onKeyDown` OFF the card
-      // onto the title block (`grouplist.js:496`), so the CARD is no longer a control and can never
+      // onto the title block (src/app/components/grouplist.js), so the CARD is no longer a control and can never
       // match `:focus-visible` — it wears no `ring-*` utility and no `tabIndex`, and
       // `focusRingMeasurement` THROWS on an empty `--tw-ring-color` rather than failing softly.
       // The conclusion above is UNCHANGED — the control is card-hosted and its ground IS the white
@@ -703,13 +704,13 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     // Req 4's acceptance names ">= 3 named migrated sites on light card AND light page".
     // These three are the page half; the card half is asserted on groupHomePage below.
     // `/about`'s container declares no background, so the chain terminates on
-    // `body { background-color: var(--color-bg-page) }` (globals.css:1379-1382).
+    // `body { background-color: var(--color-bg-page) }` (src/app/globals.css ("body {")).
     const sites: { label: string; locator: Locator }[] = [
       // Located by "the link whose accessible name is an address" rather than by spelling
-      // the address into a test file. `about/page.js:45-50`.
-      { label: 'about — contact mailto (about/page.js:45)', locator: page.getByRole('link', { name: /@/ }) },
-      { label: 'about — Privacy Policy (about/page.js:59)', locator: page.getByRole('link', { name: 'Privacy Policy' }) },
-      { label: 'about — Terms of Service (about/page.js:63)', locator: page.getByRole('link', { name: 'Terms of Service' }) },
+      // the address into a test file. src/app/about/page.js ("mailto:").
+      { label: 'about — contact mailto (src/app/about/page.js ("mailto:"))', locator: page.getByRole('link', { name: /@/ }) },
+      { label: 'about — Privacy Policy (src/app/about/page.js ("Privacy Policy"))', locator: page.getByRole('link', { name: 'Privacy Policy' }) },
+      { label: 'about — Terms of Service (src/app/about/page.js ("Terms of Service"))', locator: page.getByRole('link', { name: 'Terms of Service' }) },
     ];
     for (const site of sites) {
       await expect(site.locator).toBeVisible({ timeout: 15_000 });
@@ -731,7 +732,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     ).toBeVisible({ timeout: 15_000 });
 
     await test.step('surface 4 — Req 5: the today number reads against its own tint', async () => {
-      // `SchedulerWeekStrip.tsx:191-198` hangs a `data-testid` on this span expressly so a
+      // src/app/components/SchedulerWeekStrip.tsx ("data-testid=") hangs a `data-testid` on this span expressly so a
       // gate can find it (the T-88.1-39 pin already uses it). It is `aria-hidden` — the
       // cell's `aria-label` carries the full name — so a role/text locator cannot reach it,
       // and a test id is neither a class nor an id selector.
@@ -772,7 +773,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     });
 
     await test.step('surface 5 — Req 1: a nested block is distinct from its parent card', async () => {
-      // The scheduler's "no slot selected yet" prompt (`EventScheduler.tsx:1215-1228`)
+      // The scheduler's "no slot selected yet" prompt (src/app/components/EventScheduler.tsx ("Tap and hold on a day to pick a time"))
       // is a `bg-surface-page` block INSIDE the modal's `bg-card` body. It renders
       // unconditionally until a slot is picked, which is the state this test is in.
       //
@@ -781,7 +782,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // first is gated on `!canManageMembers` and the fixture user OWNS this group, and the
       // second is gated on `userData?.sms_enabled`, a DB-only admin entitlement the fixture
       // does not set. Both would be zero-element locators. This block is the same
-      // requirement (a sunken/recessed block inside a card) at a site that actually renders.
+      // requirement (a sunken/recessed block inside a card) at a site that actually renders. DECISION Phase 88.6.2-31 (ruling-B-e2e): line number kept as quoted text over an anchor — both numbers are the plan's own words, which this DEVIATION note quotes to refuse them.
       const nested = page
         .locator('p')
         .filter({ hasText: /Tap and hold on a day to pick a time\.|Click and drag on the calendar/ });
@@ -816,8 +817,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // visual mode on this form: `GameComboInput` is its own component and Comments is a
       // `Textarea`. The plan's own escape hatch is taken — the toggle is exercised HERE,
       // after every visual-mode read above, exactly as the plan permits. The ring is a
-      // property of the primitive (`Input.tsx:79-80`), not of the mode.
-      await page.getByRole('button', { name: /switch to manual entry/i }).click();
+      // property of the primitive (src/components/ui/Input.tsx ("focus-visible:ring-2 focus-visible:ring-focus-ring")), not of the mode. DECISION Phase 88.6.2-31 (ruling-B-e2e): line number kept as quoted text over an anchor — the number is the plan's offered cite, which this DEVIATION note quotes.
+      await switchToManualEntry(page);
       const input = page.getByLabel(/start date & time/i);
       await expect(input).toBeVisible({ timeout: 15_000 });
       const m = await focusRingMeasurement(page, input, 'Input primitive focus ring (Req 7)');
@@ -826,7 +827,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
   });
 
   test('groupHomePage (UNSET group): header controls, title, ring — and a card-ground accent site', async ({ page }) => {
-    // The param is `id`, not `groupId` (`padding-budget.spec.ts:214`).
+    // The param is `id`, not `groupId` (e2e/padding-budget.spec.ts ("groupHomePage calendar body: padding chain stays within budget")).
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertTheme(page, 'light');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15_000 });
@@ -841,8 +842,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       expectRatio('unset header — title (Req 9i)', title, AA_TEXT);
 
       // NO BORDER ASSERTION HERE, deliberately (plan review 2026-08-25, DEC-7). The three
-      // controls are `.btn`, and the unlayered `.btn { border: none }` (globals.css:1079)
-      // makes every border utility on them DEAD. A computed `border-*-color` read stays
+      // controls are `.btn`, whose `border: none` reset now sits in `@layer components` (src/app/globals.css ("DECISION Phase 88.6-05 (W19)")),
+      // and none of them carries a `border-*` utility (at that review the reset was unlayered and made any such utility DEAD). A computed `border-*-color` read stays
       // populated even with `border-style: none`, so a border ratio here would be a number
       // about a border nobody paints — vacuous, and it would read as coverage. The
       // header-CTA border claim is owned by Phase 88.6, not by this gate.
@@ -854,9 +855,9 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     });
 
     await test.step('surface 6 — Req 4: a migrated accent site on a light CARD', async () => {
-      // The card half of Req 4's acceptance. `ManageMembers.js:490` renders "(You)" beside
+      // The card half of Req 4's acceptance. src/app/components/ManageMembers.js ("text-xs text-content-accent") renders "(You)" beside
       // the viewer's own row, unconditionally for the signed-in member, inside the shared
-      // Modal whose content surface is `bg-card` (`Modal.tsx:186`).
+      // Modal whose content surface is `bg-card` (src/app/components/Modal.tsx ("rounded-[12px] bg-card p-0")).
       await page.getByRole('button', { name: 'Manage Members' }).click();
       const you = page.getByText('(You)', { exact: true });
       await expect(you).toBeVisible({ timeout: 15_000 });
@@ -893,7 +894,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // point of the row.
       //
       // REJECTED, and ROUTED rather than silently dropped: adding `aria-current="date"` to the
-      // month cell to give this probe a semantic hook. It would mirror `SchedulerWeekStrip.tsx:130`,
+      // month cell to give this probe a semantic hook. It would mirror src/app/components/SchedulerWeekStrip.tsx,
       // whose own comment says the attribute exists "EXACTLY so that today is exposed to assistive
       // tech rather than by tint alone" — so the month grid exposing today by TINT ONLY is a real
       // inconsistency with a shipped sibling. But it changes rendered component semantics, which is
@@ -912,8 +913,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // its measured ΔL*, and this file's SELECTOR POLICY are CONSEQUENCE and are unchanged.
       await page.keyboard.press('Escape');
 
-      // The month view may be persisted OFF: `EventCalendar.js:39-41` defaults `viewMode` to
-      // 'month' but hydrates a saved 'list' from prefs. The toggle at `:209-212` is labelled by the
+      // The month view may be persisted OFF: src/app/components/EventCalendar.js ("return prefs?.viewMode || 'month';") defaults `viewMode` to
+      // 'month' but hydrates a saved 'list' from prefs. The toggle at src/app/components/EventCalendar.js ("{viewMode === 'month' ? 'List View' : 'Month View'}") is labelled by the
       // view it switches TO, so a visible "Month View" button means we are currently in list view.
       const toMonth = page.getByRole('button', { name: 'Month View' });
       if (await toMonth.count()) await toMonth.first().click();
@@ -1033,8 +1034,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
 
            MECHANISM, read out of the compiled stylesheet rather than assumed: the hint carries
            `opacity-0 group-hover:opacity-40 group-focus-within:opacity-40 transition-opacity`
-           (`src/app/components/CalendarMonthView.js:1229`) and the cell hoists `group`
-           unconditionally (`:323`). The compiled output emits
+           (src/app/components/CalendarMonthView.js ("opacity-0 group-hover:opacity-40 group-focus-within:opacity-40 transition-opacity")) and the cell hoists `group`
+           unconditionally (src/app/components/CalendarMonthView.js ("'min-h-[80px]' : 'min-h-[100px]'")). The compiled output emits
            `.group-focus-within\:opacity-40:is(:where(.group):focus-within *)` at specificity
            (0,2,0), which beats `.opacity-0` at (0,1,0) — so the reveal is wired correctly.
            `transition-opacity` resolves `transition-duration: var(--tw-duration,
@@ -1045,7 +1046,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
            consistently red.
 
            RETIRED HERE: the CI record's competing hypothesis at
-           `88.6-CI-E2E-RED-2026-09-17.md:56-57` ("which cell counts as 'empty' moves with the
+           planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-CI-E2E-RED-2026-09-17.md ("Update 2026-09-21 ~3:30 AM Pacific — runs 35580008509 (d36156a) and 35581508198 (ef40170)"), quoted ("which cell counts as 'empty' moves with the
            calendar month"). It is dead on the file's own evidence — the `hintTargets > 0` guard
            above would have failed FIRST, and the reported error carried computed opacities, which
            an unresolved locator cannot produce. Two live hypotheses on one row is how a real cause
@@ -1140,7 +1141,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
 
       // NOT PROBED HERE, and said plainly rather than implied: §5.10.3's OTHER half — the
       // 0.4-alpha dim over a BACKGROUND IMAGE, which applies in both themes — has no
-      // fixture. `scripts/e2e-fixtures.js` mints a colour-only coloured group and no group
+      // fixture. backend:Sonnet/scripts/e2e-fixtures.js mints a colour-only coloured group and no group
       // with `background_image_url`, so there is no rendered site to measure. That half's
       // acceptance is the source scan plus the Req 12 owner phone UAT.
     });
@@ -1226,18 +1227,18 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     await expect(card).toBeVisible({ timeout: 15_000 });
     const probe = await probeElement(card, ['box-shadow']);
     // ⚠ STALE CITATION CORRECTED, Phase 88.6-05: this message used to cite `globals.css:882 and
-    // :1146`. Re-derived 2026-09-15, the two `--shadow-sm` declarations are at `globals.css:1361`
-    // (light `:root`) and `:1765` (the `.dark` block). Both now hold `0 0 #0000` rather than the
+    // :1146`. Re-derived 2026-09-15, the two `--shadow-sm` declarations are in src/app/globals.css
+    // (light `:root`) and in its `.dark` block. Both now hold `0 0 #0000` rather than the
     // bare keyword — see the helper's docblock for why the shape of this pin changed.
     // ⚠ CORRECTED AGAIN, Phase 88.6-47, in the same amend-in-place form the note above uses for
     // its own predecessor: re-derived 2026-09-21 at `ef40170`, the two `--shadow-sm` declarations
-    // are at `globals.css:1455` (inside the light `:root` opened at `:822`) and `:1861` (inside
-    // `.dark`, opened at `:1784`). The `:1361`/`:1765` pair above had drifted exactly the way its
+    // are at src/app/globals.css ("DECISION Phase 88.3 (Req 3 / UI-SPEC") (inside the light `:root` opened at src/app/globals.css ("DESIGN SYSTEM: Semantic Tokens (Light = default)")) and in the
+    // same file's `.dark` block. The `:1361`/`:1765` pair above had drifted exactly the way its
     // own predecessor did. Both still hold `0 0 #0000` — verified while triaging row 4, whose cause
     // turned out to be the LOCATOR (see `fixtureCard`) and not this token at all.
     expectRestingShadowIsInvisibleButValid(
       probe.computed['box-shadow'].raw,
-      'home card (Req 3, dark) — `--shadow-sm` paints nothing in BOTH themes (globals.css:1455 light, :1861 dark)'
+      'home card (Req 3, dark) — `--shadow-sm` paints nothing in BOTH themes (src/app/globals.css ("DECISION Phase 88.3 (Req 3 / UI-SPEC") light, src/app/globals.css ("AMENDED Phase 88.6-05 (N1): the DARK half") dark)'
     );
   });
 
@@ -1402,18 +1403,18 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
 /**
  * Req 6, surface 12 — the RSVP "N Yes" count, in whichever theme the caller set up.
  *
- * WHY THIS SITE AND NOT ANOTHER. `RsvpSection.js:260` renders
- * `<span className="text-content-status-success font-medium">{summary.yes} Yes</span>`
+ * WHY THIS SITE AND NOT ANOTHER. src/app/components/RsvpSection.js ("{summary.yes} Yes") renders
+ * `<span className="text-content-status-success">{summary.yes} Yes</span>`
  * (the class name is post-plan-09-rename from `text-status-success`) whenever the event has
- * at least one 'yes' RSVP, and `scripts/e2e-fixtures.js:203-205` seeds TWO on the fixture
+ * at least one 'yes' RSVP, and backend:Sonnet/scripts/e2e-fixtures.js ("for (const member of [diana, bob]) {") seeds TWO on the fixture
  * event reachable at `E2E_EVENT_DETAIL_PATH`. So it is steady-state reachable without
  * triggering an error or a success side effect first.
  *
  * TWO OTHER CANDIDATES WERE CHECKED AND REJECTED, named so nobody reaches for them later:
- *   - `GroupSettings.js:539` (`{leaveError}`) renders only AFTER an error occurs — not
+ *   - src/app/components/GroupSettings.js ("message={leaveError}") (`{leaveError}`) renders only AFTER an error occurs — not
  *     steady state, so a gate on it would need to provoke a failure to observe a colour;
- *   - `ManageMembers.js:400` carries `btn btn-secondary text-content-status-error`, and
- *     `.btn-secondary { color }` (globals.css:1124-1127) is UNLAYERED, so it wins the
+ *   - src/app/components/ManageMembers.js carried `btn btn-secondary text-content-status-error` (gone since), and
+ *     `.btn-secondary { color }` (src/app/globals.css (".btn-secondary {")) is UNLAYERED, so it wins the
  *     cascade over the utility. The class is DEAD there — a ratio measured on it would be
  *     measuring `.btn-secondary`'s colour and reporting it as the status token's.
  *
@@ -1429,7 +1430,7 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
  */
 async function assertStatusTextLanded(page: Page, theme: 'light' | 'dark'): Promise<void> {
   // A SPAN, not `getByText`. When the fixture's only responses are 'yes' (which is exactly what
-  // `e2e-fixtures.js:203-205` seeds), the count banner's parent <div> has the SAME text content as
+  // backend:Sonnet/scripts/e2e-fixtures.js ("for (const member of [diana, bob]) {") seeds), the count banner's parent <div> has the SAME text content as
   // the span — `getByText` would match both and violate strict mode, and picking the first would
   // silently measure the DIV, whose colour is inherited body text. That is the very failure this
   // assertion exists to catch, so measuring it by accident would be the worst possible outcome.
@@ -1468,13 +1469,13 @@ async function assertStatusTextLanded(page: Page, theme: 'light' | 'dark'): Prom
  * first-class `Button` rung (`variant="accent"` -> `btn-accent`), so every migrating call site
  * now reaches it through the primitive. Expected: `--color-btn-accent-text` (#ffffff) on
  * `--color-btn-accent-bg` (amber-700) = **5.0216:1**, IDENTICAL in light and dark because both
- * properties carry the same value in both theme blocks (globals.css:1390/:1392 light,
- * :1827/:1829 dark — cited from the `Button.tsx` accent marker, re-derived there 2026-09-15).
+ * properties carry the same value in both theme blocks (src/app/globals.css, light
+ * and dark — cited from the `Button.tsx` accent marker, re-derived there 2026-09-15).
  *
  * PLANTED, not driven at a shipped site — and this is the one place in this file that plants.
- * The two shipped `.btn-accent` controls are `EventDayModal.js:452` (inside a day modal that has
- * to be opened from the month grid) and `gameDetail/page.js:1620`, whose render is gated on
- * `userScope === 'group-member'` (`:1596`). Neither is a steady-state element of a page this
+ * The two shipped `.btn-accent` controls are src/app/components/EventDayModal.js ("onClick={(e) => handleShowGameQR(e, event)}") (inside a day modal that has
+ * to be opened from the month grid) and src/app/gameDetail/page.js ("onClick={handleShowGameQR}"), whose render is gated on
+ * `userScope === 'group-member'` (src/app/gameDetail/page.js ("{userScope === 'group-member' && (")). Neither is a steady-state element of a page this
  * spec already visits, and the alternative — a new fixture plus a modal-opening journey inside a
  * CONTRAST gate — buys nothing this measurement needs: the quantity under test is a compiled CSS
  * rule, not a layout or a data path. The same reasoning is already on the record one file over,
@@ -1482,13 +1483,13 @@ async function assertStatusTextLanded(page: Page, theme: 'light' | 'dark'): Prom
  * in CI ... Driving them would need a new backend fixture").
  *
  * The probe is located BY ROLE AND ACCESSIBLE NAME like every other anchor here — never by its
- * class — and every class it wears is one `src/` already emits (the two shipped sites' own
- * string), because `e2e/` is outside the `@source` globs (globals.css:10, :86-88) and a class
+ * class — and every class it wears is one `src/` already emits (the shipped sites' former
+ * string, see below), because `e2e/` is outside the `@source` globs (src/app/globals.css ("@import 'tailwindcss' source(none);"), src/app/globals.css ("@source '../components/")) and a class
  * only this file wears would render unstyled and measure nothing.
  *
  * PHONE PROJECT ONLY, and that is not a gap: this whole spec is file-level skipped to phone at
- * `:96-99` under D-07, so a "then at desktop" half would be satisfied by an empty run. Plan
- * 88.6-12's desktop coverage is its `journeys` arm in `e2e/touch-targets.spec.ts`.
+ * this file ("SPEC Req 11: the rendered contrast pins are a phone-forward gate") under D-07, so a "then at desktop" half would be satisfied by an empty run. Plan
+ * 88.6-12's desktop coverage is its `journeys` arm in e2e/touch-targets.spec.ts.
  */
 const ACCENT_PROBE_NAME = 'E2E accent contrast probe';
 
@@ -1496,8 +1497,8 @@ async function assertAccentLabelRatio(page: Page, theme: 'light' | 'dark'): Prom
   await page.evaluate((name) => {
     const el = document.createElement('button');
     el.type = 'button';
-    // `EventDayModal.js:452`'s own class string, minus the layout-only `mt-2`. Every token is
-    // emitted because that shipped site wears it.
+    // The class string src/app/components/EventDayModal.js ("the legacy accent class pair is retired onto the") retired in
+    // Phase 88.6-27, minus the layout-only `mt-2`. Every token is still emitted: each appears in other src/ files.
     el.className =
       'btn btn-accent font-semibold text-xs px-3 py-1.5 inline-flex items-center gap-1.5 ' +
       'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
@@ -1541,8 +1542,8 @@ async function assertAccentLabelRatio(page: Page, theme: 'light' | 'dark'): Prom
 /**
  * Surface 11 — UI-SPEC §11 OI-7, the composited ring ground on the landing hero.
  *
- * ITS OWN SESSION, and that is not optional. `LandingPage.js:31` renders ONLY when the user
- * is logged OUT: `page.js:108-110` gates the whole component behind `!user`, and every
+ * ITS OWN SESSION, and that is not optional. src/app/components/LandingPage.js ("export default function LandingPage") renders ONLY when the user
+ * is logged OUT: src/app/page.js ("return <LandingPage />;") gates the whole component behind `!user`, and every
  * other test in this file runs inside the logged-in `storageState` baked from
  * `.auth/user.json`. Overriding `storageState` to an empty one is the only way to reach it.
  *

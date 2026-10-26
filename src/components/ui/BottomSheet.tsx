@@ -185,15 +185,15 @@ const BottomSheet = React.forwardRef<
      — which is true for `DialogTrigger` consumers and FALSE for ours.
 
      VERIFIED IN THE INSTALLED DIST: the modal content's own close-autofocus handler
-     (`@radix-ui/react-dialog/dist/index.mjs:148-151`) calls `event.preventDefault()` and then
+     (node_modules:@radix-ui/react-dialog/dist/index.mjs ("onCloseAutoFocus: composeEventHandlers(props.onCloseAutoFocus, (event) => {")) calls `event.preventDefault()` and then
      `context.triggerRef.current?.focus()`. That preventDefault also cancels FocusScope's
-     previously-focused-element restore (`react-focus-scope/dist/index.mjs:93-95`). The sheet's
+     previously-focused-element restore (node_modules:@radix-ui/react-focus-scope/dist/index.mjs ("focus(previouslyFocusedElement ?? document.body, { select: true });")). The sheet's
      consumers (one today, re-read 2026-10-15) open from a plain bottom-bar button, not a
      `DialogTrigger`, so `triggerRef` is null, the optional call is a no-op, and a keyboard
      user is dropped on `<body>` at the top of the document every time the sheet closes.
 
      `document.activeElement` is captured in the OPEN handler because that fires before
-     FocusScope moves focus (`react-focus-scope/dist/index.mjs:74-79`); reading it from an
+     FocusScope moves focus (node_modules:@radix-ui/react-focus-scope/dist/index.mjs ("const hasFocusedCandidate = container.contains(previouslyFocusedElement);")); reading it from an
      effect would return the Close button instead. Deleting this restores the bug silently —
      `Modal.tsx`'s `onCloseAutoFocus` doc records the same Radix behaviour from 87.8.
 

@@ -137,15 +137,15 @@ describe('GAP6 — retry predicate truth table (D-13, T-84-08)', () => {
     expect(shouldRetry(0, new ApiError('x', 'invite_pending', 409))).toBe(false);
   });
 
-  /* Phase 88.6-38 (88.8 code review round 7 #5): `queryClient.ts:111`'s
+  /* Phase 88.6-38 (88.8 code review round 7 #5): the src/lib/queryClient.ts ("'unsupported_address',")
      `unsupported_address` row shipped in the 88.8 post-merge fix set with NO test — the
      registry's own comment there calls itself out as changing nothing today, which is
-     exactly the shape a later reader deletes. On the `:122-133` convention above: a
+     exactly the shape a later reader deletes. On the convention above at this file ("88-33 Task 2 / Fork F: one dedicated row PER"): a
      DEDICATED row per code, not folded into the `it.each`, because a row that disappears
      into a shared list is a row nobody notices losing. What it asserts: the predicate
      classifies the synthetic-target 400 as TERMINAL, so `shouldRetry` refuses it on the
      first failure — correct because the backend refusal is a pure function of the address
-     (`provisioningService.js:142-147`), so an identical retry returns an identical 400.
+     (backend:Sonnet/services/provisioningService.js ("function isSyntheticAddress(value) {")), so an identical retry returns an identical 400.
      Demonstrated RED by deleting the registry row, which makes the code fall through to
      the `failureCount < 1` transient default and return true. */
   it('never retries unsupported_address (400 terminal — the refusal is a pure function of the address)', () => {

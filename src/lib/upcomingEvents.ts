@@ -18,7 +18,7 @@
  * a badge saying 5 over a list of 2. One predicate, one source of truth.
  *
  * Transcribed with NO semantic change from the shipped block at
- * `UpcomingEventsCard.js:123-136` (pre-extraction). Two shipped behaviours are
+ * src/app/components/UpcomingEventsCard.js (pre-extraction). Two shipped behaviours are
  * deliberately preserved and are decisions, not oversights:
  *
  *   - the lower bound is EXCLUSIVE (`startDate <= now` is dropped), so an event
@@ -32,7 +32,7 @@
  *     now calls. Why the flip: the phone pill COUNTED NaN-dated events that the sheet
  *     silently DROPPED — a number disagreeing with its own list, the exact defect this
  *     module exists to prevent. The branch is defensive-only in practice (`start_date`
- *     is a Postgres `timestamptz`, `models/Event.js:20-23`, and creation-time rejection
+ *     is a Postgres `timestamptz`, backend:Sonnet/models/Event.js ("start_date: {"), and creation-time rejection
  *     is pinned by plan 88.5-01). Accepted side effect, recorded in the 88.5 SPEC's
  *     Out-of-scope AMENDED note: the desktop `UpcomingEventsCard` also stops rendering
  *     NaN-dated events — a one-line exception to "desktop unchanged."
@@ -75,7 +75,7 @@ export interface UpcomingEventLike {
  *       VANISH for an event 10 days out while the "Later" list below still names it.
  *       The absence of an upper bound here is the entire difference between the two
  *       selectors and is load-bearing; adding a cap would be a behaviour change.
- *   (c) `futureGroups[0]` from `CalendarListView.js:206-211` — that is a DATE-KEY split
+ *   (c) `futureGroups[0]` from src/app/components/CalendarListView.js ("const futureGroups = useMemo(") — that is a DATE-KEY split
  *       (`if (k >= todayKey)`), not a time comparison, so it can surface a game that
  *       already STARTED earlier today as the "next" one.
  *   (d) a private inline copy of the live/future check inside `CalendarListView` or any
@@ -131,8 +131,9 @@ export const isLiveUpcoming = (event: UpcomingEventLike, nowMs: number): boolean
  *   (a) A 4-HOUR DEFAULT. It would drop a 7 PM game night out of "Happening now" by 11 PM
  *       while people are still playing — the exact row W59 exists to keep visible.
  *   (b) REQUIRING a `duration_minutes` before a row may cross midnight. DEAD: nothing in the
- *       FE or the BE ever writes `in_progress`, `routes/events.js:594` derives status once at
- *       creation and `:934-946` only on reschedule, and no job sweeps `scheduled` ->
+ *       FE or the BE ever writes `in_progress`, backend:Sonnet/routes/events.js ("status: new Date(start_date) > new Date() ? 'scheduled' : 'completed',")
+ *       derives status once at creation and backend:Sonnet/routes/events.js ("DECISION Phase 88-34 WI-B1 (r3 triage #0)")
+ *       only on reschedule, and no job sweeps `scheduled` ->
  *       `completed`. So most rows carry no duration and the rule would fix nothing real while
  *       leaving every un-edited past event `scheduled` forever.
  *   (c) TRUSTING THE STORED `duration_minutes` AS-IS. A stored `0` (or a string, or `NaN`)
@@ -159,7 +160,7 @@ export const DEFAULT_RUN_WINDOW_MINUTES = 480; // 8 hours
  * CHOSEN: a 48-hour recency floor, expressed here and applied through `hasStartedRecently`.
  * REJECTED: deriving the sheet's own today-or-future DATE KEY inside `UserHomePage`. That is
  * the better-sounding bound and it is the wrong one: the page has no timezone of its own and
- * `UserHomePage.js:183-185` records, as a decision, that there is deliberately NO date-key or
+ * src/app/userHome/UserHomePage.js ("There is also NO date-key or future-range derivation here") records, as a decision, that there is deliberately NO date-key or
  * future-range derivation there — a second, possibly timezone-divergent derivation of the same
  * boundary is threat T-88.5-25 one level up. 48h is a deliberate SUPERSET of that date-key
  * slice in every timezone (the earliest instant of "today" is at most ~36h behind `now` at the

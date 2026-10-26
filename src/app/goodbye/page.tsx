@@ -27,7 +27,7 @@ export const metadata: Metadata = {
 // opts this route into per-request DYNAMIC rendering; it was a static prerender
 // before. Fine at this page's traffic — it is a terminal page reached at most
 // once per account, it fetches nothing, and it renders no session data.
-// Phase 88.6-35 (T-88.6-136) APPENDS, and amends nothing above: this page's two titles now render through the `'use client'` `Heading` primitive, so it gained a CLIENT-BOUNDARY CHILD — but not a directive, not a hook and not a fetch of its own, so every clause of the paragraph above is still true, the sessionless contract at `:9-12` is unchanged, and the page stays a server component (MEASURED: `/goodbye` is `ƒ` before and after, 323 B / 196 kB both runs).
+// Phase 88.6-35 (T-88.6-136) APPENDS, and amends nothing above: this page's two titles now render through the `'use client'` `Heading` primitive, so it gained a CLIENT-BOUNDARY CHILD — but not a directive, not a hook and not a fetch of its own, so every clause of the paragraph above is still true, the sessionless contract at this file ("Public, sessionless terminal page shown after account deletion") is unchanged, and the page stays a server component (MEASURED: `/goodbye` is `ƒ` before and after, 323 B / 196 kB both runs).
 
 /* DECISION Phase 88.8 D-22 / T-88.8-56: the copy is selected by a STRICT
    equality test against the one fixed constant below, chosen OVER interpolating
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
    to open a crafted /goodbye?reason=... URL put arbitrary text on a page that
    looks like ours — unbounded attacker-authored COPY. React escapes it, so it
    is not injection; that is not the part that matters.
-   This preserves DECISION Phase 88-25 (userProfile/page.js:913-921), which made
+   This preserves DECISION Phase 88-25 (src/app/userProfile/page.js ("DECISION Phase 88-25 (Req 14 / T-88-25-01): the toast is FIXED copy")), which made
    exactly this call for `?google_calendar=error&message=…` on the other
    query-parameter-driven message in this app. Do not "improve" this by
    rendering the reason — an unknown reason falls back to the default copy on

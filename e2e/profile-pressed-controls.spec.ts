@@ -11,11 +11,12 @@ import {
   type WriteHold,
 } from './support/inFlight';
 import { expectFocusRingClearOfText } from './support/ringGeometry';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1 plan 18 (Requirement 4 / D-35, Requirement 5): the Profile page's two pressed
 // controls, the phone Verify button and Replay Tutorial, seen in a real browser.
 //
-// WHAT THIS CHECKS THAT JSDOM CANNOT. The jsdom suite (`src/app/userProfile/page.test.tsx`, the
+// WHAT THIS CHECKS THAT JSDOM CANNOT. The jsdom suite (src/app/userProfile/page.test.tsx, the
 // two 88.6.1-18 describes) pins the attributes, the request counts and the focus hook, but jsdom
 // never blurs a disabled control (C-11 in .planning/codebase/FE-TESTING-CONVENTIONS.md), so it
 // cannot prove the focus claims. Here: each pressed control KEEPS focus while its request is in
@@ -52,7 +53,7 @@ import { expectFocusRingClearOfText } from './support/ringGeometry';
 
 // In the 555-01xx fictional range, so it is never a real person's phone, and it still passes the
 // page's own check (`parsePhoneNumber(value, 'US')` then `isValid()`,
-// `src/app/userProfile/page.js:670-671`; `isValid()` is true for this value, run 2026-10-11 and
+// src/app/userProfile/page.js ("const phoneNumber = parsePhoneNumber(value, 'US');") and src/app/userProfile/page.js ("if (phoneNumber && phoneNumber.isValid()) {"); `isValid()` is true for this value, run 2026-10-11 and
 // again 2026-10-15).
 const FAKE_PHONE = '(201) 555-0123';
 const FAKE_CODE = '123456';
@@ -151,7 +152,7 @@ async function patchSelfRow(
         await route.fulfill({ status: 500, json: { error: 'boom' } });
         return;
       }
-      const response = await route.fetch();
+      const response = await scrubbedFetch(route);
       let body: unknown;
       try {
         body = await response.json();
@@ -982,7 +983,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
 //
 // Trigger A (a refetch that fails over a kept row) is NOT scripted here: reaching it in a browser
 // runs through EmailAddressSection's internal failure arms, which another plan restructures; its
-// library half is pinned by `src/lib/hooks/useSelfIdentity.retainedOnError.test.tsx`.
+// library half is pinned by src/lib/hooks/useSelfIdentity.retainedOnError.test.tsx.
 //
 // Fixture-account protection (T-88.6.1-1225): `holdWrites` is registered FIRST, so the
 // notification PATCH is held in the browser and never sent; the test asserts it is the only

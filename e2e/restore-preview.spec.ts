@@ -5,8 +5,8 @@ import { test, expect, type Locator } from '@playwright/test';
  * PREVIEW state at /restore/group/[token]. PHONE PROJECT ONLY.
  *
  * PROJECT GUARD: every new spec joins BOTH projects automatically — `journeys` and
- * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts:44 and :87). This
- * file inverts the guard tailwind-v4-styles.spec.ts:59 uses: it SKIPS the desktop
+ * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts ("name: 'journeys',") and playwright.config.ts ("name: 'phone',")). This
+ * file inverts the guard e2e/tailwind-v4-styles.spec.ts ("test.skip(({ isMobile }) => isMobile, 'SPEC R5") uses: it SKIPS the desktop
  * `journeys` project, because R7 is a phone-tenet requirement measured at the phone
  * viewport (iPhone SE (3rd gen), 375x667 — D-06).
  *
@@ -17,7 +17,7 @@ import { test, expect, type Locator } from '@playwright/test';
  * minted by the backend's scripts/e2e-fixtures.js in CI (the `restore_path` key of
  * E2E_FIXTURES_JSON, 87.8-02): a soft-deleted memberless group with a future
  * purge_after and an active group_restore nonce, which is exactly the state that
- * renders the PREVIEW branch (routes/groups.js:713-714) — not already_restored,
+ * renders the PREVIEW branch (backend:Sonnet/routes/groups.js ("res.json({ group_name: group.name, purge_after: group.purge_after });")) — not already_restored,
  * not a 404. Every test therefore asserts the preview rendered BEFORE any
  * geometry, so a spec that lands on the error branch fails loudly instead of
  * measuring the wrong surface.
@@ -28,12 +28,12 @@ import { test, expect, type Locator } from '@playwright/test';
  * and mutate the fixture group for every later run in the job. Presence and
  * geometry only — the state machine is 88.2's and out of this spec's scope.
  *
- * SELECTOR POLICY: role/label/text only — never Tailwind classes (invite.spec.ts:18).
+ * SELECTOR POLICY: role/label/text only — never Tailwind classes (e2e/invite.spec.ts ("Selectors are role/label/text only")).
  *
  * Fixtures follow the env idiom of e2e/rsvp.spec.ts (backend-minted single-use
  * token path with an obviously-fake fallback). Do not run locally — credentials
- * and MAGIC_TOKEN_SECRET are intentionally absent (playwright.config.ts:19-21,
- * e2e-fixtures.js:32); green-in-CI is confirmed at the phase gate in plan 12.
+ * and MAGIC_TOKEN_SECRET are intentionally absent (playwright.config.ts ("They are intentionally absent locally"),
+ * backend:Sonnet/scripts/e2e-fixtures.js ("Requires MAGIC_TOKEN_SECRET in env")); green-in-CI is confirmed at the phase gate in plan 12.
  */
 
 // Minted by the backend's scripts/e2e-fixtures.js in CI (restore_path →
@@ -41,7 +41,7 @@ import { test, expect, type Locator } from '@playwright/test';
 // fallback is an obviously-fake nonce that can only ever reach the error state.
 const RESTORE_PATH = process.env.E2E_RESTORE_PATH ?? '/restore/group/seed-restore-nonce-fallback';
 
-/** Vacuity guard (tailwind-v4-styles.spec.ts:139-143 idiom): a zero-count locator
+/** Vacuity guard (e2e/tailwind-v4-styles.spec.ts ("every assertion below would pass vacuously") idiom): a zero-count locator
  *  makes every geometry assertion after it vacuous — that is a failure of the
  *  LOCATOR (or of the fixture nonce), not of the layout. */
 async function guardResolved(locator: Locator, what: string): Promise<void> {
@@ -54,8 +54,8 @@ async function guardResolved(locator: Locator, what: string): Promise<void> {
 }
 
 test.describe('Phase 87.8 R7 — group-restore preview at phone width (phone project)', () => {
-  // Inverse of the tailwind-v4-styles.spec.ts:59 guard: this file is phone-only.
-  // Both projects match every spec (playwright.config.ts:44, :87), so without this
+  // Inverse of the e2e/tailwind-v4-styles.spec.ts ("test.skip(({ isMobile }) => isMobile, 'SPEC R5") guard: this file is phone-only.
+  // Both projects match every spec (playwright.config.ts ("name: 'journeys',"), playwright.config.ts ("name: 'phone',")), so without this
   // skip the desktop journeys project would run phone-tenet assertions at 1280px.
   test.skip(({ isMobile }) => !isMobile, 'R7 is a phone-tenet requirement — phone project only');
 
@@ -124,7 +124,7 @@ test.describe('Phase 87.8 R7 — group-restore preview at phone width (phone pro
     const groupName = page.getByRole('heading', { level: 1 });
     await guardResolved(groupName, 'the group-name h1 on the preview');
 
-    // D-11 dark-theme pre-assertion (tailwind-v4-styles.spec.ts:80-88) before the
+    // D-11 dark-theme pre-assertion (e2e/tailwind-v4-styles.spec.ts ("D-11, and this ordering is not negotiable")) before the
     // computed-style read below: a style read in light mode would be meaningless
     // and its failure misdiagnosed.
     await expect(page.locator('html')).toHaveClass(/dark/);
@@ -138,8 +138,8 @@ test.describe('Phase 87.8 R7 — group-restore preview at phone width (phone pro
     /* DECISION Phase 88.6-47 (row 6 of the 2026-09-17 CI e2e red, run 35581508198): 87.8 R7's
        `break-word` expectation is SUPERSEDED, on two named authorities.
        (1) The owner ruling of 2026-09-21 on rows 2 and 6 — "the phase's choice stands".
-       (2) `src/components/ui/Heading.tsx:60` puts `wrap-anywhere` on the cva BASE, and its docblock
-           at `:74-78` records `wrap-anywhere` chosen OVER `break-words` for a mechanical reason:
+       (2) src/components/ui/Heading.tsx ("const headingVariants = cva(") puts `wrap-anywhere` on the cva BASE, and its docblock
+           at src/components/ui/Heading.tsx ("break-word does NOT count in min-content") records `wrap-anywhere` chosen OVER `break-words` for a mechanical reason:
            a break-word value does NOT count in min-content, so it cannot stop a long unbroken name
            widening a flex or grid cell. `anywhere` does. That is the phone-forward half of the
            choice, and it is what this assertion now protects.
@@ -154,7 +154,7 @@ test.describe('Phase 87.8 R7 — group-restore preview at phone width (phone pro
     const overflowWrap = await groupName.evaluate((node) => getComputedStyle(node).overflowWrap);
     expect(
       overflowWrap,
-      `the group-name h1 computes overflow-wrap: ${overflowWrap}, expected anywhere — the Heading primitive's cva base carries wrap-anywhere (Heading.tsx:60), chosen over break-words because a break-word value does not count in min-content and therefore cannot stop a long unbroken group name widening its flex/grid cell`,
+      `the group-name h1 computes overflow-wrap: ${overflowWrap}, expected anywhere — the Heading primitive's cva base carries wrap-anywhere (src/components/ui/Heading.tsx ("const headingVariants = cva(")), chosen over break-words because a break-word value does not count in min-content and therefore cannot stop a long unbroken group name widening its flex/grid cell`,
     ).toBe('anywhere');
 
     // And the rendered box itself stays inside the viewport.

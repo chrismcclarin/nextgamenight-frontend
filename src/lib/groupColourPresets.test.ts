@@ -19,14 +19,13 @@
  * on purpose — see its own header.
  *
  * Fixture hex (the poles, the page, the swatch boundary) lives in this `.test.` file rather than
- * in `groupColourPresets.ts`, in the idiom `wcag.test.ts:19-23` established: a `.test.` file is
+ * in `groupColourPresets.ts`, in the idiom src/lib/wcag.test.ts ("Fixture hex lives in this file rather than in") established: a `.test.` file is
  * already outside `rawColorValues.test.ts`'s scanned population (`src/test-utils/sourceScan.ts`
  * `sourceFiles`), and these values are measurement inputs, not palette data.
  *
- * This file is registered in `.github/workflows/ci.yml`'s `drift-gate-registry` step with a
- * floor of 12 `it(` blocks (AMENDMENT Z, plan 88.3.1-01). That loop counts `^\s*(it|test)\(`
- * only — an `it.each(` block does NOT count toward the floor, which is why every block below is
- * a plain `it(`.
+ * This file is a gates row in scripts/drift-gate-registry.manifest.mjs ("file: 'src/lib/groupColourPresets.test.ts'"), registered by Amendment Z, and its floor is its live it( count.
+ * The runner counts only lines that start with it( or test( — an it.each( block does NOT count
+ * toward the floor, which is why every block below is a plain it(.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -107,10 +106,10 @@ function hueGapsRoundTheWheel(theme: Theme): number[] {
   return sorted.map((h, i) => (i === 0 ? h + 360 - sorted[sorted.length - 1] : h - sorted[i - 1]));
 }
 
-// --- Fixtures, each with its provenance (the `wcag.test.ts:25-52` convention) ---------------
+// --- Fixtures, each with its provenance (the src/lib/wcag.test.ts ("--- Palette fixtures, each with its UI-SPEC provenance") convention) ---------------
 
 /**
- * `--color-bg-page` light, `globals.css:708` (warm-200). Measured L* **89.59**.
+ * `--color-bg-page` light, src/app/globals.css ("--color-bg-page: var(--warm-200);") (warm-200). Measured L* **89.59**.
  * Test 6 compares the light band against this on purpose — see the note there.
  */
 const PAGE_LIGHT = '#e8e0d8';
@@ -279,7 +278,7 @@ describe('the two deliberate band exceptions — SPEC Req 1 (UI-SPEC §10.1 test
      * the worst point on the curve.
      *
      * WHAT CAPS IT AT 24.6, and it is not the ΔE metric: the dark `content-muted` pole
-     * `#b8a898` (`globals.css:1547`) on the green band measures 5.86:1 at L* 19.0, **4.89:1 at
+     * `#b8a898` (src/app/globals.css ("--color-text-muted: var(--warm-400);")) on the green band measures 5.86:1 at L* 19.0, **4.89:1 at
      * 24.6**, 4.51:1 at 27.0 and **4.39:1 — a SPEC Req 3 FAIL — at 27.7**. Test 8 asserts that
      * 4.89 row. Nobody may brighten green further without re-running UI-SPEC §2.4 in full.
      * Do NOT "correct" green back inside 12-20; that silently re-creates the 88.3 complaint.
@@ -307,7 +306,7 @@ describe('the two deliberate band exceptions — SPEC Req 1 (UI-SPEC §10.1 test
 
 describe('brightness tiers — the `getTextStyle` fork (UI-SPEC §10.1 test 11)', () => {
   it('11. every light surface is W3C-brighter than 180 and every dark band is 128 or under', () => {
-    // `colorUtils.js:403-429` forks on W3C brightness: `> 180` takes the near-black-text tier,
+    // src/lib/colorUtils.js ("export function getTextStyle(hasBackgroundImage, backgroundColor) {") forks on W3C brightness: `> 180` takes the near-black-text tier,
     // `<= 128` takes the white-text tier. Actual **210.7-226.6** light and **31.7-47.2** dark,
     // i.e. margins of 31-47 and 81-96 points, where 88.3's tints cleared 180 by only 8-11.
     //
@@ -328,8 +327,8 @@ describe('brightness tiers — the `getTextStyle` fork (UI-SPEC §10.1 test 11)'
 // UI-SPEC §10.1 tests 8-10, plus 13-16 (AMENDMENTS A and B).
 //
 // Everything below MEASURES rather than greps, so the fixtures are the poles themselves.
-// Provenance convention: `wcag.test.ts:25-52` — every literal carries the file and line it is
-// declared at, because a pole that silently moves would make this whole matrix measure the
+// Provenance convention: src/lib/wcag.test.ts ("--- Palette fixtures, each with its UI-SPEC provenance") — every literal carries the file and the
+// declaration it comes from, because a pole that silently moves would make this whole matrix measure the
 // wrong thing while staying green.
 //
 // Four poles are IMPORTED from `colorUtils.js` rather than restated, because they are exported
@@ -356,7 +355,7 @@ function composite(fg: string, alpha: number, bg: string): string {
  * Composite a shipped `rgba(255, 255, 255, a)` pole over an opaque ground.
  *
  * The alpha is PARSED OUT OF THE SHIPPED LITERAL rather than hand-copied, so if someone edits
- * `colorUtils.js:67` or `:116` this measures the new value instead of a stale one. Measuring
+ * src/lib/colorUtils.js ("const SUBTITLE_DARK_BG =") or src/lib/colorUtils.js ("export const SUBTEXT_MUTED_ON_DARK =") this measures the new value instead of a stale one. Measuring
  * `rgba(255,255,255,0.7)` as if it were opaque white would pass vacuously at a ratio it does
  * not have — that is the whole reason this helper exists.
  */
@@ -368,43 +367,44 @@ function compositeWhiteRgba(pole: string, bg: string): string {
 
 // --- The seven LIGHT-surface poles (UI-SPEC §2.4, first table) ------------------------------
 // Imported, because they are exported and must not be restated:
-//   TEXT_ON_LIGHT          `#1f2937`  colorUtils.js:61,91,103  (= TITLE_DARK / CONTRAST_DARK)
-//   SUBTEXT_MUTED_ON_LIGHT `#374151`  colorUtils.js:65,88,106  (= SUBTITLE_VERY_LIGHT_BG)
-//   SUBTEXT_ON_LIGHT       `#4b5563`  colorUtils.js:66,105     (= SUBTITLE_MEDIUM_LIGHT_BG)
-/** `TILE_TEXT_LIGHT_BG`, `colorUtils.js:70` — module-private, so restated. */
+//   TEXT_ON_LIGHT          `#1f2937`  src/lib/colorUtils.js ("const TITLE_DARK ="), src/lib/colorUtils.js ("const CONTRAST_DARK ="), src/lib/colorUtils.js ("export const TEXT_ON_LIGHT =")  (= TITLE_DARK / CONTRAST_DARK)
+//   SUBTEXT_MUTED_ON_LIGHT `#374151`  src/lib/colorUtils.js ("const SUBTITLE_VERY_LIGHT_BG ="), src/lib/colorUtils.js ("const TEXT_MUTED_ON_LIGHT_BG ="), src/lib/colorUtils.js ("export const SUBTEXT_MUTED_ON_LIGHT =")  (= SUBTITLE_VERY_LIGHT_BG)
+//   SUBTEXT_ON_LIGHT       `#4b5563`  src/lib/colorUtils.js ("const SUBTITLE_MEDIUM_LIGHT_BG ="), src/lib/colorUtils.js ("export const SUBTEXT_ON_LIGHT =")  (= SUBTITLE_MEDIUM_LIGHT_BG)
+/** `TILE_TEXT_LIGHT_BG`, src/lib/colorUtils.js ("const TILE_TEXT_LIGHT_BG =") — module-private, so restated. */
 const TILE_TEXT_LIGHT_BG = '#1e40af';
-/** token `--color-text-primary` light, `globals.css:864` -> `--warm-900:643`. */
+/** token `--color-text-primary` light, src/app/globals.css ("--color-text-primary: var(--warm-900);") -> src/app/globals.css ("--warm-900: #1a1614;"). */
 const CONTENT_PRIMARY_LIGHT = '#1a1614';
-/** token `--color-text-secondary` light, `globals.css:887` -> `--warm-700:641`. */
+/** token `--color-text-secondary` light, src/app/globals.css ("--color-text-secondary: var(--warm-700);") -> src/app/globals.css ("--warm-700: #4a3d32;"). */
 const CONTENT_SECONDARY_LIGHT = '#4a3d32';
-/** token `--color-text-muted` light, `globals.css:940` -> `--warm-600:640`. THE BINDING ROW. */
+/** token `--color-text-muted` light, src/app/globals.css ("--color-text-muted: var(--warm-600);") -> src/app/globals.css ("--warm-600: #6b5a4c;"). THE BINDING ROW. */
 const CONTENT_MUTED_LIGHT = '#6b5a4c';
 
 // --- The six DARK-band poles (UI-SPEC §2.4, second table) -----------------------------------
-// Imported: TEXT_ON_DARK `#ffffff` (colorUtils.js:62,92,104) and SUBTEXT_MUTED_ON_DARK
-// `rgba(255,255,255,0.7)` (colorUtils.js:116).
-/** `SUBTITLE_DARK_BG`, `colorUtils.js:67` — module-private, so restated byte-for-byte. */
+// Imported: TEXT_ON_DARK `#ffffff` (src/lib/colorUtils.js ("const TITLE_LIGHT ="), src/lib/colorUtils.js ("const CONTRAST_LIGHT ="),
+// src/lib/colorUtils.js ("export const TEXT_ON_DARK =")) and SUBTEXT_MUTED_ON_DARK
+// `rgba(255,255,255,0.7)` (src/lib/colorUtils.js ("export const SUBTEXT_MUTED_ON_DARK =")).
+/** `SUBTITLE_DARK_BG`, src/lib/colorUtils.js ("const SUBTITLE_DARK_BG =") — module-private, so restated byte-for-byte. */
 const SUBTITLE_DARK_BG = 'rgba(255, 255, 255, 0.95)';
-/** token `--color-text-primary` dark, `globals.css:1545` -> `--warm-50:608`. */
+/** token `--color-text-primary` dark, src/app/globals.css ("--color-text-primary: var(--warm-50);") -> src/app/globals.css ("--warm-50: #faf8f5;"). */
 const CONTENT_PRIMARY_DARK = '#faf8f5';
-/** token `--color-text-secondary` dark, `globals.css:1546` -> `--warm-300:632`. */
+/** token `--color-text-secondary` dark, src/app/globals.css ("--color-text-secondary: var(--warm-300);") -> src/app/globals.css ("--warm-300: #d6cbc0;"). */
 const CONTENT_SECONDARY_DARK = '#d6cbc0';
-/** token `--color-text-muted` dark, `globals.css:1547` -> `--warm-400:633`. THE SECOND ROW. */
+/** token `--color-text-muted` dark, src/app/globals.css ("--color-text-muted: var(--warm-400);") -> src/app/globals.css ("--warm-400: #b8a898;"). THE SECOND ROW. */
 const CONTENT_MUTED_DARK = '#b8a898';
 
-/** `--color-border-strong` light, `globals.css:1136` -> `--warm-500:634`. Test 15's boundary. */
+/** `--color-border-strong` light, src/app/globals.css ("--color-border-strong: var(--warm-500);") -> src/app/globals.css ("--warm-500: #8c7a6a;"). Test 15's boundary. */
 const BORDER_STRONG_LIGHT = '#8c7a6a';
-/** `--color-border-strong` DARK, `globals.css:1570` -> `--purple-500:568`. Test 15b's boundary. */
+/** `--color-border-strong` DARK, src/app/globals.css ("--color-border-strong: var(--purple-500);") -> src/app/globals.css ("--purple-500: #6b7fa3;"). Test 15b's boundary. */
 const BORDER_STRONG_DARK = '#6b7fa3';
-/** `--color-bg-page` light, `globals.css:708` -> `--warm-200:610`. */
+/** `--color-bg-page` light, src/app/globals.css ("--color-bg-page: var(--warm-200);") -> src/app/globals.css ("--warm-200: #e8e0d8;"). */
 const BG_PAGE_LIGHT = '#e8e0d8';
-/** `--color-bg-card` light, `globals.css:709`. */
+/** `--color-bg-card` light, src/app/globals.css ("--color-bg-card: #ffffff;"). */
 const BG_CARD_LIGHT = '#ffffff';
-/** `--color-bg-page` dark, `globals.css:1504` -> `--purple-950:584`. */
+/** `--color-bg-page` dark, src/app/globals.css ("--color-bg-page: var(--purple-950);") -> src/app/globals.css ("--purple-950: #161d29;"). */
 const BG_PAGE_DARK = '#161d29';
-/** `--color-bg-card` dark, `globals.css:1505` -> `--purple-900:583`. */
+/** `--color-bg-card` dark, src/app/globals.css ("--color-bg-card: var(--purple-900);") -> src/app/globals.css ("--purple-900: #232d3e;"). */
 const BG_CARD_DARK = '#232d3e';
-/** `--color-border` light, `globals.css:1129` -> `--warm-400:633`. The boundary it REPLACED. */
+/** `--color-border` light, src/app/globals.css ("--color-border: var(--warm-400);") -> src/app/globals.css ("--warm-400: #b8a898;"). The boundary it REPLACED. */
 const BORDER_LIGHT = '#b8a898';
 
 /** SPEC Req 3: a hard 4.5:1 on a group-coloured ground, with NO 3:1 large-text allowance. */
@@ -426,13 +426,13 @@ describe('text contrast on all 16 grounds — SPEC Req 3 (UI-SPEC §10.1 test 8)
      * §2.4 in full before touching either — the other one is not slack you can spend.
      */
     const lightPoles: { name: string; hex: string }[] = [
-      { name: 'TEXT_ON_LIGHT (colorUtils.js:61)', hex: TEXT_ON_LIGHT },
-      { name: 'SUBTEXT_MUTED_ON_LIGHT (colorUtils.js:88)', hex: SUBTEXT_MUTED_ON_LIGHT },
-      { name: 'SUBTEXT_ON_LIGHT (colorUtils.js:66)', hex: SUBTEXT_ON_LIGHT },
-      { name: 'TILE_TEXT_LIGHT_BG (colorUtils.js:70)', hex: TILE_TEXT_LIGHT_BG },
-      { name: 'content-primary light (globals.css:864)', hex: CONTENT_PRIMARY_LIGHT },
-      { name: 'content-secondary light (globals.css:887)', hex: CONTENT_SECONDARY_LIGHT },
-      { name: 'content-muted light (globals.css:940)', hex: CONTENT_MUTED_LIGHT },
+      { name: 'TEXT_ON_LIGHT (src/lib/colorUtils.js ("export const TEXT_ON_LIGHT ="))', hex: TEXT_ON_LIGHT },
+      { name: 'SUBTEXT_MUTED_ON_LIGHT (src/lib/colorUtils.js ("export const SUBTEXT_MUTED_ON_LIGHT ="))', hex: SUBTEXT_MUTED_ON_LIGHT },
+      { name: 'SUBTEXT_ON_LIGHT (src/lib/colorUtils.js ("export const SUBTEXT_ON_LIGHT ="))', hex: SUBTEXT_ON_LIGHT },
+      { name: 'TILE_TEXT_LIGHT_BG (src/lib/colorUtils.js ("const TILE_TEXT_LIGHT_BG ="))', hex: TILE_TEXT_LIGHT_BG },
+      { name: 'content-primary light (src/app/globals.css ("--color-text-primary: var(--warm-900);"))', hex: CONTENT_PRIMARY_LIGHT },
+      { name: 'content-secondary light (src/app/globals.css ("--color-text-secondary: var(--warm-700);"))', hex: CONTENT_SECONDARY_LIGHT },
+      { name: 'content-muted light (src/app/globals.css ("--color-text-muted: var(--warm-600);"))', hex: CONTENT_MUTED_LIGHT },
     ];
     // The imported poles really are the values UI-SPEC §2.4 measured. If one moves, the matrix
     // below is measuring something else and this line says so first.
@@ -462,12 +462,12 @@ describe('text contrast on all 16 grounds — SPEC Req 3 (UI-SPEC §10.1 test 8)
       // The two `rgba(255,255,255,a)` poles are COMPOSITED over the band before measuring.
       // Uncomposited they measure as opaque white and pass at a ratio they do not have.
       const opaquePoles: { name: string; hex: string }[] = [
-        { name: 'TEXT_ON_DARK (colorUtils.js:62)', hex: TEXT_ON_DARK },
-        { name: 'SUBTITLE_DARK_BG @0.95 (colorUtils.js:67)', hex: compositeWhiteRgba(SUBTITLE_DARK_BG, preset.dark) },
-        { name: 'SUBTEXT_MUTED_ON_DARK @0.7 (colorUtils.js:116)', hex: compositeWhiteRgba(SUBTEXT_MUTED_ON_DARK, preset.dark) },
-        { name: 'content-primary dark (globals.css:1545)', hex: CONTENT_PRIMARY_DARK },
-        { name: 'content-secondary dark (globals.css:1546)', hex: CONTENT_SECONDARY_DARK },
-        { name: 'content-muted dark (globals.css:1547)', hex: CONTENT_MUTED_DARK },
+        { name: 'TEXT_ON_DARK (src/lib/colorUtils.js ("export const TEXT_ON_DARK ="))', hex: TEXT_ON_DARK },
+        { name: 'SUBTITLE_DARK_BG @0.95 (src/lib/colorUtils.js ("const SUBTITLE_DARK_BG ="))', hex: compositeWhiteRgba(SUBTITLE_DARK_BG, preset.dark) },
+        { name: 'SUBTEXT_MUTED_ON_DARK @0.7 (src/lib/colorUtils.js ("export const SUBTEXT_MUTED_ON_DARK ="))', hex: compositeWhiteRgba(SUBTEXT_MUTED_ON_DARK, preset.dark) },
+        { name: 'content-primary dark (src/app/globals.css ("--color-text-primary: var(--warm-50);"))', hex: CONTENT_PRIMARY_DARK },
+        { name: 'content-secondary dark (src/app/globals.css ("--color-text-secondary: var(--warm-300);"))', hex: CONTENT_SECONDARY_DARK },
+        { name: 'content-muted dark (src/app/globals.css ("--color-text-muted: var(--warm-400);"))', hex: CONTENT_MUTED_DARK },
       ];
       for (const pole of opaquePoles) {
         darkRows.push({
@@ -574,7 +574,7 @@ describe('the tinted card ink and its 85% rung (UI-SPEC §10.1 tests 9-10, §2.5
      * the result must equal the stored hex exactly.
      *
      * Recipe: mutedDark = blend(inkDark, 0.85, dark); mutedLight = blend(inkLight, 0.85, light)
-     * — `wcag.ts:275`, per-channel `bg + (fg - bg) * alpha`, rounded, source-over in sRGB.
+     * — src/lib/wcag.ts ("export function blend("), per-channel `bg + (fg - bg) * alpha`, rounded, source-over in sRGB.
      */
     for (const preset of GROUP_COLOUR_PRESETS) {
       expect(composite(preset.inkDark, 0.85, preset.dark), `${preset.name} mutedDark`).toEqual(preset.mutedDark);
@@ -1008,12 +1008,12 @@ describe('coloured-surface separation from the surface BEHIND it — recorded, n
 });
 
 /**
- * `--color-border-control` light, `globals.css:1322` -> `--warm-300: #d6cbc0` (`:632`).
+ * `--color-border-control` light, src/app/globals.css ("--color-border-control: var(--warm-300);") -> `--warm-300: #d6cbc0` (src/app/globals.css ("--warm-300: #d6cbc0;")).
  *
  * This is the ring on the three `groupHomePage` header controls' LIGHT arm
  * (`bg-white/80 ring-1 ring-line-control dark:ring-0`, `DECISION Phase 88.3-16`). It is
  * deliberately NOT `BORDER_LIGHT` (warm-400) or `BORDER_STRONG_LIGHT` (warm-500) above:
- * `globals.css:1300-1310` records both control edges as HELD at warm-300 by owner ruling 1c,
+ * src/app/globals.css ("BOTH CONTROL EDGES DELIBERATELY DID") records both control edges as HELD at warm-300 by owner ruling 1c,
  * with the measurement that says why (warm-400 reads 2.3096 on a white card, over Gate A test
  * 36d's 2.00 ceiling).
  */
@@ -1030,7 +1030,7 @@ describe('the header controls\' white wash on the NEW light surfaces — RESEARC
      * its ground and its ink move. Neither SPEC nor UI-SPEC re-ran it; RESEARCH flagged it as
      * Open Question 1 rather than assuming it still held. This is the answer.
      *
-     * `e2e/contrast.spec.ts:706-716` already asserts AA on these controls' TEXT against the
+     * e2e/contrast.spec.ts ("groupHomePage (NAVY group): tinted header ground, its controls, and the dim overlay") already asserts AA on these controls' TEXT against the
      * Navy fixture group, so CI catches a text regression. It does NOT catch an EDGE one —
      * a wash that stops separating the control from the ground behind it is invisible to
      * every text-contrast probe in the tree. This test is that catch.

@@ -12,12 +12,12 @@
  * with a green suite — RESEARCH Pitfall 4, the exact failure this file exists to prevent.
  *
  * TWO of the five primitives are asserted through IMPORTED symbols, so the test tracks the source:
- * `controlClass` (exported `Input.tsx:125`) and `HEIGHT_CLASS` (exported `BottomSheet.tsx:255`).
+ * `controlClass` (exported src/components/ui/Input.tsx ("export { Input, Textarea, SelectControl, controlClass };")) and `HEIGHT_CLASS` (exported src/components/ui/BottomSheet.tsx ("export { BottomSheet, HEIGHT_CLASS };")).
  * The other THREE — `Button`, `Modal`, `Combobox` — are asserted against FROZEN class-list literals
  * transcribed here at seeding time, each with its source cite and a re-derive note.
  *
  * DECISION Phase 88.6-01 (W33): `Button` is frozen against a transcribed literal even though it HAS
- * an importable surface (`buttonVariants`, exported `Button.tsx:287`; `:129` at seeding time) — chosen OVER importing the
+ * an importable surface (`buttonVariants`, exported src/components/ui/Button.tsx ("export { Button, buttonVariants };"); `:129` at seeding time) — chosen OVER importing the
  * live symbol. Plan 06 (wave 4) rewrites that same cva base (`min-h-11` onto the base, `sm: 'btn-sm'`,
  * the `enabled-hover:` lift, `p-0` deleted from the `icon` rung). Importing it would red this wave-1
  * gate the moment plan 06 lands, inside a plan that declares only `Button.tsx`/`Button.test.tsx` and
@@ -38,8 +38,8 @@
  *     is that token's spelling, so the resolver behaviour is unchanged.
  *   - `BUTTON_CVA_BASE`. **MEASURED CURRENT — no change.** R6's premise that plan 06's cva
  *     rewrite had left it stale was already discharged: plan 06 re-seeded it on 2026-09-15 (that
- *     record is below), and re-reading the live `cva` base entries at `Button.tsx:74`, `:81`,
- *     `:113`, `:168` reproduces this literal exactly. Recorded as CONFIRMED rather than assumed —
+ *     record is below), and re-reading the live `cva` base entries at src/components/ui/Button.tsx ("'btn',"), src/components/ui/Button.tsx ("'shadow-theme-sm enabled-hover:shadow-theme-md',"),
+ *     src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:ring-2"), src/components/ui/Button.tsx ("'min-h-11',") reproduces this literal exactly. Recorded as CONFIRMED rather than assumed —
  *     "I checked and it was already right" is the half of a re-seed that otherwise leaves no
  *     trace.
  *   - `COMBOBOX_OPTION_ROW_ACTIVE`. **MEASURED CURRENT — no change.** Plan 02's re-seed still
@@ -61,9 +61,10 @@ import { cn } from '@/lib/cn';
 // ---------------------------------------------------------------------------
 
 /**
- * SOURCE: `src/components/ui/Button.tsx:71-169` — the `cva` base array, `.join(' ')`ed. (The range
- * is wide because the array now carries three DECISION markers between its four entries; the
- * entries themselves are `:74`, `:81`, `:113`, `:168`.)
+ * SOURCE: the `cva` base array opening at src/components/ui/Button.tsx ("const buttonVariants = cva("), `.join(' ')`ed. (The array
+ * is long because it now carries three DECISION markers between its four entries; the
+ * entries themselves are src/components/ui/Button.tsx ("'btn',"), src/components/ui/Button.tsx ("'shadow-theme-sm enabled-hover:shadow-theme-md',"),
+ * src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:ring-2") and src/components/ui/Button.tsx ("'min-h-11',").)
  *
  * RE-DERIVE NOTE: a later plan that renames, adds or removes any token inside this literal OWNS
  * re-deriving it from `Button.tsx` at that time and recording both strings (old and new) in its own
@@ -90,7 +91,7 @@ const BUTTON_CVA_BASE =
   'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11';
 
 /**
- * SOURCE (RE-SEEDED — see below): `src/components/ui/Button.tsx:104-106`, the `cva` VARIANT map.
+ * SOURCE (RE-SEEDED — see below): the `cva` VARIANT map at src/components/ui/Button.tsx ("primary: 'btn-primary',").
  *
  * WAS: `src/app/components/Modal.tsx:322` (`const ACTION_CLASS`), emitted by `ModalAction` as
  * `cn('btn', ACTION_CLASS[variant], className)` at `Modal.tsx:346`.
@@ -99,7 +100,7 @@ const BUTTON_CVA_BASE =
  * NAME, not a wrong expectation — the distinction matters, so it is spelled out.
  *
  * WHAT HAPPENED. Plan 88.6-08 (D-08) made `Modal.Action` render the `Button` primitive and RETIRED
- * `ACTION_CLASS` outright — the file's own `DECISION Phase 88.6-08` marker at `Modal.tsx:364-383`
+ * `ACTION_CLASS` outright — the file's own `DECISION Phase 88.6-08` marker at src/app/components/Modal.tsx ("DECISION Phase 88.6-08 (D-08)")
  * spells the retired name for exactly this kind of search. Both constructs this literal cited were
  * gone, and because both sides of the comparison were frozen the assertion stayed GREEN while no
  * longer describing any shipped emitter. Plan 08 measured this, could not fix it (its own
@@ -108,18 +109,18 @@ const BUTTON_CVA_BASE =
  *
  * WHY THE VALUES DID NOT MOVE. Plan 08's marker records that `Button`'s variant names were aligned
  * with `ModalActionVariant` "so the later adoption plans are a mechanical swap": the three entries
- * matched 1:1, byte-identically. Re-read from `Button.tsx:104-106` at this commit — `primary:
+ * matched 1:1, byte-identically. Re-read from src/components/ui/Button.tsx at this commit — `primary:
  * 'btn-primary'`, `secondary: 'btn-secondary'`, `danger: 'btn-danger'` — the map is unchanged. So
  * there is NO merge finding here; what was wrong was which source the literal claimed to track.
  *
  * TRANSCRIPTION IS STILL THE ROUTE, deliberately. `buttonVariants` IS exported
- * (`Button.tsx:287`), but plan 01's `DECISION Phase 88.6-01 (W33)` in the header above chose a
+ * (src/components/ui/Button.tsx ("export { Button, buttonVariants };")), but plan 01's `DECISION Phase 88.6-01 (W33)` in the header above chose a
  * frozen literal over importing it, and that decision is UNCHANGED by this re-seed: importing the
  * live symbol would make this gate assert a tautology (source compared against itself) instead of
  * a transcription that can drift and be caught.
  *
  * RE-DERIVE NOTE: a later plan renaming any token inside this literal OWNS re-deriving it from
- * `Button.tsx:104-106` at that time and recording both strings in its own summary.
+ * src/components/ui/Button.tsx ("primary: 'btn-primary',") at that time and recording both strings in its own summary.
  */
 const BUTTON_VARIANT_CLASS = {
   primary: 'btn-primary',
@@ -128,19 +129,19 @@ const BUTTON_VARIANT_CLASS = {
 } as const;
 
 /**
- * SOURCE: the option-row class list inside `src/components/ui/Combobox.tsx:276-283` (within the
- * `:276-320` range this plan cites), in its ACTIVE, non-disabled state.
+ * SOURCE: the option-row class list inside src/components/ui/Combobox.tsx ("flex min-h-11 w-full cursor-pointer items-center px-3 py-2")
+ * (within the wider range plan 88.6-01 cites), in its ACTIVE, non-disabled state.
  *
- * Transcription is the only route: `Combobox.tsx:362` exports only `{ Combobox }`.
+ * Transcription is the only route: src/components/ui/Combobox.tsx ("export { Combobox };") exports only `{ Combobox }`.
  *
  * RE-DERIVE NOTE — LIVE INSTANCE: this literal contained `bg-surface-card-hover`
- * (`Combobox.tsx:281`), and **plan 02 (wave 2) renamed `bg-surface-card-hover` ->
+ * (the ground arm, now src/components/ui/Combobox.tsx ("bg-surface-muted")), and **plan 02 (wave 2) renamed `bg-surface-card-hover` ->
  * `bg-surface-muted`** — a set that did NOT include this test file, so plan 02 OWNED re-deriving
  * this literal from `Combobox.tsx`. Do NOT close that coupling by deleting the `Combobox` literal
  * or narrowing the range: transcription is the only route available for this primitive.
  *
  * RE-SEEDED Phase 88.6-02 (D-15), 2026-09-15 — this is the owned re-derive, not a finding. The
- * literal above was re-read from the POST-rename `Combobox.tsx:281` and the expectation at the
+ * literal above was re-read from the POST-rename src/components/ui/Combobox.tsx and the expectation at the
  * `Combobox` assertion below moved with it. Both strings, measured by running this suite:
  *   PRE : flex min-h-11 w-full cursor-pointer items-center py-2 text-base bg-surface-card-hover px-4 text-content-secondary
  *   POST: flex min-h-11 w-full cursor-pointer items-center py-2 text-base bg-surface-muted px-4 text-content-secondary
@@ -176,9 +177,9 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
 
   it('Modal: ModalAction emits Button, i.e. cn(buttonVariants({variant,size}), className)', () => {
     // RE-SEEDED Phase 88.6-37 (R6). The modelled emitter moved with plan 08's swap: it is now
-    // `Button.tsx:278`'s `cn(buttonVariants({ variant, size }), className)`, with cva defaults
-    // `variant: 'primary'`, `size: 'default'` (`Button.tsx:255`; the `default` size rung is the
-    // empty string, `:103`). The caller half is unchanged from the seeded shape.
+    // src/components/ui/Button.tsx ("cn(buttonVariants({ variant, size }), className)"), with cva defaults
+    // `variant: 'primary'`, `size: 'default'` (src/components/ui/Button.tsx ("defaultVariants: { variant: 'primary', size: 'default' }"); the
+    // `default` size rung is the empty string, src/components/ui/Button.tsx ("default: '',")). The caller half is unchanged from the seeded shape.
     //   PRE  (emitter `cn('btn', ACTION_CLASS.primary, className)`, retired by plan 08):
     //     btn btn-primary btn-secondary w-full
     //   POST (emitter `cn(buttonVariants({variant,size}), className)`):
@@ -199,7 +200,7 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
 
   it('BottomSheet: the surface class list + HEIGHT_CLASS + a caller override', () => {
     // RE-SEEDED Phase 88.6-37 (task 3's D49-b snap). The transcribed surface literal's
-    // `shadow-lg` is now `shadow-theme-lg` — re-read from `BottomSheet.tsx:238` at this
+    // `shadow-lg` is now `shadow-theme-lg` — re-read from src/components/ui/BottomSheet.tsx at this
     // commit, not predicted.
     expect(
       cn(
@@ -292,9 +293,9 @@ describe('the custom-named token families de-dupe pairwise, last-wins', () => {
   });
 
   it('min-w-11 / min-w-0 — the WIDTH axis of the two-axis icon floor', () => {
-    // At seeding time `Button.tsx:94` read `icon: 'min-h-11 min-w-11 p-0'`; the `min-w` half is
+    // At seeding time the `icon` rung in src/components/ui/Button.tsx read `icon: 'min-h-11 min-w-11 p-0'`; the `min-w` half is
     // what floors `size="icon"` in WIDTH. RE-DERIVED 2026-09-15: plan 06 landed and the rung is
-    // now `icon: 'min-h-11 min-w-11'` (`Button.tsx:246`) — the zero-padding utility was dead
+    // now `icon: 'min-h-11 min-w-11'` (src/components/ui/Button.tsx ("icon: 'min-h-11 min-w-11',")) — the zero-padding utility was dead
     // (`.btn` is unlayered) and was deleted, so the shipped control is a lozenge, not a square;
     // that is the PRESERVED look, per the `DECISION Phase 88.6-06 (C.1 / D-09)` marker.
     // Seeding only the `min-h-*` axis would leave the width axis
@@ -324,7 +325,7 @@ describe('the custom-named token families de-dupe pairwise, last-wins', () => {
 
 describe('bracketed variant prefixes', () => {
   it('data-[state=open]: de-dupes within its own variant scope only', () => {
-    // `dialog.tsx:75` ships `data-[state=open]:bg-surface-hover`.
+    // src/components/ui/dialog.tsx ("data-[state=open]:bg-surface-hover") ships `data-[state=open]:bg-surface-hover`.
     expect(
       cn(
         'bg-surface-card data-[state=open]:bg-surface-hover',

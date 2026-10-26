@@ -6,7 +6,7 @@ import type { Page, TestInfo } from '@playwright/test';
  * WHY THIS FILE EXISTS. `88.1-VERIFICATION.md` records four e2e failures whose CAUSES are
  * hypotheses, not findings (`.continue-here.md` "Defect triage" is explicit: the DISPROOFS
  * are settled, the causes are not). Nothing in this repo can execute Playwright locally
- * (`playwright.config.ts:19-21` — credentials are absent by design), so the only way to
+ * (playwright.config.ts ("They are intentionally absent locally") — credentials are absent by design), so the only way to
  * turn a hypothesis into a fact is to instrument the cases and read a real CI browser.
  * Plan 19 measures; plan 20 fixes. Nothing here changes an assertion, a threshold or any
  * product code.
@@ -23,8 +23,8 @@ import type { Page, TestInfo } from '@playwright/test';
  * page would measure a state the failing gesture never saw.
  *
  * OUTPUT IS DELIBERATELY DUPLICATED, and both halves are load-bearing:
- *   - `testInfo.attach` produces the readable pretty-JSON artifact, but `ci.yml:522-533`
- *     uploads `test-results/` only `if: failure()`.
+ *   - `testInfo.attach` produces the readable pretty-JSON artifact, but it reaches CI only as age ciphertext: .github/workflows/ci.yml ("name: Encrypt Playwright failure evidence (age, fail closed") packs playwright-report/ and test-results/
+ *     and .github/workflows/ci.yml ("name: Upload Playwright failure evidence (age ciphertext only") uploads only that ciphertext, if: failure(). The one-line form below goes to the PUBLIC job log in plain text, so a DIAG value carries geometry and fixture copy only (no user text, cookies, storage or headers).
  *   - the ONE-LINE `console.log` lands in the raw job log, readable via
  *     `gh run view <id> --log | grep '\[DIAG '` with no download at all.
  * A multi-line console dump is unreadable in that log — the single line is a requirement,
@@ -61,7 +61,7 @@ export async function attachDiagnostics(
   });
   // `no-console` is disabled HERE and nowhere else, deliberately: this single line is the
   // only diagnostic path that survives a run whose artifact upload does not happen. The
-  // attachment above is gated behind `ci.yml:522`'s `if: failure()`, so on any run that
+  // attachment above is gated behind the if: failure() on .github/workflows/ci.yml ("name: Upload Playwright failure evidence (age ciphertext only"), so on any run that
   // does not fail there is no artifact at all — `gh run view <id> --log | grep '[DIAG '`
   // is then the ONLY way to read a measurement. Removing this is not a lint cleanup.
   // eslint-disable-next-line no-console
@@ -143,13 +143,13 @@ export interface SchedulerGeometryProbe {
     overflowY: string;
   };
   /** Every ancestor between the scroller and <body> that clips. The modal's own
-   *  `max-h-[90vh] overflow-hidden` box (`Modal.tsx:186`) shows up HERE as a measured
+   *  `max-h-[90dvh] overflow-hidden` box (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]")) shows up HERE as a measured
    *  rect instead of as a citation. */
   clipChain: ClipAncestor[];
   /** The scroller's rect intersected with every clipping ancestor AND the viewport —
    *  i.e. the band a finger can actually land in. */
   clippedVisibleBand: { top: number; bottom: number; height: number };
-  /** What `gridGeometry` (`event-scheduler-touch.spec.ts:194-242`) computes for the same
+  /** What `gridGeometry` (e2e/event-scheduler-touch.spec.ts ("async function gridGeometry(")) computes for the same
    *  thing: `Math.max(sr.top, 0)` .. `Math.min(sr.bottom, window.innerHeight)` — the
    *  VIEWPORT, not the clipped box. Reported side by side so the divergence is one glance
    *  rather than an inference. */
@@ -277,7 +277,7 @@ export async function probeOverflowCulprits(page: Page): Promise<OverflowCulprit
 /**
  * The scheduler's real geometry, resolved under the SAME structural rule the spec helper
  * uses — the parent of the first `[role="grid"]` inside the open dialog
- * (`event-scheduler-touch.spec.ts:194-242`).
+ * (e2e/event-scheduler-touch.spec.ts ("async function gridGeometry(")).
  *
  * DECISION Phase 88.1-19: this probe MIRRORS `gridGeometry`'s resolution rule rather than
  * switching to a class selector — chosen so the two numbers are directly comparable. A
@@ -285,9 +285,9 @@ export async function probeOverflowCulprits(page: Page): Promise<OverflowCulprit
  * reason: the point of this probe is to report `gridGeometry`'s own band NEXT TO the
  * clipped one, and two bands resolved under different rules cannot be compared. The
  * dialog scope is parity with the helper, NOT disambiguation — there is exactly one
- * `role="grid"` on the page (`EventScheduler.tsx:1054-1064` is the sole `<WeekGrid>`
- * mount; `EventHeatmapBackground.js` uses plain `className="grid"` cells with no ARIA
- * grid, contrary to `gridGeometry`'s own comment, which plan 20 owns).
+ * `role="grid"` in the dialog at a time (the scheduler's sole WeekGrid mount, src/app/components/EventScheduler.tsx ("<WeekGrid"),
+ * and the heatmap's own `role="grid"` root, src/app/components/EventHeatmapBackground.js ("aria-label={HEATMAP_GRID_LABEL}"),
+ * mount in the two branches of createEvent's mode switch, src/app/components/createEvent.js ("useVisualCalendar && !hideVisualCalendar ? ("), as `gridGeometry`'s own docblock records).
  */
 export async function probeSchedulerGeometry(page: Page): Promise<SchedulerGeometryProbe | null> {
   return page.evaluate(() => {
@@ -433,8 +433,8 @@ export interface PointResolution {
  * pointer path a stepped drag drives the finger along.
  *
  * `usePaintGesture` paints through `document.elementFromPoint` (its injected
- * `pointResolver`, wired at `EventScheduler.tsx:700`), and the hook's document-level
- * listeners are `pointerup`/`pointercancel` ONLY (`usePaintGesture.ts:503-504`) — there is
+ * `pointResolver`, wired at src/app/components/EventScheduler.tsx ("pointResolver('data-coord')")), and the hook's document-level
+ * listeners are `pointerup`/`pointercancel` ONLY (src/app/components/heatmap/usePaintGesture.ts ("document.addEventListener('pointerup', handleUp);")) — there is
  * no document-level `pointermove`. So a step whose `resolvesTo` is null is a step the
  * gesture never saw, and a run of nulls at the end of a path is the difference between
  * "the range machine is broken" and "the spec drove the finger somewhere unpaintable".
@@ -464,10 +464,10 @@ export async function probePointPath(
  * read without: whether the page actually scrolled to the bottom (`scrollTop` vs
  * `maxScrollTop`), and which footer variant rendered.
  *
- * The auth/public discriminator is the Report Bug control, which `Footer.js:12-13`
+ * The auth/public discriminator is the Report Bug control, which src/app/components/Footer.js ("Report Bug button lives only in the auth footer")
  * records as auth-only — a STRUCTURAL signal, chosen over a class name so a Tailwind
  * change cannot silently invert the reading. `privacyHref` is READ, never written: the
- * capital P is load-bearing for Google auth (CLAUDE.md, `Footer.js:9-11`).
+ * capital P is load-bearing for Google auth (CLAUDE.md, src/app/components/Footer.js ("Privacy href intentionally uses")).
  */
 export async function probeFooterOcclusion(page: Page): Promise<FooterOcclusionProbe> {
   return page.evaluate(() => {
@@ -508,7 +508,7 @@ export async function probeFooterOcclusion(page: Page): Promise<FooterOcclusionP
       authFooterPresent: Boolean(reportBug),
       publicFooterPresent: Boolean(footerEl) && !reportBug,
       // The loading branch renders `<div className="h-12" />` and NO footer at all
-      // (`Footer.js:43`) — so "no <footer>, no Report Bug" is the fingerprint of a page
+      // (src/app/components/Footer.js ("return <div className=")) — so "no <footer>, no Report Bug" is the fingerprint of a page
       // whose auth state had not resolved when the probe fired.
       loadingPlaceholderLikely: !footerEl && !reportBug,
       fixedOrStickyElements,

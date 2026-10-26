@@ -93,13 +93,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        BUTTON on this surface carries `aria-disabled` plus a SYNCHRONOUS first-line ref latch
        released in a `finally` — chosen OVER the native `disabled` attribute it shipped with.
 
-       THE RULE, as plans 17 and 18 state it identically (88.6-17-PLAN.md:231-247,
-       88.6-18-PLAN.md:225-230). In-flight/busy gates normally KEEP native `disabled` — they are
+       THE RULE, as plans 17 and 18 state it identically (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-17-PLAN.md ("Rule of kind (stated identically in plans 17 and 18)"),
+       planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-18-PLAN.md ("The composed rule, stated identically in plan 17")). In-flight/busy gates normally KEEP native `disabled` — they are
        WCAG-exempt and the `.btn:disabled` wash is the right treatment. The rule of POSITION is
        the addition: an in-flight gate keeps native `disabled` EXCEPT on the control the user
        just activated, where `DECISION Phase 88.5`'s idiom applies instead — a natively disabled
        element leaves the focus order, so a keyboard or switch user is stranded mid-submit
-       (NextGameNightCard.tsx:478-487 spells this out, its `removed from the focus order` marker). All four gated buttons here sit on the
+       (src/app/components/NextGameNightCard.tsx ("A natively-disabled element is removed from the focus order") spells this out, its `removed from the focus order` marker). All four gated buttons here sit on the
        control being activated, so all four move.
 
        WHY BOTH HALVES OR NEITHER: `aria-disabled` refuses nothing at the DOM level. A gated
@@ -118,9 +118,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        silently.
 
        VISIBLE DELTA, disclosed rather than discovered: a gated `.btn` used to take
-       `.btn:disabled { opacity: .5 }` (globals.css:2346-2349, `.btn:disabled {`) and now takes the
-       DR-C gated COLOUR pair (`.btn-primary[aria-disabled='true']` at :2424,
-       `.btn-secondary[...]` at :2429). Fill and ink swap instead of the whole control washing out.
+       `.btn:disabled { opacity: .5 }` (src/app/globals.css (".btn:disabled { opacity: .5 }")) and now takes the
+       DR-C gated COLOUR pair (src/app/globals.css (".btn-primary[aria-disabled='true'] {"),
+       src/app/globals.css (".btn-secondary[aria-disabled='true'] {")). Fill and ink swap instead of the whole control washing out.
 
        Dropping either half of any pair, or restoring the native attribute, is a decision, not
        a cleanup.
@@ -389,10 +389,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
 
                    The two code arms ABOVE are kept deliberately. Measured 2026-09-16:
                    MESSAGE_BY_CODE carries byte-identical copy for both
-                   (`useFetchErrorState.ts:100` `already_member:`, `:103` `invite_pending:` — re-pointed
+                   (src/components/ui/useFetchErrorState.ts ("already_member: 'This person"), src/components/ui/useFetchErrorState.ts ("invite_pending: 'This person") — re-pointed
                    2026-10-15 from :88 / :91), so keeping them costs nothing and preserves the
-                   surface-owns-its-richer-resting-copy precedence that file records at `:92-99`
-                   (`richer 'Invite pending' / 'Already a member' resting states take precedence`). Collapsing them into the helper is
+                   surface-owns-its-richer-resting-copy precedence that file records at
+                   src/components/ui/useFetchErrorState.ts ("richer 'Invite pending' / 'Already a member' resting states take precedence"). Collapsing them into the helper is
                    a decision, not a cleanup.
 
                    AMENDED IN PLACE 2026-09-28 — DECISION Phase 88.6-58 (review H3 + cross-finding
@@ -401,13 +401,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                    overridden LOCALLY with the §6.3-ratified INVALID_EMAIL_MESSAGE. Why that is
                    safe on THIS call: every code-less 400 reachable from
                    `invitesAPI.sendInvite(group_id, email)` is the server's `isEmail` verdict
-                   (Sonnet/routes/invites.js:206, raw `{ errors }` at :216) — measured
-                   2026-09-28: the selector-count 400s (:227-236) cannot fire because the empty
+                   (Sonnet/routes/invites.js, raw `{ errors }`) — measured
+                   2026-09-28: the selector-count 400s cannot fire because the empty
                    field is refused above first; the self-invite 400s sit on branches this call
                    never takes; `group_id` is app-supplied. Any NEW raw 400 on the email path must
                    land as `sendError` with its OWN code (Phase 93's rule, entry "(f) TELLING THAT
                    ROUTE'S THREE 400 OUTCOMES APART NEEDS A BACKEND `code`", parent-repo
-                   .planning/deferred/phase-93.md:261 as of 2026-09-28) — never widen this
+                   .planning/deferred/phase-93.md as of 2026-09-28) — never widen this
                    override. REJECTED: editing `MESSAGE_BY_CODE.validation` globally (shared
                    register; 11 other non-test `byCode:` override sites at d03f728, git grep
                    2026-09-28), and a client-side format regex (a hand-written
@@ -747,7 +747,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             <div className="flex-1 border-t border-line" />
                             {/* UI-SPEC §4.5 Eyebrow role (D-03): Caption 12 / 700 / uppercase /
                                 tracking. `font-bold` ADDED; `tracking-wide` is the spelling the
-                                nearest shipped eyebrow uses (CalendarListView.js:1009, `uppercase tracking-wide`). See the
+                                nearest shipped eyebrow uses (src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)"), `uppercase tracking-wide`). See the
                                 DECISION marker on the second eyebrow below. */}
                             <span className="text-xs font-bold text-content-muted uppercase tracking-wide">or</span>
                             <div className="flex-1 border-t border-line" />
@@ -761,7 +761,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             field's ONLY accessible name. Dropping the `id` here leaves an input
                             with an empty name and no failing build. Safe as an idref target
                             because the children are a STATIC non-empty string — `Heading` renders
-                            NOTHING for empty children (Heading.tsx:182, `isEmptyChildren(children)) return null`) and would take the `id`
+                            NOTHING for empty children (src/components/ui/Heading.tsx ("if (isEmptyChildren(children)) return null;")) and would take the `id`
                             with it. */}
                         <Heading
                             ref={inviteByEmailHeadingRef}
@@ -832,17 +832,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                         </form>
                         {/* DECISION Phase 88.6-22 (R2 #177): this is a real FIELD error on the
                             email input, so it takes `politeness="assertive"` — `role="alert"` +
-                            `aria-live="assertive"` (StatusRegion.tsx:99-100, `role={assertive ? 'alert' : 'status'}`) — and spells its id,
+                            `aria-live="assertive"` (src/components/ui/StatusRegion.tsx ("role={assertive ? 'alert' : 'status'}")) — and spells its id,
                             its `aria-describedby` and its `aria-invalid` flip the way the shipped
-                            field-error primitive does (form/FormField.tsx:88 `${controlId}-error`, :90-93
-                            and :98 the composed describedby, :97 aria-invalid, :131 role=alert;
+                            field-error primitive does (src/app/components/form/FormField.tsx ("const errorId =") `${controlId}-error`, src/app/components/form/FormField.tsx ("'aria-describedby'?: string;")
+                            and src/app/components/form/FormField.tsx ("const describedBy =") the composed describedby, src/app/components/form/FormField.tsx ("'aria-invalid': error ? 'true' : undefined,") aria-invalid, src/app/components/form/FormField.tsx ("DECISION Phase 88.6.1-15 (D-42, ST-1 #9)") role=alert;
                             re-pointed 2026-10-15).
                             That makes this the SECOND spelling of the field error in the phase,
                             never a third.
 
                             REJECTED — adopting `FormField` itself, which on the merits is the
                             better home since it supplies all three attributes. Its `label` prop is
-                            REQUIRED and always renders a visible `<label>` (form/FormField.tsx:105-111),
+                            REQUIRED and always renders a visible `<label>` (src/app/components/form/FormField.tsx ("<label")),
                             which would put a second visible "Invite by Email" above this input and
                             REVERSE the 88-33 Task 8 (fork 5) decision recorded ten lines up — that
                             the visible heading IS the label, associated rather than duplicated.
@@ -854,10 +854,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             one. `mt-2` applies ONLY when filled, so the empty region adds no
                             visible space — the alternative (a wrapper div carrying the margin) was
                             rejected as an extra element for the same result. The error ink rides
-                            on `className` because StatusRegion.tsx:102-106 is `cn('text-sm', className, …)`.
+                            on `className` because src/components/ui/StatusRegion.tsx ("className={cn(") is `cn('text-sm', className, …)`.
                             `text-red-500` (#ef4444) measured 3.76:1 on --color-bg-card (#ffffff),
                             below the 4.5:1 AA floor; `text-content-status-error`
-                            (--color-status-error-text #991b1b, globals.css:1648) measures 8.31:1.
+                            (--color-status-error-text #991b1b, src/app/globals.css ("--color-status-error-text: #991b1b")) measures 8.31:1.
 
                             AMENDED IN PLACE 2026-10-15 — DECISION Phase 88.6.1-27 (D-22, D-42):
                             (1) D-42 — "a screen reader announces a CHANGE to a live region, not the
@@ -952,23 +952,23 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
 
                                         THE PLAN SAID "match a named shipped eyebrow byte-for-byte";
                                         that is not achievable and would be wrong. Measured
-                                        2026-09-16, the three shipped eyebrows
-                                        (CalendarListView.js:823, RsvpSection.js:285,
-                                        NextGameNightCard.tsx:309 as of that date; on 2026-10-15
-                                        they sit at CalendarListView.js:1009, RsvpSection.js:644 and
-                                        NextGameNightCard.tsx:389, each now at 700) are all `font-semibold` (600) and
-                                        disagree on tracking — `tracking-wide`, `tracking-wider`,
+                                        2026-09-16, the three shipped eyebrows (one each in
+                                        CalendarListView.js, RsvpSection.js and
+                                        NextGameNightCard.tsx; by 2026-10-15 all three had moved
+                                        within their files and each is now at 700) were all
+                                        `font-semibold` (600) then and
+                                        disagreed on tracking — `tracking-wide`, `tracking-wider`,
                                         `tracking-[0.08em]`. §4.5 ratifies 700 and §4.2 gives 600
                                         exactly one home, the Button primitive, so copying any of
                                         them would import a prohibited weight; their own sweeps move
                                         them to 700 later. TRACKING is matched to
-                                        CalendarListView.js:1009's `tracking-wide`, which is also the
+                                        the `tracking-wide` of src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)"), which is also the
                                         value these two already carried, so no tracking changes here.
 
                                         NOT a `Heading`: these are `<span>`s inside a divider rule,
                                         not heading tags, and P4 forbids inventing a level. There is
                                         deliberately no `eyebrow` variant on the primitive
-                                        (Heading.tsx:17-18) — uppercase, tracking and colour ride on
+                                        (src/components/ui/Heading.tsx ("That would mint a fifth type role")) — uppercase, tracking and colour ride on
                                         `className`. */}
                                     <span className="text-xs font-bold text-content-muted uppercase tracking-wide">or</span>
                                     <div className="flex-1 border-t border-line" />
@@ -1068,8 +1068,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                             so the control, its two reset handlers, their in-flight
                                             latch and the toast library they used were dead code and
                                             were deleted. The working reset lives in Manage Members,
-                                            behind its reset confirm gate (ManageMembers.js at the
-                                            useConfirmAction call that builds it, :368 on 2026-10-15),
+                                            behind its reset confirm gate (the useConfirmAction call
+                                            that builds it, src/app/components/ManageMembers.js ("const resetInviteGate = useConfirmAction({")),
                                             chosen OVER wiring this copy up: a second entry point is a
                                             product idea recorded as the todo
                                             2026-10-03-group-kebab-second-home-for-invite-link-reset.md.
@@ -1101,14 +1101,14 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        RESOLVED STACKING ORDER (verified, not assumed — this panel deliberately
        sits ABOVE other overlays and BELOW the tooltip tier):
          - `.modal-overlay` is `z-index: 50` and renders inside the React tree
-           (globals.css:1075-1078 when written; Phase 88-31 deleted that rule — see its
-           AMENDED BY PHASE 88-31 note in globals.css). ManageMembers.js:961 opens this panel as a
+           (globals.css when written; Phase 88-31 deleted that rule — see its
+           AMENDED BY PHASE 88-31 note in globals.css). src/app/components/ManageMembers.js ("<FriendInvitePanel") opens this panel as a
            sibling of that overlay, and grouplist/userHome open it standalone.
          - Radix portals this dialog to the END of <body>, so at an equal
            z-index 50 it still paints above `.modal-overlay` purely by DOM order.
            The stacking relationship the old bespoke value bought is therefore
            preserved structurally, without a bespoke tier.
-         - HeatmapTooltip.js:345-350 (`zIndex: 100` at :369) pins tooltips at z-index 100 as "always
+         - src/app/components/HeatmapTooltip.js ("are always topmost — z-100 clears every existing overlay tier") (`zIndex: 100` at src/app/components/HeatmapTooltip.js ("style={{ ...floatingStyles, zIndex: 100 }}")) pins tooltips at z-index 100 as "always
            topmost" (a shipped Plan 72-02 UAT decision). That tier is untouched
            and still clears this dialog.
 
@@ -1125,7 +1125,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
             {/* Freeform header (the QRCodeModal idiom): the Modal header renders a
                 single-line DialogTitle, and this panel's header is a two-line
                 stack. The chrome mirrors the Modal header's phone-first scale
-                (Modal.tsx:407, the class string carrying px-3 py-2 md:px-6 md:py-3)
+                (src/app/components/Modal.tsx ("function ModalHeader("), the class string carrying px-3 py-2 md:px-6 md:py-3)
                 and its bottom border, except two things kept on purpose for the
                 two-line title stack beside the 44px close: items-start (the close
                 stays on the first line instead of centring on two) and gap-3 (the

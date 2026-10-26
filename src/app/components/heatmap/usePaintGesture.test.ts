@@ -605,4 +605,24 @@ describe('usePaintGestureHold — holds a change under the finger, applies it on
     // stays inside an effect — no render-time read was added to close the frame.
     expect(body.match(/isPaintGestureActive\(\)/g)).toHaveLength(1);
   });
+
+  // DECISION Phase 88.6.2-16 (PC-1): pin the CURRENT two-render shape exactly, the stale render
+  // and then the layout-effect correction, over the rider's exactly-one-render pin. One render per
+  // change is reachable only by changing the hook. That is a production behaviour change
+  // (88.6.2 R11), and it is the render-time read
+  // src/app/components/heatmap/paintGestureActiveStore.ts ("DECISION Phase 88.6-63 (review round 2 #14)")
+  // rejected. A third render and a drop to one both red here. A redundant update batched into the
+  // same effect renders nothing and stays invisible (WINDOWS 153). Changing this list is a
+  // decision on that marker first, never an edit to the expected values.
+  it('a no-gesture value change renders exactly twice: the stale render, then the layout-effect correction (W034, against DECISION 88.6-63)', () => {
+    const { rerender, renders } = renderHold('a');
+    expect(renders).toEqual(['a']);
+
+    act(() => rerender({ value: 'b' }));
+    expect(renders).toEqual(['a', 'a', 'b']);
+
+    // A same-value re-render costs one render and no correction.
+    act(() => rerender({ value: 'b' }));
+    expect(renders).toEqual(['a', 'a', 'b', 'b']);
+  });
 });

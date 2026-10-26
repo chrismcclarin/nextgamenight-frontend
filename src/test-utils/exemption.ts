@@ -5,7 +5,7 @@
  * WHY THIS FILE EXISTS
  * --------------------
  * Phase 88 shipped the working idiom in `src/app/nativeDialogs.test.ts`, whose roster
- * docblock (`:51-61` as measured 2026-09-15 — `88.6-04-PLAN.md` cites `:52-62`, one line
+ * docblock (as measured 2026-09-15 — `88.6-04-PLAN.md` cites `:52-62`, one line
  * later) states the rule this module generalises, quoted verbatim:
  *
  *   "The value is the EXACT number of surviving call sites, not a boolean. A per-file
@@ -27,7 +27,7 @@
  * holding an opinion are indistinguishable. Under the union the first is expressible and
  * the second is not: a genuinely new case cannot be typed, so it STOPS and becomes a
  * code-review decision fork instead of a silent widening. Rejected alternatives: (a)
- * `owner: string` with a regex (the shipped `nativeDialogs.test.ts:159` form —
+ * `owner: string` with a regex (the shipped src/app/nativeDialogs.test.ts ("toMatch(/DEF-") form —
  * `/DEF-|Phase |plan /` matches any prose containing those tokens, which is the hole);
  * (b) a single `owner: { id: string }` (loses the kind, so a DECISION marker and a dated
  * ruling cannot be validated differently, and the `DECISION` token / `YYYY-MM-DD` checks
@@ -46,7 +46,7 @@
  * ---------------------------------
  * This module adds no runtime dependency and must never be imported from `src/app`,
  * `src/components`, `src/lib` or any other shipped directory. Unlike `sourceScan.ts`
- * — which imports `node:fs`/`node:path` (`sourceScan.ts:39-40`) and would fail LOUD in a
+ * — which imports `node:fs`/`node:path` (src/test-utils/sourceScan.ts ("import fs from 'node:fs';")) and would fail LOUD in a
  * client bundle — this file has no `node:` import and would bundle SILENTLY. That
  * asymmetry (T-88.6-08) is why `exemption.test.ts` walks every shipped file under `src/`
  * outside `src/test-utils/` and asserts zero importers, rather than trusting a promise.
@@ -92,7 +92,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * The floor for `why`. A one-word reason is a reason-less entry wearing a string.
  *
- * Deliberately LOWER than `nativeDialogs.test.ts:158`'s shipped `> 80` for its own roster:
+ * Deliberately LOWER than the src/app/nativeDialogs.test.ts (".toBeGreaterThan(80);") shipped `> 80` for its own roster:
  * this is the shared floor every suite gets for free, and that file keeps its stricter
  * per-suite assertion alongside. Raising this is safe; lowering it loosens every gate in
  * the phase at once.

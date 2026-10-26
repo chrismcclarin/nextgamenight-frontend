@@ -3,7 +3,8 @@
  *
  * WHY THIS FILE EXISTS
  * --------------------
- * `tintTreatment.test.ts:47-50` records the reason verbatim:
+ * src/app/tintTreatment.test.ts ("NOTE ON DUPLICATION: the chunk lexer below is a second copy")
+ * records the reason verbatim:
  *
  *   "NOTE ON DUPLICATION: the chunk lexer below is a second copy of the one in
  *    `borderExplicitness.test.ts`. Importing it would re-register that file's suites in
@@ -11,8 +12,11 @@
  *    88-29's gate-hygiene pass; it is deliberately not done here, mid-sweep."
  *
  * This is that pass. By the time 88-29 ran there were THREE byte-identical copies of
- * `stringChunks` (`borderExplicitness.test.ts:111`, `focusAndMotionTreatment.test.ts:77`,
- * `tintTreatment.test.ts:129`) and 88-29 needed a fourth and fifth. Verified identical
+ * `stringChunks`, one in each of the suites that import it from here in their place:
+ * src/app/borderExplicitness.test.ts ("DECISION Phase 88-29 (gate hygiene)"),
+ * src/app/focusAndMotionTreatment.test.ts ("DECISION Phase 88-29 (gate hygiene)") and
+ * src/app/tintTreatment.test.ts ("DECISION Phase 88-29 (gate hygiene)").
+ * 88-29 needed a fourth and fifth. Verified identical
  * before the move (brace-balanced extraction of all three, pairwise diff: no differences
  * inside the function body).
  *
@@ -204,9 +208,10 @@ export function lineAt(src: string, offset: number): number {
  * DECISION Phase 88.6-44 (T-88.6-124): `test-utils/` is skipped HERE, centrally, chosen OVER
  * naming each helper so the `.test.` filter happens to exclude it (a `.test.helpers.ts`
  * suffix), and OVER each consuming suite filtering the directory out on its own — which two
- * already did independently (`interpolatedClassCensus.test.ts` `productionFiles`,
- * `exemption.test.ts:193`). Helper modules whose whole job is to hold pattern strings and
- * assertions are fixtures, not app source: before this edit `sourceScan.ts`, `exemption.ts`
+ * already did independently (`interpolatedClassCensus.test.ts` `productionFiles`, and
+ * src/test-utils/exemption.test.ts ("!f.startsWith(TEST_UTILS + path.sep)")).
+ * Helper modules whose whole job is to hold pattern strings and assertions are fixtures, not
+ * app source: before this edit `sourceScan.ts`, `exemption.ts`
  * and `inkRules.ts` were three of the 192 files every tree-wide sweep censused (measured
  * 2026-09-15), and `formControlAudit.ts` would have been a fourth. Measured at the edit: every
  * `sourceFiles`-consuming suite is green both before and after, i.e. no roster or floor was
@@ -231,8 +236,10 @@ export function sourceFiles(dir: string): string[] {
 /**
  * Read a full JSX opening tag from `start`, balancing {} () [] and strings.
  *
- * RELOCATED Phase 88.6-09 from `src/app/components/controlSizeFloor.test.tsx:89-110`, where it
- * was a private function with no exports in the file. It is a MOVE, not a copy and not a lift:
+ * RELOCATED Phase 88.6-09 from `controlSizeFloor.test.tsx`, where it was a private function
+ * with no exports in the file; that file records the move at
+ * src/app/components/controlSizeFloor.test.tsx ("was RELOCATED to").
+ * It is a MOVE, not a copy and not a lift:
  * before this plan `grep -rn readOpeningTag src` returned exactly two lines (that file's
  * definition and its one call site), so leaving the original in place would have created the
  * second copy this module exists to prevent. Importing it from the test file was never
@@ -249,7 +256,7 @@ export function sourceFiles(dir: string): string[] {
  *
  * THE DEFAULT IS MEASURED, NOT GUESSED, and the first value chosen was WRONG. Measured
  * 2026-09-15 over all 194 non-test files: the longest REAL opening tag in this tree is 6845
- * bytes — `CalendarMonthView.js:555`, a `<div>` whose `onKeyDown`, long `className` template and
+ * bytes — a `<div>` in `CalendarMonthView.js` whose `onKeyDown`, long `className` template and
  * `style` object with an embedded DECISION block run to 90 source lines. An initial 6000 left
  * exactly that one tag unreadable, and the cost was NOT confined to it: a skipped open means the
  * element is never pushed, so its later `</div>` pops the nearest same-named frame instead — the
@@ -282,18 +289,25 @@ export function readOpeningTag(text: string, start: number, maxLength = 16000): 
 }
 
 /**
- * Strip Tailwind variant prefixes and the `!` important marker.
+ * Strip Tailwind variant prefixes and the `!` important marker. Used as
+ * `token.replace(STRIP_VARIANTS, '')`.
  *
- * This is `surfaceHoverSweep.test.ts:82`'s richer form, NOT the simpler `/^[a-z-]+:/` some
- * suites carry: the simple one cannot strip a bracketed variant such as `data-[state=open]:`.
+ * This is the richer form, NOT the simpler `/^[a-z-]+:/` some suites carry: the simple one
+ * cannot strip a bracketed variant such as `data-[state=open]:`.
  *
- * DELIBERATELY NOT EXPORTED, and the shipped copy in `surfaceHoverSweep.test.ts` is
- * DELIBERATELY left byte-unchanged: 88.6-09 edits this shared module under an addition-only
- * rule with one declared deletion (`readOpeningTag`), and converging a second helper out of a
- * suite this plan does not declare would break that constraint. The convergence is recorded as
- * a carry-forward in `88.6-09-SUMMARY.md` rather than taken here.
+ * DECISION Phase 88.6.2-08 (PC-4): ONE exported copy here, every test-local copy converged onto
+ * it, chosen OVER the Phase 92 route the SPEC first gave it (SPEC A8 retired that route: its
+ * premise, a source change, was false; every copy is in a test file and this module is on R11's
+ * allowlist) and OVER keeping copies under two names. It supersedes the 88.6-09 note that kept
+ * this constant private: that note rested on 88.6-09's addition-only rule for this module, which
+ * ended with that plan. Plan 88.6.2-08 converges all seven test-local copies onto it: the three
+ * under this name, which closes `.planning/WINDOWS.md` entries 12 and 18, and four under a
+ * second name or written inline. Exporting it from this non-test module is the arm
+ * `DECISION Phase 88-29` chose; exporting it
+ * from a test file is the arm it rejected. Re-copying it into a suite is a decision, not a
+ * cleanup.
  */
-const VARIANT_PREFIX = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
+export const STRIP_VARIANTS = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 
 /** Options for {@link inkGroundPairs}. Both patterns are supplied by the CALLER. */
 export interface InkGroundOptions {
@@ -338,7 +352,9 @@ export interface InkGroundRow {
   /**
    * EVERY candidate from the nearest ancestor frames that set any ground — an ARRAY, never a
    * scalar. One `className` template can carry several mutually exclusive ground arms
-   * (`CalendarMonthView.js:245-253` carries five), and picking one of them would make every
+   * (the ground template around
+   * src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :")
+   * carries five), and picking one of them would make every
    * downstream by-name assertion a coin flip. Consumers must not index into this array.
    */
   grounds: GroundCandidate[];
@@ -496,7 +512,7 @@ function classSites(
       const line = lineAt(stripped, abs);
       for (const raw of text.split(/\s+/)) {
         if (!raw) continue;
-        const base = raw.replace(VARIANT_PREFIX, '');
+        const base = raw.replace(STRIP_VARIANTS, '');
         if (!base) continue;
         // A variant-prefixed class is NOT resting — neither as ground (mechanism step 3) nor
         // as ink (step 4). Both sides are dropped here, symmetrically and by the same rule.
@@ -536,11 +552,15 @@ function classSites(
  * ---------
  *  1. `withoutComments` first. Marker prose in this tree quotes both ink and ground class
  *     names by necessity, and an unfiltered walk reports phantom pairings from comments.
- *  2. Opening tags are anchored on a NAMED-tag regex with a lookahead, never a bare `<`, so a
- *     TypeScript generic or a `a < b` comparison cannot start a tag scan; each is read with
- *     the length-bounded `readOpeningTag` above, never a `[^>]*` regex (measured in 88-21:
+ *  2. Opening tags are anchored on a NAMED-tag regex with a lookahead, never a bare `<`; each is
+ *     read with the length-bounded `readOpeningTag` above, never a `[^>]*` regex (measured in 88-21:
  *     that form matched 0 of 14 real controls here, because every className in this repo sits
- *     on a different line from its opening tag).
+ *     on a different line from its opening tag). The anchor keeps a spaced `a < b` comparison
+ *     from ever opening a frame. A TypeScript generic (`useRef<HTMLDivElement>(null)`) or an
+ *     unspaced comparison CAN open one, because `OPEN_TAG` needs only a letter after the angle
+ *     bracket: that is a phantom frame, never popped, which sets no ground and is not terminal,
+ *     so it contributes nothing to any row. Pinned by
+ *     src/test-utils/sourceScan.parity.test.ts ("W069: a TypeScript generic opens a phantom frame").
  *  3. Each non-self-closing tag pushes a stack frame recording EVERY ground candidate it sets
  *     — token, chunk identity and line — not just the first.
  *  4. Each RESTING ink class emits a row carrying the candidates from the nearest ancestor
@@ -553,14 +573,16 @@ function classSites(
  *     attempted — whether two arms of a ternary can be live together is not knowable from
  *     source, and pretending otherwise is how a scan starts lying.
  *
- * KNOWN LIMITATIONS — SEVEN, and this list is the gate's honesty
- * --------------------------------------------------------------
+ * KNOWN LIMITATIONS — ELEVEN, and this list is the gate's honesty
+ * ---------------------------------------------------------------
  *  1. COMPONENT-SET GROUND is invisible. A ground applied by a component (`<Card>`,
  *     `<Modal.Body>`) is not a class in any opening tag this walk reads.
- *  2. FUNCTION-RETURNED / CLASS-CONSTANT GROUND is invisible. The live instance is
- *     `SuggestionCard.js`'s `getScoreColor()` — declared `:66`, returning
- *     `'bg-surface-muted border-line'` at `:67`, applied at `:75` — whose three forbidden-ink
- *     descendants the walk therefore cannot see.
+ *  2. FUNCTION-RETURNED / CLASS-CONSTANT GROUND is invisible. The live instance is a class
+ *     constant,
+ *     src/app/components/MemberChipStack.tsx ("const NEUTRAL_FILL = 'bg-surface-muted';"),
+ *     and so is the ink beside it: both are referenced through `cn(...)`, never spelled inside
+ *     one opening tag, so the walk sees neither. The file records this itself, at
+ *     src/app/components/MemberChipStack.tsx ("which is limitation 2 of that gate").
  *  3. RAW-PALETTE INK is invisible. Only ink expressed as a semantic token is resolved; ink
  *     written `text-<hue>-<n>` is not (87 occurrences in non-test `src/`, concentrated in
  *     `gameDetail/page.js`, `userProfile/page.js` and `ManageMembers.js`). That population is
@@ -571,20 +593,47 @@ function classSites(
  *     arm and the ground arm are mutually exclusive) must be excluded BY NAME by the consumer,
  *     never reasoned away here.
  *  5. A CONDITIONALLY-PRESENT GROUND DOES NOT TERMINATE the walk. It contributes candidates
- *     and the walk continues to the parent. The live shapes are `EventScheduler.tsx:1091` and
- *     `Combobox.tsx:281`, where one arm sets a ground and the other sets none.
+ *     and the walk continues to the parent. The live shapes are
+ *     src/app/components/EventScheduler.tsx ("currentView === value ? 'bg-surface-muted text-content-primary' : ''")
+ *     and
+ *     src/components/ui/Combobox.tsx ("activeIndex === index && 'bg-surface-muted'"),
+ *     where one arm sets a ground and the other sets none.
  *  6. ALPHA IS INVISIBLE. This resolves TOKENS. An `opacity-*` utility, or a `text-*` / `bg-*`
  *     alpha modifier written with a slash, on the ink element OR ON ANY ANCESTOR composites
  *     the rendered colour — so a pairing that PASSES here can still fail WCAG 1.4.3 at render.
- *     Live specimen: `CalendarMonthView.js:246` (`isAdjacent ? 'opacity-60 ' : ''`) over the
- *     ink at `:259` (`isAdjacent ? 'text-content-muted' :`) — the SAME condition, so the two
- *     are genuinely co-live.
+ *     Live specimen:
+ *     src/app/components/CalendarMonthView.js ("isAdjacent ? 'opacity-60 ' : ''")
+ *     over the ink at
+ *     src/app/components/CalendarMonthView.js ("isAdjacent ? 'text-content-muted' :")
+ *     — the SAME condition, so the two are genuinely co-live.
  *  7. VARIANT-PREFIXED INK IS OUT OF SCOPE, as a declared exclusion and not a silent filter.
  *     `hover:` / `focus:` / `disabled:` / `aria-disabled:` ink emits NO row, exactly as a
  *     variant-prefixed ground is not a resting ground: D-16 is a rule about the RESTING state.
  *     Measured 2026-09-15: 30 variant-prefixed occurrences of D-16's forbidden set across
  *     non-test `src/`, of 72 variant-prefixed `text-content-*` overall. Whether any of them
  *     resolves onto a muted ground is UNKNOWN and out of this walk's scope.
+ *  8. REGEX LITERALS ARE NOT MODELLED. A regex literal containing two slashes in a row is read
+ *     as a line comment by `withoutComments` and `stringChunks`, which then drop the rest of
+ *     that line. Live instance:
+ *     src/lib/wcag.ts (".replace(/\//g, ' ')"),
+ *     rostered by
+ *     src/test-utils/sourceScan.parity.test.ts ("DECISION Phase 88.6.2-08 (W068): the one live divergence").
+ *  9. JSX TEXT IS READ AS CODE. Text between JSX tags is prose, but the lexers scan it as
+ *     source: a URL's two slashes start a line comment that drops the rest of the line, and an
+ *     apostrophe opens a string that swallows a className later on the same line. Either one
+ *     hides that line's ink from this walk.
+ *  10. A QUOTE INSIDE A COMMENT INSIDE AN INTERPOLATION flips string parity for the code after
+ *     it. The `${...}` scan in `stringChunks` does not skip comments, so an apostrophe in a
+ *     comment there opens a string, and the rest of the line is read inside-out.
+ *  11. TEMPLATE-LITERAL ESCAPES ARE DROPPED by `stringChunks`. Its template branch skips an
+ *     escape and appends nothing, so the characters either side of it merge into one token
+ *     (`a\nb` is read as `ab`). Measured case: src/components/ui/FetchErrorBanner.tsx,
+ *     3 prose tokens, no class token.
+ *
+ * 8-11 are the LEXER's, inherited by every consumer of `stringChunks` / `withoutComments`; each
+ * is pinned by a fixture in
+ * src/test-utils/sourceScan.parity.test.ts ("sourceScan lexer parity with the TypeScript parser"),
+ * and the suite's tree-wide arms red the first file that trips one.
  *
  * Because of 1, 2 and 4, a consumer must pair the class rule with a by-name roster so that the
  * two fail INDEPENDENTLY — a class rule alone goes green by seeing nothing.

@@ -73,7 +73,7 @@ const GRID_MAX_HEIGHT = '600px'; // parity with the outgoing h-[600px] container
 
 /**
  * The phone day column's height budget (UI-SPEC "Measured geometry budget", read from source):
- * 600px of modal (`Modal.tsx:345` `max-h-[90dvh]` at 667px tall) − ~61px header − 24px
+ * 600px of modal (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]") `max-h-[90dvh]` at 667px tall) − ~61px header − 24px
  * `Modal.Body p-3` − ~150px of mode toggle, legend and selected-time panel ≈ 365px for the strip
  * plus the column; the strip takes 56px (`h-14`) and 4px of separation, leaving ~305px.
  *
@@ -81,7 +81,7 @@ const GRID_MAX_HEIGHT = '600px'; // parity with the outgoing h-[600px] container
  * seam is mandatory here rather than optional, and why `scrollToTime` must land on peak
  * availability — the user opens onto six rows and they had better be the right six.
  *
- * The three inputs above are fixed by prior decisions (`Modal`'s `max-h-[90vh]`, its phone gutter
+ * The three inputs above are fixed by prior decisions (`Modal`'s max-h-[90dvh], src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"), its phone gutter
  * `w-[calc(100%-1.5rem)]`, and `Modal.Body`'s `p-3`). They are inputs to this number, NOT
  * variables — overriding any of them to buy height here re-opens DEF-88-17-01 / 88-32 ruling 6.
  */
@@ -168,7 +168,7 @@ function slotStartFor(day: Date, row: number): Date {
 
 /**
  * WeekGrid identifies a cell by the `data-coord="row:col"` attribute on its cell wrapper
- * (`WeekGrid.tsx:507`, `data-coord={coordKey(row, col)}`). The gesture machine resolves targets
+ * (src/app/components/heatmap/WeekGrid.tsx ("data-coord={coordKey(row, col)}")). The gesture machine resolves targets
  * to that raw string and hands it straight back, so this is the ONE place the format is decoded.
  * A malformed value resolves to null and every caller treats that as "not a cell" — never a throw.
  */
@@ -266,7 +266,7 @@ const NAV_BUTTON_CLASS =
    THE OVERRIDDEN PROPERTY IS `--color-bg-accent-subtle`, AND OVERRIDING THE `surface-*` NAME
    INSTEAD IS INERT. Carried from plan 88.1-13's MEASUREMENT of a real `next build` of this app, not
    from reading `globals.css`: the source declares the `@theme` key as
-   `--color-surface-accent-subtle: var(--color-bg-accent-subtle)` (`globals.css:405`), which reads
+   `--color-surface-accent-subtle: var(--color-bg-accent-subtle)` (src/app/globals.css ("--color-surface-accent-subtle: var(--color-bg-accent-subtle);")), which reads
    as though either name would work — but Tailwind v4 RESOLVES that one-level alias when it emits
    the utility, and the shipped rule is literally
        .bg-surface-accent-subtle{background-color:var(--color-bg-accent-subtle)}
@@ -274,7 +274,7 @@ const NAV_BUTTON_CLASS =
    this at the `surface-*` name would silently un-ship the owner's pick with nothing going red.
 
    THE SCOPE IS THE WHOLE SCHEDULER SUBTREE, WHICH IS A TRADE, NOT AN ACCIDENT: it is what lets the
-   desktop day header (`renderDayHeader`) and the phone strip cell (`SchedulerWeekStrip.tsx:188`,
+   desktop day header (`renderDayHeader`) and the phone strip cell (src/app/components/SchedulerWeekStrip.tsx ("today ? 'bg-surface-accent-subtle'"),
    `today ? 'bg-surface-accent-subtle'`)
    share one declaration, and both are today sites. The cost is that ANY FUTURE
    `bg-surface-accent-subtle` ADDED INSIDE THIS COMPONENT WOULD ALSO GET THE STRONGER TINT — today
@@ -284,14 +284,14 @@ const NAV_BUTTON_CLASS =
    CONTRAST, recorded so it is chosen with rather than around: the day-number `text-accent` over the
    light arm measures 1.72:1 (it was 1.93:1 at arm A), against the 4.5:1 AA floor — BOTH arms fail,
    and the owner picked the more visible of two failing values with that stated. Phase 88.3 owns the
-   ~15-site light `text-accent` census (`.planning/deferred/phase-88.3.md:63-82`, coordination
+   ~15-site light `text-accent` census (`.planning/deferred/phase-88.3.md`, coordination
    recorded by plan 88.1-06). DARK passes either way: 5.05:1 at arm B.
 
    ——— AMENDED Phase 88.3 (Req 5), original reasoning above KEPT AS HISTORY: that deferral is
    CLOSED. This site is RESOLVED, not inherited — the paragraph above shipped true and is now
    false, so it is amended rather than deleted.
    TAKEN: the day number moves from `text-accent` to `text-content-accent`, whose LIGHT value is
-   amber-800 `#92400e` (`globals.css:773`, `--amber-800: #92400e`, minted by plan 88.3-04).
+   amber-800 `#92400e` (src/app/globals.css ("--amber-800: #92400e;"), minted by plan 88.3-04).
    Measured 2026-08-26 against
    `src/lib/wcag.ts`: **5.69:1 on this amber-200 arm-B tint** — over the 4.5:1 AA floor — plus
    6.26 on the warm-100 page and 7.09 on the white card. The DARK arm is amber-500 on `#513902`
@@ -300,7 +300,7 @@ const NAV_BUTTON_CLASS =
    UNCHANGED, and this is the half a reader would get wrong: the owner-picked ARM B tint is NOT
    touched, and the `DECISION Phase 88-27 D-32` paired-ternary SHAPE is not touched either — only
    the class token inside the TRUE ARM moves. `accentSweep.test.ts` test 6 and
-   `tintTreatment.test.ts:299` (`expect(scheduler).toMatch(`) both pin that shape at this site.
+   src/app/tintTreatment.test.ts ("4. the three UI-SPEC §10.3 exemplars carry their designed treatment") (`expect(scheduler).toMatch(`) both pin that shape at this site.
    STILL REJECTED, and both are recorded because the SPEC listed this as an open fork and neither
    was needed: (a) LIGHTENING the owner-picked arm-B tint to buy the old amber a passing ratio —
    the owner judged that tint at 375px and a contrast fix must not silently re-open his pick;
@@ -321,7 +321,7 @@ export default function EventScheduler({
   heatmapData = null,
   // CAL-05: initial visual view ('week' | 'day'). Day-tap entry passes 'day' so the picker opens
   // focused on the tapped day. Honoured as a PROP contract, not for one caller — there are two
-  // producers (`groupHomePage/page.js:1279`, `initialVisualView={calendarEntryMode}`, and
+  // producers (src/app/groupHomePage/page.js ("initialVisualView={calendarEntryMode}"), and
   // `gameDetail/page.js`, anchor `initialVisualView={dateParam ? 'day' : undefined}`, the latter guarded by
   // DECISION Phase 65-03 EVT-05). Default 'week' keeps the header-button entry path unchanged.
   defaultView = 'week',
@@ -353,7 +353,7 @@ export default function EventScheduler({
   //       no-op anyway), and the blank-grid fix exists precisely because the grid is showing a
   //       week the data is not for. A SAME-week re-anchor has no consumer at all: it is the
   //       CR-01 defect. `createEvent.js` re-emits the FETCHED WEEK'S MONDAY as a fresh `Date`
-  //       after every heatmap fetch (`:359` -> `:840`), and in the day arm — the only arm below
+  //       after every heatmap fetch (src/app/components/createEvent.js ("monday: startOfWeek(anchor, { weekStartsOn: 1 }),") -> src/app/components/createEvent.js ("initialDate={calendarInitialDate}")), and in the day arm — the only arm below
   //       `md` — that moved the displayed day to Monday on every non-Monday.
   //
   // `initialDate` is therefore a HYBRID contract: neither a mount-only seed nor a controlled
@@ -893,8 +893,8 @@ export default function EventScheduler({
    * BOTH axes are pointed at the grid's own scroll container, and the edge bands are measured
    * from its rect. The hook's documented VERTICAL DEFAULT is the page — correct for the
    * full-page check-in grid it was extracted from, wrong here: this grid lives inside a Radix
-   * dialog whose content is `overflow-hidden` (`Modal.tsx:345`, `overflow-hidden rounded-[12px]`)
-   * with the body `overflow-y-auto` (`Modal.tsx:462`, `flex-1 overflow-y-auto`), so a page-level
+   * dialog whose content is `overflow-hidden` (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"), `overflow-hidden rounded-[12px]`)
+   * with the body `overflow-y-auto` (src/app/components/Modal.tsx ("function ModalBody("), `flex-1 overflow-y-auto`), so a page-level
    * scroll is either inert or scrolls the page BEHIND the
    * modal. The symptom of getting this wrong is a paint that works but stops dead at the visible
    * edge — the exact owner-reported symptom 87.8-14 was written to fix, reappearing in a new
@@ -1073,8 +1073,8 @@ export default function EventScheduler({
         // at 88-28 — a heatmap grid cell, the closest shipped precedent (88-28 standard); that file no
         // longer carries the string (it left with the 88.6 convergence, FE commit `ef216d1`). Without it these
         // gridcells are keyboard-focusable with only the UA default outline.
-        // `focus:outline-hidden` is deliberate and allowed; `focusAndMotionTreatment.test.ts`
-        // :20-24 says in its own words not to "fix" it to `outline-none`.
+        // `focus:outline-hidden` is deliberate and allowed;
+        // src/app/focusAndMotionTreatment.test.ts ("is DELIBERATELY still allowed and is NOT a defect") says in its own words not to "fix" it to `outline-none`.
         className:
           'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
         // `position: relative` is load-bearing, not styling: the count badge and the selection
@@ -1173,7 +1173,7 @@ export default function EventScheduler({
      (1) THE TREATMENT LANDS ON THE DAY HEADER, NOT THE COLUMN BODY. This is a NAMED NARROWING of
          SPEC Req 8's literal "today-COLUMN tint", chosen OVER filling the day's cells, on three
          grounds:
-           - it is the surface the owner ACTUALLY JUDGED. `.planning/deferred/phase-88.1.md:52,57-59`
+           - it is the surface the owner ACTUALLY JUDGED. planning:.planning/deferred/phase-88.1.md ("## [design/owner-ruled] Today-column tint strength")
              records "the today-column HEADER tint" plus a live dark-375px measurement —
              rgb(47,59,80) on the today header against rgb(35,45,62) on the other six. The D3 bar
              ("noticeable at a glance, not merely distinguishable on inspection") was set against a
@@ -1186,7 +1186,7 @@ export default function EventScheduler({
            - the paired ternary survives INTACT, at full measured strength, on a clean surface.
          THE ALTERNATIVE, if the owner wants column-wide at the 88.1-15 checkpoint: a 2px
          `--color-line-accent` column EDGE RULE, never a fill. That re-opens
-         `DECISION Phase 88-27 D-32 bucket B` (`CalendarListView.js:996`, which ruled a NEUTRAL
+         `DECISION Phase 88-27 D-32 bucket B` (src/app/components/CalendarListView.js ("DECISION Phase 88-27 (D-32 bucket B)"), which ruled a NEUTRAL
          rule OVER a coloured one), so it is a decision to raise, not a tweak to apply.
 
      (2) THE TWO TERNARIES ARE PAIRED AND MUTUALLY EXCLUSIVE — surface and day text switch together
@@ -1206,9 +1206,9 @@ export default function EventScheduler({
 
      (3) THE SURFACE HALF FULL-BLEEDS the header cell via `block -my-2 py-2`, chosen OVER adding a
          `dayHeaderClassName` seam to WeekGrid. WeekGrid owns the header cell and hardcodes
-         `bg-surface-card` and `py-2` on it (`WeekGrid.tsx:488`, `sticky top-0 z-20 bg-surface-card`);
+         `bg-surface-card` and `py-2` on it (src/app/components/heatmap/WeekGrid.tsx ("sticky top-0 z-20 bg-surface-card"));
          this seam hands back that cell's
-         CONTENT, and `WeekGrid.tsx:115-118` (SEAM 2) says in its own words that a ReactNode is required here
+         CONTENT, and src/app/components/heatmap/WeekGrid.tsx ("SEAM 2 (88.1-02, D-01) — custom day headers") says in its own words that a ReactNode is required here
          BECAUSE "the scheduler's header is a paired today ternary". The negative margin cancels the
          cell's padding so the tint covers the whole header rather than a chip around the label —
          a chip does not clear the D3 bar. A new seam would change a shared engine with other

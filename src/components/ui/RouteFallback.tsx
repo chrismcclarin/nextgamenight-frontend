@@ -6,7 +6,7 @@
  * Centred on the `bg-surface-page` ground, an accent spinner arc, and one 16px
  * secondary line naming what is loading. The 9 route `loading.tsx` files re-export
  * this in plan 88-09 instead of hand-rolling nine spinners (the shipped idiom it
- * codifies: `availability-form/[token]/page.js:163-167`).
+ * codifies: src/app/availability-form/[token]/page.js ("animate-spin rounded-full h-12 w-12 border-b-2 border-accent mx-auto")).
  *
  * Announced, not silent (AR R1-M18): the root is a `role="status"` live region with
  * an explicit `aria-label`. The label is spelled out rather than inferred from the

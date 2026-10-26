@@ -1,7 +1,7 @@
 import { test, expect, type CDPSession, type Locator, type Page } from '@playwright/test';
 // Plan 88.1-19 MEASUREMENT instruments — read-only, and deliberately NOT a spec file, so
 // Playwright's default testMatch cannot collect it as a suite. Every call below is an
-// attachment; none of them asserts anything. See `e2e/support/diagnostics.ts`.
+// attachment; none of them asserts anything. See e2e/support/diagnostics.ts.
 import {
   attachDiagnostics,
   formChildDeltas,
@@ -10,6 +10,7 @@ import {
   probeSchedulerGeometry,
   probeViewport,
 } from './support/diagnostics';
+import { assertTheme, forceLightMode } from './support/contrast';
 
 /** Arm-trace sample collected in-page by the plan 88.1-12 deviation-3 flash probe. */
 interface ArmSample {
@@ -30,8 +31,8 @@ declare global {
  *
  * WHY THIS FILE EXISTS. SPEC Req 3's stated acceptance is "the Playwright
  * create-event journey is green", but that journey deliberately clicks PAST the
- * scheduler: `e2e/create-event.spec.ts:31-37` switches to manual entry and fills
- * the datetime-local input. It would stay green with the scheduler completely
+ * scheduler: its shared drive, e2e/support/createEvent.ts ("export async function fillCreateEventFields("),
+ * switches to manual entry and fills the datetime-local input. It would stay green with the scheduler completely
  * broken, or absent. Every test below stays in VISUAL-CALENDAR mode; that single
  * difference is the point of the file.
  *
@@ -60,21 +61,21 @@ declare global {
  * only taps; the drag paths need real touch streams (`Input.dispatchTouchEvent`:
  * touchStart, ~400ms hold, stepped touchMoves, touchEnd). CDP requires chromium —
  * the phone project's explicit chromium override (playwright.config.ts D-14) is
- * what makes this possible. Proven idiom: `e2e/availability-grid-touch.spec.ts`,
+ * what makes this possible. Proven idiom: e2e/availability-grid-touch.spec.ts,
  * green since 87.8-14. (The helper's name is deliberately not spelled here so the
  * plan's absence grep measures the code, not its own description — the same
  * correction plan 88.1-07 made to its `rbc-` gate.)
  *
  * PROJECT GUARD: `journeys` and `phone` share `testMatch: /.*\.spec\.ts/`, so the
- * touch describe skips the DESKTOP project the way touch-targets.spec.ts:589
- * does (its R4/R6 phone-only skip). The mouse describe at the bottom inverts that guard — mouse
+ * touch describe skips the DESKTOP project the way
+ * e2e/touch-targets.spec.ts ("R4/R6 are phone-tenet requirements — phone project only") does (its R4/R6 phone-only skip). The mouse describe at the bottom inverts that guard — mouse
  * range-select is the phase's only analog-free mechanism and nothing else drives it end to end.
  *
  * SELECTOR NOTE: every interactive control is located by ROLE / LABEL / TEXT
  * ("Add New Game Event", "Switch to Manual Entry", `role=tab`, `role=columnheader`,
  * the verbatim "Selected Time:" panel). `[data-coord]` appears ONLY in the
  * geometry/painted-state probes — it is WeekGrid's own paint-resolution attribute
- * (`WeekGrid.tsx:507`, the same test-plumbing class as WriteCell's data-slot-id),
+ * (src/app/components/heatmap/WeekGrid.tsx ("data-coord={coordKey(row, col)}"), the same test-plumbing class as WriteCell's data-slot-id),
  * and `usePaintGesture` resolves targets through it, so a probe that used
  * anything else would not be measuring the mechanism under test.
  *
@@ -82,10 +83,10 @@ declare global {
  * directly (pitfall P5: no pin may assert the threshold NUMBERS; behaviour is
  * asserted relative to them, before/after).
  *
- * FIXTURES: `E2E_GROUP_ID` only — the same seeded id create-event.spec.ts:17 and
- * touch-targets.spec.ts:71 read (each a const from process.env.E2E_GROUP_ID). No new secret is
- * minted and no credential is written here. e2e is CI-only by design (playwright.config.ts:22-24,
- * intentionally absent locally): author locally, verify in the `phone` lane.
+ * FIXTURES: `E2E_GROUP_ID` only — the same seeded id e2e/create-event.spec.ts ("const groupId = process.env.E2E_GROUP_ID ?? '1';")
+ * and e2e/touch-targets.spec.ts ("const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';") read (each a const from process.env.E2E_GROUP_ID). No new secret is
+ * minted and no credential is written here. e2e is CI-only by design (the login credentials are absent
+ * locally, playwright.config.ts ("They are intentionally absent locally")): author locally, verify in the `phone` lane.
  */
 
 /* DECISION Phase 88.1-21 (88.1-CODE-REVIEW.md): NO `?? '1'` fallback here, chosen OVER keeping
@@ -98,7 +99,7 @@ declare global {
    deliberately — other specs' `?? '1'` is a separate decision with a separate owner. */
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '';
 
-// Repo idiom (e2e/auth.setup.ts:31-33): assert, name the var and its producer, never echo the
+// Repo idiom (e2e/auth.setup.ts ("Fail loudly (without echoing the values) if the CI secrets are missing.")): assert, name the var and its producer, never echo the
 // value. File-scope so all three test.describe blocks below are covered.
 test.beforeEach(() => {
   expect(
@@ -121,7 +122,7 @@ const SLOT_MINUTES = 30;
 // --- Vacuity guard -----------------------------------------------------------
 
 /** A zero-count locator makes every assertion after it vacuous — fail loudly AT
- *  THE LOCATOR instead. Same contract as touch-targets.spec.ts:79-82 (its guardResolved). */
+ *  THE LOCATOR instead. Same contract as e2e/touch-targets.spec.ts ("async function guardResolved(") (its guardResolved). */
 async function guardResolved(locator: Locator, what: string, atLeast = 1): Promise<void> {
   await expect(
     locator.first(),
@@ -153,7 +154,7 @@ const selectedTimeValue = (page: Page) =>
  * Open the create-event modal and STAY in visual-calendar mode.
  *
  * The "Add New Game Event" button lives on the GROUP HOME page, not on
- * /groupPlanning — create-event.spec.ts:19-24 (Group home hosts the button) records why.
+ * /groupPlanning — e2e/create-event.spec.ts ("whose CreateEvent mount only opens via email-CTA prefill") records why.
  */
 async function openVisualScheduler(page: Page): Promise<void> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
@@ -228,14 +229,14 @@ interface GridGeometry {
    * clamp gave `368.352 .. 667` — so the old filter admitted FIVE cells where only FOUR were
    * reachable, and a drag to the fifth landed on the Radix backdrop
    * (`div.fixed inset-0 z-50 bg-black/80`, `elementFromPoint` -> null). The modal is
-   * `max-h-[90vh] overflow-hidden`; the viewport is not the clip.
+   * max-h-[90dvh] overflow-hidden, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"); the viewport is not the clip.
    */
   visibleBand: { top: number; bottom: number; height: number };
 }
 
 /**
  * Resolve the scroll container STRUCTURALLY, never by class: it is the parent of
- * the `role="grid"` body (`WeekGrid.tsx:449-472`, ref={scrollContainerRef}). Everything is
+ * the `role="grid"` body (src/app/components/heatmap/WeekGrid.tsx ("ref={scrollContainerRef}")). Everything is
  * scoped to the open dialog so nothing outside the modal can be measured. CORRECTED by 88.6.1-24:
  * this used to say EventHeatmapBackground mounts a second WeekGrid on the page BEHIND the
  * modal; it renders ReadCells directly (no WeekGrid), INSIDE the modal, in manual mode only.
@@ -360,7 +361,7 @@ async function resetColumnScroll(page: Page): Promise<void> {
  *
  * Two gates, because either alone can lie:
  *   1. the Web Animations API — the Radix `zoom-in-95 / duration-200` open animation moves the
- *      whole dialog (`src/components/ui/dialog.tsx`), and `toBeVisible()` resolves at its START.
+ *      whole dialog (src/components/ui/dialog.tsx), and `toBeVisible()` resolves at its START.
  *      Infinite animations (spinners) are excluded or this would never resolve.
  *   2. a stability poll on the grid scroller's own top edge and the form's height. The window is
  *      deliberately LONGER than the 500ms debounce the known grower fires on: four identical
@@ -924,7 +925,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
        y=661.352 when the modal's reachable box ended at 632.648 — 28.704px outside it. What was
        actually under the finger there was `div.fixed inset-0 z-50 bg-black/80`, the Radix dialog
        BACKDROP, and `elementFromPoint` resolved to null. With no document-level `pointermove`
-       (`usePaintGesture.ts:511-512`, set only by the element-level onPointerMove; the document
+       (src/app/components/heatmap/usePaintGesture.ts ("st.lastY = event.clientY;"), set only by the element-level onPointerMove; the document
        listeners are pointerup and pointercancel only) `st.lastY` could never reach an edge position, so the rAF
        edge loop never engaged and the column moved 0px. The IMPLEMENTATION was exonerated by the
        same measurement (B2 refuted): the finger simply never landed on the grid.
@@ -1107,7 +1108,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     // and holds no selection state of its own (Phase 66-01). The two mode
     // controls are one button whose copy flips — "Switch to Manual Entry" /
     // "Switch to Visual Calendar" (createEvent.js, anchor 'Switch to Manual Entry') — located
-    // here by case-insensitive accessible name, the idiom create-event.spec.ts:34 uses.
+    // here by case-insensitive accessible name, the idiom e2e/support/createEvent.ts ("export async function switchToManualEntry(") uses.
     await dialog(page).getByRole('button', { name: /switch to manual entry/i }).click();
     const startInput = dialog(page).getByLabel(/start date & time/i);
     await guardResolved(startInput, 'the manual start date/time input');
@@ -1266,6 +1267,50 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
 // =============================================================================
 
 /**
+ * The day-labels gate, shared by the dark test in the phone describe below and its LIGHT variant
+ * (W47 part 1): call it after openVisualScheduler.
+ */
+async function expectDayLabelsComplete(page: Page): Promise<void> {
+  // The strip cell is `overflow-hidden`, so a label that no longer fits is
+  // clipped SILENTLY — scrollWidth vs clientWidth is what makes that visible.
+  // The stacked single-letter-over-date shape (copied verbatim from
+  // src/app/components/EventHeatmapBackground.js ("aria-label={dayNames[i]} tabIndex={-1}"), `role="columnheader" className="text-center"`) is the
+  // M-03 fix; this is its gate.
+  const clipping = await page.evaluate(() => {
+    const root = document.querySelector('[role="dialog"]');
+    const measure = (el: Element, what: string) => ({
+      what,
+      text: (el.textContent ?? '').trim(),
+      scrollWidth: (el as HTMLElement).scrollWidth,
+      clientWidth: (el as HTMLElement).clientWidth,
+    });
+    const out: Array<ReturnType<typeof measure>> = [];
+    root?.querySelectorAll('[role="tab"]').forEach((tab, i) => {
+      out.push(measure(tab, `strip cell ${i}`));
+      tab.querySelectorAll('span').forEach((span, j) => out.push(measure(span, `strip cell ${i} span ${j}`)));
+    });
+    root?.querySelectorAll('[role="columnheader"]').forEach((h, i) => out.push(measure(h, `day header ${i}`)));
+    return out;
+  });
+  expect(
+    clipping.length,
+    'no strip cells or day headers resolved — the truncation check would be vacuous',
+  ).toBeGreaterThan(0);
+  const clipped = clipping.filter((c) => c.clientWidth > 0 && c.scrollWidth > c.clientWidth + 1);
+  expect(
+    clipped,
+    `these labels are clipped at 375px (scrollWidth > clientWidth) — the M-03 truncation failure the stacked single-letter-over-date format exists to fix has regressed: ${JSON.stringify(clipped)}`,
+  ).toEqual([]);
+
+  // Positive half: the day column's header carries the full `dd EEE` text
+  // (plan 88.1-07's uneditable Layer-3 contract), not an ellipsised fragment.
+  await expect(
+    dialog(page).getByRole('columnheader'),
+    'the day column header is not the complete "dd EEE" string — a clipped header passes a scrollWidth check when the text itself was shortened',
+  ).toHaveText(/^\d{2} (Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
+}
+
+/**
  * MEASURED GEOMETRY AT 375x667 — the C6 coverage gap plan 88.1-02 handed forward
  * IN WRITING, and the second half of plan 88.1-12's deviation 4.
  *
@@ -1328,56 +1373,43 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
 
   test('day labels render complete — nothing is clipped at 375px (the M-03 failure)', async ({ page }) => {
     await openVisualScheduler(page);
+    await expectDayLabelsComplete(page);
+  });
 
-    // The strip cell is `overflow-hidden`, so a label that no longer fits is
-    // clipped SILENTLY — scrollWidth vs clientWidth is what makes that visible.
-    // The stacked single-letter-over-date shape (copied verbatim from
-    // EventHeatmapBackground.js:287-301, `role="columnheader" className="text-center"`) is the
-    // M-03 fix; this is its gate.
-    const clipping = await page.evaluate(() => {
-      const root = document.querySelector('[role="dialog"]');
-      const measure = (el: Element, what: string) => ({
-        what,
-        text: (el.textContent ?? '').trim(),
-        scrollWidth: (el as HTMLElement).scrollWidth,
-        clientWidth: (el as HTMLElement).clientWidth,
-      });
-      const out: Array<ReturnType<typeof measure>> = [];
-      root?.querySelectorAll('[role="tab"]').forEach((tab, i) => {
-        out.push(measure(tab, `strip cell ${i}`));
-        tab.querySelectorAll('span').forEach((span, j) => out.push(measure(span, `strip cell ${i} span ${j}`)));
-      });
-      root?.querySelectorAll('[role="columnheader"]').forEach((h, i) => out.push(measure(h, `day header ${i}`)));
-      return out;
+  // DECISION Phase 88.6.2-22 (W47): the day-labels gate also runs in LIGHT through a
+  // per-describe override (test.use colorScheme light, forceLightMode before navigation,
+  // assertTheme at runtime), chosen over changing a project's colorScheme, because
+  // playwright.config.ts ("colorScheme: 'dark', // DECISION Phase 87.7 D-11: pin dark, chosen OVER leaving")
+  // pins dark on both projects. One shared body (expectDayLabelsComplete), chosen over a copied
+  // test. colorScheme does not set the html class and the stored theme can outrank it, so
+  // without the runtime assertion a light run can silently be dark (the precedent is
+  // e2e/contrast.spec.ts ("test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {")).
+  // W47 part 2 (the paint-gesture loop) is a behaviour change, routed by plan 30 and not built
+  // here. Changing this is a decision, not a cleanup.
+  test.describe('day labels in the LIGHT theme (W47 part 1)', () => {
+    test.use({ colorScheme: 'light' });
+
+    test.beforeEach(async ({ page }) => {
+      await forceLightMode(page);
     });
-    expect(
-      clipping.length,
-      'no strip cells or day headers resolved — the truncation check would be vacuous',
-    ).toBeGreaterThan(0);
-    const clipped = clipping.filter((c) => c.clientWidth > 0 && c.scrollWidth > c.clientWidth + 1);
-    expect(
-      clipped,
-      `these labels are clipped at 375px (scrollWidth > clientWidth) — the M-03 truncation failure the stacked single-letter-over-date format exists to fix has regressed: ${JSON.stringify(clipped)}`,
-    ).toEqual([]);
 
-    // Positive half: the day column's header carries the full `dd EEE` text
-    // (plan 88.1-07's uneditable Layer-3 contract), not an ellipsised fragment.
-    await expect(
-      dialog(page).getByRole('columnheader'),
-      'the day column header is not the complete "dd EEE" string — a clipped header passes a scrollWidth check when the text itself was shortened',
-    ).toHaveText(/^\d{2} (Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
+    test('day labels render complete in LIGHT — nothing is clipped at 375px (W47 part 1)', async ({ page }) => {
+      await openVisualScheduler(page);
+      await assertTheme(page, 'light');
+      await expectDayLabelsComplete(page);
+    });
   });
 
   test('the day column scrolls INTERNALLY rather than growing the modal', async ({ page }) => {
     await openVisualScheduler(page);
 
-    // The modal stays inside its own `max-h-[90dvh]` budget (Modal.tsx:345).
+    // The modal stays inside its own `max-h-[90dvh]` budget, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col").
     const modalBox = await dialog(page).boundingBox();
     expect(modalBox, 'the create-event dialog has no boundingBox').not.toBeNull();
     const viewportHeight = await page.evaluate(() => window.innerHeight);
     expect(
       modalBox!.height,
-      `the create-event modal measures ${modalBox!.height}px tall against its max-h-[90vh] budget (${viewportHeight * 0.9}px) — the day column grew the modal instead of scrolling inside it, which re-opens DEF-88-17-01 / 88-32 ruling 6`,
+      `the create-event modal measures ${modalBox!.height}px tall against its max-h-[90dvh] budget, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]") (${viewportHeight * 0.9}px) — the day column grew the modal instead of scrolling inside it, which re-opens DEF-88-17-01 / 88-32 ruling 6`,
     ).toBeLessThanOrEqual(viewportHeight * 0.9 + 1);
 
     // ...and there is GENUINELY something to scroll. This is the half jsdom
@@ -1409,7 +1441,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
        A NULL PEAK IS A FIXTURE FAILURE, NOT A PASS: `peakScrollTime` is null
        whenever the group has no availability (createEvent.js, anchor: const peakScrollTime,
        its first two return-null guards), so a silent skip here would mean the fixture stopped seeding and nobody found
-       out. `scripts/e2e-fixtures.js` owns that invariant — see the block it
+       out. backend:Sonnet/scripts/e2e-fixtures.js owns that invariant — see the block it
        added for this case.
 
        RE-POINTED BY PLAN 88.1-18 (SPEC Req 13), and the OLD SHAPE IS THE LESSON:
@@ -1583,7 +1615,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
     );
     expect(
       distinctRows.length,
-      `the seeded availability is DAY-INVARIANT — all seven strip days peak on the same grid row (${JSON.stringify(distinctRows)}), which makes the day-vs-week distinction this case exists to prove unobservable. Fix the FIXTURE, never this assertion. Owners: periodictabletopbackend_v2/Sonnet/scripts/seed-sample-data.js:722-749 (Alice evenings all week, Bob weekday afternoons, Charlie weekend daytime, Diana two evenings — the shape that makes weekdays and weekends peak differently) and periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js, whose no-availability fallback block seeds peaks that VARY by weekday (Tue/Thu 19:00, Mon/Wed/Fri 13:00, Sat/Sun 18:00) — so if that block ran, it is not your cause; grep its "DECISION Phase 88.1-20 (WR-04)" marker rather than a line number, which rots. Corrected 88.1-21: this message used to describe that fallback as uniform across the week, which sent fixers at an already-correct file. Per-day readings: ${JSON.stringify(perDay)}`,
+      `the seeded availability is DAY-INVARIANT — all seven strip days peak on the same grid row (${JSON.stringify(distinctRows)}), which makes the day-vs-week distinction this case exists to prove unobservable. Fix the FIXTURE, never this assertion. Owners: backend:Sonnet/scripts/seed-sample-data.js ("Alice — evenings all week (the Task-3 / M6 exerciser)") and the three pattern blocks after it (Bob weekday afternoons, Charlie weekend daytime, Diana two evenings; with Alice's evenings, the shape that makes weekdays and weekends peak differently) and periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js, whose no-availability fallback block seeds peaks that VARY by weekday (Tue/Thu 19:00, Mon/Wed/Fri 13:00, Sat/Sun 18:00) — so if that block ran, it is not your cause; grep its "DECISION Phase 88.1-20 (WR-04)" marker rather than a line number, which rots. Corrected 88.1-21: this message used to describe that fallback as uniform across the week, which sent fixers at an already-correct file. Per-day readings: ${JSON.stringify(perDay)}`,
     ).toBeGreaterThanOrEqual(2);
 
     for (const day of perDay) {
@@ -1909,7 +1941,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler mouse range-select (desktop
     // MEASUREMENT ONLY (plan 88.1-19). The desktop `endRow` failure (4 where 5 was
     // expected) is the SAME mechanism as case 3's at a different viewport — and the
     // 1280x720 numbers are what PROVE that rather than assert it. At 720px the
-    // `max-h-[90vh]` modal is 648px tall and centred, so the clipped band and
+    // max-h-[90dvh] modal, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"), is 648px tall and centred, so the clipped band and
     // `gridGeometry`'s viewport-clamped band diverge by a different amount than they do
     // at 667px; that difference is the point of measuring both arms.
     await attachDiagnostics(testInfo, 'desktop-pre-drag', {

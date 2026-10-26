@@ -1,0 +1,36 @@
+diff --git a/playwright.config.ts b/playwright.config.ts
+index 1111111..2222222 100644
+--- a/playwright.config.ts
++++ b/playwright.config.ts
+@@ -33 +32,0 @@ export default defineConfig({
+-  retries: process.env.CI ? 1 : 0,
+@@ -36,0 +36 @@ export default defineConfig({
++  retries: process.env.CI ? 1 : 0,
+@@ -40 +40 @@ export default defineConfig({
+-  timeout: 30_000,
++  timeout: 45_000,
+diff --git a/e2e/zz-fixture-steady.spec.ts b/e2e/zz-fixture-steady.spec.ts
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/e2e/zz-fixture-steady.spec.ts
+@@ -0,0 +1,5 @@
++import { test, expect } from '@playwright/test';
++// The config sets retries: 1 in CI; a .retry( written in a comment is never a finding.
++test('steady', async ({ page }, testInfo) => {
++  expect(testInfo.retry).toBe(0);
++});
+diff --git a/e2e/zz-fixture-lowered.spec.ts b/e2e/zz-fixture-lowered.spec.ts
+index 6666666..7777777 100644
+--- a/e2e/zz-fixture-lowered.spec.ts
++++ b/e2e/zz-fixture-lowered.spec.ts
+@@ -3 +2,0 @@ import { test } from '@playwright/test';
+-test.describe.configure({ retries: 2 });
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 4444444..5555555 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -718 +718,2 @@ jobs:
+-        run: npx playwright test --project=journeys
++        # never add --retries to this command (a comment line is never a finding)
++        run: npx playwright test --project=journeys --reporter=list

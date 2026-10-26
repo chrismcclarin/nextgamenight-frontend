@@ -23,7 +23,7 @@
  *
  * Plan 88.3-04 minted `--color-accent-text` with the design reference's meaning (amber-800 light /
  * amber-500 dark) and bridged it into `@theme inline` as `--color-content-accent`
- * (`globals.css:355-356`). This plan moves the 27 failing call sites onto it. This suite is what
+ * (src/app/globals.css ("--color-content-accent: var(--color-accent-text);")). This plan moves the 27 failing call sites onto it. This suite is what
  * stops them drifting back.
  *
  * DECISION Phase 88.3 (Req 4): the zero-offenders test is scoped to an explicit `MIGRATE_FILES`
@@ -39,7 +39,7 @@
  * records: the lexer crosses newlines (every className in this repo sits on a different line from
  * its opening tag), it recurses into `${...}` interpolations (three of this sweep's sites live in
  * a ternary branch inside a template literal), and it DROPS COMMENTS. The last one is not
- * theoretical: `EventScheduler.tsx:245`, `:248` and `SchedulerWeekStrip.tsx:159` are marker prose
+ * theoretical: src/app/components/EventScheduler.tsx ("CONTRAST, recorded so it is chosen"), src/app/components/EventScheduler.tsx ("TAKEN: the day number") and src/app/components/SchedulerWeekStrip.tsx ("silently outrank") are marker prose
  * quoting `text-accent`, and a grep census reads 35 lines where the class-string population is 32.
  */
 import fs from 'node:fs';
@@ -47,7 +47,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { lineAt, stringChunks } from '../test-utils/sourceScan';
+import { STRIP_VARIANTS, lineAt, stringChunks } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -86,13 +86,10 @@ const MIGRATE_FILES = [
 /** `app/Header.js` is deliberately ABSENT from `MIGRATE_FILES` — see the marker above. */
 const HEADER = 'app/Header.js';
 
-/** The richer variant strip from `tintTreatment.test.ts:113` — six sites carry `hover:`. */
-const VARIANT_PREFIX = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
-
 const read = (rel: string): string => fs.readFileSync(path.join(SRC, rel), 'utf8');
 
 /** The base token of a class, with every variant prefix and a leading `!` removed. */
-const base = (token: string): string => token.replace(VARIANT_PREFIX, '');
+const base = (token: string): string => token.replace(STRIP_VARIANTS, '');
 
 /**
  * Every use of a class whose BASE is exactly one of `tokens`, anywhere in a string literal or a
@@ -169,9 +166,9 @@ describe('Req 4/5 accent sweep — every failing light-surface accent site reads
   });
 
   it('3. marker prose quoting the token does NOT trip the gate', () => {
-    // The three real comment shapes on the migrate list: `EventScheduler.tsx:245`/`:248` (block
+    // The three real comment shapes on the migrate list: src/app/components/EventScheduler.tsx ("CONTRAST, recorded so it is chosen") and src/app/components/EventScheduler.tsx ("TAKEN: the day number") (block
     // continuation lines starting with a backtick or a word — ci.yml's anchored comment filter
-    // drops neither) and `SchedulerWeekStrip.tsx:159`.
+    // drops neither) and src/app/components/SchedulerWeekStrip.tsx ("silently outrank").
     expect(
       legacyAccentUses(
         '/* CONTRAST: the day-number `text-accent` over the light arm measures 1.72:1,\n   against the 4.5:1 AA floor. Phase 88.3 owns the light `text-accent` census.\n*/\nconst x = 1;',
@@ -218,8 +215,8 @@ describe('Req 4/5 accent sweep — every failing light-surface accent site reads
 
   it('6. Req 5 — the today ternary moved its TOKEN, not its SHAPE', () => {
     // `DECISION 88-27 D-32` is literal: "token VALUE only, never the ternary shape". Pinned at
-    // the production site (`EventScheduler.tsx:998`), paired-ternary and mutually exclusive —
-    // NOT a static surface with an appended tint. `tintTreatment.test.ts:269` pins the same
+    // the production site (src/app/components/EventScheduler.tsx ("today ? 'text-content-accent' : 'text-content-primary'")), paired-ternary and mutually exclusive —
+    // NOT a static surface with an appended tint. src/app/tintTreatment.test.ts ("'text-content-accent' : 'text-content-primary'/);") pins the same
     // shape independently, one layer up.
     const scheduler = read('app/components/EventScheduler.tsx');
     expect(scheduler).toMatch(/today \? 'text-content-accent' : 'text-content-primary'/);

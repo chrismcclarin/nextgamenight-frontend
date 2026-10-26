@@ -17,7 +17,7 @@
  *     gridlines and event blocks. Delete the word and the rejected alternative (opaque
  *     `bg-green-100..500`) loses its reason, and that file's own banner says re-unifying the
  *     ramps is "a design decision, not a convenience."
- *   - `borderExplicitness.test.ts:405-408` — the `.rbc-time-content > * + * > *` fixture is the
+ *   - src/app/borderExplicitness.test.ts ("universalBorderColourRules('.rbc-time-content") — the `.rbc-time-content > * + * > *` fixture is the
  *     REGRESSION PIN for a real first-run false positive in the border-rule parser. That
  *     selector ends in `*`, so an "any `*` anywhere" predicate flagged it; the predicate was
  *     tightened rather than the rule allow-listed. Renaming the fixture silently weakens the
@@ -30,7 +30,7 @@
  * erased — but it is ENUMERATED, so it cannot quietly grow back into a live dependency.
  *
  * WHY EXECUTABLE. Phase 88's own ledger records ELEVEN defective grep gates (see
- * `tintTreatment.test.ts:20-40` for the eleventh, and DEF-88-21-01 / DEF-88-24-04 /
+ * src/app/tintTreatment.test.ts ("That is the eleventh defective grep gate recorded in Phase 88") for the eleventh, and DEF-88-21-01 / DEF-88-24-04 /
  * DEF-88-25-02 / DEF-88-27-01 / DEF-88-28-01). A gate that lives only in a SUMMARY is a gate
  * nobody runs. Every assertion below was NEGATIVE-CHECKED at execution time by planting the
  * violation it forbids and watching it redden; the plants are recorded in `88.1-16-SUMMARY.md`.

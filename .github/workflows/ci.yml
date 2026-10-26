@@ -31,10 +31,16 @@ on:
 # Anchored to STEP NAMES, not line numbers, on purpose — a line cite inside the file it
 # describes is wrong the next time anything above it is edited. The complete set of actions
 # is `actions/checkout@v4` x4 (quality's "Checkout (full history ...)", drift-gate-registry's
-# "Checkout", and e2e's "Checkout frontend" + "Checkout backend"), `actions/setup-node@v4` x2
-# ("Setup Node 20" in quality and in e2e) and two `actions/upload-artifact@v4` ("Upload
-# Playwright failure evidence" and "Upload desktop month-tile screenshots (always — PNG only,
-# never .auth/ — T-82-12)"). AMENDED 2026-09-28 (Phase 88.6 plan 55, gap-lap ML-17): this
+# "Checkout", and e2e's "Checkout frontend" + "Checkout backend"), `actions/setup-node@v4` x3
+# ("Setup Node 20" in quality, drift-gate-registry and e2e) and two `actions/upload-artifact@v4` ("Upload
+# Playwright failure evidence (age ciphertext only — never .auth/ — T-82-12)" and "Upload desktop
+# month-tile screenshots (always — age ciphertext only, never .auth/ — T-82-12)").
+# AMENDED 2026-10-24 (Phase 88.6.2 plan 27, T-88.6-G34): both uploads now ship only
+# enc/<artifact>/ — age ciphertext written by the run-only steps "Encrypt Playwright failure
+# evidence" and "Encrypt desktop month-tile screenshots" (scripts/encrypt-evidence.sh, recipient
+# .github/evidence-recipient.txt); they use no action and no token; age comes from the Ubuntu
+# archive through the run-only step "Install age (evidence encryption — T-88.6-G34)" — so the
+# scope is unchanged. AMENDED 2026-09-28 (Phase 88.6 plan 55, gap-lap ML-17): this
 # census said "one" until the second upload landed in the same commit; neither reaches
 # `.auth/` (the failure step uploads `playwright-report/` + `test-results/`, the new one only
 # `test-results/**/month-tile-desktop-*.png`), both authenticate with ACTIONS_RUNTIME_TOKEN,
@@ -215,6 +221,44 @@ jobs:
           fi
           echo "Permanence-copy gate passed — the group-delete flow makes no permanence claim."
 
+      - name: "Phase 88.6.2 proofs (phase PR only) - comment-only diff, anchor cites, cite ratchet, no retry bump"
+        # DECISION Phase 88.6.2-07 (D-22): a phase-branch-gated step inside quality OVER a required check of
+        # its own. The comment-only proof (SPEC R11) fails by design on every behaviour PR, so the step runs
+        # only on this phase's pull request; on every other PR it is skipped and quality is unchanged. The
+        # prefix keeps the hyphen that ends feat/phase-<number>- (the branch execute-phase creates), so a
+        # later phase numbered 88.6.20 or above never matches.
+        # DECISION Phase 88.6.2-07 (placement): the LAST step of quality, behind a pristine-tree guard, OVER
+        # the first step after npm ci. Lint and both typechecks were measured to leave the checkout pristine
+        # and no unit test writes into it, so running last costs nothing and every earlier result still
+        # reports on the phase PR. If an earlier step ever writes a tracked or unignored file, the guard
+        # fails loudly instead of letting the comment-only proof judge a modified tree.
+        # Fail closed: bash with set -euo pipefail, no pipes, no continue-on-error; each proof exits non-zero
+        # on any failure, and each self-test runs before its real run so a broken checker never vouches for
+        # the tree. BASE_SHA comes in through env and the branch name is read only by the if, so no event
+        # text is pasted into the script. The ratchet test itself also runs in Unit tests on every PR. The P2 test names --test-reporter=tap on purpose: Node 24 prints the spec reporter by default.
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'feat/phase-88.6.2-')
+        shell: bash
+        timeout-minutes: 10
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE_SHA" ]; then echo "::error::BASE_SHA is empty, so the phase proofs have no pull request base to compare against"; exit 1; fi
+          DIRTY=$(git status --porcelain --untracked-files=all)
+          if [ -n "$DIRTY" ]; then
+            echo "::error::the checkout is not pristine: an earlier step wrote these files, so the comment-only proof would judge a modified tree. Move this step above the step that wrote them."
+            echo "$DIRTY"
+            exit 1
+          fi
+          node scripts/comment-only-diff.mjs --self-test
+          node scripts/comment-only-diff.mjs "$BASE_SHA"
+          node scripts/anchor-cite-check.mjs --self-test
+          node scripts/anchor-cite-check.mjs
+          node scripts/line-cite-census.mjs --self-test
+          node scripts/line-cite-census.mjs
+          node --test-reporter=tap scripts/no-retry-bump.test.mjs "$BASE_SHA"
+          echo "Phase 88.6.2 proofs passed: comment-only diff, anchor cites, cite ratchet, no retry bump."
+
   # DECISION Phase 88-32 ruling 5 (DEF-88-29-03): the drift-gate registry is its OWN JOB,
   # required in branch protection — over staying a step inside `quality`, and over a
   # CODEOWNERS rule. The turtle this closes: a commit deleting the registry step AND its
@@ -233,7 +277,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: "Drift-gate registry — Phase 88's source-scan guards must exist and stay armed"
+        # DECISION Phase 88.6.2-26 (D-12): one shared .mjs manifest read by a dependency-free node runner IN THIS REQUIRED JOB, chosen OVER keeping the rows here with a wider fixture parser (the self-check would live in quality, so deleting the fixture test turned it off) and OVER deriving the list from the import graph (a deleted gate drops out of a derived list: no deletion guard). No npm ci: builtins only, so a required check never waits on the registry or installs anything. The vitest lockstep pins these lines but does not re-run the tree check, so a manifest mutation reds this job alone. Moving the rows back into ci.yml is a decision, not a cleanup.
+        #
         # WHY THIS STEP EXISTS AT ALL (Phase 88 plan 29).
         #
         # Phase 88 recorded FOURTEEN defective grep gates across its own plans
@@ -250,11 +301,14 @@ jobs:
         # this pipeline notices a missing test file.
         #
         # WHAT IT CLAIMS, AND WHAT IT DOES NOT.
-        # It claims each guard still EXISTS and has not been gutted to a stub. It does NOT
-        # claim the assertions inside are the right ones — every suite carries its own
-        # anti-vacuity guards for that, and duplicating them here would be a second copy to
-        # drift. Stating the limit is part of the point: a gate that overclaims is how this
-        # phase got fourteen of them.
+        # It claims each guard still EXISTS and has not been gutted to a stub, and (since
+        # Phase 88.6.2-26) that every file under src and e2e which imports the shared scanner
+        # src/test-utils/sourceScan.ts is registered: a gates row with a floor, or a helperOnly
+        # row with a reason. A new scan gate shipped unregistered reds this job, as does a
+        # registered file that was deleted or gutted. It does NOT claim the assertions inside
+        # are the right ones — every suite carries its own anti-vacuity guards for that, and
+        # duplicating them here would be a second copy to drift. Stating the limit is part of
+        # the point: a gate that overclaims is how this phase got fourteen of them.
         #
         # The counts are per-FILE and are FLOORS set at the current count. Per-file rather
         # than a total, deliberately: a single "there are >= 100 guard assertions" number is
@@ -262,129 +316,16 @@ jobs:
         # would pass if another grew. Adding a test to a suite is never a red build; removing
         # one is, and that is the intended asymmetry.
         #
-        # AMENDMENT Z — Phase 88.3.1 plan 01 (M21, owner-ruled 2026-08-29). Two rows added:
-        # `src/lib/colourDistance.test.ts` and `src/lib/groupColourPresets.test.ts`. The first
-        # is the FE half of a CROSS-REPO fixture: the same four ΔE2000 rows are asserted in
-        # backend tests/unit/colourDistance.test.js, and that pair of suites is the only thing
-        # standing between a divergent CIEDE2000 implementation and a permanently wrong
-        # `Groups.background_color` remap (margins of 0.65 and 0.72). Unregistered, the FE half
-        # was deletable with no red build — which would have left the backend asserting a
-        # contract with nobody on the other end. The second owns the eight-preset palette's
-        # ΔE / hue-gap / contrast floors.
-        #
-        # SEQUENCING, so nobody "fixes" this the wrong way: `groupColourPresets.test.ts` is
-        # minted by plan 88.3.1-03, which runs in wave 2 of the SAME phase branch. Between
-        # wave 1 and wave 2 this row is deliberately ahead of the file, and the existence check
-        # below (plus its lockstep twin in ci-grep-gate.fixture.test.ts) is RED on purpose.
-        # That red is the gate working. Do NOT delete the row to make it green — land plan 03.
-        #
-        # AMENDMENT — Phase 88.8 plan 13 (owner-ruled 2026-09-04). Two rows added:
-        # `src/lib/syntheticAddress.test.ts` and
-        # `src/app/components/EmailAddressSection.test.tsx`.
-        #
-        # The helper's suite is the one that MUST be here, and it is registered on the
-        # same argument Amendment Z used for colourDistance.test.ts. It is the ONLY thing
-        # in either repo pinning the BROAD `@auth0` test against a later narrowing to
-        # `@auth0.local`. `DECISION Phase 88.2 NIX-AUTH0` is a WRITTEN decision, not an
-        # enforced one — nothing else reds if someone "tidies" the helper to the narrow
-        # test, and the narrow test silently stops guarding every `@auth0`-shaped
-        # placeholder that is not exactly `.local`. The consequence is not cosmetic: the
-        # provisioning sentinel would be rendered in the profile header, rendered in the
-        # Email section, and transmitted as the admin mail's Reply-To. Unregistered, that
-        # guard was deletable with a fully green build.
-        #
-        # No `grep` gate is added on the helper's IMPLEMENTATION, deliberately:
-        # `'@auth0.local'` contains `'@auth0'`, so a substring grep is satisfied by exactly
-        # the narrow form it would be meant to forbid. The suite's bare-`@auth0` case is
-        # the gate.
-        #
-        # The section's own suite is registered for the ordinary reason: it is the only
-        # coverage of the eight-state machine, of the four outcome literals that must not
-        # collapse into one another, and of the DR-C no-native-`disabled` sweep.
-        #
-        # AMENDMENT — Phase 88.6 plan 55 (owner-ruled 2026-09-28, NEW OWNER ITEM 4). Five rows
-        # added — the source-scan gates Phase 88.6 itself minted, none of which was registered:
-        #   src/app/groundInk.test.ts                  plan 09 — ground-aware ink (D-16)       floor 8
-        #   src/app/errorEnvelopeReads.test.ts         plan 14 — default-deny envelope reads   floor 16
-        #   src/app/components/btnCensus.test.tsx      plan 10 — the .btn element census       floor 21
-        #   src/app/shadowTier.test.ts                 plan 12 — off-tier shadow families       floor 8
-        #   src/app/interpolatedClassCensus.test.ts    plan 47 — interpolated Tailwind classes  floor 4
-        # Each floor is MEASURED, not quoted: `grep -cE '^[[:space:]]*(it|test)\(' <file>` (the
-        # same regex this loop uses) on FE e882822, 2026-09-28. Unregistered, each was deletable
-        # with a green build — the exact hole this step exists to close, reopened by the phase
-        # that was converging on it. Ledger rows R103 / R104 / H08 in 88.6-46-SUMMARY.md.
-        #
-        # AMENDMENT — Phase 88.6 close (2026-09-29, gsd-verifier finding on plans 58/60). Two rows
-        # added — the guards the review fix-now set minted, unregistered exactly as plan 55's five were:
-        #   src/components/ui/Button.e2eReplica.test.ts               plan 58 — E10 replica lockstep (H1)          floor 5
-        #   src/app/components/CalendarListView.emptyStates.test.tsx  plan 60 — desktop 'No events' + loading arms  floor 1
-        # Floors MEASURED with this loop's regex on FE d69e681, 2026-09-29. Button.e2eReplica is H1's ONLY
-        # durable guard: unregistered, deleting it would have re-opened the stale-replica hole with a green build.
-        #
-        # AMENDMENT — Phase 88.6 gap plan 61 (review round 2 #18 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING).
-        # Two rows added — the guards on the magic-link Sentry egress fixes:
-        #   src/lib/sentryClientReplayGate.test.ts   R-7 (cb5c403) + plan 61 H-1 — replay gate + tracing wiring  floor 9
-        #   src/lib/sentry.scrub.test.ts             Phase 84 T-84-01 + plan 61 H-1 — the scrub functions         floor 39
-        # Floors MEASURED with this loop's regex after plan 61's edits (FE branch over 1eb23fd), 2026-09-29.
-        # They are R-7's and H-1's ONLY durable guards: unregistered, either file was deletable with a green
-        # build, exactly as the two rows `85b0263` registered were.
-        #
-        # The lockstep self-test `src/lib/ci-grep-gate.fixture.test.ts` parses THIS step's
-        # file list out of this workflow, located by the step name above, and asserts every
-        # listed file exists and really carries at least the stated number of assertions.
-        # Renaming this step without updating the name string there throws loudly.
+        # WHERE THE ROWS LIVE. The rows, their floors and every amendment note that once sat
+        # here live in scripts/drift-gate-registry.manifest.mjs, read by the runner
+        # scripts/drift-gate-registry.mjs in this step and by the lockstep self-test
+        # src/lib/ci-grep-gate.fixture.test.ts in quality, which also pins this job's lines.
+        # The self-test runs first, so a broken runner never vouches for the tree.
+        shell: bash
         run: |
-          FAIL=0
-          # <path>:<minimum assertion count>
-          for entry in \
-            "src/app/components/controlSizeFloor.test.tsx:5" \
-            "src/app/cardPaddingIdiom.test.ts:4" \
-            "src/app/typeScaleTouchedSurfaces.test.ts:7" \
-            "src/app/borderExplicitness.test.ts:12" \
-            "src/app/tintTreatment.test.ts:8" \
-            "src/app/fetchErrorTreatment.test.ts:8" \
-            "src/app/focusAndMotionTreatment.test.ts:18" \
-            "src/app/components/keyboardOperability.test.tsx:7" \
-            "src/app/components/availabilityGridColumns.test.ts:6" \
-            "src/app/decisionMarkers.test.ts:11" \
-            "src/app/rawColorValues.test.ts:7" \
-            "src/app/tokenContrast.test.ts:28" \
-            "src/app/surfaceHoverSweep.test.ts:7" \
-            "src/app/darkChromeLegibility.test.ts:7" \
-            "src/app/accentSweep.test.ts:6" \
-            "src/app/statusTextSweep.test.ts:5" \
-            "src/app/legacyOverlayClass.test.ts:5" \
-            "src/app/nativeDialogs.test.ts:7" \
-            "src/app/groupColourRendering.test.ts:10" \
-            "src/lib/colourDistance.test.ts:9" \
-            "src/lib/groupColourPresets.test.ts:12" \
-            "src/lib/syntheticAddress.test.ts:8" \
-            "src/app/components/EmailAddressSection.test.tsx:50" \
-            "src/app/groundInk.test.ts:8" \
-            "src/app/errorEnvelopeReads.test.ts:16" \
-            "src/app/components/btnCensus.test.tsx:21" \
-            "src/app/shadowTier.test.ts:8" \
-            "src/app/interpolatedClassCensus.test.ts:4" \
-            "src/components/ui/Button.e2eReplica.test.ts:5" \
-            "src/app/components/CalendarListView.emptyStates.test.tsx:1" \
-            "src/lib/sentryClientReplayGate.test.ts:9" \
-            "src/lib/sentry.scrub.test.ts:39" \
-            "src/test-utils/sourceScan.ts:0" \
-          ; do
-            f="${entry%:*}"; min="${entry##*:}"
-            if [ ! -f "$f" ]; then
-              echo "::error::Drift gate MISSING: $f — a Phase 88 guard was deleted or renamed. Restore it, or delete its row here and record the decision in the phase's deferred-items ledger. Do not silently drop the row."
-              FAIL=1
-              continue
-            fi
-            n=$(grep -cE '^[[:space:]]*(it|test)\(' "$f" || true)
-            if [ "$n" -lt "$min" ]; then
-              echo "::error::Drift gate GUTTED: $f has $n assertions, expected at least $min. Assertions were removed from a Phase 88 drift guard."
-              FAIL=1
-            fi
-          done
-          [ "$FAIL" -eq 0 ] || exit 1
-          echo "Drift-gate registry passed — every Phase 88 source-scan guard is present and armed."
+          set -euo pipefail
+          node scripts/drift-gate-registry.mjs --self-test
+          node scripts/drift-gate-registry.mjs
 
   e2e:
     name: e2e
@@ -636,6 +577,37 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      # DECISION Phase 88.6.2-27 (D-19): age installed ONCE, here, before the tests, chosen OVER an
+      # install inside each encrypt step (the always() month-tile step would run apt after a green
+      # run and a failing run would install twice). Fail closed holds: if this step fails the tests
+      # never run and the encrypt steps find no input; scripts/encrypt-evidence.sh exits on 'no
+      # input' before its age check. Two apt lines, not &&: under set -e a failing non-final &&
+      # member does not stop the script. Moving the install back into the encrypt steps is a
+      # decision, not a cleanup. No `if:`, no `||`, no continue-on-error: an install failure reds
+      # the job (T-88.6-G34; lockstep-pinned by src/lib/ci-grep-gate.fixture.test.ts).
+      - name: Install age (evidence encryption — T-88.6-G34)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y age
+
+      # DECISION Phase 88.6.2 code review (B-ML1, B-ML3): the encrypt script's 14-case --self-test
+      # and its P3 node test run here, once, directly after age is installed and before the tests,
+      # chosen OVER leaving them to a local run. The real encrypt steps pass whether or not the
+      # zip and error-context.md exclusions, the --match filter or the fail-closed trap still
+      # work, so without this step a broken exclusion keeps every required check green. Placed
+      # before the tests so a broken checker reds the job before it vouches for any evidence.
+      # The env prefix keeps this line out of the encrypt-invocation reader in
+      # src/lib/ci-grep-gate.fixture.test.ts, which pairs every real invocation with an upload.
+      # No `if:`, no `||`, no continue-on-error (lockstep-pinned by that same file).
+      - name: Self-test the evidence encryption (encrypt-evidence.sh --self-test and its P3 test)
+        shell: bash
+        run: |
+          set -euo pipefail
+          AGE_BIN=age AGE_KEYGEN_BIN=age-keygen bash scripts/encrypt-evidence.sh --self-test
+          node --test --test-reporter=tap scripts/encrypt-evidence.test.mjs
+
       # DECISION Phase 87.7 D-13/D-15: the PR lane is pinned with `--project`, chosen OVER a
       # separate report-only / continue-on-error mobile job. The rejected pattern is the exact
       # one Phase 88.4 structurally BANNED in the backend repo (`verify-gate-armed.js` fails CI
@@ -699,6 +671,7 @@ jobs:
       #   undocumented internal whose only reader is `@playwright/test` 1.60
       #   playwright/lib/index.js:624, so it is NOT the structural arm: the `error-context.md`
       #   exclusion on the upload is.
+      # [AMENDED 2026-10-24 — Phase 88.6.2-27: the error-context.md exclusion now lives in scripts/encrypt-evidence.sh, run by the encrypt step before the upload; the upload ships age ciphertext only.]
       # - `--no-deps` on the journeys+phone invocation is LOAD-BEARING: without it Playwright
       #   re-runs `setup` as a dependency of both projects, WITHOUT the env var, and logs in twice.
       #   The storageState the first invocation wrote under .auth/ carries over on disk.
@@ -750,49 +723,82 @@ jobs:
       - name: D10 executed-count floor — touch-targets.spec.ts's D10 arm must actually run in the journeys project
         run: node scripts/gate-c-executed-floor.mjs playwright-results.json --spec e2e/touch-targets.spec.ts --project journeys --title-prefix D10 --floor 3
 
-      - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
+      - name: Executed-count floors — every e2e spec with a conditional skip must actually run in its project
+        # DECISION Phase 88.6.2-26 (gate-c): one step reading scripts/gate-c-floors.manifest.mjs, chosen
+        # OVER one step per spec (the 88.6-55 flags stay for Gate C and D10). Phase 88.6.2-26 (SPEC R8,
+        # register row 64): Gate C and D10 were the only two of the 51 specs that call test.skip,
+        # test.fixme, describe.skip or describe.fixme to have an executed floor; for the other 50 a
+        # flipped isMobile predicate or a dropped --project zeroed them with this job green. Each
+        # entry is a spec + project and its measured executed count (never above its --list count);
+        # the script reds NOT COLLECTED, ABOVE LISTED or DISARMED, collected before one exit. Spec
+        # matching is on a path boundary. The lockstep tests in src/lib/ci-grep-gate.fixture.test.ts
+        # pin this run line, the entry shape and the population. No `if:`, for Gate C's reason above.
+        run: node scripts/gate-c-executed-floor.mjs playwright-results.json --config scripts/gate-c-floors.manifest.mjs
+
+      # DECISION Phase 88.6.2-27 (D-17): tar piped straight into age with no plaintext copy,
+      # exclusions as find predicates AND tar --exclude, fail closed (any failure leaves nothing to
+      # upload), chosen OVER a plaintext fallback, OVER per-step inline copies (two exclusion lists
+      # drift) and OVER a passphrase in a GitHub secret (P3). Changing this is a decision, not a
+      # cleanup. The FE repo is PUBLIC and the phone project is authenticated, so a failure
+      # screenshot is a logged-in page: the encrypt step below packs the evidence into
+      # enc/playwright-report/playwright-report.tar.age, encrypted to .github/evidence-recipient.txt,
+      # and the upload after it ships only that directory. If tar, age or the script's post-check
+      # fails, the step fails, its EXIT trap removes enc/playwright-report/, and the upload finds
+      # nothing (if-no-files-found: ignore). Decrypt recipe: README.md, section "## CI".
+      # The CI reporter is 'github' (no playwright-report/ dir) — failure
+      # evidence (screenshots, error-context.md) lands in test-results/.
+      # NOT .auth/ — never upload the appSession storageState.
+      # 88.6 CR-01: NO zip archives either. A Playwright trace.zip records
+      # every action's parameters in plain text, and a retried login journey
+      # would carry the typed E2E_AUTH0_PASS. The setup project now records
+      # no trace (playwright.config.ts) — this exclusion is the independent
+      # second arm for the TRACE channel.
+      # 88.6-61 (review round 2 H-5): NO error-context.md either. Its aria
+      # snapshot serialises typed input values (the password included), and
+      # trace settings never reached it — CR-01's "cannot leave a PUBLIC repo"
+      # was false for that channel until this exclusion. With BOTH exclusions,
+      # neither a trace nor a page snapshot can leave a PUBLIC repo. The
+      # journeys/phone error-context.md is excluded too (the error text stays in
+      # the CI log), chosen OVER a setup-directory-only glob: Playwright derives
+      # that directory name from the test title, so a rename silently stops a
+      # per-directory glob matching. The exclusions are tar --exclude arguments
+      # and find predicates inside scripts/encrypt-evidence.sh, applied to every
+      # input. Lockstep-pinned by
+      # src/lib/ci-grep-gate.fixture.test.ts ("88.6 CR-01", "88.6 R2-H5").
+      - name: Encrypt Playwright failure evidence (age, fail closed — T-88.6-G34)
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/encrypt-evidence.sh --name playwright-report --recipients .github/evidence-recipient.txt -- playwright-report/ test-results/
+
+      - name: Upload Playwright failure evidence (age ciphertext only — never .auth/ — T-82-12)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          # The CI reporter is 'github' (no playwright-report/ dir) — failure
-          # evidence (screenshots, error-context.md) lands in test-results/.
-          # NOT .auth/ — never upload the appSession storageState.
-          # 88.6 CR-01: NO zip archives either. A Playwright trace.zip records
-          # every action's parameters in plain text, and a retried login journey
-          # would carry the typed E2E_AUTH0_PASS. The setup project now records
-          # no trace (playwright.config.ts) — this exclusion is the independent
-          # second arm for the TRACE channel.
-          # 88.6-61 (review round 2 H-5): NO error-context.md either. Its aria
-          # snapshot serialises typed input values (the password included), and
-          # trace settings never reached it — CR-01's "cannot leave a PUBLIC repo"
-          # was false for that channel until this exclusion. With BOTH exclusions,
-          # neither a trace nor a page snapshot can leave a PUBLIC repo. The
-          # journeys/phone error-context.md is excluded too (the error text stays in
-          # the CI log), chosen OVER a setup-directory-only glob: Playwright derives
-          # that directory name from the test title, so a rename silently stops a
-          # per-directory glob matching. No comment lines inside the path block —
-          # there a `#` line would be read as a glob. Lockstep-pinned by
-          # src/lib/ci-grep-gate.fixture.test.ts ("88.6 CR-01", "88.6 R2-H5").
-          path: |
-            playwright-report/
-            !playwright-report/**/*.zip
-            !playwright-report/**/error-context.md
-            test-results/
-            !test-results/**/*.zip
-            !test-results/**/error-context.md
+          path: enc/playwright-report/
           retention-days: 7
           if-no-files-found: ignore
 
       # Phase 88.6 plan 55 (NEW OWNER ITEM 4, ledger R140): `always()` because the month-tile
-      # screenshots are review evidence on a GREEN run, which `failure()` above never uploads; the
-      # glob is PNG-only under test-results/, so it cannot reach `.auth/user.json` (repo root) or
-      # playwright-results.json (repo root) — pinned in src/lib/ci-grep-gate.fixture.test.ts.
-      - name: Upload desktop month-tile screenshots (always — PNG only, never .auth/ — T-82-12)
+      # screenshots are review evidence on a GREEN run, which `failure()` above never uploads.
+      # Since Phase 88.6.2-27 the PNG-only filter is the encrypt step's --match (a basename glob
+      # under test-results/), so it cannot reach `.auth/user.json` (repo root) or
+      # playwright-results.json (repo root), and the upload ships only the age ciphertext in
+      # enc/month-tile-desktop-screenshots/ — pinned in src/lib/ci-grep-gate.fixture.test.ts.
+      - name: Encrypt desktop month-tile screenshots (always — age, fail closed — T-88.6-G34)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/encrypt-evidence.sh --name month-tile-desktop-screenshots --recipients .github/evidence-recipient.txt --match 'month-tile-desktop-*.png' -- test-results/
+
+      - name: Upload desktop month-tile screenshots (always — age ciphertext only, never .auth/ — T-82-12)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: month-tile-desktop-screenshots
-          path: test-results/**/month-tile-desktop-*.png
+          path: enc/month-tile-desktop-screenshots/
           retention-days: 7
           if-no-files-found: warn

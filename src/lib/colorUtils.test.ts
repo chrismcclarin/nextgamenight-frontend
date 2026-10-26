@@ -361,9 +361,9 @@ describe('the two-value preset table renders through the right brightness tiers 
 });
 
 describe('every shipped preset’s DARK BAND is dark (pins groupHomePage’s light arm)', () => {
-  // `groupHomePage/page.js:661-670` builds a dark-ground text arm for the header
+  // src/app/groupHomePage/page.js ("const darkArm = !ground") builds a dark-ground text arm for the header
   // on the assumption that every preset's rendered DARK-mode ground is dark, and
-  // names THIS test as its only guard. If a future palette edit ever ships a
+  // names THIS test as its only guard (src/app/groupHomePage/page.js ("LIMIT, recorded because it is the thing that will break first")). If a future palette edit ever ships a
   // genuinely light `dark` band, that assumption becomes wrong silently — the
   // header would paint white-on-light. This is the tripwire: it must go red
   // HERE, in the shared colour module, before that code inherits the wrong
@@ -512,7 +512,7 @@ describe('resolveGroupGround — Phase 88.3.1 SPEC Req 4 / D-04', () => {
     // THE VALUE MUST BE UNIQUE IN THIS MODULE. `resolveGroupGround` reports each
     // distinct unrecognised value at most ONCE per page load (CLUSTER A), and the
     // memo is module state that outlives a single spec. This spec used to use
-    // `'sunset'` and broke the moment the throttle landed, because `:486` above
+    // `'sunset'` and broke the moment the throttle landed, because this file ("for (const value of ['blue', '#123456'")
     // iterates `'sunset'` for an unrelated assertion and consumed the warn first.
     // Anything asserting ON the warn needs its own `skew-preset-*` value.
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
@@ -685,7 +685,8 @@ describe('groupInkVars — Phase 88.3.1 D-04 / UI-SPEC 3.4', () => {
   });
 
   it('returns {} for a legacy hex on a CARD — it must NOT re-derive (AMENDMENT 3)', () => {
-    // grouplist.js:311-314 and groupHomePage/page.js:409-415 have ALREADY computed
+    // src/app/components/grouplist.js ("const cardTextDark = getTextStyle(hasBgImage, ground);") and
+    // src/app/groupHomePage/page.js ("const headerTitleVars = themedTextVars(") have ALREADY computed
     // getTextStyle/getSubtitleStyle against these same grounds in the same render.
     // Re-deriving produces byte-identical values at extra cost, and is the second
     // half of the AMENDMENT 1 collision. {} leaves their themedTextStyleVars

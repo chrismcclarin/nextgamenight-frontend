@@ -3,7 +3,7 @@
 /**
  * MemberChipStack — the overlapping member-initials stack on home group cards (SPEC Req 5).
  *
- * Replaces the member NAME-PILL row at `grouplist.js:477-489`. Collapsed it is one tap target
+ * Replaces the member NAME-PILL row, mounted now at src/app/components/grouplist.js ("<MemberChipStack"). Collapsed it is one tap target
  * showing up to four 32px initial circles plus a `+N`; expanded it is a wrapped row of
  * `ClickableMemberName` triggers that open the shipped friend popover.
  *
@@ -98,7 +98,7 @@ const CHIP_BASE =
  * this one's 1.83:1 — statistically the same edge — and needs a derived colour plus a new CSS
  * variable for no visible gain.
  *
- * The ink rides the SHIPPED fallback chain (`grouplist.js:612`), not a fresh one: on photo
+ * The ink rides the SHIPPED fallback chain (src/app/components/grouplist.js ("...groupInkVars(cardGround, {")), not a fresh one: on photo
  * cards `groupInkVars` returns `{}`, so the group-ink property is absent and the card's own
  * computed text colour behind it takes over. Both halves fork in the CSS cascade rather than
  * through `useTheme` — same reason as the shipped marker at `EventScheduler.tsx`.
@@ -158,7 +158,7 @@ function ringCue(status: MemberStatus): string {
 
 /**
  * One 32px circle. Purely presentational and ALWAYS `aria-hidden` — identity reaches assistive
- * tech through a separate text carrier at the call site, exactly as `UserChip.tsx:84-94` pairs
+ * tech through a separate text carrier at the call site, exactly as src/components/ui/UserChip.tsx ("{label}</span>") pairs
  * its aria-hidden initials glyph with a visible name span. Both fill arms and all three ring
  * states live here and only here, so the collapsed stack and the expanded row cannot drift.
  */
@@ -250,7 +250,7 @@ const COLLAPSED_LIMIT = 4;
  * (no layout) and invisible in review (the class string looks fine on its own line), which is
  * why it is one constant and why `MemberChipStack.test.tsx` test 38 reads the source.
  *
- * Shipped precedent: `ClickableMemberName.js:333` pairs `relative` with its own hit-extension
+ * Shipped precedent: src/app/components/ClickableMemberName.js ("ref={addButtonRef}") pairs `relative` with its own hit-extension
  * pseudo on the same element. Splitting them apart again is a decision, not a cleanup.
  */
 const HIT_EXTENSION = "relative after:absolute after:-inset-1.5 after:content-['']";
@@ -361,7 +361,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
 
   /*
    * DECISION Phase 88.5 (D-13, UI-SPEC 6.5.7): `+N` is derived from the SELF-FILTERED array,
-   * chosen OVER carrying the shipped raw-length arithmetic at `grouplist.js:486` verbatim.
+   * chosen OVER carrying the shipped raw-length arithmetic at `grouplist.js` (pre-88.5) verbatim.
    *
    * The shipped form is correct only ON THE PREMISE that the viewer is a member of the list —
    * 4 shown out of `length - 1` non-self members leaves `length - 5`. That premise holds on the
@@ -415,7 +415,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
   /*
    * DECISION Phase 88.5 (RESEARCH Pitfall 6): `stopPropagation` on BOTH the click and the key
    * handler of BOTH span controls is LOAD-BEARING, not defensive. The enclosing card at
-   * `grouplist.js:359-370` is itself a `role="button"` with its own Enter/Space handler, so
+   * src/app/components/grouplist.js ("if (node) cardTitleNodesRef.current.set(group.id, node);") is itself a `role="button"` with its own Enter/Space handler, so
    * without this a tap on the `+N` chip navigates to the group page instead of expanding, and
    * Enter does the same — the keyboard twin of the tap-stealing bug 87.8 D-13 fixed.
    *
@@ -438,7 +438,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
    * a decision, not a cleanup.
    *
    * Space is `preventDefault`ed because its default on a non-button is PAGE SCROLL. Enter is
-   * too, for symmetry with the shipped handler at `ClickableMemberName.js:457-465`.
+   * too, for symmetry with the shipped handler at src/app/components/ClickableMemberName.js ("onKeyDown: (e) => {").
    *
    * And the keys are handled EXPLICITLY because these are spans: a native `<button>`
    * synthesises a click for Enter and Space, a `role="button"` element synthesises NEITHER. A
@@ -465,7 +465,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
          * SPAN, chosen OVER a real `<button>`. It renders inside `grouplist.js`'s own
          * `role="button"` card, so a native button here is the axe `nested-interactive` rule —
          * and there is no axe pin on the home group list today that would catch it. This is the
-         * shipped precedent at `ClickableMemberName.js:438-445`, whose marker states the same
+         * shipped precedent at src/app/components/ClickableMemberName.js ("chosen OVER a real"), whose marker states the same
          * reason. Converting it to a `<button>` is a decision, not a cleanup.
          */
         <span
@@ -487,7 +487,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
            * — under the 44px floor this project treats as a floor and not a target, on a
            * group shape (the viewer plus one other person) that is ordinary rather than rare.
            * This is the same `min-h-11 min-w-11` pairing the Calendar button carries at
-           * `UserHomePage.js:357` and for exactly the same reason.
+           * src/app/userHome/UserHomePage.js ("aria-label={calendarButtonLabel}") and for exactly the same reason.
            *
            * It costs nothing in the common case: at two members the stack is already 60px
            * wide, so the utility is inert. At one member it adds 8px of INVISIBLE tappable
@@ -521,7 +521,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
       {/*
         The panel is ALWAYS rendered so `aria-controls` always resolves to a real element; only
         its CHILDREN are conditional, so a collapsed stack mounts no triggers. Pattern copied
-        from `CalendarListView.js:522-543`; `rowId` is `useId`-derived so two group cards on the
+        from src/app/components/CalendarListView.js ("The region is ALWAYS rendered so"); `rowId` is `useId`-derived so two group cards on the
         same page cannot collide on the same target.
 
         DECISION Phase 88.5 (UI-SPEC 6.5.2): the row's 12px wrap is load-bearing, not styling.
@@ -551,7 +551,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                * (its early return, anchor `if (status === 'unknown') {`) — no role, no tabIndex, no handler. Routing
                * through it produces the right outcome BY ACCIDENT, and a future reader would
                * reasonably "fix" that into something focusable. REJECTED explicitly:
-               * focusable-but-inert, which `keyboardOperability.test.tsx:172` test 5 exists to
+               * focusable-but-inert, which src/app/components/keyboardOperability.test.tsx ("5. ANTI-VACUITY: the pin fails for a control that is focusable but inert") test 5 exists to
                * fail — a dead stop in the tab order is worse than being skipped.
                *
                * A-8 does not apply to this chip (it is not interactive, so it has no
@@ -592,7 +592,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                *
                * The identity+status carrier sits INSIDE the trigger's children, which is where
                * `ClickableMemberName` renders them, so it becomes the trigger's accessible
-               * name. Same composition `UserChip.tsx:84-94` uses: an aria-hidden glyph paired
+               * name. Same composition src/components/ui/UserChip.tsx ("{label}</span>") uses: an aria-hidden glyph paired
                * with a separate text carrier, rather than an `aria-label` that would have to be
                * kept in sync with the visible content.
                */

@@ -277,6 +277,27 @@ function openTags(src: string): { line: number; offset: number; tag: string; att
   return out;
 }
 
+// DECISION Phase 88.6.2-21 (W057): the slot host is the nearest preceding Button's OWN open tag
+// (asChild in its attributes, not self-closed, still open at the child), chosen OVER the old test
+// of asChild anywhere in the 1500 chars before the child, which exempted a raw Link placed after a
+// CLOSED asChild Button (IN-409). The 1500-char bound stays as the outer limit. Loosening any
+// condition is a decision, not a cleanup.
+//
+// src is the comment-stripped text, tags is openTags(src), offset is the child's open-tag offset.
+function slottedInAsChild(
+  src: string,
+  tags: { offset: number; tag: string; attrs: string }[],
+  offset: number,
+): boolean {
+  const btnAt = src.slice(0, offset).lastIndexOf('<Button');
+  if (btnAt < 0 || offset - btnAt >= 1500) return false;
+  const host = tags.find((t) => t.offset === btnAt && t.tag === 'Button');
+  if (!host) return false;
+  if (!/\basChild\b/.test(host.attrs)) return false;
+  if (host.attrs.trimEnd().endsWith('/')) return false;
+  return !src.slice(btnAt, offset).includes('</Button>');
+}
+
 /**
  * The group-page RENDER TREE, per owner ruling A (2026-08-27).
  *
@@ -291,12 +312,17 @@ function openTags(src: string): { line: number; offset: number; tag: string; att
  * component would shrink the scanned population to zero and stay green forever, which
  * is the failure mode this phase's gate ledger records fifteen times.
  */
-const RING_SCAN_FILES: { file: string; floor: number }[] = [
-  { file: 'app/groupHomePage/page.js', floor: 7 },
-  { file: 'app/components/EventCalendar.js', floor: 1 },
-  { file: 'app/components/CalendarMonthView.js', floor: 5 },
-  { file: 'app/components/CalendarListView.js', floor: 2 },
-  { file: 'app/components/GroupGamesList.js', floor: 8 },
+// DECISION Phase 88.6.2-21 (W129): per-file and total focusable counts compared EXACTLY, chosen
+// OVER the >= floors, which never followed the +1 groupHomePage gained between 2026-08-27 and
+// 2026-09-16 (WINDOWS #129) and so would pass a focusable moving out of a file with slack.
+// groupHomePage is 8, not 7, for that reason. Moving a count is part of the commit that moves a
+// focusable.
+const RING_SCAN_FILES: { file: string; count: number }[] = [
+  { file: 'app/groupHomePage/page.js', count: 8 },
+  { file: 'app/components/EventCalendar.js', count: 1 },
+  { file: 'app/components/CalendarMonthView.js', count: 5 },
+  { file: 'app/components/CalendarListView.js', count: 2 },
+  { file: 'app/components/GroupGamesList.js', count: 8 },
   /* ADDED by plan 88.6-20 task 3 (wave 7, 2026-09-16), D-20 (iv). `GroupSettings.js` was
      MISSING from this list, so CR-14's selection/focus split — the decision that a SELECTED
      swatch and a FOCUSED swatch must read as two different affordances — had no source pin
@@ -316,7 +342,7 @@ const RING_SCAN_FILES: { file: string; floor: number }[] = [
      to `<Button>`; the ninth was the default-picture tile, which never wore `.btn` and had no
      ring from any source. It was fixed in this commit rather than rostered — see the DECISION
      marker at that button. */
-  { file: 'app/components/GroupSettings.js', floor: 10 },
+  { file: 'app/components/GroupSettings.js', count: 10 },
 ];
 
 /**
@@ -1242,7 +1268,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // weakening. These three used to carry `text-sm md:text-base`, and this line pinned them
     // because `typeScaleTouchedSurfaces.test.ts`'s population is `<h1..h6>` only and nothing else
     // watched them. On a `<Button>` a text-size utility is DEAD — `.btn` declares `font-size`
-    // unlayered (`globals.css:2201`) and an `@layer utilities` class cannot beat it — so keeping
+    // unlayered (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and an `@layer utilities` class cannot beat it — so keeping
     // the old assertion would have required three dead classes to stay. They are deleted, and
     // `btnCensus.test.tsx`'s "no text-size utility on a `<Button>`" rule is the guard that
     // replaces this one tree-wide. What is asserted here is that this file honours it.
@@ -1647,8 +1673,8 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      * `TILE_TEXT_LIGHT_BG`, because every light surface is W3C-brighter than 128
      * (measured 211-227; `groupColourPresets.test.ts` test 11 pins the tier per
      * preset). `#1e40af` being BLUE rather than near-black is a deliberate shipped
-     * decision (`colorUtils.js:69-71`, "Intentionally different from
-     * getContrastColor"), flagged to the owner as one line at the Req 10 check and
+     * decision (src/lib/colorUtils.js ("Intentionally different from getContrastColor.")),
+     * flagged to the owner as one line at the Req 10 check and
      * NOT changed by this plan. If he picks near-black, this test still passes and the
      * literal below moves with the pole.
      */
@@ -1704,10 +1730,11 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
 
     const offenders: string[] = [];
     let scanned = 0;
-    for (const { file, floor } of RING_SCAN_FILES) {
+    for (const { file, count } of RING_SCAN_FILES) {
       const src = code(file);
       let found = 0;
-      for (const { line, offset, tag, attrs } of openTags(src)) {
+      const tags = openTags(src);
+      for (const { line, offset, tag, attrs } of tags) {
         const isAnchor = tag === 'a' && /\bhref\s*=/.test(attrs);
         const isFocusable =
           tag === 'button' ||
@@ -1726,13 +1753,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         // exempted, on the strength of the enclosing `<Button>`, which is looked up rather than
         // assumed: the nearest preceding `<Button` open tag must itself carry `asChild`.
         if (tag === 'Link' || isAnchor) {
-          const before = src.slice(0, offset);
-          const btnAt = before.lastIndexOf('<Button');
-          const slotted =
-            btnAt > -1 &&
-            offset - btnAt < 1500 &&
-            /\basChild\b/.test(src.slice(btnAt, offset));
-          if (slotted) continue;
+          if (slottedInAsChild(src, tags, offset)) continue;
         }
         if (!attrs.includes('focus-visible:ring-')) {
           offenders.push(`${file}:${line} <${tag}> has no focus-visible:ring-* class`);
@@ -1742,8 +1763,8 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       // Anti-vacuity, per file: counted 2026-08-27 on the shipped tree.
       expect(
         found,
-        `${file} should expose at least ${floor} focusables — a lower count means the population moved out of this file and the scan above is passing on a shrunken set`,
-      ).toBeGreaterThanOrEqual(floor);
+        `${file} should expose exactly ${count} focusables; a different number means the population moved into or out of this file, so re-count and move this entry in the same commit`,
+      ).toBe(count);
     }
     // A browser-default outline is what a MISSING ring paints, and no contrast probe
     // reads that as a failure — which is why this finding survived every gate until a
@@ -1758,10 +1779,12 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // above). THE ELEVENTH IS NOT, AND IS RECORDED RATHER THAN ABSORBED: the ORIGINAL FIVE now
     // total 24, not the 23 counted in 2026-08-27, so one focusable was added to them by some
     // plan between then and now without this floor moving. It could not have red — the floor
-    // is `>=`, which is the same silently-green trap `EXPECTED_MIN_PRIMITIVES` carries — so
+    // was `>=`, which is the same silently-green trap the heading-primitive floor in
+    // src/app/typeScaleTouchedSurfaces.test.ts ("const EXPECTED_PRIMITIVES =") carried until
+    // 88.6.2-15 made it exact (commit e2912df), and this total has been exact since 88.6.2-21 — so
     // this is a re-measurement, not a regression, and the +1 is stated here so the next reader
     // does not have to re-derive why 23 + 10 != 34.
-    expect(scanned, 'the six-file scan must see a real population').toBeGreaterThanOrEqual(34);
+    expect(scanned, 'the six-file scan must see a real population').toBe(34);
   });
 
   it('22b. Gate B — the group-colour SWATCH carries the project focus ring, and its selection cue is in a different slot', () => {
@@ -1824,6 +1847,43 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(chipTag, 'the hover border treatment was lost in the W76 move').toContain(
       'group-hover:border-content-primary',
     );
+  });
+
+  it('22c. the asChild slot exemption holds only INSIDE an open asChild Button (W057)', () => {
+    // Five synthetic sources pin the rule with no plant in a real file. Each case puts one
+    // Link after a Button shape and asks slottedInAsChild whether the Link is slotted.
+    const cases: { name: string; fx: string; want: boolean }[] = [
+      {
+        name: 'a Link inside an open asChild Button is slotted',
+        fx: '<Button asChild className="x">\n  <Link href="/a">a</Link>\n</Button>',
+        want: true,
+      },
+      {
+        name: 'a Link after the asChild Button closed is not slotted',
+        fx: '<Button asChild className="x">\n  <Link href="/a">a</Link>\n</Button>\n<Link href="/b">b</Link>',
+        want: false,
+      },
+      {
+        name: 'a Link after a self-closed asChild Button is not slotted',
+        fx: '<Button asChild className="x" />\n<Link href="/b">b</Link>',
+        want: false,
+      },
+      {
+        name: 'a Link inside a Button without asChild is not slotted',
+        fx: '<Button className="x">\n  <Link href="/a">a</Link>\n</Button>',
+        want: false,
+      },
+      {
+        name: 'a Link more than 1500 chars after an open asChild Button is not slotted',
+        fx: `<Button asChild className="x">\n${' '.repeat(1600)}<Link href="/a">a</Link>\n</Button>`,
+        want: false,
+      },
+    ];
+    for (const { name, fx, want } of cases) {
+      const fxTags = openTags(fx);
+      const at = fx.lastIndexOf('<Link');
+      expect(slottedInAsChild(fx, fxTags, at), name).toBe(want);
+    }
   });
 
   it('23. the month view\'s clickable divs are focusable, and the day cell\'s keyboard target is INSIDE it', () => {
@@ -2406,7 +2466,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      * apart by the collapsed-only `separated` prop.
      *
      * WHY THE ARM IS GATED ON `!hasBgImage` AT THE CALL SITE, AND WHY THAT IS PINNED HERE.
-     * Verified 2026-09-01 at `colorUtils.js:739`: `groupInkVars` returns `{}` for a card with a
+     * Verified 2026-09-01 at src/lib/colorUtils.js ("if (hasBackgroundImage) return {};"): `groupInkVars` returns `{}` for a card with a
      * background PHOTO, so the tinted chip's `var(--group-ink-l, var(--t-color-l))` chain falls
      * through to `--t-color-l` — which `getTextStyle`'s image branch sets to WHITE. White
      * initials on a `bg-white/85` chip. The neutral arm is opaque and needs no ink derivation,

@@ -5,7 +5,7 @@
 // filter or the sort order drift here, the bar advertises a number the sheet does not
 // show — which is the exact failure PATTERNS §S5 exists to prevent. These pins are also
 // the contract the card's extraction was checked against: the shipped inline block at
-// `UpcomingEventsCard.js:123-136` behaved EXACTLY this way, boundary-for-boundary.
+// src/app/components/UpcomingEventsCard.js behaved EXACTLY this way, boundary-for-boundary.
 //
 // Every pin runs against a FIXED clock and never reads the wall clock, so nothing here
 // drifts with the calendar (the eventFormUtils.test.ts idiom).

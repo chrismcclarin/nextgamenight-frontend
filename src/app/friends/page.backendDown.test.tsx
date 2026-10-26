@@ -9,16 +9,16 @@
 //
 // ROOT CAUSE (re-diagnosed 2026-08-20 per the Fork A ruling; the earlier
 // "connection-refused never terminalizes" claim was FALSE):
-//   1. The friends + sent fetchers fire on `[user]` (page.js:77-81), NOT on
+//   1. The friends + sent fetchers fire on `[user]` (src/app/friends/page.js ("fetchAllData();")), NOT on
 //      identity, so with the backend unreachable they FAIL FAST and
 //      `friendsErrorState.showError` is already true within a tick.
-//   2. But the D-09 identity gate at page.js:522 (`if (!selfUuid)`) renders a
+//   2. But the D-09 identity gate in src/app/friends/page.js (`if (!selfUuid)`) renders a
 //      bare, unlabeled, full-page spinner ABOVE those banners — so for the
 //      whole identity-resolution window nothing that already knows the backend
 //      is down can render, and the spinner carries no accessible name at all
 //      (hence the walk's "header+footer around a permanently empty main").
 //   3. That window is ~60s, not ~1s: every attempt goes through the BFF proxy,
-//      whose own `PROXY_TIMEOUT_MS` is 30_000 (app/api/[...path]/route.ts:22),
+//      whose own `PROXY_TIMEOUT_MS` is 30_000 (src/app/api/[...path]/route.ts ("const PROXY_TIMEOUT_MS = 30_000;")),
 //      and `shouldRetry` grants one retry — 2 x 30s. The walk's "observed
 //      30-60s" / "60+s" is that arithmetic, not a missing terminal state.
 //

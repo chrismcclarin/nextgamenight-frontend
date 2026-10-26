@@ -27,9 +27,9 @@ test('user can invite a friend to a group', async ({ page }, testInfo) => {
   // at phone width"), and OVER making the journey re-entrant with a backend delete or
   // re-invite endpoint (no public route a spec can drive exists; that would mean new
   // endpoints for a test's convenience). WHY a shared target fails: with both projects
-  // armed this spec runs twice per CI job, and routes/invites.js:381-383 returns 409
-  // for a duplicate pending invite to the same friend — the frontend renders "Failed
-  // to send invites" (friends/page.js:617) and the "Invited 1 friend" assertion below
+  // armed this spec runs twice per CI job, and backend:Sonnet/routes/invites.js ("code: 'invite_pending',") returns 409
+  // for a duplicate pending invite to the same friend — the frontend counts it as already
+  // invited, src/app/friends/page.js ("if (isAlreadyInvitedOrMember(err)) {"), so the "Invited 1 friend" assertion below
   // fails. Per-project targets keep both runs first-use.
   const friendName =
     testInfo.project.name === 'phone'

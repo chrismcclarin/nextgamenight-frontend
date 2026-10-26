@@ -348,7 +348,7 @@ describe('Combobox', () => {
 // The defect these pin: the loading/"No results" row carried `role="status"` INSIDE
 // `{open && (` and `{status && (`, so the live region was created in the same commit as the
 // text it carried. Screen readers announce CHANGES to a mounted region, not the conditional
-// mount of a new one (`StatusRegion.tsx:9-12`), so those strings may never have announced.
+// mount of a new one (src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted")), so those strings may never have announced.
 //
 // The fix is a TWO-NODE shape, and these assertions are written so the obvious wrong
 // readings fail:
@@ -381,9 +381,9 @@ describe('Combobox — W38: exactly one always-mounted sr-only status region', (
     );
   }
 
-  it('mounts the region EMPTY on first render (EMPTY-FIRST, StatusRegion.tsx:9-12)', () => {
+  it('mounts the region EMPTY on first render (EMPTY-FIRST, src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted"))', () => {
     // FIRST RENDER IS THE CLOSED STATE FOR EVERY SHIPPED CONSUMER, measured not assumed:
-    // `GameComboInput.js:34` is `useState(false)` and the timezone picker's `tzPickerOpen`
+    // src/app/components/GameComboInput.js ("const [isOpen, setIsOpen] = useState(false);") is `useState(false)` and the timezone picker's `tzPickerOpen`
     // state in `userProfile/page.js` is `useState(false)`, so both mount closed and the
     // region's first commit is empty. That is what makes the first real announcement a
     // CHANGE to a mounted region rather than the mount of a new one.
@@ -414,7 +414,7 @@ describe('Combobox — W38: exactly one always-mounted sr-only status region', (
   it('keeps the SAME NODE across empty -> loading -> results -> closed', () => {
     // Node IDENTITY, not presence at each state. A region torn down and rebuilt between
     // states is the same defect wearing a passing presence check — this is the shape
-    // `useConfirmAction.ts:162-180` records as REJECTED ALTERNATIVE 1.
+    // src/components/ui/useConfirmAction.ts ("REJECTED ALTERNATIVE 1") records as REJECTED ALTERNATIVE 1.
     const { rerender } = render(<Controlled open={false} />);
     const node = region();
     expect(node).toBeEmptyDOMElement();

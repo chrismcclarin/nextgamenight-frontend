@@ -70,8 +70,10 @@ export const logger: Logger = {
  *     pattern AND the raw-message pattern on one line and DEFEATS the developer-log
  *     exemption. A correct conversion would red a gate it never touched. Nothing in the FE
  *     enforces a print width and the house `logger.*(msg, ctx)` idiom is routinely written
- *     over four lines (`GroupSettings.js:332-335`, `:389-393`) including inside a
- *     conversion target (`gameDetail/page.js:685-688`), so a call site that spells the key
+ *     over four lines (src/app/components/GroupSettings.js ("group colour left untouched — the stored value is not recognised by this client"),
+ *     src/app/components/GroupSettings.js ("group settings saved against a backend with no color_preset column")), and it
+ *     was inside a conversion target too (src/app/gameDetail/page.js, whose calls now go
+ *     through errCtx on one line), so a call site that spells the key
  *     itself is gate-safe only by formatting accident.
  *
  * REJECTED, by name, so neither is re-proposed as a fix when the gate reds:

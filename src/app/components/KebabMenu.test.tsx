@@ -18,7 +18,7 @@
  * for a menu that clips every item. This repo's gate ledger already carries twelve backstops that
  * cannot fail, and adding two more is worse than adding none.
  *
- * The split is the one UI-SPEC §9.3 already uses for E1/E5 (`88.6-UI-SPEC.md:800-801`):
+ * The split is the one UI-SPEC §9.3 already uses for E1/E5 (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 9.2 Resolutions")):
  *   - SOURCE half (here): the class contract that makes the rendered behaviour possible, asserted
  *     in BOTH the disarmed and the ARMED states, and demonstrated able to fail.
  *   - GEOMETRY half: a planted 375px probe in `e2e/touch-targets.spec.ts`, wearing this
@@ -34,14 +34,14 @@ import KebabMenu from './KebabMenu';
 afterEach(cleanup);
 
 // axe-core's `runOnly` takes ONE selector, so the two rules run as two explicit passes — the same
-// shape `PromptScheduleManager.test.tsx:129-130` uses.
+// shape src/app/components/PromptScheduleManager.test.tsx ("const WCAG_412 = { runOnly: { type: 'tag' as const") uses.
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
 const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
 
 /**
- * The LARGEST authored item set that ships: `ManageMembers.js:595`'s mobile member kebab with the
- * owner-only transfer item spread in (`:625-632`) — role swap + two-tap Remove + Transfer. The
- * desktop `:571` kebab is the single-item subset of it.
+ * The LARGEST authored item set that ships: src/app/components/ManageMembers.js ("Mobile (<768px) — kebab collapses role swap + Remove (and")'s mobile member kebab with the
+ * owner-only transfer item spread in (src/app/components/ManageMembers.js ("...(userRole === 'owner' ? [{")) — role swap + two-tap Remove + Transfer. The
+ * desktop src/app/components/ManageMembers.js ("owner-only Transfer Ownership kebab on") kebab is the single-item subset of it.
  */
 const LARGEST_SHIPPED_ITEMS = () => [
   { label: 'Make admin', onClick: vi.fn() },

@@ -36,7 +36,7 @@
 // about what "You're going!" looks like or says.
 //
 // DECISION Phase 88.5 (carried-record note): the `DECISION Phase 87.7 D-18` marker above is
-// reproduced VERBATIM from `RsvpSection.js:105-117`, including the part that is now KNOWN
+// reproduced VERBATIM from src/app/components/RsvpSection.js, including the part that is now KNOWN
 // STALE — it says `activeBg`/`hoverBg` are empty strings, and today they are real class
 // strings (`bg-status-success-subtle` and friends). Do NOT "helpfully" correct it here.
 // Phase 88.6's docs pass owns that fix; editing it in this phase de-syncs the two phases'
@@ -59,8 +59,8 @@
 // these in; read it as a choice, and changing it is a decision, not a cleanup.
 //
 // The 88.5 note's de-sync worry is also RESOLVED rather than inherited: it was written while
-// `RsvpSection.js:105-117` still carried a verbatim twin of the 87.7 marker. Re-checked at this
-// edit — `RsvpSection.js` carries no D-18 marker any more, only a one-line pointer at its `:6`
+// src/app/components/RsvpSection.js still carried a verbatim twin of the 87.7 marker. Re-checked at this
+// edit — `RsvpSection.js` carries no D-18 marker any more, only a one-line pointer, src/app/components/RsvpSection.js ("lifted out of this"),
 // saying the object moved here. There is exactly ONE home for this record now, and this is it.
 
 export interface RsvpStatusStyle {

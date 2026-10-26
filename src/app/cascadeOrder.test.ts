@@ -9,7 +9,7 @@
  *  1. SOURCE ORDER in `globals.css`. `.btn`, `.btn-sm` and `.btn-compact` all sit at specificity
  *     (0,1,0), so on any element carrying two of them the LATER rule wins. This repo has already
  *     shipped that regression twice (87.8 DEC-2 / DEC-3), and CI — not review — found the
- *     `.btn-compact` stepper deformation (`e2e/touch-targets.spec.ts:428`, dispatch run
+ *     `.btn-compact` stepper deformation (e2e/touch-targets.spec.ts ("the steppers are square BY DESIGN"), dispatch run
  *     33137056149).
  *  2. THE FOCUS RING'S HOME. A CSS `outline` rule and a Tailwind `ring-*` box-shadow are
  *     different properties; neither suppresses the other. Ship both and two rings paint. Ship
@@ -18,10 +18,10 @@
  * EVERY SCAN IN HERE IS COMMENT-STRIPPED, AND THAT IS NOT A DETAIL
  * ---------------------------------------------------------------
  * `globals.css`'s own marker prose contains the very selectors this file orders, and it contains
- * the literal `.btn:focus-visible` (at `globals.css:2257` as read 2026-09-15) plus the house ring
- * string (`:2262-2263`). A raw `indexOf` therefore reads a COMMENT and passes vacuously — and, for
+ * the literal `.btn:focus-visible` (in src/app/globals.css as read 2026-09-15) plus the house ring
+ * string. A raw `indexOf` therefore reads a COMMENT and passes vacuously — and, for
  * the ring gate, reports the globals side TRUE under ARM A, redding a correct implementation.
- * `withoutComments` (`src/test-utils/sourceScan.ts:146`) blanks comments while preserving every
+ * `withoutComments` (src/test-utils/sourceScan.ts ("export function withoutComments(")) blanks comments while preserving every
  * offset, so line numbers in any failure message stay real. Assertion 1 is a negative control on
  * the stripper itself: a stripper that silently returned the whole file could not pass it.
  */
@@ -152,7 +152,7 @@ const BTN_FAMILY_RING_SITES: RingSite[] = [
     // migrated => skip" the right rule. This one anchored on
     // `text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ` — the 88.3-16
     // owner-ruled wash and ring, which SURVIVES the migration by design (ruling 2 of
-    // 2026-08-27, marker at `groupHomePage/page.js:795`). So after a CORRECT migration the
+    // 2026-08-27, marker at src/app/groupHomePage/page.js ("DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27)")). So after a CORRECT migration the
     // anchor was still found while the per-site ring was correctly gone, and assertion 4 red on
     // a tree that had done exactly what ARM A asks. Re-anchored onto the `.btn` class string the
     // migration really does delete. The entry STAYS in the list (the list is pinned at ten and
@@ -351,11 +351,11 @@ describe('Phase 88.6 — the focus ring has exactly one home (UI-SPEC §12 A-2)'
       expect(
         globals.includes('var(--ring)'),
         'ARM B: the rule must read `var(--ring)`, never `--color-focus-ring`. That shape is ' +
-          'recorded REJECTED at `Header.js:99-110` — `--ring: var(--color-focus-ring)` is declared ' +
-          'on `:root` (globals.css:1824) so its `var()` is substituted THERE, which makes a ' +
+          'recorded REJECTED at src/app/Header.js ("Rejected — overriding") — `--ring: var(--color-focus-ring)` is declared ' +
+          'on `:root` (src/app/globals.css ("--ring: var(--color-focus-ring);")) so its `var()` is substituted THERE, which makes a ' +
           '`--color-focus-ring` override INERT inside the two `[--ring:var(--amber-400)]` header ' +
           'subtrees, where the inherited root purple-700 measures 1.93:1 / 1.78:1 ' +
-          '(globals.css:1586-1587) — below WCAG 1.4.11\'s 3:1 floor.',
+          '(src/app/globals.css ("SECOND FINDING, new here because nothing upstream had it")) — below WCAG 1.4.11\'s 3:1 floor.',
       ).toBe(true);
       expect(
         countOf(button, ANY_RING),
@@ -494,7 +494,7 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
       'OWNER RULING 2026-09-09 (AC-9): `.btn-sm` sits BEFORE `.btn-compact`. Both are (0,1,0), so ' +
         'on an element carrying both, LATER source order wins — an after-positioned `.btn-sm` puts ' +
         'back the 8px horizontal padding that `DECISION Phase 88.3-17` removed after CI found the ' +
-        'BrowseMoreModal stepper deformation (`e2e/touch-targets.spec.ts:871`, the squareness ' +
+        'BrowseMoreModal stepper deformation (e2e/touch-targets.spec.ts ("the steppers are square BY DESIGN"), the squareness ' +
         'assertion, re-derived 2026-09-15 — the shipped 88.3-17 marker still cites the stale ' +
         '`:428`; dispatch run ' +
         '33137056149). Flipping this pin is a decision, not a cleanup.',
@@ -564,7 +564,7 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
       'The unlayered `.btn` block declares a `border` again. W19 moved that reset into ' +
         '`@layer components` precisely so an `@layer utilities` `border-*` utility can beat it; ' +
         'an unlayered reset beats every utility regardless of specificity and the two gameDetail ' +
-        'row actions plan 18 migrates (`gameDetail/page.js:198-206`, `:1979-1983`) lose their ' +
+        'row actions plan 18 migrates (src/app/gameDetail/page.js ("This control and the two-tap Remove below are the only")) lose their ' +
         'visible 1px border with nothing red.',
     ).toBe(false);
 
@@ -583,7 +583,7 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
     expect(
       name,
       `The \`.btn\` border reset is in \`@layer ${name}\`. It must be \`components\`. The layer ` +
-        "ORDER is declared by `@import 'tailwindcss' source(none)` at `globals.css:10`, which " +
+        "ORDER is declared by `@import 'tailwindcss' source(none)` at " + 'src/app/globals.css ("source(none);"), which ' +
         'pulls in upstream\'s `@layer theme, base, components, utilities;` (line 1 of ' +
         '`node_modules/tailwindcss/index.css`) — only a layer that PRECEDES `utilities` loses to a ' +
         '`border-*` utility. Dropping this reset into the pre-existing `@layer utilities` block in ' +
@@ -612,7 +612,7 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
     const REPRODUCES =
       'It reproduces the gating the four shipped rules already perform: ' +
       "`.btn-primary:hover:not(:disabled):not([aria-disabled='true'])` and its `.btn-accent`, " +
-      '`.btn-secondary` and `.btn-danger` twins (globals.css:2227, :2298, :2448, :2458 as read ' +
+      '`.btn-secondary` and `.btn-danger` twins (src/app/globals.css as read ' +
       '2026-09-15). Dropping a clause here silently re-introduces a hover lift on gated controls — ' +
       'the exact state the DR-C marker block removed.';
 

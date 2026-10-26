@@ -93,7 +93,7 @@ const Switch = React.forwardRef<
         //   * the UTILITY `.shadow-sm` is NOT `none`. It is Tailwind v4's built-in default, whose
         //     literal values (`0 1px 3px 0 …, 0 1px 2px -1px …`) v4 INLINES into its built-in
         //     utilities instead of reading the theme property — see `DECISION Phase 87.7 (Plan 06,
-        //     RESEARCH Pitfall 2)` at `globals.css:1176-1190` (cited as `:1140-1154` before this
+        //     RESEARCH Pitfall 2)` at src/app/globals.css ("DECISION Phase 87.7 (Plan 06, RESEARCH Pitfall 2)") (cited as `:1140-1154` before this
         //     same commit's `@theme inline` marker shifted the file by 36 lines; re-derived and
         //     re-read 2026-09-15), which records exactly that, and why those three properties
         //     deliberately stay in plain `:root`.
@@ -101,7 +101,7 @@ const Switch = React.forwardRef<
         // not because "the `-sm` utility is `none`" — which is false. Snapping this class to the
         // alias spelling `shadow-sm` would silently reintroduce a black drop shadow in both
         // themes. Keeping the tier spelling also keeps `-md`/`-lg` composable — the same reasoning
-        // `Card.tsx:22` relies on (§8.1).
+        // src/components/ui/Card.tsx ("text-content-primary shadow-theme-sm") relies on (§8.1).
         // Rejected: pointing the thumb at `shadow-theme-md`. That token is reserved for RAISED and
         // OVERLAY surfaces under archetype A, and a switch thumb is neither.
         // Removing this border once the shadow is gone is a decision, not a cleanup.

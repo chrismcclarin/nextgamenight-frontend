@@ -15,17 +15,17 @@
  * WHAT THIS SENTENCE REPLACED, and why the replacement matters. It used to argue
  * that this sink is safe ON ITS OWN — "rendered via a plain React `<img src>` — no
  * CSS `url()` sink — so a caller-supplied avatar URL cannot become a style injection
- * vector". That is the per-sink reasoning `SafeImage.js:72-85`'s
- * `DECISION Phase CodeQL-hygiene` marker rejects in terms ("Deleting this check
+ * vector". That is the per-sink reasoning that the
+ * src/app/components/SafeImage.js ("DECISION Phase CodeQL-hygiene") marker rejects in terms ("Deleting this check
  * because 'an img tag is safe anyway' re-splits the two sinks and is a decision, not
- * a cleanup"), and while it was TRUE it made `safeBgImageStyle.ts:3-7`'s stated
- * invariant — that the list is spelled ONCE so a scheme can never be permitted in one
+ * a cleanup"), and while it was TRUE it made the stated invariant of
+ * src/lib/safeBgImageStyle.ts ("the list is deliberately spelled ONCE") — that the list is spelled ONCE so a scheme can never be permitted in one
  * surface and blocked in another — FALSE for this component. The reason this sink is
  * gated is the house rule, not a threat particular to this element.
  *
  * SCOPE, stated rather than overclaimed: this restores the one-list invariant for
  * THIS COMPONENT'S FAMILY. It does NOT hold across all of `src/` after Phase 88.6 —
- * `app/userProfile/page.js:1426` renders `<img src={user.picture}>` ungated, and is
+ * src/app/userProfile/page.js ("<img src={user.picture}") renders `<img src={user.picture}>` ungated, and is
  * routed by a `.planning/deferred/phase-88.6.md` entry. A header that overstates its
  * reach is the same defect as the one it replaces, pointing the other way.
  *
@@ -91,16 +91,16 @@ const UserChip = React.forwardRef<HTMLDivElement, UserChipProps>(
        `isAllowedImageUrl` imported from `@/lib/safeBgImageStyle` — chosen OVER a forked
        scheme check written here, and OVER leaving the sink ungated on the per-sink
        argument the old file header carried. Importing the shared one IS the invariant;
-       a second copy is the failure mode `safeBgImageStyle.ts:3-7` exists to prevent.
+       a second copy is the failure mode src/lib/safeBgImageStyle.ts ("the list is deliberately spelled ONCE") exists to prevent.
 
-       `allowRelative: true` mirrors `SafeImage.js:96` rather than `safeBgImageStyle`'s
+       `allowRelative: true` mirrors src/app/components/SafeImage.js ("isAllowedImageUrl(src, { allowRelative: true })") rather than `safeBgImageStyle`'s
        reject-relative default: an avatar may legitimately be a root-relative app-hosted
        path, and rejecting those would silently flip such a caller to the initials. It
        does NOT weaken the scheme check — an ABSOLUTE url ignores the base, so
-       `javascript:` still fails the allow-list (`safeBgImageStyle.ts:23-34`).
+       `javascript:` still fails the allow-list (src/lib/safeBgImageStyle.ts ("still parses with protocol")).
 
        A rejected URL falls through to the EXISTING initials branch rather than rendering
-       a dead `<img>`. Exploitability today is nil — `FriendInvitePanel.js:681-684` is the
+       a dead `<img>`. Exploitability today is nil — src/app/components/FriendInvitePanel.js ("<UserChip") is the
        only importer and passes no avatar — so this is prospective hardening, which is
        exactly why the unit assertions per polarity are the control, not the caller. */
     const avatarOk = isAllowedImageUrl(avatar, { allowRelative: true });
@@ -140,7 +140,7 @@ const UserChip = React.forwardRef<HTMLDivElement, UserChipProps>(
             /* DECISION Phase 88.6-37 (D-03 / UI-SPEC §4.5 pill-ink row): the initials take
                `font-bold` (700), chosen OVER §4.5's other outcome for a 600 site —
                `font-normal` (400) plus a colour token. This is the TWIN of
-               `MemberChipStack.tsx:85` (Phase 88.6-28, W36) and takes the same answer for
+               src/app/components/MemberChipStack.tsx ("rounded-full text-xs font-bold") (Phase 88.6-28, W36) and takes the same answer for
                the same geometric reason: this is 12px/14px ink on a COLOURED FILL at FIXED
                geometry (`h-6 w-6` / `h-8 w-8`), and the weight is what a two-letter glyph
                has instead of size. §4.5's 400 outcome is written for EMPHASIS SPANS on the

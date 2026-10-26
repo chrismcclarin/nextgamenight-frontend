@@ -50,7 +50,7 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
                  DECLARED for the pass or it falls through again.
 
                  WHY NOT `size="icon"`: `Button` composes `.btn`, which is unlayered
-                 `padding: .5rem 1rem` (globals.css:2202) plus the cva base's
+                 `padding: .5rem 1rem` (src/app/globals.css ("UNLAYERED with every other declaration it has today")) plus the cva base's
                  `shadow-theme-sm enabled-hover:shadow-theme-md`. That would give a glyph-only
                  remove control 16px of horizontal padding and a resting elevation it does not
                  have, widening the option row at 375px — a LOOK change, i.e. Phase 88.9's, not

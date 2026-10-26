@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Request } from '@playwright/test';
+import { expectTouchTarget } from './support/touchTarget';
 
 // Phase 88.6.1 plan 25 (Requirement 1) — an event link opened SIGNED OUT, at phone width.
 //
@@ -119,10 +120,7 @@ const INTERCEPTED_EVENT_PATH = '/gameDetail?event_id=00000000-0000-4000-8000-000
 async function expectBackLinkFloor(page: Page) {
   const link = page.getByRole('link', { name: /Back to Home/ });
   await expect(link).toBeVisible();
-  const box = await link.boundingBox();
-  expect(box, 'the Back to Home link did not render a box').not.toBeNull();
-  if (!box) return;
-  expect(box.height, 'the Back to Home link is at least 44px tall at phone width').toBeGreaterThanOrEqual(44);
+  await expectTouchTarget(link, 'the Back to Home link', { axes: 'height' });
 }
 
 async function expectNoHorizontalOverflow(page: Page) {

@@ -1,24 +1,25 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 // Plan 88.1-19 MEASUREMENT instruments — read-only attachments, no assertions, and NOT a
-// spec file so Playwright cannot collect it as a suite. See `e2e/support/diagnostics.ts`.
+// spec file so Playwright cannot collect it as a suite. See e2e/support/diagnostics.ts.
 import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './support/diagnostics';
 // Phase 88.6-12 task 4: the keyboard-modality focus idiom, IMPORTED rather than re-implemented.
 // `focusByKeyboard` presses Tab (to set Chromium's focus-visible heuristic to KEYBOARD) and then
 // focuses the target; without the Tab a script-focused <button> never matches `:focus-visible` and
-// the ring rules never apply. Its own docblock in `e2e/support/contrast.ts` carries the reasoning.
+// the ring rules never apply. Its own docblock in e2e/support/contrast.ts carries the reasoning.
 // A local copy would be the duplication this project's tenet forbids; `support/contrast.ts` is not
 // a spec file, so importing it adds no collected suite.
 import { focusByKeyboard } from './support/contrast';
 // 88.6.1 code review WR-03: the shared write hold for the R4 toggle arms (see the note above them).
 import { expectNoApiWrites, holdWrites } from './support/inFlight';
+import { expectTouchTarget } from './support/touchTarget';
 
 /**
  * Phase 87.8 Plan 08 — SPEC R4 (44x44 effective hit areas) + SPEC R6 (pressed-state
  * feedback) coverage, PHONE PROJECT ONLY.
  *
  * PROJECT GUARD: every new spec joins BOTH projects automatically — `journeys` and
- * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts:44 and :87). This
- * file inverts the guard tailwind-v4-styles.spec.ts:57 uses: it SKIPS the desktop
+ * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts ("name: 'journeys',") and playwright.config.ts ("name: 'phone',")). This
+ * file inverts the guard e2e/tailwind-v4-styles.spec.ts ("test.skip(({ isMobile }) => isMobile, 'SPEC R5") uses: it SKIPS the desktop
  * `journeys` project and runs only at phone width, because R4/R6 are phone-tenet
  * requirements measured at the phone viewport (iPhone SE (3rd gen), 375x667 — D-06;
  * was iPhone 13 390x664 when this spec was written under plan 08).
@@ -26,7 +27,7 @@ import { expectNoApiWrites, holdWrites } from './support/inFlight';
  * CLASSIFY BEFORE DEBUGGING — hover inertness is expected, not a defect.
  * Tailwind v4 wraps every `hover:` utility in `@media (hover: hover)`, which is FALSE
  * on this project's phone emulation (isMobile + hasTouch), so all ~222 hover sites are
- * INERT here — recorded at playwright.config.ts:80-84. If an assertion in this file
+ * INERT here — recorded at playwright.config.ts ("occurrences are therefore INERT here"). If an assertion in this file
  * fails, first determine whether the cause is hover-inertness (expected v4 behaviour;
  * must NOT be "fixed") or a genuine layout/press defect. Pressed-state feedback in this
  * app deliberately does NOT depend on hover: `.btn:active:not(:disabled)` and the
@@ -38,8 +39,8 @@ import { expectNoApiWrites, holdWrites } from './support/inFlight';
  *
  * CORRECTED Phase 88.8 plan 13 (comment only, no behavioural change). This paragraph
  * previously read "`.btn` (globals.css:756-767) declares no min-height and no height",
- * and BOTH halves are now wrong: `.btn` lives near `globals.css:1917`, and Phase 88-01
- * (D-36) later added a PHONE-WIDTH `min-height: 2.75rem` floor at `globals.css:2227-2231`.
+ * and BOTH halves are now wrong: `.btn` lives in src/app/globals.css, and Phase 88-01
+ * (D-36) later added a PHONE-WIDTH `min-height: 2.75rem` floor in src/app/globals.css.
  * An executor reading the stale claim would reasonably conclude the floor does not exist
  * and add a redundant utility — and the house phone-only form is `max-md:min-h-11`, never
  * a bare `min-h-11` (the D-36 block rejects an all-viewport floor by name because it
@@ -49,17 +50,17 @@ import { expectNoApiWrites, holdWrites } from './support/inFlight';
  *
  * CENSUS SOURCE: the SPEC R4 re-census list in 87.8-01-SUMMARY.md (8 CTAs, file:line +
  * text per row). This spec asserts every phone-reachable census CTA, not a hardcoded
- * two-CTA pair. grouplist.js:103 (error-state "+ Create New Group") shares its
+ * two-CTA pair. src/app/components/grouplist.js ("if (selfIdentityErrorState.showError) {") (error-state "+ Create New Group") shares its
  * accessible name with the main branch and only one renders at a time, so the single
  * role+name locator covers whichever branch is live.
  *
- * SELECTOR POLICY: role/label/text only — never Tailwind classes (invite.spec.ts:18).
+ * SELECTOR POLICY: role/label/text only — never Tailwind classes (e2e/invite.spec.ts ("Selectors are role/label/text only (PATTERNS.md)")).
  * The add-friend control is located by its DYNAMIC accessible name pattern
  * `Add {username} as a friend` (ClickableMemberName.js aria-label).
  *
- * Fixtures follow the env-const idiom (tailwind-v4-styles.spec.ts:47-49): seeded ids
+ * Fixtures follow the env-const idiom (e2e/tailwind-v4-styles.spec.ts ("process.env.E2E_GROUP_ID ?? '1';")): seeded ids
  * minted by the backend's scripts/e2e-fixtures.js in CI. Do not run locally —
- * credentials are intentionally absent (playwright.config.ts:19-21).
+ * credentials are intentionally absent (playwright.config.ts ("They are intentionally absent locally")).
  *
  * EXTENDED Phase 88-30 (DEF-88-28-02). 88-28 raised the Header hamburger (`p-2` ->
  * `p-2.5`) and the KebabMenu trigger (`px-2 py-1` -> `min-h-11 min-w-11`) BY ARITHMETIC
@@ -101,19 +102,14 @@ async function guardResolved(locator: Locator, what: string, atLeast = 1): Promi
  *  closes — the fix is `min-h-11`, which sets min-height and NOT min-width, so a
  *  narrow census-added CTA would pass a height-only check while failing R4. */
 async function assertMin44(locator: Locator, label: string): Promise<void> {
-  const box = await locator.first().boundingBox();
-  expect(box, `${label}: boundingBox() returned null — element not rendered`).not.toBeNull();
-  if (!box) return;
   const mechanism =
     'grows from the per-CTA min-h-11 utility at its own call site (plan 87.8-01), NOT a global .btn rule — .btn declares no min-height, so a failure here is at the call site className';
-  expect(
-    box.height,
-    `${label} height ${box.height}px < 44px — ${mechanism}`,
-  ).toBeGreaterThanOrEqual(44);
-  expect(
-    box.width,
-    `${label} width ${box.width}px < 44px — min-h-11 sets NO min-width, so a narrow CTA fails R4 even at full height; ${mechanism}`,
-  ).toBeGreaterThanOrEqual(44);
+  await expectTouchTarget(locator.first(), label, {
+    why: {
+      height: mechanism,
+      width: `min-h-11 sets NO min-width, so a narrow CTA fails R4 even at full height; ${mechanism}`,
+    },
+  });
 }
 
 /** R6 pressed-state: drive :active explicitly (pointer down without up), read the
@@ -146,7 +142,7 @@ async function assertPressedOpacity(page: Page, locator: Locator, label: string)
   }
 }
 
-/** D-11 dark-theme pre-assertion (tailwind-v4-styles.spec.ts:78-86): a computed-style
+/** D-11 dark-theme pre-assertion (e2e/tailwind-v4-styles.spec.ts ("await expect(page.locator('html')).toHaveClass(/dark/);")): a computed-style
  *  read in light mode would be meaningless and its failure misdiagnosed. */
 async function assertDarkTheme(page: Page): Promise<void> {
   await expect(page.locator('html')).toHaveClass(/dark/);
@@ -178,7 +174,7 @@ interface EffectiveGeometry {
  * exact outcome 87.8 D-13 rejected.
  *
  * WHY DESCENDANTS COUNT. `MemberChipStack` puts the extension on an inner wrapper span
- * (`HIT_EXTENSION`, `MemberChipStack.tsx:200`) rather than on the `role="button"` trigger
+ * (`HIT_EXTENSION`, src/app/components/MemberChipStack.tsx ("const HIT_EXTENSION =")) rather than on the `role="button"` trigger
  * itself, because the trigger is `ClickableMemberName`'s own element. A pointer landing on
  * that pseudo hits the wrapper, which is INSIDE the trigger, so the tap reaches the trigger —
  * the extension really is part of the control's hit area, and measuring only the trigger's
@@ -286,7 +282,7 @@ const showLessControl = (page: Page) =>
  * 43.913 / 43.9636 / 43.9915 across three successive reads in a single attempt, climbing toward
  * 44 while its x/y drifted — a uniform ancestor scale, not a CSS height. Computed `min-height`
  * on the button was exactly `44px` the whole time and `offsetHeight` was 44. The source is
- * `src/components/ui/dialog.tsx` — `duration-200 data-[state=open]:animate-in
+ * src/components/ui/dialog.tsx — `duration-200 data-[state=open]:animate-in
  * data-[state=open]:zoom-in-95` — and `expect(heading).toBeVisible()` resolves at animation
  * START, not end. The recorded page-scale/overflow hypothesis was REFUTED by the same run
  * (`scrollWidth 375 === clientWidth 375`, `visualViewport.scale 1`, zero overflow culprits).
@@ -585,8 +581,8 @@ function assertPairIsolated(
 }
 
 test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (phone project)', () => {
-  // Inverse of the tailwind-v4-styles.spec.ts:57 guard: this file is phone-only.
-  // Both projects match every spec (playwright.config.ts:44, :87), so without this
+  // Inverse of the e2e/tailwind-v4-styles.spec.ts ("test.skip(({ isMobile }) => isMobile, 'SPEC R5") guard: this file is phone-only.
+  // Both projects match every spec (playwright.config.ts ("name: 'journeys',") and playwright.config.ts ("name: 'phone',")), so without this
   // skip the desktop journeys project would run phone-tenet assertions at 1280px.
   test.skip(({ isMobile }) => !isMobile, 'R4/R6 are phone-tenet requirements — phone project only');
 
@@ -609,7 +605,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await assertMin44(inviteMember, '"Invite Member"');
 
     // Census row (ADDED Phase 88.5 plan 10, SPEC Req 2): the phone-only Calendar button —
-    // now with the amber count pill rendered INSIDE it (`UserHomePage.js:352-367`). The
+    // now with the amber count pill rendered INSIDE it (src/app/userHome/UserHomePage.js ("min-h-11 min-w-11 gap-2")). The
     // floor is the explicit `min-h-11 min-w-11` pair at that call site, not `.btn`'s
     // phone-only height floor, and this assertion is the one that would catch the pill
     // pushing the control off it in some later layout change.
@@ -662,7 +658,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     };
 
     // Census row 7: the Create Event modal's submit. Reached the same way the green
-    // create-event journey reaches it (tailwind-v4-styles.spec.ts:59-76).
+    // create-event journey reaches it: e2e/support/createEvent.ts ("export async function openCreateEventDialog(").
     await page.getByRole('button', { name: /add new game event/i }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
     const submit = page.getByRole('button', { name: /^(create|update) event$/i });
@@ -682,7 +678,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     //     overflow (`docScrollWidth` > `docClientWidth`) shrinking the scale, and
     //     `probeOverflowCulprits` NAMES the element instead of leaving it inferred.
     //   - in-page ALSO 43.835 -> it is CSS, and the fix belongs at the call site
-    //     (`createEvent.js:1268`, which already carries `min-h-11`).
+    //     (src/app/components/createEvent.js ("aria-disabled={eventSubmitting"), a Button whose cva base carries `min-h-11`).
     // `planSession` is the CONTROL: it PASSED on the failing run, and whether it passed
     // because it is naturally taller than 44 or because it is unscaled is what makes the
     // submit's reading interpretable at all. It is captured above, pre-modal, for the
@@ -714,7 +710,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
     // Both census CTAs live inside the "Check-ins" section (PromptScheduleSection.js),
     // which groupPlanning mounts ALREADY EXPANDED (defaultExpanded={true},
-    // groupPlanning/page.js:247) once userRole resolves — do NOT click the header
+    // src/app/groupPlanning/page.js ("defaultExpanded={true}")) once userRole resolves — do NOT click the header
     // "to expand": the header is a TOGGLE, so that click collapses the section.
     // The body hides via max-h-0 with a 200ms transition, so a sample taken
     // mid-transition still reads visible — that made the collapse land between
@@ -826,11 +822,11 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      "fix" this to.
 
      MEASURED, not assumed: those steppers are UNREACHABLE in CI. `BrowseMoreModal` mounts
-     only from `QuickSuggestions` (QuickSuggestions.js:115), whose "Browse more" trigger
-     renders only when `suggestions.length > 0` (:161-176). `suggestionService.getSuggestions`
-     builds its entire candidate set from `UserGame` rows (services/suggestionService.js:121)
-     and returns `{ suggestions: [] }` when that set is empty (:150), and
-     `scripts/seed-sample-data.js` creates ZERO `UserGame` rows (grep: no matches). So the
+     only from `QuickSuggestions` (src/app/components/QuickSuggestions.js ("open={browseModalOpen}")), whose "Browse more" trigger
+     renders only when `suggestions.length > 0` (src/app/components/QuickSuggestions.js ("if (suggestions.length > 0) kind = 'chips';")). `suggestionService.getSuggestions`
+     builds its entire candidate set from `UserGame` rows (backend:Sonnet/services/suggestionService.js ("const userGames = await UserGame.findAll({"))
+     and returns `{ suggestions: [] }` when that set is empty (backend:Sonnet/services/suggestionService.js ("if (gameMap.size === 0) {")), and
+     backend:Sonnet/scripts/seed-sample-data.js creates ZERO `UserGame` rows (grep: no matches). So the
      seeded group has no suggestions, no "Browse more" button, and no steppers. Driving them
      would need a new backend fixture — a cross-repo change that also alters the Create Event
      surface four other green specs walk.
@@ -853,8 +849,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
      What the probe DOES claim, and it is the half nothing else can see: that in the EMITTED
      stylesheet at 375px, `.btn-compact` still beats the unlayered `.btn { min-height: 2.75rem }`
-     phone floor. That is a pure cascade fact about authoring order (globals.css:1100-1108),
-     which jsdom cannot evaluate and which `decisionMarkers.test.ts:120-122` can only pin at
+     phone floor. That is a pure cascade fact about authoring order (src/app/globals.css ("or promoting the floor to all") authored before src/app/globals.css (".btn-compact {")),
+     which jsdom cannot evaluate and which src/app/decisionMarkers.test.ts ("5. the phone floor and its opt-out really are shipped, so the markers are not lying") can only pin at
      SOURCE level. The two are complementary: that suite proves the call sites wear the class
      and the rule exists; this proves the browser resolves them the way the marker claims.
 
@@ -883,7 +879,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      * migration can take away.
      *
      * The probe is not a generic one: it wears the exact class string "Manage Members" ships
-     * with today (`groupHomePage/page.js:872-878`, re-derived 2026-09-15) minus nothing, so the
+     * with today (src/app/groupHomePage/page.js, re-derived 2026-09-15) minus nothing, so the
      * cascade fact being measured is the same one — a `.btn` carrying a pile of padding and
      * ring utilities and NO `min-h-*`, whose only 44px source is the `@media (width < 48rem)`
      * rule. It is distinct from the `bare` probe below, which is the minimal `btn btn-secondary`
@@ -908,8 +904,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       const compact = make('btn btn-compact btn-secondary w-8 h-8');
       const bare = make('btn btn-secondary');
       // The re-pointed real-call-site arm: "Manage Members"'s own shipped class string
-      // (groupHomePage/page.js:872-878). Every class here is emitted because that call site
-      // wears it today; `e2e/` is outside the `@source` globs (globals.css:10, :86-88), so a
+      // as of 2026-09-15 (since migrated to a Button, src/app/groupHomePage/page.js ("onClick={() => setMemberModal(true)}")). Every class here but md:text-base (desktop-only, inert at 375px) is emitted because some src/ file
+      // still wears it (grep, 2026-10-24); `e2e/` is outside the `@source` globs (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit")), so a
       // class no `src/` file wears would render nothing and measure nothing.
       const shipped = make(
         'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
@@ -947,7 +943,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // (c) The RE-POINTED real-call-site arm (AMENDED Phase 88.6-12, see the block above): the
     // same shape "Manage Members" ships with — `.btn` plus a pile of utilities, no `min-h-*` —
     // still clears 44px from the media rule ALONE. Its `px-4 py-2` / `md:px-6 md:py-3` padding
-    // utilities are dead under unlayered `.btn` (globals.css:2666-2674), which is part of the
+    // utilities are dead under unlayered `.btn` (src/app/globals.css ("UNLAYERED with every other declaration it has today")), which is part of the
     // fact being measured, not an accident of the probe.
     expect(
       probes.shipped.height,
@@ -963,23 +959,23 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      WHAT IT MEASURES AND IN WHAT ORDER:
 
        1. A PLANTED replica of the shipped row, ALWAYS. The row is
-          `<div class="flex items-center gap-2 shrink-0 ml-auto">` (gameDetail/page.js:1956) with
-          `GuestInviteButton` (className at :198) and the two-tap Remove (className at :1978)
+          `<div class="flex items-center gap-2 shrink-0 ml-auto">` (src/app/gameDetail/page.js ("flex items-center gap-2 shrink-0 ml-auto")) with
+          `GuestInviteButton` (className at src/app/gameDetail/page.js ("border border-line ${branchInk}")) and the two-tap Remove (className at src/app/gameDetail/page.js ("border shrink-0 ${"))
           inside it, re-derived 2026-09-15. The replica carries the LONGEST label each control can
           render because a row only overflows at its widest state and a short-label probe would
           pass on a row that breaks in production. *[CORRECTED 2026-09-28, plan 88.6-58 / review
           H1: after plan 88.6-18 the widest states are the settled invite `<span>` ("Already a
           member") and the ARMED two-tap Remove ("Tap again to confirm") — a `Remove {name}`
           label never renders. The replica is now derived from the shipped `<Button>` classes
-          and pinned in lockstep by `src/components/ui/Button.e2eReplica.test.ts`; current
-          cites: row :2165, settled span :299, Remove className :2216.]*
+          and pinned in lockstep by src/components/ui/Button.e2eReplica.test.ts; current
+          cites: the row, the settled span and the Remove className, each anchored in item 1 above.]*
 
        2. The SHIPPED row, WHEN THE FIXTURE RENDERS IT. This half is CONDITIONAL, deliberately,
           and the reasoning is the one already recorded a few tests above for the `.btn-compact`
           steppers: both controls sit behind `canInviteGuest(p, userRole)` / `(owner|admin) &&
-          p.user_id && !isCurrentUser` (gameDetail/page.js:85-91, :1839-1844), i.e. they need a
+          p.user_id && !isCurrentUser` (src/app/gameDetail/page.js ("function canInviteGuest(participant, viewerRole) {"), src/app/gameDetail/page.js ("const canRemove = (userRole")), i.e. they need a
           GUEST participation row on the fixture event with the viewer as owner. The backend's
-          `scripts/e2e-fixtures.js` seeds `EventRsvp` rows for the RsvpSection surface and nothing
+          backend:Sonnet/scripts/e2e-fixtures.js seeds `EventRsvp` rows for the RsvpSection surface and nothing
           that is known to satisfy that gate. A hard `guardResolved` here would red the phase's
           whole phone lane on a fixture fact rather than on a layout fact.
           This is NOT a silent skip: the planted half above is unconditional and carries the
@@ -989,10 +985,10 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
      The predicate, both halves: the row's `scrollWidth` fits its `clientWidth` (allow 1px), each
      control's right edge stays within the row's, and the document induces no horizontal scroll
-     (the `group-settings-danger.spec.ts:194-206` idiom).
+     (the e2e/group-settings-danger.spec.ts ("the Danger Zone renders without horizontal overflow at 375px") idiom).
 
-     CI ONLY: e2e credentials are absent locally by design (`playwright.config.ts:22-24`) and CI
-     runs `--project=setup --project=journeys --project=phone` (`ci.yml:652`). A local skip is not
+     CI ONLY: e2e credentials are absent locally by design (playwright.config.ts ("They are intentionally absent locally")) and CI
+     runs the setup project first, then journeys and phone with no deps (.github/workflows/ci.yml ("npx playwright test --project=journeys --project=phone --no-deps")). A local skip is not
      a pass. */
   test('UI-SPEC §9.3 E10: a two-control row-action pair does not overflow its row at 375px', async ({
     page,
@@ -1006,12 +1002,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const planted = await page.evaluate(() => {
       const host = document.createElement('div');
       // 375px from an INLINE style, never a Tailwind class: `e2e/` is outside the `@source`
-      // globs (globals.css:10, :86-88), so a width class this file invents is never emitted
+      // globs (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit")), so a width class this file invents is never emitted
       // and the container would silently measure whatever the body gives it.
       host.setAttribute('style', 'width: 375px; padding: 0; margin: 0;');
 
       const row = document.createElement('div');
-      // The shipped row wrapper, gameDetail/page.js:2165 (re-derived 2026-09-28).
+      // The shipped row wrapper, src/app/gameDetail/page.js ("flex items-center gap-2 shrink-0 ml-auto") (re-derived 2026-09-28).
       row.className = 'flex items-center gap-2 shrink-0 ml-auto';
 
       const make = (tag: 'span' | 'button', className: string, text: string) => {
@@ -1024,17 +1020,17 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       };
       // REBUILT 2026-09-28 by plan 88.6-58 (review H1). The widest REAL states of the two
       // SHIPPED controls (plan 88.6-18 moved both onto `<Button size="sm" variant="ghost">`):
-      //   - INVITE: GuestInviteButton's SETTLED `<span>` (gameDetail/page.js:299) with the
-      //     `member` branch ink resolved (`branchInk`, :243-250) and its label 'Already a member'
-      //     (:304) — the widest invite state, and a span, not a button, since 88.6-18 D8.
+      //   - INVITE: GuestInviteButton's SETTLED `<span>` (src/app/gameDetail/page.js ("ref={chipRef}")) with the
+      //     `member` branch ink resolved (`branchInk`, src/app/gameDetail/page.js ("const branchInk =")) and its label 'Already a member'
+      //     (src/app/gameDetail/page.js ("{status === 'member' && 'Already a member'}")) — the widest invite state, and a span, not a button, since 88.6-18 D8.
       //   - REMOVE: the two-tap Remove in its ARMED state — `cn(buttonVariants({ variant:
-      //     'ghost', size: 'sm' }), 'border shrink-0 ' + <the isConfirming classes at :2216-2218>)`
+      //     'ghost', size: 'sm' }), 'border shrink-0 ' + <the isConfirming classes>)`, those classes being src/app/gameDetail/page.js ("bg-status-error-subtle border-status-error text-content-status-error font-semibold")
       //     TRANSCRIBED as a literal (e2e cannot import `src/`), with `useConfirmAction`'s
-      //     `DEFAULT_ARMED_LABEL` 'Tap again to confirm' (useConfirmAction.ts:56; gameDetail
-      //     passes no `armedLabel`, page.js:903-909). The old comment here said `labelFor`
-      //     renders `Remove {username}` — it never did: the resting label is 'Remove' (:2222),
+      //     `DEFAULT_ARMED_LABEL` 'Tap again to confirm' (src/components/ui/useConfirmAction.ts ("export const DEFAULT_ARMED_LABEL"); gameDetail
+      //     passes no `armedLabel`, src/app/gameDetail/page.js ("const removeParticipantGate = useConfirmAction({")). The old comment here said `labelFor`
+      //     renders `Remove {username}` — it never did: the resting label is 'Remove' (src/app/gameDetail/page.js ("removeParticipantGate.labelFor(p.user_id, 'Remove')")),
       //     and the target's name lives only in the accessible name.
-      // LOCKSTEP: `src/components/ui/Button.e2eReplica.test.ts` reads these two literals and
+      // LOCKSTEP: src/components/ui/Button.e2eReplica.test.ts reads these two literals and
       // reds when either control's classes (or the cva output) change — edit both together.
       // DECISION Phase 88.6-58 (review H1, `H1-RULING`): the replica is DERIVED from the shipped
       // `cn(buttonVariants(...))` output and pinned by that source test, NOT hand-composed —
@@ -1074,7 +1070,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // Anti-vacuity: the container really is 375px and both controls really rendered.
     expect(
       planted.hostWidth,
-      'UI-SPEC §9.3 E10: the planted container did not measure 375px, so every measurement below is against the wrong width. The width comes from an inline style on purpose — a Tailwind width class would not be emitted for e2e/ (globals.css:10, :86-88)',
+      'UI-SPEC §9.3 E10: the planted container did not measure 375px, so every measurement below is against the wrong width. The width comes from an inline style on purpose — a Tailwind width class would not be emitted for e2e/ (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit"))',
     ).toBeCloseTo(375, 0);
     expect(
       Math.min(planted.inviteHeight, planted.removeHeight),
@@ -1154,18 +1150,18 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
        - E5: plan 03's `Heading.test.tsx` class-list pin that the cva base carries `wrap-anywhere`.
 
      PLANTED, in ONE container whose 375px width comes from an INLINE `style` and never from a
-     Tailwind class: `e2e/` is outside the three `@source` globs (globals.css:10, :86-88), so a
+     Tailwind class: `e2e/` is outside the three `@source` globs (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit")), so a
      class only this file wears is never emitted and a probe wearing it measures nothing. For the
      same reason every class the probes wear is one `src/` already emits — `btn`/`btn-primary`
      from the shipped CTAs, `min-h-11` from the `Button` cva base, and
      `font-bold wrap-anywhere text-xl leading-tight` from `Heading.tsx`'s cva base + `heading`
-     rung (re-derived 2026-09-15 from the landed primitive, `Heading.tsx:60` and `:64`).
+     rung (re-derived 2026-09-15 from the landed primitive, src/components/ui/Heading.tsx ("const headingVariants = cva('font-bold wrap-anywhere', {") and src/components/ui/Heading.tsx ("heading: 'text-xl leading-tight',")).
 
      NO PROJECT GUARD OF ITS OWN: this is a 375px measurement and it belongs inside this file's
      phone-only describe, which is exactly what that block is for. The `journeys` arm added by the
      same plan is the opposite case and carries a mirror guard — do not "fix" this one to match it.
 
-     CI ONLY (`playwright.config.ts:22-24`, `ci.yml:652`). A local skip is not a pass. */
+     CI ONLY (playwright.config.ts ("They are intentionally absent locally"), .github/workflows/ci.yml ("npx playwright test --project=journeys --project=phone --no-deps")). A local skip is not a pass. */
   test('UI-SPEC §9.3 E1/E5: a long button label wraps without clipping, and an unbroken 60-char heading token stays inside its column at 375px', async ({
     page,
   }) => {
@@ -1251,7 +1247,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // --- anti-vacuity --------------------------------------------------------------------
     expect(
       probes.hostWidth,
-      'UI-SPEC §9.3 E1/E5: the planted container did not measure 375px, so nothing below is measured at phone width. The width is an inline style on purpose (globals.css:10, :86-88 — e2e/ is outside @source)',
+      'UI-SPEC §9.3 E1/E5: the planted container did not measure 375px, so nothing below is measured at phone width. The width is an inline style on purpose (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit") — e2e/ is outside @source)',
     ).toBeCloseTo(375, 0);
     expect(
       probes.short.height,
@@ -1313,7 +1309,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      WHY THEY ARE HERE AND NOT IN `KebabMenu.test.tsx`. jsdom performs no layout: every box it
      reports is zero, so a `scrollWidth <= clientWidth` assertion there is `0 <= 0` — green forever,
      for a menu that clips every item. That is asserted rather than assumed, by the
-     `jsdom measures NOTHING` guard in `src/app/components/KebabMenu.test.tsx`, which reds if jsdom
+     `jsdom measures NOTHING` guard in src/app/components/KebabMenu.test.tsx, which reds if jsdom
      ever grows layout. The SOURCE halves stay in that file and are the companions a red here
      should be read against:
        - E6 overflow: the popover is `absolute right-0 min-w-[160px]` and carries no fixed width;
@@ -1321,17 +1317,17 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
          floor, not a fixed height.
 
      PLANTED, for the same two reasons the E1/E5 arm above is planted. (1) The largest authored
-     item set is `ManageMembers.js:595`'s mobile member kebab, which needs the Manage Members modal
+     item set is the mobile member kebab, src/app/components/ManageMembers.js ("Member actions for ${member.username"), which needs the Manage Members modal
      open on a seeded multi-member group — a fixture path this spec does not walk, and a hard guard
      on it would red the phone lane on a fixture fact rather than a layout fact (the same reasoning
      the shipped D-36 and E10 markers in this file already record). (2) `e2e/` is outside the three
-     `@source` globs (`globals.css:10`, `:86-88`), so a class only this file wears is never emitted;
+     `@source` globs (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit")), so a class only this file wears is never emitted;
      every class below is copied VERBATIM from `KebabMenu.js`'s own shipped strings (re-derived
      2026-09-15 from the landed component: the `<ul>` className and the item `<button>` className),
      which is also what makes a future divergence between the replica and the component show up as
      a red rather than as a silent no-op.
 
-     CI ONLY (`playwright.config.ts:22-24`, `ci.yml:652`). A local skip is not a pass. */
+     CI ONLY (playwright.config.ts ("They are intentionally absent locally"), .github/workflows/ci.yml ("npx playwright test --project=journeys --project=phone --no-deps")). A local skip is not a pass. */
   test('UI-SPEC §9.3 E6: the kebab popover stays inside 375px with its largest item set, and a long item label wraps at >= 44px armed and disarmed', async ({
     page,
   }) => {
@@ -1378,8 +1374,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         return { ul, buttons };
       };
 
-      // The LARGEST authored item set: ManageMembers.js:595's mobile member kebab with the
-      // owner-only transfer item spread in (`:625-632`).
+      // The LARGEST authored item set: the mobile member kebab, src/app/components/ManageMembers.js ("Member actions for ${member.username"), with the
+      // owner-only transfer item spread in (src/app/components/ManageMembers.js ("...(userRole === 'owner' ? [{")).
       const largest = buildList([
         { text: 'Make admin' },
         { text: 'Remove' },
@@ -1447,7 +1443,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // --- anti-vacuity ----------------------------------------------------------------------
     expect(
       probes.hostWidth,
-      'UI-SPEC §9.3 E6: the planted container did not measure 375px, so nothing below is measured at phone width. The width is an inline style on purpose (globals.css:10, :86-88 — e2e/ is outside @source)',
+      'UI-SPEC §9.3 E6: the planted container did not measure 375px, so nothing below is measured at phone width. The width is an inline style on purpose (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit") — e2e/ is outside @source)',
     ).toBeCloseTo(375, 0);
     expect(
       probes.list.width,
@@ -1764,14 +1760,14 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       await settleOpenAnimation(page, control, `the hero's "${name}" control`);
 
       const geometry = await readEffectiveGeometry(control);
-      // THE MECHANICAL FORM OF A PROHIBITION. `NextGameNightCard.tsx:370` carries `min-h-11`
-      // and its marker says in as many words not to "restore" `RsvpSection.js:165`'s
+      // THE MECHANICAL FORM OF A PROHIBITION. src/app/components/NextGameNightCard.tsx ("flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors") carries `min-h-11`
+      // and its marker says in as many words not to "restore" the since-replaced (src/app/components/RsvpSection.js ("It REPLACES the"))
       // `px-3 py-2` pairing in its place: `text-sm` (20px line) plus 16px of vertical padding
       // computes to about 36px, which fails this floor. That is the regression this assertion
       // exists to catch, so the number is named here rather than left to a diff review.
       expect(
         geometry.effectiveHeight,
-        `the hero's "${name}" control measures ${geometry.effectiveHeight}px tall (own box ${geometry.ownHeight}px, extended by ${geometry.extendedBy}) — expected >= 44 from the min-h-11 at NextGameNightCard.tsx:370. Copying RsvpSection's px-3 py-2 pairing here computes to about 36px, which is exactly the prohibition D-07 constraint (i) records.`,
+        `the hero's "${name}" control measures ${geometry.effectiveHeight}px tall (own box ${geometry.ownHeight}px, extended by ${geometry.extendedBy}) — expected >= 44 from the min-h-11 at src/app/components/NextGameNightCard.tsx ("flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors"). Copying RsvpSection's px-3 py-2 pairing here computes to about 36px, which is exactly the prohibition D-07 constraint (i) records.`,
       ).toBeGreaterThanOrEqual(44);
       expect(
         geometry.effectiveWidth,
@@ -1796,21 +1792,21 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
      THE SOURCE HALF IS NOT A SUBSTITUTE, and neither is this one: `RsvpSection.statusOnly.test.tsx`
      pins `min-h-11` on the rendered class list and catches a SOURCE revert, which is all jsdom
-     can do because it performs no layout (the division `88.6-12-PLAN.md:97` already states for
+     can do because it performs no layout (the division planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-12-PLAN.md ("Task 1: controlSizeFloor gains a desktop arm, the compact tile and the home-card cog") already states for
      its own surface). This arm catches a RENDERED breach — a cascade collision, an inherited
      `line-height`, a parent that collapses the row. Both are required.
 
      TWO HALVES, the shape this file already ships for gameDetail surfaces (see the E10 arm
      above and its reasoning): the PLANTED replica is unconditional and carries the anti-vacuity
      floor, because the trio renders only for a NON-PAST event with the viewer's RSVP resolvable
-     and the backend's `scripts/e2e-fixtures.js` is not known to guarantee that shape on the
+     and backend:Sonnet/scripts/e2e-fixtures.js is not known to guarantee that shape on the
      seeded detail event. The SHIPPED half runs when the fixture renders it and its count is
      REPORTED either way, so a reader always knows which halves ran — a fixture gap is surfaced
      here, never silently skipped, and never allowed to red the whole phone lane on a fixture
      fact rather than a layout fact.
 
      This plan is a scoped later-wave co-declarer of plan 12's spec (wave 5), in the shape plan
-     16 already ships (`88.6-16-PLAN.md:16`, `:18`): it adds THIS arm and edits no helper, no
+     16 already ships (the files_modified notes of .planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-16-PLAN.md): it adds THIS arm and edits no helper, no
      existing arm and no describe structure in this file. */
   test('R4 (88.6-29 / V-19): the RsvpSection status trio clears the 44px floor', async ({
     page,
@@ -1822,7 +1818,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const planted = await page.evaluate(() => {
       const host = document.createElement('div');
       // 375px from an INLINE style, never a Tailwind class: `e2e/` is outside the `@source`
-      // globs (globals.css:10, :86-88), so a width class this file invents is never emitted.
+      // globs (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit")), so a width class this file invents is never emitted.
       host.setAttribute('style', 'width: 375px; padding: 0; margin: 0;');
 
       const group = document.createElement('div');
@@ -1860,7 +1856,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
     expect(
       planted.hostWidth,
-      '88.6-29 V-19: the planted container did not measure 375px, so every measurement below is against the wrong width. The width comes from an inline style on purpose — a Tailwind width class would not be emitted for e2e/ (globals.css:10, :86-88)',
+      '88.6-29 V-19: the planted container did not measure 375px, so every measurement below is against the wrong width. The width comes from an inline style on purpose — a Tailwind width class would not be emitted for e2e/ (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit"))',
     ).toBeCloseTo(375, 0);
     expect(
       planted.heights,
@@ -2154,7 +2150,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     ).toBeGreaterThanOrEqual(44);
     expect(
       geometry.extendedBy,
-      `"Show less" carries no hit extension (own box ${geometry.ownWidth}x${geometry.ownHeight}) — it is written with the same HIT_EXTENSION constant as the chips (MemberChipStack.tsx:200, applied at :500) precisely so a 12px-gap row cannot leave it as the one un-extended target`,
+      `"Show less" carries no hit extension (own box ${geometry.ownWidth}x${geometry.ownHeight}) — it is written with the same HIT_EXTENSION constant as the chips (src/app/components/MemberChipStack.tsx ("const HIT_EXTENSION ="), applied at src/app/components/MemberChipStack.tsx ("inline-flex min-h-11 cursor-pointer items-center rounded-xs px-1")) precisely so a 12px-gap row cannot leave it as the one un-extended target`,
     ).not.toContain('nothing');
 
     const row = showLess.first().locator('xpath=..');
@@ -2177,11 +2173,11 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
    * section's colocated suite. The rejected option is not merely weaker — it cannot
    * measure anything. `vitest.config.mts:56` is `environment: 'jsdom'` with no `css`
    * key; `vitest.setup.ts` loads jest-dom, axe and a `matchMedia` stub only; and the
-   * 44px floor lives in a MEDIA-QUERY rule (`globals.css:2227-2231`). In this repo's
+   * 44px floor lives in a MEDIA-QUERY rule (src/app/globals.css ("or promoting the floor to all")). In this repo's
    * own jsdom the media rule never applies, the window is 1024px rather than 375px,
    * `getBoundingClientRect()` returns all zeros and `parseFloat` yields `NaN` — at
    * which point an executor lands on the meaningless-but-green class-string assertion
-   * that eleven shipped tests already use. `src/app/components/controlSizeFloor.test.tsx`
+   * that eleven shipped tests already use. src/app/components/controlSizeFloor.test.tsx
    * carries an explicit shipped REFUSAL to do this: "Deliberately NOT asserted here:
    * the 44px touch-target floor ... Adding a height assertion to this file would smuggle
    * that decision in." The SPEC names the browser project three times as the proof
@@ -2209,7 +2205,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
    * defect. Re-run the frontend PR's e2e after the backend merge, or dispatch it with
    * `backend-ref` pointed at the backend branch (the established cross-repo pattern).
    * Do NOT "fix" a pre-merge red by weakening the assertion or skipping the test, and do
-   * NOT "repair" a genuine red by adding a bare `min-h-11` — `globals.css:2197-2226`
+   * NOT "repair" a genuine red by adding a bare `min-h-11` — src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")
    * rejects an all-viewport floor by name and the house phone-only form is
    * `max-md:min-h-11`.
    */
@@ -2420,7 +2416,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
    ==========================================================================================
 
    WHY THIS CANNOT LIVE IN THE PHONE PROJECT. Plan 05's `enabled-hover` custom variant compiles
-   INSIDE a hover-capability media query (`globals.css:177-183`):
+   INSIDE a hover-capability media query (src/app/globals.css ("@custom-variant enabled-hover {")):
 
        @custom-variant enabled-hover {
          @media (hover: hover) {
@@ -2429,15 +2425,15 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
        }
 
    Playwright's phone device profile reports `isMobile: true, hasTouch: true` and
-   `matchMedia('(hover: hover)')` FALSE — recorded at `playwright.config.ts:106-110`, where the
+   `matchMedia('(hover: hover)')` FALSE — recorded at playwright.config.ts ("occurrences are therefore INERT here"), where the
    same fact is noted as making all ~222 `hover:` occurrences inert. A hover assertion run there
    would pass by never applying anything, which is the exact vacuity shape this plan exists to
    prevent.
 
    NAMING THE PROJECT IS NOT ENOUGH — THE FILE'S STRUCTURE IS WHAT SELECTS IT, and as the file
    stands it selects the WRONG one in both directions:
-     - written INSIDE the file-wide describe (which opens at `:578` and carries
-       `test.skip(({ isMobile }) => !isMobile, …)` at `:582`), this arm would inherit that skip,
+     - written INSIDE the file-wide describe (which opens at this file ("test.describe('Phase 87.8 R4/R6 — touch-target geometry") and carries
+       `test.skip(({ isMobile }) => !isMobile, …)` at this file ("test.skip(({ isMobile }) => !isMobile, 'R4/R6")), this arm would inherit that skip,
        collect ZERO tests under `--project=journeys`, and its `<automated>` command would pass on
        an empty run;
      - hoisted out to fix that but left UNGUARDED, it would ALSO run under `--project=phone`,
@@ -2456,25 +2452,25 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
    block above: `document.createElement`, one `page.evaluate` per read, classes that `src/` already
    emits, elements removed before the test ends.
 
-   CI ONLY: `playwright.config.ts:22-24` (credentials absent locally by design) and `ci.yml:652`
-   (`--project=setup --project=journeys --project=phone`). A local skip is not a pass.
+   CI ONLY: playwright.config.ts ("They are intentionally absent locally") (credentials absent locally by design) and CI runs the setup
+   project first, then journeys and phone with no deps (.github/workflows/ci.yml ("npx playwright test --project=journeys --project=phone --no-deps")). A local skip is not a pass.
 
-   EXECUTED-COUNT FLOOR — DISCLOSED GAP. `scripts/gate-c-executed-floor.mjs` is this repo's idiom
+   EXECUTED-COUNT FLOOR — DISCLOSED GAP. scripts/gate-c-executed-floor.mjs is this repo's idiom
    for "assert the gate actually EXECUTED", but it is scoped to `contrast.spec.ts` in the `phone`
    project. No equivalent floor covers this arm in `journeys`. The in-body `isMobile` assertions
    are the local substitute; the durable floor is registered in `.planning/WINDOWS.md`.
    CLOSED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4): the same script now takes
    `--spec/--project/--title-prefix/--floor`, and ci.yml's "D10 executed-count floor" step runs it
    against this arm in `journeys` with floor 3 (the `--list` count); its lockstep in
-   `src/lib/ci-grep-gate.fixture.test.ts` keeps that floor at or below the `test('D10` count here.
+   src/lib/ci-grep-gate.fixture.test.ts keeps that floor at or below the `test('D10` count here.
    The gap described above is historical — kept, not deleted, so the reasoning stays findable. */
 
 /** The `Button` cva base, variant `primary`, as it ships after plan 06.
  *
- *  TRANSCRIBED from `src/components/ui/Button.tsx` (the cva base array plus
+ *  TRANSCRIBED from src/components/ui/Button.tsx (the cva base array plus
  *  `variant.primary`), and transcription is the only option here: importing `buttonVariants`
  *  into a Playwright spec would pull React, Radix Slot and `cva` through the Playwright
- *  transpiler. THE DRIFT GUARD IS NOT THIS COMMENT: `src/lib/cn.twMergeV3.test.ts` freezes the
+ *  transpiler. THE DRIFT GUARD IS NOT THIS COMMENT: src/lib/cn.twMergeV3.test.ts freezes the
  *  same literal and plan 06 made itself its re-seed owner, so a base change that forgets this
  *  file reds there. And if the base drifts in a way that matters HERE, proof 2's focused-vs-
  *  unfocused differential and proof 3's lg-vs-md comparison red rather than pass — neither is a
@@ -2490,7 +2486,7 @@ const BASE_ELEVATION = 'shadow-theme-sm enabled-hover:shadow-theme-md';
  *
  *  `rgba(0, 0, 0, 0)` contains commas, so a naive `value.split(',')` shatters one layer into
  *  four fragments and the per-layer loop then either throws on them or passes vacuously. The
- *  same reasoning and the same implementation are in `e2e/support/contrast.ts`
+ *  same reasoning and the same implementation are in e2e/support/contrast.ts
  *  (`shadowLayers`); it is private there, so this is a second copy rather than an import —
  *  registered in `.planning/WINDOWS.md` with the convergence owner. */
 function shadowLayersOf(value: string): string[] {
@@ -2533,7 +2529,7 @@ async function plantProbes(page: Page, probes: PlantedProbe[]): Promise<void> {
     const host = document.createElement('div');
     host.setAttribute('data-e2e-hover-ring-probes', '');
     // Inline style, never a Tailwind class: `e2e/` is outside the `@source` globs
-    // (globals.css:10, :86-88), so a class only this file wears is never emitted.
+    // (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit")), so a class only this file wears is never emitted.
     host.setAttribute('style', 'position: relative; display: flex; gap: 8px; padding: 8px;');
     for (const spec of specs) {
       const el = document.createElement('button');
@@ -2565,8 +2561,8 @@ interface ShadowRead {
  *
  * THE SETTLE IS NOT DEFENSIVE — IT IS THE WHOLE CORRECTNESS OF THIS ARM, and it was found by
  * running the probes in a real Chromium rather than by reasoning. `.btn` carries
- * `transition: var(--theme-transition)` (globals.css:2173), and `--theme-transition`
- * (globals.css:1684) includes `box-shadow 0.25s ease`. Reading `getComputedStyle` immediately
+ * `transition: var(--theme-transition)` (declared in the .btn block, marker at src/app/globals.css ("UNLAYERED with every other declaration it has today")), and `--theme-transition`
+ * (src/app/globals.css ("--theme-transition: background-color")) includes `box-shadow 0.25s ease`. Reading `getComputedStyle` immediately
  * after a `hover()` or a `focus()` therefore returns an INTERPOLATED value. Measured
  * 2026-09-15 in Chromium at 1280x720, reading with no settle:
  *
@@ -2611,7 +2607,7 @@ async function readShadow(locator: Locator): Promise<ShadowRead> {
       },
       {
         message:
-          'D10 item 6: the computed `box-shadow` never stopped changing. `.btn` transitions box-shadow over 0.25s (globals.css:1684, :2173); if it is still moving after 5s something is animating it continuously. Do NOT remove the settle and read the interpolated value instead.',
+          'D10 item 6: the computed `box-shadow` never stopped changing. `.btn` transitions box-shadow over 0.25s (src/app/globals.css ("--theme-transition: background-color"), and the .btn block, marker at src/app/globals.css ("UNLAYERED with every other declaration it has today")); if it is still moving after 5s something is animating it continuously. Do NOT remove the settle and read the interpolated value instead.',
         timeout: 5_000,
         intervals: [50, 50, 100, 100, 250],
       },
@@ -2666,10 +2662,10 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
       // below proves nothing. `--shadow-sm` holds a valid transparent zero-length shadow after
       // 88.6-05's N1, so a real composite is expected here — the bare keyword `none` is the
       // signature of that revert, and its dedicated detector is plan 05's two Gate C pins in
-      // `e2e/contrast.spec.ts`, not this arm.
+      // e2e/contrast.spec.ts, not this arm.
       expect(
         resting.boxShadow.trim(),
-        `D10 item 6: the ${probe.label} probe's RESTING computed box-shadow is empty — the hover comparison below would be vacuous. Check that the probe's classes are ones \`src/\` still emits (globals.css:10, :86-88)`,
+        `D10 item 6: the ${probe.label} probe's RESTING computed box-shadow is empty — the hover comparison below would be vacuous. Check that the probe's classes are ones \`src/\` still emits (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit"))`,
       ).not.toBe('');
       expect(
         resting.boxShadow.trim(),
@@ -2680,7 +2676,7 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
       const hovered = await readShadow(probe.locator);
       expect(
         hovered.boxShadow,
-        `D10 item 6: the ${probe.label} probe's box-shadow CHANGED under hover (rest \`${resting.boxShadow}\` -> hover \`${hovered.boxShadow}\`) — a gated control lifted under the pointer and reads as pressable. TWO mechanisms can cause this and the failure is one or the other: (1) plan 05's \`enabled-hover\` variant lost one of its three clauses — the @media (hover: hover) wrapper, :not(:disabled), or :not([aria-disabled='true']) — each of which compiles clean on its own (globals.css:177-183, gated separately by src/app/cascadeOrder.test.ts); or (2) plan 06's cva base reverted its hover token to a bare \`hover:\` spelling (src/components/ui/Button.tsx)`,
+        `D10 item 6: the ${probe.label} probe's box-shadow CHANGED under hover (rest \`${resting.boxShadow}\` -> hover \`${hovered.boxShadow}\`) — a gated control lifted under the pointer and reads as pressable. TWO mechanisms can cause this and the failure is one or the other: (1) plan 05's \`enabled-hover\` variant lost one of its three clauses — the @media (hover: hover) wrapper, :not(:disabled), or :not([aria-disabled='true']) — each of which compiles clean on its own (src/app/globals.css ("@custom-variant enabled-hover {"), gated separately by src/app/cascadeOrder.test.ts); or (2) plan 06's cva base reverted its hover token to a bare \`hover:\` spelling (src/components/ui/Button.tsx)`,
       ).toBe(resting.boxShadow);
       // Move the pointer away so the next probe starts unhovered.
       await page.mouse.move(1, 1);
@@ -2734,7 +2730,7 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
       // Blur everything first so the "unfocused" read really is unfocused.
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       const unfocused = await readShadow(locator);
-      // The shipped keyboard-modality idiom (`e2e/support/contrast.ts` `focusByKeyboard`): a Tab
+      // The shipped keyboard-modality idiom (e2e/support/contrast.ts ("function focusByKeyboard")): a Tab
       // press sets the heuristic to KEYBOARD, then `.focus()` lands on the target. Without the
       // Tab, `:focus-visible` never matches a script-focused button in Chromium and the ring
       // rules never apply — which would make this whole proof read as "the ring is gone".

@@ -305,7 +305,7 @@ export function isUnrecognisedStoredColour(value) {
  * The RENDERED ground for a stored group colour in LIGHT mode: a per-channel
  * linear mix of the stored hex toward white — `round(c + (255 - c) * t)`. Same
  * arithmetic shape as the ratified `-subtle` tint rule (i) at
- * `globals.css:713-716` (`round((1-t)*ground + t*hue)`), with white as the
+ * src/app/globals.css ("(i)  THESE TINTS ASSUME THE CARD SURFACE.") (`round((1-t)*ground + t*hue)`), with white as the
  * target, so this file's formula and its rounding already have a precedent.
  *
  * Returns `null` when the group has no colour of its own, and ALSO when the
@@ -421,14 +421,15 @@ export function lightTintGroupBackgroundColor(color, t = 0.70) {
  *    stale.** It claimed "the backend validator (plan 88.3.1-02) still accepts
  *    `''` and whitespace" — it does not. The validator shipped in that same plan
  *    collapses `''` and whitespace-only to `null` in a `customSanitizer` BEFORE
- *    the `.custom()` arm sees it (`middleware/validators.js:136-142`), pinned by
+ *    the `.custom()` arm sees it (backend:Sonnet/middleware/validators.js ("return trimmed === '' ? null : trimmed;")), pinned by
  *    `tests/routes/groups.test.js`. So an empty `color_preset` is not an
  *    API-reachable state at all.
  *    `??` is still correct, for the reason that actually holds: it keeps "column
  *    present but explicitly null" distinguishable from "column absent", and it is
  *    defence-in-depth against the one writer the validator does not cover — a
  *    hand-written DB row or a future writer that bypasses the API. The `''` and
- *    whitespace cases in `colorUtils.test.ts:402-412` remain the right pin.
+ *    whitespace cases in src/lib/colorUtils.test.ts ("an EMPTY color_preset must NOT fall through to background_color")
+ *    and src/lib/colorUtils.test.ts ("trims, and normalises a trimmed-empty result to null") remain the right pin.
  *  - `|| null` on the RESULT, which normalises a trimmed-empty value to `null`
  *    so `resolveGroupGround`'s unset-first rule fires instead of a `''` reaching
  *    the preset lookup.
@@ -522,7 +523,7 @@ export function storedGroupColour(group) {
  * REJECTED: a module-level reset hook for tests. It is API surface only tests
  * want. The cost is paid in the test file instead — because the Set outlives
  * each spec, anything asserting ON the warn must use a value no other spec in
- * the module has resolved. `colorUtils.test.ts:486` proved that the hard way:
+ * the module has resolved. src/lib/colorUtils.test.ts ("returns BOTH grounds or null — never a half-populated object") proved that the hard way:
  * it iterates `'sunset'` for an unrelated assertion and silently consumed the
  * warn the M23 spec was asserting. Those specs use dedicated `skew-preset-*`
  * values, and the saturation spec imports a fresh module instance.
@@ -552,7 +553,7 @@ export function resolveGroupGround(stored) {
        * them.
        *
        * STATE THE COST HONESTLY — it is ASYMMETRIC, not a uniform win.
-       * `presetByName` is a `Map.get` (`groupColourPresets.ts:245-247`), so
+       * `presetByName` is a `Map.get` (src/lib/groupColourPresets.ts ("export function presetByName(")), so
        * this removes one map lookup on the CARD arm only, and ADDS two property
        * writes to EVERY call of this resolver — including `CalendarMonthView`'s
        * per-tile path, which takes the TILE arm and never wanted the muted
@@ -597,11 +598,11 @@ export function resolveGroupGround(stored) {
      * DECISION Phase 88.3.1 (code review, CLUSTER A — five lenses independently):
      * ONE EVENT PER DISTINCT BAD VALUE PER PAGE LOAD, not one per render.
      *
-     * `logger.warn` is `Sentry.captureMessage` (`logger.ts:31-32`) — a real
+     * `logger.warn` is `Sentry.captureMessage` (src/lib/logger.ts ("Sentry.captureMessage(msg, { level: 'warning'")) — a real
      * quota-consuming event, not a console line. This function is a RENDER-path
      * resolver with seven production call sites, five of them inside per-item
      * loops (per group card, per calendar tile, per list row, per day-modal row,
-     * per swatch x8), and `CalendarMonthView.js:52-89` deliberately refuses to
+     * per swatch x8), and src/app/components/CalendarMonthView.js ("DECISION Phase 88.3-16: this is a MODULE-LEVEL helper") deliberately refuses to
      * memoise its loop. Unthrottled, the marker's own named trigger — poly-repo
      * skew where BE accepts a ninth preset the FE has not shipped — makes one
      * affected group emit one Sentry event PER TILE PER PAINT, forever.
@@ -690,10 +691,10 @@ export function themedTextStyleVars(dark, light) {
  *
  * REJECTED: reusing `themedTextStyleVars`'s `--t-*` channel. The MECHANISM is
  * the load-bearing part, so the number is recorded: that channel is emitted at
- * SEVEN sites today, and at FIVE of them (`EventDayModal.js:289,:295`,
- * `CalendarListView.js:879,:883,:913`) the existing emission sits on a
+ * SEVEN sites today, and at FIVE of them (two in src/app/components/EventDayModal.js,
+ * three in src/app/components/CalendarListView.js) the existing emission sits on a
  * DESCENDANT of the element these vars land on — a descendant redeclaration
- * wins, so the tinted ink would never reach the text. At `grouplist.js:337` the
+ * wins, so the tinted ink would never reach the text. At src/app/components/grouplist.js ("...groupInkVars(cardGround, {") the
  * two land in the SAME object literal, where plain spread order silently
  * decides and nothing specifies it. No test reads a computed style, so that
  * would have shipped green with wrong pixels. Minting is additive:
@@ -701,8 +702,9 @@ export function themedTextStyleVars(dark, light) {
  *
  * REJECTED: replacing `themedTextStyleVars` at the four card sites and emitting
  * `--t-*` once at the row root. It deletes two live channels — `cardTextBold`
- * (`grouplist.js:316`, driving `font-semibold` at `:481`) and
- * `--t-weight`/`--t-weight-l` (`groupHomePage/page.js:403-406`, whose own
+ * (src/app/components/grouplist.js ("const cardTextBold = !!cardTextDark.fontWeight;"), driving `font-bold` at
+ * src/app/components/grouplist.js ("cardTextBold ? 'font-bold' : ''")) and
+ * `--t-weight`/`--t-weight-l` (src/app/groupHomePage/page.js ("const themedTextVars = (dark, light, baseWeight) => ({"), whose own
  * comment warns that `inherit` "would silently un-bold the uncoloured header")
  * — plus the shadow/stroke treatments `getTextStyle` computes for the
  * background-image path.
@@ -719,7 +721,7 @@ export function themedTextStyleVars(dark, light) {
  * that would ship ~110 lines of WCAG maths to all of them for 16 values that
  * are known at module load. `groupColourRendering.test.ts` test 25 enforces the
  * boundary mechanically. This does NOT re-open `DECISION Phase 88.3-16`
- * (`CalendarMonthView.js:52-60`) — that marker rejects in-component `useMemo` /
+ * (src/app/components/CalendarMonthView.js ("DECISION Phase 88.3-16: this is a MODULE-LEVEL helper")) — that marker rejects in-component `useMemo` /
  * `useCallback` as an unmeasured performance claim; a transcribed table literal
  * is a different mechanism adopted for a different reason (bundle boundary, not
  * render cost). The two are not in tension.
@@ -761,7 +763,7 @@ export function groupInkVars(ground, options) {
    * `getTextStyle`, it is correct, and duplicating it is the exact tenet
    * violation this function was written against. Callers must pass the
    * VALIDATED image flag (the `safeBgImageStyle` result, wave-12 owner ruling
-   * at `grouplist.js:276-280`), never the raw string, so an invalid or relative
+   * at src/app/components/grouplist.js ("Wave-12 review follow-up (owner-ruled fix, 2026-08-21)")), never the raw string, so an invalid or relative
    * URL (FSEC-03) does not trigger the white-text treatment.
    */
   if (hasBackgroundImage) return {};
@@ -784,7 +786,8 @@ export function groupInkVars(ground, options) {
   if (surface === 'card') {
     /*
      * The legacy / custom-hex arm (AMENDMENT 3): return `{}`, do NOT re-derive.
-     * `grouplist.js:311-314` and `groupHomePage/page.js:409-415` have already
+     * src/app/components/grouplist.js ("const cardTextDark = getTextStyle(hasBgImage, ground);") and
+     * src/app/groupHomePage/page.js ("const headerTitleVars = themedTextVars(") have already
      * computed `getTextStyle` / `getSubtitleStyle` against these same grounds
      * in the same render; re-deriving them here produces byte-identical values
      * at extra cost. `{}` leaves their existing output standing, which is both

@@ -21,17 +21,23 @@
  * flagged amendment on RELOCATING `readOpeningTag` — a move that removes a duplicate. Spending
  * it again on a constant that has a legal home of its own would re-open AC-12 for no benefit.
  *
- * ENUMERATION BEHAVIOUR, CHECKED BEFORE THE NAME WAS COMMITTED
- * ------------------------------------------------------------
- * `sourceFiles` excludes a file only when its name carries a literal `.test.` or `.spec.`
- * segment (`sourceScan.ts:209`), and vitest collects a file as a suite only when it matches
- * `src/**` + `*.{test,spec}.{ts,tsx}` (`vitest.config.mts:67`). `inkRules.ts` matches NEITHER, so
- * it is enumerated as ordinary source by every scan suite in this phase while never being run as
- * one. That was verified rather than assumed: the full suite was run after this file landed and
- * no suite gained a phantom hit from the token literals below. If one ever does, the fix is to
- * rename this module to a form the `sourceFiles` filter excludes WITHOUT vitest collecting it
- * (for example `inkRules.spec.data.ts`), not to obfuscate the literals — a constant that cannot
- * be grepped for its own token is a constant the next reader will not find.
+ * ENUMERATION BEHAVIOUR (rewritten at 88.6.2-16, W071)
+ * ----------------------------------------------------
+ * Suites built on `sourceFiles` never read this module: `sourceFiles` skips the whole test-utils
+ * directory centrally,
+ * src/test-utils/sourceScan.ts ("DECISION Phase 88.6-44 (T-88.6-124)")
+ * Three scan suites walk `src` with their own walkers and DO still read it as source:
+ * src/app/tokenContrast.test.ts ("readdirSync(SRC_ROOT, { recursive: true, withFileTypes: true })")
+ * src/app/reactBigCalendarRemoval.test.ts ("function allFiles(dir: string)")
+ * src/app/copyTable886_1.test.ts ("function walkAll(dir: string)")
+ * None gains a hit from the literals below today. If one ever does, exclude test-utils in that
+ * walker or rename this module, never obfuscate the literals — a constant that cannot be grepped
+ * for its own token is a constant the next reader will not find.
+ *
+ * Vitest never runs it as a suite: its name carries no `.test.` or `.spec.` segment, which the
+ * include pattern requires, vitest.config.mts ("include: ['src/")
+ * What keeps it out of a shipped bundle is the containment test,
+ * src/test-utils/exemption.test.ts ("no test-utils module reaches a shipped bundle")
  *
  * DECISION Phase 88.6-09 (D-16): one named non-test module, imported by both suites, chosen OVER
  * (a) a literal copy in each suite (the divergence above) and OVER (b) an export on

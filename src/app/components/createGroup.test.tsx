@@ -248,7 +248,7 @@ describe('createGroup create-path handoff (88-15 wiring survives the 88-16 shell
 //     NOT pass through `getFetchErrorMessage` — routing it would replace a specific
 //     instruction with the generic `unknown` line.
 //  3. Activating the migrated `<Button>` still SUBMITS the form. `Button` defaults
-//     `type` to `'button'` (`Button.tsx:268`, `type = 'button'`), so a migration that forgot
+//     `type` to `'button'` (src/components/ui/Button.tsx ("type = 'button'")), so a migration that forgot
 //     `type="submit"` would leave the control inert with no type error and no class
 //     census failure. An attribute-only check is NOT sufficient — it would pass a
 //     `<Button type="submit">` whose submit was broken some other way — so the arm
@@ -541,7 +541,7 @@ describe('createGroup — R7 composed axe audit + house rule + focus contract (8
     expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
 
-  it('2. the group-name control carries id + name + a label source (house rule Input.tsx:11-19)', async () => {
+  it('2. the group-name control carries id + name + a label source (house rule src/components/ui/Input.tsx ("HOUSE RULE (88-33 Task 8, fork 5"))', async () => {
     renderCreateGroup();
     await screen.findByRole('button', { name: /create group/i });
     auditFormControls(screen.getByRole('dialog'));

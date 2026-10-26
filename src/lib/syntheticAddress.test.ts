@@ -1,8 +1,8 @@
 // src/lib/syntheticAddress.test.ts
 //
 // The ONLY thing pinning the BROAD `@auth0` test against a later narrowing to
-// `@auth0.local` (DECISION Phase 88.2 NIX-AUTH0). Registered in the ci.yml
-// drift-gate registry AND named in the lockstep fixture
+// `@auth0.local` (DECISION Phase 88.2 NIX-AUTH0). A gates row in
+// scripts/drift-gate-registry.manifest.mjs ("file: 'src/lib/syntheticAddress.test.ts'") AND named in the lockstep fixture
 // (src/lib/ci-grep-gate.fixture.test.ts) on the owner's 2026-09-04 ruling, for
 // the same reason Amendment Z registered colourDistance.test.ts: unregistered,
 // this suite is deletable with a fully green build, and with it goes the only
@@ -54,7 +54,7 @@ describe('isSyntheticAddress — the broad @auth0 test (DECISION Phase 88.2 NIX-
 
   it('is FALSE for the empty string, null and undefined — those are "no address", not a sentinel', () => {
     // DELIBERATE DIVERGENCE from the backend helper
-    // (services/provisioningService.js:138-143), which returns TRUE for an
+    // (backend:Sonnet/services/provisioningService.js ("function isSyntheticAddress(value)")), which returns TRUE for an
     // empty/absent value because its callers ask "may I mail this?". The three
     // frontend call sites ask "is this string a sentinel I must not print?" and
     // already handle absence separately (a falsy address renders the same

@@ -10,9 +10,9 @@
  * THE BREAKPOINT (moved here from EventScheduler.tsx by 88.6.1-09): the line every
  * phone/desktop render fork that reads this hook branches on — Tailwind's `md`, so "md and below"
  * is `max-width: 767px`. The same query is also read imperatively by the game title's two expand
- * handlers, `src/app/gameDetail/page.js:2451` and `:2520` (anchor `titleOverflows`): a one-shot
- * read of the current match inside a click, with no state and no subscription — the same query,
- * NOT the same shape.
+ * handlers, both gated on the state src/app/gameDetail/page.js ("const [titleOverflows, setTitleOverflows] = useState(false);")
+ * declares: a one-shot read of the current match inside a click, with no state and no
+ * subscription — the same query, NOT the same shape.
  *
  * A VIEWPORT breakpoint, not a container query, and deliberately so: `md` is this codebase's
  * phone/desktop line and every sibling on these surfaces switches on it (`UserHomePage.js`,
@@ -30,7 +30,7 @@
    two contradictory instructions to any consumer that reads the DOM rather than the cascade.
 
    The shape is the repo's own: `useState(false)` + a mount effect, exactly as
-   `src/app/components/createEvent.js:61-69` detects `(hover: none)` (anchor `useState(false)`).
+   src/app/components/createEvent.js ("window.matchMedia('(hover: none)')") detects `(hover: none)`.
    The second precedent, MergedHeatmapGrid.js, was DELETED by plan 88.1-16 (FE commit `a31fd40`)
    — the idiom stands, the citation is archival. Starting FALSE is deliberate — every consumer is
    an SSR'd client component, so the initial render must match the server's, and the desktop
@@ -68,8 +68,10 @@
    (1) The value starts false and flips after mount, so a phone arm can paint one desktop frame
        first (DECISION Phase 88.1-12's KNOWN COST, EventScheduler.tsx).
    (2) A consumer that renders its phone sentence inside a live region must not let that flip be
-       announced. `src/app/components/AvailabilityGrid.js:910-919` (anchor
-       `<StatusRegion className="mt-3`) is such a site; plan 88.6.1-39 owns it.
+       announced. AvailabilityGrid was the site this named; plan 88.6.1-39 took its phone hint out
+       of the live region — it is plain text at
+       src/app/components/AvailabilityGrid.js ("<div data-testid={GRID_SUMMARY_LINE_TESTID}"), and
+       the grid's live region is the separate sr-only summary after it.
    (3) Unit tests choose the arm with a media stub installed BEFORE render (EventScheduler.test.tsx
        `stubMatchMedia`); jsdom's global stub answers false (`vitest.setup.ts:23-35`), so a test
        with no stub renders the desktop arm. */

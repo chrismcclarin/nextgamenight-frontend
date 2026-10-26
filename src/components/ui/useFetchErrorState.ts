@@ -53,7 +53,7 @@ const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? React.useLayou
 /**
  * How long a retry's outcome may wait for the COMMITTED state to agree with it before it is
  * dropped (Phase 88.6.1-21, round-2 review #23). Explicitly longer than one TanStack commit (a
- * single zero-delay macrotask, `@tanstack/query-core` `notifyManager.js:3`,
+ * single zero-delay macrotask, `@tanstack/query-core` node_modules:@tanstack/query-core/build/modern/notifyManager.js ("var defaultScheduler = systemSetTimeoutZero;"),
  * `var defaultScheduler = systemSetTimeoutZero;`) plus a React render on a throttled phone, and
  * short enough that a contradicted outcome holds the compact region quiet for one second at most.
  * Read by `FetchErrorBanner`'s outcome window (which re-exports it under the same name) and by
@@ -128,9 +128,9 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   network: "We couldn't reach the server. Check your connection and try again.",
   rate_limited: "You're going a little fast — give it a moment, then try again.",
   // DECISION Phase 88.6.1-07 (D-30, copy row X1): the owner-ratified sentence
-  // (88.6.1-COPY-TABLE.html:161, row `'X1'`, column 5). The previous line told the person to reload the page,
+  // (planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/88.6.1-COPY-TABLE.html ("['X1',"), row `'X1'`, column 5). The previous line told the person to reload the page,
   // and that remedy is false for a session whose cookie exists but whose token cannot be
-  // acquired: the proxy degrades to a tokenless forward (`src/app/api/[...path]/route.ts:174-185`,
+  // acquired: the proxy degrades to a tokenless forward (src/app/api/[...path]/route.ts ("let accessToken: string | null = null;"),
   // anchor `let accessToken: string | null = null;`), and a reload re-runs that same acquisition
   // (CONTEXT D-01). REJECTED: a sign-in link or button on the banner (D-33 row 24, not this
   // phase; plan 88.6.1-58 writes its pointer). REJECTED: per-surface overrides (this register
@@ -221,8 +221,8 @@ export interface FetchErrorMessageOptions {
    * `UseFetchErrorStateOptions.fallbackMessage` carries the same amendment.]
    *
    * DECISION Phase 88.6-14 (D-33): renaming this to `unknownFallbackMessage` was considered
-   * and REJECTED as churn across every call site (`OpenPollsList.js:103-119`, anchor
-   * `toast.error(` around the end-check-in call, and its
+   * and REJECTED as churn across every call site (the end-check-in toast,
+   * src/app/components/OpenPollsList.js ("toast.error("), and its
    * siblings across the R1 sweeps) for no behaviour change — and it would put a rename
    * inside the same waves as a behaviour migration. The narrowing is documented here
    * instead, and pinned by `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown`
@@ -273,13 +273,13 @@ export interface FetchErrorMessageOptions {
    register's permission line states something the app does not know.
 
    REJECTED (a1): `mapErrorToCode` returning `'unknown'` for the flagged body. It labels a real
-   HTTP response "we don't know", flips `shouldRetry` (`src/lib/queryClient.ts:121`, anchor
-   `export function shouldRetry`) to retryable-once for that error, and never reaches the restore
+   HTTP response "we don't know", flips `shouldRetry` (src/lib/queryClient.ts ("export function shouldRetry("), the
+   function itself) to retryable-once for that error, and never reaches the restore
    page's status-keyed 403 arm.
    REJECTED (b): per-site guards. Six would be guarded while dozens of generic sites still print
    the permission line, and the predicate would be copied per site (duplication tenet).
    REJECTED: "bypass `byCode.forbidden` only", the register's own fix text
-   (`.planning/deferred/phase-88.6.1.md:197`, anchor `review MEDLOW-9`). It falls to `MESSAGE_BY_CODE.forbidden`, which is
+   (planning:.planning/deferred/phase-88.6.1.md ("review MEDLOW-9")). It falls to `MESSAGE_BY_CODE.forbidden`, which is
    still a permission claim (DF correction 4).
 
    The resulting line, stated plainly: a surface that passes a `fallback` prints its own
@@ -318,8 +318,8 @@ export interface UseFetchErrorStateOptions {
    * review IN-10): this docblock previously read "Override the derived copy (e.g. a
    * surface-specific message)", which describes a general override this option has never
    * been. Renaming it to `unknownFallbackMessage` was considered and REJECTED as churn
-   * across every call site (`OpenPollsList.js:103-119`, anchor `toast.error(` around the
-   * end-check-in call, and its siblings across the R1
+   * across every call site (the end-check-in toast,
+   * src/app/components/OpenPollsList.js ("toast.error("), and its siblings across the R1
    * sweeps) for no behaviour change — and it would put a rename inside the same waves as a
    * behaviour migration. The narrowing is documented here instead, and pinned by
    * `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown` assertion. The sibling

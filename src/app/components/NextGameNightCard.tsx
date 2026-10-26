@@ -143,7 +143,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
     // use. There is deliberately no second date formatter in this file.
     //
     // RULED COPY DELTA: `formatTime(date, tz)` APPENDS the timezone abbreviation
-    // (`src/lib/datetime.ts:225-231` says so in as many words), so this renders
+    // (src/lib/datetime.ts ("Format a time in 12-hour format") says so in as many words), so this renders
     // "7:00 PM EDT", not the literally-ruled "7:00 PM". Passing `timezone` is the
     // deliberate choice — the list rows directly beneath the hero already render
     // "7:00 PM EDT", and consistency with the rows the hero sits above beats a literal
@@ -155,11 +155,11 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
       let day: string;
       try {
         // SHORT month: the ruled copy is "Friday, Sep 4", not "Friday, September 4".
-        // `CalendarListView.js:190` uses the LONG-month variant of this same token for
+        // src/app/components/CalendarListView.js ("formatWithTzAbbr(d, timezone, 'EEEE, MMMM d')") uses the LONG-month variant of this same token for
         // its day headers — that difference is intentional, not drift.
         day = formatWithTzAbbr(d, timezone, 'EEEE, MMM d');
       } catch {
-        // Copied from `CalendarListView.js:191-193`: a malformed IANA string renders
+        // Copied from src/app/components/CalendarListView.js ("formatWithTzAbbr(d, null, 'EEEE, MMMM d')"): a malformed IANA string renders
         // in UTC rather than crashing the sheet.
         day = formatWithTzAbbr(d, null, 'EEEE, MMM d');
       }
@@ -193,12 +193,12 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
       is null means identity-resolving-after-mount produces exactly ONE fetch total, never
       one before resolution whose answer belongs to nobody and a second after.
 
-      THE ASYNC-GATING RULE is carried in spirit from `RsvpSection.js:41-56`: while the
+      THE ASYNC-GATING RULE is carried in spirit from src/app/components/RsvpSection.js ("Gated on identity resolution — while"): while the
       viewer is unresolved, the status is left UNKNOWN — never resolved to "not mine".
 
-      TELEMETRY DIVERGENCE, deliberate: `RsvpSection.js:58` uses `console.error` for this
+      TELEMETRY DIVERGENCE, deliberate: `RsvpSection.js` uses `console.error` for this (AMENDED 2026-10-24, 88.6.2-34: it no longer does; it now records this rejection as a breadcrumb at src/app/components/RsvpSection.js ("logger.info('Error fetching RSVPs:'"))
       same rejection. This call upgrades that to the house `logger.error`, which IS
-      `Sentry.captureException(err ?? new Error(msg))` (`src/lib/logger.ts:29`) — so a
+      `Sentry.captureException(err ?? new Error(msg))` (src/lib/logger.ts ("Sentry.captureException(err ?? new Error(msg)")) — so a
       read failure is observable even though the UI stays silent about it. Converging
       `RsvpSection` onto the same helper belongs to 88.6's error pass, not here.
     */
@@ -272,7 +272,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
 
         These two lines are ALSO the mutual-clear: clearing at the start is what guarantees
         the two regions can never carry contradictory outcomes, so there is deliberately no
-        second clear in the `catch` below. Precedent: `userProfile/page.js:303-311` — "the
+        second clear in the `catch` below. Precedent: src/app/userProfile/page.js ("empty-first contract; the next identical outcome is then a real") — "the
         next identical outcome is then a real DOM change and announces again".
 
         The SET happens after the await resolves, never in this batch — a clear and a set in
@@ -300,7 +300,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
           a cleanup — and it would silently wipe members' notes.
 
           No optimistic flip: set submitting, await, then reflect. Mirrors
-          `RsvpSection.js:69-77` — and deliberately NOT its `:78` post-submit
+          src/app/components/RsvpSection.js ("const result = await rsvpAPI.submitRsvp(eventId, status);") — and deliberately NOT its src/app/components/RsvpSection.js ("The gated fetchRsvps below re-syncs") post-submit
           `await fetchRsvps()` refetch. The hero's own row is exactly what it just wrote;
           a second round trip to be told so is latency for nothing.
         */
@@ -323,7 +323,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
         if (eventIdRef.current !== submittedFor) return;
         /*
           DECISION Phase 88.5 (SPEC Req 4): failure copy comes from the shared
-          `getFetchErrorMessage`, chosen OVER `RsvpSection.js:82`'s hard-coded string —
+          `getFetchErrorMessage`, chosen OVER the hard-coded string at src/app/components/RsvpSection.js ("Could not save your response. Please try again.") —
           which is the exact idiom that helper was written to replace (it derives copy
           from `ApiError.code` instead of painting an upstream message at the user,
           `DECISION Phase 88-25`). The divergence from `RsvpSection` is NOTED here and
@@ -355,7 +355,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
           invalid tree and would make an RSVP tap navigate (UI-SPEC A-4).
 
           No `prefers-reduced-motion` override here on purpose — the global contract at
-          `globals.css:2448-2470` already caps every transition, and
+          src/app/globals.css ("@media (prefers-reduced-motion: reduce) {") already caps every transition, and
           `DECISION Phase 88-28 Req 4` says not to duplicate it per component.
         */}
         <button
@@ -371,8 +371,8 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             DECISION Phase 88.6-28 (D-03/W36, UI-SPEC §4.5 Eyebrow row): this converges on the
             ratified EYEBROW role — Caption 12 / 700 / uppercase / tracking — by moving the
             WEIGHT ONLY, 600 -> 700. The named shipped eyebrow whose treatment decision this
-            matches is `CalendarListView.js:1009`, and specifically the ruling in its own marker
-            at `:1005-1008`: "`text-xs` STAYS — 12px is this role's rung, not a miss — and only
+            matches is src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)"), and specifically the ruling in its own marker
+            at src/app/components/CalendarListView.js ("STAYS — 12px is this role's rung, not a miss"): "`text-xs` STAYS — 12px is this role's rung, not a miss — and only
             the WEIGHT moves, 600 -> 700. It remains a `<span>`: an eyebrow is not a heading."
             All four of those hold here: 12px stays, the element stays a span, uppercase stays,
             700 lands.
@@ -500,18 +500,18 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
                     /*
                       DECISION Phase 88.5 (SPEC Req 4): the 2px selected ring is reserved
                       on BOTH states as `border-2 border-transparent`, chosen OVER
-                      `RsvpSection.js:168`'s shape (which adds `border-2` only when
+                      the shape at src/app/components/RsvpSection.js ("config.activeBorder") (which adds `border-2` only when
                       active). Two reasons, both real: (a) the width is present at rest,
                       so selecting a button no longer nudges the row by 2px; (b) the
                       repo's `borderExplicitness` gate flags an uncoloured width utility,
                       and `RsvpSection` needs a standing allow-list entry to ship its
                       shape — that gate says in as many words not to add an entry to make
                       a test green, so the code names its own colour instead. The divider
-                      is the per-SIDE `border-l-line` (the shipped `Banner.tsx:47` idiom)
+                      is the per-SIDE `border-l-line` (the shipped src/components/ui/Banner.tsx ("info: 'border-l-line',") idiom)
                       so it cannot repaint the whole ring.
 
                       44px FLOOR: `min-h-11`, and it is not optional. Do NOT "restore" the
-                      horizontal+vertical padding pairing shipped at `RsvpSection.js:165`
+                      horizontal+vertical padding pairing shipped at src/app/components/RsvpSection.js ("It REPLACES the") (AMENDED 2026-10-24, 88.6.2-34: RsvpSection has since replaced that pairing with min-h-11; its marker at the anchor records it)
                       in place of it — `text-sm` (20px line) plus that 16px of vertical
                       padding computes to about 36px and fails the touch floor
                       (D-07 constraint i). Phone-forward: 44x44 is a floor, not a target.
@@ -574,7 +574,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
           {/*
             ALWAYS MOUNTED, EMPTY-FIRST. Corrected Phase 88.6.1 (D-42): an inserted
             `role="alert"` that arrives with its text IS announced (ARIA 1.2 `alert`; the
-            corrected bullet at `StatusRegion.tsx:9`), so the old claim here, that wrapping
+            corrected bullet at src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted")), so the old claim here, that wrapping
             this region in `{error && …}` would make the failure silent, was wrong for this
             assertive region. The always-mounted shape stays for two other reasons: the tests
             capture the node once (identity), and the clear-at-start in `handleRsvp` makes an

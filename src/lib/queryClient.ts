@@ -101,8 +101,9 @@ const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   // the same fix set. Terminal by construction — the predicate is a pure function of the
   // address, so a second identical request returns the same 400.
   // STATED HONESTLY RATHER THAN OVERSOLD: this row changes nothing today. `retry:
-  // shouldRetry` is set ONLY under `defaultOptions.queries` (:159-164 below — there is no
-  // `mutations` default at all), and the one route that emits this code is reached by a
+  // shouldRetry` is set ONLY under `defaultOptions.queries`
+  // (this file ("retry: shouldRetry, // PREDICATE") — there is no `mutations` default at all),
+  // and the one route that emits this code is reached by a
   // plain `apiFetch` awaited in a handler, not by a useMutation, so no retry path exists
   // to suppress. It is here because the set moves together: the day this code is ever
   // read by a query, or a `mutations` default is added, its absence would be a silent
@@ -173,7 +174,7 @@ export function queryCacheOnError(
   // 93's emitter conversion, and T-88.6-121 says so.
   //
   // NEVER into `tags` (unbounded cardinality, and tags are indexed) and never into any
-  // rendered string. `extra` is deep-scrubbed by sentry.scrub.js:171-172 on the way out,
+  // rendered string. `extra` is deep-scrubbed by sentry.scrub.js ("deepScrub(event.extra)") on the way out,
   // the same bound the T-84-05 zodIssues forward above relies on.
   const upstreamMessage = error instanceof ApiError ? error.upstreamMessage : undefined;
   Sentry.captureException(error, upstreamMessage ? { tags, extra: { upstreamMessage } } : { tags });

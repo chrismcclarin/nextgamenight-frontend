@@ -1,8 +1,11 @@
 // src/lib/schemas/availability.ts
 //
-// Phase 82 (TS-02 / D-09). Domain source: api.js availabilityAPI (L608),
-// availabilityFormAPI (L694), promptSettingsAPI (L758), promptAPI (L793),
-// suggestionAPI (L840) / suggestionsAPI (L934).
+// Phase 82 (TS-02 / D-09). Domain source:
+// src/lib/api.ts ("export const availabilityAPI = {"),
+// src/lib/api.ts ("export const availabilityFormAPI = {"),
+// src/lib/api.ts ("export const promptSettingsAPI = {"),
+// src/lib/api.ts ("export const promptAPI = {").
+// SuggestionSchema below has no live source; see its own comment.
 // Zod v4. Typing only (z.infer) — no runtime .parse() this phase.
 
 import { z } from 'zod';
@@ -17,7 +20,7 @@ export const TimeSlotSchema = z.object({
 });
 export type TimeSlot = z.infer<typeof TimeSlotSchema>;
 
-// availabilityAPI (L608) — a user's recurring/submitted availability.
+// availabilityAPI — a user's recurring/submitted availability.
 // 87.4 Plan 10 (PR-2 / D-03): `user_id` is the caller's Users.id UUID post the
 // BE emission flip (Plans 08/09), so it is tightened from a loose `z.string()`
 // to `z.uuid()` — rejecting sub-shaped ids AND null (no `.nullable()`, matching
@@ -84,7 +87,7 @@ export type AvailabilityPattern = z.infer<typeof AvailabilityPatternSchema>;
 export const AvailabilityPatternListSchema = z.array(AvailabilityPatternSchema);
 export type AvailabilityPatternList = z.infer<typeof AvailabilityPatternListSchema>;
 
-// availabilityFormAPI (L694) — token-scoped availability form payload.
+// availabilityFormAPI — token-scoped availability form payload.
 export const AvailabilityFormSchema = z.object({
   token: z.string().optional(),
   group_id: z.string().optional(),
@@ -94,7 +97,7 @@ export const AvailabilityFormSchema = z.object({
 });
 export type AvailabilityForm = z.infer<typeof AvailabilityFormSchema>;
 
-// promptSettingsAPI (L758) — per-group prompt cadence settings.
+// promptSettingsAPI — per-group prompt cadence settings.
 export const PromptSettingsSchema = z.object({
   group_id: z.string().optional(),
   enabled: z.boolean().optional(),
@@ -103,7 +106,7 @@ export const PromptSettingsSchema = z.object({
 });
 export type PromptSettings = z.infer<typeof PromptSettingsSchema>;
 
-// promptAPI (L793) — an availability prompt/nudge.
+// promptAPI — an availability prompt/nudge.
 export const PromptSchema = z.object({
   id: z.string().optional(),
   group_id: z.string().optional(),
@@ -112,7 +115,9 @@ export const PromptSchema = z.object({
 });
 export type Prompt = z.infer<typeof PromptSchema>;
 
-// suggestionAPI (L840) / suggestionsAPI (L934) — suggested meeting slots.
+// Meeting-slot suggestions. Their source, suggestionAPI, was retired with SuggestionCard.js by
+// plan 88.6.1-49, and nothing imports this schema at FE af52b7f;
+// src/lib/api.ts ("export const suggestionsAPI = {") is the GAME-suggestion client, a different shape.
 export const SuggestionSchema = z.object({
   slotId: z.string().optional(),
   start: z.string().optional(), // UTC ISO instant

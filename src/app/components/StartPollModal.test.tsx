@@ -129,12 +129,10 @@ describe('StartPollModal — error copy is keyed on the status, not the prose (8
     );
     render(<StartPollModal {...baseProps} />);
     submit();
-    await waitFor(() =>
-      expect(screen.queryByText('group_id is required')).not.toBeInTheDocument()
-    );
-    expect(
-      screen.getByText('Something looks off with that request. Refresh the page to try again.')
-    ).toBeInTheDocument();
+    // Settle on the register line first: an absence checked before the request settles passes on
+    // its first tick and proves nothing (review WR-305, W033; FE-TESTING-CONVENTIONS CF-26).
+    expect(await screen.findByText('Something looks off with that request. Refresh the page to try again.')).toBeInTheDocument();
+    expect(screen.queryByText('group_id is required')).not.toBeInTheDocument();
   });
 });
 

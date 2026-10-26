@@ -1,7 +1,11 @@
 // src/lib/schemas/events.ts
 //
-// Phase 82 (TS-02 / D-09). Domain source: api.js eventsAPI (L220), rsvpAPI (L296),
-// rsvpPublicAPI (L318), eventBringsAPI (L329), ballotAPI (L961).
+// Phase 82 (TS-02 / D-09). Domain source:
+// src/lib/api.ts ("export const eventsAPI = {"),
+// src/lib/api.ts ("export const rsvpAPI = {"),
+// src/lib/api.ts ("export const rsvpPublicAPI = {"),
+// src/lib/api.ts ("export const eventBringsAPI = {"),
+// src/lib/api.ts ("export const ballotAPI = {").
 // Zod v4. Typing only (z.infer) — no runtime .parse() this phase.
 
 import { z } from 'zod';
@@ -70,7 +74,7 @@ import { GameSchema } from './shared';
  * load-bearing at RUNTIME only if one of these endpoints is ever migrated to
  * `validatedQueryFn`, whose `schema.parse` drops undeclared keys; adopting it
  * carries the contract-test obligation in the FOUNDATION RULE at
- * src/lib/validatedQueryFn.ts:13-24.
+ * src/lib/validatedQueryFn.ts ("FOUNDATION RULE (every later-wave validatedQueryFn migration INHERITS this):").
  *
  * Do NOT write "this schema layer strips unknown keys" anywhere near here. It
  * is false today, and it would teach the next reader that a parse guard exists
@@ -145,7 +149,7 @@ export const EventInvitePreviewSchema = z.object({
 });
 export type EventInvitePreview = z.infer<typeof EventInvitePreviewSchema>;
 
-// rsvpAPI (L296) — RSVP records + the summary-bearing event RSVP list.
+// rsvpAPI — RSVP records + the summary-bearing event RSVP list.
 export const RsvpSchema = z.object({
   // EventRsvp row PK — the wire field the FE keys rows by (RsvpSection).
   id: z.string(),
@@ -165,7 +169,7 @@ export type Rsvp = z.infer<typeof RsvpSchema>;
 export const RsvpListSchema = z.array(RsvpSchema);
 export type RsvpList = z.infer<typeof RsvpListSchema>;
 
-// rsvpAPI (L668) — GET /rsvp/event/:event_id response wrapper.
+// rsvpAPI — GET /rsvp/event/:event_id response wrapper.
 // The route ALWAYS returns both keys and always all three counts: in
 // periodictabletopbackend_v2/Sonnet/routes/rsvp.js it seeds
 // `const summary = { yes: 0, maybe: 0, no: 0 }`, increments it with
@@ -184,7 +188,7 @@ export const RsvpEventResponseSchema = z.object({
 });
 export type RsvpEventResponse = z.infer<typeof RsvpEventResponseSchema>;
 
-// rsvpPublicAPI (L318) — magic-link respond result.
+// rsvpPublicAPI — magic-link respond result.
 export const RsvpPublicResponseSchema = z.object({
   success: z.boolean().optional(),
   message: z.string().optional(),
@@ -192,7 +196,7 @@ export const RsvpPublicResponseSchema = z.object({
 });
 export type RsvpPublicResponse = z.infer<typeof RsvpPublicResponseSchema>;
 
-// eventBringsAPI (L329) — who is bringing which games.
+// eventBringsAPI — who is bringing which games.
 export const EventBringSchema = z.object({
   // EventBring row PK.
   id: z.string(),
@@ -214,7 +218,7 @@ export type EventBring = z.infer<typeof EventBringSchema>;
 export const EventBringListSchema = z.array(EventBringSchema);
 export type EventBringList = z.infer<typeof EventBringListSchema>;
 
-// ballotAPI (L961) — game-vote ballots for an event.
+// ballotAPI — game-vote ballots for an event.
 export const BallotOptionSchema = z.object({
   game_id: z.string(),
   game: GameSchema.optional(),

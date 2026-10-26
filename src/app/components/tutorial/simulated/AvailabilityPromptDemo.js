@@ -89,7 +89,7 @@ export default function AvailabilityPromptDemo({ stage }) {
           `shadow-md` below becomes `shadow-theme-md`. `shadow-md` is Tailwind v4's own INLINED
           black scale, not the project's re-tinted ladder — v4 inlines its built-in shadow values
           into its built-in utilities, so `--shadow-theme-md` never reaches a `shadow-md`
-          (globals.css:1281-1295). THE SHADOW'S HUE CHANGES in both themes; that is the point of
+          (src/app/globals.css ("DECISION Phase 87.7 (Plan 06, RESEARCH Pitfall 2)")). THE SHADOW'S HUE CHANGES in both themes; that is the point of
           the ruling and is disclosed for `/gsd-ui-review`.
 
           NO HOVER PIN, deliberately: this is a SIMULATED chip surface inside an animation with

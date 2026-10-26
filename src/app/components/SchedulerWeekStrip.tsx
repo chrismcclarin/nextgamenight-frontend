@@ -69,7 +69,7 @@ export const SPOKEN_DAY_NAME_FORMAT = 'EEEE d';
  *     it, which is literally the tab/tabpanel relationship; and plan 88.1-09's desktop Week/Day
  *     control already answers the same question with pressed-state buttons in a labelled group, so
  *     `radiogroup` would be a third idiom for one-of-N on one surface. Assigning a role at all is
- *     NOT optional here: `useHeatmapCell.ts:13-16` states in its own header that it decides no
+ *     NOT optional here: src/app/components/heatmap/useHeatmapCell.ts ("Semantics-agnostic by design: this hook does NOT decide") states in its own header that it decides no
  *     `role`/`aria-*` — the ReadCell/WriteCell wrappers do — and this strip composes the hook
  *     directly with no wrapper cell, so without this the cells would ship as role-less
  *     tabindex-carrying elements announcing "M 22 4" with no name and no selected state.
@@ -151,7 +151,7 @@ function StripDayCell({
       }
     >
       {/* Header zone. Sizing/stacking/leading copied VERBATIM from the owner-passed sibling
-          `EventHeatmapBackground.js:216-226` — the M-03 truncation fix, already judged at 375px,
+          src/app/components/EventHeatmapBackground.js ("text-xs font-bold text-content-muted block leading-tight") — the M-03 truncation fix, already judged at 375px,
           which CONTEXT D-03 mandates the strip reuse rather than re-invent.
 
           DECISION Phase 88.1-13 (SPEC Req 8, threat T-88.1-39), two choices at this one zone:
@@ -163,7 +163,7 @@ function StripDayCell({
               by class-attribute order and with no tailwind-merge on this template literal — so a
               leftover static colour would silently outrank `text-accent` on today's cell no matter
               which class was written last. That is the exact failure the §10.3 exemplar's own
-              in-file warning describes (was `MergedHeatmapGrid.js:130-138`, deleted by plan
+              in-file warning describes (was src/app/components/MergedHeatmapGrid.js, deleted by plan
               88.1-16; the warning now lives at `EventScheduler.tsx` — measured in a real
               `next build`). Read plan 88.1-12's "verbatim in shape" as covering this span's
               SIZING and STACKING only; the colour slot is this ternary's.
@@ -246,7 +246,7 @@ export default function SchedulerWeekStrip({
 }: SchedulerWeekStripProps) {
   // Roving tabindex: exactly one cell is tabbable, arrows move real DOM focus. This is the
   // container half of the contract `useHeatmapCell` leaves to its host, and it mirrors WeekGrid's
-  // own `onMove` handling (`WeekGrid.tsx:284-287`) rather than inventing a second shape.
+  // own `onMove` handling (src/app/components/heatmap/WeekGrid.tsx ("Single STABLE onMove")) rather than inventing a second shape.
   const [focusedIndex, setFocusedIndex] = useState(selectedIndex);
   const cellRefs = useRef(new Map<number, HTMLButtonElement | null>());
 
@@ -275,9 +275,9 @@ export default function SchedulerWeekStrip({
       role="tablist"
       aria-label="Choose a day"
       // HARD GEOMETRY CONSTRAINT (UI-SPEC spacing exception 2, pitfall P9). At 375px the modal
-      // leaves 327px of content width (375 - 24 modal gutter `Modal.tsx:186` - 24 body padding
-      // `Modal.tsx:289` `p-3`), so seven cells are 46.7px against a 44px touch floor — 2.7px of
-      // margin, total. `gap-px` is a grid hairline, copied from `EventHeatmapBackground.js:210`,
+      // leaves 327px of content width (375 - 24 modal gutter src/app/components/Modal.tsx ("DECISION Phase 88-16 (DEF-88-17-01)") - 24 body padding
+      // src/app/components/Modal.tsx ("flex-1 overflow-y-auto p-3 md:p-6") `p-3`), so seven cells are 46.7px against a 44px touch floor — 2.7px of
+      // margin, total. `gap-px` is a grid hairline, copied from src/app/components/EventHeatmapBackground.js ("aria-label={HEATMAP_GRID_LABEL}"),
       // and it is the ONLY separation this strip may carry. Container padding, a larger gap, or a
       // per-cell border each drop the cells below the floor and fail the phone gate
       // (`e2e/touch-targets.spec.ts`). "Tidying" the spacing here is a regression, not a cleanup.

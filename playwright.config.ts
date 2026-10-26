@@ -70,6 +70,10 @@ export default defineConfig({
     // independent arm in ci.yml, not a substitute for this one). Lockstep-pinned by
     // `src/lib/ci-grep-gate.fixture.test.ts` ("88.6 CR-01"). Re-enabling tracing here is a
     // decision, not a cleanup.
+    // AMENDED Phase 88.6.2 (2026-10-25, review A-IN-03): "publishes from a PUBLIC repo" is history —
+    // since plan 27 every upload is age ciphertext (scripts/encrypt-evidence.sh, ci.yml "Encrypt
+    // Playwright failure evidence"). The no-trace choice STANDS: ciphertext is the second arm, not
+    // a reason to record the password in the first place.
     // [AMENDED 2026-09-29 — plan 88.6-61, review round 2 H-5, owner ruling R2-H5-RULING "source-level"
     // ("why are we recording passwords?")]: the "second, independent arm" claim above was INCOMPLETE.
     // A failed test ALSO writes `test-results/<test>/error-context.md` with an aria snapshot that

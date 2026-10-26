@@ -1,5 +1,6 @@
 // Colocated behavioural coverage for the Email section (Phase 88.8 plan 13,
-// SPEC R12 / BOPS-05). Registered in the ci.yml drift-gate registry, because a
+// SPEC R12 / BOPS-05). Registered as a gates row in
+// scripts/drift-gate-registry.manifest.mjs ("file: 'src/app/components/EmailAddressSection.test.tsx'"), because a
 // unit run is green whether a suite passes or whether the file was DELETED.
 //
 // WHAT THIS SUITE CANNOT PROVE, stated here so a green run is not mistaken for
@@ -9,7 +10,8 @@
 // — that plan 09's resend route actually serves a token whose `expires_at` has
 // passed — is proved on the BACKEND side, by the behaviour row and test
 // `88.8-09-PLAN.md` Task 1 carries for exactly that row state (the predicate is
-// `status === 'active'` with NO `expires_at` clause, routes/users.js:1550-1575).
+// `status === 'active'` with NO `expires_at` clause,
+// backend:Sonnet/routes/users.js ("THE ROW PREDICATE IS")).
 // Neither repo's CI can see the other.
 //
 // The wire KEY is not pinned here either, for the same structural reason: the
@@ -544,7 +546,7 @@ describe('EmailAddressSection — the code field', () => {
   it('normalises case, dashes and spaces, and DECODES the three Crockford confusables like the backend', () => {
     expect(normaliseEmailChangeCode('ab12-cd34')).toBe('AB12CD34');
     expect(normaliseEmailChangeCode(' ab 12 cd 34 ')).toBe('AB12CD34');
-    // O -> 0, I -> 1, L -> 1 (routes/users.js:2091). A client stricter than the
+    // O -> 0, I -> 1, L -> 1 (backend:Sonnet/routes/users.js ("const CROCKFORD_CONFUSABLES")). A client stricter than the
     // contract would reject codes the server accepts.
     expect(normaliseEmailChangeCode('ilo-o1234')).toBe('11001234');
     expect(checkCode('ilo-o1234')).toBe('ok');
@@ -1807,7 +1809,7 @@ describe('EmailAddressSection — composition and accessibility', () => {
     }
   });
 
-  it('the email input carries id + name + an associated label (the Input.tsx:11-19 house rule)', async () => {
+  it('the email input carries id + name + an associated label (the house rule at src/components/ui/Input.tsx ("HOUSE RULE (88-33 Task 8, fork 5"))', async () => {
     const user = userEvent.setup();
     mockSelf.mockReturnValue(selfState(ROW()));
     renderSection();
@@ -2082,7 +2084,7 @@ describe('EmailAddressSection — 88.6-38: the expiry arm the invalidation wakes
   });
 });
 
-describe('EmailAddressSection — 88.6-38: the two extracted rules (the `queryClient.ts:121` seam idiom)', () => {
+describe('EmailAddressSection — 88.6-38: the two extracted rules (the seam idiom of src/lib/queryClient.ts ("Exported so the behavioral test can unit-call the truth"))', () => {
   // `shouldApplySaveRun` — the LAST-WRITE-WINS ordering rule. The interleave it defends
   // against is unreachable through the UI (the `saveInFlight` lane keeps a second Save from
   // starting; the shipped round-6 test pins that), so the RULE is what is testable and this

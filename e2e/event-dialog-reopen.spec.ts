@@ -20,6 +20,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { fillCreateEventManualEntry } from './support/createEvent';
 import { E2E_GROUP_ID } from './support/groupSettings';
 import { holdWrites, holdUntilReleased } from './support/inFlight';
+import { expectTouchTarget } from './support/touchTarget';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 const E2E_EVENT_DETAIL_PATH =
   process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${E2E_GROUP_ID}`;
@@ -50,7 +52,7 @@ test.describe('Edit Event on the event page — reopening while an update is sav
           await route.fallback();
           return;
         }
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         const json = await response.json();
         await route.fulfill({ response, json: { ...json, comments: MARKER } });
       },
@@ -85,12 +87,7 @@ test.describe('Edit Event on the event page — reopening while an update is sav
     const reopened = page.getByTestId('create-event-submit');
     await expect(reopened).toHaveText('Update Event');
     await expect(reopened).not.toHaveAttribute('aria-disabled', 'true');
-    const box = await reopened.boundingBox();
-    const viewport = page.viewportSize();
-    expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThanOrEqual(44);
-    expect(box!.x).toBeGreaterThanOrEqual(0);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
+    await expectTouchTarget(reopened, 'the reopened submit', { axes: 'height', withinViewportOf: page });
     expect(put.count()).toBe(1);
     expect(net.count('PUT', /\/events\//)).toBe(0);
     expect(net.count('POST', /\/events/)).toBe(0);

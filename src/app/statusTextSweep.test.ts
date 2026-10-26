@@ -4,14 +4,14 @@
  * WHY THIS GATE EXISTS
  * --------------------
  * `text-status-{success,error,warning}` resolves, via the `@theme inline` keys at
- * `globals.css:410-412`, to the status BORDER values. Four of the six status pairs failed the
+ * src/app/globals.css ("--color-status-success: var(--color-status-success-border);") and its two siblings, to the status BORDER values. Four of the six status pairs failed the
  * 4.5:1 text floor before this phase — MEASURED against `src/lib/wcag.ts`: light success 3.30 on
  * the plain card / 2.78 on its own tint, light warning 3.19 / 2.72, light error 4.83 / 3.81, dark
  * error 3.68 / 3.23.
  *
  * Plan 88.3-04 minted six `--color-status-{x}-text` values that clear 4.5:1 on BOTH the plain card
  * and the matching tint in BOTH themes, and bridged them into `@theme inline` as
- * `--color-content-status-{success,error,warning}` (`globals.css:362-364`). This plan moves every
+ * `--color-content-status-{success,error,warning}` (src/app/globals.css ("--color-content-status-success: var(--color-status-success-text);") and its two siblings). This plan moves every
  * call site onto them. This suite is what stops them drifting back.
  *
  * DECISION Phase 88.3 (OI-1): the 132-site CLASS SWEEP, chosen OVER two cheaper alternatives that
@@ -20,7 +20,7 @@
  *   (A) RE-POINT THE SHARED THEME KEY. `--color-status-error: var(--color-status-error-text)` is
  *       three lines and zero sweeps. REJECTED, and the reason is structural: in Tailwind v4 ONE
  *       `@theme inline` key generates the `text-`, `bg-` AND `border-` utilities
- *       (`globals.css:384-386`, verified). Re-pointing it therefore drags the 47 `border-status-*`
+ *       (src/app/globals.css ("--color-status-error: var(--color-status-error-border);"), verified). Re-pointing it therefore drags the 47 `border-status-*`
  *       sites and the 4 solid `bg-status-*` glyphs with it, and visibly LIGHTENS the dark error
  *       border from `#ef4444` to `#fca5a5`. Plan 04 already split the families at the token layer
  *       precisely so this would not be necessary; collapsing them again re-opens OI-4.
@@ -31,8 +31,8 @@
  *       the override does nothing. An UNLAYERED `.text-status-success` rule does win the cascade,
  *       but then it also beats every `hover:` / `dark:` / responsive variant of a text colour on
  *       the same element — and four sites in this sweep carry `hover:text-status-error`
- *       (`BallotOptionsEditor.js:38`, `FeedbackForm.js:231`, `ParticipantRow.js:271`,
- *       `createGroup.js:176`), which would go dead.
+ *       (src/app/components/BallotOptionsEditor.js ("text-content-status-error hover:text-content-status-error text-lg"), src/app/components/FeedbackForm.js ("text-content-muted hover:text-content-status-error shrink-0"), src/app/components/ParticipantRow.js ("text-content-status-error hover:text-content-status-error text-sm px-2"),
+ *       src/app/components/createGroup.js ("text-content-status-error hover:text-content-status-error")), which would go dead.
  *
  * THE GATE CANNOT SEE ALTERNATIVE (A) — SAY SO RATHER THAN IMPLY OTHERWISE
  * -----------------------------------------------------------------------
@@ -44,12 +44,12 @@
  * WHY A SOURCE SCAN AND NOT A GREP
  * --------------------------------
  * The token lives in shapes a `className=`-anchored rewrite misses and a naive `sed` corrupts:
- * a `closeClassName=` prop (`createGroup.js:176`), object-literal config values
- * (`RsvpSection.js:121,130`), a lookup table (`gameDetail/page.js:45-46`) and template-literal
- * ternary branches (`KebabMenu.js:158`, `ScheduleList.js:144-145`, `FriendInvitePanel.js:414-417`).
+ * a `closeClassName=` prop (src/app/components/createGroup.js ("closeClassName=")), object-literal config values
+ * (src/app/components/rsvpStatusConfig.ts ("textColor: 'text-content-status-success',"), moved there from RsvpSection.js), a lookup table (src/app/gameDetail/page.js ("cls: 'bg-status-success-subtle text-content-status-success'")) and template-literal
+ * ternary branches (src/app/components/KebabMenu.js ("text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold'"), src/app/components/ScheduleList.js ("'bg-status-warning-subtle text-content-status-warning enabled-hover"), src/app/components/FriendInvitePanel.js ("'bg-status-success-subtle text-content-status-success border border-status-success'")).
  * The lexer crosses newlines, recurses into `${...}`, and DROPS COMMENTS — the last one matters
  * here because a raw grep reads 134 occurrences where the class-string population is 132; the two
- * extra are marker prose at `gameDetail/page.js:1903` and `FormField.tsx:9`.
+ * extra are marker prose at src/app/gameDetail/page.js ("text-status-success used by that mobile inline indicator for") and src/app/components/form/FormField.tsx ("Error: 12px/400"), whose legacy token 88.6-37 later corrected away.
  *
  * THE PRESERVATION TESTS MATTER MORE THAN THE NEGATIVE
  * ---------------------------------------------------
@@ -62,7 +62,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { lineAt, sourceFiles, stringChunks } from '../test-utils/sourceScan';
+import { STRIP_VARIANTS, lineAt, sourceFiles, stringChunks } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -81,11 +81,8 @@ const BORDER = HUES.map((h) => `border-status-${h}`);
 const SUBTLE = HUES.map((h) => `bg-status-${h}-subtle`);
 const SOLID = HUES.map((h) => `bg-status-${h}`);
 
-/** The richer variant strip from `tintTreatment.test.ts:113` — four sites carry `hover:`. */
-const VARIANT_PREFIX = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
-
 /** The base token of a class, with every variant prefix, a leading `!` and any `/alpha` removed. */
-const base = (token: string): string => token.replace(VARIANT_PREFIX, '').replace(/\/\d+$/, '');
+const base = (token: string): string => token.replace(STRIP_VARIANTS, '').replace(/\/\d+$/, '');
 
 /**
  * Every use of a class whose BASE is EXACTLY one of `tokens`, anywhere in a string literal or a
@@ -144,20 +141,20 @@ describe('Req 6 status text sweep — every status text site reads the text-safe
     expect(legacyStatusTextUses(`const c = "${LEGACY[1]}";`)).toHaveLength(1);
     // (ii) a JSX className — the ordinary shape.
     expect(legacyStatusTextUses(`<p className="text-sm ${LEGACY[1]}">{error}</p>`)).toHaveLength(1);
-    // (iii) a `closeClassName=` PROP value (`createGroup.js:176`) — one element carrying the token
+    // (iii) a `closeClassName=` PROP value (src/app/components/createGroup.js ("closeClassName=")) — one element carrying the token
     // twice, once variant-prefixed.
     expect(
       legacyStatusTextUses(`<Modal closeClassName="${LEGACY[1]} hover:${LEGACY[1]}" />`),
     ).toHaveLength(2);
-    // (iv) an object-literal config value (`RsvpSection.js:121`).
+    // (iv) an object-literal config value (src/app/components/rsvpStatusConfig.ts ("textColor: 'text-content-status-success',"), moved there from RsvpSection.js).
     expect(legacyStatusTextUses(`const cfg = { textColor: '${LEGACY[0]}' };`)).toHaveLength(1);
-    // (v) a lookup-table `cls:` value (`gameDetail/page.js:45`).
+    // (v) a lookup-table `cls:` value (src/app/gameDetail/page.js ("cls: 'bg-status-success-subtle text-content-status-success'")).
     expect(
       legacyStatusTextUses(
         `const m = { yes: { label: 'Going', cls: 'bg-status-success-subtle ${LEGACY[0]}' } };`,
       ),
     ).toHaveLength(1);
-    // (vi) a ternary branch inside a template literal (`KebabMenu.js:158`) — the shape
+    // (vi) a ternary branch inside a template literal (src/app/components/KebabMenu.js ("text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold'")) — the shape
     // DEF-88-27-01 records as unreachable for an attribute-anchored gate.
     expect(
       legacyStatusTextUses(
@@ -180,25 +177,25 @@ describe('Req 6 status text sweep — every status text site reads the text-safe
 
   it('3. marker prose quoting the token does NOT trip the gate', () => {
     // The four real comment shapes in this tree, each of which stays as prose after the sweep.
-    // `ParticipantRow.js:240` — a block-comment CONTINUATION line starting with a word, which
+    // src/app/components/ParticipantRow.js ("tokens survive and carry") — a block-comment CONTINUATION line starting with a word, which
     // ci.yml's anchored comment filter would not drop.
     expect(
       legacyStatusTextUses(
         `/* visual change and this phase forbids those. The \`text-status-*\` tokens survive and carry\n   the treatment.\n*/\nconst x = 1;`,
       ),
     ).toEqual([]);
-    // `gameDetail/page.js:1903` — a `//` line naming the token for visual continuity.
+    // src/app/gameDetail/page.js ("text-status-success used by that mobile inline indicator for") — a `//` line naming the token for visual continuity.
     expect(
       legacyStatusTextUses(`// ${LEGACY[0]} used by that mobile inline indicator for continuity`),
     ).toEqual([]);
-    // `FormField.tsx:9` — a JSDoc continuation carrying BOTH the token and a quoted attribute;
+    // src/app/components/form/FormField.tsx ("Error: 12px/400") — a JSDoc continuation carrying BOTH the token (until 88.6-37 corrected it) and a quoted attribute;
     // the quoted `role="alert"` is exactly what a comment-blind lexer would mis-read as a string.
     expect(
       legacyStatusTextUses(
         `/**\n *   - Error: 12px/400 (\`text-xs\`), \`--color-error\` (\`${LEGACY[1]}\`), \`role="alert"\`,\n */\nconst x = 1;`,
       ),
     ).toEqual([]);
-    // `AutoPromptBehaviorBanner.js:72` — prose about `text-status-info`, a token this plan does
+    // src/app/components/AutoPromptBehaviorBanner.js ("button carried") — prose about `text-status-info`, a token this plan does
     // not own; it must be inert for the detector twice over (comment AND wrong hue).
     expect(
       legacyStatusTextUses(`// the "Got it" button carried \`text-status-info\` — a token that`),

@@ -31,7 +31,7 @@ const PERMANENT_HEADLINE = 'This invite is no longer valid';
 
 // How long the page region stays EMPTY after a Retry press before it may be filled again:
 // `REGION_EMPTY_DWELL_MS`, imported with `StatusRegion` above. Source: AT-4,
-// `research/APPENDIX-AT.md:316-326` (`emptyRegionSettleDelay { 100_ms }`, failure condition 4).
+// planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/research/APPENDIX-AT.md ("**The same message twice.**") (`emptyRegionSettleDelay { 100_ms }`, failure condition 4).
 // AMENDED Phase 88.6.1-82: plan 88.6.1-19 declared a second copy here because this page and
 // `FetchErrorBanner.tsx` shared no dependency; the constant now lives on `StatusRegion`, which this
 // page already imports, so that reason is gone and the one declaration is imported, not repeated.
@@ -76,8 +76,8 @@ function GameInvitePage() {
        WHY STATUS IS EXHAUSTIVE HERE, measured 2026-09-14 against the two routes this page
        calls: `GET /events/invite-preview/:token` and `POST /events/join-game-by-token`.
        `expired`/`passed` is emitted at exactly one place per route and both are 410
-       (`routes/events.js:1306`, `:1353`); `Invalid invite link` is 404 (`:1301`, `:1348`);
-       `full` and `deleted` have NO emitter on either route at all. (`:1359` is a second 404 —
+       (`routes/events.js`, one on each route); `Invalid invite link` is 404 (one on each route);
+       `full` and `deleted` have NO emitter on either route at all. (There is also a second 404 —
        `User not found` on the join route — which lands permanent either way, so the mapping
        is unchanged by it.)
 
@@ -135,7 +135,7 @@ function GameInvitePage() {
            Same reason as the `isPermanent` marker above: plan 88.6-42 drops the `body.error`
            alias in wave 8 and every one of those strings becomes `HTTP error! status: 410`.
            PRECONDITION, verified 2026-09-14: `GET /events/invite-preview/:token` emits 410 at
-           exactly ONE place (`routes/events.js:1306`) and it is the has-already-passed gate,
+           exactly ONE place (`routes/events.js`) and it is the has-already-passed gate,
            so 410 on this call means "passed" and nothing else. If a second 410 is ever added
            to that route, this branch needs an envelope `code` — it does not need the prose
            back. Pinned by `page.test.tsx`, whose 410/404 arms are built with the
@@ -212,7 +212,7 @@ function GameInvitePage() {
         //
         // DECISION Phase 88.6-58 (review MEDLOW-14): a join 410 selects the page's existing
         // `expired` state — the SAME arm as the preview catch above — because the join
-        // handler's only 410 is the has-passed gate (Sonnet/routes/events.js:1353, verified
+        // handler's only 410 is the has-passed gate (Sonnet/routes/events.js, verified
         // 2026-09-28). Chosen OVER rendering the backend `message` (R1: never upstream text)
         // and OVER the register's generic 410 line (wrong copy for a known, authored state).
         // A second 410 on that route would need an envelope `code`, not prose.
@@ -375,9 +375,9 @@ function GameInvitePage() {
                     24x24 viewBox (x/y 3.75-20.25, corner radius 2.5) plus a five-pip face as
                     filled circles at r=1.25.
                     ⚠ THE `<svg>` OPENING TAG ABOVE IS BYTE-UNCHANGED, deliberately:
-                    `tintTreatment.test.ts:461` (anchor `<svg className="w-8 h-8 ${STRONG_TEXT}"`) counts `className="w-8 h-8 text-content-accent-strong"`
-                    openings and expects exactly 2 in this file, and `accentSweep.test.ts:68-73` (anchor
-                    `Glyphs on amber-100 circles`) lists
+                    src/app/tintTreatment.test.ts ("Object.entries(EXPECTED_DECORATIVE)") (anchor `<svg className="w-8 h-8 ${STRONG_TEXT}"`) counts `className="w-8 h-8 text-content-accent-strong"`
+                    openings and expects exactly 2 in this file, and src/app/accentSweep.test.ts ("Glyphs on amber-100 circles")
+                    lists
                     this file in its seven-circle census. Both suites were re-run green after this
                     edit. Restyling the tag, or swapping this glyph back, is a decision. */}
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.25 3.75h11.5a2.5 2.5 0 012.5 2.5v11.5a2.5 2.5 0 01-2.5 2.5H6.25a2.5 2.5 0 01-2.5-2.5V6.25a2.5 2.5 0 012.5-2.5z" />
@@ -454,7 +454,7 @@ function GameInvitePage() {
             </div>
             {/* h1 @ 20 STAYS at 20 (D-04's second row): this is a mutually-exclusive STATUS
                 branch, not the page title. The `ErrorFallback` precedent
-                (`typeScaleTouchedSurfaces.test.ts:1659`, anchor `'components/ui/ErrorFallback.tsx': { 1: 1 }`) is why level and size are
+                (src/app/typeScaleTouchedSurfaces.test.ts ("'components/ui/ErrorFallback.tsx': { 1: 1 }")) is why level and size are
                 separate facts. Promoting it to Display would be the demotion-in-reverse the
                 88-29 amendment describes. */}
             <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
@@ -603,7 +603,7 @@ function GameInvitePage() {
 
      THE REGION DWELL. CHOSEN: the region stays '' from the press until the outcome has committed
      AND `REGION_EMPTY_DWELL_MS` has passed — the value named from its source, AT-4,
-     `research/APPENDIX-AT.md:316-326` (`emptyRegionSettleDelay`, WebKit's re-announce condition
+     planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/research/APPENDIX-AT.md ("**The same message twice.**") (`emptyRegionSettleDelay`, WebKit's re-announce condition
      for identical text). REJECTED (e) relying on the round trip for the gap: an offline failure
      rejects in milliseconds (`publicFetch`'s TypeError arm in `api.ts`, anchor
      `if (errName === 'TypeError'`). (f) delaying the request instead

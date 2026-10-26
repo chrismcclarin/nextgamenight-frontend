@@ -1759,7 +1759,7 @@ export default function GameDetailPage() {
                         stampRead('gameRoster');
                     }
 
-                    // Phase 87.3-04 (:1892 sibling / Req 4): own-review detection
+                    // Phase 87.3-04 (this file ("const isUserReview = !!selfUuid && review.User?.id === selfUuid;") sibling / Req 4): own-review detection
                     // keys on nested User.id vs selfUuid. Gated on resolution so an
                     // unresolved identity reads as "no own review yet" (loading),
                     // never mislabels someone else's review as mine.
@@ -2908,7 +2908,7 @@ export default function GameDetailPage() {
                                        pair and the primitive prop in this file's RAW source, so a
                                        comment naming either one reds the very gate it documents.
                                        Measured 2026-09-16 — the first draft of this line quoted the
-                                       prop and took the count to 2. */
+                                       prop and took the count to 2. [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).] */
                                     className="shrink-0"
                                     title="Share Game QR"
                                 >
@@ -3124,7 +3124,7 @@ export default function GameDetailPage() {
                     single scrolling region, so a second inner cap would leave this list
                     shorter than every other migrated modal for no reason. `space-y-2` moves
                     onto the Body; the `-mx-1 px-1` bleed went with the hand-padded shell it
-                    was compensating for.
+                    was compensating for. (AMENDED 2026-10-24, 88.6.2-33: the cap is 90dvh now, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"))
 
                     THE PHASE 65-02 EVT-08 TWO-TAP REMOVE RENDERS INSIDE THIS LIST AND IS
                     UNCHANGED — see its handler marker further up. It is now inside a focus

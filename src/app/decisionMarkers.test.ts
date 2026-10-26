@@ -148,12 +148,12 @@ describe('D-36 — the eight rejected-floor markers are amended, never deleted',
   //
   // WHAT SHAPE THESE DELIBERATELY AVOID — both are catalogued in this file's OWN opening
   // docblock, which is what makes re-committing either of them here unforgivable:
-  //   - COUNT-ON-A-SUPERSET (:36-39, "the fourth distinct SHAPE ... a COUNT with enough slack to
-  //     absorb the entire defect"; the measured instance is at :23-29, a `grep -rl ... | wc -l`
+  //   - COUNT-ON-A-SUPERSET (this file ("It is also the fourth distinct SHAPE"), "the fourth distinct SHAPE ... a COUNT with enough slack to
+  //     absorb the entire defect"; the measured instance is at this file ("AND HAS SIX FILES OF SLACK"), a `grep -rl ... | wc -l`
   //     gate with SIX FILES of slack that could not fail for the thing it existed to prevent).
   //     Test 21 therefore counts MARKERS via `allFloorMarkers()` and requires EVERY one to carry
   //     the paragraph, exactly as test 1 counts markers rather than files.
-  //   - SUBSTRING-MATCH-ANYWHERE (:30-34, `grep -q "88-28"` satisfied by any of three unrelated
+  //   - SUBSTRING-MATCH-ANYWHERE (this file ("MATCHES ANY OCCURRENCE"), `grep -q "88-28"` satisfied by any of three unrelated
   //     mentions in a 350-line file). Tests 22 and 23 resolve a REGION of `Button.tsx` first and
   //     match inside it, because a whole-file presence check on `min-h-11` CANNOT red for the
   //     deletion it exists to catch: after plan 06 that token appears in CODE twice in that file
@@ -162,8 +162,8 @@ describe('D-36 — the eight rejected-floor markers are amended, never deleted',
   //     source: two occurrences, one `icon:` rung.)
   //   - A CITE CORRECTION, since this file is about not inheriting claims: 88.6-07-PLAN.md calls
   //     substring-match-anywhere "shape #4 from this test file's own opening docblock". Re-read
-  //     at :38, the "fourth distinct SHAPE" is the COUNT-with-slack one; substring-match-anywhere
-  //     is the other bullet, :30-34. Both really are catalogued here — the ordinal was attached
+  //     at this file ("but a COUNT with enough slack to absorb"), the "fourth distinct SHAPE" is the COUNT-with-slack one; substring-match-anywhere
+  //     is the other bullet, this file ("checks that a string exists somewhere"). Both really are catalogued here — the ordinal was attached
   //     to the wrong one. Corrected rather than copied forward.
   //
   // 22 AND 23 ARE TWO ASSERTIONS, NOT ONE, because the two floors are independent decisions and
@@ -305,11 +305,11 @@ describe('D-37 — the add-friend 44x32 marker is amended in place, and the leve
  * HYGIENE (this file's own rules, applied):
  *   - Anything COUNTED is counted against comment-stripped source (`withoutComments`), so a
  *     marker that names the token it forbids cannot invalidate its own gate. That failure shape
- *     is live here: `gameDetail/page.js:41` mentions `statusConfig` in prose, and `UserHomePage.js`
+ *     is live here: src/app/gameDetail/page.js ("renders an RSVP maybe (RsvpSection") mentions `statusConfig` in prose, and `UserHomePage.js`
  *     had to word a marker around its own gate for exactly this reason.
  *   - Nothing asserts a threshold on a superset. Every marker check reads the MARKER BLOCK (via
  *     `block()` below), not "the string appears somewhere in the file" — the failure mode this
- *     file's header dissects at :23-36.
+ *     file's header dissects at this file ("Both halves are false-negative, measured on this tree").
  *   - Test 20 is the anti-vacuity control, in the shape of test 11: it demonstrates on fixtures
  *     that these readers reject near-misses, rather than asserting that they would.
  * ------------------------------------------------------------------------------------------- */
@@ -396,7 +396,7 @@ describe('Phase 88.5 — the surface reversal and its records are pinned', () =>
 describe('Phase 88.5 — the two single-source families cannot grow a second definition', () => {
   it('16. `statusConfig` is declared in exactly ONE module, and both consumers import it', () => {
     // SPEC Req 4 / VALIDATION Req-4: the mechanical form of "no third RSVP idiom". Comment-
-    // stripped, because `gameDetail/page.js:41` names `statusConfig` in prose — a raw grep here
+    // stripped, because src/app/gameDetail/page.js ("renders an RSVP maybe (RsvpSection") names `statusConfig` in prose — a raw grep here
     // would report a third "definition" that is a sentence.
     const declarers = sourceFiles(SRC)
       .filter((f) => /\bconst\s+statusConfig\b/.test(withoutComments(fs.readFileSync(f, 'utf8'))))

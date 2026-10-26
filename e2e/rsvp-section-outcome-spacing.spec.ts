@@ -20,15 +20,13 @@
 //
 // Intercepts (all in the browser; no RSVP write reaches the backend, so the seeded detail event
 // that other specs read is never changed):
-//   - GET /api/users/<one segment> (the self-identity read) passes through route.fetch(); the
-//     handler reads ONLY the JSON `id` into a closure and fulfils with the unchanged response. It
-//     never logs or attaches the body. Any other request under /api/users/ falls back.
-//   - GET /api/rsvp/event/<id> passes through route.fetch(); once the viewer's id is known, any
-//     row of theirs is dropped and one row is appended (status yes, note null) so the note field
-//     and Save note render. `summary` is left unchanged.
+//   - the viewer-Yes read injection, e2e/support/viewerRsvp.ts ("export async function injectViewerYesRsvp("):
+//     the self-identity read yields the viewer's id and the RSVP list gets one yes row of theirs,
+//     so the note field and Save note render. Both reads pass through scrubbedFetch.
 //   - POST /api/rsvp is fulfilled in the browser (500 for the failure arm, 200 for the save);
 //     any other method falls back.
 import { test, expect, type Page, type Locator } from '@playwright/test';
+import { injectViewerYesRsvp } from './support/viewerRsvp';
 
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 const E2E_EVENT_DETAIL_PATH =
@@ -43,51 +41,7 @@ const RSVP_WRITE_ROUTE = '**/api/rsvp';
 // Opens the detail event with the viewer holding a 'yes' answer, and returns the trio group and
 // the stack it sits in.
 async function openEventWithViewerAnswer(page: Page): Promise<{ group: Locator; stack: Locator }> {
-  let viewerId: string | null = null;
-
-  await page.route('**/api/users/**', async (route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    const rest = path.split('/api/users/')[1] ?? '';
-    if (request.method() !== 'GET' || rest === '' || rest.includes('/')) {
-      await route.fallback();
-      return;
-    }
-    const response = await route.fetch();
-    try {
-      const body = (await response.json()) as { id?: unknown };
-      if (typeof body?.id === 'string') viewerId = body.id;
-    } catch {
-      // Not JSON: leave the id unknown; the 'Save note' expectation below names the failure.
-    }
-    await route.fulfill({ response });
-  });
-
-  await page.route('**/api/rsvp/event/**', async (route) => {
-    if (route.request().method() !== 'GET') {
-      await route.fallback();
-      return;
-    }
-    const response = await route.fetch();
-    let body: { rsvps?: Array<{ User?: { id?: string } }> } & Record<string, unknown>;
-    try {
-      body = await response.json();
-    } catch {
-      await route.fulfill({ response });
-      return;
-    }
-    if (viewerId) {
-      const rows = (body.rsvps ?? []).filter((row) => row?.User?.id !== viewerId);
-      rows.push({
-        id: 'e2e-viewer-rsvp',
-        status: 'yes',
-        note: null,
-        User: { id: viewerId, username: 'E2E viewer' },
-      } as { User: { id: string } });
-      body = { ...body, rsvps: rows };
-    }
-    await route.fulfill({ response, json: body });
-  });
+  await injectViewerYesRsvp(page);
 
   await page.goto(E2E_EVENT_DETAIL_PATH);
 
@@ -98,7 +52,7 @@ async function openEventWithViewerAnswer(page: Page): Promise<{ group: Locator; 
   ).toHaveCount(1);
   await expect(
     page.getByRole('button', { name: 'Save note' }),
-    'Save note never appeared — the viewer row is injected by the two intercepts above (GET /api/users/<one segment> yields the id; GET /api/rsvp/event/<id> appends the row); a miss means that row was never injected',
+    'Save note never appeared — the viewer row is injected by injectViewerYesRsvp (GET /api/users/<one segment> yields the id; GET /api/rsvp/event/<id> appends the row); a miss means that row was never injected',
   ).toBeVisible({ timeout: 15_000 });
 
   return { group, stack: group.locator('xpath=..') };

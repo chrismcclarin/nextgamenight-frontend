@@ -18,6 +18,11 @@ import { settleAnimations } from './support/inFlight';
 // and CI uploads test-results from a public repository; the setup project in
 // playwright.config.ts takes no capture for the same reason. Assertion messages carry numbers
 // only, never page text. Re-enabling capture here is a decision, not a cleanup.
+// [AMENDED 2026-10-25, code review A-IN-03: since Phase 88.6.2-27 test-results leave CI only
+// as age ciphertext (scripts/encrypt-evidence.sh), readable by the key holder alone, so the
+// public-download premise above no longer holds. The choice stands: capture this spec does not
+// need would still put a live invite link into a retained artifact, and the encryption is a
+// second net, not a reason to take the capture.]
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
 test('R7-M5: the Invite Members header row is 12px/8px at phone and 24px/12px at desktop', async ({ page, isMobile }) => {

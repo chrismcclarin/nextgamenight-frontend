@@ -6,16 +6,16 @@
  *
  * WHY THIS IS A SOURCE SCAN AND NOT THE GREP THE PLAN SPECIFIED
  * ------------------------------------------------------------
- * `88-29-PLAN.md` Task 2(a) asks for a grep on class-attribute usage with comment and
- * `.test.` filters, and states that the `HeatmapTooltip`/`layout.js` references are
- * comment-only so no allowlist entry is needed. Run against this tree before being
- * trusted, that gate is RED on a correct tree. MEASURED: `grep -rn 'modal-overlay' src`
- * returns 24 lines and **zero** are a class-attribute usage. Nine are comment lines in
- * shipped components — `FeedbackButton.js:168`, `FeedbackModalProvider.tsx:24`,
- * `FriendInvitePanel.js:533/538/545/549`, `BringGamePicker.js:127`,
- * `TutorialOverlay.js:182` — and SIX OF THOSE NINE are block-comment CONTINUATION lines
- * beginning with a backtick or a word, not with `//` or `*`. ci.yml's anchored comment
- * filter drops neither. The remaining lines are `globals.css`'s own rule, and test files.
+ * `88-29-PLAN.md` Task 2(a) asks for a grep on class-attribute usage with comment and `.test.`
+ * filters, and states that the `HeatmapTooltip`/`layout.js` references are comment-only so no
+ * allowlist entry is needed. Run against this tree before being trusted, that gate is RED on a
+ * correct tree. MEASURED at Phase 88-29 (FE 085f722, 2026-08-05): `grep -rn 'modal-overlay' src`
+ * returned 24 lines and **zero** were a class-attribute usage. Nine were comment lines in shipped
+ * components — src/app/components/FeedbackButton.js, src/app/components/FeedbackModalProvider.tsx,
+ * src/app/components/FriendInvitePanel.js (four lines), src/app/components/BringGamePicker.js,
+ * src/app/components/tutorial/TutorialOverlay.js — and SIX OF THOSE NINE were block-comment
+ * CONTINUATION lines beginning with a backtick or a word, not with `//` or `*`. ci.yml's anchored
+ * comment filter drops neither. The remaining lines were `globals.css`'s own rule, and test files.
  *
  * That is the comment-blindness recorded in DEF-88-25-02, DEF-88-27-01 and DEF-88-28-01,
  * and it bites here in its worst form: the comments a grep gate would red on are precisely

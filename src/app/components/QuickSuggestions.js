@@ -151,9 +151,12 @@ function QuickSuggestionsSlot({ desired, onSelectGame, onBrowseMore }) {
                     `fallbackIcon=""` suppresses the default die glyph (which fires only on
                     `undefined`); `SafeImage`'s own fallback role/`aria-label` semantics are
                     unchanged, because thirteen other production sites pass a real alt and rely on
-                    the labelled placeholder. `alt=""` also routes `getColorFromText` to the muted
-                    card-hover token, i.e. exactly the hand-rolled fallback colour this replaces —
-                    the swap is colour-neutral by construction. */}
+                    the labelled placeholder. `alt=""` also routes `getColorFromText` to
+                    `var(--color-surface-muted)`
+                    (src/app/components/SafeImage.js ("if (!text) return 'var(--color-surface-muted)';"))
+                    — the token 88.6-02 (D-15) renamed from the card-hover fill with its value
+                    unchanged, i.e. exactly the hand-rolled fallback colour this replaces — the
+                    swap is colour-neutral by construction. */}
                 <span aria-hidden="true" className="block w-6 h-6 shrink-0">
                   <SafeImage
                     src={game.thumbnail_url}

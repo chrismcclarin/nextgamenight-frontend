@@ -73,8 +73,8 @@ export default function KebabMenu({
 
   // PROP-TIME gate, never an on-arm mount: a live region created at the moment
   // of the announcement announces nothing, which is the whole reason for the
-  // StatusRegion idiom (useConfirmAction.ts:162-180, `DECISION Phase 88-05`;
-  // `:169` "A remounted live region announces NOTHING").
+  // StatusRegion idiom (src/components/ui/useConfirmAction.ts ("the hook RETURNS A PRE-BUILT ELEMENT"), `DECISION Phase 88-05`;
+  // src/components/ui/useConfirmAction.ts ("A remounted live region announces NOTHING")).
   const canAnnounce = items.some((item) => item.twoTap);
 
   /* DECISION Phase 88.6-16 (D-12): the announcement region is PORTALED to
@@ -137,7 +137,7 @@ export default function KebabMenu({
 
   /* DECISION Phase 88.6-16 (D-12), the KEBAB-ONLY half of the Escape contract
      (the shared half moved to `src/components/ui/useDismissal.ts` by 88.6.1-05).
-     `src/app/Header.js:31-42` (`if (!mobileMenuOpen) return;`), the hamburger's
+     src/app/Header.js ("if (!mobileMenuOpen) return;"), the hamburger's
      Escape, is NOT a live collision for the kebab — opening the hamburger
      mousedown-closes this menu first (the hook's outside mousedown listener) —
      noted so nobody "fixes" it.
@@ -148,7 +148,7 @@ export default function KebabMenu({
      render sites — `ManageMembers.js`'s two `<KebabMenu` mounts (the desktop owner-only
      transfer kebab and the mobile member actions), which
      render inside the shipped `Modal` at `ManageMembers.js`
-     anchor `<Modal open={modal}` — Radix's `Dialog` (`Modal.tsx:227-228`,
+     anchor `<Modal open={modal}` — Radix's `Dialog` (src/app/components/Modal.tsx ("<Dialog open={open}"),
      `<Dialog open={open}` / `<DialogContent`) binds Escape on `document` in the
      CAPTURE phase (`@radix-ui/react-use-escape-keydown`), which runs BEFORE any
      container handler and dismisses the dialog.
@@ -175,7 +175,7 @@ export default function KebabMenu({
      it prevents a crash, not a lost focus position. This component does not close
      that, and the reason is not difficulty: a caller-supplied fallback target
      would be a new prop on a six-site shared component with no consumer. The
-     residual moved to Phase 88.6.1's register (`.planning/deferred/phase-88.6.1.md:32`,
+     residual moved to Phase 88.6.1's register (planning:.planning/deferred/phase-88.6.1.md ("### R063 half (b) + R107"),
      R063b + R107) and is closed there on the HOST side by plan 88.6.1-04's
      focus-recovery helper (D-04), not by a prop here. */
 
@@ -235,9 +235,9 @@ export default function KebabMenu({
         if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
         setArmedIndex(index);
         /* DECISION Phase 88.6-16 (D-12): the armed announcement names THE ITEM,
-           a deliberate DIVERGENCE from `useConfirmAction.ts:77-79` (`It MUST name the
-           target`) and from its `defaultAnnouncement` at `:153-160`
-           (`function defaultAnnouncement(`), which builds a TWO-part string
+           a deliberate DIVERGENCE from src/components/ui/useConfirmAction.ts ("It MUST name the target")
+           and from its `defaultAnnouncement` at src/components/ui/useConfirmAction.ts ("function defaultAnnouncement("),
+           which builds a TWO-part string
            (`Press again to confirm: ${confirmLabel} ${targetLabel}`). The item
            label is not the target.
            WHY IT IS STILL RIGHT HERE, and it turns entirely on the region being
@@ -290,8 +290,8 @@ export default function KebabMenu({
        it. Plan 88.6-18 is its first consumer.
 
        Delete must NOT become 'twoTap + keepOpen' on the strength of this flag —
-       the two-tap tiers in `gameDetail/page.js:1426-1430` (`D-40 + D-07: explicitly NOT
-       the two-tap tier`) and `ManageMembers.js` (anchor `DECISION Phase 88 AR-DEC-3`) reason
+       the two-tap tiers in src/app/gameDetail/page.js ("D-40 + D-07: explicitly NOT the two-tap tier.")
+       and `ManageMembers.js` (anchor `DECISION Phase 88 AR-DEC-3`) reason
        from the CURRENT auto-close and
        are unchanged by a per-item opt-out.
 
@@ -324,15 +324,15 @@ export default function KebabMenu({
           time on `items.some(i => i.twoTap)` — mounted for the whole life of every
           instance that can ever announce, absent from instances that cannot. A
           label swap on a focused element does not announce (the 88.6 UI-SPEC §7.3 rule,
-          restated at `FriendInvitePanel.js:805-806`, "a label change on the element the
+          restated at src/app/components/FriendInvitePanel.js ("that swap, and a label change on the element the user is"), "a label change on the element the
           user is focused on does not announce"), which is why the region exists at all.
 
           THE GATE'S YIELD, MEASURED 2026-09-14 and written here because a wrong
           rationale at a site is inherited as fact: it does NOT thin the per-row
           count on either surface that can announce. `ManageMembers.js` (anchor `role !== 'pending').map`)
           maps the members and the mobile kebab (its second `<KebabMenu`) ALWAYS carries the
-          `twoTap: true` Remove (`:723`, `twoTap: true`); `OpenPollsList.js:179`
-          (`prompts.map`) / `:281` (`prompt.can_close === true`) / `:282` (`<KebabMenu`) is the
+          `twoTap: true` Remove; `OpenPollsList.js`'s `prompts.map` rows, each with a
+          `<KebabMenu` gated on `prompt.can_close === true` whose one item is `twoTap: true`, are the
           same shape. So the predicate is TRUE for every row and the region IS per row on
           both surfaces — that is the accepted design, and it is precisely what makes
           the item-label announcement sound. What the gate buys is exactly one thing:
@@ -341,10 +341,10 @@ export default function KebabMenu({
           whose single item has no twoTap (anchor `label: 'Transfer ownership to this member'`).
 
           The "one region per SURFACE" reading is WRONG and is not restated here:
-          `useConfirmAction.ts:124` says "Render it ONCE, unconditionally,
+          src/components/ui/useConfirmAction.ts ("Render it ONCE, unconditionally,") says "Render it ONCE, unconditionally,
           anywhere inside the surface" — one region per GATE, always mounted — and
-          `ManageMembers.js` mounts FOUR of them on ONE surface (`:949`, `:951`,
-          `:953`, `:957`, each `.statusNode}`).
+          `ManageMembers.js` mounts FOUR of them on ONE surface (src/app/components/ManageMembers.js ("{removeMemberGate.statusNode}"), src/app/components/ManageMembers.js ("{rejectMemberGate.statusNode}"),
+          src/app/components/ManageMembers.js ("{resetInviteGate.statusNode}"), src/app/components/ManageMembers.js ("{promoteAdminGate.statusNode}"), each `.statusNode}`).
 
           RECORDED REJECTED ALTERNATIVE, kept not deleted: hoisting the announcement
           out through a `statusNode` / `onAnnounce` prop the host supplies — an API
@@ -387,7 +387,7 @@ export default function KebabMenu({
           REJECTED: implementing the full WAI-ARIA menu contract. It would require re-tiering
           the two destructive items to `ConfirmDialog`, reopening AR-DEC-3
           (`ManageMembers.js`, anchor `DECISION Phase 88 AR-DEC-3`), for ~90-120 lines. If it is
-          ever chosen, the engine is `@floating-ui/react` — the house engine (`Combobox.tsx:43`,
+          ever chosen, the engine is `@floating-ui/react` — the house engine (src/components/ui/Combobox.tsx ("DECISION Phase 88-08 (OI-6): this primitive is built on"),
           `DECISION Phase 88-08 (OI-6)`) — and NEVER Radix
           DropdownMenu, which is not a dependency and portals by default.
           Re-adding the popup-role attribute in ANY form, including the `="true"` value, is
@@ -403,7 +403,7 @@ export default function KebabMenu({
            for the removed popup relationship — it says only what is true (this
            trigger controls that list) — and it is rendered ONLY while the menu is
            open, using the conditional-spread form the house idiom uses at
-           `useConfirmAction.ts:386` (`...(armed ? { 'aria-pressed': true as const } : {})`). The
+           src/components/ui/useConfirmAction.ts ("'aria-pressed': true as const") (`...(armed ? { 'aria-pressed': true as const } : {})`). The
            dropdown is conditionally rendered, so a
            permanently-present attribute would name an element that is NOT in the
            document for most of the component's life: a dangling reference, not a
@@ -427,7 +427,7 @@ export default function KebabMenu({
            not redundant ARIA awaiting a cleanup. Tailwind v4's own preflight sets
            `list-style: none` on every `ul` in this app
            (`node_modules/tailwindcss/preflight.css`, the `ol, ul, menu` block, active
-           via `@import 'tailwindcss' source(none);` at `globals.css:10`), and
+           via `@import 'tailwindcss' source(none);` at src/app/globals.css ("@import 'tailwindcss' source(none);")), and
            `list-style: none` strips the IMPLICIT list role in Safari/VoiceOver — the
            surface this project declares primary. Plain buttons announced as a set
            with a count is the WHOLE compensation for dropping the menu pattern, so
@@ -475,11 +475,11 @@ export default function KebabMenu({
                   disabled={item.disabled}
                   /* DECISION Phase 88.6-16 (D-12): `aria-pressed` is present ONLY
                      while armed and ABSENT (never "false") at rest — the
-                     conditional-spread form of `useConfirmAction.ts:386` (`'aria-pressed': true`), never an
+                     conditional-spread form of src/components/ui/useConfirmAction.ts ("'aria-pressed': true as const") (`'aria-pressed': true`), never an
                      `aria-pressed={isArmed}` binding. React stringifies booleans on
                      `aria-*`, so the binding form would stamp `aria-pressed="false"`
                      on every resting item and on non-toggle `twoTap: false` items
-                     (`gameDetail/page.js:1430`, `twoTap: false`), announcing plain actions as unpressed
+                     (src/app/gameDetail/page.js ("D-40 + D-07: explicitly NOT the two-tap tier."), `twoTap: false`), announcing plain actions as unpressed
                      toggles — the inverse of the house idiom.
                      This attribute is LEGAL here only because the item role is gone:
                      axe-core 4.12.1's `menuitem.allowedAttrs` permits only posinset,
@@ -497,9 +497,9 @@ export default function KebabMenu({
                      of a request, with the item the user was standing on gone from the
                      focus order and no announcement.
                      THE HOUSE RULE IS HONOURED, NOT INVENTED. It is a SPLIT, stated
-                     at `NextGameNightCard.tsx:479-487` (`DECISION Phase 88.5 (SPEC Req 4 /
-                     UI-SPEC A-5, narrowed)`) and `EmailAddressSection.tsx:1854` (`DECISION
-                     Phase 88.8 DR-C`; the split restated at `:1870-1872`, "a control nobody
+                     at src/app/components/NextGameNightCard.tsx ("DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5, narrowed)")
+                     and src/app/components/EmailAddressSection.tsx ("DECISION Phase 88.8 DR-C (re-scoped 2026-09-04, plan review round 4)") (the
+                     split restated at src/app/components/EmailAddressSection.tsx ("a control nobody is standing on may be natively disabled"), "a control nobody
                      is standing on"): the control being ACTED ON gets `aria-disabled`; a control
                      nobody is standing on may stay natively disabled. `item.disabled`
                      therefore STAYS in the API for that second kind.

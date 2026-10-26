@@ -55,7 +55,7 @@ import {
   assertRosterShape,
   type ExemptionRoster,
 } from '../../test-utils/exemption';
-import { readOpeningTag, sourceFiles, withoutComments } from '../../test-utils/sourceScan';
+import { STRIP_VARIANTS, readOpeningTag, sourceFiles, withoutComments } from '../../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '../..');
 
@@ -80,23 +80,23 @@ const BREAKPOINT_SIZE = /\b(sm|md|lg|xl|2xl):text-(base|lg|xl)/;
 
    THE DEFECT THE PRIVATE COPY HAD, measured rather than reasoned: it treated a bare `'`
    ANYWHERE — including in JSX TEXT — as opening a string literal, and scanned forward to the
-   next `'` with no newline bound. One apostrophe in prose (`ManageMembers.js:484`,
-   "You're viewing the member list.") therefore swallowed everything up to the next apostrophe
-   fifteen lines later (inside `title="Couldn't load members"`), and every `/*` in that span
-   went unrecognised. The visible symptom was a FALSE POSITIVE: the literal text `<select>`
-   inside the 88-12 a11y marker at `:600` was reported as an unsized control. The far worse
-   symptom is the one nobody would have seen — a REAL unsized control sitting inside such a
-   span is silently skipped, and this suite goes quiet exactly where it matters.
+   next `'` with no newline bound. One apostrophe in prose, at
+   src/app/components/ManageMembers.js ("You're viewing the member list."), therefore swallowed
+   everything up to the next apostrophe fifteen lines later (inside `title="Couldn't load members"`),
+   and every `/*` in that span went unrecognised. The visible symptom was a FALSE POSITIVE: the
+   literal text `<select>` inside the 88-12 a11y marker, at
+   src/app/components/ManageMembers.js ("The role <select> shipped"), was reported as an unsized
+   control. The far worse symptom is the one nobody would have seen — a REAL unsized control
+   sitting inside such a span is silently skipped, and this suite goes quiet exactly where it matters.
 
-   `withoutComments` already carries the bound (`sourceScan.ts:164-166`: "An unterminated
-   single/double quote (an apostrophe in prose) must not swallow the rest of the file: stop at
-   the newline"). Both strippers blank comments in place and preserve every other byte and
-   offset, so reported line numbers are unchanged by this swap.
+   `withoutComments` already carries the bound, in
+   src/test-utils/sourceScan.ts ("An unterminated single/double quote"): an apostrophe in prose must
+   not swallow the rest of the file, so it stops at the newline. Both strippers blank comments in place
+   and preserve every other byte and offset, so reported line numbers are unchanged by this swap.
 
-   MEASURED BEHAVIOUR-EQUIVALENCE, not assumed: the control set was computed with BOTH
-   strippers across all 194 non-test files under `src/`. The two agree on 193 of them; the
-   single difference is the false positive above disappearing. Re-inlining a private copy here
-   is a decision, not a cleanup. */
+   MEASURED BEHAVIOUR-EQUIVALENCE, not assumed: the control set was computed with BOTH strippers across
+   all 194 non-test files under `src/`. The two agree on 193 of them; the single difference is the false
+   positive above disappearing. Re-inlining a private copy here is a decision, not a cleanup. */
 
 // `readOpeningTag` was RELOCATED to `src/test-utils/sourceScan.ts` by Phase 88.6-09 and is
 // imported above. It is the same brace-balanced reader this file has always used, plus a
@@ -250,22 +250,6 @@ describe('Req 1 (DES-01): the 16px iOS focus-zoom floor, repo-wide', () => {
 // ---------------------------------------------------------------------------------------
 // Phase 88.6-12 — the GEOMETRY floors (AC-2 desktop arm + the two D-13-pattern controls)
 // ---------------------------------------------------------------------------------------
-
-/**
- * Strip Tailwind variant prefixes and the `!` important marker.
- *
- * A LOCAL copy of `surfaceHoverSweep.test.ts:101`, and that is a constraint rather than a
- * choice: `DECISION Phase 88-29` (quoted in `src/test-utils/sourceScan.ts`'s docblock)
- * rejects "exporting the lexer from one of the test files" because a test module's body
- * registers its `describe` blocks on import, and AC-12 forbids adding anything to the
- * shared module this phase. `.planning/WINDOWS.md` entry 12 already owns the convergence.
- *
- * CORRECTION, recorded rather than propagated: `88.6-09-SUMMARY.md` decision 6 states this
- * constant "is defined in `sourceScan.ts`". Re-measured 2026-09-15 —
- * `grep -rn STRIP_VARIANTS src` returns hits only in `surfaceHoverSweep.test.ts`, never in
- * `sourceScan.ts`. It is a test-file-local const in every copy.
- */
-const STRIP_VARIANTS = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 
 /** The WCAG 2.2 2.5.8 minimum, and the project's own phone floor, as pixels. */
 const MIN_TARGET_24 = 24;
@@ -440,10 +424,10 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
    *
    *  - the compact month event tile: the unique element whose opening tag contains
    *    `aria-label={tileLabel + rsvpLabel}`. Measured 2026-09-15, `grep -rn "tileLabel +
-   *    rsvpLabel" src` returns exactly ONE non-test hit (`CalendarMonthView.js:843`, anchor
-   *    `aria-label={tileLabel + rsvpLabel}`, re-measured 2026-10-15), and it
-   *    distinguishes the COMPACT tile from the full-variant twin below it, whose label is the
-   *    bare `tileLabel`.
+   *    rsvpLabel" src` returns exactly ONE non-test hit
+   *    (src/app/components/CalendarMonthView.js ("aria-label={tileLabel + rsvpLabel}"), re-checked
+   *    2026-10-24), and it distinguishes the COMPACT tile from the full-variant twin below it,
+   *    whose label is the bare `tileLabel`.
    *  - the home-card cog: the unique element whose opening tag contains
    *    `title={customizeGroupLabel(group.name)}`. Re-anchored by 88.6.1-54 for D-19 and D-52,
    *    because the name is now computed per card and the title is its only name source. Exactly
@@ -452,8 +436,8 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
    *
    * THE COG SUBJECT WAS RE-DERIVED, NOT TAKEN FROM THE PLAN. `88.6-12-PLAN.md` named
    * `src/app/userHome/UserHomePage.js`; a `Cog|Gear|Settings` grep over that file returns no
-   * such control, because the home card is rendered by `<GroupList>` (`UserHomePage.js:502`,
-   * anchor `<GroupList`, re-measured 2026-10-15)
+   * such control, because the home card is rendered by `<GroupList>`
+   * (src/app/userHome/UserHomePage.js ("<GroupList"), re-checked 2026-10-24)
    * and the cog lives in `app/components/grouplist.js`. Recorded in `88.6-12-SUMMARY.md`.
    */
   //
@@ -486,6 +470,19 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       floor: MIN_TARGET_44,
       dimensions: ['min-h', 'h'],
       label: 'the home-card settings cog',
+    },
+    // DECISION Phase 88.6.2-19 (W032): a WIDTH subject for the cog, chosen OVER a D13_FLOOR_ROSTER
+    // entry (the roster comment above forbids re-seeding it to silence a red) and OVER widening
+    // homeCardCog to four prefixes, which would still pass on min-h-11 alone because meetsFloor
+    // accepts any one qualifying token. 88.6-40 found the cog's real deficit was width; this is the
+    // entry that sees it go. Deleting it is a decision, not a cleanup.
+    homeCardCogWidth: {
+      anchor: 'title={customizeGroupLabel(group.name)}',
+      expectedFile: 'app/components/grouplist.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: 'the home-card settings cog, width (W032: the gear glyph plus px-3 is about 40px wide, so min-w-11 is what holds it)',
     },
     bannerRetries: {
       anchor: 'onClick={handleRetry}',
@@ -622,8 +619,9 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     },
     // quick-261021-ffb (owner 2026-10-21, Games to Bring re-entry): BringSummary's ONE viewer control,
     // labelled `Add games` (no brings) or `Edit` (has brings), sits on the house phone-scoped pair
-    // `min-h-11 md:min-h-0 min-w-11 md:min-w-0` (`GroupGamesList.js:462`). Both axes are pinned
-    // because `Edit` is a short word. The floor is MET, so no D13_FLOOR_ROSTER entry.
+    // `min-h-11 md:min-h-0 min-w-11 md:min-w-0`, as at
+    // src/app/components/GroupGamesList.js ("px-3 py-2 min-h-11 md:min-h-0 min-w-11 md:min-w-0"). Both
+    // axes are pinned because `Edit` is a short word. The floor is MET, so no D13_FLOOR_ROSTER entry.
     bringSummaryControl: {
       anchor: 'onClick={onEditClick}',
       expectedFile: 'app/components/BringSummary.js',
@@ -708,10 +706,16 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     return variants.some((v) => /^(sm|md|lg|xl|2xl)$/.test(v));
   }
 
-  /** Does this tag declare an explicit vertical dimension at or above `floor`, at phone width? */
+  // DECISION Phase 88.6.2-19 (W032-variant): a floor token counts only UNPREFIXED, chosen OVER also
+  // allowing state, theme or ARIA variants. hover:, dark:, focus: or aria-*: alone is not the
+  // control's resting size, and WR-304 named that hole; 88.6.1-21's gatesAboveThePhone closed the
+  // breakpoint half only. A max-* floor would red here too, the safe direction for a floor gate:
+  // decide it as its own subject. Every subject was floored unprefixed when this was written.
+  /** Does this tag declare an explicit, unprefixed dimension at or above `floor`, at phone width? */
   function meetsFloor(tag: string, floor: number, dimensions: string[]): boolean {
     return tagTokens(tag).some(({ raw, base }) => {
       if (gatesAboveThePhone(raw)) return false;
+      if (raw.replace(/^!/, '') !== base) return false;
       const px = utilityPx(base, dimensions);
       return px !== null && px >= floor;
     });
@@ -736,7 +740,8 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
      *
      * THE FIVE RECOVERY CONTROLS (Phase 88.6.1-21, AC-10 / WR-503) take 44 at phone width: the
      * three FetchErrorBanner link-buttons and ErrorFallback's two raw buttons, none a `.btn`, each
-     * declaring the house phone-scoped `min-h-11 md:min-h-0` (`UpcomingEventsCard.js:263`).
+     * declaring the house phone-scoped `min-h-11 md:min-h-0`, as at
+     * src/app/components/UpcomingEventsCard.js ("block w-full text-left min-h-11 md:min-h-0").
      */
     const measured: Record<string, number> = {};
     const unmet: string[] = [];

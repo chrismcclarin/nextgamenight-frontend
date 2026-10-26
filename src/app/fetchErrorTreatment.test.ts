@@ -80,7 +80,7 @@ const ALL_REL = ALL_FILES.map((f) => path.relative(SRC, f));
 // PHASE 88.6-13 (D-31, as amended by D54/D45/D29): this list is now the scope of the
 // `alert(` assertion ONLY. The raw-message and `Failed to X` assertions scan the WHOLE
 // `src/` tree (`ALL_REL`), because a named-surface list is green forever the moment
-// surface N+1 lands — the vacuity mode `nativeDialogs.test.ts:31-38` names explicitly and
+// surface N+1 lands — the vacuity mode src/app/nativeDialogs.test.ts ("green forever the moment surface N+1 lands") names explicitly and
 // SPEC AC-8 already demands full-tree coverage for. Measured at the widening: not ONE of
 // the 19 files that actually carry a raw `error.message` read is on this list, so the two
 // widened assertions were green because they were not looking.
@@ -125,12 +125,12 @@ const SURFACES = [
 // line-based regex) they differ on exactly TWO files and 31 lines, and in BOTH cases the
 // LOCAL one blanks REAL CODE:
 //
-//   - `app/components/FeedbackForm.js:386-403` — the string `accept="image/*"` opens a block
+//   - src/app/components/FeedbackForm.js ("onChange={handleFileChange}"), the screenshot input — the string `accept="image/*"` opens a block
 //     comment the local stripper never knew was inside a string, which then runs to the `*/`
 //     of the next real comment. 18 lines of live JSX vanish, `className` strings included.
-//   - `app/components/Modal.tsx:265-281` — the same, from `src/**` written inside a `//` line
+//   - src/app/components/Modal.tsx ("tokenContrast test 53 now scans src") — the same, from `src/**` written inside a `//` line
 //     comment: the local block-comment pass runs FIRST, so that `/*` is seen before the `//`
-//     that contains it, and everything to the next `*/` (line 281) is blanked.
+//     that contains it, and everything to the next `*/` (16 lines on, at that measurement) is blanked.
 //
 // Blanked code is a FALSE NEGATIVE — precisely the failure mode the docblock named. So the
 // correct stripper for THIS suite's question ("does a raw `error.message` read reach a
@@ -175,12 +175,16 @@ const USER_FACING_SINK =
 //
 //   - The bare arm matched TEN sites across three files that are all a LOCAL named
 //     `errorMessage` — its `useState` declaration and its JSX render, never an upstream
-//     read: `availability-form/[token]/page.js:33,:186`, `NextGameNightCard.tsx:108,:463`,
-//     `createGroup.js:16,:53,:195,:196,:211,:212`.
+//     read (ten sites at the 2026-09-15 measurement: each file's useState declaration and its renders):
+//     src/app/availability-form/[token]/page.js ("const [errorMessage, setErrorMessage] = useState(null);"),
+//     src/app/components/NextGameNightCard.tsx ("const [errorMessage, setErrorMessage] = React.useState('');"),
+//     src/app/components/createGroup.js ("const [errorMessage, setErrorMessage] = useState('')").
 //   - It matched ZERO real offenders. Every genuine site in those files is caught by the
 //     `.message` arm instead, on the ASSIGNMENT line where the upstream value enters —
-//     `createGroup.js:90` (`const errorMsg = error.message || 'Failed to create group…'`)
-//     is the live example, and fixing it fixes the renders downstream of it.
+//     createGroup.js's `const errorMsg = error.message || 'Failed to create group…'` was the
+//     live example then; it is fixed, and that assignment now reads
+//     src/app/components/createGroup.js ("const errorMsg = getFetchErrorMessage(error);"), which
+//     fixed the renders downstream of it.
 //
 // The alternative the plan offered was ten allow-list entries carrying the measurement.
 // Ten entries for a regex arm that catches nothing is ten fossil permissions; the arm is
@@ -203,7 +207,9 @@ const AD_HOC_FAILURE_COPY = /['"`][^'"`]*\bFailed to \w+/i;
 //     ~100 call sites off `console.*` onto `logger.*` across waves 6-8; a call that
 //     CHANGES CHANNEL must not change its exemption status, or a correct conversion reds
 //     a gate it never touched. Three sites are known to cross while this gate is live:
-//     `grouplist.js:91` (plan 21, wave 7) and `gameDetail/page.js:720`, `:756` (plan 18,
+//     src/app/components/grouplist.js ("logger.info('Error fetching groups:'") (plan 21, wave 7) and
+//     src/app/gameDetail/page.js ("logger.info('Failed to get game invite token:'") with its
+//     remove-participant sibling (plan 18,
 //     wave 7). This is test-local and has no runtime reach — measured 2026-09-15,
 //     `grep -rn DEVELOPER_LOG src/` returns 5 hits, ALL in this file, zero production
 //     consumers.
@@ -315,10 +321,19 @@ const fmt = (hits: Hit[]) =>
 // matched code is GONE — `grep -c 'String(err?.message' src/app/gameDetail/page.js` → 0,
 // measured 2026-09-15. It survived because the anti-vacuity array below was a SECOND hand
 // literal that listed 3 of the 4 entries and omitted exactly the dead one.
-const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string }> = [
+// DECISION Phase 88.6.2-21 (W058): each allow-list entry carries an exact sites count and a D-19
+// owner, checked by assertRosterShape and assertExactCounts on a roster derived from this array,
+// chosen OVER the substring permission, which let any copy of an allowed line through uncounted
+// (IN-410), and OVER re-keying the list by file (FriendshipStatusProvider holds two entries that
+// need separate counts). SURFACES is KEPT: this answers DECISION Phase 88.6-60's take-it-with-W058
+// condition. W058's defect is the allow-list's matching, which SURFACES never reads, and retiring
+// it would delete the alert( assertion, its length pin and two anti-vacuity loops for no gain here.
+const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string } & ExemptionRoster[string]> = [
   {
     file: 'app/groupHomePage/page.js',
     contains: "const msg = (error?.message || '').toLowerCase();",
+    sites: 1,
+    owner: { kind: 'spec', id: 'Req 14 (DES-04/DES-05) / T-88-25-01 - a control-flow read is branched on and never displayed (88.6-13 standing rule 1)' },
     why: 'isRemovedFromGroupError — routes a removal 403 to a redirect. Never displayed.',
   },
   // DELETED by plan 88.6-42 task 1 (wave 8, 2026-09-17), in the SAME COMMIT as the re-key,
@@ -326,13 +341,15 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   // entries — "if (err.message && err.message.includes('404'))" and
   // "} else if (err.message && err.message.includes('No user found'))". Both prose arms are
   // now ONE status test, `if (err?.status === 404)`, and the visible string is byte-identical.
-  // Reviewer ruling 5 of 2026-09-14 (88.6-PLAN-REVIEW-work/RULINGS.md:428): plan 13 owns this
+  // Reviewer ruling 5 of 2026-09-14 (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-PLAN-REVIEW-work/RULINGS.md ("Reviewer rulings on the ten part-2 routing gaps")): plan 13 owns this
   // file's `why` and the standing rule above; plan 42 performs the deletion, because plan 42
   // is where the re-key lands. The anti-vacuity array is DERIVED from this list (88.6-13 §2),
   // so this is ONE deletion and not two — there are no twin rows to chase.
   {
     file: 'app/components/FriendshipStatusProvider.js',
     contains: "if (err?.message?.includes('409') || err?.status === 409) {",
+    sites: 1,
+    owner: { kind: 'spec', id: 'Req 14 (DES-04/DES-05) / T-88-25-01 - a control-flow read is branched on and never displayed (88.6-13 standing rule 1)' },
     why:
       'CONTROL FLOW. Status-FIRST duplicate-request branch — the message test is the ' +
       'legacy half of an `||` whose right arm already reads `err.status`. Never displayed. ' +
@@ -342,6 +359,8 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   {
     file: 'app/components/FriendshipStatusProvider.js',
     contains: "const is404 = err?.message?.includes('404') || err?.status === 404;",
+    sites: 2,
+    owner: { kind: 'spec', id: 'Req 14 (DES-04/DES-05) / T-88-25-01 - a control-flow read is branched on and never displayed (88.6-13 standing rule 1)' },
     why:
       'CONTROL FLOW. Two sites (handleAcceptRequest and handleDeclineRequest), same line text: a not-found probe that ' +
       'resolves to a boolean and picks a UI state. Status-first, same shape as the 409 ' +
@@ -366,12 +385,14 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   // strings into `HTTP error! status: 410` and silently killed the expired screen on the public
   // QR/SMS entry surface. The old entry routed the durable fix to Phase 93 on the ground that
   // "the durable fix needs the backend envelope"; that is no longer true for THIS site, because
-  // `GET /events/invite-preview/:token` emits 410 at exactly one place (`routes/events.js:1306`),
+  // `GET /events/invite-preview/:token` emits 410 at exactly one place (backend:Sonnet/routes/events.js ("router.get('/invite-preview/:token'"), its one 410),
   // so the status alone is unambiguous here. Entry DELETED, not left as a fossil permission —
   // the anti-vacuity assertion below reds on a stale one.
   {
     file: 'lib/logger.ts',
     contains: "const message = typeof e?.message === 'string' ? e.message : String(err);",
+    sites: 1,
+    owner: { kind: 'decision', marker: 'DECISION Phase 88.6-13 (D8/D11/D16): ONE helper, chosen OVER ~100 hand-written ctx' },
     why:
       'SANCTIONED DIAGNOSTIC READ — a third class, and it is the only one. This is ' +
       "`errCtx(err)`'s body: the helper that exists so AC-2's ~100 conversions never spell " +
@@ -384,9 +405,11 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   {
     file: 'app/Header.js',
     contains: 'if (error) return <div>{error.message}</div>;',
+    sites: 1,
+    owner: { kind: 'owner', date: '2026-09-09', ruling: 'AC-22 routing (88.6-46 R102): the measured-empty Auth0 useUser() render stays allow-listed and is routed to Phase 93' },
     why:
       'MEASURED-EMPTY IN THE COMMON CASE, not control flow. This RENDERS the message of ' +
-      "Auth0's `useUser()` error. `layout.js:27` mounts `UserProvider` with no fetcher, so " +
+      "Auth0's `useUser()` error. " + 'src/app/layout.js ("<UserProvider>") mounts ' + "`UserProvider` with no fetcher, so " +
       "the SDK's default `userFetcher` is what throws, in TWO cases " +
       '(`@auth0/nextjs-auth0/dist/client/use-user.js`): (a) a network failure or non-ok ' +
       'response throws `RequestError`, whose constructor calls a bare `super()`, so ' +
@@ -405,9 +428,11 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
   {
     file: 'app/page.js',
     contains: '<div className="text-content-status-error">Error: {error.message}</div>',
+    sites: 1,
+    owner: { kind: 'owner', date: '2026-09-09', ruling: 'AC-22 routing (88.6-46 R102): the measured-empty Auth0 useUser() render stays allow-listed and is routed to Phase 93' },
     why:
       'MEASURED-EMPTY IN THE COMMON CASE, not control flow. Same Auth0 `useUser()` error as ' +
-      "Header.js:55, with the same two cases: (a) `RequestError` → `.message` is '', so this " +
+      'src/app/Header.js ("if (error) return <div>{error.message}</div>;")' + ", with the same two cases: (a) `RequestError` → `.message` is '', so this " +
       'paints the literal `Error: ` with nothing after it; (b) a non-JSON 200 → the ' +
       '`SyntaxError` message IS painted after `Error: `. Neither is disclosing. Listed ' +
       'EXPLICITLY rather than excluding the file, because the same file carries a developer ' +
@@ -423,6 +448,22 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
 
 const isAllowed = (hit: Hit): boolean =>
   CONTROL_FLOW_ALLOWED.some((a) => a.file === hit.file && hit.text.includes(a.contains));
+
+// The allow-list as a D-19 roster, keyed file :: contains (W058). FriendshipStatusProvider holds
+// two entries, so the key carries the matched text as well as the file.
+const CONTROL_FLOW_ROSTER: ExemptionRoster = Object.fromEntries(
+  CONTROL_FLOW_ALLOWED.map((a) => [`${a.file} :: ${a.contains}`, { sites: a.sites, why: a.why, owner: a.owner }]),
+);
+
+/** How many comment-stripped lines of each entry's file include its text, keyed as the roster. */
+function controlFlowCounts(): Record<string, number> {
+  return Object.fromEntries(
+    CONTROL_FLOW_ALLOWED.map((a) => [
+      `${a.file} :: ${a.contains}`,
+      readStripped(a.file).lines.filter((l) => l.trim().includes(a.contains)).length,
+    ]),
+  );
+}
 
 /**
  * The ASSERTION PATH, as one function: predicate, then the allow-list filter.
@@ -452,7 +493,8 @@ const countByFile = (hits: Hit[]): Record<string, number> => {
 // The RESEARCH §B.5 hand census — 25 SITES across 16 FILES. It is a LEAD, never the seed:
 // both rosters below are seeded from the scan RE-DERIVED at execution. It is kept here as
 // an anti-vacuity subject (every one of its files must be in the scanned set) and as the
-// record of what a hand census misses — `StartPollModal.js:151` is a live raw render it
+// record of what a hand census misses — the StartPollModal catch, now
+// src/app/components/StartPollModal.js ("getFetchErrorMessage(err, {"), was a live raw render it
 // does not contain at all.
 // AMENDED Phase 88.6.1-49 (Req 14, 2026-10-16 Pacific): the census's one SuggestionCard.js site
 // left with its file, which the owner retired, so its row was removed in the deletion commit
@@ -520,7 +562,7 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // option, because UI-SPEC §6.3's register holds no ratified string for this site and an
   // executor never mints copy — the code-less arm takes the register's own `unknown` line. In
   // the SAME edit the site gained a CLASS-ONLY `Sentry.captureException` in the
-  // `FeedbackForm.js:236-240` shape (T-88.6-140): this file has no `console.*`, no `logger` and
+  // src/app/components/FeedbackForm.js ("feedback submit failed") shape (T-88.6-140): this file has no `console.*`, no `logger` and
   // no other `Sentry` call, so genericising the copy alone would have deleted the surface's last
   // diagnostic. Entry DELETED rather than zeroed — the roster is exact in both directions. This
   // file's FAILED_COPY_EXEMPT entry (1, the same line) closed in the same commit.
@@ -530,7 +572,7 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // reads `setError(getFetchErrorMessage(err))` with NO `fallback:` option, so the CLOSED
   // register answers and no copy was authored (P1). The D-21 ASYMMETRY this entry named is also
   // closed in the same commit and is a SEPARATE defect from the raw read: the site gained the
-  // CLASS-ONLY `Sentry.captureException` its sibling `FeedbackForm.js:236-240` already had,
+  // CLASS-ONLY `Sentry.captureException` its sibling src/app/components/FeedbackForm.js ("feedback submit failed") already had,
   // REPLACING the `console.error` (AC-16 option (a) + AC-2 WIDENED, owner 2026-09-09) — one
   // escalation per failure path, no `logger.error` beside it and no `logger` import. Both
   // captures now carry a `channel` tag (`public` vs `github`) so a Sentry issue names WHICH
@@ -655,7 +697,7 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // read is gone and the three outcomes it fed are keyed on `err.code` instead — `not_found`,
   // a GATED `forbidden`, and `getFetchErrorMessage(err)` for everything else. The gate matters:
   // TWO sources put a code-less 403 on this call (the backend's wrong-email refusal at
-  // `routes/invites.js:757-758` and the BFF proxy's CSRF rejection), so the override is
+  // backend:Sonnet/routes/invites.js ("router.post('/accept-by-token'") and the BFF proxy's CSRF rejection), so the override is
   // discriminated on a structural `csrf_rejected` marker rather than on `code` alone.
   // This file's OTHER `.message` read — the `console.error` at :83, now
   // `logger.info('Failed to fetch invite info:', errCtx(err))` — was never a roster site: it is
@@ -665,7 +707,7 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // carried `sites: 2` (:90 and :143, both `setError(err.message || …)`) and
   // `app/invite/group/[token]/page.js` carried `sites: 1` (:109). All three now read
   // `setError(getFetchErrorMessage(err))` — the ratified register, no fallback string authored:
-  // a real network failure already arrives as `ApiError(…, 'network', 0)` (api.ts:348-352), so
+  // a real network failure already arrives as `ApiError(…, 'network', 0)` (src/lib/api.ts ("if the backend is running.")), so
   // the register's own `network` line covers the case the hand-rolled fallbacks were written for.
   // Of the THREE allow-list entries the old `why` named for the game page, one is GONE with the
   // code it described (:79, the prose-matched 410 guard, re-keyed to `err?.status === 410`) and
@@ -917,6 +959,13 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
     }
   });
 
+  it('the allow-list is EXACT per entry and owned (W058) — a second copy of an allowed read reds', () => {
+    // Each entry permits exactly its counted sites; a copied line anywhere in its file is a new
+    // offender, not a free pass. See the W058 marker above CONTROL_FLOW_ALLOWED.
+    expect(assertRosterShape(CONTROL_FLOW_ROSTER)).toEqual([]);
+    expect(assertExactCounts(CONTROL_FLOW_ROSTER, controlFlowCounts())).toEqual([]);
+  });
+
   it('no native alert() survives on these surfaces (DEF-88-16-01)', () => {
     // Req 11's shipped gate matches `confirm(` only, so every `alert(` was
     // invisible to it. Two of the six DEF-88-16-01 censused were on files this
@@ -1036,8 +1085,10 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
     //    Each is exempt today as a `console.*` line and must stay exempt after its AC-2
     //    conversion; their `toast.error(getFetchErrorMessage(...))` sinks sit on the
     //    FOLLOWING line, which is why the sink guard is line-based and why `errCtx` exists.
-    //    Verbatim from the live tree (grouplist.js:91, gameDetail/page.js:720, :756), then
-    //    the converted form.
+    //    Verbatim from the pre-conversion tree (the console.* lines that became
+    //    src/app/components/grouplist.js ("logger.info('Error fetching groups:'") and
+    //    src/app/gameDetail/page.js ("logger.info('Failed to get game invite token:'") with its
+    //    remove-participant sibling), then the converted form.
     const channelChangers: Array<[string, string]> = [
       [
         `console.error('Error fetching groups:', error.message || 'Unknown error');`,
@@ -1082,7 +1133,8 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
       `      setThingError(error.message);`,
       // 88.6-13: a JSX RENDER arm. Every planted negative above goes through a call
       // expression, so the whole set would still pass with the scan blind to the shape
-      // `Header.js:55` and `app/page.js:103` actually ship — a bare interpolation into
+      // src/app/Header.js ("if (error) return <div>{error.message}</div>;") and
+      // src/app/page.js ("Error: {error.message}</div>") actually ship — a bare interpolation into
       // markup, with no sink token anywhere on the line.
       `      <div>{error.message}</div>`,
     ];
@@ -1112,10 +1164,11 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
     // strip code. If it did, every assertion above would go vacuously green.
     //
     // THREE DECISION-MARKER FALSE POSITIVES a raw grep would report and this suite does
-    // not, named so nobody "fixes" them: `app/friends/page.js:268`,
-    // `app/gameDetail/page.js:649` and `components/ui/useFetchErrorState.ts:128` are PROSE
-    // inside markers that exist to record this very work. (`gameDetail/page.js:1005` is a
-    // fourth.) This is exactly why SPEC P5 forbids gating the R1 property with a grep, and
+    // not, named so nobody "fixes" them: src/app/friends/page.js ("is a legitimate SEARCH"),
+    // src/app/gameDetail/page.js ("via getFetchErrorMessage, chosen OVER the") and
+    // src/components/ui/useFetchErrorState.ts ("idiom that shipped on ~20") are PROSE
+    // inside markers that exist to record this very work.
+    // (src/app/gameDetail/page.js ("interpolation this plan removed") is a fourth.) This is exactly why SPEC P5 forbids gating the R1 property with a grep, and
     // why the two widened assertions above could go tree-wide at all — they read stripped
     // source, so a marker can say plainly what it forbids.
     const stripped = withoutComments(
@@ -1212,8 +1265,11 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
     // MEASURED DAY-ONE ZERO, 2026-09-15, over `periodictabletop/src`, recorded HERE with
     // its date so a future reader can tell a green tripwire from a dead one:
     //   dangerouslySetInnerHTML  11 occurrences in non-test source. ZERO as a USE:
-    //                            4 in prose comments (FriendInvitePanel.js:299,
-    //                            Modal.tsx:20, Banner.tsx:15, FetchErrorBanner.tsx:18),
+    //                            4 in prose comments
+    //                            (src/app/components/FriendInvitePanel.js ("build this header through"),
+    //                            src/app/components/Modal.tsx ("children render as escaped React"),
+    //                            src/components/ui/Banner.tsx ("Reach for Radix only if the Banner later"),
+    //                            src/components/ui/FetchErrorBanner.tsx ("children (T-86-09): no")),
     //                            4 more in Heading.tsx's own mitigation + its comment.
     //   .innerHTML =             0      .outerHTML =        0
     //   insertAdjacentHTML(      0      document.write(     0

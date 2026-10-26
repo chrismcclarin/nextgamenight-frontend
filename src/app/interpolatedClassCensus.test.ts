@@ -26,13 +26,7 @@
  * `DECISION Phase 88.6-47` for these entries is this file's own header — right here. A reader who
  * greps `src/` for the marker and finds only test files has found the truth, not a missing marker.
  *
- * REGISTRY GAP, recorded rather than implied: this becomes the FIFTH 88.6-minted source-scan gate
- * absent from `ci.yml`'s `drift-gate-registry` list, joining `groundInk.test.ts`,
- * `errorEnvelopeReads.test.ts`, `btnCensus.test.tsx` and `shadowTier.test.ts`. A gate you can
- * disarm with `rm` is not a gate. That ruling is OPEN and stays open PAST this phase — plan 88.6-46
- * carries no registry-ruling task, only AC-11's dated disposition — so both ledger entries
- * (`.planning/deferred/phase-88.6.md`) were corrected to FIVE by this plan rather than a row being
- * added to `ci.yml` here, which is not an executor's call.
+ * REGISTERED: this suite is a gates row in scripts/drift-gate-registry.manifest.mjs ("file: 'src/app/interpolatedClassCensus.test.ts'"), so deleting or gutting it reds the required drift-gate-registry job.
  */
 import path from 'node:path';
 import fs from 'node:fs';
@@ -53,7 +47,7 @@ const rel = (file: string): string => path.relative(SRC, file);
  * keys such as `invite-friend-${…}`, `local-${game.id}`, `member-role-${…}` — which is a roster
  * of noise, and a roster of noise is a roster nobody maintains. Against this list it returns 5.
  * `row`, `h` and `col` MUST stay in it: the tree genuinely wears `row-span-3`
- * (`src/app/userProfile/page.js:2559`), so `row-${x}` is a real candidate shape here and not a
+ * (src/app/userProfile/page.js ("DECISION Phase 88.6-30 (W53 reopen, row alignment, 2026-09-21)")), so `row-${x}` is a real candidate shape here and not a
  * hypothetical one.
  * Adding a prefix can only ADD hits (each needs a roster entry or a fix); removing one blinds the
  * detector. Both directions are decisions.
@@ -69,6 +63,9 @@ const TAILWIND_PREFIXES: readonly string[] = [
   'delay', 'animate', 'cursor', 'select', 'resize', 'scroll', 'snap', 'touch', 'will', 'aspect',
   'columns', 'container', 'float', 'clear', 'isolation', 'overflow', 'overscroll', 'position',
   'visible', 'invisible',
+  // W042 (review WR-404): the prefixes the 88.6.1 scout found missing (verify-W038-W074, the
+  // still-lacks list). Each first segment is a real utility family in this tree's Tailwind.
+  'justify', 'items', 'self', 'content', 'place', 'line', 'blur', 'backdrop', 'mix',
 ];
 
 /**
@@ -101,8 +98,17 @@ const VARIANT_BEFORE = /(^|[^A-Za-z0-9_$-])([a-z][a-z0-9-]*(?:\[[^\]]*\])?):$/;
  */
 const ARBITRARY_BEFORE = /\[[^\]\s'"\x60]*$/;
 
-/** A bare utility prefix ending the text, bounded so `invite-friend-` cannot match `friend`. */
-const PREFIX_BEFORE = /(^|[^A-Za-z0-9_$-])([a-z][a-z0-9]*)-$/;
+// A utility STEM ending the text: one optional leading dash (a negative utility such as -mt-),
+// then one or more dash-separated segments, then the trailing dash the interpolation completes.
+// Group 2 is the FIRST segment, and only it is checked against TAILWIND_PREFIXES. The boundary
+// still excludes the dash, so invite-friend- is read whole and can never match from friend.
+// DECISION Phase 88.6.2-14 (W042): a multi-segment stem with only its FIRST segment checked
+// against the prefix list (plus one optional leading dash for a negative utility) over the
+// single-segment stem, which could not see grid-cols, text-content or line-clamp, and over
+// any-dash-segment matching, which this file's own docblock measured as a roster of noise — the
+// boundary still excludes the dash, so a key such as invite-friend is read whole and its first
+// segment is not a prefix.
+const PREFIX_BEFORE = /(^|[^A-Za-z0-9_$-])-?([a-z][a-z0-9]*)(?:-[a-z0-9]+)*-$/;
 
 const DETECTORS: readonly Detector[] = [
   {
@@ -115,8 +121,10 @@ const DETECTORS: readonly Detector[] = [
   {
     id: 2,
     what:
-      'a Tailwind utility PREFIX immediately followed by an interpolation (`bg-${shade}`) — ' +
-      'the prefix list is the allow-list above, never "any dash-segment"',
+      'a Tailwind utility STEM immediately followed by an interpolation (`bg-${shade}`, ' +
+      '`grid-cols-${n}`, `-mt-${n}`) — the stem may have several dash segments and one leading ' +
+      'dash, and only its FIRST segment is checked against the allow-list above, never "any ' +
+      'dash-segment"',
     hit: (before) => {
       const m = PREFIX_BEFORE.exec(before);
       return !!m && TAILWIND_PREFIXES.includes(m[2]);
@@ -231,7 +239,7 @@ function census(): { byFile: Record<string, number>; rows: { file: string; hit: 
  * MEASURED 2026-09-21 at `ef40170` + this plan's commits, by running the four detectors above over
  * the 193 non-test `src/` files: ELEVEN hits across EIGHT files. (An earlier revision of plan 47
  * recorded three, and the 2026-09-21 scoped review re-measured ten; the eleventh is the SECOND
- * interpolation on `userProfile/page.js:119` — that one line builds both `${typeKey}:email` and
+ * interpolation on src/app/userProfile/page.js ("status => statuses[") — that one line builds both `${typeKey}:email` and
  * `${typeKey}:sms`, and a per-LINE reading counts it once while a per-HIT reading counts it twice.
  * This file counts HITS, so the number is eleven. Restated here rather than rounded to match the
  * plan text.)
@@ -329,6 +337,11 @@ const KNOWN_BAD: readonly { text: string; why: string }[] = [
   { text: 'md:${cls}', why: 'detector 4 — a literal variant completed by an interpolation' },
   { text: 'hover:${cls}', why: 'detector 4 — the same shape on a state variant' },
   { text: 'w-[calc(100%-${gap})]', why: 'detector 3 — an interpolation inside an arbitrary value' },
+  { text: 'grid-cols-${n}', why: 'detector 2 (W042) — a multi-segment stem; its first segment grid is a prefix' },
+  { text: 'text-content-${tone}', why: 'detector 2 (W042) — a multi-segment semantic-token stem on the text prefix' },
+  { text: 'line-clamp-${n}', why: 'detector 2 (W042) — line joins the prefix list, and the stem has two segments' },
+  { text: 'items-${align}', why: 'detector 2 (W042) — items joins the prefix list' },
+  { text: '-mt-${n}', why: 'detector 2 (W042) — a negative utility, one leading dash before the stem' },
 ];
 
 const KNOWN_GOOD: readonly { text: string; why: string }[] = [
@@ -336,6 +349,8 @@ const KNOWN_GOOD: readonly { text: string; why: string }[] = [
   { text: 'TONE_CLASS[tone]', why: 'a whole literal class looked up from a map — the literals live in the map' },
   { text: 'id="field-${name}"', why: 'an interpolated DOM id; `field` is not a utility prefix' },
   { text: 'key={"member-${id}"}', why: 'an interpolated React key; `member` is not a utility prefix' },
+  { text: 'key={"member-role-${id}"}', why: 'a multi-segment React key (W042); its first segment member is not a utility prefix' },
+  { text: 'id="invite-friend-${id}"', why: 'the docblock example (W042); read whole, its first segment invite is not a utility prefix' },
   { text: '"bg-" + shade', why: 'plain + concatenation — DELIBERATELY out of scope (measures 0 in src/ today); listed so the omission is recorded, not implied' },
 ];
 

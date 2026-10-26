@@ -70,22 +70,22 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     friendshipsAPI: {
       ...actual.friendshipsAPI,
-      getFriends: vi.fn().mockResolvedValue([]),
-      searchUserByEmail: vi.fn().mockResolvedValue(null),
-      sendRequest: vi.fn().mockResolvedValue({}),
+      getFriends: vi.fn(() => Promise.resolve([])),
+      searchUserByEmail: vi.fn(() => Promise.resolve(null)),
+      sendRequest: vi.fn(() => Promise.resolve({})),
       // The real FriendshipStatusProvider wraps every render (88.6.1 code review A-17): its load reads these.
-      getSentRequests: vi.fn().mockResolvedValue([]),
-      getReceivedRequests: vi.fn().mockResolvedValue([]),
+      getSentRequests: vi.fn(() => Promise.resolve([])),
+      getReceivedRequests: vi.fn(() => Promise.resolve([])),
     },
     groupsAPI: {
       ...actual.groupsAPI,
-      getGroupMembers: vi.fn().mockResolvedValue([]),
-      getInviteToken: vi.fn().mockResolvedValue({ invite_url: 'https://example.test/join/tok' }),
+      getGroupMembers: vi.fn(() => Promise.resolve([])),
+      getInviteToken: vi.fn(() => Promise.resolve({ invite_url: 'https://example.test/join/tok' })),
     },
     invitesAPI: {
       ...actual.invitesAPI,
-      sendInvite: vi.fn().mockResolvedValue({}),
-      sendFriendInvite: vi.fn().mockResolvedValue({}),
+      sendInvite: vi.fn(() => Promise.resolve({})),
+      sendFriendInvite: vi.fn(() => Promise.resolve({})),
     },
   };
 });
@@ -148,8 +148,9 @@ export function renderPanel(options: RenderPanelOptions = {}) {
   return { onClose, onMemberAdded, ...utils };
 }
 
+// DECISION Phase 88.6.2-17 (reset): reset every mock before each arm, with the api defaults written as vi.fn(impl) so the reset restores them, over clearing call history only — which kept one-shot queues and standing implementations across arms, so one failing arm poisoned the next (88.6.1-27, RT-40) — and over draining queues arm by arm, which every arm would have to remember. Other suites that only clear are not changed here (plan 30 hand-off).
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   h.selfUuid = SELF_UUID;
 });
 
@@ -276,7 +277,7 @@ describe('FriendInvitePanel — Req 9 migration proof', () => {
 // These are BEHAVIORAL, not markup checks, and the shape is deliberate. Every
 // announcement arm captures the live region BEFORE the outcome fires and asserts
 // on THAT SAME NODE afterwards (`expect(after).toBe(before)`) — the idiom
-// StatusRegion.test.tsx:25-34 already uses (`expect(after).toBe(before)` at :32). Presence alone is satisfied by a
+// src/components/ui/StatusRegion.test.tsx ("injects text on change without remounting the region (same node)") already uses (`expect(after).toBe(before)` at src/components/ui/StatusRegion.test.tsx ("expect(after).toBe(before); // same live node")). Presence alone is satisfied by a
 // CONDITIONALLY-mounted region, which is precisely the bug: a screen reader
 // announces a CHANGE to a live region, never the conditional mount of a new one.
 // CORRECTED by 88.6.1-27 (D-42): that rule holds for polite / status regions; an
@@ -468,8 +469,8 @@ describe('FriendInvitePanel — error and success are announced (88.6-22)', () =
 
   // ADDED by plan 88.6-58 task 2 (2026-09-28, /code-adversarial-review 88.6 H3, owner rulings
   // `H3-RULING` + `H3-COPY-RULING`). `noValidate` (88.6-22) sends a malformed address to the
-  // server, whose `isEmail` verdict is a raw `{ errors }` 400 (Sonnet/routes/invites.js:206,
-  // :216) — `apiFetch` maps it to `validation`, whose register line says "Refresh the page",
+  // server, whose `isEmail` verdict is a raw `{ errors }` 400 (backend:Sonnet/routes/invites.js ("body('email').optional().isEmail()"),
+  // backend:Sonnet/routes/invites.js ("return res.status(400).json({ errors: errors.array() });")) — `apiFetch` maps it to `validation`, whose register line says "Refresh the page",
   // which cannot fix a typo. RED on FE d03f728, GREEN after the local byCode override.
   it('a malformed address (the server isEmail 400 → `validation`) renders the ratified field message on the SAME node', async () => {
     const { invitesAPI, ApiError } = await import('@/lib/api');
@@ -994,24 +995,28 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
     expect(screen.queryByRole('heading', { name: 'Invite Members' })).not.toBeInTheDocument();
   });
 
-
+  // DECISION Phase 88.6.2-17 (R7-M1): pin min-w-0 beside the wrap class on the column, src/app/components/FriendInvitePanel.js ("min-w-0 wrap-break-word"), over switching the column to wrap-anywhere — that is a production className change this phase does not make (SPEC R11), and it would replace the device-checked UAT3-D2 fix with an unchecked one.
   it("the post-creation header wraps a long unbroken group name instead of running under the close button (UAT3-D2, 2026-09-30)", async () => {
     // Owner device check 2026-09-30: a 40-character name with no spaces overflowed the dialog and
     // painted under the ×. jsdom has no layout, so the pin is the wrap class on the header's shared
     // text column (overflow-wrap inherits into the title AND the lead-in); the geometry half is the
-    // owner's re-check on preview after CI.
+    // owner's re-check on preview after CI. min-w-0 is the load-bearing half: overflow-wrap does not
+    // shrink a flex item's min-content, so without it the column cannot narrow below the unbroken
+    // word and the overflow returns (R7-M1/M4).
     renderPanel({ openedFrom: 'create', group: { ...GROUP, name: 'M'.repeat(40) } });
     const heading = await screen.findByRole('heading', { name: `${'M'.repeat(40)} is live — who's in?` });
-    expect(heading.closest('div')?.className.split(/\s+/)).toContain('wrap-break-word');
+    expect(heading.closest('div')?.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-w-0', 'wrap-break-word']));
   });
 
   it("the default-path header's 'to <group>' lead-in wraps a long unbroken group name too (code review round 6 HIGH, 2026-09-30)", async () => {
     // Round 6 caught the half the device check missed: opened from Manage Members / the home page
     // (no openedFrom), the user-supplied name is in the LEAD-IN, a sibling of the title, which
     // inherits nothing from a class on the title. Pinned on the shared column for the same reason.
+    // min-w-0 is the load-bearing half here too: overflow-wrap does not shrink a flex item's
+    // min-content, so without it the column cannot narrow below the unbroken word (R7-M1/M4).
     renderPanel({ group: { ...GROUP, name: 'M'.repeat(40) } });
     const leadIn = await screen.findByText(`to ${'M'.repeat(40)}`);
-    expect(leadIn.closest('div')?.className.split(/\s+/)).toContain('wrap-break-word');
+    expect(leadIn.closest('div')?.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-w-0', 'wrap-break-word']));
   });
   it('leaves every other entry point on the generic header', async () => {
     renderPanel();
@@ -1069,7 +1074,7 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
 // WCAG 4.1.2 is a TAG; `heading-order` is a RULE carrying no wcag412 tag, so both
 // are needed. `as const` is applied to `type` ONLY — axe-core's `RunOnly.values`
 // is a mutable `string[]` and a fully-readonly literal fails `tsc --noEmit`.
-// (Same two constants as `PromptScheduleManager.test.tsx:129-130`, the phase's
+// (Same two constants as src/app/components/PromptScheduleManager.test.tsx ("const WCAG_412"), the phase's
 // first composed audit; deliberately not extracted into a shared helper, which
 // would be a third file for two object literals.)
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
@@ -1288,9 +1293,9 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
 
   it('P1. a terminal 409 reads as already invited — the panel shipped lines (88.6.1-72 GUARD)', async () => {
     // Pins the panel's two shipped 409 lines before plan 88.6.1-72 moves them into
-    // friendBatchInviteOutcome.ts (no test pinned them). This suite's beforeEach clears calls but
-    // not implementations or one-shot queues (B5 leaves a standing implementation), so this arm
-    // resets the invite mock itself and restores the default when it ends.
+    // friendBatchInviteOutcome.ts (no test pinned them). The suite's beforeEach now resets every
+    // mock before each arm (the reset DECISION at the top-level beforeEach), and this arm still
+    // re-arms the invite mock itself because its second half needs a different answer mid-arm.
     const { invitesAPI, ApiError } = await import('@/lib/api');
     const send = invitesAPI.sendFriendInvite as Mock;
     try {

@@ -4,7 +4,7 @@ import { settleAnimations } from './support/inFlight';
 /**
  * Phase 88.6.1-32 — the Browse Games dialog at 375px (AC-27's Browse Games half, D-41, AC-13).
  *
- * WHAT THIS ASSERTS THAT jsdom CANNOT. `src/app/components/BrowseMoreModal.test.tsx` pins the
+ * WHAT THIS ASSERTS THAT jsdom CANNOT. src/app/components/BrowseMoreModal.test.tsx pins the
  * refresh-in-place state machine (same card nodes, aria-busy on the list, copy row E8 in the
  * polite slot region, latest wins, the failure line in the assertive one) and the decrement's
  * attributes. jsdom performs no layout and never blurs a disabled element, so it cannot see the
@@ -25,7 +25,7 @@ import { settleAnimations } from './support/inFlight';
  * decrement carried the native disabled attribute (focus leaves it at 1, test 3).
  *
  * DECISION Phase 88.6.1-32 (fixture): the suggestions response is supplied by `page.route`,
- * chosen OVER the seeded collections (reachable, but uncontrolled — `touch-targets.spec.ts:834`,
+ * chosen OVER the seeded collections (reachable, but uncontrolled — e2e/touch-targets.spec.ts ("MEASURED, not assumed: those steppers are UNREACHABLE in CI."),
  * `CORRECTED 2026-09-28` — a real list could reach the dialog's 90dvh cap and make the height
  * comparison vacuous, and a held or failing response needs interception anyway) and OVER a
  * backend fixture (a cross-repo change, out of this plan's scope). Both games are synthetic and

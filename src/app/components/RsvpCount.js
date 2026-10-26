@@ -76,7 +76,7 @@ export default function RsvpCount({
        and this component inherit through.
 
        REJECTED: editing these spans unconditionally. This component has a SECOND call site,
-       `CalendarListView.js:898`, which passes no such prop — so a DEFAULTED prop leaves that
+       src/app/components/CalendarListView.js ("<RsvpCount"), which passes no such prop — so a DEFAULTED prop leaves that
        call site byte-identical and leaves the UNCOLOURED compact tile rendering its shipped
        success/warning/error colours exactly as today. An unconditional edit would have reached
        both.

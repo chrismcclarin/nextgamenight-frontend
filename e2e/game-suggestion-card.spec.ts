@@ -5,7 +5,7 @@ import { focusRingMeasurement } from './support/contrast';
 /**
  * Phase 88.6.1-03 — Req 2 / AC-8: the suggestion card is a native button, at 375px.
  *
- * WHAT THIS ASSERTS THAT jsdom CANNOT. `src/app/components/GameSuggestionCard.test.tsx` pins the
+ * WHAT THIS ASSERTS THAT jsdom CANNOT. src/app/components/GameSuggestionCard.test.tsx pins the
  * role, the one accessible name, Enter and Space, and the class list. jsdom performs no layout and
  * applies no stylesheet, so none of that observes the RENDERED card. Turning a div into a native
  * button carries three visual risks a unit test is blind to: a button shrinks to its content
@@ -186,7 +186,7 @@ test.describe('GameSuggestionCard on the event page at 375px (88.6.1-03)', () =>
 
     // Reached by KEYBOARD (a Tab press, then focus), so :focus-visible applies. The helper throws
     // if the ring variables are empty, i.e. if the card never matched :focus-visible. jsdom applies
-    // no stylesheet, so this ring is provable only here (`e2e/contrast.spec.ts:1004-1006`).
+    // no stylesheet, so this ring is provable only here (e2e/contrast.spec.ts ("WHY THIS CANNOT BE A jsdom ARM")).
     const ring = await focusRingMeasurement(page, card, 'GameSuggestionCard focus ring (88.6.1-03)');
     await expect(card).toBeFocused();
     expect(ring.boxShadow, `focused box-shadow ${ring.boxShadow}`).not.toBe('none');

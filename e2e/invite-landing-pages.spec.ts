@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1 plan 19 — the two invite landing pages, proven in a real browser at phone width
 // (outline shared rule 9: the phone is the primary surface; the `phone` project is the iPhone SE
@@ -9,8 +10,8 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 //
 // The only network the spec touches is the PUBLIC preview GET of each page (a direct, cross-origin
 // `publicFetch` to the backend, not the same-origin proxy). Each route is registered BEFORE
-// `page.goto`, matched by pathname, and every fulfilled response is built from `route.fetch()` so
-// it keeps the backend's own CORS headers (the `e2e/padding-budget.spec.ts` rewrite idiom). The
+// `page.goto`, matched by pathname, and every fulfilled response is built from `scrubbedFetch(route)` so
+// it keeps the backend's own CORS headers (the e2e/padding-budget.spec.ts rewrite idiom). The
 // real preview is fetched only to copy those headers — the token is made up, so its body is a 404
 // that is replaced. A transport failure is `route.abort('failed')`. Nothing is passed through to
 // the network unmodified. Assertion messages carry fixed strings only.
@@ -70,7 +71,7 @@ test.describe('invite landing pages at phone width (88.6.1-19)', () => {
           return;
         }
         await hold.released;
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         await route.fulfill({
           response,
           status: 200,
@@ -111,7 +112,7 @@ test.describe('invite landing pages at phone width (88.6.1-19)', () => {
           return;
         }
         await hold.released;
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         await route.fulfill({ response, status: 500, json: { error: 'boom' } });
       },
     );

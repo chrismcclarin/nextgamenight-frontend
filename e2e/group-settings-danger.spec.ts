@@ -2,6 +2,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 
 import { assertTheme, forceLightMode } from './support/contrast';
 import { openGroupSettings } from './support/groupSettings';
+import { expectTouchTarget } from './support/touchTarget';
 
 /**
  * Phase 87.8 Plan 10 — SPEC R7: phone-width coverage of the GroupSettings Danger
@@ -17,8 +18,8 @@ import { openGroupSettings } from './support/groupSettings';
  * block is the second `test.describe` at the bottom.
  *
  * PROJECT GUARD: every new spec joins BOTH projects automatically — `journeys` and
- * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts:44 and :87). This
- * file inverts the guard tailwind-v4-styles.spec.ts:59 uses: it SKIPS the desktop
+ * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts ("name: 'journeys',") and playwright.config.ts ("name: 'phone',")). This
+ * file inverts the guard e2e/tailwind-v4-styles.spec.ts ("test.skip(({ isMobile }) => isMobile, 'SPEC R5") uses: it SKIPS the desktop
  * `journeys` project, because R7 is a phone-tenet requirement measured at the phone
  * viewport (iPhone SE (3rd gen), 375x667 — D-06).
  *
@@ -35,13 +36,13 @@ import { openGroupSettings } from './support/groupSettings';
  * out-of-scope here.
  *
  * ENTRY PATH (the way a user reaches it): groupHomePage title-row kebab
- * ("Group actions", CONTEXT D-LEAVE-01 — groupHomePage/page.js:362-371) →
+ * ("Group actions", CONTEXT D-LEAVE-01 — src/app/groupHomePage/page.js ("{ label: 'Group settings', onClick: () => setShowGroupSettings(true) }")) →
  * the "Group settings" item → the Customize Group modal. The Danger Zone renders
  * only for the group OWNER; the CI login identity (Alice) owns the seeded group
  * that scripts/e2e-fixtures.js emits as E2E_GROUP_ID, so it must render here —
  * the vacuity guards assert that instead of silently passing.
  *
- * SELECTOR POLICY: role/label/text only — never Tailwind classes (invite.spec.ts:18).
+ * SELECTOR POLICY: role/label/text only — never Tailwind classes (e2e/invite.spec.ts ("Selectors are role/label/text only (PATTERNS.md)")).
  * The Danger Zone section has no landmark role, so it is scoped as the parent of
  * its own visible heading (same reasoning as tailwind-v4-styles.spec.ts's
  * documented testid amendment, without adding a testid).
@@ -49,24 +50,24 @@ import { openGroupSettings } from './support/groupSettings';
  * NO dark-theme pre-assertion here, deliberately: this file reads GEOMETRY only
  * (bounding boxes, scrollWidth) — never a computed style — and geometry is
  * theme-independent. Adding the D-11 assertion is only required before
- * computed-style reads (tailwind-v4-styles.spec.ts:80-88).
+ * computed-style reads (e2e/tailwind-v4-styles.spec.ts ("await expect(page.locator('html')).toHaveClass(/dark/);")).
  *
  * ——— AMENDED Phase 88.3.1 (plan 10), and the amendment is narrow: the paragraph
  * above still holds for the Danger Zone block, which asserts no theme. The SWATCH
  * block DOES call `assertTheme` — for a different reason than the D-11 one. It
  * measures the same geometry TWICE, once per theme, to establish that geometry is
  * theme-independent rather than assuming it. Both Playwright projects are
- * `colorScheme: 'dark'` (playwright.config.ts:131), so without the pre-assertion
+ * `colorScheme: 'dark'` (playwright.config.ts ("colorScheme: 'dark', // DECISION Phase 87.7 D-11: pin dark") and playwright.config.ts ("colorScheme: 'dark', // same D-11 reasoning as journeys")), so without the pre-assertion
  * the "light" run would silently be a second dark run and the pair of tests would
  * prove nothing. The assertion there is a VACUITY guard, not a style guard.
  *
- * Fixtures follow the env-const idiom (tailwind-v4-styles.spec.ts:47-49). Do not
- * run locally — credentials are intentionally absent (playwright.config.ts:19-21);
+ * Fixtures follow the env-const idiom (e2e/tailwind-v4-styles.spec.ts ("process.env.E2E_GROUP_ID ?? '1';")). Do not
+ * run locally — credentials are intentionally absent (playwright.config.ts ("They are intentionally absent locally"));
  * green-in-CI is confirmed at the phase gate in plan 12.
  */
 
 /** The settings surface lives inside the shared Radix modal since 88-13, and
- *  DialogContent animates `zoom-in-95` over 200ms on open (dialog.tsx:64). A
+ *  DialogContent animates `zoom-in-95` over 200ms on open (src/components/ui/dialog.tsx ("zoom-in-95")). A
  *  boundingBox taken mid-animation reads height x scale — the first CI run of
  *  PR #22 measured a true-44px control at 43.565px (= 44 x 0.99) exactly this
  *  way. Settle: poll until two consecutive reads agree, THEN measure. */
@@ -86,7 +87,7 @@ async function settleGeometry(locator: Locator): Promise<void> {
   throw new Error('geometry never settled after 4s — is an animation looping on this surface?');
 }
 
-/** Vacuity guard (tailwind-v4-styles.spec.ts:139-143 idiom): a wrong-count locator
+/** Vacuity guard (e2e/tailwind-v4-styles.spec.ts ("const childCount = await directChildren.count();") idiom): a wrong-count locator
  *  makes every geometry assertion after it vacuous — that is a failure of the
  *  LOCATOR (or of fixture seeding / the owner role), not of the layout.
  *
@@ -114,13 +115,10 @@ async function guardResolved(locator: Locator, what: string): Promise<void> {
  *  message. Width is not asserted: every Danger Zone control is `w-full` on phone,
  *  so the horizontal-containment assertions cover the other axis. */
 async function assertMinHeight44(locator: Locator, label: string): Promise<void> {
-  const box = await locator.boundingBox();
-  expect(box, `${label}: boundingBox() returned null — element not rendered`).not.toBeNull();
-  if (!box) return;
-  expect(
-    box.height,
-    `${label} rendered ${box.height}px tall — below the 44px floor. The mechanism is the per-control min-h-11 utility at the call site in GroupSettings.js (converged by plan 87.8-10), not any global .btn rule`,
-  ).toBeGreaterThanOrEqual(44);
+  await expectTouchTarget(locator, label, {
+    axes: 'height',
+    why: 'The mechanism is the per-control min-h-11 utility at the call site in GroupSettings.js (converged by plan 87.8-10), not any global .btn rule',
+  });
 }
 
 /** Horizontal containment: the control must sit fully inside the viewport width —
@@ -144,8 +142,8 @@ async function assertHorizontallyContained(
 }
 
 test.describe('Phase 87.8 R7 — GroupSettings Danger Zone at phone width (phone project)', () => {
-  // Inverse of the tailwind-v4-styles.spec.ts:59 guard: this file is phone-only.
-  // Both projects match every spec (playwright.config.ts:44, :87), so without this
+  // Inverse of the e2e/tailwind-v4-styles.spec.ts ("test.skip(({ isMobile }) => isMobile, 'SPEC R5") guard: this file is phone-only.
+  // Both projects match every spec (playwright.config.ts ("name: 'journeys',") and playwright.config.ts ("name: 'phone',")), so without this
   // skip the desktop journeys project would run phone-tenet assertions at 1280px.
   test.skip(({ isMobile }) => !isMobile, 'R7 is a phone-tenet requirement — phone project only');
 
@@ -308,16 +306,17 @@ test.describe('Phase 87.8 R7 — GroupSettings Danger Zone at phone width (phone
  * an existing surface: same modal, same kebab entry path, same phone-only guard,
  * same `settleGeometry`. A new spec would have duplicated all four.
  *
- * NOT AFFECTED, stated because it looks like it should be: `scripts/
- * gate-c-executed-floor.mjs`'s `FLOOR = 13` is bound to `e2e/contrast.spec.ts`
- * (its `SPEC` const, and the lockstep test at `src/lib/ci-grep-gate.fixture.test.ts
- * :745-749`), NOT to the phone project's total. Adding tests here cannot move it,
+ * NOT AFFECTED, stated because it looks like it should be: the FLOOR constant in
+ * scripts/gate-c-executed-floor.mjs is bound to e2e/contrast.spec.ts (its SPEC const, and the
+ * lockstep test at src/lib/ci-grep-gate.fixture.test.ts ("FLOOR is ${floor} but e2e/contrast.spec.ts declares only")),
+ * NOT to the phone project's total. Adding tests here cannot move it,
  * and removing a contrast.spec.ts test still reds it. Plan 10's own text read that
- * floor as a project-wide count; it is per-file.
+ * floor as a project-wide count; it is per-file. This spec's own executed floor is its
+ * entry in scripts/gate-c-floors.manifest.mjs (Phase 88.6.2-26).
  * ———————————————————————————————————————————————————————————————————————————— */
 
 /** The eight accessible names, in render order. These are `preset.label` values
- *  (`src/lib/groupColourPresets.ts`), carried onto each button as `aria-label`; the
+ *  (src/lib/groupColourPresets.ts), carried onto each button as `aria-label`; the
  *  visible caption beside them is `aria-hidden` (AMENDMENT G2) so the name is
  *  announced exactly once. Asserting them by NAME is what proves the aria wiring
  *  survived plan 07's rebuild — a grid of eight nameless boxes would still pass
@@ -326,7 +325,7 @@ const PRESET_LABELS = ['Red', 'Orange', 'Amber', 'Green', 'Teal', 'Blue', 'Viole
 
 /** The picker's labelled set: `role="group"` + `aria-labelledby="group-colour-choice"`,
  *  whose visible label is the "Choose a default color:" paragraph
- *  (`GroupSettings.js:587,592`). Role/label only — never a Tailwind class (:34). */
+ *  (src/app/components/GroupSettings.js ("Choose a default color:"), its group src/app/components/GroupSettings.js ("grid grid-cols-4 gap-2 justify-items-center")). Role/label only — never a Tailwind class (this file ("SELECTOR POLICY: role/label/text only")). */
 function swatchGrid(page: Page): Locator {
   return page.getByRole('group', { name: /choose a default color/i });
 }
@@ -336,17 +335,14 @@ function swatchGrid(page: Page): Locator {
  *  which deliberately asserts one axis because every Danger Zone control is `w-full`. */
 async function assertSwatchFloor(locator: Locator, label: string): Promise<void> {
   await settleGeometry(locator); // mandatory — see the helper, never a bare boundingBox()
-  const box = await locator.boundingBox();
-  expect(box, `swatch "${label}": boundingBox() returned null — element not rendered`).not.toBeNull();
-  if (!box) return;
-  expect(
-    box.width,
-    `swatch "${label}" rendered ${box.width}px wide x ${box.height}px tall — width is below the 44px floor. The mechanism is the per-site 'w-full max-w-16 aspect-square min-w-11 min-h-11' string in GroupSettings.js (DECISION Phase 88.3.1, SPEC Req 7); 64 is the target, 44 is what must never be breached`,
-  ).toBeGreaterThanOrEqual(44);
-  expect(
-    box.height,
-    `swatch "${label}" rendered ${box.width}px wide x ${box.height}px tall — height is below the 44px floor. Same mechanism as the width message above; if height alone fails, suspect 'aspect-square' was dropped (a stretched grid item measures 72 x 44 at 375px: it clears the floor in one axis and stops reading as a colour chip)`,
-  ).toBeGreaterThanOrEqual(44);
+  await expectTouchTarget(locator, `swatch "${label}"`, {
+    why: {
+      width:
+        "The mechanism is the per-site 'w-full max-w-16 aspect-square min-w-11 min-h-11' string in GroupSettings.js (DECISION Phase 88.3.1, SPEC Req 7); 64 is the target, 44 is what must never be breached",
+      height:
+        "Same mechanism as the width message above; if height alone fails, suspect 'aspect-square' was dropped (a stretched grid item measures 72 x 44 at 375px: it clears the floor in one axis and stops reading as a colour chip)",
+    },
+  });
 }
 
 /** Every swatch measured, plus the count and accessible-name vacuity guards. */
@@ -379,7 +375,7 @@ async function assertGridDoesNotScroll(page: Page, viewportWidth: number): Promi
 
 test.describe('Phase 88.3.1 Req 7 — the eight colour swatches at phone width (phone project)', () => {
   // Same inverse guard as the Danger Zone block: Req 7 is a phone-tenet
-  // requirement, and both projects match every spec (playwright.config.ts:44, :87).
+  // requirement, and both projects match every spec (playwright.config.ts ("name: 'journeys',") and playwright.config.ts ("name: 'phone',")).
   test.skip(({ isMobile }) => !isMobile, 'Req 7 is a phone-tenet requirement — phone project only');
 
   test.describe('dark mode (both Playwright projects default to it)', () => {

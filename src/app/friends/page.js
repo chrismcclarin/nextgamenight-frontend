@@ -365,7 +365,7 @@ function FriendsPage() {
        divergence Req 14 exists to remove; the identity gate a few lines up already uses the banner.
 
        The adapter is contract-backed, not a shim around a private API: `useFetchErrorState`
-       documents that it reads ONLY `isError`/`error`/`refetch` (useFetchErrorState.ts:261, the
+       documents that it reads ONLY `isError`/`error`/`refetch` (src/components/ui/useFetchErrorState.ts ("@param query a"), the
        @param line ending "are read"; re-pointed 88.6.1-40). */
     const fetchFriendsRef = useRef(null);
     useEffect(() => {
@@ -482,7 +482,7 @@ function FriendsPage() {
                    match is RETIRED, and it was retired BECAUSE Phase 88.6 dropped the
                    `body.error` legacy alias from `extractErrorMessage` (api.ts), not tidied
                    away as cleanup. The string the second arm matched came from
-                   Sonnet/routes/friendships.js:251, a RAW 404 with no `code` and no
+                   backend:Sonnet/routes/friendships.js ("No user found with that email"), a RAW 404 with no `code` and no
                    `message`, so after the drop `ApiError.message` is the bare
                    "HTTP error! status: 404" template and that arm could never match again.
                    The user-visible outcome survived only INCIDENTALLY, because the sibling
@@ -882,8 +882,8 @@ function FriendsPage() {
                         because Radix `Slot` concatenates the child's className WITHOUT
                         tailwind-merge, so a utility left there cannot win a conflict. Here
                         nothing survives: `px-6 py-2` and `inline-block` are all dead under
-                        unlayered `.btn` (padding at `globals.css:2349`, `padding: 0.5rem 1rem;`;
-                        `display: inline-flex` at `:2342`; re-pointed 88.6.1-40). */}
+                        unlayered `.btn` (its padding and `display: inline-flex`, both in the block marked at
+                        src/app/globals.css ("UNLAYERED with every other declaration it has today"); re-pointed 88.6.1-40). */}
                     <Button asChild variant="primary" size="default">
                         <a href="/api/auth/login">Log In</a>
                     </Button>
@@ -922,7 +922,7 @@ function FriendsPage() {
        true — but the bare `!selfUuid` spinner rendered above them, so nothing that already knew
        the backend was down could reach the screen. The window is not milliseconds: every attempt
        goes through the BFF proxy, whose own PROXY_TIMEOUT_MS is 30_000
-       (app/api/[...path]/route.ts:22), and `shouldRetry` grants one retry — which is the walk's
+       (src/app/api/[...path]/route.ts ("const PROXY_TIMEOUT_MS = 30_000;")), and `shouldRetry` grants one retry — which is the walk's
        "observed 30-60s" / "60+s" of blank page, not a missing terminal state.
 
        D-09 IS PRESERVED, not weakened: this branch renders NO friend↔friend classification — no
@@ -1000,7 +1000,7 @@ function FriendsPage() {
                 {/* The remove-friend gate's live region. Mounted HERE — once, outside the
                     tab conditional and outside the row map — because a live region that
                     mounts with the armed row announces nothing (empty-first contract,
-                    StatusRegion.tsx:9-17, its EMPTY-FIRST bullet). Moving it inside the
+                    src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted"), its EMPTY-FIRST bullet). Moving it inside the
                     Friends tab or into the row is a silent a11y regression, not a tidy-up. That
                     premise holds because this gate's region is POLITE; an inserted alert would
                     be announced (D-42). */}
@@ -1306,11 +1306,11 @@ function FriendsPage() {
                                                     </SelectControl>
                                                     {/* Every utility this control used to carry was DEAD under
                                                         unlayered `.btn` and is deleted rather than moved: `px-4 py-2`
-                                                        (padding, `globals.css:2349`), `text-sm` (font-size, `:2348`),
-                                                        `font-medium` (font-weight 600, `:2347`), `flex items-center
+                                                        (padding), `text-sm` (font-size),
+                                                        `font-medium` (font-weight 600), `flex items-center
                                                         gap-2` (`display: inline-flex` / `align-items` / `gap`,
-                                                        `:2342-2345`) and the `disabled:` pair (`.btn:disabled`,
-                                                        `:2397-2400`). Re-adding any of them changes no pixel.
+                                                        all of them in the one block marked at src/app/globals.css ("UNLAYERED with every other declaration it has today")) and the `disabled:` pair (`.btn:disabled`,
+                                                        src/app/globals.css (".btn:disabled { opacity: .5 }")). Re-adding any of them changes no pixel.
                                                         (Cites re-pointed 88.6.1-40 to the `.btn {` block
                                                         and its `.btn:disabled {` block.) */}
                                                     <Button

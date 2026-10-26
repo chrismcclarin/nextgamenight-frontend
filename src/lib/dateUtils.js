@@ -6,7 +6,7 @@
  * ported there with BYTE-FOR-BYTE identical output (pinned by `datetime.test.ts`).
  *
  * This file now re-exports them so existing importers not yet migrated to
- * `datetime.ts` (ScheduleList, GroupGamesList, grouplist, SuggestionCard,
+ * `datetime.ts` (ScheduleList, GroupGamesList, grouplist,
  * userProfile) keep working. New code should import from `./datetime` directly.
  *
  * Locked casual format decisions (unchanged):

@@ -19,9 +19,9 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 //
 // IT NEVER WRITES TO THE BACKEND. The settings GET, the schedule DELETE and the check-in POST are
 // fulfilled with `page.route` on their BROWSER paths (`apiFetch` prefixes every endpoint with
-// `/api`: `src/lib/api.ts`, anchors `const BFF_BASE = '/api';` and `${BFF_BASE}${endpoint}`), so
+// `/api`: src/lib/api.ts ("const BFF_BASE = '/api';") and src/lib/api.ts ("${BFF_BASE}${endpoint}")), so
 // CI never deletes the fixture's data or opens a check-in on the shared group. Behind them sits
-// the shared write hold (`e2e/support/inFlight.ts`, `holdWrites`), registered FIRST so it runs
+// the shared write hold (e2e/support/inFlight.ts ("function holdWrites")), registered FIRST so it runs
 // LAST (Playwright runs the newest matching handler first; `route.fallback()` hands on to older
 // ones): any other write is held in the browser, never sent, and the afterEach fails the test
 // naming every `/api` write it caught. A mock that declines a request uses `route.fallback()`,
@@ -46,6 +46,9 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 // (`staleTime: 30_000`, `refetchOnWindowFocus: false`), so reaching a retained failure there
 // needs a fake clock or a dialog re-open helper that keeps the query cache; its notice is the
 // same shared row E2 measures, and its structure is pinned in PromptScheduleReadOnly.test.tsx.
+// CLOSED 88.6.2-22: e2e/prompt-schedule-readonly-notice-phone.spec.ts ("DECISION Phase 88.6.2-22 (stale-reopen):")
+// now drives that summary at 375px (a page-clock stale reopen through openGroupSettingsFromKebab,
+// then a held and failed refetch). The paragraph above is kept as the record of the gap.
 //
 // CI ONLY: the `phone` project needs `.auth/user.json` and the E2E login secrets, which exist only
 // in CI (FE-TESTING-CONVENTIONS C-14). Locators are role, name and text only.

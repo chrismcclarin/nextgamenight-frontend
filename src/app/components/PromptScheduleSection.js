@@ -77,7 +77,9 @@ export default function PromptScheduleSection({
   // Boolean(isAdmin) gate below is a deliberate FE/product choice — only the
   // owner/admin manager surface consumes the schedule settings — not an API
   // constraint.
-  /* DECISION Phase 88.6-15 (D-31 / UI-SPEC §6.2 `:522-524`): this query's FAILURE gets NO
+  /* DECISION Phase 88.6-15 (D-31 / UI-SPEC §6.2,
+     planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 6.2 Error-surface routing — which treatment, where"),
+     its paragraph "Announcement: exactly one live region per failure."): this query's FAILURE gets NO
      surface of its own here, chosen OVER adding a `<FetchErrorBanner>` beside it. The
      `PromptScheduleManager` this file mounts below resolves the SAME `promptKeys.settings(groupId)`
      key under the SAME `Boolean(groupId) && Boolean(isAdmin)` gate, and it already renders the ONE

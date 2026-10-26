@@ -2,6 +2,7 @@ import { test, expect, type Route } from '@playwright/test';
 
 import { assertTheme } from './support/contrast';
 import { expectGatedPair, expectNoApiWrites, holdWrites } from './support/inFlight';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1-47 (D-35 / AC-12, copy row E6): the event page's Share Game QR button, seen in a
 // real browser at 375px (the phone project, iPhone SE 375x667, dark).
@@ -49,6 +50,10 @@ import { expectGatedPair, expectNoApiWrites, holdWrites } from './support/inFlig
 // invite link, a retry trace records network responses, and CI uploads test-results from a
 // public repository: the e2e/friend-invite-panel-header.spec.ts rule (DECISION Phase 88.6.1-27).
 // Re-enabling capture here is a decision, not a cleanup.
+// [AMENDED 2026-10-25, code review A-IN-03: since Phase 88.6.2-27 test-results leave CI only
+// as age ciphertext (scripts/encrypt-evidence.sh), so the public-upload premise no longer
+// holds. The choice stands, as amended on the 88.6.1-27 rule: the invite link would still
+// reach a retained artifact, and the encryption is a second net, not a reason to capture.]
 test.use({ screenshot: 'off', trace: 'off', video: 'off' });
 
 test.skip(
@@ -96,7 +101,7 @@ test('Share Game QR stays focused and single-flight while the QR loads, and the 
       return;
     }
     if (request.method() === 'GET' && EVENT_GET_PATH.test(pathname)) {
-      const response = await route.fetch();
+      const response = await scrubbedFetch(route);
       let body: unknown;
       try {
         body = await response.json();

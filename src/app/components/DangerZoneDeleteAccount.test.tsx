@@ -828,9 +828,9 @@ describe('D52 — the announcements: a polite progress region and the converted 
 describe('D52 / D24 — focus lands on a NAMED element on both `deleting` edges', () => {
   it('false->true: focus moves to the tabIndex={-1} wrapper of the polite region, a node this component owns', async () => {
     // NOT `document.activeElement !== document.body`, which is vacuous in this
-    // harness (keyboardOperability.test.tsx:208-213, activeElement lands on <body>), and NOT
-    // the Radix Content node, for which `Modal` forwards no ref (Modal.tsx:266-351, the
-    // `<DialogContent` element).
+    // harness (src/app/components/keyboardOperability.test.tsx ("activeElement lands on <body> in jsdom no")), and NOT
+    // the Radix Content node, for which `Modal` forwards no ref (src/app/components/Modal.tsx ("<DialogContent"),
+    // the Content element itself).
     const user = userEvent.setup();
     await enterDeletingState(user);
     const target = progressFocusTarget();
@@ -1170,15 +1170,15 @@ describe('Phase 88.6-30 — source-level invariants', () => {
     expect(raw).toMatch(/btn-danger/);
     // Both cited markers, so this reads as a considered divergence, not drift. Matched
     // on file name plus anchor token (88.6.1-22), so a line drift cannot red a correct marker.
-    expect(raw).toMatch(/NextGameNightCard\.tsx:\d+(?:-\d+)?[\s\S]{0,80}aria-disabled=\{isFlight \|\| undefined\}/);
-    expect(raw).toMatch(/ConfirmDialog\.tsx:\d+(?:-\d+)?[\s\S]{0,80}prevPendingRef/);
+    expect(raw).toMatch(/NextGameNightCard\.tsx \("[^"]*"\)[\s\S]{0,80}aria-disabled=\{isFlight \|\| undefined\}/);
+    expect(raw).toMatch(/ConfirmDialog\.tsx \("[^"]*"\)[\s\S]{0,80}prevPendingRef/);
     // The Escape reason.
     expect(raw).toMatch(/onEscapeKeyDown/);
   });
 
   it('carries the DECISION marker distinguishing BOUNDING A WAIT from discarding a stale response', () => {
     expect(raw).toMatch(/bounds a wait[\s\S]{0,400}discard/i);
-    expect(raw).toContain('88.6-29-PLAN.md:394');
+    expect(raw).toMatch(/88\.6-29-PLAN\.md \("AbortController is rejected here, not deferred"\)/);
   });
 
   it('does not edit src/lib/api.ts from here — the widened signature is plan 42 to write', () => {

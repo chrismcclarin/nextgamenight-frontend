@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { scrubbedFetch } from './support/scrubbedFetch';
 
 // Phase 88.6.1 plan 51 (D-16, copy rows T2-T4, R4): the tutorial's gesture wording in a real
 // browser. On the phone project (375 x 667) the four press-and-hold sentences render, each fits
@@ -60,7 +61,7 @@ async function openTutorialOnHome(page: Page): Promise<Counters> {
       await route.abort();
       return;
     }
-    const response = await route.fetch();
+    const response = await scrubbedFetch(route);
     let body: unknown;
     try {
       body = await response.json();
