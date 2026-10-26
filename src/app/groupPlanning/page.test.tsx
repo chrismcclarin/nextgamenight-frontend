@@ -1046,6 +1046,16 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(promptAPI.getActivePrompt).not.toHaveBeenCalled();
     expect(replaced).toHaveLength(0);
   });
+
+  // quick-261026-pi6-fix F5: the email link's arm gets the poll arm's same-group rule.
+  it("FX-5. a prompt_id naming another group's poll loads the active poll instead", async () => {
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&prompt_id=${EMAIL_PROMPT_ID}`);
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(EMAIL_PROMPT_ID, { group_id: G9 }) });
+    render(<GroupPlanningPage />);
+    await waitFor(() => expect(promptAPI.getActivePrompt).toHaveBeenCalledTimes(1));
+    await settledOn(P1);
+    expect(promptAPI.getPromptById).toHaveBeenCalledWith(EMAIL_PROMPT_ID);
+  });
 });
 
 // quick-261026-pi6-fix (2026-10-26): the review fix batch. Every comment here is a // line (CF-9).

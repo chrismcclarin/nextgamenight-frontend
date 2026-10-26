@@ -331,15 +331,18 @@ export default function GroupPlanningPage() {
                     dropStaleSelection(forGroup, selectedPollParam);
                 }
             }
+            if (!prompt && promptId) {
+                // Navigating from a no-consensus email -- load specific prompt by ID
+                const data = await promptAPI.getPromptById(promptId);
+                // DECISION quick-261026-pi6-fix (F5): only this group's poll, the poll arm's rule,
+                // OVER showing whatever the id names; another group's poll falls through to the
+                // active poll, so a link built for group B cannot fill group A's dashboard.
+                // Changing this is a decision, not a cleanup.
+                if (data?.prompt && sameId(data.prompt.group_id, forGroup)) prompt = data.prompt;
+            }
             if (!prompt) {
-                if (promptId) {
-                    // Navigating from a no-consensus email -- load specific prompt by ID
-                    const data = await promptAPI.getPromptById(promptId);
-                    prompt = data.prompt;
-                } else {
-                    const data = await promptAPI.getActivePrompt(groupId);
-                    prompt = data.prompt;
-                }
+                const data = await promptAPI.getActivePrompt(groupId);
+                prompt = data.prompt;
             }
             if (superseded()) return;
             setHeatmapPrompt(prompt);
@@ -808,6 +811,12 @@ export default function GroupPlanningPage() {
                 // can pick from the poll's response data. Other entry points
                 // into groupPlanning's CreateEvent stay heatmap-hidden.
                 hideVisualCalendar={!promptId}
+                // DECISION quick-261026-pi6-fix (F5): the dialog still receives the link's
+                // prompt_id as it is, OVER passing only a same-group poll, because the dialog's
+                // own heatmap read is membership-gated by the backend and the link can only be
+                // self-made. The residual (a member of both groups can open group B's poll heatmap
+                // inside group A's dialog through a link they built) is reported to the owner, not
+                // fixed here. Changing this is a decision, not a cleanup.
                 promptId={promptId}
                 prefillDate={prefillDate}
                 prefillTime={prefillTime}
