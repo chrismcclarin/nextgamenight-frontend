@@ -1036,6 +1036,16 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
       replace.mockRestore();
     }
   });
+
+  // quick-261026-pi6-fix F7: a UUID names the same row in any case.
+  it('FX-7. an uppercase group_id in the URL still loads the selected poll of that group', async () => {
+    h.PARAMS = new URLSearchParams(`group_id=${G1.toUpperCase()}&poll=${P2}`);
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2) });
+    render(<GroupPlanningPage />);
+    await settledOn(P2);
+    expect(promptAPI.getActivePrompt).not.toHaveBeenCalled();
+    expect(replaced).toHaveLength(0);
+  });
 });
 
 // quick-261026-pi6-fix (2026-10-26): the review fix batch. Every comment here is a // line (CF-9).

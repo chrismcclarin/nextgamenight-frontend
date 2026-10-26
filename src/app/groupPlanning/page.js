@@ -41,6 +41,13 @@ const SWITCH_POLL_LABEL = 'Switch poll';
 // The answers that mean a selected poll is gone or not this person's to read: a stale link.
 const STALE_POLL_STATUSES = [400, 403, 404];
 
+// DECISION quick-261026-pi6-fix (F7): ids are compared case-insensitively, OVER a strict ===,
+// because isUuid and Postgres both accept a UUID in any case, so an uppercase id in a link names
+// the same row the lowercase one from the API does. Changing this is a decision, not a cleanup.
+function sameId(a, b) {
+    return String(a).toLowerCase() === String(b).toLowerCase();
+}
+
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
     // Phase 87.3-05 (D-02): resolve the caller's own Users.id UUID via the
@@ -298,7 +305,7 @@ export default function GroupPlanningPage() {
                         const data = await promptAPI.getPromptById(requestedPollId);
                         // Only this group's poll: a member of two groups could otherwise open another
                         // group's poll here through a crafted link.
-                        if (data?.prompt && data.prompt.group_id === forGroup) selected = data.prompt;
+                        if (data?.prompt && sameId(data.prompt.group_id, forGroup)) selected = data.prompt;
                     } catch (err) {
                         /* DECISION quick-261026-pi6-fix (F2): a failed selected-poll load is split
                            in two, OVER one silent fallback for both. A stale answer (400, 403 or
