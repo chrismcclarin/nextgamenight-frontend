@@ -1309,6 +1309,12 @@ describe('Phase 88.6-55 — the month-tile PNG always-upload, and T-82-12 on eve
     // once as a tar --exclude argument and once as a find predicate, applied to every input of every encrypt step.
     expect(occurrences(ENCRYPT_SCRIPT_CODE, "--exclude='*.zip'"), 'the encrypt script must pass tar the *.zip exclusion exactly once (CR-01)').toBe(1);
     expect(occurrences(ENCRYPT_SCRIPT_CODE, "! -name '*.zip'"), 'the encrypt script must hold the *.zip find predicate exactly once (CR-01)').toBe(1);
+    // Code review A-WR-03 + scoped check S-2 (2026-10-25): the session-state and json-report exclusions are
+    // pinned PER ARM — self-test case 14 only reds when BOTH arms go, so either one could be deleted alone
+    // with every gate green. Each must occur exactly once.
+    expect(occurrences(ENCRYPT_SCRIPT_CODE, "--exclude='.auth'"), 'the encrypt script must pass tar the .auth exclusion exactly once (A-WR-03)').toBe(1);
+    expect(occurrences(ENCRYPT_SCRIPT_CODE, "--exclude='playwright-results.json'"), 'the encrypt script must pass tar the playwright-results.json exclusion exactly once (A-WR-03)').toBe(1);
+    expect(occurrences(ENCRYPT_SCRIPT_CODE, "\\( -name '.auth' -o -name 'playwright-results.json' \\) -prune"), 'the encrypt script must hold the .auth / json-report find -prune predicate exactly once (A-WR-03)').toBe(1);
     let dirsCounted = 0;
     for (const { inputs } of encryptInvocations()) dirsCounted += inputs.length;
     expect(dirsCounted, 'non-vacuity: no encrypt input directory was found to check').toBeGreaterThan(0);

@@ -21,7 +21,9 @@ import { scrubError } from '../../src/test-utils/scrubSessionHeaders';
 // from, so request.newContext, a renamed request fixture and an alias of a .request property
 // are offenders outside e2e/support/, and so is every verb call on the name each one binds.
 // A call reached through an alias it cannot read is not seen: a destructured fetch or verb, a
-// call built from a string, a context passed in as a parameter or returned from a function, or
+// call built from a string, a context passed in as a parameter or returned from a function, an
+// import alias (import { request as pw } then pw.newContext()), a plain reassignment
+// (const http = request; then http.post(); scoped check S-4, 0 uses of either today), or
 // a source statement split across lines.
 // No logging and no retry here: this file only scrubs.
 // Changing this is a decision, not a cleanup.

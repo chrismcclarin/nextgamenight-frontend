@@ -25,7 +25,7 @@ function guardRunsFirst(inFlight: string): boolean {
   return guard !== -1 && settle !== -1 && guard < settle;
 }
 
-const REFUSAL =/^releaseToNetwork refused a (\S*) hold: only a GET or HEAD hold may be released to the network/;
+const REFUSAL = /^releaseToNetwork refused a (\S*) hold: only a GET or HEAD hold may be released to the network/;
 
 describe('readHoldGuard — releaseToNetwork never hands a write to the network (Phase 88.6.2-11, code review C-ML3)', () => {
   it('assertReadMethod throws the releaseToNetwork refusal for every write method', () => {
