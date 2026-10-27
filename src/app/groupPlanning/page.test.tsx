@@ -1231,6 +1231,13 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(h.logWarn).toHaveBeenCalledTimes(1);
     expect(h.logWarn).toHaveBeenCalledWith('GET /prompts/:id returned no group_id', { promptId: P2 });
   });
+
+  // quick-261026-pi6-fix F14: the 375px proof is S5 in e2e/check-ins-select-poll.spec.ts.
+  it('FX-14. the Showing line breaks a long unbroken name (wrap-anywhere)', async () => {
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    expect(showingLine()).toHaveClass('wrap-anywhere');
+  });
 });
 
 // quick-261026-pi6-fix (2026-10-26): the review fix batch. Every comment here is a // line (CF-9).

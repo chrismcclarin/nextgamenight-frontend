@@ -824,7 +824,10 @@ export default function GroupPlanningPage() {
                                 >
                                     Poll Responses
                                 </Heading>
-                                <p className="text-sm text-content-secondary mb-3">
+                                {/* wrap-anywhere (quick-261026-pi6-fix F14): a long unbroken poll or
+                                    starter name breaks inside the line instead of pushing a 375px
+                                    page sideways. */}
+                                <p className="text-sm text-content-secondary mb-3 wrap-anywhere">
                                     {swapPending ? (
                                         pendingPollName ? (
                                             <>Loading <span className="text-content-primary">{pendingPollName}</span>…</>

@@ -18,7 +18,9 @@ import { expectTouchTarget } from './support/touchTarget';
 // - S3: with two open polls the Switch poll chips swap without scrolling and keep focus.
 // - S4: the kebab is the card's sibling: opening it selects nothing.
 // - S5: a shared link opens its poll; an unknown poll id falls back to the active poll, drops the
-//   parameter and shows no error banner.
+//   parameter and shows no error banner; and a poll whose starter's name is 50 unbroken
+//   characters, once selected, does not push the page sideways (the Showing line's
+//   wrap-anywhere, quick-261026-pi6-fix F14).
 //
 // IT NEVER WRITES TO THE BACKEND. Every route below answers GETs in the browser with two synthetic
 // polls (fixed UUIDs no seeded row owns); any other method falls back, and the shared write hold
@@ -44,6 +46,10 @@ const POLL_A_ID = '26102600-0000-4000-8000-0000000000a1';
 const POLL_B_ID = '26102600-0000-4000-8000-0000000000a2';
 // Answered 404 by the by-id route below (S5).
 const UNKNOWN_POLL_ID = '26102600-0000-4000-8000-0000000000ff';
+// Listed only when routeState.withLongName is set (S5, F14): a starter name of 50 characters with
+// no break opportunity.
+const POLL_LONG_ID = '26102600-0000-4000-8000-0000000000a3';
+const LONG_STARTER = `E2E${'x'.repeat(47)}`;
 
 const MEMBER_A = 'E2E pending member A';
 const MEMBER_B = 'E2E pending member B';
@@ -64,6 +70,7 @@ function syntheticPoll(id: string, username: string, creatorId: string) {
 const POLLS = {
   [POLL_A_ID]: syntheticPoll(POLL_A_ID, 'E2E Ana', '26102600-0000-4000-8000-0000000000b1'),
   [POLL_B_ID]: syntheticPoll(POLL_B_ID, 'E2E Ben', '26102600-0000-4000-8000-0000000000b2'),
+  [POLL_LONG_ID]: syntheticPoll(POLL_LONG_ID, LONG_STARTER, '26102600-0000-4000-8000-0000000000b3'),
 } as Record<string, ReturnType<typeof syntheticPoll>>;
 
 const RESPONDENTS: Record<string, { user_id: string; username: string }> = {
@@ -71,11 +78,12 @@ const RESPONDENTS: Record<string, { user_id: string; username: string }> = {
   [POLL_B_ID]: { user_id: '26102600-0000-4000-8000-0000000000c2', username: MEMBER_B },
 };
 
-const routeState = { openGets: 0 };
+const routeState = { openGets: 0, withLongName: false };
 
 // Every route answers GET only; anything else falls back to the write hold.
 async function mockPolls(page: Page) {
   routeState.openGets = 0;
+  routeState.withLongName = false;
 
   await page.route('**/api/groups/*/prompts/open', async (route: Route) => {
     if (route.request().method() !== 'GET') {
@@ -83,7 +91,9 @@ async function mockPolls(page: Page) {
       return;
     }
     routeState.openGets += 1;
-    await route.fulfill({ status: 200, json: { prompts: [POLLS[POLL_A_ID], POLLS[POLL_B_ID]] } });
+    const prompts = [POLLS[POLL_A_ID], POLLS[POLL_B_ID]];
+    if (routeState.withLongName) prompts.push(POLLS[POLL_LONG_ID]);
+    await route.fulfill({ status: 200, json: { prompts } });
   });
 
   await page.route(
@@ -315,4 +325,18 @@ test('S5: a shared link opens its poll; an unknown poll id falls back to the act
   await expect.poll(() => new URL(page.url()).searchParams.has('poll')).toBe(false);
   expect(new URL(page.url()).searchParams.get('group_id')).toBe(E2E_GROUP_ID);
   await expect(page.getByText("We couldn't load the poll responses")).toHaveCount(0);
+
+  // F14: a 50-character unbroken starter name, selected, stays inside the 375px page.
+  routeState.withLongName = true;
+  await openPlanning(page);
+  await cardBody(page, LONG_STARTER).tap();
+  await expect(showingLine(page)).toHaveText(`Showing ${LONG_STARTER}'s check-in`);
+  const widths = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(
+    widths.scrollWidth,
+    `a long unbroken poll name pushes the page sideways (${widths.scrollWidth}px over ${widths.innerWidth}px)`,
+  ).toBeLessThanOrEqual(widths.innerWidth);
 });
