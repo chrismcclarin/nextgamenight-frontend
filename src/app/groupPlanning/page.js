@@ -295,8 +295,32 @@ export default function GroupPlanningPage() {
     };
 
     // The name the Showing line and the swap announcement give a poll (quick-261026-pi6).
-    const pollNameFor = (prompt) =>
-        pollChipLabels(openPolls, group).get(prompt.id) ?? pollTitle(prompt, group);
+    /* DECISION quick-261026-pi6-fix (F13): a poll the open list does not hold (a closed poll from
+       the email link, a shared link before the list lands) is named by the chip rule from its own
+       payload when that payload carries a Creator or a schedule_name, OVER the generic title for
+       every such poll; a payload without either keeps the generic title, OVER the unnamed-starter
+       label, because a backend that does not send the fields yet says nothing about the starter.
+       Correct in either deploy order of the backend change that adds them. Changing this is a
+       decision, not a cleanup. */
+    const pollNameFor = (prompt) => {
+        const fromOpenList = pollChipLabels(openPolls, group).get(prompt.id);
+        if (fromOpenList) return fromOpenList;
+        const named = Boolean(prompt.Creator)
+            || (typeof prompt.schedule_name === 'string' && prompt.schedule_name.trim() !== '');
+        return named ? pollChipLabels([prompt], group).get(prompt.id) : pollTitle(prompt, group);
+    };
+
+    // A by-id answer for this group, or null. A poll with no group_id at all is reported before
+    // it is treated as another group's, so a backend that stops sending the field shows up in
+    // Sentry instead of reading as a stale link (F13).
+    const thisGroupsPrompt = (data, forGroup, id) => {
+        if (!data?.prompt) return null;
+        if (data.prompt.group_id == null) {
+            logger.warn('GET /prompts/:id returned no group_id', { promptId: id });
+            return null;
+        }
+        return sameId(data.prompt.group_id, forGroup) ? data.prompt : null;
+    };
 
     const fetchHeatmapData = async ({ keepShown = false, skipCache = false } = {}) => {
         if (!groupId) return;
@@ -331,7 +355,7 @@ export default function GroupPlanningPage() {
                         const data = await promptAPI.getPromptById(requestedPollId);
                         // Only this group's poll: a member of two groups could otherwise open another
                         // group's poll here through a crafted link.
-                        if (data?.prompt && sameId(data.prompt.group_id, forGroup)) selected = data.prompt;
+                        selected = thisGroupsPrompt(data, forGroup, requestedPollId);
                     } catch (err) {
                         /* DECISION quick-261026-pi6-fix (F2): a failed selected-poll load is split
                            in two, OVER one silent fallback for both. A stale answer (400, 403 or
@@ -365,7 +389,7 @@ export default function GroupPlanningPage() {
                 // OVER showing whatever the id names; another group's poll falls through to the
                 // active poll, so a link built for group B cannot fill group A's dashboard.
                 // Changing this is a decision, not a cleanup.
-                if (data?.prompt && sameId(data.prompt.group_id, forGroup)) prompt = data.prompt;
+                prompt = thisGroupsPrompt(data, forGroup, promptId);
             }
             if (!prompt) {
                 const data = await promptAPI.getActivePrompt(groupId);

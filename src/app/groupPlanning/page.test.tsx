@@ -1199,6 +1199,38 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
       active.resolve({ prompt: poll(P1) });
     });
   });
+
+  // quick-261026-pi6-fix F13: a poll outside the open list is named from its own payload.
+  const showingText = (text: string) =>
+    screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === text);
+
+  it("FX-13a. a closed generic manual poll from the email link, absent from the open list, is named for its starter", async () => {
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&prompt_id=${EMAIL_PROMPT_ID}`);
+    (promptAPI.getPromptById as Mock).mockResolvedValue({
+      prompt: poll(EMAIL_PROMPT_ID, { status: 'closed', Creator: { id: 'u-ana', username: 'Ana' } }),
+    });
+    render(<GroupPlanningPage />);
+    await settledOn(EMAIL_PROMPT_ID);
+    await waitFor(() => expect(showingText("Showing Ana's check-in")).toBeInTheDocument());
+  });
+
+  it('FX-13b. the same poll with no Creator and no schedule_name keeps the generic title', async () => {
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&prompt_id=${EMAIL_PROMPT_ID}`);
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(EMAIL_PROMPT_ID, { status: 'closed' }) });
+    render(<GroupPlanningPage />);
+    await settledOn(EMAIL_PROMPT_ID);
+    expect(showingText('Showing Availability check-in')).toBeInTheDocument();
+  });
+
+  it('FX-13c. a by-id answer with no group_id is reported once before it is treated as stale', async () => {
+    h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${P2}`);
+    (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: { id: P2, status: 'active' } });
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    expect(replaced).toHaveLength(1);
+    expect(h.logWarn).toHaveBeenCalledTimes(1);
+    expect(h.logWarn).toHaveBeenCalledWith('GET /prompts/:id returned no group_id', { promptId: P2 });
+  });
 });
 
 // quick-261026-pi6-fix (2026-10-26): the review fix batch. Every comment here is a // line (CF-9).
