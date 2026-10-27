@@ -224,7 +224,8 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     why:
       'Local role-read state { groupId, role, error } written only by the page\'s own ' +
       'loadUserRole callback: `error` holds the CAUGHT Error object (or a locally minted one), ' +
-      'never a field of a response body. The read at :118 is a render-time derive off that state.',
+      'never a field of a response body. The read at ' +
+      'src/app/groupPlanning/page.js ("const roleError = roleRecord.groupId === groupId") is a render-time derive off that state.',
   },
 ];
 
