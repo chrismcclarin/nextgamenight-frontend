@@ -18,9 +18,10 @@ import { expectTouchTarget } from './support/touchTarget';
 // - S3: with two open polls the Switch poll chips swap without scrolling and keep focus.
 // - S4: the kebab is the card's sibling: opening it selects nothing.
 // - S5: a shared link opens its poll; an unknown poll id falls back to the active poll, drops the
-//   parameter and shows no error banner; and a poll whose starter's name is 50 unbroken
-//   characters, once selected, does not push the page sideways (the Showing line's
-//   wrap-anywhere, quick-261026-pi6-fix F14).
+//   parameter and shows no error banner; a malformed poll id drops before a tap, so back after
+//   the tap returns to the active poll with no poll parameter (quick-261026-pi6-fix F16); and a
+//   poll whose starter's name is 50 unbroken characters, once selected, does not push the page
+//   sideways (the Showing line's wrap-anywhere, quick-261026-pi6-fix F14).
 //
 // IT NEVER WRITES TO THE BACKEND. Every route below answers GETs in the browser with two synthetic
 // polls (fixed UUIDs no seeded row owns); any other method falls back, and the shared write hold
@@ -325,6 +326,19 @@ test('S5: a shared link opens its poll; an unknown poll id falls back to the act
   await expect.poll(() => new URL(page.url()).searchParams.has('poll')).toBe(false);
   expect(new URL(page.url()).searchParams.get('group_id')).toBe(E2E_GROUP_ID);
   await expect(page.getByText("We couldn't load the poll responses")).toHaveCount(0);
+
+  // F16: a malformed poll id is dropped before the person taps, so back after a tap returns to
+  // the active poll's entry, with no poll parameter (the drop is a replace, never a new entry).
+  await openPlanning(page, '&poll=not-a-uuid');
+  await expect.poll(() => new URL(page.url()).searchParams.has('poll')).toBe(false);
+  await expect(cardBody(page, 'E2E Ana')).toHaveAttribute('aria-pressed', 'true');
+  await cardBody(page, 'E2E Ben').tap();
+  await expect.poll(() => new URL(page.url()).searchParams.get('poll')).toBe(POLL_B_ID);
+  await expect(page.getByText(MEMBER_B)).toBeVisible();
+  await page.evaluate(() => window.history.back());
+  await expect.poll(() => new URL(page.url()).searchParams.has('poll')).toBe(false);
+  await expect(cardBody(page, 'E2E Ana')).toHaveAttribute('aria-pressed', 'true');
+  expect(new URL(page.url()).searchParams.get('group_id')).toBe(E2E_GROUP_ID);
 
   // F14: a 50-character unbroken starter name, selected, stays inside the 375px page.
   routeState.withLongName = true;
