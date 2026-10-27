@@ -1178,6 +1178,27 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
       expect(selectionStatus()).toHaveTextContent(/^That poll couldn't be opened\. Showing Availability check-in\.$/),
     );
   });
+
+  // quick-261026-pi6-fix F12: with no Poll Responses heading yet, scroll and focus share a target.
+  it('FX-12. a card tap while the first poll load is pending scrolls to and focuses the dashboard wrapper', async () => {
+    const active = deferred<unknown>();
+    (promptAPI.getActivePrompt as Mock).mockReturnValue(active.promise);
+    const scroll = stubScroll();
+    render(<GroupPlanningPage />);
+    await waitFor(() => expect(h.pss?.onSelectPoll).toBeTypeOf('function'));
+    expect(screen.getByText('Loading poll data...')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 3, name: 'Poll Responses' })).toBeNull();
+
+    act(() => onSelectPoll()(P2));
+    const wrapper = dashboardWrapper();
+    expect(scroll.mock.contexts[0]).toBe(wrapper);
+    expect(document.activeElement).toBe(wrapper);
+    expect(wrapper).toHaveAttribute('tabindex', '-1');
+
+    await act(async () => {
+      active.resolve({ prompt: poll(P1) });
+    });
+  });
 });
 
 // quick-261026-pi6-fix (2026-10-26): the review fix batch. Every comment here is a // line (CF-9).

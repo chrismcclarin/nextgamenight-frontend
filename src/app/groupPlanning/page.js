@@ -532,6 +532,13 @@ export default function GroupPlanningPage() {
             // Armed from the focused heading, then settled (the hook's contract (8)).
             const settle = focusRecovery.arm();
             settle();
+        } else if (dashboardRef.current) {
+            // DECISION quick-261026-pi6-fix (F12): with no heading yet (the dashboard is loading
+            // or failed) focus lands on the dashboard wrapper the scroll just brought up, OVER
+            // leaving it on the tapped card, so scroll and focus land on the same element. The
+            // wrapper is always mounted, so no recovery is armed. Changing this is a decision,
+            // not a cleanup.
+            dashboardRef.current.focus({ preventScroll: true });
         }
     };
 
@@ -756,8 +763,9 @@ export default function GroupPlanningPage() {
                         Changing this is a decision, not a cleanup. */}
                     <div
                         ref={dashboardRef}
+                        tabIndex={-1}
                         aria-busy={swapPending ? 'true' : undefined}
-                        className="mt-4 pt-4 border-t border-line scroll-mt-20"
+                        className="mt-4 pt-4 border-t border-line scroll-mt-20 focus:outline-hidden"
                     >
                         <StatusRegion
                             message={selectionStatus}
