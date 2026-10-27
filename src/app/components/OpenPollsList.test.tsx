@@ -799,6 +799,14 @@ describe('pollChipLabels (quick-261026-pi6, brief B7 label rule)', () => {
     expect(labels.get('p2')).toBe(`Sunday Wingspan, ${fmt.format(new Date(d2))}`);
     expect(labels.get('p3')).toBe('Sunday Wingspan');
   });
+
+  it('LBL-5. two deadline-less polls by one starter get unique labels: the bare one, then an ordinal (quick-261026-pi6-fix F11)', () => {
+    const labels = chipLabels([checkIn('p1', 'Ana'), checkIn('p2', 'Ana'), checkIn('p3', 'Ana')]);
+    expect(labels.get('p1')).toBe("Ana's check-in");
+    expect(labels.get('p2')).toBe("Ana's check-in (2)");
+    expect(labels.get('p3')).toBe("Ana's check-in (3)");
+    expect(new Set(labels.values()).size).toBe(3);
+  });
 });
 
 describe('OpenPollsList: ending a check-in tells the host (quick-261026-pi6-fix F8)', () => {

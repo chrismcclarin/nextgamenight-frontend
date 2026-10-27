@@ -388,7 +388,9 @@ export function pollSource(prompt) {
  * (quick-261026-pi6, brief B7, coordinator ruling 2): the game name when the poll has one; for a
  * generic automatic poll the schedule name chain of pollSource; for a generic manual poll the
  * starter's name plus the check-in suffix, or the unnamed form. When two or more polls share a
- * label, each one with a deadline gets a comma and its date; labels that still collide stay.
+ * label, each one with a deadline gets a comma and its date; a label that still collides after
+ * that gets an ordinal in list order, the first keeping the bare label and the next ones
+ * " (2)", " (3)" and so on (quick-261026-pi6-fix F11), so no two chips share an accessible name.
  *
  * @param {Object[]} prompts
  * @param {Object} [group]
@@ -413,15 +415,26 @@ export function pollChipLabels(prompts, group) {
   const uses = new Map();
   for (const label of base.values()) uses.set(label, (uses.get(label) || 0) + 1);
   const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-  const labels = new Map();
+  const dated = new Map();
   for (const p of list) {
     const label = base.get(p.id);
     const due = p.deadline ? new Date(p.deadline) : null;
     if (uses.get(label) > 1 && due && !Number.isNaN(due.getTime())) {
-      labels.set(p.id, `${label}, ${dateFormat.format(due)}`);
+      dated.set(p.id, `${label}, ${dateFormat.format(due)}`);
     } else {
-      labels.set(p.id, label);
+      dated.set(p.id, label);
     }
+  }
+  // DECISION quick-261026-pi6-fix (F11): a label that still collides gets an ordinal suffix in
+  // list order, OVER leaving it (two chips with one accessible name cannot be told apart by a
+  // screen reader or by sight). Changing this is a decision, not a cleanup.
+  const seen = new Map();
+  const labels = new Map();
+  for (const p of list) {
+    const label = dated.get(p.id);
+    const n = (seen.get(label) || 0) + 1;
+    seen.set(label, n);
+    labels.set(p.id, n === 1 ? label : `${label} (${n})`);
   }
   return labels;
 }
