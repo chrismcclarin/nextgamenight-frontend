@@ -345,12 +345,5 @@ test('S5: a shared link opens its poll; an unknown poll id falls back to the act
   await openPlanning(page);
   await cardBody(page, LONG_STARTER).tap();
   await expect(showingLine(page)).toHaveText(`Showing ${LONG_STARTER}'s check-in`);
-  const widths = await page.evaluate(() => ({
-    scrollWidth: document.documentElement.scrollWidth,
-    innerWidth: window.innerWidth,
-  }));
-  expect(
-    widths.scrollWidth,
-    `a long unbroken poll name pushes the page sideways (${widths.scrollWidth}px over ${widths.innerWidth}px)`,
-  ).toBeLessThanOrEqual(widths.innerWidth);
+  await expectNoHorizontalOverflow(page);
 });
