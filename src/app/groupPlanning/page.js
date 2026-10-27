@@ -119,6 +119,9 @@ export default function GroupPlanningPage() {
     const [heatmapPrompt, setHeatmapPrompt] = useState(null);
     const [heatmapLoading, setHeatmapLoading] = useState(true);
     const [heatmapError, setHeatmapError] = useState(null);
+    // The selected poll whose by-id read is on the network (scoped check SC-1): the swap marker
+    // below reads this, never the URL, so a swap the open-polls cache serves paints no wait.
+    const [loadingPollId, setLoadingPollId] = useState(null);
     // The swap announcement (quick-261026-pi6-fix F10): empty until a swap commits.
     const [selectionStatus, setSelectionStatus] = useState('');
     // The poll the dashboard shows, or is about to show: the URL's selection, then the loaded poll
@@ -332,6 +335,8 @@ export default function GroupPlanningPage() {
         // above); with nothing shown yet, the loading line is the honest state.
         if (!keepShown || !heatmapPrompt) setHeatmapLoading(true);
         setHeatmapError(null);
+        // A superseded run's read is no longer the one the page waits on.
+        setLoadingPollId(null);
         try {
             let prompt = null;
             let fellBack = false;
@@ -352,6 +357,7 @@ export default function GroupPlanningPage() {
                     selected = cached;
                 } else if (requestedPollId) {
                     try {
+                        setLoadingPollId(requestedPollId);
                         const data = await promptAPI.getPromptById(requestedPollId);
                         // Only this group's poll: a member of two groups could otherwise open another
                         // group's poll here through a crafted link.
@@ -415,7 +421,10 @@ export default function GroupPlanningPage() {
             // designed copy from `ApiError.code` instead.
             setHeatmapError(err instanceof Error ? err : new Error("The poll request didn't complete."));
         } finally {
-            if (run === heatmapRunRef.current) setHeatmapLoading(false);
+            if (run === heatmapRunRef.current) {
+                setHeatmapLoading(false);
+                setLoadingPollId(null);
+            }
         }
     };
 
@@ -603,11 +612,16 @@ export default function GroupPlanningPage() {
     const isAdmin = ['owner', 'admin'].includes(userRole);
     const chipLabels = pollChipLabels(openPolls, group);
     const shownPollName = heatmapPrompt ? pollNameFor(heatmapPrompt) : null;
-    // A selection whose poll is still loading (the network path; a cached swap is synchronous).
-    const swapPending = Boolean(requestedPollId)
-        && !sameId(requestedPollId, heatmapPrompt?.id)
+    /* DECISION quick-261026-pi6 scoped check (SC-1): a swap is pending only while its by-id read
+       is on the network (loadingPollId), OVER deriving it from the URL against the shown poll. The
+       URL commits a frame before the selection effect, so a URL-derived marker painted Loading and
+       aria-busy for one frame on every swap the cache serves (F9), which is nearly every swap.
+       Re-reading the poll already shown (the F8 reload after an end) is not a swap.
+       Changing this is a decision, not a cleanup. */
+    const swapPending = Boolean(loadingPollId)
+        && !sameId(loadingPollId, heatmapPrompt?.id)
         && !heatmapError;
-    const pendingPollName = swapPending ? chipLabels.get(requestedPollId) : undefined;
+    const pendingPollName = swapPending ? chipLabels.get(loadingPollId) : undefined;
     const pollClosed = !heatmapPrompt ||
         heatmapPrompt.status === 'closed' ||
         heatmapPrompt.status === 'converted' ||

@@ -1096,6 +1096,9 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
 
     (promptAPI.getPromptById as Mock).mockResolvedValue({ prompt: poll(P2, { status: 'closed' }) });
     act(() => onPollClosed()(P2));
+    // Re-reading the poll already shown is not a swap: no Loading line, no busy wrapper (SC-1).
+    expect(showingLine()).toHaveTextContent(/^Showing Ben's check-in$/);
+    expect(dashboardWrapper()).not.toHaveAttribute('aria-busy');
     await waitFor(() => expect(h.rd!.pollClosed).toBe(true));
     expect(h.rd!.promptId).toBe(P2);
     expect(promptAPI.getPromptById).toHaveBeenCalledTimes(2);
@@ -1177,6 +1180,44 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     await waitFor(() =>
       expect(selectionStatus()).toHaveTextContent(/^That poll couldn't be opened\. Showing Availability check-in\.$/),
     );
+  });
+
+  // quick-261026-pi6 scoped check SC-1: the pending state comes from the network read, not the
+  // URL, so a swap the cache serves never paints a Loading frame. act() flushes the URL commit and
+  // the selection effect together, so a MutationObserver records every DOM state in between.
+  it('FX-10c. a chip swap served from the cache never shows Loading or aria-busy, not even for one commit', async () => {
+    const user = userEvent.setup();
+    (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [manual(P1, 'Ana'), manual(P2, 'Ben')] });
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    const chips = await screen.findByRole('group', { name: 'Switch poll' });
+    const wrapper = dashboardWrapper();
+    const seen: string[] = [];
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(wrapper, { subtree: true, childList: true, characterData: true, characterDataOldValue: true, attributes: true, attributeOldValue: true, attributeFilter: ['aria-busy'] });
+    const record = () => {
+      for (const m of observer.takeRecords()) {
+        if (m.type === 'attributes') seen.push(`aria-busy changed from ${m.oldValue ?? 'absent'}`);
+        m.addedNodes.forEach((n) => seen.push(`added:${n.textContent ?? ''}`));
+        // A text node React rewrites in place: its OLD value is each state it held in between.
+        if (m.type === 'characterData') seen.push(`text was:${m.oldValue ?? ''}`);
+      }
+    };
+
+    await user.click(within(chips).getByRole('button', { name: "Ben's check-in" }));
+    record();
+    expect(showingLine()).not.toHaveTextContent(/Loading/);
+    expect(wrapper).not.toHaveAttribute('aria-busy');
+    reRender(rerender);
+    record();
+    expect(showingLine()).toHaveTextContent(/^Showing Ben's check-in$/);
+    expect(wrapper).not.toHaveAttribute('aria-busy');
+    await settledOn(P2);
+    record();
+    observer.disconnect();
+    expect(promptAPI.getPromptById).not.toHaveBeenCalled();
+    expect(seen.filter((s) => s.startsWith('aria-busy'))).toEqual([]);
+    expect(seen.filter((s) => s.includes('Loading'))).toEqual([]);
   });
 
   // quick-261026-pi6-fix F12: with no Poll Responses heading yet, scroll and focus share a target.
