@@ -220,9 +220,13 @@ async function openCheckIns(page: Page, probe: Probe): Promise<void> {
   });
 
   await page.goto(`/groupPlanning?group_id=${E2E_GROUP_ID}`);
+  // Wait for the CARD, not its title text (quick-261026-pi6-fix F16): since quick-261026-pi6 the
+  // dashboard's Showing line prints the same "Availability check-in" for the CI seed's gameless
+  // active poll and can render before this mocked list does, so the bare text is no longer unique.
+  // The card body is a button whose accessible name is its content.
   await expect(
-    page.getByText('Availability check-in', { exact: true }).first(),
-    'the check-ins list never showed the fulfilled check-in — GET /api/groups/<E2E_GROUP_ID>/prompts/open is answered above',
+    page.getByRole('button', { name: /Availability check-in/ }).first(),
+    'the check-ins list never showed the fulfilled check-in card (its body button) — GET /api/groups/<E2E_GROUP_ID>/prompts/open is answered above',
   ).toBeVisible({ timeout: 15_000 });
 }
 
@@ -340,7 +344,7 @@ function targetsFor(surface: Surface, probe: Probe): Target[] {
   if (surface === 'check-ins') {
     return values.checkIns.map((value) => ({
       site: `check-in message ${JSON.stringify(value.slice(0, 12))}`,
-      tag: 'p',
+      tag: 'span',
       text: `${OPEN_QUOTE}${rendered(value)}${CLOSE_QUOTE}`,
       expected: 1,
     }));

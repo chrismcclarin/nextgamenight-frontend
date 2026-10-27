@@ -16,8 +16,10 @@
 // - quick-261025-rl3 (261025-dzo review WR-02): an automatic card reads its source label from the
 //   wire's schedule_name, then the include's template_name, then the fallback. Tests SL-1..SL-5.
 //
+// - quick-261026-pi6 (owner R1/R2/R3): the card body is one button that selects the poll, the selected card wears the link-colour border and the Viewing tag, and the chip labels name each poll. Tests SEL-1..SEL-7 and LBL-1..LBL-4 (quick-261026-pi6).
+//
 // Numbers 4 and 5 are retired here; plan 88.6.1-75's tests reuse the file-scope mocks, render
-// wrapper and deferred helper. Numbering: 1-3, 6-10, then RF-1..RF-11, then SL-1..SL-5.
+// wrapper and deferred helper. Numbering: 1-3, 6-10, then RF-1..RF-11, then SL-1..SL-5, then SEL-1..SEL-7 and LBL-1..LBL-4.
 // Every comment is a `//` line (FE-TESTING-CONVENTIONS CF-9).
 import * as React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -48,6 +50,9 @@ import { promptAPI, ApiError } from '@/lib/api';
 import { promptKeys } from '@/lib/queryKeys/promptKeys';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import OpenPollsList from './OpenPollsList';
+// A namespace import, so a missing label export fails the LBL tests alone and the rest of the
+// file still runs (quick-261026-pi6).
+import * as OpenPollsModule from './OpenPollsList';
 
 const anyProps = (p: Record<string, unknown>): any => p;
 
@@ -105,9 +110,10 @@ function endCheckIn(trigger: HTMLElement) {
   return list;
 }
 
-// The message paragraphs, in row order.
+// The message lines, in row order. They are block spans since quick-261026-pi6 (the card body
+// is a button, which holds phrasing content only).
 const messageParagraphs = (container: HTMLElement) =>
-  Array.from(container.querySelectorAll('li p.italic')) as HTMLParagraphElement[];
+  Array.from(container.querySelectorAll('li span.italic')) as HTMLElement[];
 
 beforeEach(() => {
   vi.mocked(promptAPI.getOpenPrompts).mockReset();
@@ -651,5 +657,212 @@ describe('OpenPollsList: the automatic card names its schedule (quick-261025-rl3
     renderList();
     expect(await screen.findByText('Started by Ana')).toBeInTheDocument();
     expect(screen.queryByText('From Sunday Wingspan')).toBeNull();
+  });
+});
+
+// quick-261026-pi6 (owner R1/R2, 2026-10-26): the card body is ONE native button that selects the
+// poll; the kebab stays its sibling. A body is found by its role and its accessible name.
+const cardBody = (name: RegExp) => screen.getByRole('button', { name });
+
+describe('OpenPollsList: the card body selects the poll (quick-261026-pi6, owner R1/R2)', () => {
+  it('SEL-1. tapping a card body calls onSelectPoll once with that poll id', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    const onSelectPoll = vi.fn();
+    renderList(undefined, { onSelectPoll });
+    await screen.findByText('Started by Ana');
+    fireEvent.click(cardBody(/Started by Ana/));
+    expect(onSelectPoll).toHaveBeenCalledTimes(1);
+    expect(onSelectPoll).toHaveBeenCalledWith('pa');
+  });
+
+  it('SEL-2. the selected poll body is pressed and the other is not', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    renderList(undefined, { onSelectPoll: vi.fn(), selectedPollId: 'pb' });
+    await screen.findByText('Started by Ben');
+    expect(cardBody(/Started by Ben/)).toHaveAttribute('aria-pressed', 'true');
+    expect(cardBody(/Started by Ana/)).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('SEL-3. the Viewing tag renders once, in the selected row only, and stays out of the name', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    renderList(undefined, { onSelectPoll: vi.fn(), selectedPollId: 'pb' });
+    await screen.findByText('Started by Ben');
+    const tags = screen.getAllByText('Viewing');
+    expect(tags).toHaveLength(1);
+    const benRow = cardBody(/Started by Ben/).closest('li') as HTMLElement;
+    const anaRow = cardBody(/Started by Ana/).closest('li') as HTMLElement;
+    expect(benRow.contains(tags[0])).toBe(true);
+    expect(anaRow.contains(tags[0])).toBe(false);
+    expect(tags[0]).toHaveAttribute('aria-hidden', 'true');
+    // aria-pressed already says selected, so no button's accessible name carries the tag.
+    expect(screen.queryByRole('button', { name: /Viewing/ })).toBeNull();
+  });
+
+  it('SEL-4. opening the kebab and ending the check-in never selects the poll', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    vi.mocked(promptAPI.closePrompt).mockResolvedValue({} as never);
+    const onSelectPoll = vi.fn();
+    renderList(undefined, { onSelectPoll });
+    await screen.findByText('Started by Ana');
+    const anaBody = cardBody(/Started by Ana/);
+    const [anaTrigger] = triggers();
+    // The kebab is the body's sibling, never a control inside it.
+    expect(anaBody.contains(anaTrigger)).toBe(false);
+    expect(anaBody.closest('li')?.contains(anaTrigger)).toBe(true);
+    endCheckIn(anaTrigger);
+    await waitFor(() => expect(promptAPI.closePrompt).toHaveBeenCalledTimes(1));
+    expect(onSelectPoll).not.toHaveBeenCalled();
+  });
+
+  it('SEL-5. the body floors at 44px with the inset ring; the selected row wears the 2px link border', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    renderList(undefined, { onSelectPoll: vi.fn(), selectedPollId: 'pb' });
+    await screen.findByText('Started by Ben');
+    const anaBody = cardBody(/Started by Ana/);
+    const benBody = cardBody(/Started by Ben/);
+    expect(anaBody).toHaveClass('min-h-11', 'text-left', 'p-3', 'focus-visible:ring-inset');
+    expect(anaBody).not.toHaveClass('focus-visible:ring-offset-2');
+    // One pixel less padding when selected, so the 2px border does not grow the card.
+    expect(benBody).toHaveClass('p-[11px]');
+    expect(benBody.closest('li')).toHaveClass('border-2', 'border-content-link');
+    const anaRow = anaBody.closest('li') as HTMLElement;
+    expect(anaRow).toHaveClass('border', 'border-line');
+    expect(anaRow).not.toHaveClass('border-2');
+  });
+
+  it('SEL-6. a body button holds phrasing content only (no paragraph, no div)', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({
+      prompts: [checkIn('pa', 'Ana', { custom_message: 'Bring snacks', deadline: '2026-11-02T18:00:00Z' }), ROW_B],
+    } as never);
+    renderList(undefined, { onSelectPoll: vi.fn(), selectedPollId: 'pa' });
+    await screen.findByText('Started by Ana');
+    expect(cardBody(/Started by Ana/).querySelector('p, div')).toBeNull();
+    expect(cardBody(/Started by Ben/).querySelector('p, div')).toBeNull();
+  });
+
+  it('SEL-7. without onSelectPoll the body is not a button and no Viewing tag renders', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    renderList(undefined, { selectedPollId: 'pa' });
+    const label = await screen.findByText('Started by Ana');
+    expect(screen.queryByRole('button', { name: /Started by Ana/ })).toBeNull();
+    expect(screen.queryByText('Viewing')).toBeNull();
+    // The card markup is the same in both modes: its text lines are block spans.
+    expect(label.tagName).toBe('SPAN');
+  });
+});
+
+type ChipLabels = (prompts: Record<string, unknown>[], group: Record<string, unknown>) => Map<string, string>;
+const chipLabels = (prompts: Record<string, unknown>[], group: Record<string, unknown> = { id: 'g1', games: [] }) =>
+  ((OpenPollsModule as unknown as { pollChipLabels: ChipLabels }).pollChipLabels)(prompts, group);
+
+describe('pollChipLabels (quick-261026-pi6, brief B7 label rule)', () => {
+  it('LBL-1. a generic manual poll is named for its starter, or for a group member when none is known', () => {
+    const labels = chipLabels([ROW_A, ROW_B, checkIn('pc', 'unused', { Creator: null })]);
+    expect(labels.get('pa')).toBe("Ana's check-in");
+    expect(labels.get('pb')).toBe("Ben's check-in");
+    expect(labels.get('pc')).toBe("A group member's check-in");
+    for (const label of labels.values()) {
+      expect(label).toContain("'");
+      expect(label).not.toContain('’');
+    }
+  });
+
+  it('LBL-2. a poll for one of the group games is named for that game', () => {
+    const labels = chipLabels([checkIn('pg', 'Ana', { game_id: 'game-1' })], {
+      id: 'g1',
+      games: [{ id: 'game-1', name: 'Wingspan' }],
+    });
+    expect(labels.get('pg')).toBe('Wingspan');
+  });
+
+  it('LBL-3. a generic automatic poll is named for its schedule, then the include, then the fallback', () => {
+    const labels = chipLabels([
+      autoCheckIn('p1', { schedule_name: 'Sunday Wingspan' }),
+      autoCheckIn('p2', { GroupPromptSetting: { id: 'set-1', template_name: 'Old settings name' } }),
+      autoCheckIn('p3', { GroupPromptSetting: null }),
+    ]);
+    expect(labels.get('p1')).toBe('Sunday Wingspan');
+    expect(labels.get('p2')).toBe('Old settings name');
+    expect(labels.get('p3')).toBe('recurring schedule');
+  });
+
+  it('LBL-4. colliding labels get the deadline date; a colliding poll with no deadline keeps the bare name', () => {
+    const d1 = '2026-11-02T18:00:00Z';
+    const d2 = '2026-11-09T18:00:00Z';
+    const fmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+    const labels = chipLabels([
+      autoCheckIn('p1', { schedule_name: 'Sunday Wingspan', deadline: d1 }),
+      autoCheckIn('p2', { schedule_name: 'Sunday Wingspan', deadline: d2 }),
+      autoCheckIn('p3', { schedule_name: 'Sunday Wingspan' }),
+    ]);
+    expect(labels.get('p1')).toBe(`Sunday Wingspan, ${fmt.format(new Date(d1))}`);
+    expect(labels.get('p2')).toBe(`Sunday Wingspan, ${fmt.format(new Date(d2))}`);
+    expect(labels.get('p3')).toBe('Sunday Wingspan');
+  });
+
+  it('LBL-5. two deadline-less polls by one starter get unique labels: the bare one, then an ordinal (quick-261026-pi6-fix F11)', () => {
+    const labels = chipLabels([checkIn('p1', 'Ana'), checkIn('p2', 'Ana'), checkIn('p3', 'Ana')]);
+    expect(labels.get('p1')).toBe("Ana's check-in");
+    expect(labels.get('p2')).toBe("Ana's check-in (2)");
+    expect(labels.get('p3')).toBe("Ana's check-in (3)");
+    expect(new Set(labels.values()).size).toBe(3);
+  });
+});
+
+describe('OpenPollsList: ending a check-in tells the host (quick-261026-pi6-fix F8)', () => {
+  it('OPC-1. a successful end calls onPollClosed once with that poll id, after the list refresh', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    vi.mocked(promptAPI.closePrompt).mockResolvedValue({} as never);
+    const onPollClosed = vi.fn();
+    renderList(undefined, { onSelectPoll: vi.fn(), onPollClosed });
+    await screen.findByText('Started by Ana');
+    endCheckIn(triggers()[0]);
+    await waitFor(() => expect(onPollClosed).toHaveBeenCalledTimes(1));
+    expect(onPollClosed).toHaveBeenCalledWith('pa');
+    // The refresh ran before the call: the list GET went out twice by then.
+    expect(promptAPI.getOpenPrompts).toHaveBeenCalledTimes(2);
+  });
+
+  it('OPC-2. a failed end never calls onPollClosed', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A] } as never);
+    vi.mocked(promptAPI.closePrompt).mockRejectedValueOnce(new ApiError('x', 'internal', 500));
+    const onPollClosed = vi.fn();
+    renderList(undefined, { onSelectPoll: vi.fn(), onPollClosed });
+    await screen.findByText('Started by Ana');
+    endCheckIn(triggers()[0]);
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
+    expect(onPollClosed).not.toHaveBeenCalled();
+  });
+  // Scoped check SC-5: a 409 means someone else already ended the poll, so it has left the open
+  // list as surely as a successful end. The card refreshes away and the host is told; the toast
+  // still says it was already closed.
+  it('OPC-3a. an end answered 409 refreshes the open list and calls onPollClosed once, and still toasts', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    vi.mocked(promptAPI.closePrompt).mockRejectedValueOnce(new ApiError('Poll is already closed', 'conflict', 409));
+    const onPollClosed = vi.fn();
+    const { client } = renderList(undefined, { onSelectPoll: vi.fn(), onPollClosed });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    await screen.findByText('Started by Ana');
+    endCheckIn(triggers()[0]);
+    await waitFor(() => expect(onPollClosed).toHaveBeenCalledTimes(1));
+    expect(onPollClosed).toHaveBeenCalledWith('pa');
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: promptKeys.openPolls('g1') });
+    expect(promptAPI.getOpenPrompts).toHaveBeenCalledTimes(2);
+    expect(toastSpies.error).toHaveBeenCalledTimes(1);
+    expect(toastSpies.error).toHaveBeenCalledWith('This check-in is already closed.');
+  });
+
+  it('OPC-3b. an end answered 500 neither refreshes the open list nor calls onPollClosed', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A] } as never);
+    vi.mocked(promptAPI.closePrompt).mockRejectedValueOnce(new ApiError('x', 'internal', 500));
+    const onPollClosed = vi.fn();
+    const { client } = renderList(undefined, { onSelectPoll: vi.fn(), onPollClosed });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    await screen.findByText('Started by Ana');
+    endCheckIn(triggers()[0]);
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(onPollClosed).not.toHaveBeenCalled();
+    expect(promptAPI.getOpenPrompts).toHaveBeenCalledTimes(1);
   });
 });

@@ -47,6 +47,13 @@ const CHECK_INS_LOADING_LABEL = 'Loading check-ins…';
  * @param {string} [props.currentUserDbId] - Caller's User.id UUID (passed to
  *   OpenPollsList; informational — server-derived can_close drives the close UI).
  * @param {boolean} [props.defaultExpanded=false]
+ * @param {string | null} [props.selectedPollId] - The id of the poll the planning page's
+ *   dashboard shows (quick-261026-pi6); passed to OpenPollsList, whose card marks it.
+ * @param {(pollId: string) => void} [props.onSelectPoll] - Passed to OpenPollsList: called with a
+ *   poll's id when its card body is tapped (quick-261026-pi6).
+ * @param {(pollId: string) => void} [props.onPollClosed] - Passed to OpenPollsList: called with a
+ *   poll's id once it has left the open list, after a successful end (quick-261026-pi6-fix F8) or a
+ *   409 for a poll someone else already ended (SC-5).
  */
 export default function PromptScheduleSection({
   groupId,
@@ -54,11 +61,15 @@ export default function PromptScheduleSection({
   userRole,
   currentUserDbId,
   defaultExpanded = false,
+  selectedPollId,
+  onSelectPoll,
+  onPollClosed,
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   // AC-7: the header's `aria-controls` target. `useId` rather than a literal so two mounted
-  // sections cannot collide on one id — the idiom already shipped in `CalendarListView.js`
-  // (anchor `const uid = useId();`) and `ParticipantRow.js` (anchor `const rowId = useId();`).
+  // sections cannot collide on one id — the idiom already shipped in
+  // src/app/components/CalendarListView.js ("const uid = useId();") and
+  // src/app/components/ParticipantRow.js ("const rowId = useId();").
   const panelId = `prompt-schedule-panel-${useId()}`;
   // H4 focus fallback for Check-ins (D-05): the section has no heading, so its own expand control
   // is the target and none is minted. See DECISION Phase 88.6.1-29 (D-04, D-05, H4) in OpenPollsList.js.
@@ -164,13 +175,13 @@ export default function PromptScheduleSection({
      any interactive failure surface would nest a control inside a control and its retry click
      would bubble to the header's `onClick` and toggle the section. The failure ALREADY has
      exactly one surface — `OpenPollsList`'s banner on the SAME open-polls key
-     (`OpenPollsList.js`, anchor `<FetchErrorBanner`, DECISION-marked at anchor
-     `DECISION Phase 88-18 (Req 6 / T-88-18-01`) — and UI-SPEC §6.2 allows exactly
+     (src/app/components/OpenPollsList.js ("<FetchErrorBanner"), DECISION-marked at
+     src/app/components/OpenPollsList.js ("DECISION Phase 88-18 (Req 6 / T-88-18-01")) — and UI-SPEC §6.2 allows exactly
      one live region per failure.
 
      WHY THE COLLAPSED-AND-FAILED STATE SURFACING NOTHING IS ACCEPTED, and the fact it rests on:
      the only PRODUCTION mount passes `defaultExpanded={true}`
-     (`src/app/groupPlanning/page.js`, anchor `<PromptScheduleSection`; the production-only command
+     (src/app/groupPlanning/page.js ("<PromptScheduleSection"); the production-only command
      `grep -rnE '<PromptScheduleSection(\s|$|>)' src --include='*.js' | grep -vE '\.(test|spec)\.'`
      prints exactly one line, that mount), so a first failure lands with the panel OPEN and the
      banner visible. The silent state is reachable only after the user DELIBERATELY collapses the
@@ -179,8 +190,8 @@ export default function PromptScheduleSection({
      must carry the failure itself.
 
      DO NOT re-tone the `openPollCount === 0` span below into a failure chip — re-merging the
-     empty and failed states is the exact defect this closes, and `OpenPollsList.js`
-     (anchor `DECISION Phase 88-18 (Req 6 / T-88-18-01`) forbids
+     empty and failed states is the exact defect this closes, and
+     src/app/components/OpenPollsList.js ("DECISION Phase 88-18 (Req 6 / T-88-18-01") forbids
      it by name ("do not re-merge these two branches").
 
      WEIGHT (R3 / UI-SPEC §4.5, V-6): both chips moved `font-medium` -> `font-bold`. §4.5's
@@ -317,7 +328,7 @@ export default function PromptScheduleSection({
           ring's outset, an open kebab list below the last row). Layout is unchanged: no child of
           this panel carries a top margin at its top edge or a bottom margin at its bottom edge, so
           the clip's formatting context held no margin in place (measured at plan time); the phone
-          spec `e2e/check-ins-end-focus.spec.ts` guards horizontal page overflow at 375px. When
+          spec e2e/check-ins-end-focus.spec.ts ("E3: the expanded Check-ins panel is neither capped nor clipped") guards horizontal page overflow at 375px. When
           collapsed, the class is inert because `hidden` is display:none. Restoring the classes is
           a decision, not a cleanup. */}
       <div
@@ -339,6 +350,9 @@ export default function PromptScheduleSection({
           userRole={userRole}
           currentUserDbId={currentUserDbId}
           focusFallbackRef={expandControlRef}
+          selectedPollId={selectedPollId}
+          onSelectPoll={onSelectPoll}
+          onPollClosed={onPollClosed}
         />
 
         {/* Recurring-schedules manager — admin-only sub-mount per D-UI-01.

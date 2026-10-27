@@ -123,7 +123,8 @@ export const CAPTURED_OPEN_PROMPTS_BODY = {
       can_close: true,
     },
     {
-      // Manual poll: Creator present, GroupPromptSetting null, can_close false.
+      // Manual poll: Creator present, GroupPromptSetting null, can_close false. Creator carries
+      // username only: the wire strips the creator's id on every prompt read (BE quick-261026-pi6 SC-2).
       id: 'prm-bbbb-1111-2222-3333-000000000002',
       group_id: 'a1b2c3d4-1111-2222-3333-444455556666',
       game_id: 'game-1111-2222-3333-444444444444',
@@ -139,7 +140,7 @@ export const CAPTURED_OPEN_PROMPTS_BODY = {
       auto_schedule_enabled: false,
       createdAt: '2026-06-21T18:00:00.000Z',
       updatedAt: '2026-06-21T18:00:00.000Z',
-      Creator: { id: 'usr-aaaa-bbbb-cccc-000000000001', username: 'alice' },
+      Creator: { username: 'alice' },
       GroupPromptSetting: null,
       can_close: false,
     },

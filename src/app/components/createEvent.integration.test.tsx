@@ -335,6 +335,16 @@ describe('CreateEvent + real EventScheduler — the poll-CTA week anchor (Phase 
     await waitFor(() => expect(api.getPromptHeatmap).toHaveBeenCalledTimes(1));
     expect(api.getGroupHeatmap).not.toHaveBeenCalled();
   });
+
+  // quick-261026-pi6 (coordinator ruling 1): a promptId that is not a UUID is treated as absent,
+  // so no poll-heatmap request goes out (the id is interpolated into the request path) and the
+  // group heatmap loads instead. Positive signal first (CF-26), then the absence.
+  it('PI-CE-1. a promptId that is not a UUID sends no poll-heatmap request; the group heatmap loads', async () => {
+    await renderModal({ promptId: 'not-a-uuid' });
+
+    await waitFor(() => expect(api.getGroupHeatmap).toHaveBeenCalled());
+    expect(api.getPromptHeatmap).not.toHaveBeenCalled();
+  });
 });
 
 /* DECISION Phase 88.1-07 Task 2 (D-08 Layer 3): the round-trip below is driven from the
