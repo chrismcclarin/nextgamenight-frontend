@@ -222,7 +222,9 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // RE-DERIVED by quick-261026-pi6-fix (2026-10-26): 116 -> 138, pushed down by the review fix
     // batch (the group_id check and its marker, the stale-status and loading constants, sameId and
     // its marker, and the swap-announcement state above the role state). Kept as a line number.
-    declaredAt: 138,
+    // RE-DERIVED by the pi6 scoped-check fix SC-1 (2026-10-26): 138 -> 141, the loadingPollId
+    // state and its two comment lines above the role state.
+    declaredAt: 141,
     declaration: 'const [roleRecord, setRoleRecord] = useState(',
     why:
       'Local role-read state { groupId, role, error } written only by the page\'s own ' +
