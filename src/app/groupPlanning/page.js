@@ -15,6 +15,7 @@ import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger, errCtx } from '../../lib/logger';
 import { isUuid } from '../../lib/isUuid';
@@ -38,6 +39,11 @@ const AUTH_LOADING_MESSAGE = "Getting your group's plans...";
 // and the chip row's group name (read by screen readers; the row has no visible label).
 const SHOWING_LABEL = 'Showing';
 const SWITCH_POLL_LABEL = 'Switch poll';
+// The poll-data loading line, and the Showing line's in-flight fallback when the poll has no
+// label yet (quick-261026-pi6-fix F10: one literal, two uses).
+const POLL_DATA_LOADING_LABEL = 'Loading poll data...';
+// The spoken notice after a selected poll fell back to the active one (F10).
+const POLL_OPEN_FAILED_NOTICE = "That poll couldn't be opened.";
 // The answers that mean a selected poll is gone or not this person's to read: a stale link.
 const STALE_POLL_STATUSES = [400, 403, 404];
 
@@ -113,6 +119,8 @@ export default function GroupPlanningPage() {
     const [heatmapPrompt, setHeatmapPrompt] = useState(null);
     const [heatmapLoading, setHeatmapLoading] = useState(true);
     const [heatmapError, setHeatmapError] = useState(null);
+    // The swap announcement (quick-261026-pi6-fix F10): empty until a swap commits.
+    const [selectionStatus, setSelectionStatus] = useState('');
     // The poll the dashboard shows, or is about to show: the URL's selection, then the loaded poll
     // (quick-261026-pi6). The cards and the chips mark it.
     const selectedPollId = requestedPollId ?? heatmapPrompt?.id ?? null;
@@ -286,6 +294,10 @@ export default function GroupPlanningPage() {
         window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
     };
 
+    // The name the Showing line and the swap announcement give a poll (quick-261026-pi6).
+    const pollNameFor = (prompt) =>
+        pollChipLabels(openPolls, group).get(prompt.id) ?? pollTitle(prompt, group);
+
     const fetchHeatmapData = async ({ keepShown = false, skipCache = false } = {}) => {
         if (!groupId) return;
         const run = ++heatmapRunRef.current;
@@ -298,6 +310,7 @@ export default function GroupPlanningPage() {
         setHeatmapError(null);
         try {
             let prompt = null;
+            let fellBack = false;
             if (selectedPollParam) {
                 let selected = null;
                 /* DECISION quick-261026-pi6-fix (F9): a selection the open-polls cache already
@@ -342,6 +355,7 @@ export default function GroupPlanningPage() {
                     prompt = selected;
                 } else {
                     dropStaleSelection(forGroup, selectedPollParam);
+                    fellBack = true;
                 }
             }
             if (!prompt && promptId) {
@@ -359,6 +373,17 @@ export default function GroupPlanningPage() {
             }
             if (superseded()) return;
             setHeatmapPrompt(prompt);
+            // A swap is announced once it commits; the first load is not (F10). The name is read
+            // through the ref, so it comes from the open list as of the commit, the list the
+            // Showing line renders from, not the one this load started under.
+            const nameOf = pollNameForRef.current ?? pollNameFor;
+            if (keepShown && fellBack) {
+                setSelectionStatus(prompt
+                    ? `${POLL_OPEN_FAILED_NOTICE} ${SHOWING_LABEL} ${nameOf(prompt)}.`
+                    : POLL_OPEN_FAILED_NOTICE);
+            } else if (keepShown && prompt) {
+                setSelectionStatus(`${SHOWING_LABEL} ${nameOf(prompt)}`);
+            }
         } catch (err) {
             if (superseded()) return;
             // Keep the ERROR object, not `err.message`: the raw upstream string used to be
@@ -422,7 +447,9 @@ export default function GroupPlanningPage() {
     const fetchGroupRef = useRef(null);
     const fetchHeatmapRef = useRef(null);
     const fetchUserRoleRef = useRef(null);
+    const pollNameForRef = useRef(null);
     useEffect(() => {
+        pollNameForRef.current = pollNameFor;
         fetchGroupRef.current = fetchGroup;
         fetchHeatmapRef.current = fetchHeatmapData;
         fetchUserRoleRef.current = fetchUserRole;
@@ -544,9 +571,12 @@ export default function GroupPlanningPage() {
 
     const isAdmin = ['owner', 'admin'].includes(userRole);
     const chipLabels = pollChipLabels(openPolls, group);
-    const shownPollName = heatmapPrompt
-        ? chipLabels.get(heatmapPrompt.id) ?? pollTitle(heatmapPrompt, group)
-        : null;
+    const shownPollName = heatmapPrompt ? pollNameFor(heatmapPrompt) : null;
+    // A selection whose poll is still loading (the network path; a cached swap is synchronous).
+    const swapPending = Boolean(requestedPollId)
+        && !sameId(requestedPollId, heatmapPrompt?.id)
+        && !heatmapError;
+    const pendingPollName = swapPending ? chipLabels.get(requestedPollId) : undefined;
     const pollClosed = !heatmapPrompt ||
         heatmapPrompt.status === 'closed' ||
         heatmapPrompt.status === 'converted' ||
@@ -718,9 +748,24 @@ export default function GroupPlanningPage() {
                     />
 
                     {/* Response Dashboard */}
-                    <div ref={dashboardRef} className="mt-4 pt-4 border-t border-line scroll-mt-20">
+                    {/* DECISION quick-261026-pi6-fix (F10, WCAG 4.1.3): a swap is told to screen
+                        readers by ONE always-mounted polite region (empty first, the StatusRegion
+                        contract), OVER a live attribute on the Showing line, which re-renders on
+                        every swap and would also speak the first load; the wrapper is aria-busy
+                        and the Showing line reads Loading while a selected poll is on the network.
+                        Changing this is a decision, not a cleanup. */}
+                    <div
+                        ref={dashboardRef}
+                        aria-busy={swapPending ? 'true' : undefined}
+                        className="mt-4 pt-4 border-t border-line scroll-mt-20"
+                    >
+                        <StatusRegion
+                            message={selectionStatus}
+                            className="sr-only"
+                            data-testid="poll-selection-status"
+                        />
                         {heatmapLoading ? (
-                            <p className="text-center text-content-secondary py-4">Loading poll data...</p>
+                            <p className="text-center text-content-secondary py-4">{POLL_DATA_LOADING_LABEL}</p>
                         ) : heatmapErrorState.showError ? (
                             /* DECISION Phase 88-25 (Req 14 / T-88-25-01): the poll-data failure gets the
                                shared error treatment with a retry, checked BEFORE the "no active poll"
@@ -748,7 +793,13 @@ export default function GroupPlanningPage() {
                                     Poll Responses
                                 </Heading>
                                 <p className="text-sm text-content-secondary mb-3">
-                                    {SHOWING_LABEL} <span className="text-content-primary">{shownPollName}</span>
+                                    {swapPending ? (
+                                        pendingPollName ? (
+                                            <>Loading <span className="text-content-primary">{pendingPollName}</span>…</>
+                                        ) : POLL_DATA_LOADING_LABEL
+                                    ) : (
+                                        <>{SHOWING_LABEL} <span className="text-content-primary">{shownPollName}</span></>
+                                    )}
                                 </p>
                                 {/* DECISION quick-261026-pi6 (owner R3, 2026-10-26): the chips render only at
                                     two or more open polls, OVER always (with one poll a chip changes

@@ -153,6 +153,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import GroupPlanningPage from './page';
 import { ApiError, eventsAPI, groupsAPI, promptAPI } from '@/lib/api';
+import { promptKeys } from '@/lib/queryKeys/promptKeys';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -163,7 +164,8 @@ function render(ui: React.ReactElement) {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return rtlRender(ui, { wrapper });
+  // The client is returned too, so a test can write the open-polls cache (quick-261026-pi6-fix F10).
+  return { ...rtlRender(ui, { wrapper }), client };
 }
 
 // A real email link carries the poll's UUID (P-1's fixture since quick-261026-pi6 ruling 1).
@@ -290,7 +292,9 @@ describe("groupPlanning page — the caller's role cannot load (88.6.1-16, D-25 
     (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('members request failed', 'internal', 500));
     const { container } = render(<GroupPlanningPage />);
     // Synchronously, before any read settles: ONE polite region, sr-only and empty.
-    const regions = container.querySelectorAll('[role="status"]');
+    // AMENDED quick-261026-pi6-fix F10: the dashboard's swap announcement is a second polite
+    // region by design (its own data-testid), so the count excludes it.
+    const regions = container.querySelectorAll('[role="status"]:not([data-testid="poll-selection-status"])');
     expect(regions).toHaveLength(1);
     const region = regions[0];
     expect(region).toHaveClass('sr-only');
@@ -656,6 +660,11 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
   type Select = (id: string) => void;
   const onSelectPoll = () => (h.pss as { onSelectPoll?: Select } | null)?.onSelectPoll as Select;
   const pollResponses = () => screen.getByRole('heading', { level: 3, name: 'Poll Responses' });
+  // The swap announcement region, the dashboard wrapper that holds it, and the Showing line
+  // (quick-261026-pi6-fix F10).
+  const selectionStatus = () => screen.getByTestId('poll-selection-status');
+  const dashboardWrapper = () => selectionStatus().parentElement as HTMLElement;
+  const showingLine = () => pollResponses().nextElementSibling as HTMLElement;
   const queryOf = (url: string) => new URLSearchParams(url.includes('?') ? url.slice(url.indexOf('?') + 1) : '');
 
   let pushed: string[];
@@ -753,13 +762,20 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     reRender(rerender);
     await waitFor(() => expect(promptAPI.getPromptById).toHaveBeenCalledWith(P2));
     expect(pollResponses()).toBe(heading);
-    expect(screen.queryByText('Loading poll data...')).toBeNull();
+    // The loading BRANCH never replaced the dashboard (AMENDED quick-261026-pi6-fix F10: the
+    // Showing line itself now reads the loading phrase while the poll is on the network, and the
+    // wrapper is busy).
+    expect(screen.queryByText('Loading poll data...', { selector: 'p.text-center' })).toBeNull();
+    expect(showingLine()).toHaveTextContent(/^Loading poll data\.\.\.$/);
+    expect(dashboardWrapper()).toHaveAttribute('aria-busy', 'true');
     expect(h.rd!.promptId).toBe(P1);
 
     await act(async () => {
       d2.resolve({ prompt: poll(P2) });
     });
     await settledOn(P2);
+    expect(dashboardWrapper()).not.toHaveAttribute('aria-busy');
+    expect(selectionStatus()).toHaveTextContent(/^Showing Availability check-in$/);
     expect(pollResponses()).toBe(heading);
     expect(h.pss!.selectedPollId).toBe(P2);
     expect(groupsAPI.getGroup).toHaveBeenCalledTimes(1);
@@ -1113,12 +1129,54 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     reRender(rerender);
     await settledOn(P2);
     expect(promptAPI.getPromptById).not.toHaveBeenCalled();
+    // The cached swap is announced too (F10).
+    expect(selectionStatus()).toHaveTextContent(/^Showing Ben's check-in$/);
 
     act(() => onSelectPoll()(P3));
     reRender(rerender);
     await settledOn(P3);
     expect(promptAPI.getPromptById).toHaveBeenCalledTimes(1);
     expect(promptAPI.getPromptById).toHaveBeenCalledWith(P3);
+  });
+
+  // quick-261026-pi6-fix F10 (WCAG 4.1.3): a swap is told, and its wait is visible.
+  it('FX-10a. while a labelled poll loads the wrapper is busy and the line reads Loading; the commit is announced', async () => {
+    const d2 = deferred<unknown>();
+    (promptAPI.getPromptById as Mock).mockImplementation((id: string) => (id === P2 ? d2.promise : Promise.resolve({ prompt: poll(id) })));
+    const { rerender, client } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    // The first load is not announced, and the region was there, empty, before any swap.
+    expect(selectionStatus()).toHaveTextContent(/^$/);
+
+    act(() => onSelectPoll()(P2));
+    reRender(rerender);
+    await waitFor(() => expect(promptAPI.getPromptById).toHaveBeenCalledWith(P2));
+    // The open list lands while the by-id read is still open, so the poll has a label.
+    act(() => {
+      client.setQueryData(promptKeys.openPolls(G1), { prompts: [manual(P1, 'Ana'), manual(P2, 'Ben')] });
+    });
+    await waitFor(() => expect(showingLine()).toHaveTextContent(/^Loading Ben's check-in…$/));
+    expect(dashboardWrapper()).toHaveAttribute('aria-busy', 'true');
+
+    await act(async () => {
+      d2.resolve({ prompt: manual(P2, 'Ben') });
+    });
+    await settledOn(P2);
+    expect(selectionStatus()).toHaveTextContent(/^Showing Ben's check-in$/);
+    expect(showingLine()).toHaveTextContent(/^Showing Ben's check-in$/);
+    expect(dashboardWrapper()).not.toHaveAttribute('aria-busy');
+  });
+
+  it('FX-10b. a swap that falls back to the active poll says so', async () => {
+    (promptAPI.getPromptById as Mock).mockRejectedValue(new ApiError('not found', 'not_found', 404));
+    const { rerender } = render(<GroupPlanningPage />);
+    await settledOn(P1);
+    act(() => onSelectPoll()(PX));
+    reRender(rerender);
+    await waitFor(() => expect(replaced).toHaveLength(1));
+    await waitFor(() =>
+      expect(selectionStatus()).toHaveTextContent(/^That poll couldn't be opened\. Showing Availability check-in\.$/),
+    );
   });
 });
 
