@@ -51,9 +51,10 @@ const OPEN_POLLS_SECTION_NAME = 'Open polls';
  *   dashboard shows (quick-261026-pi6); its card wears the selected border and the Viewing tag.
  * @param {(pollId: string) => void} [props.onSelectPoll] - Called with a poll's id when its card
  *   body is tapped (quick-261026-pi6). Without it the card body is not a control.
- * @param {(pollId: string) => void} [props.onPollClosed] - Called with a poll's id after ending it
- *   succeeded and the open-polls list was refreshed (quick-261026-pi6-fix F8), so the planning
- *   page can reload a dashboard that shows that poll. Never called after a failed end.
+ * @param {(pollId: string) => void} [props.onPollClosed] - Called with a poll's id once the poll
+ *   has left the open list and the list was refreshed: after ending it succeeded (quick-261026-pi6-fix
+ *   F8) or after a 409 because someone else had already ended it (SC-5), so the planning page can
+ *   reload a dashboard that shows that poll. Never called after any other failed end.
  */
 export default function OpenPollsList({
   groupId,

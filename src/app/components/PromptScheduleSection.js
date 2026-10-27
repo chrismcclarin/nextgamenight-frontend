@@ -52,7 +52,8 @@ const CHECK_INS_LOADING_LABEL = 'Loading check-ins…';
  * @param {(pollId: string) => void} [props.onSelectPoll] - Passed to OpenPollsList: called with a
  *   poll's id when its card body is tapped (quick-261026-pi6).
  * @param {(pollId: string) => void} [props.onPollClosed] - Passed to OpenPollsList: called with a
- *   poll's id after ending it succeeded (quick-261026-pi6-fix F8).
+ *   poll's id once it has left the open list, after a successful end (quick-261026-pi6-fix F8) or a
+ *   409 for a poll someone else already ended (SC-5).
  */
 export default function PromptScheduleSection({
   groupId,
