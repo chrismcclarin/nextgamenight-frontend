@@ -171,4 +171,31 @@ describe('prompts trio integration (GAP13/GAP14)', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: promptKeys.settings('g1') }),
     );
   });
+
+  // quick-261025-rl3 review R4: the open-poll card's "From <schedule>" label is derived by the
+  // backend on every read, so a schedule write must cause that next read. Without the openPolls
+  // invalidation the second getOpenPrompts call never happens and the old name stays on screen.
+  it('R4: a schedule mutation also refetches open polls, so the card shows the new schedule name', async () => {
+    renderWithClient(
+      <PromptScheduleSection groupId="g1" group={{ games: [], members: [] }} userRole="owner" defaultExpanded />,
+    );
+
+    await screen.findByText('From Thursday Catan');
+    expect(openCalls).toBe(1);
+
+    // The admin renamed the schedule; the next open-prompts read carries the new name.
+    openBody = {
+      ...openBody,
+      prompts: openBody.prompts.map((p: any, i: number) =>
+        i === 0 ? { ...p, schedule_name: 'Friday Wingspan' } : p,
+      ),
+    };
+
+    await waitFor(() => expect(screen.getAllByTitle('Pause schedule').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByTitle('Pause schedule')[0]);
+
+    expect(await screen.findByText('From Friday Wingspan')).toBeInTheDocument();
+    expect(screen.queryByText('From Thursday Catan')).not.toBeInTheDocument();
+    expect(openCalls).toBe(2);
+  });
 });

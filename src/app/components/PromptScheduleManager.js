@@ -110,8 +110,21 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
 
   // Post-write cache invalidation replaces the old loadData() refetch — keeps
   // the settings list fresh after a direct-API mutation (A1/A4).
+  // It also invalidates the open-polls key: each automatic poll card says "From <schedule name>",
+  // and the backend derives that name from these settings on every read, see
+  // backend:Sonnet/routes/availabilityPrompt.js ("schedule_name is"). A rename, toggle or delete
+  // shows on the card only through the next open-polls read, and this invalidation causes it.
+  // ONE promise, so every awaiting call site keeps its ordering.
+  /* DECISION quick-261025-rl3 R4: the schedule manager invalidates promptKeys.openPolls beside
+     promptKeys.settings, chosen OVER one invalidation of the shared promptKeys.all prefix, which
+     would also refetch every unrelated prompt read on each toggle. Keys come from the factory,
+     never array literals (promptKeys.ts header). Dropping the openPolls half leaves the card on
+     the old schedule name; that is a decision, not a cleanup. */
   const invalidateSettings = () =>
-    queryClient.invalidateQueries({ queryKey: promptKeys.settings(groupId) });
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: promptKeys.settings(groupId) }),
+      queryClient.invalidateQueries({ queryKey: promptKeys.openPolls(groupId) }),
+    ]);
 
   // Handler: Create new schedule
   const handleCreate = () => {
