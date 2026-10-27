@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { promptAPI } from '../../lib/api';
+import { ApiError, promptAPI } from '../../lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
 import { collapseBlankLines } from '../../lib/collapseBlankLines';
 import {
@@ -195,6 +195,15 @@ export default function OpenPollsList({
           },
         })
       );
+      /* DECISION quick-261026-pi6 scoped check (SC-5): a 409 (D-CLOSE-04, the poll is already
+         closed or converted) is handled as an end as well as toasted, OVER a plain failure: the
+         poll has left the open list either way, so the card refreshes away and the host reloads
+         the dashboard, which otherwise kept a poll someone else ended showing as open. It matches
+         on the status, never the body text. Changing this is a decision, not a cleanup. */
+      if (err instanceof ApiError && err.status === 409) {
+        await invalidateOpenPolls();
+        if (typeof onPollClosed === 'function') onPollClosed(promptId);
+      }
     } finally {
       settle();
       closingPromptIdsRef.current.delete(promptId);

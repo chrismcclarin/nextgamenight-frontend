@@ -833,4 +833,36 @@ describe('OpenPollsList: ending a check-in tells the host (quick-261026-pi6-fix 
     await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
     expect(onPollClosed).not.toHaveBeenCalled();
   });
+  // Scoped check SC-5: a 409 means someone else already ended the poll, so it has left the open
+  // list as surely as a successful end. The card refreshes away and the host is told; the toast
+  // still says it was already closed.
+  it('OPC-3a. an end answered 409 refreshes the open list and calls onPollClosed once, and still toasts', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    vi.mocked(promptAPI.closePrompt).mockRejectedValueOnce(new ApiError('Poll is already closed', 'conflict', 409));
+    const onPollClosed = vi.fn();
+    const { client } = renderList(undefined, { onSelectPoll: vi.fn(), onPollClosed });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    await screen.findByText('Started by Ana');
+    endCheckIn(triggers()[0]);
+    await waitFor(() => expect(onPollClosed).toHaveBeenCalledTimes(1));
+    expect(onPollClosed).toHaveBeenCalledWith('pa');
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: promptKeys.openPolls('g1') });
+    expect(promptAPI.getOpenPrompts).toHaveBeenCalledTimes(2);
+    expect(toastSpies.error).toHaveBeenCalledTimes(1);
+    expect(toastSpies.error).toHaveBeenCalledWith('This check-in is already closed.');
+  });
+
+  it('OPC-3b. an end answered 500 neither refreshes the open list nor calls onPollClosed', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A] } as never);
+    vi.mocked(promptAPI.closePrompt).mockRejectedValueOnce(new ApiError('x', 'internal', 500));
+    const onPollClosed = vi.fn();
+    const { client } = renderList(undefined, { onSelectPoll: vi.fn(), onPollClosed });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    await screen.findByText('Started by Ana');
+    endCheckIn(triggers()[0]);
+    await waitFor(() => expect(toastSpies.error).toHaveBeenCalledTimes(1));
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(onPollClosed).not.toHaveBeenCalled();
+    expect(promptAPI.getOpenPrompts).toHaveBeenCalledTimes(1);
+  });
 });
