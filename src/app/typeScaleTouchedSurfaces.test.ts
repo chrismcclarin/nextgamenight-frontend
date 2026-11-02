@@ -2713,7 +2713,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // — the PRODUCTION surface this grid exists to imitate already renders both equivalents at
   // `text-xs font-bold`
   // (src/app/components/EventHeatmapBackground.js ("text-xs font-bold text-content-muted block leading-tight"),
-  // src/app/components/EventHeatmapBackground.js ("text-xs text-green-900 font-bold")), so 700 is what keeps the
+  // src/app/components/EventHeatmapBackground.js ("text-xs text-content-heatmap-count font-bold")), so 700 is what keeps the
   // simulation recognisable, which is this component's whole documented purpose. Both SIZES
   // stay at `text-xs`: 12 is the Caption rung and dense-grid cells are an enumerated Caption
   // role, so sweeping them to 14 would be a misread AND would widen fixed `w-12` columns.

@@ -412,8 +412,13 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
                        for it, so a mechanical read would send it to 400. Settled at 700 alongside
                        its two siblings, the strip aggregate (SchedulerWeekStrip.tsx) and the
                        scheduler badge (EventScheduler.tsx), so one cue does not end this phase at
-                       three different weights. */
-                    <span aria-hidden="true" className="text-xs text-green-900 font-bold">{count}</span>
+                       three different weights.
+                       AMENDED Phase 88.9-08 (M1b, owner pick, 88.9-PICKS-A-MINI.json, 2026-11-01):
+                       the count's INK moves from the green-900 class to text-content-heatmap-count
+                       (warm-900 in both themes; 7.89 on green-500, was 3.9984), chosen OVER
+                       text-content-primary (warm-50 in dark, 2.15). The weight-700 reasoning above
+                       stands; the siblings still share 700 and keep their own inks (A5a, M2a). */
+                    <span aria-hidden="true" className="text-xs text-content-heatmap-count font-bold">{count}</span>
                   )}
                 </ReadCell>
               );

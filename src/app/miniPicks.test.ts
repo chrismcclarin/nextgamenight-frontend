@@ -216,4 +216,68 @@ describe('88.9 RULING A mini-page picks', () => {
       expect(lAct < lHov, '[' + theme + '] press ' + act + ' is darker than hover ' + hov).toBe(true);
     }
   });
+
+  it('3. 88.9 M1 — the heatmap count reads the warm-900 count token on every green fill in BOTH themes', () => {
+    // Owner pick M1b (88.9-PICKS-A-MINI.json, 2026-11-01). SOURCE arm first, so a pre-fix red
+    // names the defect: the per-cell count span must carry the token class, not the green-900 one.
+    const heatmap = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'EventHeatmapBackground.js'), 'utf8'),
+    );
+    const oldClass = heatmap.split('text-green-900').length - 1;
+    const tokenClass = heatmap.split('text-content-heatmap-count').length - 1;
+    expect(
+      { oldClass, tokenClass },
+      'EventHeatmapBackground.js count ink: text-green-900 x' + oldClass + ', text-content-heatmap-count x' + tokenClass + ' (want 0 and 1)',
+    ).toEqual({ oldClass: 0, tokenClass: 1 });
+
+    // TOKEN arm: declared byte-equal in both theme blocks, bridged in @theme inline.
+    const lightDecl = declIn(blockText('light'), '--color-text-heatmap-count');
+    const darkDecl = declIn(blockText('dark'), '--color-text-heatmap-count');
+    expect(lightDecl, '[light] --color-text-heatmap-count is declared in the light :root block').not.toBeNull();
+    expect(darkDecl, '[dark] --color-text-heatmap-count is declared in the .dark block').not.toBeNull();
+    expect(darkDecl, 'the count ink is byte-equal in both theme blocks').toBe(lightDecl);
+    expect(themeInlineDecl('--color-content-heatmap-count'), '@theme inline key --color-content-heatmap-count').toBe(
+      'var(--color-text-heatmap-count)',
+    );
+
+    // The grounds are the five merged green fills, declared once in the plain @theme block, so the
+    // same ground in both themes (the count renders only when count > 0, never on the empty cell).
+    const GROUNDS = ['--color-green-100', '--color-green-200', '--color-green-300', '--color-green-400', '--color-green-500'];
+    let ran = 0;
+    for (const theme of THEMES) {
+      const ink = resolveHex(theme, '--color-text-heatmap-count');
+      expect(ink, '[' + theme + '] --color-text-heatmap-count resolves to a hex').not.toBeNull();
+      for (const ground of GROUNDS) {
+        const fill = themeBlockDecl(ground);
+        expect(fill, '[' + theme + '] ' + ground + ' is declared in the @theme block').not.toBeNull();
+        const r = ratio(ink as string, fill as string);
+        expect(r, '[' + theme + '] count ink ' + ink + ' on ' + ground + ' (' + fill + ') = ' + r.toFixed(4) + ':1').toBeGreaterThanOrEqual(4.5);
+        ran += 1;
+      }
+    }
+    expect(ran, 'anti-vacuity: 5 grounds x 2 themes measured').toBe(10);
+  });
+
+  it('4. 88.9 M2 — the scheduler badge over the committed selection reads white on the selection fill in BOTH themes', () => {
+    // Owner pick M2a (88.9-PICKS-A-MINI.json, 2026-11-01). TOKEN arm: CONFIRM-ONLY, both resolve
+    // today (white on --color-btn-primary-bg, 5.6617 in both themes). The SOURCE arm below is the
+    // discriminating one: the badge must switch to the button-text ink while isSelected.
+    for (const theme of THEMES) {
+      const ink = resolveHex(theme, '--color-btn-primary-text');
+      const fill = resolveHex(theme, '--color-btn-primary-bg');
+      expect(ink, '[' + theme + '] --color-btn-primary-text resolves to a hex').not.toBeNull();
+      expect(fill, '[' + theme + '] --color-btn-primary-bg resolves to a hex').not.toBeNull();
+      const r = ratio(ink as string, fill as string);
+      expect(r, '[' + theme + '] badge ink ' + ink + ' on the selection fill ' + fill + ' = ' + r.toFixed(4) + ':1').toBeGreaterThanOrEqual(4.5);
+    }
+
+    // SOURCE arm: one className ternary of two literal class strings (never an interpolated
+    // class, and never an inline colour, which would beat the class).
+    const scheduler = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'EventScheduler.tsx'), 'utf8'),
+    );
+    const fragment = "isSelected ? 'text-xs text-btn-primary-text' : 'text-xs text-content-primary'";
+    const hits = scheduler.split(fragment).length - 1;
+    expect(hits, 'EventScheduler.tsx badge className ternary occurrences (want exactly 1)').toBe(1);
+  });
 });

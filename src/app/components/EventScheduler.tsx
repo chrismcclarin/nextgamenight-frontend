@@ -1116,7 +1116,7 @@ export default function EventScheduler({
                   // spot. It folds 10px -> 12px, the D-01 floor, like the other nine sites in this
                   // cluster. MEASURED in Chromium at 375px before it landed: see the DECISION
                   // marker on this element's weight below.
-                  className="text-xs text-content-primary"
+                  className={isSelected ? 'text-xs text-btn-primary-text' : 'text-xs text-content-primary'}
                   style={{
                     position: 'absolute',
                     top: '2px',
@@ -1135,6 +1135,14 @@ export default function EventScheduler({
                     // element (on screen 13.99 / 7.64; ceiling 11.21 / 4.58), chosen OVER the
                     // status-success-text inline (3.56 dark on screen, 2.13 at the ceiling). The
                     // inline color is deleted because it would beat the class.]
+                    // AMENDED Phase 88.9-08 (M2a, owner pick, 88.9-PICKS-A-MINI.json, 2026-11-01):
+                    // the badge ink is now CONDITIONAL on the committed selection —
+                    // text-btn-primary-text (white, both themes; 5.66 on --color-btn-primary-bg)
+                    // while isSelected, because the badge then sits over the filled selection block
+                    // (the Phase 88.1-09 marker) where the A5a ink reads 3.17 light and the old
+                    // success ink 1.26 / 2.48; text-content-primary everywhere else. The condition
+                    // lives in the className, chosen OVER a conditional inline color, which would
+                    // beat the class again.
                     // DECISION Phase 88.6-26 (D-03 / W35): weight 700, chosen OVER 400, because the
                     // fill/ink pairing needs the weight. This badge is the mandatory NON-COLOUR cue
                     // for the cell's translucent wash — see the comment on the element above — and

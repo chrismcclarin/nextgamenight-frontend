@@ -375,6 +375,45 @@ describe('EventScheduler — every gridcell is a LEAF to assistive tech (88.6.1-
       })
     );
   });
+
+  // 88.9 RULING A pick M2a (88.9-PICKS-A-MINI.json, 2026-11-01): over the committed selection the
+  // badge sits on the filled block (--color-btn-primary-bg), where the A5a ink fails, so it takes
+  // the button-text ink there and only there. This reads the CLASS each state renders, not
+  // getComputedStyle: vitest runs jsdom and loads no stylesheet, so a Tailwind class never
+  // resolves to a colour here. The computed white is proven by the token arm of miniPicks test 4
+  // (src/app/miniPicks.test.ts ("4. 88.9 M2")); the rendered read is a plan 88.9-16 UAT hand-off.
+  it('88.9 M2a — the badge over the committed selection takes text-btn-primary-text; a badge off the selection keeps text-content-primary', () => {
+    const start = new Date(
+      asLocal.getFullYear(),
+      asLocal.getMonth(),
+      asLocal.getDate(),
+      asLocal.getHours(),
+      0,
+      0
+    );
+    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    render(
+      <EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} selectedSlot={{ start, end }} />
+    );
+
+    // Anti-vacuity: the keyed :00 cell holds the selection block and a badge showing 3; the :30
+    // half cell holds a badge showing 3 and no selection block.
+    const keyed = screen.getByRole('gridcell', { name: EXPECTED_CELL_LABEL });
+    const half = screen.getByRole('gridcell', { name: EXPECTED_HALF_HOUR_LABEL });
+    expect(keyed.querySelector('[data-testid="scheduler-selected-block"]'), 'keyed cell selection block').not.toBeNull();
+    expect(half.querySelector('[data-testid="scheduler-selected-block"]'), ':30 cell selection block').toBeNull();
+    const keyedBadge = keyed.querySelector('span');
+    const halfBadge = half.querySelector('span');
+    expect(keyedBadge?.textContent, 'keyed badge text').toBe('3');
+    expect(halfBadge?.textContent, ':30 badge text').toBe('3');
+
+    const keyedClasses = Array.from(keyedBadge?.classList ?? []);
+    const halfClasses = Array.from(halfBadge?.classList ?? []);
+    expect(keyedClasses, 'badge over the committed selection').toContain('text-btn-primary-text');
+    expect(keyedClasses, 'badge over the committed selection').not.toContain('text-content-primary');
+    expect(halfClasses, 'badge off the selection').toContain('text-content-primary');
+    expect(halfClasses, 'badge off the selection').not.toContain('text-btn-primary-text');
+  });
 });
 
 describe('EventScheduler — scrollToTime, legend and the partial-data note', () => {
