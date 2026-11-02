@@ -147,7 +147,11 @@ function Header(){
                 Rejected — a `dark:` variant fix. Useless here: the ground is dark in BOTH
                 themes, so there is no light/dark fork to hang the fix on.
 
-                Changing either of these is a decision, not a cleanup. */}
+                Changing either of these is a decision, not a cleanup.
+
+                AMENDED Phase 88.9-05 (owner pick A3d, 2026-10-31): the amber scope ends at the bell panel — its
+                light card section re-scopes --ring to the page ring
+                (src/app/components/NotificationBell.js ("DECISION Phase 88.9-05")); the chrome itself keeps amber-400. */}
             <div className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)]">
                 {/* DECISION Phase 88.6.1-45 (AC-18, HEADER-NAV-LANDMARK-RULING, copy row H5):
                     CHOSEN — this inner container is the ONE nav landmark, named by
@@ -310,6 +314,10 @@ function Header(){
                         (inert — `--ring` resolves on `:root`; see the container's marker), and
                         NOT a `dark:` variant (the ground is dark in both themes). That is a
                         decision, not a cleanup.
+
+                        AMENDED Phase 88.9-05 (owner pick A3d, 2026-10-31): the amber scope ends at the bell panel — its
+                        light card section re-scopes --ring to the page ring
+                        (src/app/components/NotificationBell.js ("DECISION Phase 88.9-05")); the chrome itself keeps amber-400.
 
                         DECISION Phase 88.3 (owner ruling R3-D, 2026-08-25): `inert` while the
                         menu is CLOSED — chosen OVER a conditional mount (Rejected). The comment directly

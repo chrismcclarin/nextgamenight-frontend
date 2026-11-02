@@ -730,14 +730,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
           The idref is safe because the heading's children are a fixed literal
           (src/components/ui/Heading.tsx ("It is NOT a safe")).
           Adding a role, or naming the panel with its own label, is a decision, not a cleanup. */}
+      {/* DECISION Phase 88.9-05 (owner pick A3d, 88.9-PICKS-A.json, 2026-10-31): the panel re-scopes
+          --ring back to the PAGE ring (purple-700 light, amber-400 dark), chosen OVER keeping the
+          header's amber-400: the panel is the light card nested inside the dark header chrome, and
+          amber-400 on its halo measured 1.67:1 in both themes. The halo is the card colour from the
+          Button primitive. It sets --ring, never --color-focus-ring, which is inert here
+          (src/app/Header.js ("Rejected — overriding")). Removing it is a decision, not a cleanup. */}
       {isOpen && (
         <section
           id={panelId}
           aria-labelledby={headingId}
           className={
             variant === 'row'
-              ? "bg-surface-card border-t border-line-header"
-              : "fixed right-2 left-2 sm:left-auto sm:absolute sm:right-0 mt-2 sm:w-80 bg-surface-card rounded-lg shadow-theme-lg border border-line z-50"
+              ? "bg-surface-card border-t border-line-header [--ring:var(--color-focus-ring)]"
+              : "fixed right-2 left-2 sm:left-auto sm:absolute sm:right-0 mt-2 sm:w-80 bg-surface-card rounded-lg shadow-theme-lg border border-line z-50 [--ring:var(--color-focus-ring)]"
           }
         >
           {/* Header */}
