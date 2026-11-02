@@ -280,4 +280,40 @@ describe('88.9 RULING A mini-page picks', () => {
     const hits = scheduler.split(fragment).length - 1;
     expect(hits, 'EventScheduler.tsx badge className ternary occurrences (want exactly 1)').toBe(1);
   });
+
+  it('5. 88.9 M5 — the current timezone option carries an aria-hidden check glyph and the word current in the option accessible name (M5a)', () => {
+    // Owner pick M5a (88.9-PICKS-A-MINI.json, 2026-11-01). SOURCE arm only: the glyph carries no
+    // ink class and inherits the aria-current span's ink, so M5a adds no contrast pair; the
+    // rendered ink at rest and highlighted is read by plan 88.9-03's Gate C A6e + O1b pins.
+    const page = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'userProfile', 'page.js'), 'utf8'),
+    );
+    const combobox = withoutComments(
+      fs.readFileSync(path.join(__dirname, '..', 'components', 'ui', 'Combobox.tsx'), 'utf8'),
+    );
+    const count = (src: string, needle: string): number => src.split(needle).length - 1;
+
+    // page.js writes the glyph as its JS escape (ASCII-only source), so the needle holds the
+    // six characters backslash, u, 2, 7, 1, 3; the name tail ends at the closing template
+    // quote, written here as an escape so this file stays free of that character.
+    const glyph = '<span aria-hidden="true" className="mr-1">{' + "'\\u2713'" + '}</span>';
+    const nameProp = 'ariaLabel: tz.value === timezone';
+    const nameTail = ', current\u0060';
+    expect(count(page, glyph), 'page.js aria-hidden check glyph span occurrences (want exactly 1)').toBe(1);
+    expect(count(page, nameProp), 'page.js ariaLabel property on the current zone (want exactly 1)').toBe(1);
+    expect(count(page, nameTail), 'page.js accessible-name tail ending in current (want exactly 1)').toBe(1);
+    expect(count(combobox, 'aria-label={item.ariaLabel}'), 'Combobox.tsx option-row aria-label wiring (want exactly 1)').toBe(1);
+    expect(count(combobox, 'ariaLabel?: string;'), 'Combobox.tsx ComboboxItem.ariaLabel field (want exactly 1)').toBe(1);
+
+    // The M5 prohibitions, read inside the timezoneItems block: never an sr-only span in the
+    // label, never visible (current) text after the name (M5b, offered, not picked).
+    const start = page.indexOf('const timezoneItems = useMemo');
+    expect(start, 'anti-vacuity: the timezoneItems block opens in page.js').toBeGreaterThan(-1);
+    const end = page.indexOf('onSelect: () => handleTimezoneSelect(tz.value),', start);
+    expect(end, 'anti-vacuity: the timezoneItems block reaches its onSelect').toBeGreaterThan(start);
+    const block = page.slice(start, end);
+    expect(count(block, glyph), 'anti-vacuity: the glyph span sits inside the timezoneItems block').toBe(1);
+    expect(count(block, 'sr-only'), 'timezoneItems block sr-only occurrences (want 0)').toBe(0);
+    expect(count(block, '(current)'), 'timezoneItems block visible (current) text occurrences (want 0)').toBe(0);
+  });
 });

@@ -652,15 +652,30 @@ function Profile(){
                 // highlighted row (3.99 light), over purple-700 (O1a, 1.45 dark, unpickable) and over the
                 // primary ink (O1c, not taken). Changing either ink or the variant is a decision, not a
                 // cleanup.
+                //
+                // M5a (owner pick, RULING A mini page, 88.9-PICKS-A-MINI.json, 2026-11-01): the current
+                // zone also leads with a check glyph (U+2713), aria-hidden, in its span's own ink (rest
+                // 6.00 / 6.75, highlighted 6.96 / 7.07), and the word current joins the OPTION's own
+                // accessible name through the item's ariaLabel, which the Combobox sets on the role=option
+                // row. Chosen OVER an sr-only span inside the label and OVER an aria-label on a container
+                // (both fail iOS VoiceOver: the name must sit on the focusable leaf, which under this
+                // list's virtual focus is the option row; measured 2026-10-20), and OVER visible (current)
+                // text after the name (M5b, offered, not picked). The glyph is hidden because the name
+                // already says current; exposing both would read it twice. The name starts with the visible
+                // zone text (WCAG 2.5.3). Removing the glyph or the name is a decision, not a cleanup.
                 label: (
                     <span
                         aria-current={tz.value === timezone ? 'true' : undefined}
                         className={tz.value === timezone ? 'text-content-link in-aria-selected:text-content-secondary' : undefined}
                     >
+                        {tz.value === timezone && <span aria-hidden="true" className="mr-1">{'\u2713'}</span>}
                         {tz.value.replace(/_/g, ' ')}
                         {tz.abbr && <span className="text-content-secondary ml-1">({tz.abbr}, {tz.offset})</span>}
                     </span>
                 ),
+                ariaLabel: tz.value === timezone
+                    ? `${tz.value.replace(/_/g, ' ')}${tz.abbr ? ` (${tz.abbr}, ${tz.offset})` : ''}, current`
+                    : undefined,
                 onSelect: () => handleTimezoneSelect(tz.value),
             };
         });

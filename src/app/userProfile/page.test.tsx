@@ -2121,15 +2121,36 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
   // weight was carrying INFORMATION, and it gained a programmatic cue in the same edit. The
   // timezone picker's current-row highlight is the second; it is pinned here so the sweep cannot
   // net to a colour-only "this is your timezone".
-  it('exposes the current timezone programmatically, not by colour alone', async () => {
+  // REPLACED Phase 88.9-09 (M5a, owner pick, RULING A mini page): the test this one replaces
+  // asserted only the aria-current attribute, which sits on a presentational child of the
+  // role=option row, so nothing reached the option's own name (plan 88.9-16's false-coverage
+  // record). M5a pins the option's accessible name and the aria-hidden check glyph, and carries
+  // the old test's three span assertions forward so the O1b at-rest ink stays pinned.
+  it('M5a (88.9): the current timezone option says current in its accessible name and leads with an aria-hidden check glyph, and no other option says current', async () => {
     renderProfile();
     const tz = await screen.findByRole('combobox', { name: 'Timezone' });
     fireEvent.focus(tz);
     await waitFor(() => expect(tz).toHaveAttribute('aria-expanded', 'true'));
-    const current = await screen.findByText('America/New York');
+    // Narrow the list to a handful of rows so the role-name queries stay cheap; New York stays in.
+    fireEvent.change(tz, { target: { value: 'America/N' } });
+    await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(1));
+    // Anti-vacuity: more than one option is rendered, so "exactly one says current" discriminates.
+    const options = await screen.findAllByRole('option');
+    expect(options.length).toBeGreaterThan(1);
+    const named = screen.getAllByRole('option', { name: /\bcurrent\b/ });
+    expect(named).toHaveLength(1);
+    const option = named[0];
+    // WCAG 2.5.3 label-in-name: the name starts with the visible zone text.
+    expect(option).toHaveAccessibleName(/^America\/New York\b.*, current$/);
+    // getByText matches own text nodes, so the glyph's child span leaves this lookup intact.
+    const current = within(option).getByText('America/New York');
     expect(current).toHaveAttribute('aria-current', 'true');
     expect(current.className).not.toMatch(/\bfont-medium\b/);
     expect(current.className).toMatch(/\btext-content-link\b/);
+    const glyph = current.firstElementChild;
+    expect(glyph).not.toBeNull();
+    expect(glyph).toHaveAttribute('aria-hidden', 'true');
+    expect(glyph?.textContent).toBe('\u2713');
   });
 });
 

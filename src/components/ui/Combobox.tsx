@@ -78,6 +78,17 @@ export interface ComboboxItem {
   /** Rendered option content. */
   label: React.ReactNode;
   /**
+   * The option's accessible name, set as aria-label on the role=option row itself (the
+   * focusable leaf under virtual focus). Omit it and the name comes from label. A consumer that
+   * puts an aria-hidden mark in label uses it so the meaning is still spoken; the name must begin
+   * with the label's visible text (WCAG 2.5.3).
+   * DECISION Phase 88.9-09 (M5a): the name sits on the option row, chosen OVER an sr-only span
+   * inside the label and OVER an aria-label on a container — both fail iOS VoiceOver (the
+   * labelled-focusable-leaf rule, measured on the owner's iPhone 2026-10-20). Moving it is a
+   * decision, not a cleanup.
+   */
+  ariaLabel?: string;
+  /**
    * Optional section heading. Consecutive items sharing a `group` render under one
    * `role="group"`; arrow keys still traverse the whole list, across sections.
    */
@@ -351,6 +362,7 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
           activeIndex === index && !item.disabled && 'forced-colors:outline forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]',
           item.disabled && 'cursor-not-allowed opacity-50'
         )}
+        aria-label={item.ariaLabel}
         {...getItemProps({
           active: activeIndex === index,
           selected: activeIndex === index,
