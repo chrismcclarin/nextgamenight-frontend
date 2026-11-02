@@ -1410,7 +1410,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Time Selection */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            {/* DECISION Phase 88.9-10 (A9a geometry, 2026-11-02): with the Switch link at min-h-11 this row is 44px tall; -mt-3 and no mb-2 give the 24px back to the scheduler below (measured +4px net at 375x667, e2e/event-scheduler-touch.spec.ts cases 3 and 8 need >= 3 corridor cells), chosen OVER negative margins on the link itself, whose lower 12px would sit on the scheduler's week toolbar (a tap on the top of "Next" would flip to manual entry). Removing -mt-3 or re-adding mb-2 shrinks the drag corridor. */}
+            <div className={!hideVisualCalendar ? 'flex items-center justify-between -mt-3' : 'flex items-center justify-between mb-2'}>
               {/* 88-33 Task 8 (census class C): a SPAN, not a <label> — this titles the
                   whole date/time SECTION (mode toggle + calendar or manual fields), so
                   there is no single control to point htmlFor at; the manual inputs below
