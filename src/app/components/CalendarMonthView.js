@@ -323,7 +323,9 @@ export default function CalendarMonthView({
 
                  AMENDED Phase 88.9-07: the adjacent-month page ground is a ternary ARM after the
                  today and full-variant past arms, honouring this fence; no painting token is
-                 stacked beside the chain. */
+                 stacked beside the chain.
+
+                 AMENDED Phase 88.9-07 (#204): cursor-pointer joins group as a non-painting token allowed outside the arms, and only for the today and full-variant past cases (clickable cells whose arm carries no pointer); bg-*, border-*, hover:* and transition-colors stay in their arms, fenced as above. */
               /* DECISION Phase 88.9-07 (owner picks A4b + O4b, 88.9-PICKS-A.json / 88.9-PICKS-O.json,
                  2026-10-31): adjacent-month cells take the page ground plus the muted day number
                  (5.04 light / 7.32 dark) as the not-this-month cue, chosen OVER the whole-cell
@@ -345,7 +347,10 @@ export default function CalendarMonthView({
                  current-month cells (it was 0.24 through the old cell dim, 0.40 x 0.60); disclosed
                  to the owner through the plan 88.9-16 UAT. Changing this is a decision, not a
                  cleanup. */
+              /* #204 (register, routed to the plan that next touches this file, 88.9-07): the today and full-variant past arms precede the clickable arm, so a clickable today or past cell never got the pointer; added here, no look change. */
               className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+                cellClickable && (isCurrentDay || (variant === 'full' && isPastDate)) ? 'cursor-pointer ' : ''
+              }${
                 !date ? 'bg-surface-page' :
                 isCurrentDay ? 'bg-surface-muted border-line-accent' :
                 variant === 'full' && isPastDate ? 'bg-surface-page' :
