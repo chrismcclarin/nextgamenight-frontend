@@ -714,6 +714,78 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: 'the removed-member notice Dismiss, width (88.9 A8b; measured 47px wide)',
     },
+    // 88.9 A9a: create-event's mode toggle (Switch to Manual Entry / Switch to Visual Calendar), a text link under 44 tall at 375. Halo card (O3a).
+    createEventSwitchHeight: {
+      anchor: 'onClick={() => setUseVisualCalendar(!useVisualCalendar)}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "create-event's Switch to Manual Entry / Visual Calendar link, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the week strip's Previous week arrow, under 44 tall and 24px wide at 375. Halo page (O3a).
+    createEventPrevWeekHeight: {
+      anchor: 'onClick={handlePrevWeek}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "create-event's Previous week arrow, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the Previous week arrow's width, the owner's square 44 (24 -> 44 wide).
+    createEventPrevWeekWidth: {
+      anchor: 'onClick={handlePrevWeek}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "create-event's Previous week arrow, width (88.9 A9a; measured 24px wide)",
+    },
+    // 88.9 A9a: Jump to current week (the Today chip), under 44 tall; 50 wide already, so no width row.
+    createEventJumpWeekHeight: {
+      anchor: 'onClick={handleToday}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "create-event's Jump to current week button, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the week strip's Next week arrow, the Previous week arrow's twin. Halo page (O3a).
+    createEventNextWeekHeight: {
+      anchor: 'onClick={handleNextWeek}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "create-event's Next week arrow, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the Next week arrow's width, the owner's square 44 (24 -> 44 wide).
+    createEventNextWeekWidth: {
+      anchor: 'onClick={handleNextWeek}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "create-event's Next week arrow, width (88.9 A9a; measured 24px wide)",
+    },
+    // 88.9 A9a: the footer's Report bug text button, under 44 tall. No ring today (X1, a round-2 register row), so no halo.
+    footerReportBugHeight: {
+      anchor: 'onClick={() => setShowFeedbackForm(true)}',
+      expectedFile: 'app/components/Footer.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the footer's Report bug button, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the month grid's Go to Today text link, under 44 tall. Keeps ring-offset-2 (the 88.3-17 marker); halo card (O3a).
+    goToTodayHeight: {
+      anchor: 'onClick={onGoToday}',
+      expectedFile: 'app/components/CalendarMonthView.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the month grid's Go to Today link, height (88.9 A9a)",
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */
