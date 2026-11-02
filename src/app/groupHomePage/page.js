@@ -1699,13 +1699,15 @@ function GroupHomePage(){
 
                 REJECTED: migrating these onto `Button`. They are tab chrome, not buttons — `.btn`
                 would impose its own padding, its 44px floor and the elevation pair on a flush tab
-                strip, which is a look change (P6). They wear no `.btn` today and no census counts
+                strip, which is a look change (P6). AMENDED Phase 88.9-10 (owner picks A7a + O3a):
+                the 44px floor arrives by min-h-11 min-w-11 on these buttons; migrating them onto
+                Button stays REJECTED. They wear no `.btn` today and no census counts
                 them. */}
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
                     aria-current={activeTab === 'home' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
                         activeTab === 'home'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'
@@ -1716,7 +1718,7 @@ function GroupHomePage(){
                 <button
                     onClick={() => setActiveTab('library')}
                     aria-current={activeTab === 'library' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
                         activeTab === 'library'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'

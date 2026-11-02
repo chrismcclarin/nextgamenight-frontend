@@ -1168,7 +1168,11 @@ function FriendsPage() {
                                Req 7 asks for a ring drawn clear of text. Chosen OVER inset plus
                                padding too: strip geometry is Phase 88.9's. The browser outline
                                this replaces is outset as well, so nothing moves at rest. Changing
-                               this is a decision, not a cleanup. */
+                               this is a decision, not a cleanup.
+                               AMENDED Phase 88.9-10 (owner picks A7a + O3a, 2026-10-31): the strip
+                               geometry routed here is ruled — every tab is at least 44 x 44
+                               (min-h-11 and min-w-11, unprefixed); the outset ring stays and
+                               its halo takes the page ground (owner option (a)). */
                             <button
                                 key={key}
                                 ref={tabRefs[key]}
@@ -1181,7 +1185,7 @@ function FriendsPage() {
                                     setActiveTab(key);
                                 }}
                                 aria-current={activeTab === key ? 'true' : undefined}
-                                className={`pb-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                                className={`pb-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11 min-w-11 ${
                                     activeTab === key
                                         ? 'border-b-2 border-btn-primary text-btn-primary'
                                         : 'text-content-secondary hover:text-content-primary'
