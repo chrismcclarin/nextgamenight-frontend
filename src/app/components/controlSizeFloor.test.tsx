@@ -254,6 +254,8 @@ describe('Req 1 (DES-01): the 16px iOS focus-zoom floor, repo-wide', () => {
 /** The WCAG 2.2 2.5.8 minimum, and the project's own phone floor, as pixels. */
 const MIN_TARGET_24 = 24;
 const MIN_TARGET_44 = 44;
+// 88.9 A8b: the owner's pick for the removed-member Dismiss is a 48 box, not the 44 floor (A8a).
+const MIN_TARGET_48 = 48;
 
 /**
  * Resolve a `min-h-*` / `h-*` / `min-w-*` / `w-*` utility to pixels, or `null` when it
@@ -693,6 +695,24 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       floor: MIN_TARGET_44,
       dimensions: ['min-w', 'w'],
       label: "the group page's Library tab, width (88.9 A7a)",
+    },
+    // 88.9 A8b: the removed-member notice's Dismiss, measured 47px wide x 16px tall at 375 (dark).
+    removedNoticeDismissHeight: {
+      anchor: 'onClick={dismissRemovedNotice}',
+      expectedFile: 'app/userHome/UserHomePage.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_48,
+      dimensions: ['min-h', 'h'],
+      label: 'the removed-member notice Dismiss, height (88.9 A8b; measured 16px tall)',
+    },
+    // 88.9 A8b: the Dismiss's width, pinned with its height (the owner picked a 48 x 48 box).
+    removedNoticeDismissWidth: {
+      anchor: 'onClick={dismissRemovedNotice}',
+      expectedFile: 'app/userHome/UserHomePage.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_48,
+      dimensions: ['min-w', 'w'],
+      label: 'the removed-member notice Dismiss, width (88.9 A8b; measured 47px wide)',
     },
   };
 
