@@ -333,7 +333,7 @@ function lStarOf(hex: string, what: string): number {
  *
  * Assertions here compare against FLOORS, never against a hex, so a future re-tint that
  * still clears its floor does not churn this file (e2e/tailwind-v4-styles.spec.ts ("every assertion pins WHICH PROPERTY is")).
- * The two deliberate exceptions are marked at their sites.
+ * The three deliberate exceptions are marked at their sites.
  */
 function expectRatio(theme: Theme, ink: string, ground: string, floor: number, req: string): number {
   const inkHex = resolve(theme, ink);
@@ -825,13 +825,19 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
   });
 
-  it('24. Req 6 / OI-4 — every dark status BORDER is byte-identical to its dark hue', () => {
+  it('24. Req 6 / OI-4 — no dark status BORDER moves: success and warning equal their dark hue, the error border stays its literal #ef4444 (88.9 A1b)', () => {
     // The structural reason OI-1 Option A was rejected: pointing the theme keys straight
     // at the `-text` tokens would have dragged the dark error border from `#ef4444` to
     // `#fca5a5`. Dark does not move.
     for (const hue of STATUS_HUES) {
       const border = resolve('dark', `--color-status-${hue}-border`);
       const hueValue = resolve('dark', hue === 'success' ? '--color-success' : hue === 'error' ? '--color-error' : '--color-warning');
+      if (hue === 'error') {
+        // Deliberate hex exception (the third): 88.9 A1b moved the dark error HUE to #b91c1c, so
+        // the error border is pinned to its own literal instead of the hue: the border must not move.
+        expect(border, `88.9 A1b — dark --color-status-error-border (${border}) must stay its literal #ef4444: the dark error hue moved to ${hueValue}, the border must not`).toBe('#ef4444');
+        continue;
+      }
       expect(border, `Req 6 / OI-4 — dark --color-status-${hue}-border (${border}) must stay byte-identical to the dark hue (${hueValue})`).toBe(hueValue);
     }
   });
@@ -1765,6 +1771,29 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(ghostLine, '88.8 HIGH-A — LOCATOR failure: no `ghost: \'…\'` variant string found in Button.tsx').not.toBeNull();
     expect(ghostLine![1], '88.8 HIGH-A — the ghost variant must carry `aria-disabled:text-content-muted`').toContain('aria-disabled:text-content-muted');
     expect(ghostLine![1], '88.8 HIGH-A — the ghost variant must NOT carry an `aria-disabled:opacity-*` utility').not.toMatch(/aria-disabled:opacity/);
+  });
+
+  it('54. 88.9 A1b — the .btn-danger white label clears 4.5:1 on --color-error in BOTH themes', () => {
+    // The .btn-danger rule paints a literal white label over var(--color-error), so the pair is
+    // read from the rule itself (comments stripped) and the ink is the literal #ffffff. Shipped
+    // dark #ef4444 measured 3.7631:1; the owner pick A1b (88.9-PICKS-A.json) moves it to #b91c1c.
+    const hits = [...MASKED.matchAll(/\.btn-danger[ \t]*\{/g)];
+    expect(
+      hits.length,
+      `88.9 A1b — expected exactly ONE .btn-danger { rule in globals.css (comments stripped), found ${hits.length}`,
+    ).toBe(1);
+    const start = hits[0].index! + hits[0][0].length;
+    const body = MASKED.slice(start, MASKED.indexOf('}', start));
+    expect(body, '88.9 A1b — the .btn-danger fill must read var(--color-error)').toMatch(/background-color:\s*var\(--color-error\)\s*;/);
+    expect(body, '88.9 A1b — the .btn-danger label must be white').toMatch(/(^|[;\s])color:\s*white\s*;/);
+    for (const theme of ['light', 'dark'] as const) {
+      const ground = resolve(theme, '--color-error');
+      const value = ratioHex('#ffffff', ground, `88.9 A1b [${theme}] #ffffff on --color-error`);
+      expect(
+        value,
+        `88.9 A1b — [${theme}] #ffffff on --color-error (${ground}) measures ${value.toFixed(4)}:1, floor 4.50:1`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
 
