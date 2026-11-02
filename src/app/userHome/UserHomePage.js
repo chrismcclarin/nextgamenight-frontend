@@ -637,10 +637,13 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 <StatusRegion srOnlyWhenEmpty data-testid="removed-from-group-status">
                     {removedNoticeShown ? REMOVED_FROM_GROUP_TEXT : null}
                 </StatusRegion>
+                {/* DECISION Phase 88.9-10 (owner pick A8b, 88.9-PICKS-A.json, 2026-10-31): a 48 x 48 minimum
+                    box with negative margins so the 66px notice does not grow, chosen OVER the 44 box (A8a)
+                    and OVER the shipped 16px-tall text button. The negative margins are load-bearing. */}
                 {removedNoticeShown && (
                     <button
                         onClick={dismissRemovedNotice}
-                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0"
+                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3"
                         aria-label="Dismiss"
                     >
                         Dismiss
