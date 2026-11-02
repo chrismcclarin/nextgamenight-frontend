@@ -1064,7 +1064,7 @@ describe('createEvent — required section titles are announced as required (88.
     expect(stars).toHaveLength(2);
     for (const star of stars) {
       expect(star).toHaveAttribute('aria-hidden', 'true');
-      expect(star).toHaveClass('text-content-status-error');
+      expect(star).toHaveClass('text-content-accent');
     }
     expect(within(dialog).queryAllByText('(required)')).toHaveLength(0);
   });
@@ -1079,6 +1079,7 @@ describe('createEvent — required section titles are announced as required (88.
     expect(stars).toHaveLength(4);
     for (const star of stars) {
       expect(star).toHaveAttribute('aria-hidden', 'true');
+      expect(star).toHaveClass('text-content-accent');
     }
     expect(within(dialog).queryAllByText('(required)')).toHaveLength(0);
     requiredTitleHeadings(dialog);
