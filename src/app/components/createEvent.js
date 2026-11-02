@@ -1476,15 +1476,21 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   `aria-required` (unsupported on that role); the `Heading` primitive (it renders
                   at 700 weight — a look change that needs the owner and a mockup). The class
                   string and the star are untouched, so it looks the same. Removing the heading
-                  role, the label or the aria-hidden wrapper is a decision, not a cleanup. */}
+                  role, the label or the aria-hidden wrapper is a decision, not a cleanup.
+
+                  ——— AMENDED Phase 88.9-06 (owner pick O2a, 2026-10-31), reasoning above KEPT: the
+                  "COLOUR is not part of this decision" note still holds, and the ink moved again —
+                  from the error-ink token to the accent text token (text-content-accent) at all four
+                  stars, one required-mark idiom with the Report Bug form. Exposure is unchanged. */}
               <span
                 role="heading"
                 aria-level={3}
                 aria-label={`${DATE_TIME_SECTION_TITLE} ${REQUIRED_SR_LABEL}`}
                 className="block text-sm font-normal text-content-primary"
               >
+                {/* DECISION Phase 88.9-06 (owner pick O2a): the accent required mark, chosen OVER the error ink it wore before, one idiom with the Report Bug form — see src/app/components/FeedbackForm.js ("DECISION Phase 88.9-06"). */}
                 <span aria-hidden="true">
-                  {DATE_TIME_SECTION_TITLE} <span aria-hidden="true" className="text-content-status-error">*</span>
+                  {DATE_TIME_SECTION_TITLE} <span aria-hidden="true" className="text-content-accent">*</span>
                 </span>
               </span>
               {!hideVisualCalendar && (
@@ -1623,7 +1629,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 {/* Start Date */}
                 <div>
                   <label htmlFor="start_date" className="block text-sm font-normal mb-1 text-content-primary">
-                    Start Date & Time {!editingEvent && <span aria-hidden="true" className="text-content-status-error">*</span>}
+                    Start Date & Time {!editingEvent && <span aria-hidden="true" className="text-content-accent">*</span>}
                   </label>
                   {/* Phase 88.6-44 (T-88.6-124): `name` added on this and the three controls
                       below (duration, RSVP deadline, comments) — the house rule requires id +
@@ -1644,7 +1650,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 {/* Duration */}
                 <div>
                   <label htmlFor="duration_minutes" className="block text-sm font-normal mb-1 text-content-primary">
-                    Duration (minutes) {!editingEvent && <span aria-hidden="true" className="text-content-status-error">*</span>}
+                    Duration (minutes) {!editingEvent && <span aria-hidden="true" className="text-content-accent">*</span>}
                   </label>
                   {(() => {
                     // Phase 66-03 CREVT-02 polish: inline error + red border when
@@ -1756,9 +1762,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   that role); the `Heading` primitive (700 weight — a look change, owner + mockup).
                   The id, the class string and the star are untouched, so it looks the same.
                   Removing the heading role, the label or the aria-hidden wrapper is a decision,
-                  not a cleanup. */}
+                  not a cleanup.
+
+                  ——— AMENDED Phase 88.9-06 (owner pick O2a, 2026-10-31): this star now wears the
+                  accent text token (text-content-accent), not the error ink; the exposure reasoning
+                  above is unchanged. */}
               <span aria-hidden="true">
-                {PARTICIPANTS_SECTION_TITLE} <span aria-hidden="true" className="text-content-status-error">*</span>
+                {PARTICIPANTS_SECTION_TITLE} <span aria-hidden="true" className="text-content-accent">*</span>
               </span>
             </span>
             <div
