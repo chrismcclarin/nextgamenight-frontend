@@ -88,7 +88,7 @@ import { cn } from '@/lib/cn';
  * `shadow-theme-lg` still shrank to `md` on hover.
  */
 const BUTTON_CVA_BASE =
-  'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11';
+  'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11';
 
 /**
  * SOURCE (RE-SEEDED — see below): the `cva` VARIANT map at src/components/ui/Button.tsx ("primary: 'btn-primary',").
@@ -171,7 +171,7 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
     expect(
       cn(BUTTON_CVA_BASE, 'shadow-theme-lg enabled-hover:shadow-theme-lg')
     ).toBe(
-      'btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11 shadow-theme-lg enabled-hover:shadow-theme-lg'
+      'btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11 shadow-theme-lg enabled-hover:shadow-theme-lg'
     );
   });
 
@@ -194,7 +194,7 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
     expect(
       cn(BUTTON_CVA_BASE, BUTTON_VARIANT_CLASS.primary, 'btn-secondary w-full')
     ).toBe(
-      'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11 btn-primary btn-secondary w-full'
+      'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11 btn-primary btn-secondary w-full'
     );
   });
 

@@ -110,7 +110,14 @@ const buttonVariants = cva(
        — both-present and both-absent each red — over a CLOSED, ENUMERATED list of ten
        `.btn`-family ring holders on comment-stripped source. Deleting this line, or adding
        the global rule beside it, is a decision, not a cleanup. */
-    'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
+    'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+    /* AMENDED Phase 88.9-05, amending the A-2 note above this ring string (owner picks A3d + A10c,
+       88.9-PICKS-A.json, 2026-10-31; register "House offset ring in dark mode sits on Tailwind's
+       default white halo"): the halo colour joins this one ring string as
+       focus-visible:ring-offset-surface-card, chosen OVER a global base-layer default (a second
+       mechanism ARM A rejects) and OVER the probe-convention amendment (option (b), not picked).
+       A call site on another ground overrides it through cn() with the same focus-visible:
+       prefix; an unprefixed override silently loses. */
     /* DECISION Phase 88.6-06 (D10): the hover elevation above, and the ghost
        variant's hover wash below, are expressed through the `enabled-hover`
        custom variant (src/app/globals.css ("@custom-variant enabled-hover {")) — chosen OVER the bare `hover:`
