@@ -581,7 +581,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
   );
 
   const countBadge = totalCount > 0 ? (
-    <span aria-hidden="true" className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
+    <span aria-hidden="true" className="bg-badge-count text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
       {totalCount > 9 ? '9+' : totalCount}
     </span>
   ) : null;
@@ -692,7 +692,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
 
           {/* Red badge with count — absolute-positioned over the bell */}
           {totalCount > 0 && (
-            <span aria-hidden="true" className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+            <span aria-hidden="true" className="absolute -top-1 -right-1 bg-badge-count text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
               {totalCount > 9 ? '9+' : totalCount}
             </span>
           )}

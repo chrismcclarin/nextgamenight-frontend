@@ -261,6 +261,7 @@ function Header(){
 
                             {/* MOB-08: unread-notification dot.
                                 - bg-red-500 matches NotificationBell badge token verbatim.
+                                  AMENDED Phase 88.9-01 (M3b): no longer true — the NotificationBell count badges moved to the bg-badge-count token (#b91c1c, they carry a digit); this decorative dot keeps red-500 on purpose (no text, so no text-contrast floor applies).
                                 - rounded-full matches the bell badge shape language.
                                 - h-2.5 w-2.5 (~10px) reads as a dot, not a numeric badge.
                                 - absolute top-1.5 right-1.5 positions inside the button's p-2.5
