@@ -275,4 +275,47 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
     expect(cell.classList.contains('bg-surface-page')).toBe(true);
     expect(cell.classList.contains('hover:bg-surface-hover')).toBe(false);
   });
+
+  // #204 (register, 88.9-07): the today arm and the full-variant past arm precede the clickable
+  // arm, so a clickable today or past cell never got the pointer. These four share this
+  // describe's pinned clock and renderAt; (b) and (d) move the clock to mid-month so a
+  // current-month day can be past. (a) and (b) are red before the pointer interpolation,
+  // (c) and (d) green throughout (cellClickable is false there, so no pointer either way).
+  const cellOn = (days: { date: Date; isCurrentMonth: boolean }[], cells: HTMLElement[], month: number, date: number) => {
+    const i = days.findIndex((c) => c.isCurrentMonth && c.date.getMonth() === month && c.date.getDate() === date);
+    expect(i).toBeGreaterThan(-1);
+    return cells[i];
+  };
+
+  it('#204 (88.9-07) (a): the compact today cell holding one event carries cursor-pointer', () => {
+    const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'compact', [eventOn('evt-today', '2031-09-01', 'Azul')]);
+    const cell = cellOn(days, cells, 8, 1);
+    expect(within(cell).getByText('Azul')).toBeTruthy();
+    expect(cell.classList.contains('bg-surface-muted')).toBe(true);
+    expect(cell.classList.contains('cursor-pointer')).toBe(true);
+  });
+
+  it('#204 (88.9-07) (b): a full-variant past current-month cell holding an event carries cursor-pointer', () => {
+    vi.setSystemTime(new Date(2031, 8, 15, 12, 0, 0, 0));
+    const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', [eventOn('evt-past-cm', '2031-09-10', 'Azul')]);
+    const cell = cellOn(days, cells, 8, 10);
+    expect(within(cell).getByText('Azul')).toBeTruthy();
+    expect(cell.classList.contains('bg-surface-page')).toBe(true);
+    expect(cell.classList.contains('cursor-pointer')).toBe(true);
+  });
+
+  it('#204 (88.9-07) (c): the today cell with no event and no showEmptyDayHint does not carry cursor-pointer', () => {
+    const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'compact', []);
+    const cell = cellOn(days, cells, 8, 1);
+    expect(cell.classList.contains('bg-surface-muted')).toBe(true);
+    expect(cell.classList.contains('cursor-pointer')).toBe(false);
+  });
+
+  it('#204 (88.9-07) (d): a full-variant past cell with no event does not carry cursor-pointer', () => {
+    vi.setSystemTime(new Date(2031, 8, 15, 12, 0, 0, 0));
+    const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', []);
+    const cell = cellOn(days, cells, 8, 10);
+    expect(cell.classList.contains('bg-surface-page')).toBe(true);
+    expect(cell.classList.contains('cursor-pointer')).toBe(false);
+  });
 });
