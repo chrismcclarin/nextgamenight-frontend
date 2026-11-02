@@ -283,7 +283,8 @@ async function timezoneRowCue(page: Page, theme: Theme): Promise<void> {
     expect(insetSpread, `${cueLabel}: computed box-shadow is ${shadow} — no inset layer with a non-zero spread`).toBe(true);
 
     const abbrLabel = `A6e at 1280 (${theme}) highlighted row abbr/offset text`;
-    expectRatio(abbrLabel, await ratioAgainstGround(row.locator('[aria-current="true"] > span'), abbrLabel), AA_TEXT);
+    // AMENDED Phase 88.9-09 (M5a): the aria-hidden check glyph is the first child span of the current option; the abbr span is the one that is not aria-hidden.
+    expectRatio(abbrLabel, await ratioAgainstGround(row.locator('[aria-current="true"] > span:not([aria-hidden="true"])'), abbrLabel), AA_TEXT);
     const zoneLabel = `O1b at 1280 (${theme}) current zone on the highlighted row`;
     expectRatio(zoneLabel, await ratioAgainstGround(row.locator('[aria-current="true"]'), zoneLabel), AA_TEXT);
   } finally {
