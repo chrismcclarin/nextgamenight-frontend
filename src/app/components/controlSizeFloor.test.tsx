@@ -869,7 +869,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     });
   }
 
-  it('gates every named subject at its floor: the compact month tile >= 24px, the cog and the five recovery controls >= 44px (D-13 pattern)', () => {
+  it('gates every named subject at its floor: the compact month tile >= 24px, the cog, the five recovery controls and the 88.9 lane-A tabs and text buttons >= 44px, the removed-notice Dismiss >= 48px (D-13 pattern)', () => {
     /*
      * WHY 24 AND NOT 44 FOR THE TILE. WCAG 2.2 success criterion 2.5.8 (Target Size, Minimum)
      * sets 24x24 CSS px; 2.5.5's 44x44 is AAA. The month grid's DAY CELL (min-h-[80px]) is the

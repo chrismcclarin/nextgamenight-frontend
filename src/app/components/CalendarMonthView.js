@@ -216,7 +216,7 @@ export default function CalendarMonthView({
           )}
           <button
             onClick={onGoToday}
-            className="text-sm text-content-link hover:text-content-link-hover mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="text-sm text-content-link hover:text-content-link-hover mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11"
           >
             Go to Today
           </button>

@@ -170,7 +170,7 @@ function AuthFooter() {
               </a>
               <button
                 onClick={() => setShowFeedbackForm(true)}
-                className="hover:text-content-secondary transition-colors"
+                className="hover:text-content-secondary transition-colors min-h-11"
                 aria-label="Report bug or suggest feature"
               >
                 Report bug
