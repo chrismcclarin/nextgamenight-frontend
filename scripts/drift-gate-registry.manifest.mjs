@@ -108,7 +108,7 @@ export const gates = [
   // with a green build — the exact hole this step exists to close, reopened by the phase
   // that was converging on it. Ledger rows R103 / R104 / H08 in 88.6-46-SUMMARY.md.
   // Floors since raised to live counts (Phase 88.6.2-26, C-10).
-  { file: 'src/app/groundInk.test.ts', min: 8, why: 'Phase 88.6-09 D-16 — ground-aware ink' },
+  { file: 'src/app/groundInk.test.ts', min: 9, why: 'Phase 88.6-09 D-16 — ground-aware ink' },
   { file: 'src/app/errorEnvelopeReads.test.ts', min: 16, why: 'Phase 88.6-14 R9 — default-deny error-envelope reads' },
   { file: 'src/app/components/btnCensus.test.tsx', min: 24, why: 'Phase 88.6-10 — the legacy .btn element census' },
   { file: 'src/app/shadowTier.test.ts', min: 9, why: 'Phase 88.6-12 — off-tier shadow families' },

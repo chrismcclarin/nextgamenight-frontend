@@ -636,13 +636,29 @@ function Profile(){
                 // labelled group, which is how the primitive reproduces the region
                 // sections the hand-rolled panel drew by hand.
                 group: slashIndex > -1 ? tz.value.substring(0, slashIndex) : 'Other',
+                // DECISION Phase 88.9-09 (owner picks A6e + O1b, 88.9-PICKS-A.json / 88.9-PICKS-O.json,
+                // 2026-10-31): the abbr span takes text-content-secondary, the prescribed ink on the
+                // Combobox's muted active row (6.96 light / 7.07 dark), chosen OVER text-content-muted
+                // (4.37 light). The current zone keeps text-content-link at rest (6.00 light / 6.75 dark
+                // on the elevated list) and takes text-content-secondary only on the highlighted row
+                // through in-aria-selected: (the first in-aria-* variant in src), the owner-picked O1b
+                // scope. Against the other zone names the current zone differs by colour only: at rest
+                // link vs primary, 2.9921 light / 1.5748 dark; on the highlighted row secondary vs
+                // primary, 1.7152 light / 1.5050 dark (src/lib/wcag.ts ("export function contrastRatio("),
+                // 2026-10-31); the pick measured the row against its ground, not against its neighbours.
+                // Both are under 3:1, so colour alone would miss WCAG 1.4.1; the M5a paragraph below
+                // (owner pick, Task 3 of this plan) adds the non-colour cue. Chosen OVER secondary in
+                // EVERY state, which would also drop the at-rest cue, over text-content-link on the
+                // highlighted row (3.99 light), over purple-700 (O1a, 1.45 dark, unpickable) and over the
+                // primary ink (O1c, not taken). Changing either ink or the variant is a decision, not a
+                // cleanup.
                 label: (
                     <span
                         aria-current={tz.value === timezone ? 'true' : undefined}
-                        className={tz.value === timezone ? 'text-content-link' : undefined}
+                        className={tz.value === timezone ? 'text-content-link in-aria-selected:text-content-secondary' : undefined}
                     >
                         {tz.value.replace(/_/g, ' ')}
-                        {tz.abbr && <span className="text-content-muted ml-1">({tz.abbr}, {tz.offset})</span>}
+                        {tz.abbr && <span className="text-content-secondary ml-1">({tz.abbr}, {tz.offset})</span>}
                     </span>
                 ),
                 onSelect: () => handleTimezoneSelect(tz.value),
