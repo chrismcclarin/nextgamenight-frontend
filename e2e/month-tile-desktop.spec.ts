@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { scrubbedFetch } from './support/scrubbedFetch';
+import { assertTheme, forceLightMode, inkRatioThroughOpacity } from './support/contrast';
 
 /**
  * Phase 88.6-45 (R7 / AC-7 second half; 88.3 CR-01 inheritance; FSEC-03) — the image-backed
@@ -322,5 +323,184 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
       await tile.screenshot({ path });
       await test.info().attach('month-tile-desktop-rejected-tile', { path, contentType: 'image/png' });
     });
+  });
+});
+
+/* =========================================================================================
+ * Phase 88.9-04 — O4b, the 1280 half of A4b: adjacent-month ink on the home FULL grid.
+ *
+ * Red by design until plan 88.9-07 takes the whole-cell opacity-60 off the adjacent cell
+ * (src/app/components/CalendarMonthView.js ("isAdjacent ? 'opacity-60 ' : ''")). Pre-fix the
+ * trailing day numbers read 2.38 light / 3.48 dark through that 0.6. Per the UI-SPEC A4b row
+ * (amended C11) the adjacent cell's event tile text must clear 4.5 at 1280 as well as at 375,
+ * so each test also reads a SEEDED full-variant tile in a trailing cell. The phone half is
+ * e2e/contrast.spec.ts ("async function adjacentMonthInk(").
+ * ======================================================================================= */
+
+const O4B_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+const O4B_FLOOR = 4.5;
+/** The synthetic tile's game name: the full tile's visible text is the game name (src/app/components/CalendarMonthView.js ("the full tile's game name, the twin of")). */
+const O4B_GAME = 'E2E adjacent home';
+
+async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const nextYear = month === 11 ? year + 1 : year;
+  const nextMonth = month === 11 ? 0 : month + 1;
+  // The grid is always 42 cells (src/lib/calendarUtils.js ("while (cells.length < 42) {")): the
+  // leading days of the previous month, this month, then the trailing next-month days. The same
+  // arithmetic here, so the handler and the reads know which days trail.
+  const leading = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const trailing = 42 - leading - daysInMonth;
+  const syntheticId = crypto.randomUUID();
+  let syntheticDay = 0;
+  let seedError = '';
+  let rewrites = 0;
+
+  // GET-only, the real response through scrubbedFetch (never a raw Playwright route fetch: a failing
+  // one prints the session cookie into the public Actions log), ONE synthetic event appended in the
+  // browser copy. No write is made.
+  await page.route('**/api/events/user/**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await scrubbedFetch(route);
+    let real: unknown;
+    try {
+      real = await response.json();
+    } catch {
+      await route.fulfill({ response });
+      return;
+    }
+    if (!Array.isArray(real)) {
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    // Bucket the REAL events by LOCAL date, the way the grid does:
+    // src/lib/calendarUtils.js ("const eventDate = new Date(event.start_date);").
+    // The runner and the browser share the host timezone because the Playwright config sets no timezoneId.
+    const occupied = new Set<number>();
+    for (const e of real as { start_date?: string }[]) {
+      if (!e.start_date) continue;
+      const d = new Date(e.start_date);
+      if (d.getFullYear() === nextYear && d.getMonth() === nextMonth) occupied.add(d.getDate());
+    }
+    // DATE-PROOF: the CI seed puts events at +3 and +4 days, so on the last days of a month they land
+    // on trailing days and a fixed seed day would share its cell. The synthetic day is computed from
+    // THIS response — the FIRST trailing day it leaves empty — so no real event can share it.
+    syntheticDay = 0;
+    for (let d = 1; d <= trailing; d++) {
+      if (!occupied.has(d)) { syntheticDay = d; break; }
+    }
+    if (syntheticDay === 0) {
+      seedError = `every one of the ${trailing} trailing next-month days already holds a real event`;
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    // Shape copied from a real element; the group keeps its colour but carries NO background image,
+    // because an image-backed full tile keeps the owner-ruled white/stroke treatment over a photo,
+    // which a colour ratio cannot measure.
+    const template = (real[0] ?? {}) as Record<string, unknown>;
+    const group = (template.Group as Record<string, unknown> | null | undefined) ?? { id: 'e2e-adjacent-home-group', name: 'E2E Adjacent Home' };
+    const start = new Date(nextYear, nextMonth, syntheticDay, 12); // LOCAL noon, never a UTC-midnight literal
+    const synthetic = {
+      ...template,
+      id: syntheticId,
+      start_date: start.toISOString(),
+      ...('end_date' in template ? { end_date: new Date(start.getTime() + 2 * 3600_000).toISOString() } : {}),
+      Game: { ...((template.Game as object | null | undefined) ?? {}), name: O4B_GAME },
+      Group: { ...group, background_image_url: null },
+    };
+    rewrites += 1;
+    await route.fulfill({ response, json: [...real, synthetic] });
+  });
+
+  try {
+    await page.goto('/');
+    await assertTheme(page, theme);
+    const wanted = `${O4B_MONTHS[month]} ${year}`;
+    const heading = page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ });
+    await expect(heading, `O4b (${theme}): the home full grid's month heading is not visible`).toBeVisible({ timeout: 20_000 });
+    // A stored calendar preference can reopen another month; Go to Today brings the grid to the month
+    // the route handler built against.
+    if ((await heading.textContent())?.trim() !== wanted) {
+      await page.getByRole('button', { name: 'Go to Today', exact: true }).click();
+    }
+    await expect(heading, `O4b (${theme}): the home full grid is not on ${wanted}`).toHaveText(wanted);
+    expect(seedError, `O4b (${theme}): ${seedError}`).toBe('');
+    expect(rewrites, `O4b (${theme}): the route handler never answered the home events GET with an array`).toBeGreaterThan(0);
+
+    // DECISION Phase 88.9-04 (O4b grid): the trailing cells are found by STRUCTURE — the one element
+    // under the month card with exactly 42 children (the calendarUtils grid) — chosen OVER a Tailwind
+    // class locator (SELECTOR POLICY above) and over day-number names alone: the home grid passes no
+    // onEmptyDayClick, so an empty or one-event day number has NO accessible name to find it by.
+    const card = heading.locator('xpath=ancestor::*[.//div[count(*)=42]][1]');
+    const grid = card.locator('xpath=.//div[count(*)=42]');
+    await expect(grid, `O4b (${theme}): no 42-cell month grid under the home calendar heading`).toHaveCount(1);
+    const cellOf = (day: number): Locator => grid.locator('xpath=./*').nth(42 - trailing + day - 1);
+
+    // The tile, located by its role=button name, which begins with the fixed game name
+    // (src/app/components/CalendarMonthView.js ("const tileLabel =")).
+    const tile = cellOf(syntheticDay).getByRole('button', { name: new RegExp(`^${O4B_GAME} - `) });
+    await expect(
+      tile,
+      `O4b (${theme}): no seeded tile in the trailing cell for ${O4B_MONTHS[nextMonth]} ${syntheticDay} — the seed did not reach the cell, so the adjacent-month event tile text through ancestor opacity read has nothing to measure; fix the route, never delete this guard`
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Two OTHER trailing days: a one-event day loses its day-number name, so each is found by name
+    // when it has one and by its text otherwise:
+    // src/app/components/CalendarMonthView.js ("const dayTargetActive = cellClickable && dayEvents.length !== 1;").
+    const days = Array.from({ length: trailing }, (_, i) => i + 1).filter((d) => d !== syntheticDay).slice(0, 2);
+    expect(days.length, `O4b (${theme}): fewer than two trailing next-month days besides the seeded one`).toBe(2);
+    const next = O4B_MONTHS[nextMonth];
+    const numbers: { day: number; el: Locator }[] = [];
+    for (const day of days) {
+      const named = cellOf(day).getByRole('button', { name: new RegExp(`^${next} ${day}\\b`) });
+      const el = (await named.count()) > 0 ? named.first() : cellOf(day).getByText(String(day), { exact: true }).first();
+      await expect(el, `O4b (${theme}): the trailing day number ${next} ${day} is not on the grid`).toBeVisible();
+      await expect(el).toHaveText(String(day));
+      numbers.push({ day, el });
+    }
+
+    // Every read is taken BEFORE any assertion, so the tile's measured value reaches the CI log even
+    // though the first failing expect below is the day number's opacity.
+    const reads: { label: string; r: Awaited<ReturnType<typeof inkRatioThroughOpacity>> }[] = [];
+    for (const { day, el } of numbers) {
+      const label = `O4b (${theme}) adjacent-month day number ${next} ${day}`;
+      reads.push({ label, r: await inkRatioThroughOpacity(el, label) });
+    }
+    const tileLabel = `O4b (${theme}) adjacent-month event tile text through ancestor opacity`;
+    const tileRead = await inkRatioThroughOpacity(tile.getByText(O4B_GAME, { exact: true }), tileLabel);
+    // eslint-disable-next-line no-console -- the measured tile value is recorded from the CI log
+    console.log(`${tileLabel}: ${tileRead.ratio.toFixed(3)}:1, opacity product ${tileRead.opacity} (ink ${tileRead.effectiveFg} on ${tileRead.ground})`);
+
+    for (const { label, r } of reads) {
+      expect(r.opacity, `${label}: ancestor opacity product ${r.opacity} — the day number must not sit under a dimmed ancestor (A4b takes the whole-cell opacity-60 off it)`).toBe(1);
+      expect(r.ratio, `${label}: ${r.ratio.toFixed(2)}:1 through ancestor opacity ${r.opacity} (ink ${r.effectiveFg} on ${r.ground}), floor ${O4B_FLOOR}:1`).toBeGreaterThanOrEqual(O4B_FLOOR);
+    }
+    // The tile's own opacity is not asserted (its hover rule is its own); its ink through every ancestor is.
+    expect(tileRead.ratio, `${tileLabel}: ${tileRead.ratio.toFixed(2)}:1 through ancestor opacity product ${tileRead.opacity} (ink ${tileRead.effectiveFg} on ${tileRead.ground}), floor ${O4B_FLOOR}:1`).toBeGreaterThanOrEqual(O4B_FLOOR);
+  } finally {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  }
+}
+
+test.describe('adjacent-month ink on the home full grid at 1280, dark (88.9 O4b)', () => {
+  test('O4b (88.9): adjacent-month day numbers on the home full grid are undimmed and clear 4.5:1, dark', async ({ page }) => {
+    await adjacentHomeInk(page, 'dark');
+  });
+});
+
+test.describe('adjacent-month ink on the home full grid at 1280, light (88.9 O4b)', () => {
+  // Both projects bake dark; colorScheme alone does not set the class, so forceLightMode writes the
+  // stored theme before the first navigation and assertTheme proves it after (inside the helper).
+  test.use({ colorScheme: 'light' });
+  test.beforeEach(async ({ page }) => {
+    await forceLightMode(page);
+  });
+
+  test('O4b (88.9): adjacent-month day numbers on the home full grid are undimmed and clear 4.5:1, light', async ({ page }) => {
+    await adjacentHomeInk(page, 'light');
   });
 });
