@@ -45,6 +45,12 @@
  *   - `COMBOBOX_OPTION_ROW_ACTIVE`. **MEASURED CURRENT — no change.** Plan 02's re-seed still
  *     matches the live option-row class list, and plan 37's own W38 edit deliberately did not
  *     touch it (the new sr-only region is a sibling node; the option row is byte-unchanged).
+ *   - `COMBOBOX_OPTION_ROW_ACTIVE`, a LATER pass: **RE-SEEDED Phase 88.9-09 (A6e, owner pick),
+ *     2026-11-02.** This file is declared by plan 88.9-09 for this reason. Plan 09 added two
+ *     active-row arms to the option class list (the inset focus-ring arm, then the forced-colors
+ *     Highlight outline arm, both skipping a disabled row); the literal gained both arms' strings
+ *     in source order after the muted ground, and the merged expectation was re-derived by
+ *     running the suite. Both strings are recorded at the `Combobox` assertion.
  *
  * NO MERGE DIFFERED FROM WHAT SHIPPED, so this pass produced no finding of the kind this header
  * warns about. Both re-seeds are owned re-derives — a diff that follows a same-phase edit to a
@@ -155,7 +161,9 @@ const BUTTON_VARIANT_CLASS = {
 const COMBOBOX_OPTION_ROW_ACTIVE = cn(
   'flex min-h-11 w-full cursor-pointer items-center px-3 py-2',
   'text-base text-content-primary',
-  'bg-surface-muted'
+  'bg-surface-muted',
+  'ring-2 ring-inset ring-focus-ring',
+  'forced-colors:outline forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]'
 );
 
 // ---------------------------------------------------------------------------
@@ -222,7 +230,18 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
 
   it('Combobox: the active option row + a caller override', () => {
     expect(cn(COMBOBOX_OPTION_ROW_ACTIVE, 'px-4 text-content-secondary')).toBe(
-      'flex min-h-11 w-full cursor-pointer items-center py-2 text-base bg-surface-muted px-4 text-content-secondary'
+      // RE-SEEDED Phase 88.9-09 (A6e, owner pick), 2026-11-02. The transcribed literal gained the
+      // two new active-row arms (the inset focus-ring arm, then the four-token forced-colors
+      // outline arm), in source order after the muted ground. Both strings, measured by running
+      // this suite (PRE = the old expectation, POST = the received value pasted back):
+      //   PRE : … text-base bg-surface-muted px-4 text-content-secondary
+      //   POST: … text-base bg-surface-muted ring-2 ring-inset ring-focus-ring forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight] px-4 text-content-secondary
+      // tailwind-merge 3.6.0 drops the bare forced-colors:outline beside forced-colors:outline-2
+      // (one outline-width group under the same variant); the rendered row keeps the other three
+      // forced-colors tokens and the ring tokens, and outline-2 sets the outline style itself, so
+      // nothing is lost in paint. The caller's px-4 / text-content-secondary still win over px-3 /
+      // text-content-primary. A re-seed owned by the plan that made the edit, not a resolver fork.
+      'flex min-h-11 w-full cursor-pointer items-center py-2 text-base bg-surface-muted ring-2 ring-inset ring-focus-ring forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight] px-4 text-content-secondary'
     );
   });
 
