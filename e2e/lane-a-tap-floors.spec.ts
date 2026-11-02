@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 
 import { assertTheme, forceLightMode } from './support/contrast';
-import { openCreateEventDialog } from './support/createEvent';
+import { openCreateEventDialog, switchToManualEntry } from './support/createEvent';
 import { E2E_GROUP_ID } from './support/groupSettings';
 import { expectTouchTarget, roundPx } from './support/touchTarget';
 
@@ -145,11 +145,19 @@ async function createEventControls(page: Page, theme: Theme): Promise<void> {
   await openPage(page, GROUP_PAGE, theme);
   await openCreateEventDialog(page);
 
-  const switchLink = page.getByRole('button', { name: 'Switch to Manual Entry', exact: true });
+  // The three week buttons live in the MANUAL-entry branch (the heatmap week strip), never in the
+  // visual scheduler the dialog opens in, so the switch is taken first (the shared step, never a
+  // copy of it). The Switch link is the same button in both modes; only its words change, and it is
+  // measured in the mode the week buttons share, so every locator resolves before any size is read.
+  await switchToManualEntry(page);
+  const switchLink = page.getByRole('button', { name: 'Switch to Visual Calendar', exact: true });
   const prev = page.getByRole('button', { name: 'Previous week', exact: true });
   const jump = page.getByRole('button', { name: 'Jump to current week', exact: true });
   const next = page.getByRole('button', { name: 'Next week', exact: true });
+  await expect(switchLink, 'the create-event dialog switched to manual entry').toBeVisible();
   await expect(prev, 'the create-event week navigation rendered').toBeVisible({ timeout: 15_000 });
+  await expect(jump, 'the create-event Jump to current week rendered').toBeVisible();
+  await expect(next, 'the create-event Next week rendered').toBeVisible();
 
   await expectTouchTarget(switchLink, `create-event Switch link (A9a, ${theme})`, { axes: 'height' });
   await expectTouchTarget(prev, `create-event Previous week (A9a + O3a, ${theme})`, { axes: 'both' });
