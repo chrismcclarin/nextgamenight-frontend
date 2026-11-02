@@ -54,10 +54,12 @@
 //  * ALPHA IS INVISIBLE. The walk resolves TOKENS. An `opacity-*` utility, or a `text-*`/`bg-*`
 //    alpha modifier written with a slash, on the ink element OR ON ANY ANCESTOR composites the
 //    rendered colour — so a PASS here is NOT a WCAG 1.4.3 pass. Live specimen:
-//    src/app/components/CalendarMonthView.js ("isAdjacent ? 'opacity-60 ' : ''") over the ink at
-//    src/app/components/CalendarMonthView.js ("isAdjacent ? 'text-content-muted' :"), the SAME
-//    condition, so genuinely co-live.
-//    (Cites corrected in place by plan 88.6.1-02; they predated plan 88.6-27's moves.)
+//    src/app/components/BallotSection.js ("isToggling ? 'opacity-70' : ''") on the ballot option
+//    button, whose text-content-primary ink (set on both arms of its isVoted ternary) is
+//    composited at 0.7 while the vote toggles.
+//    (Cites corrected in place by plan 88.6.1-02; they predated plan 88.6-27's moves. Retargeted
+//    by plan 88.9-07: the former specimen, the adjacent-month cell dim in CalendarMonthView.js,
+//    was removed by that plan, owner picks A4b + O4b.)
 //  * RAW-PALETTE INK IS INVISIBLE. Ink written `text-<hue>-<n>` (87 non-test occurrences) is
 //    not a semantic token and is `rawColorValues.test.ts`'s and plan 10's territory.
 //  * VARIANT-PREFIXED INK IS OUT OF SCOPE, as a declared exclusion and not a silent filter.

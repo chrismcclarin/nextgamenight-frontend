@@ -602,10 +602,11 @@ function classSites(
  *     alpha modifier written with a slash, on the ink element OR ON ANY ANCESTOR composites
  *     the rendered colour — so a pairing that PASSES here can still fail WCAG 1.4.3 at render.
  *     Live specimen:
- *     src/app/components/CalendarMonthView.js ("isAdjacent ? 'opacity-60 ' : ''")
- *     over the ink at
- *     src/app/components/CalendarMonthView.js ("isAdjacent ? 'text-content-muted' :")
- *     — the SAME condition, so the two are genuinely co-live.
+ *     src/app/components/BallotSection.js ("isToggling ? 'opacity-70' : ''")
+ *     on the ballot option button, whose text-content-primary ink (both arms of its isVoted
+ *     ternary) is composited at 0.7 while the vote toggles. Retargeted by Phase 88.9-07: the
+ *     former specimen, the adjacent-month cell dim in CalendarMonthView.js, was removed by
+ *     that plan (owner picks A4b + O4b).
  *  7. VARIANT-PREFIXED INK IS OUT OF SCOPE, as a declared exclusion and not a silent filter.
  *     `hover:` / `focus:` / `disabled:` / `aria-disabled:` ink emits NO row, exactly as a
  *     variant-prefixed ground is not a resting ground: D-16 is a rule about the RESTING state.

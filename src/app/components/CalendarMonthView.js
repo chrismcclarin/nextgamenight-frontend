@@ -148,7 +148,7 @@ const tileTextTreatment = (tileGround, hasBgImage) => {
  *
  * Phase 64-02 (CAL-01 / CAL-04 / CAL-05):
  *   - `days` is now {date: Date, isCurrentMonth: boolean}[] (42 cells).
- *   - Adjacent-month cells render with subtle muting (`opacity-60`)
+ *   - Adjacent-month cells sit on the page ground with their day number muted; nothing in the cell is dimmed (AMENDED Phase 88.9-07, owner picks A4b + O4b; tile dim dropped at the plan review, 2.39 / 2.88 through .6)
  *     but their events use the same tile styling as current-month cells.
  *   - Whole-cell click invokes `onDayClick(date, dayEvents)` — the parent
  *     dispatcher (EventCalendar) decides between empty-day handler,
@@ -319,13 +319,37 @@ export default function CalendarMonthView({
                  stacking a permanent PAINTING ground beside a conditional one is REJECTED for
                  this file (an emission-order paint bug jsdom cannot see). Hoisting `group` is
                  not that pattern; FLATTENING the chain would be. This is a decision, not a
+                 cleanup.
+
+                 AMENDED Phase 88.9-07: the adjacent-month page ground is a ternary ARM after the
+                 today and full-variant past arms, honouring this fence; no painting token is
+                 stacked beside the chain. */
+              /* DECISION Phase 88.9-07 (owner picks A4b + O4b, 88.9-PICKS-A.json / 88.9-PICKS-O.json,
+                 2026-10-31): adjacent-month cells take the page ground plus the muted day number
+                 (5.04 light / 7.32 dark) as the not-this-month cue, chosen OVER the whole-cell
+                 opacity-60 (2.69 / 3.13, under 4.5) and OVER A4a / A4c; one arm on every variant
+                 (O4b: the full-grid per-variant arm was offered and declined). The arm sits after
+                 the full-variant past arm, chosen OVER placing it straight after the today arm: a
+                 past adjacent cell on the full grid keeps the past treatment (page ground, no hover
+                 ground) exactly like a same-month past cell, where the earlier slot would have given
+                 leading-overflow past days with events a hover ground no same-month past cell has.
+                 The dim is removed from the whole cell, tiles included, chosen OVER dimming only the
+                 events container — through a .6 ancestor the untinted compact tile text reads 2.39
+                 light / 2.88 dark (wcag.ts, 2026-10-31) and light clears 4.5 only at >= 0.98
+                 opacity; the tiles are role=button controls, so WCAG 1.4.3 applies to them. The
+                 empty-day + hint keeps its hover-only reveal (DECISION Phase 87.8-12 R10): the pick
+                 capture showed it at rest only because the injected CSS overrode its opacity-0 —
+                 unchanged: no owner ruling on the adjacent-cell + hint is recorded in 88.9-UI-SPEC.md
+                 (read 2026-11-02), so the default (leave the hint byte-unchanged) shipped. With the
+                 cell dim gone, the hover/focus + reveal on adjacent cells is 0.40, the same as
+                 current-month cells (it was 0.24 through the old cell dim, 0.40 x 0.60); disclosed
+                 to the owner through the plan 88.9-16 UAT. Changing this is a decision, not a
                  cleanup. */
               className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
-                isAdjacent ? 'opacity-60 ' : ''
-              }${
                 !date ? 'bg-surface-page' :
                 isCurrentDay ? 'bg-surface-muted border-line-accent' :
                 variant === 'full' && isPastDate ? 'bg-surface-page' :
+                isAdjacent ? (cellClickable ? 'bg-surface-page hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' : 'bg-surface-page') :
                 cellClickable ? 'bg-surface-card hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' :
                 'bg-surface-card'
               }`}
@@ -421,7 +445,7 @@ export default function CalendarMonthView({
                        NEITHER HALF IS GATED ON `isCurrentMonth`, and that is FORBIDDEN rather
                        than merely unchosen. `isCurrentDay` is computed from the date ALONE, the
                        cell's ground ternary awards the today treatment BEFORE the adjacent branch
-                       is reached (`isAdjacent` only prefixes `opacity-60`), and `getDaysInMonth`
+                       is reached (isAdjacent selects the page-ground arm, which comes AFTER the today and full-variant past arms — 88.9 A4b), and `getDaysInMonth`
                        returns 42 cells including adjacent-month days — so a grid whose OVERFLOW
                        contains today ALREADY renders that overflow cell tinted as today. The
                        invariant is therefore per rendered GRID, not per month: exactly ONE

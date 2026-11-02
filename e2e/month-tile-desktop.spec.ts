@@ -330,7 +330,8 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
  * Phase 88.9-04 — O4b, the 1280 half of A4b: adjacent-month ink on the home FULL grid.
  *
  * Red by design until plan 88.9-07 takes the whole-cell opacity-60 off the adjacent cell
- * (src/app/components/CalendarMonthView.js ("isAdjacent ? 'opacity-60 ' : ''")). Pre-fix the
+ * (removed by plan 88.9-07; see its owner-picks marker in
+ * src/app/components/CalendarMonthView.js ("owner picks A4b + O4b, 88.9-PICKS-A.json")). Pre-fix the
  * trailing day numbers read 2.38 light / 3.48 dark through that 0.6. Per the UI-SPEC A4b row
  * (amended C11) the adjacent cell's event tile text must clear 4.5 at 1280 as well as at 375,
  * so each test also reads a SEEDED full-variant tile in a trailing cell. The phone half is
