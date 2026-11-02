@@ -909,6 +909,15 @@ describe('userProfile destructive gates (Req 11)', () => {
 // panel fails here even if it looks identical.
 
 describe('userProfile timezone picker (F-359)', () => {
+  // The label is built from new Date(): pin a summer instant so America/New York reads EDT on any run date (the 2026-11-01 DST flip turned EDT into EST).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-15T12:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('shows the current selection in the field and opens on focus', async () => {
     renderProfile();
     const field = await screen.findByRole('combobox', { name: 'Timezone' });
