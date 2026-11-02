@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { holdWrites } from './support/inFlight';
+import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
 
 // Phase 88.6.1-28 (D-18, AC-17, register R128) — the notification bell's panel in a real browser.
 //
@@ -27,13 +28,8 @@ import { holdWrites } from './support/inFlight';
 // focus must come back to the trigger. The pending-invites list is answered in the browser with
 // one synthetic invite (the shared holdWrites net, which also holds every write, so nothing this
 // spec does reaches the shared CI database), so the panel always has a focusable row action.
-const PANEL_INVITE = {
-  id: 'e2e-bell-panel-invite',
-  Group: { name: 'E2E Bell Panel' },
-  Inviter: { username: 'E2E Host' },
-};
-const answerPendingInvites = (url: URL): unknown =>
-  url.pathname.endsWith('/invites/pending') ? [PANEL_INVITE] : undefined;
+// The invite shape and its answerer are the shared e2e/support/pendingInvite.ts module (Phase 88.9-01).
+const PANEL_INVITE = pendingInvite('e2e-bell-panel-invite', 'E2E Bell Panel');
 const PANEL_ACTION = 'Accept invite to E2E Bell Panel';
 
 test.describe('notification bell panel — phone (row variant in the hamburger)', () => {
@@ -48,7 +44,7 @@ test.describe('notification bell panel — phone (row variant in the hamburger)'
 
   test.beforeEach(async ({ page }) => {
     // Registered BEFORE the first navigation (inFlight.ts: a route added after goto misses the load).
-    await holdWrites(page, { answerGet: answerPendingInvites });
+    await holdWrites(page, { answerGet: answerPendingInvites([PANEL_INVITE]) });
     await page.goto('/');
     // D-11 dark-theme pre-assertion (e2e/feedback-stacking.spec.ts): the reused storageState can
     // carry a stored theme key that outranks the config's colorScheme.
@@ -101,7 +97,7 @@ test.describe('notification bell panel — desktop (icon variant in the nav)', (
   });
 
   test.beforeEach(async ({ page }) => {
-    await holdWrites(page, { answerGet: answerPendingInvites });
+    await holdWrites(page, { answerGet: answerPendingInvites([PANEL_INVITE]) });
     await page.goto('/');
     // D-11 dark-theme pre-assertion (e2e/feedback-stacking.spec.ts).
     await expect(page.locator('html')).toHaveClass(/dark/);

@@ -10,6 +10,7 @@ import {
   describeRatio,
   focusRingMeasurement,
   forceLightMode,
+  haloGroundRatio,
   groundResolutionOf,
   lStarOfGround,
   parseHex,
@@ -19,6 +20,8 @@ import {
   type Measurement,
 } from './support/contrast';
 import { switchToManualEntry } from './support/createEvent';
+import { holdWrites } from './support/inFlight';
+import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
 // Phase 88.3.1-W. The PALETTE, imported rather than transcribed — the AMENDMENT W tests below
 // pin the preset-only group's rendered ground to the `blue` preset's own stored values, and
 // this import is what stops that from being a hex literal (see the AMENDED block in
@@ -533,6 +536,77 @@ async function assertPresetGroundLanded(page: Page, theme: 'light' | 'dark'): Pr
         `Do NOT "fix" this by re-adding a hex to the fixture — that re-opens PLAN-REVIEW Defect 5.`
     ).toBe(expected);
   });
+}
+
+// Phase 88.9-01 — the house focus ring pins (A3d, A10c and the halo contract), Gate C at 375.
+//
+// The halo contract: planning:.planning/phases/88.9-fe-look-decisions-design-phase-mockup-gated-split-from-88-6/88.9-UI-SPEC.md ("## Contract item — the house offset ring takes the surface colour").
+// Each ring test asserts the ring clears 3:1 against its halo AND that the halo is the surface under
+// the control (haloGroundRatio <= 1.01, i.e. the halo reads as no band at all). Red by design until
+// the fixes land: the bell Accept ring and the halo on card ground with 88.9-05, the brand link ring
+// with its plan, the page ground with 88.9-11 and the elevated ground with 88.9-12.
+const HALO_EQUAL = 1.01;
+const RING_INVITE = pendingInvite('e2e-contrast-ring-invite', 'E2E Contrast Ring');
+
+function haloMessage(label: string, h: { ratio: number; halo: string; behind: string }): string {
+  return (
+    `${label}: the ring halo ${h.halo} measured ${h.ratio.toFixed(3)}:1 against the surface under the ` +
+    `control ${h.behind}; the house ring's halo must equal the surface (<= ${HALO_EQUAL}:1).`
+  );
+}
+
+/** A3d: the bell panel's Accept action, inside the region on the card ground. */
+async function bellAcceptRing(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  // Registered BEFORE the first navigation (e2e/support/inFlight.ts: a route added after goto misses
+  // the load); it answers /invites/pending with one synthetic invite and holds every write.
+  await holdWrites(page, { answerGet: answerPendingInvites([RING_INVITE]) });
+  try {
+    await page.goto('/');
+    await assertTheme(page, theme);
+    await page.getByRole('button', { name: 'Toggle menu' }).click();
+    await page.getByRole('button', { name: 'Invites notifications', exact: true }).click();
+    const region = page.getByRole('region', { name: 'Notifications', exact: true });
+    await expect(region, `A3d (${theme}): the Notifications region did not open.`).toBeVisible({ timeout: 15_000 });
+    const accept = region.getByRole('button', { name: 'Accept invite to E2E Contrast Ring', exact: true });
+    await expect(accept, `A3d (${theme}): the synthetic invite's Accept action is not visible.`).toBeVisible();
+    // Focus INSIDE the panel first: focusRingMeasurement presses Tab to set keyboard modality, and
+    // from the trigger that Tab could leave the bell and close the panel (88.9-RESEARCH L-5).
+    await accept.focus();
+    const label = `bell panel Accept focus ring (A3d, ${theme})`;
+    const m = await focusRingMeasurement(page, accept, label);
+    expectRatio(label, m, NON_TEXT);
+    const h = await haloGroundRatio(m, accept);
+    expect(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+  } finally {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  }
+}
+
+/** A10c: the header brand link. Pre-fix it wears the UA outline, so focusRingMeasurement throws. */
+async function brandLinkRing(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  await page.goto('/');
+  await assertTheme(page, theme);
+  // The logo SVG's aria-label joins the link's accessible name, so the name is matched by a regex.
+  const link = page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: /Next Game Night/ });
+  await expect(link, `A10c (${theme}): the header brand link is not visible.`).toBeVisible({ timeout: 15_000 });
+  const label = `header brand link focus ring (A10c, ${theme})`;
+  const m = await focusRingMeasurement(page, link, label);
+  expectRatio(label, m, NON_TEXT);
+  const h = await haloGroundRatio(m, link);
+  expect(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+}
+
+/** The page-ground halo step: the phone Calendar button on the home page ground. */
+async function haloPageGround(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  await page.goto('/');
+  await assertTheme(page, theme);
+  const button = page.getByRole('button', { name: /^Calendar\b/ });
+  await expect(button, `halo page (${theme}): the phone Calendar button is not visible.`).toBeVisible({ timeout: 15_000 });
+  const label = `halo on the PAGE ground — phone Calendar button (${theme})`;
+  const m = await focusRingMeasurement(page, button, label);
+  expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+  const h = await haloGroundRatio(m, button);
+  expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
 }
 
 test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
@@ -1211,6 +1285,18 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     await assertTheme(page, 'light');
     await assertAccentLabelRatio(page, 'light');
   });
+  test('A3d (88.9): the bell panel Accept ring at 375 clears 3:1 and its halo is the card, light', async ({ page }) => {
+    await bellAcceptRing(page, 'light');
+  });
+
+  test('A10c (88.9): the header brand link at 375 wears the house ring on a header halo, light', async ({ page }) => {
+    await brandLinkRing(page, 'light');
+  });
+
+  test('halo (88.9): the house ring halo equals the page ground under the phone Calendar button, light', async ({ page }) => {
+    await haloPageGround(page, 'light');
+  });
+
 });
 
 test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
@@ -1427,6 +1513,63 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     ).toBe(0);
 
     expectRatio(label, m, AA_TEXT);
+  });
+
+  test('A3d (88.9): the bell panel Accept ring at 375 clears 3:1 and its halo is the card, dark', async ({ page }) => {
+    await bellAcceptRing(page, 'dark');
+  });
+
+  test('A10c (88.9): the header brand link at 375 wears the house ring on a header halo, dark', async ({ page }) => {
+    await brandLinkRing(page, 'dark');
+  });
+
+  test('halo (88.9): the house ring halo equals the surface under the control on card, page and elevated grounds, dark', async ({ page }) => {
+    // Three navigations in all (one per ground), so the 30 s default timeout holds: the helper
+    // self-checks are FOLDED into the step that measures the same control, as hard expects
+    // before that step's soft assertions, and the page step runs last so both helper arms are
+    // proven before it relies on them.
+    await test.step('card ground — the Danger Zone trigger (opaque-fill arm)', async () => {
+      await page.goto('/userProfile');
+      await assertTheme(page, 'dark');
+      // Card ground: src/app/components/DangerZoneDeleteAccount.tsx ("card p-3 md:p-6 border border-status-error") hosts the trigger.
+      const trigger = page.getByRole('button', { name: 'Delete My Account', exact: true });
+      await expect(trigger, 'halo card (dark): the Delete My Account trigger is not visible.').toBeVisible({ timeout: 15_000 });
+      const label = 'halo on the CARD ground — Danger Zone trigger (dark)';
+      const m = await focusRingMeasurement(page, trigger, label);
+      const h = await haloGroundRatio(m, trigger);
+      // Self-check, opaque-fill arm: the walk stops on the button's own fill, so the surface must
+      // come from the parent and differ visibly from that fill.
+      expect(m.probe.opaqueAt, `halo self-check (card): the trigger does not paint its own fill.`).toBe(0);
+      expect(h.behindSource, 'halo self-check (card): the surface was not read from the parent.').toBe('parent');
+      const fillVsSurface = h.ownFill === null ? null : contrastRatio(h.behind, h.ownFill);
+      expect(
+        fillVsSurface,
+        `halo self-check (card): the surface ${h.behind} is indistinguishable from the button fill ${h.ownFill}, so the helper may be reading the fill.`
+      ).toBeGreaterThan(1.5);
+      expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+      expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+    });
+
+    await test.step('elevated ground — the Breadcrumb Home link (transparent arm)', async () => {
+      await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+      await assertTheme(page, 'dark');
+      const link = page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Home' });
+      await expect(link, 'halo elevated (dark): the Breadcrumb Home link is not visible.').toBeVisible({ timeout: 15_000 });
+      const label = 'halo on the ELEVATED ground — Breadcrumb Home link (dark)';
+      const m = await focusRingMeasurement(page, link, label);
+      const h = await haloGroundRatio(m, link);
+      // Self-check, transparent arm: for a control that paints nothing, the parent's composite is
+      // the ground just outside the control.
+      expect(h.behind, 'halo self-check (elevated): the parent surface differs from the ground outside the link.').toBe(
+        compositeGround(m.probe, 1)
+      );
+      expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+      expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+    });
+
+    await test.step('page ground — the phone Calendar button', async () => {
+      await haloPageGround(page, 'dark');
+    });
   });
 });
 

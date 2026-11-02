@@ -702,6 +702,90 @@ export async function focusRingMeasurement(
   };
 }
 
+/**
+ * Phase 88.9-01 — the HALO of an offset focus ring against the surface the control sits on.
+ *
+ * The contract it pins: planning:.planning/phases/88.9-fe-look-decisions-design-phase-mockup-gated-split-from-88-6/88.9-UI-SPEC.md ("## Contract item — the house offset ring takes the surface colour").
+ * An offset ring paints a halo (`--tw-ring-offset-color`) between the control and the ring; the
+ * house ring's halo must BE the surface under the control, so a ratio of 1.00 between the two
+ * means the halo is invisible as a band. The shipped default halo is white, which is a visible
+ * white stripe on every non-white surface.
+ *
+ * WHY THE SURFACE IS READ FROM THE PARENT, ALWAYS. `probeElement`'s ground walk STOPS at the
+ * first fully opaque rung. For an opaque-fill control (every filled `<Button>`) that rung is the
+ * control itself: `probe.opaqueAt` is 0, `compositeGround(probe, 1)` is null (`from > opaqueAt`),
+ * and a fallback to `compositeGround(probe, 0)` would return the control's OWN FILL — the halo
+ * would be compared with the button, never with the surface. So this helper probes the parent
+ * element and composites from there, the same move `focusRingMeasurement`'s 'outside' branch
+ * makes (probing the parent is the only way to see what the ring sits on when the element paints).
+ * For a transparent control the parent's composite equals `compositeGround(probe, 1)`, so both
+ * arms read the same surface. `ownFill` is returned beside it so a caller can prove which arm ran.
+ *
+ * Throws unless the ring is an OFFSET ring (`ringGroundKind === 'offset'`): an inset or outside
+ * ring has no halo, and a halo ratio for it would be a number about nothing.
+ */
+export async function haloGroundRatio(
+  m: Measurement & { ringGroundKind: 'inset' | 'offset' | 'outside' },
+  anchor: Locator
+): Promise<{ ratio: number; halo: string; behind: string; ownFill: string | null; behindSource: 'parent' }> {
+  if (m.ringGroundKind !== 'offset') {
+    throw new Error(
+      `haloGroundRatio: the ring is '${m.ringGroundKind}', not an offset ring, so it paints no halo ` +
+        `(ring ${m.fg} on ${m.ground}). The house ring is an offset ring; this is a ring-shape failure.`
+    );
+  }
+  const parent = await probeElement(anchor.locator('xpath=..'), []);
+  const behind = compositeGround(parent, 0);
+  if (behind === null) {
+    throw new Error(
+      `haloGroundRatio: the parent walk never reached a fully opaque rung, so there is no surface ` +
+        `to compare the halo with.\n${describeGround('halo surface (parent walk)', groundResolutionOf(parent))}`
+    );
+  }
+  const ratio = contrastRatio(m.ground, behind);
+  if (ratio === null) throw new Error(`haloGroundRatio: could not compute a ratio from halo ${m.ground} on ${behind}.`);
+  return { ratio, halo: m.ground, behind, ownFill: compositeGround(m.probe, 0), behindSource: 'parent' };
+}
+
+/**
+ * Phase 88.9-01 — text ink contrast THROUGH ancestor opacity (the pick tooling's `inkRatio`).
+ *
+ * WHY IT EXISTS beside `ratioAgainstGround`: that helper reads the computed `color` and ignores
+ * `opacity` on the element and its ancestors, so a cell dimmed to 40% would read its full-ink
+ * ratio and pass while a reader sees washed-out text. Here the opacity product over the element
+ * and every ancestor is taken, and when it is below 1 the effective ink is
+ * `blend(ink, opacity, ground)`. Plans 88.9-03 and 88.9-04 use it.
+ */
+export async function inkRatioThroughOpacity(
+  anchor: Locator,
+  label: string
+): Promise<{ ratio: number; opacity: number; fg: string; effectiveFg: string; ground: string; probe: ElementProbe }> {
+  const probe = await probeElement(anchor, ['color']);
+  const fg = requireColor(`${label} — computed color`, probe.computed['color']);
+  const ground = compositeGround(probe);
+  if (ground === null) {
+    throw new Error(
+      `${label}: the background walk never reached a fully opaque rung, so there is no ground to ` +
+        `measure against.\n${describeGround(label, groundResolutionOf(probe))}`
+    );
+  }
+  const opacity = await anchor.evaluate((start: Element): number => {
+    let product = 1;
+    let current: Element | null = start;
+    while (current) {
+      const value = Number.parseFloat(getComputedStyle(current).opacity);
+      if (!Number.isNaN(value)) product *= value;
+      current = current.parentElement;
+    }
+    return product;
+  });
+  const effectiveFg = opacity < 1 ? blend(fg, opacity, ground) : fg;
+  if (!effectiveFg) throw new Error(`${label}: could not blend ink ${fg} at opacity ${opacity} onto ${ground}.`);
+  const ratio = contrastRatio(effectiveFg, ground);
+  if (ratio === null) throw new Error(`${label}: could not compute a ratio from ${effectiveFg} on ${ground}.`);
+  return { ratio, opacity, fg, effectiveFg, ground, probe };
+}
+
 /** Failure message for a ratio floor: the two colours AND the ground chain that produced them. */
 export function describeRatio(label: string, floor: number, m: Measurement): string {
   return (

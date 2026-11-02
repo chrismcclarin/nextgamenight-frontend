@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { holdWrites } from './support/inFlight';
+import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
 
 // Phase 88.6.1-45 (AC-18 + D-08a, copy row H5) — the header's one Main navigation landmark and
 // the layered Escape, in a real browser.
@@ -75,10 +76,7 @@ test.describe('header main nav — phone (375, the hamburger)', () => {
     // the shared holdWrites net, which also holds every write; it must be registered before a
     // navigation, so the page is loaded again here.
     await holdWrites(page, {
-      answerGet: (url) =>
-        url.pathname.endsWith('/invites/pending')
-          ? [{ id: 'e2e-nav-invite', Group: { name: 'E2E Nav Escape' }, Inviter: { username: 'E2E Host' } }]
-          : undefined,
+      answerGet: answerPendingInvites([pendingInvite('e2e-nav-invite', 'E2E Nav Escape')]),
     });
     await page.goto('/');
     await expect(page.locator('html')).toHaveClass(/dark/);

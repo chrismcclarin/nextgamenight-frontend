@@ -57,6 +57,12 @@
  * the new one being the A1b dark Danger Zone trigger pin, and all of them execute in phone. A
  * floor below the measured count lets the extra test be deleted with the gate still green.
  *
+ * RAISED 18 -> 24, Phase 88.9-01, MEASURED 2026-11-01: the same command now reports 24 tests in
+ * e2e/contrast.spec.ts. Step 1 of plan 88.9-01 already took the floor 17 -> 18 (the A1b pin); this
+ * step adds the six phone ring pins (A3d and A10c, dark and light, and the two halo tests), all
+ * executing in phone. They are red by design until the ring fixes land, which a red e2e job
+ * already reports; the floor guards the other failure, the six being deleted or skipped.
+ *
  * GENERALISED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4). DECISION Phase
  * 88.6-55: optional flags on THIS script, chosen OVER a second floor script — two copies of the
  * same report walk is the duplication the milestone tenet forbids, and they would drift. The
@@ -88,7 +94,7 @@ import { pathToFileURL } from 'node:url';
 const REPORT = process.argv[2] ?? 'playwright-results.json';
 const SPEC = 'e2e/contrast.spec.ts';
 const PROJECT = 'phone';
-const FLOOR = 18;
+const FLOOR = 24;
 
 // Optional overrides (see the GENERALISED note above). Parsed strictly: fail closed.
 const KNOWN_FLAGS = {
