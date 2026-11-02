@@ -52,6 +52,11 @@
  * all of which execute in phone. A floor below the measured count lets the extra tests be
  * deleted with the gate still green.
  *
+ * RAISED 17 -> 18, Phase 88.9-01, MEASURED 2026-11-01: the same command
+ * (npx playwright test --list --project=phone) now reports 18 tests in e2e/contrast.spec.ts,
+ * the new one being the A1b dark Danger Zone trigger pin, and all of them execute in phone. A
+ * floor below the measured count lets the extra test be deleted with the gate still green.
+ *
  * GENERALISED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4). DECISION Phase
  * 88.6-55: optional flags on THIS script, chosen OVER a second floor script — two copies of the
  * same report walk is the duplication the milestone tenet forbids, and they would drift. The
@@ -83,7 +88,7 @@ import { pathToFileURL } from 'node:url';
 const REPORT = process.argv[2] ?? 'playwright-results.json';
 const SPEC = 'e2e/contrast.spec.ts';
 const PROJECT = 'phone';
-const FLOOR = 17;
+const FLOOR = 18;
 
 // Optional overrides (see the GENERALISED note above). Parsed strictly: fail closed.
 const KNOWN_FLAGS = {

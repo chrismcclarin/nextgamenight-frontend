@@ -1398,6 +1398,36 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     await assertTheme(page, 'dark');
     await assertAccentLabelRatio(page, 'dark');
   });
+
+  // Phase 88.9-01, owner pick A1b (88.9-PICKS-A.json): the dark danger fill. The trigger is
+  // src/app/components/DangerZoneDeleteAccount.tsx ("onClick={handleOpen}>"),
+  // a steady-state .btn-danger on /userProfile that needs no fixture beyond the signed-in user.
+  // Its ground must be its OWN fill (opaqueAt 0), the same shape as the W23 accent probe: if
+  // .btn-danger stopped painting, the walk would reach the dark page ground and white on it
+  // would read as a pass. Red by design before the token change (white on #ef4444 is 3.76:1).
+  test('A1b (88.9): the Danger Zone trigger\'s white label clears 4.5:1 on the dark danger fill', async ({ page }) => {
+    await page.goto('/userProfile');
+    await assertTheme(page, 'dark');
+    const trigger = page.getByRole('button', { name: 'Delete My Account', exact: true });
+    await expect(
+      trigger,
+      'A1b (dark): the Delete My Account trigger is not visible on /userProfile.'
+    ).toBeVisible({ timeout: 15_000 });
+
+    const label = 'Danger Zone trigger label on the danger fill (A1b, dark)';
+    const m = await ratioAgainstGround(trigger, label);
+    expect(
+      m.probe.opaqueAt,
+      `A1b (dark): the ground walk did not terminate on the button's OWN background ` +
+        `(opaqueAt ${m.probe.opaqueAt}) — .btn-danger is not painting a fill, so the ratio ` +
+        `below is measured against whatever ancestor happens to be opaque.\n${describeGround(
+          'Danger Zone trigger (dark)',
+          m.resolution
+        )}`
+    ).toBe(0);
+
+    expectRatio(label, m, AA_TEXT);
+  });
 });
 
 /**
