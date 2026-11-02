@@ -1045,7 +1045,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       );
       const remove = make(
         'button',
-        'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11 enabled-hover:bg-surface-hover aria-disabled:text-content-muted btn-sm border shrink-0 bg-status-error-subtle border-status-error text-content-status-error font-semibold',
+        'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11 enabled-hover:bg-surface-hover aria-disabled:text-content-muted btn-sm border shrink-0 bg-status-error-subtle border-status-error text-content-status-error font-semibold',
         'Tap again to confirm',
       );
 
