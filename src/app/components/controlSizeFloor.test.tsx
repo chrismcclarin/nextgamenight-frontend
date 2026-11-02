@@ -638,6 +638,62 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: "BringSummary's viewer control (`Add games` / `Edit`), width; `Edit` is under 44px wide at text-sm",
     },
+    // 88.9 A7a / O3a (owner picks, 2026-10-31): the friends tab strip (Friends / Requests / Sent),
+    // one map-rendered button site, measured 34px tall at 375 by e2e/lane-a-tap-floors.spec.ts. Unprefixed
+    // min-h-11 min-w-11, so the floor holds at every width (the strip is flush, not phone-scoped).
+    friendsTabsHeight: {
+      anchor: "aria-current={activeTab === key ? 'true' : undefined}",
+      expectedFile: 'app/friends/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the friends page's tab buttons (Friends / Requests / Sent), height (88.9 A7a; measured 34px tall)",
+    },
+    // 88.9 A7a / O3a: the same site's width; Sent is the narrow tab, measured 31px wide.
+    friendsTabsWidth: {
+      anchor: "aria-current={activeTab === key ? 'true' : undefined}",
+      expectedFile: 'app/friends/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "the friends page's tab buttons (Friends / Requests / Sent), width (88.9 A7a; Sent measured 31px wide)",
+    },
+    // 88.9 A7a: the group page's Overview tab, measured 38px tall (93px wide) at 375. Inset ring, no halo (O3a).
+    groupTabHomeHeight: {
+      anchor: "onClick={() => setActiveTab('home')}",
+      expectedFile: 'app/groupHomePage/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the group page's Overview tab, height (88.9 A7a; measured 38px tall)",
+    },
+    // 88.9 A7a: the Overview tab's width, pinned so a shorter label can never drop it under 44.
+    groupTabHomeWidth: {
+      anchor: "onClick={() => setActiveTab('home')}",
+      expectedFile: 'app/groupHomePage/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "the group page's Overview tab, width (88.9 A7a)",
+    },
+    // 88.9 A7a: the group page's Library tab, measured 38px tall at 375, the Overview tab's twin.
+    groupTabLibraryHeight: {
+      anchor: "onClick={() => setActiveTab('library')}",
+      expectedFile: 'app/groupHomePage/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the group page's Library tab, height (88.9 A7a; measured 38px tall)",
+    },
+    // 88.9 A7a: the Library tab's width, pinned with its height as the Overview twin is.
+    groupTabLibraryWidth: {
+      anchor: "onClick={() => setActiveTab('library')}",
+      expectedFile: 'app/groupHomePage/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "the group page's Library tab, width (88.9 A7a)",
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */
