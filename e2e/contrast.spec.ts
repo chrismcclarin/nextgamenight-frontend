@@ -755,6 +755,26 @@ async function washInk(page: Page, theme: 'light' | 'dark'): Promise<void> {
 async function timezoneRowCue(page: Page, theme: 'light' | 'dark'): Promise<void> {
   // Every selection write is held: nothing reaches the CI database.
   await holdWrites(page, {});
+  // DECISION Phase 88.9-03 (tz-answer): the timezone PATCH is ANSWERED here, never left to the hold.
+  // A held write is released when interception is disabled at unrouteAll: Chromium resumes the
+  // paused request, so the PATCH reached the CI database, changed the e2e user's timezone and shifted
+  // the seeded availability out of every later scheduler read (CI 41396760316). Registered AFTER
+  // holdWrites on purpose: Playwright runs matching routes in reverse registration order, so a route
+  // registered before the catch-all hold never sees the request. Do not remove or reorder this route.
+  // Body mirrors the backend's success shape, backend:Sonnet/routes/users.js ("res.json({ timezone: user.timezone });");
+  // setTimezone ignores the response body, src/app/components/TimezoneProvider.js ("await usersAPI.updateTimezone(selfUuid, newTimezone);").
+  await page.route(
+    (url) => /\/users\/[^/]+\/timezone$/.test(url.pathname),
+    async (route) => {
+      const request = route.request();
+      if (request.method() === 'GET' || request.method() === 'HEAD') {
+        await route.fallback();
+        return;
+      }
+      const sent = (request.postDataJSON() ?? {}) as { timezone?: unknown };
+      await route.fulfill({ status: 200, json: { timezone: sent.timezone ?? null } });
+    },
+  );
   try {
     await page.goto('/userProfile');
     await assertTheme(page, theme);
