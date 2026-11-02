@@ -40,7 +40,7 @@ export const gates = [
   { file: 'src/app/components/availabilityGridColumns.test.ts', min: 6, why: 'Phase 88 Req 4 phone geometry — the six aligned AvailabilityGrid column widths stay in lockstep' },
   { file: 'src/app/decisionMarkers.test.ts', min: 23, why: 'Phase 88 D-36 / D-37 — the decision markers Phase 88 overrode say so, in place' },
   { file: 'src/app/rawColorValues.test.ts', min: 7, why: 'Phase 88 Req 2 — no raw hex or black shadows' },
-  { file: 'src/app/tokenContrast.test.ts', min: 66, why: 'Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
+  { file: 'src/app/tokenContrast.test.ts', min: 67, why: 'Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
   { file: 'src/app/miniPicks.test.ts', min: 2, why: '88.9 RULING A mini-page picks' },
   { file: 'src/app/surfaceHoverSweep.test.ts', min: 12, why: 'Phase 88.3 Req 1 / D-02 — the hover and sunken sweep' },
   { file: 'src/app/darkChromeLegibility.test.ts', min: 8, why: 'Phase 88.3 Req 7/8 — dark-chrome ring, muted-label corrections, mobile-panel inert guard' },

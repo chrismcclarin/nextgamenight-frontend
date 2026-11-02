@@ -1116,7 +1116,7 @@ export default function EventScheduler({
                   // spot. It folds 10px -> 12px, the D-01 floor, like the other nine sites in this
                   // cluster. MEASURED in Chromium at 375px before it landed: see the DECISION
                   // marker on this element's weight below.
-                  className="text-xs"
+                  className="text-xs text-content-primary"
                   style={{
                     position: 'absolute',
                     top: '2px',
@@ -1130,7 +1130,11 @@ export default function EventScheduler({
                     // that is not guaranteed and is already false in dark mode (#22c55e vs the
                     // border). Pointing this back at the shared `var(--color-status-success)` key,
                     // which now resolves to the BORDER value, is a decision, not a cleanup.
-                    color: 'var(--color-status-success-text)',
+                    // [AMENDED IN PLACE Phase 88.9-08 (owner pick A5a, 2026-10-31): the badge is no
+                    // longer a status-text site — its ink is the text-content-primary class on the
+                    // element (on screen 13.99 / 7.64; ceiling 11.21 / 4.58), chosen OVER the
+                    // status-success-text inline (3.56 dark on screen, 2.13 at the ceiling). The
+                    // inline color is deleted because it would beat the class.]
                     // DECISION Phase 88.6-26 (D-03 / W35): weight 700, chosen OVER 400, because the
                     // fill/ink pairing needs the weight. This badge is the mandatory NON-COLOUR cue
                     // for the cell's translucent wash — see the comment on the element above — and

@@ -49,6 +49,7 @@ import { describe, expect, it } from 'vitest';
 
 import { FORBIDDEN_INK_ON_MUTED, MUTED_GROUND_TOKEN } from '../test-utils/inkRules';
 import { withoutComments } from '../test-utils/sourceScan';
+import { CALENDAR_WASH_RAMP } from '../lib/availabilityColor';
 import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../lib/wcag';
 
 const GLOBALS = path.join(__dirname, 'globals.css');
@@ -1794,6 +1795,143 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
         `88.9 A1b — [${theme}] #ffffff on --color-error (${ground}) measures ${value.toFixed(4)}:1, floor 4.50:1`,
       ).toBeGreaterThanOrEqual(4.5);
     }
+  });
+
+  it("55. 88.9 A5a — both wash cues' SOURCE inks clear 4.5:1 over the wash ceiling on the card in BOTH themes", () => {
+    // A token-only pin would be green on the pre-fix tree (text-content-primary already clears the
+    // ceiling), so this test reads each cue's ink FROM SOURCE, in render order: the element's
+    // inline colour FIRST (an inline colour beats any class and is what the browser paints), and
+    // only when there is none, its text-content utility class. Carrying BOTH is the OI-1 shadowing
+    // shape (the class reads compliant while the inline ink renders), so it fails here by name.
+    // Comments are stripped before any read: the OI-1 marker inside the badge's style object names
+    // a text-content class in prose, and prose is not markup.
+    // Ground: the LAST CALENDAR_WASH_RAMP entry (the ceiling step) composited over the CARD, the
+    // surface both hosts sit on today. RESEARCH L-13: over the dark elevated ground (#2f3b50) the
+    // ceiling step gives 4.2179 for text-content-primary, so if the scheduler is ever hosted on an
+    // elevated surface this pin's ground must change and the ink be re-ruled.
+    const COMPONENTS = path.join(__dirname, 'components');
+    const SITES = [
+      { site: 'SchedulerWeekStrip.tsx strip aggregate', file: 'SchedulerWeekStrip.tsx', pick: (style: string) => /(?<![\w-])backgroundColor\s*:/.test(style) },
+      { site: 'EventScheduler.tsx scheduler badge', file: 'EventScheduler.tsx', pick: (style: string) => /position\s*:\s*'absolute'/.test(style) && /fontWeight\s*:\s*700\b/.test(style) },
+    ] as const;
+
+    // The text from an opening brace to its matching close (string-aware; comments already gone).
+    function balanced(src: string, open: number): string {
+      let depth = 0;
+      let quote: string | null = null;
+      for (let i = open; i < src.length; i += 1) {
+        const c = src[i];
+        if (quote) {
+          if (c === '\\') i += 1;
+          else if (c === quote) quote = null;
+          continue;
+        }
+        if (c === '"' || c === "'" || c === '`') quote = c;
+        else if (c === '{') depth += 1;
+        else if (c === '}') {
+          depth -= 1;
+          if (depth === 0) return src.slice(open, i + 1);
+        }
+      }
+      throw new TokenContrastParseError('88.9 A5a — unbalanced brace in a JSX attribute value');
+    }
+
+    // Every span opening tag: from the span opener to the first close angle at brace depth 0.
+    function spanTags(src: string): string[] {
+      const tags: string[] = [];
+      for (const m of src.matchAll(/<span(?=[\s>])/g)) {
+        let i = m.index! + m[0].length;
+        while (i < src.length && src[i] !== '>') {
+          if (src[i] === '{') i += balanced(src, i).length;
+          else if (src[i] === '"' || src[i] === "'") i = src.indexOf(src[i], i + 1) + 1;
+          else i += 1;
+        }
+        tags.push(src.slice(m.index!, i + 1));
+      }
+      return tags;
+    }
+
+    // An attribute's value: a quoted literal, or a brace expression read whole.
+    function attr(tag: string, name: string): string | null {
+      const m = new RegExp(`\\s${name}=(["'{])`).exec(tag);
+      if (!m) return null;
+      const at = m.index + m[0].length - 1;
+      if (m[1] === '{') return balanced(tag, at);
+      return tag.slice(at, tag.indexOf(m[1], at + 1) + 1);
+    }
+
+    const ceiling = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/.exec(
+      CALENDAR_WASH_RAMP[CALENDAR_WASH_RAMP.length - 1],
+    );
+    expect(ceiling, '88.9 A5a — the last CALENDAR_WASH_RAMP entry is not an rgba(r, g, b, a) string').not.toBeNull();
+    const rampHex = toHex6([Number(ceiling![1]), Number(ceiling![2]), Number(ceiling![3])]);
+    const rampAlpha = Number(ceiling![4]);
+
+    const failures: string[] = [];
+    let measured = 0;
+    for (const { site, file, pick } of SITES) {
+      const src = withoutComments(fs.readFileSync(path.join(COMPONENTS, file), 'utf8'));
+      const hits = spanTags(src).filter((tag) => {
+        const style = attr(tag, 'style');
+        return style !== null && pick(style);
+      });
+      if (hits.length !== 1) {
+        failures.push(`${site} — LOCATOR: expected exactly one matching span opening tag, found ${hits.length}`);
+        continue;
+      }
+      const tag = hits[0];
+      const style = attr(tag, 'style') ?? '';
+      const className = attr(tag, 'className') ?? '';
+      const inline = [...style.matchAll(/(?<![\w-])color\s*:\s*([^,}\n]+)/g)].map((m) => m[1].trim());
+      const classes = [...new Set([...className.matchAll(/(?<![\w:-])text-content-([a-z0-9-]+)\b/g)].map((m) => m[1]))];
+
+      let ink: string;
+      let prop: string;
+      if (inline.length > 0 && classes.length > 0) {
+        failures.push(
+          `${site} — carries BOTH an inline colour (${inline.join(', ')}) and a text-content class (${classes.map((c) => `text-content-${c}`).join(', ')}): the class reads compliant while the inline ink renders (OI-1 shadowing). Keep one ink site`,
+        );
+        continue;
+      } else if (inline.length > 0) {
+        const ref = inline.length === 1 ? /^'var\(\s*(--[a-z0-9-]+)\s*\)'$/i.exec(inline[0]) : null;
+        if (!ref) {
+          failures.push(`${site} — the inline colour must be exactly one 'var(--prop)' read, found ${inline.join(', ')}`);
+          continue;
+        }
+        ink = `inline color var(${ref[1]})`;
+        prop = ref[1];
+      } else if (classes.length === 1) {
+        const bridged = declIn(blockOf('theme'), `--color-content-${classes[0]}`);
+        const ref = bridged === null ? null : VAR_REF.exec(bridged);
+        if (!ref) {
+          failures.push(`${site} — text-content-${classes[0]} has no @theme inline --color-content-${classes[0]}: var(--prop) declaration`);
+          continue;
+        }
+        ink = `text-content-${classes[0]} -> ${ref[1]}`;
+        prop = ref[1];
+      } else if (classes.length > 1) {
+        failures.push(`${site} — more than one text-content class in its className (${classes.map((c) => `text-content-${c}`).join(', ')}); exactly one ink must sit on the wash`);
+        continue;
+      } else {
+        failures.push(`${site} — no ink found: neither an inline colour nor a text-content class (anti-vacuity)`);
+        continue;
+      }
+
+      for (const theme of ['light', 'dark'] as const) {
+        const ground = blend(rampHex, rampAlpha, resolve(theme, '--color-bg-card'));
+        if (ground === null) throw new TokenContrastParseError(`88.9 A5a [${theme}] the wash ceiling did not composite over the card`);
+        const fg = resolve(theme, prop);
+        const value = ratioHex(fg, ground, `88.9 A5a [${theme}] ${site}`);
+        measured += 1;
+        if (value < 4.5) {
+          failures.push(
+            `[${theme}] ${site} — ink ${ink} (${fg}) over the ceiling wash step (alpha ${rampAlpha}) on the card measures ${value.toFixed(4)}:1 on ground ${ground}, floor 4.50:1 (the picked ink clears dark by only ~0.08, and the ground ASSUMES the card host)`,
+          );
+        }
+      }
+    }
+    expect(failures, `88.9 A5a — ${failures.join(' | ')}`).toEqual([]);
+    expect(measured, '88.9 A5a — anti-vacuity: expected 4 measured pairs (2 sites x 2 themes)').toBe(4);
   });
 });
 
