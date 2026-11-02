@@ -107,6 +107,9 @@ describe('Phase 88.3 Req 7/8 — dark-chrome ring, muted labels, and the closed 
     // It was 7 before this plan: `NotificationBell.js`'s and `ThemeToggle.js`'s icon-only
     // desktop triggers carried NO focus-visible ring at all and fell to the UA outline on
     // warm-800. They gained one here, which is what raised 7 -> 9.
+    // AMENDED Phase 88.9-05: 12 — Header.js gains three (the brand link and the two desktop
+    // list arms, A10c); the bell panel section now re-scopes --ring to the page ring (A3d),
+    // so its rings no longer take this override.
     const src = read(HEADER);
     const chunks = ringOverrideChunks(src);
     expect(
