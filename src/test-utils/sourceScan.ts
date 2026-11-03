@@ -192,6 +192,114 @@ export function withoutComments(src: string): string {
   return out.join('');
 }
 
+/**
+ * The halo reads for Phase 88.9's halo contract (owner option (a): every house offset ring
+ * paints its gap in the colour of the surface under the control, never the default white).
+ *
+ * DECISION Phase 88.9-15 T1: ONE copy of the chain, declared-key and alpha reads, exported
+ * here beside withoutComments, chosen OVER a private copy in cascadeOrder.test.ts. Two gates
+ * judge halos by these reads (cascadeOrder test 12 for hand-carried rings, haloCensus for
+ * Button call sites); a second copy is a second place a fix has to land and can be forgotten,
+ * and a gate that reads a halo differently from its twin passes a token the other reds.
+ * Re-copying these into a suite is a decision, not a cleanup.
+ *
+ * Every read is on a WHOLE whitespace-split token, never a substring: a substring read lets
+ * an inert token pass (peer-focus-visible:ring-offset-surface-card CONTAINS the bare
+ * focus-visible:ring-offset-surface-card spelling, and the two apply under different states).
+ */
+
+/** A whole house ring token; group 1 is its variant chain (focus-visible:, peer-..., group-...). */
+export const HOUSE_RING_TOKEN = /^((?:peer-|group-)?focus-visible:)ring-focus-ring$/;
+
+/** A whole house offset-width token (ring-offset-1 or ring-offset-2) on any house chain. */
+export const HOUSE_OFFSET_WIDTH_TOKEN = /^(?:peer-|group-)?focus-visible:ring-offset-[12]$/;
+
+/** An unprefixed halo spelling: it paints at rest, not on focus, and loses to nothing. */
+export const UNPREFIXED_HALO_TOKEN = /^(?:dark:)?ring-offset-[a-z]/;
+
+/** One halo token read apart. */
+export interface HaloToken {
+  token: string;
+  /** Leading dark: present. A dark: halo is only ever a twin of a light halo. */
+  dark: boolean;
+  /** The variant chain between any leading dark: and ring-offset- (e.g. focus-visible:). */
+  chain: string;
+  /** The colour key with any /NN alpha modifier removed. */
+  key: string;
+  /** The alpha modifier (20 for /20), or null when the halo is opaque. */
+  alpha: string | null;
+}
+
+const HALO_TOKEN = /^(dark:)?((?:[a-z][a-z0-9-]*:)*)ring-offset-([a-z][a-z0-9-]*)(?:\/(\[[^\]]*\]|[0-9.]+))?$/;
+
+/**
+ * Read one whole token as a halo, or null. A halo is ring-offset- followed by a NON-numeric
+ * colour key, so the widths ring-offset-1 / ring-offset-2 are never halos.
+ */
+export function readHalo(token: string): HaloToken | null {
+  const m = HALO_TOKEN.exec(token);
+  if (!m) return null;
+  return { token, dark: m[1] === 'dark:', chain: m[2], key: m[3], alpha: m[4] ?? null };
+}
+
+/**
+ * Every colour key declared as --color-<key>: in comment-stripped CSS. Tailwind 4 emits a
+ * ring-offset-<key> utility only for a declared colour key, so an undeclared key is as white
+ * as no halo; a key that is only mentioned in a comment is not declared.
+ */
+export function declaredColorKeys(css: string): Set<string> {
+  const keys = new Set<string>();
+  for (const m of withoutComments(css).matchAll(/--color-([a-z0-9-]+)\s*:/g)) keys.add(m[1]);
+  return keys;
+}
+
+/** One failed limb of the halo contract for one ring chain. */
+export interface HaloFailure {
+  limb: 'a' | 'c' | 'd';
+  detail: string;
+}
+
+/**
+ * Judge one class string's halo for a ring drawn on chain (e.g. focus-visible:).
+ * (a) at least one halo token carries exactly that chain (a halo on another chain, such as a
+ *     bare focus-visible: halo beside a peer-focus-visible: ring, never applies);
+ * (c) every halo token's key is declared and carries no alpha modifier (a halo is opaque);
+ * (d) a dark: halo counts only as a twin, never as the only halo on the chain.
+ * Unprefixed spellings are not judged here; UNPREFIXED_HALO_TOKEN is a tree-wide read.
+ */
+export function judgeHalo(classes: string, chain: string, declared: Set<string>): HaloFailure[] {
+  const halos = classes.split(/\s+/).map(readHalo).filter((h): h is HaloToken => h !== null);
+  const onChain = halos.filter((h) => h.chain === chain);
+  const failures: HaloFailure[] = [];
+  if (onChain.length === 0) {
+    const other = halos.filter((h) => h.chain !== chain).map((h) => h.token);
+    failures.push({
+      limb: 'a',
+      detail:
+        `no ${chain}ring-offset-<colour> halo` +
+        (other.length ? ` (halo on another chain, never applies: ${other.join(', ')})` : ''),
+    });
+  } else if (onChain.every((h) => h.dark)) {
+    failures.push({
+      limb: 'd',
+      detail: `only a dark: halo (${onChain.map((h) => h.token).join(', ')}); the light halo is white`,
+    });
+  }
+  for (const h of halos) {
+    if (h.alpha !== null) {
+      failures.push({
+        limb: 'c',
+        detail: declared.has(h.key)
+          ? `${h.token}: declared-but-translucent (alpha /${h.alpha}); a halo is opaque`
+          : `${h.token}: alpha /${h.alpha} on an undeclared key ${h.key}`,
+      });
+    } else if (!declared.has(h.key)) {
+      failures.push({ limb: 'c', detail: `${h.token}: undeclared colour key ${h.key}, emits no CSS` });
+    }
+  }
+  return failures;
+}
+
 /** 1-based line number of a character offset. */
 export function lineAt(src: string, offset: number): number {
   return src.slice(0, offset).split('\n').length;

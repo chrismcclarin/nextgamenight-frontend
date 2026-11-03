@@ -30,7 +30,17 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { sourceFiles, withoutComments } from '../test-utils/sourceScan';
+import {
+  HOUSE_OFFSET_WIDTH_TOKEN,
+  HOUSE_RING_TOKEN,
+  UNPREFIXED_HALO_TOKEN,
+  declaredColorKeys,
+  judgeHalo,
+  lineAt,
+  sourceFiles,
+  stringChunks,
+  withoutComments,
+} from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 const GLOBALS = path.join(__dirname, 'globals.css');
@@ -628,5 +638,101 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
       /@media\s*\(\s*hover:\s*hover\s*\)/.test(body),
       `\`enabled-hover\` must be scoped to hover-capable pointers. ${REPRODUCES}`,
     ).toBe(true);
+  });
+});
+
+// Phase 88.9 halo contract, owner option (a): every house offset ring paints its 2px gap in the
+// colour of the surface under the control, never the default white ring-offset colour.
+//
+// WHAT TEST 12 PINS: every comment-stripped string chunk in src that draws the house ring (a
+// whole ring-focus-ring token beside a whole ring-offset-1 or ring-offset-2 token) also declares
+// a halo, and nothing in src spells a halo unprefixed. It judges WHOLE whitespace-split tokens
+// through the shared reads in src/test-utils/sourceScan.ts ("export function judgeHalo("), the
+// same reads the haloCensus test (plan 88.9-15 Task 2) judges Button call sites by.
+//
+// WHAT IT CANNOT JUDGE: which ground a ring actually sits on. It proves a halo is declared, on
+// the ring's own chain, opaque and with a key that emits CSS; it cannot prove the key is the
+// RIGHT surface. That is the haloCensus test, the census evidence (88.9-HALO-CENSUS.md) and the
+// rendered contrast gate. It also never sees a Button call site whose chunk holds no ring token
+// (the ring lives in the Button cva base); those are haloCensus rows.
+//
+// WHY EACH LIMB EXISTS (each one a token that compiles, paints nothing, and reds nothing else):
+// (a) the halo must carry the ring's own variant chain, read from its ring-focus-ring token. A
+//     bare focus-visible: halo beside the FeedbackForm dropzone's peer-focus-visible: ring never
+//     applies (focus sits on the sr-only peer input, not on the label), and a substring read
+//     would pass it because the peer spelling contains the bare one.
+// (b) an unprefixed ring-offset-<colour> paints at rest and is the losing spelling; the two
+//     exceptions are src/components/ui/dialog.tsx (the shadcn bridge vocabulary kept by
+//     DECISION Phase 88-05) and src/app/components/tutorial/simulated/ScheduleDemo.js (a
+//     tutorial demo highlight, not a house ring).
+// (c) the colour key must be declared as --color-<key>: in comment-stripped globals.css; an
+//     undeclared key (status-info-subtle) emits no CSS on tailwindcss 4, so the gap stays
+//     white. An alpha key (/NN) fails even when declared: a translucent halo lets the ring show
+//     through the gap (plan 88.9-02 / 88.9-14 opacity rule, a halo is always opaque).
+// (d) a dark: halo only ever twins a light halo; alone it leaves the light-mode gap white.
+//
+// Interpolation: stringChunks emits each literal inside an interpolation as its own chunk, so a
+// per-arm site (one FULL literal per arm, plan 88.9-02's fleet rule) is judged arm by arm. A
+// limb (a) red on a chunk whose halo sits only in an interpolation means the site broke the
+// per-arm rule: rewrite that site as one full literal per arm, never one arm's halo for all.
+const HALO_EXCEPTIONS = new Set([
+  path.join('components', 'ui', 'dialog.tsx'),
+  path.join('app', 'components', 'tutorial', 'simulated', 'ScheduleDemo.js'),
+]);
+// POPULATION FLOOR, measured 2026-11-02 at FE 414b501 (plans 11-14 applied): 81 ring chunks
+// across 36 files. Measured by setting this floor to 99999 for one run of
+// npm --prefix periodictabletop run test -- src/app/cascadeOrder.test.ts
+// whose failure message prints the live count. Rings with no offset width (ring-inset, or no
+// ring-offset at all) paint no gap and are outside the population by construction.
+const HALO_POPULATION_FLOOR = 81;
+
+describe('Phase 88.9 — the halo contract (owner option (a))', () => {
+  it('12. 88.9 halo — every house offset ring in src declares a surface halo, and none is spelled unprefixed', () => {
+    const declared = declaredColorKeys(readGlobals());
+    // Negative controls on the declared-key read: the three keys the fleet uses on hand-carried
+    // rings are declared, and the one plant (5) swaps in is not.
+    expect(declared.has('surface-card')).toBe(true);
+    expect(declared.has('surface-elevated')).toBe(true);
+    expect(declared.has('status-warning-subtle')).toBe(true);
+    expect(declared.has('status-info-subtle')).toBe(false);
+
+    let population = 0;
+    const offenders: string[] = [];
+    for (const abs of sourceFiles(SRC)) {
+      const rel = path.relative(SRC, abs);
+      const src = fs.readFileSync(abs, 'utf8');
+      for (const c of stringChunks(src)) {
+        const tokens = c.text.split(/\s+/).filter(Boolean);
+        const at = `${rel}:${lineAt(src, c.offset)}`;
+        if (!HALO_EXCEPTIONS.has(rel)) {
+          for (const t of tokens.filter((tok) => UNPREFIXED_HALO_TOKEN.test(tok))) {
+            offenders.push(`${at} limb (b): unprefixed ${t}`);
+          }
+        }
+        if (!tokens.some((tok) => HOUSE_OFFSET_WIDTH_TOKEN.test(tok))) continue;
+        const chains = new Set(
+          tokens.map((tok) => HOUSE_RING_TOKEN.exec(tok)?.[1]).filter((ch): ch is string => !!ch),
+        );
+        if (chains.size === 0) continue;
+        population += 1;
+        for (const chain of chains) {
+          for (const f of judgeHalo(c.text, chain, declared)) {
+            offenders.push(`${at} limb (${f.limb}): ${f.detail}`);
+          }
+        }
+      }
+    }
+
+    expect(
+      offenders,
+      'A house offset ring breaks the 88.9 halo contract. Give it a halo on its own variant ' +
+        'chain whose key is a declared, opaque surface (see the comment above this test):\n' +
+        offenders.join('\n'),
+    ).toEqual([]);
+    expect(
+      population,
+      `Only ${population} chunks draw the house offset ring (floor ${HALO_POPULATION_FLOOR}). A ` +
+        'drop means the population read stopped seeing rings, which passes every limb vacuously.',
+    ).toBeGreaterThanOrEqual(HALO_POPULATION_FLOOR);
   });
 });
