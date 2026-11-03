@@ -277,6 +277,26 @@ describe('Combobox', () => {
     }
   });
 
+  // 88.9-CR m2: the item ariaLabel lands ON the role=option row (the focusable leaf under
+  // virtual focus), never on a wrapper, and an item without one keeps its label as its name
+  // with no aria-label attribute at all. Pins src/components/ui/Combobox.tsx ("aria-label={item.ariaLabel}").
+  it('puts an item ariaLabel on the option row itself; an item without one is named by its label (88.9-CR m2)', () => {
+    render(
+      <Harness
+        items={[
+          { key: 'catan', label: 'Catan', ariaLabel: 'Catan, current', onSelect: onSelectSpies.catan },
+          { key: 'brass', label: 'Brass', onSelect: onSelectSpies.brass },
+        ]}
+      />
+    );
+    const named = screen.getByRole('option', { name: 'Catan, current' });
+    expect(named).toHaveAttribute('role', 'option');
+    expect(named).toHaveAttribute('aria-label', 'Catan, current');
+    const plain = screen.getByRole('option', { name: 'Brass' });
+    expect(plain).toHaveAttribute('role', 'option');
+    expect(plain).not.toHaveAttribute('aria-label');
+  });
+
   it('announces the loading and empty rows outside the listbox', () => {
     const { unmount } = render(<Harness items={[]} loading />);
     expect(screen.getByRole('status')).toHaveTextContent('Searching');
