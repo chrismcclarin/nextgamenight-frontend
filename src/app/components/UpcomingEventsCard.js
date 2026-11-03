@@ -317,7 +317,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                     key={event.id}
                     type="button"
                     onClick={() => handleEventClick(event)}
-                    className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
+                    className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
                   >
                     {/* DECISION Phase 88.6-28 (R2 / UI-SPEC §4.3): every span in this row STAYS at
                         Label 14 (`text-sm`), chosen OVER promoting `{gameName}` to Body 16 under
@@ -384,7 +384,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                     e.stopPropagation();
                     setExpanded((open) => !open);
                   }}
-                  className="text-sm text-content-link cursor-pointer mt-1 ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                  className="text-sm text-content-link cursor-pointer mt-1 ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                 >
                   {expanded ? 'Show less' : `+ ${overflowCount} more`}
                 </button>

@@ -364,7 +364,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
           onClick={() => onEventClick(event)}
           className={cn(
             'block w-full min-h-11 text-left active:opacity-75',
-            'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2'
+            'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
           )}
         >
           {/*

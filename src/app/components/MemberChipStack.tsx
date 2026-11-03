@@ -497,7 +497,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
            */
           className={cn(
             'inline-flex min-h-11 min-w-11 cursor-pointer items-center rounded-full pr-1',
-            'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2'
+            'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
           )}
           onClick={(e) => activate(e, true)}
           onKeyDown={(e) => activateOnKey(e, true)}
@@ -649,7 +649,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                 HIT_EXTENSION,
                 'inline-flex min-h-11 cursor-pointer items-center rounded-xs px-1',
                 cn('text-xs', TINTED_INK),
-                'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2'
+                'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
               )}
               onClick={(e) => activate(e, false)}
               onKeyDown={(e) => activateOnKey(e, false)}

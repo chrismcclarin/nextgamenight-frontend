@@ -70,7 +70,7 @@ export default function PendingMemberBanner({ groupId }) {
                 variant="ghost"
                 size="icon"
                 onClick={handleDismiss}
-                className="ml-4 shrink-0"
+                className="ml-4 shrink-0 focus-visible:ring-offset-surface-accent-subtle"
                 aria-label="Dismiss banner"
             >
                 <span aria-hidden="true" className="text-lg leading-none">&times;</span>
