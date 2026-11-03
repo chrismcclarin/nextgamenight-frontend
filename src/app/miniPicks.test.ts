@@ -192,6 +192,9 @@ describe('88.9 RULING A mini-page picks', () => {
     expect(declIn(hover[0].body, 'background-color'), 'hover background-color').toBe('var(--color-btn-danger-hover)');
 
     expect(dangerPress.length, 'the top-level .btn-danger press rule occurs exactly once').toBe(1);
+    // 88.9-CR scoped check: the unfiltered count is pinned too, so a third copy of this selector in
+    // any other block (a .dark or @layer override of the press background) is a decision, not a drift.
+    expect(rulesFor('.btn-danger:active' + NOT).length, 'the .btn-danger press selector occurs exactly twice file-wide (top level + the reduced-motion exception)').toBe(2);
     const dp = dangerPress[0];
     expect(declIn(dp.body, 'background-color'), 'press background-color').toBe('var(--color-btn-danger-active)');
     expect(declIn(dp.body, 'opacity'), 'press opacity').toBe('1');

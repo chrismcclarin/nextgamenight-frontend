@@ -180,6 +180,7 @@ describe('the removed-from-group notice is spoken from a region that was already
     });
     const dismiss = screen.getByRole('button', { name: 'Dismiss' });
     for (const token of [
+      'rounded-btn',
       'focus:outline-hidden',
       'focus-visible:ring-2',
       'focus-visible:ring-focus-ring',

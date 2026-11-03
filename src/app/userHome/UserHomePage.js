@@ -645,11 +645,12 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     (census R065), chosen OVER the browser default outline that plan 88.9-10 left on this
                     48px box. The dark halo is the page colour because the box is a translucent amber over
                     the page, the same approximation R065 records. Round 2's X2 token ruling (register row
-                    "X2 — The removed-member notice box is raw palette") moves this halo together with R065's. */}
+                    "X2 — The removed-member notice box is raw palette") moves this halo together with R065's. rounded-btn as on R065, so the
+                    ring's corners match the twin (88.9-CR scoped check). */}
                 {removedNoticeShown && (
                     <button
                         onClick={dismissRemovedNotice}
-                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
+                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 rounded-btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
                         aria-label="Dismiss"
                     >
                         Dismiss
