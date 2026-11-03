@@ -1588,11 +1588,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           <span className="text-xs text-content-muted">
                             Week of {format(effectiveMondayForUI, 'EEE MMM d')}
                           </span>
+                          {/* DECISION Phase 88.9-CR m9: the name is the visible text first, then the context, chosen OVER the old name "Jump to current week" (no "Today" in it, so WCAG 2.5.3 Label in Name failed and a voice-control "tap Today" matched nothing) and OVER dropping the aria-label (a bare "Today" loses which week it jumps to). Same order as the timezone option names, which start with their visible text. */}
                           <button
                             type="button"
                             onClick={handleToday}
                             disabled={isOnTodayMonday}
-                            aria-label="Jump to current week"
+                            aria-label="Today, jump to current week"
                             className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11"
                           >
                             Today

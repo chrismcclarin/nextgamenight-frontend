@@ -145,16 +145,16 @@ async function createEventControls(page: Page, theme: Theme): Promise<void> {
   await switchToManualEntry(page);
   const switchLink = page.getByRole('button', { name: 'Switch to Visual Calendar', exact: true });
   const prev = page.getByRole('button', { name: 'Previous week', exact: true });
-  const jump = page.getByRole('button', { name: 'Jump to current week', exact: true });
+  const jump = page.getByRole('button', { name: 'Today, jump to current week', exact: true });
   const next = page.getByRole('button', { name: 'Next week', exact: true });
   await expect(switchLink, 'the create-event dialog switched to manual entry').toBeVisible();
   await expect(prev, 'the create-event week navigation rendered').toBeVisible({ timeout: 15_000 });
-  await expect(jump, 'the create-event Jump to current week rendered').toBeVisible();
+  await expect(jump, 'the create-event Today chip rendered').toBeVisible();
   await expect(next, 'the create-event Next week rendered').toBeVisible();
 
   await expectTouchTarget(switchLink, `create-event Switch link at 1280 (A9a, ${theme})`, { axes: 'height' });
   await expectTouchTarget(prev, `create-event Previous week at 1280 (A9a + O3a, ${theme})`, { axes: 'both' });
-  await expectTouchTarget(jump, `create-event Jump to current week at 1280 (A9a, ${theme})`, { axes: 'height' });
+  await expectTouchTarget(jump, `create-event Today chip at 1280 (A9a, ${theme})`, { axes: 'height' });
   await expectTouchTarget(next, `create-event Next week at 1280 (A9a + O3a, ${theme})`, { axes: 'both' });
 }
 

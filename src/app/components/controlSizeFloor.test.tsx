@@ -741,14 +741,14 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: "create-event's Previous week arrow, width (88.9 A9a; measured 24px wide)",
     },
-    // 88.9 A9a: Jump to current week (the Today chip), under 44 tall; 50 wide already, so no width row.
+    // 88.9 A9a: the Today chip (named "Today, jump to current week" since the 88.9 code review, m9), under 44 tall; 50 wide already, so no width row.
     createEventJumpWeekHeight: {
       anchor: 'onClick={handleToday}',
       expectedFile: 'app/components/createEvent.js',
       expectedCount: 1,
       floor: MIN_TARGET_44,
       dimensions: ['min-h', 'h'],
-      label: "create-event's Jump to current week button, height (88.9 A9a)",
+      label: "create-event's Today chip, height (88.9 A9a)",
     },
     // 88.9 A9a: the week strip's Next week arrow, the Previous week arrow's twin. Halo page (O3a).
     createEventNextWeekHeight: {
