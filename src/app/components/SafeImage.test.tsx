@@ -175,4 +175,42 @@ describe('SafeImage protocol allow-list (CodeQL js/xss-through-dom)', () => {
       expect(screen.getByRole('img', { name: 'Image placeholder' })).toBeInTheDocument();
     });
   });
+
+  // Phase 88.9 code review d1: the fallback glyph's size is a per-site choice. The
+  // default stays text-2xl so the other call sites render byte-identically; the
+  // 16px month-tile avatar passes a smaller class so its glyph stays inside the box
+  // (src/app/components/CalendarMonthView.js ("fallbackIconClassName=")).
+  describe('fallback glyph size (88.9-CR d1)', () => {
+    it('the default fallback glyph span carries text-2xl', () => {
+      const { container } = render(
+        <SafeImage {...anyProps({ src: 'https://example.com/404.png', alt: 'Group', fallbackIcon: '\u{1F465}' })} />
+      );
+      fireEvent.error(container.querySelector('img') as HTMLImageElement);
+
+      const glyph = screen.getByText('\u{1F465}');
+      expect(glyph.tagName).toBe('SPAN');
+      expect(glyph.className).toBe('text-2xl');
+    });
+
+    it('fallbackIconClassName replaces text-2xl on the glyph span after a load error', () => {
+      const { container } = render(
+        <SafeImage
+          {...anyProps({
+            src: 'https://example.com/404.png',
+            alt: 'Group',
+            fallbackIcon: '\u{1F465}',
+            fallbackIconClassName: 'text-xs leading-none',
+            className: 'w-4 h-4 rounded-full',
+          })}
+        />
+      );
+      fireEvent.error(container.querySelector('img') as HTMLImageElement);
+
+      const glyph = screen.getByText('\u{1F465}');
+      expect(glyph.className).toBe('text-xs leading-none');
+      expect(glyph.className).not.toContain('text-2xl');
+      // The prop styles the glyph only; it never leaks onto the box.
+      expect(screen.getByRole('img', { name: 'Group' }).className).not.toContain('text-xs');
+    });
+  });
 });

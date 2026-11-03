@@ -1161,6 +1161,9 @@ export default function CalendarMonthView({
                                       src={groupProfilePic}
                                       alt={event.Group?.name || ''}
                                       fallbackIcon="👥"
+                                      // 88.9-CR d1: 12px glyph, matching the wrapper span, so the
+                                      // dead-URL fallback stays inside this 16px box.
+                                      fallbackIconClassName="text-xs leading-none"
                                       className="w-4 h-4 rounded-full object-cover border border-line"
                                     />
                                   ) : (
