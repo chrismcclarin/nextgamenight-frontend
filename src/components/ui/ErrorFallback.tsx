@@ -185,7 +185,7 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
               <button
                 type="button"
                 onClick={handleRetry}
-                className="inline-flex min-h-11 md:min-h-0 items-center justify-center rounded-btn bg-primary px-5 py-2.5 text-sm text-primary-foreground transition-colors hover:opacity-90 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 md:min-h-0 items-center justify-center rounded-btn bg-primary px-5 py-2.5 text-sm text-primary-foreground transition-colors hover:opacity-90 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
               >
                 Try again
               </button>
@@ -193,7 +193,7 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
             <button
               type="button"
               onClick={handleReload}
-              className="inline-flex min-h-11 md:min-h-0 items-center justify-center rounded-btn border border-line-strong bg-surface-card px-5 py-2.5 text-sm text-content-primary transition-colors hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 md:min-h-0 items-center justify-center rounded-btn border border-line-strong bg-surface-card px-5 py-2.5 text-sm text-content-primary transition-colors hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
             >
               Reload page
             </button>

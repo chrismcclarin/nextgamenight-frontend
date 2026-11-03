@@ -461,6 +461,12 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
       'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
     const { unmount } = render(<FetchErrorBanner compact state={errorState('boom')} />);
     expect(screen.getByRole('button', { name: 'Retry' }).className, 'Retry').toContain(HOUSE_RING);
+    // AMENDED Phase 88.9-14 (Task 3, halo census R073-R075): the small-notice Retry sits outside
+    // Banner and takes its host-majority card halo; Try again and Report this sit in Banner's
+    // actions slot, which paints bg-surface-elevated for every tone, so they take the elevated one.
+    const retryClass = screen.getByRole('button', { name: 'Retry' }).className;
+    expect(retryClass, 'Retry: card halo').toContain(`${HOUSE_RING} focus-visible:ring-offset-surface-card`);
+    expect(retryClass, 'Retry: never the elevated halo').not.toContain('ring-offset-surface-elevated');
     unmount();
 
     // Under the owner's 2026-10-05 ruling the report link exists only after a failed retry, and
@@ -468,6 +474,9 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
     render(<FeedbackModalProvider><FetchErrorBanner state={{ ...errorState('boom'), retryFailed: true }} /></FeedbackModalProvider>);
     for (const name of ['Try again', 'Report this']) {
       expect(screen.getByRole('button', { name }).className, name).toContain(HOUSE_RING);
+      expect(screen.getByRole('button', { name }).className, `${name}: elevated halo`).toContain(
+        `${HOUSE_RING} focus-visible:ring-offset-surface-elevated`
+      );
     }
   });
 });
