@@ -687,7 +687,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         onClick={() => setCalendarSheetOpen(true)}
                         aria-haspopup="dialog"
                         aria-label={calendarButtonLabel}
-                        className="min-h-11 min-w-11 gap-2"
+                        className="min-h-11 min-w-11 gap-2 focus-visible:ring-offset-surface-page"
                     >
                         {/* Decorative — the explicit aria-label above is the accessible name. */}
                         <Icon name="CalendarDays" size={20} />
