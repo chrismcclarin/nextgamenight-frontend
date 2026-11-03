@@ -2287,7 +2287,17 @@ function Profile(){
                                 setSmsDisabledBannerDismissed(true);
                                 settle();
                             }}
-                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                            /* DECISION Phase 88.9-14 T1 (census R065, owner option (a)): the halo is the opaque
+                               amber-50 ground in light and the opaque PAGE ground in dark, chosen OVER the banner's own
+                               20%-alpha amber-900 dark fill: a halo is always opaque, and Tailwind paints the
+                               ring-offset shadow over the ring, so a 20% halo composites over the amber-400 ring into
+                               a muddy amber (1.33 against it, one thick amber band). The dark banner the user sees is
+                               amber-900 at 20% over the page (its composite is in the census row): page 1.09 and card 1.12
+                               against it, so page; ring vs halo 7.52 light / 10.13 dark (census, halo-approximate; the band
+                               belongs to plan 88.9-16). Only the class string
+                               gained the two halo tokens; the A10 and 88.6.1-53 markers above stand as written.
+                               Swapping the dark halo for the banner fill is a decision, not a cleanup. */
+                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
                             aria-label="Dismiss"
                         >
                             ×
@@ -2313,7 +2323,7 @@ function Profile(){
                     (R7-M7) rules the change, and plan 88.6.1-55 amends that marker in place.
                     Dropping any of the three is a decision, not a cleanup. */}
                 <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
                     <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     {/* DECISION Phase 88.6-17 (D-03 emphasis / T-88.6-138): the current-page span
                         takes 400 plus a colour token, and gains `aria-current="page"` in the SAME
@@ -2780,7 +2790,7 @@ function Profile(){
                                                 (R3 finding 144) — this control carried none. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                                             >
                                                 Change number
                                             </button>
@@ -2798,7 +2808,7 @@ function Profile(){
                                             {/* A10: floored in place — see the Remove marker below. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                                             >
                                                 Change number
                                             </button>
@@ -2847,7 +2857,7 @@ function Profile(){
                                             <button
                                                 onClick={handleRemovePhone}
                                                 aria-disabled={removingPhone ? 'true' : undefined}
-                                                className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                                                className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
                                                     removeArmed
                                                         ? 'text-content-status-error font-semibold'
                                                         : 'text-content-status-error hover:text-content-status-error'
@@ -3590,7 +3600,7 @@ function Profile(){
                                             variant="primary"
                                             onClick={handleCreateRecurringPattern}
                                             aria-disabled={savingPattern ? 'true' : undefined}
-                                            className="w-full"
+                                            className="w-full focus-visible:ring-offset-surface-page"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Schedule'}
                                         </Button>
@@ -3773,7 +3783,7 @@ function Profile(){
                                             variant="primary"
                                             onClick={handleCreateSpecificOverride}
                                             aria-disabled={savingPattern ? 'true' : undefined}
-                                            className="w-full"
+                                            className="w-full focus-visible:ring-offset-surface-page"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Override'}
                                         </Button>
@@ -3968,7 +3978,7 @@ function Profile(){
                                 onClick={handleImportCollectionClick}
                                 disabled={!bggUsername.trim()}
                                 aria-disabled={importingCollection ? 'true' : undefined}
-                                className="whitespace-nowrap"
+                                className="whitespace-nowrap focus-visible:ring-offset-surface-page"
                             >
                                 {importingCollection ? 'Importing...' : 'Import Collection'}
                             </Button>
@@ -4059,7 +4069,7 @@ function Profile(){
                                     onClick={searchBGG}
                                     disabled={!bggSearchQuery.trim()}
                                     aria-disabled={bggSearching ? 'true' : undefined}
-                                    className="whitespace-nowrap"
+                                    className="whitespace-nowrap focus-visible:ring-offset-surface-page"
                                 >
                                     {bggSearching ? 'Searching...' : 'Search'}
                                 </Button>
