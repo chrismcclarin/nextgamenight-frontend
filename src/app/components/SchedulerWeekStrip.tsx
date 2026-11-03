@@ -143,7 +143,7 @@ function StripDayCell({
       // No border and no padding: at 375px each cell is 46.7px wide against a 44px floor, so the
       // 2.7px of margin is the entire budget. Selection is drawn with an INSET box-shadow below
       // for exactly that reason — a ring costs no layout, a border costs 2px.
-      className="flex h-14 flex-col overflow-hidden rounded-xs active:opacity-75 transition-opacity duration-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-1"
+      className="flex h-14 flex-col overflow-hidden rounded-xs active:opacity-75 transition-opacity duration-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-surface-card"
       style={
         selected
           ? { boxShadow: 'inset 0 0 0 2px var(--color-btn-primary-bg)' }

@@ -239,7 +239,7 @@ const NAV_BUTTON_CLASS =
   'inline-flex min-h-11 items-center justify-center rounded-btn border border-line px-3 ' +
   'text-sm text-content-secondary hover:text-content-primary hover:bg-surface-hover ' +
   'transition-colors duration-200 ease-out ' +
-  'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+  'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card';
 
 /* ============================================================================================
    THE TODAY TINT — SPEC Req 8, RESOLVED. Owner pick, live A/B at 375px, 2026-08-24: ARM B, both
@@ -1076,7 +1076,7 @@ export default function EventScheduler({
         // `focus:outline-hidden` is deliberate and allowed;
         // src/app/focusAndMotionTreatment.test.ts ("is DELIBERATELY still allowed and is NOT a defect") says in its own words not to "fix" it to `outline-none`.
         className:
-          'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
+          'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
         // `position: relative` is load-bearing, not styling: the count badge and the selection
         // block are absolutely positioned against this cell.
         style: { position: 'relative', ...(backgroundColor ? { backgroundColor } : {}) },
