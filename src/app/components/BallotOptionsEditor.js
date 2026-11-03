@@ -59,7 +59,7 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
                  The `aria-label` and the `title` below are carried VERBATIM: the
                  `DECISION Phase 88-28 (Req 4, UI-SPEC §7.3)` marker forbids dropping or
                  deduplicating either. */
-              className="text-content-status-error hover:text-content-status-error text-lg px-2 py-1 shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              className="text-content-status-error hover:text-content-status-error text-lg px-2 py-1 shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
               /* DECISION Phase 88-28 (Req 4, UI-SPEC §7.3): the `aria-label` is the accessible
                  name and the `title` is KEPT only for the desktop tooltip — a bare `title` does
                  NOT satisfy §7.3 (not reliably exposed by screen readers, invisible on touch).
@@ -82,7 +82,7 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
           variant="primary"
           size="default"
           onClick={() => setBallotOptions([...ballotOptions, { game_id: null, game_name: '' }])}
-          className="mt-2"
+          className="mt-2 focus-visible:ring-offset-surface-elevated"
         >
           + Add game option
         </Button>
