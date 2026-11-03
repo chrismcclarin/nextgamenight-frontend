@@ -1279,7 +1279,7 @@ const EventRow = forwardRef(function EventRow(
          enabled-hover variant exists to withhold the lift from a GATED CONTROL, and there is no
          control here to gate. REJECTED: leaving the alias in place for visual continuity.
          Re-spelling it back to `shadow-md` is a decision, not a cleanup. */
-      className={`p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-theme-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+      className={`p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-theme-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
       style={{
         ...(tinted && {
           '--group-ground': ground,

@@ -149,7 +149,7 @@ export default function BringSummary({ eventId, groupId, self, refreshKey, onEdi
           <button
             type="button"
             onClick={onEditClick}
-            className="inline-flex items-center justify-end min-h-11 md:min-h-0 min-w-11 md:min-w-0 text-sm text-content-link hover:text-content-link-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="inline-flex items-center justify-end min-h-11 md:min-h-0 min-w-11 md:min-w-0 text-sm text-content-link hover:text-content-link-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
           >
             {currentUserHasBrings ? 'Edit' : ADD_GAMES_LABEL}
           </button>

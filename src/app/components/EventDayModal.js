@@ -539,7 +539,7 @@ export default function EventDayModal({
                                 onEventClick(event);
                               }
                             }}
-                            className="rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                            className="rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                           >
                             {/* D-04: this `<h4>` carries NO SIZE class, so it renders at body
                                 size — `<Heading level={4} size="body">` (16) states that rather
