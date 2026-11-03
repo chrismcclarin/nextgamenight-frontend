@@ -92,8 +92,9 @@ export default function LandingPage() {
                 light / 8.30 dark against the ring; its one cost is the dark band, card halo against
                 the nav ground, 1.22. ALSO REJECTED: a nav halo in dark with the card in light, which
                 needs a dark-prefixed halo on this Button call site whose cascade order against the
-                primitive default is unsettled. Round 2 (plan 88.9-16) picks one of: extend the
-                DECISION Phase 88.3 (Req 7) amber ring scope to this site so the halo can equal the
+                primitive default is unsettled. Round 2 picks one of (register row:
+                .planning/deferred/phase-88.9.md "Halo exception B045", written by plan 88.9-16):
+                extend the DECISION Phase 88.3 (Req 7) amber ring scope to this site so the halo can equal the
                 nav surface in both themes, or settle the cascade and ship the dark twin. Adding a
                 call-site halo here is a decision, not a cleanup. */}
             <Button
