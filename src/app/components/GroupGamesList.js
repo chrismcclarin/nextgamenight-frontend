@@ -35,7 +35,7 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
         // card outline rather than an inner line at 375px.
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-            className="block card p-3 md:p-6 hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="block card p-3 md:p-6 hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
         >
             <div className="flex items-start gap-4">
                 <SafeImage
@@ -395,6 +395,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                         <Button
                             variant="primary"
                             onClick={onAddEvent}
+                            className="focus-visible:ring-offset-surface-page"
                         >
                             Log a game night
                         </Button>
@@ -459,7 +460,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     <button
                         aria-label={sortOrder === 'asc' ? SORT_ASCENDING_LABEL : SORT_DESCENDING_LABEL}
                         onClick={() => setSortOrder(nextSortOrderAnnounced())}
-                        className="px-3 py-2 min-h-11 md:min-h-0 min-w-11 md:min-w-0 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 transition-colors"
+                        className="px-3 py-2 min-h-11 md:min-h-0 min-w-11 md:min-w-0 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page transition-colors"
                         title={sortOrder === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
                     >
                         <span aria-hidden="true">{sortOrder === 'asc' ? '\u2191' : '\u2193'}</span>
@@ -489,7 +490,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     aria-expanded={filterOpen}
                     {...(filterOpen ? { 'aria-controls': filterPanelId } : {})}
                     onClick={() => setFilterOpen(prev => !prev)}
-                    className={`px-3 py-2 min-h-11 md:min-h-0 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                    className={`px-3 py-2 min-h-11 md:min-h-0 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page ${
                         (filterWinner || filterPicker)
                             ? 'border-line-accent bg-surface-muted text-content-accent hover:bg-surface-elevated'
                             : 'border-line text-content-secondary hover:bg-surface-hover'
@@ -551,7 +552,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     <p className="text-content-secondary mb-3">No games match these filters</p>
                     <button
                         onClick={() => { setFilterWinner(''); setFilterPicker(''); }}
-                        className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                        className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
                     >
                         Clear filters
                     </button>
