@@ -2583,9 +2583,11 @@ body {
    hover takes --color-btn-danger-hover (light #b91c1c 6.47:1, dark #991b1b 8.31:1), press takes
    --color-btn-danger-active (light #991b1b 8.31:1, dark #7f1d1d 10.02:1), both at opacity 1. The
    measured objection above (the 250ms theme transition swallows a background swap on an ~80ms
-   tap) is removed for that one rule: the danger press rule sets transition-duration 0s. Residual:
-   under prefers-reduced-motion this file's wildcard transition-duration 100ms !important beats
-   that 0s, so there the press step eases over 100ms (not the 250ms swallow measured above).
+   tap) is removed for that one rule: the danger press rule sets transition-duration 0s. Residual
+   (closed): under prefers-reduced-motion this file's wildcard transition-duration 100ms !important
+   beat that 0s, so there the press step eased over 100ms. AMENDED Phase 88.9 code review
+   (2026-11-03, finding m5): closed by a third exception in the reduced-motion block, declared
+   after its wildcard, that restores transition-duration 0s !important on this press rule.
    Every other family keeps this .75 opacity dim and the reasoning above stands for them; the 0.9
    the 0.75 bullet cites is no longer the danger hover (.btn-danger no longer dims at all). The
    danger press rule beats this rule by source order: both unlayered, both (0,4,0), declared
@@ -3164,7 +3166,9 @@ body {
        fragile-selector hack this project forbids. The residue is small and honest: a hover
        lift and the header slide still move, in <=100ms.
 
-   Re-widening the wildcard, or "simplifying" either exception away, is a decision. */
+   Re-widening the wildcard, or "simplifying" either exception away, is a decision.
+   AMENDED Phase 88.9 code review (2026-11-03, finding m5): a third exception follows the two
+   above, the .btn-danger press rule held at 0s (a step, not a motion); the same rule applies to it. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -3188,5 +3192,11 @@ body {
   /* (3) above — decorative shimmer. One pass, then static and still visible. */
   .animate-pulse {
     animation-iteration-count: 1 !important;
+  }
+
+  /* 88.9-CR m5: the M4a danger press step lands within the tap under reduced motion too; 0s is
+     less motion, not more. this file ("AMENDED Phase 88.9-01 (M4a; owner pick M4a") */
+  .btn-danger:active:not(:disabled):not([aria-disabled='true']) {
+    transition-duration: 0s !important;
   }
 }

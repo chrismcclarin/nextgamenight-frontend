@@ -183,13 +183,15 @@ describe('88.9 RULING A mini-page picks', () => {
     const NOT = ":not(:disabled):not([aria-disabled='true'])";
     const press = rulesFor('.btn:active' + NOT);
     const hover = rulesFor('.btn-danger:hover' + NOT);
-    const dangerPress = rulesFor('.btn-danger:active' + NOT);
+    // Top level only: the reduced-motion block carries a second rule on this selector
+    // (88.9-CR m5, pinned by test 2b), which sits at brace depth 1 inside the media query.
+    const dangerPress = rulesFor('.btn-danger:active' + NOT).filter((r) => r.depth === 0);
     expect(press.length, 'the .btn press rule occurs once').toBe(1);
     expect(hover.length, 'the .btn-danger hover rule occurs once').toBe(1);
     expect(/(^|[;\s])opacity\s*:/.test(hover[0].body), 'the .btn-danger hover rule still dims with opacity').toBe(false);
     expect(declIn(hover[0].body, 'background-color'), 'hover background-color').toBe('var(--color-btn-danger-hover)');
 
-    expect(dangerPress.length, 'the .btn-danger press rule occurs exactly once').toBe(1);
+    expect(dangerPress.length, 'the top-level .btn-danger press rule occurs exactly once').toBe(1);
     const dp = dangerPress[0];
     expect(declIn(dp.body, 'background-color'), 'press background-color').toBe('var(--color-btn-danger-active)');
     expect(declIn(dp.body, 'opacity'), 'press opacity').toBe('1');
@@ -215,6 +217,31 @@ describe('88.9 RULING A mini-page picks', () => {
       expect(lHov < lRest, '[' + theme + '] hover ' + hov + ' is darker than rest ' + rest).toBe(true);
       expect(lAct < lHov, '[' + theme + '] press ' + act + ' is darker than hover ' + hov).toBe(true);
     }
+  });
+
+  it('2b. 88.9-CR m5 — under prefers-reduced-motion the .btn-danger press still steps in 0s, declared after the 100ms wildcard', () => {
+    // The wildcard sets transition-duration 100ms !important on every element; an unlayered
+    // !important beats the press rule's plain 0s, so without an exception reduced-motion users
+    // got a 100ms ease on the M4a press step instead of the ruled instant step. 0s is less
+    // motion, not more. The exception must sit INSIDE the media block and AFTER the wildcard.
+    const NOT = ":not(:disabled):not([aria-disabled='true'])";
+    const mediaAt = uniqueMaskedMatch(/@media \(prefers-reduced-motion: reduce\) \{/g);
+    expect(mediaAt, 'the reduced-motion media block occurs exactly once').toBeGreaterThanOrEqual(0);
+    const media = braceBody(mediaAt);
+    expect(media, 'the reduced-motion media block isolates').not.toBeNull();
+    const m = media as { body: string; start: number; end: number };
+    const wildcardAt = m.body.indexOf('transition-duration: 100ms !important;');
+    expect(wildcardAt, 'the wildcard transition-duration 100ms !important line').toBeGreaterThanOrEqual(0);
+    const inside = rulesFor('.btn-danger:active' + NOT).filter((r) => r.start > m.start && r.start < m.end);
+    expect(inside.length, 'the .btn-danger press rule inside the reduced-motion block').toBe(1);
+    expect(
+      declIn(inside[0].body, 'transition-duration'),
+      'reduced-motion press transition-duration',
+    ).toBe('0s !important');
+    expect(
+      inside[0].start - m.start > wildcardAt,
+      'the press exception is declared after the wildcard transition-duration line',
+    ).toBe(true);
   });
 
   it('3. 88.9 M1 — the heatmap count reads the warm-900 count token on every green fill in BOTH themes', () => {
