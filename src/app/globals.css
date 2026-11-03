@@ -415,6 +415,7 @@
   --color-content-inverse: var(--color-text-inverse);
   --color-content-link: var(--color-text-link);
   --color-content-link-hover: var(--color-text-link-hover);
+  --color-content-heatmap-count: var(--color-text-heatmap-count);
   /* Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §9.4): the amber-as-TEXT keys. Named `--color-content-*`
      and NOT `--color-accent-text` on purpose — see the DECISION marker at the runtime declarations
      in `:root` below. Because the key name differs from the runtime property name, neither needs a
@@ -500,6 +501,8 @@
   --color-status-error-subtle-hover: var(--status-error-subtle-hover);
   --color-status-warning-subtle: var(--status-warning-subtle);
   --color-status-warning-subtle-hover: var(--status-warning-subtle-hover);
+  /* Bell count badge (bg-badge-count) — see the DECISION Phase 88.9-01 (M3b) marker in the light block. */
+  --color-badge-count: var(--color-badge-count-bg);
 
   /* focus     -- 1 collision key, aliased */
   --color-focus-ring: var(--ring);
@@ -1122,6 +1125,12 @@
   --color-text-inverse: #ffffff;
   --color-text-link: var(--purple-650); /* 88.3-18 owner ruling (c) — see the --purple-650 marker */
   --color-text-link-hover: var(--purple-700);
+  /* DECISION Phase 88.9-08 (owner pick M1b, 88.9-PICKS-A-MINI.json, 2026-11-01): the heatmap per-cell
+     count ink, warm-900 in BOTH themes, chosen OVER --color-text-primary (warm-50 in dark, 2.15 on
+     green-500) and OVER the green-900 ink (3.9984 on green-500); the count sits on the five raw green
+     fills, which do not change with the theme, so its ink must not either. Re-pointing this at the
+     text-primary token is a decision, not a cleanup. */
+  --color-text-heatmap-count: var(--warm-900);
 
   /* Accent (interactive elements) */
   /* DECISION Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §5.6.2, §9.2): `--color-accent-text` is RENAMED
@@ -1466,6 +1475,15 @@
   --color-badge-member-bg: var(--warm-100);
   --color-badge-member-text: var(--warm-700);
   --color-badge-member-border: var(--warm-300);
+  /* DECISION Phase 88.9-01 (M3b; owner pick M3b, 88.9-PICKS-A-MINI.json, 2026-11-01): the bell
+     count badge fill is red-700 #b91c1c in BOTH themes through this token (white digit 6.47:1 both
+     themes), chosen OVER the shipped raw bg-red-500 (3.76:1, both themes), OVER --color-error (M3a,
+     4.83 light; not picked) and OVER red-600 (M3c, 4.83; not picked); it is a token and not a raw
+     bg-red-700 class because the rawStatusPalette gate lists red-700. Byte-equal in the dark block
+     ON PURPOSE (the pick is theme-equal). The Header.js unread dot is not a consumer (a 10px dot
+     with no digit stays red-500). Pinned by src/app/miniPicks.test.ts ("1. 88.9 M3").
+     Changing this is a decision, not a cleanup. */
+  --color-badge-count-bg: #b91c1c;
 
   /* Interactive states */
   --color-btn-primary-bg: var(--purple-600);
@@ -1597,6 +1615,8 @@
   --color-btn-secondary-gated-border: var(--warm-200);
   --color-btn-danger-gated-bg: #fecaca;
   --color-btn-danger-gated-text: #7f1d1d;
+  --color-btn-danger-hover: #b91c1c;
+  --color-btn-danger-active: #991b1b;
   --color-btn-accent-gated-bg: var(--amber-200);
   --color-btn-accent-gated-text: var(--amber-900);
   /* Phase 88.3-14 (owner ruling 2): the secondary-control RING and its hover step. Bridged as
@@ -1671,7 +1691,10 @@
      recolour WITH their measured candidates attached: `#4ade80` green-400 reads **5.16** on
      `#235146` (6.09 resting, 7.95 card) and `#fbbf24` amber-400 reads **5.33** on `#554832`
      (6.37 resting, 8.30 card) — both clear every dark ground. Deleting these two numbers is how
-     the deferral becomes a bare mention nobody can action. */
+     the deferral becomes a bare mention nobody can action.
+     AMENDED Phase 88.9-01 (owner pick A1b, 88.9-PICKS-A.json, 2026-10-31): the DARK error fill hue
+     moved to red-700 #b91c1c (white label 6.47:1), chosen OVER the shipped #ef4444 (3.76:1, under
+     4.5); the light hues and the dark success/warning hues do not move. */
   --color-status-success-text: #166534;
   --color-status-error-text: #991b1b;
   --color-status-warning-text: #854d0e;
@@ -1860,6 +1883,9 @@
   --color-text-inverse: var(--purple-950);
   --color-text-link: var(--amber-400);
   --color-text-link-hover: var(--amber-300);
+  /* Phase 88.9-08 (M1b): byte-equal to the light declaration, deliberately; the DECISION marker and
+     its measured ratios sit at the light --color-text-heatmap-count above. */
+  --color-text-heatmap-count: var(--warm-900);
 
   --color-accent: var(--amber-500);
   --color-accent-hover: var(--amber-400);
@@ -1901,6 +1927,7 @@
   --color-badge-member-bg: rgba(139, 122, 106, 0.15);
   --color-badge-member-text: var(--warm-300);
   --color-badge-member-border: var(--warm-600);
+  --color-badge-count-bg: #b91c1c;
 
   --color-btn-primary-bg: var(--purple-600);
   /* DECISION Phase 88.6-05 (D-14a): the dark primary HOVER fill moves `purple-500` -> the minted
@@ -1967,6 +1994,8 @@
      88.6.1-22 (D-39): danger gated is `#fecaca` on `#7f1d1d` **6.9256**, fill ΔL* **26.9123**
      from the dark `#ef4444`, fill on the dark card `#232d3e` **1.3822** — it inverts the light
      pair ON PURPOSE (deep fill, light ink: the dark primary gated pair's shape).
+     AMENDED Phase 88.9-01: the resting dark fill is now #b91c1c, so the gated fill ΔL* is 11.9036
+     (floor 8, test 53 stays green).
      88.6.1-22 (owner answer 2Q, 2026-10-16): accent gated is amber-200 on amber-900 **7.2847**,
      fill ΔL* **16.0394** from amber-700, fill on the dark card 1.5265 — the inverse of the light
      pair, forked per theme on purpose (light token marker). */
@@ -1977,6 +2006,8 @@
   --color-btn-secondary-gated-border: transparent;
   --color-btn-danger-gated-bg: #7f1d1d;
   --color-btn-danger-gated-text: #fecaca;
+  --color-btn-danger-hover: #991b1b;
+  --color-btn-danger-active: #7f1d1d;
   --color-btn-accent-gated-bg: var(--amber-900);
   --color-btn-accent-gated-text: var(--amber-200);
   /* Phase 88.3-14 (owner ruling 2): ruling 2 is LIGHT-ONLY. Dark `.btn-secondary` is `purple-800`
@@ -1988,7 +2019,7 @@
   --color-border-control-hover: transparent;
 
   --color-success: #22c55e;
-  --color-error: #ef4444;
+  --color-error: #b91c1c;
   --color-warning: #f59e0b;
 
   /* Phase 88.3 (Req 6 / OI-4): the dark half. Full rationale at the light declarations above.
@@ -2001,6 +2032,9 @@
      and fails by 0.10** — red-300 is the nearest PINNED step that clears it.
      The three `-border` values are today's hues VERBATIM, so no dark border moves (see the OI-4
      marker above for why they are not pointed at the `-text` tokens).
+     AMENDED Phase 88.9-01: the dark error BORDER stays #ef4444 while the dark error hue is now
+     #b91c1c, so the border is no longer the hue verbatim; it still does not move (tokenContrast
+     test 24 pins its literal).
      Folding the byte-identical pairs back into the hues above, or "upgrading" dark error's border
      to red-300 for symmetry with its text, is a decision, not a cleanup. */
   --color-status-success-text: #22c55e;
@@ -2543,6 +2577,21 @@ body {
    rendered differently on the day it landed. The amendment is recorded here rather
    than replacing this marker, so a reader who remembers the original selector can
    see where it went.
+   AMENDED Phase 88.9-01 (M4a; owner pick M4a, 88.9-PICKS-A-MINI.json, 2026-11-01): .btn-danger
+   ALONE now steps its BACKGROUND on hover and on press, chosen OVER the opacity .9 hover (white
+   label 4.13:1 rendered, 4.30 computed, light) and the .75 press dim (3.53:1 rendered, light):
+   hover takes --color-btn-danger-hover (light #b91c1c 6.47:1, dark #991b1b 8.31:1), press takes
+   --color-btn-danger-active (light #991b1b 8.31:1, dark #7f1d1d 10.02:1), both at opacity 1. The
+   measured objection above (the 250ms theme transition swallows a background swap on an ~80ms
+   tap) is removed for that one rule: the danger press rule sets transition-duration 0s. Residual
+   (closed): under prefers-reduced-motion this file's wildcard transition-duration 100ms !important
+   beat that 0s, so there the press step eased over 100ms. AMENDED Phase 88.9 code review
+   (2026-11-03, finding m5): closed by a third exception in the reduced-motion block, declared
+   after its wildcard, that restores transition-duration 0s !important on this press rule.
+   Every other family keeps this .75 opacity dim and the reasoning above stands for them; the 0.9
+   the 0.75 bullet cites is no longer the danger hover (.btn-danger no longer dims at all). The
+   danger press rule beats this rule by source order: both unlayered, both (0,4,0), declared
+   after it. Pinned by src/app/miniPicks.test.ts ("2. 88.9 M4").
    Removing or retuning this press rule is a decision, not a cleanup. */
 .btn:active:not(:disabled):not([aria-disabled='true']) {
   opacity: 0.75;
@@ -2814,7 +2863,13 @@ body {
 }
 
 .btn-danger:hover:not(:disabled):not([aria-disabled='true']) {
-  opacity: 0.9;
+  background-color: var(--color-btn-danger-hover);
+}
+
+.btn-danger:active:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--color-btn-danger-active);
+  opacity: 1;
+  transition-duration: 0s;
 }
 
 /* DECISION Phase 88-01 (D-36, UI-SPEC §3.2 exception 2): `.btn` takes a 44px touch floor at PHONE
@@ -3111,7 +3166,9 @@ body {
        fragile-selector hack this project forbids. The residue is small and honest: a hover
        lift and the header slide still move, in <=100ms.
 
-   Re-widening the wildcard, or "simplifying" either exception away, is a decision. */
+   Re-widening the wildcard, or "simplifying" either exception away, is a decision.
+   AMENDED Phase 88.9 code review (2026-11-03, finding m5): a third exception follows the two
+   above, the .btn-danger press rule held at 0s (a step, not a motion); the same rule applies to it. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -3135,5 +3192,11 @@ body {
   /* (3) above — decorative shimmer. One pass, then static and still visible. */
   .animate-pulse {
     animation-iteration-count: 1 !important;
+  }
+
+  /* 88.9-CR m5: the M4a danger press step lands within the tap under reduced motion too; 0s is
+     less motion, not more. this file ("AMENDED Phase 88.9-01 (M4a; owner pick M4a") */
+  .btn-danger:active:not(:disabled):not([aria-disabled='true']) {
+    transition-duration: 0s !important;
   }
 }

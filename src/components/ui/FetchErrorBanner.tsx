@@ -424,7 +424,7 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
         onFocus={watchFocus}
         aria-disabled={retrying || undefined}
         aria-describedby={textId}
-        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
       >
         <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
         {retrying ? 'Retrying…' : 'Retry'}
@@ -671,13 +671,20 @@ export function FetchErrorBanner({
           COMPUTED rendered weight. This suite is jsdom, which performs no layout and loads no
           stylesheet, so `getComputedStyle().fontWeight` reads the UA default identically
           before and after and would prove nothing (the D28 rule). The pins are class-level. */}
+      {/* DECISION Phase 88.9-14 T3 (halo census R073-R075): Try again and Report this carry the
+          ELEVATED-surface halo, because they render in Banner's actions slot and Banner's cva base
+          paints the elevated surface for every tone (the tone sets only the left border). The
+          compact Retry above is NOT inside Banner, so it carries the CARD halo of its host majority
+          (halo-approximate, recorded for plan 88.9-16). Rejected: one shared string for all three
+          (the card halo would paint a card band on the elevated Banner). The three strings differ
+          on purpose; making them byte-identical again is a decision, not a cleanup. */}
       <button
         ref={tryAgainRef}
         type="button"
         onClick={handleRetry}
         onFocus={watchFocus}
         aria-disabled={retrying || undefined}
-        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
       >
         <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
         {retrying ? 'Retrying…' : 'Try again'}
@@ -708,7 +715,7 @@ export function FetchErrorBanner({
           type="button"
           onClick={handleReportPress}
           onFocus={watchReportFocus}
-          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
         >
           <Icon name="Flag" size={14} />
           Report this

@@ -239,7 +239,7 @@ const NAV_BUTTON_CLASS =
   'inline-flex min-h-11 items-center justify-center rounded-btn border border-line px-3 ' +
   'text-sm text-content-secondary hover:text-content-primary hover:bg-surface-hover ' +
   'transition-colors duration-200 ease-out ' +
-  'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+  'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card';
 
 /* ============================================================================================
    THE TODAY TINT — SPEC Req 8, RESOLVED. Owner pick, live A/B at 375px, 2026-08-24: ARM B, both
@@ -1076,7 +1076,7 @@ export default function EventScheduler({
         // `focus:outline-hidden` is deliberate and allowed;
         // src/app/focusAndMotionTreatment.test.ts ("is DELIBERATELY still allowed and is NOT a defect") says in its own words not to "fix" it to `outline-none`.
         className:
-          'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
+          'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
         // `position: relative` is load-bearing, not styling: the count badge and the selection
         // block are absolutely positioned against this cell.
         style: { position: 'relative', ...(backgroundColor ? { backgroundColor } : {}) },
@@ -1116,7 +1116,7 @@ export default function EventScheduler({
                   // spot. It folds 10px -> 12px, the D-01 floor, like the other nine sites in this
                   // cluster. MEASURED in Chromium at 375px before it landed: see the DECISION
                   // marker on this element's weight below.
-                  className="text-xs"
+                  className={isSelected ? 'text-xs text-btn-primary-text' : 'text-xs text-content-primary'}
                   style={{
                     position: 'absolute',
                     top: '2px',
@@ -1130,7 +1130,19 @@ export default function EventScheduler({
                     // that is not guaranteed and is already false in dark mode (#22c55e vs the
                     // border). Pointing this back at the shared `var(--color-status-success)` key,
                     // which now resolves to the BORDER value, is a decision, not a cleanup.
-                    color: 'var(--color-status-success-text)',
+                    // [AMENDED IN PLACE Phase 88.9-08 (owner pick A5a, 2026-10-31): the badge is no
+                    // longer a status-text site — its ink is the text-content-primary class on the
+                    // element (on screen 13.99 / 7.64; ceiling 11.21 / 4.58), chosen OVER the
+                    // status-success-text inline (3.56 dark on screen, 2.13 at the ceiling). The
+                    // inline color is deleted because it would beat the class.]
+                    // AMENDED Phase 88.9-08 (M2a, owner pick, 88.9-PICKS-A-MINI.json, 2026-11-01):
+                    // the badge ink is now CONDITIONAL on the committed selection —
+                    // text-btn-primary-text (white, both themes; 5.66 on --color-btn-primary-bg)
+                    // while isSelected, because the badge then sits over the filled selection block
+                    // (the Phase 88.1-09 marker) where the A5a ink reads 3.17 light and the old
+                    // success ink 1.26 / 2.48; text-content-primary everywhere else. The condition
+                    // lives in the className, chosen OVER a conditional inline color, which would
+                    // beat the class again.
                     // DECISION Phase 88.6-26 (D-03 / W35): weight 700, chosen OVER 400, because the
                     // fill/ink pairing needs the weight. This badge is the mandatory NON-COLOUR cue
                     // for the cell's translucent wash — see the comment on the element above — and

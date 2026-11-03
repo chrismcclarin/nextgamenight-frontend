@@ -636,15 +636,46 @@ function Profile(){
                 // labelled group, which is how the primitive reproduces the region
                 // sections the hand-rolled panel drew by hand.
                 group: slashIndex > -1 ? tz.value.substring(0, slashIndex) : 'Other',
+                // DECISION Phase 88.9-09 (owner picks A6e + O1b, 88.9-PICKS-A.json / 88.9-PICKS-O.json,
+                // 2026-10-31): the abbr span takes text-content-secondary, the prescribed ink on the
+                // Combobox's muted active row (6.96 light / 7.07 dark), chosen OVER text-content-muted
+                // (4.37 light). The current zone keeps text-content-link at rest (6.00 light / 6.75 dark
+                // on the elevated list) and takes text-content-secondary only on the highlighted row
+                // through in-aria-selected: (the first in-aria-* variant in src), the owner-picked O1b
+                // scope. Against the other zone names the current zone differs by colour only: at rest
+                // link vs primary, 2.9921 light / 1.5748 dark; on the highlighted row secondary vs
+                // primary, 1.7152 light / 1.5050 dark (src/lib/wcag.ts ("export function contrastRatio("),
+                // 2026-10-31); the pick measured the row against its ground, not against its neighbours.
+                // Both are under 3:1, so colour alone would miss WCAG 1.4.1; the M5a paragraph below
+                // (owner pick, Task 3 of this plan) adds the non-colour cue. Chosen OVER secondary in
+                // EVERY state, which would also drop the at-rest cue, over text-content-link on the
+                // highlighted row (3.99 light), over purple-700 (O1a, 1.45 dark, unpickable) and over the
+                // primary ink (O1c, not taken). Changing either ink or the variant is a decision, not a
+                // cleanup.
+                //
+                // M5a (owner pick, RULING A mini page, 88.9-PICKS-A-MINI.json, 2026-11-01): the current
+                // zone also leads with a check glyph (U+2713), aria-hidden, in its span's own ink (rest
+                // 6.00 / 6.75, highlighted 6.96 / 7.07), and the word current joins the OPTION's own
+                // accessible name through the item's ariaLabel, which the Combobox sets on the role=option
+                // row. Chosen OVER an sr-only span inside the label and OVER an aria-label on a container
+                // (both fail iOS VoiceOver: the name must sit on the focusable leaf, which under this
+                // list's virtual focus is the option row; measured 2026-10-20), and OVER visible (current)
+                // text after the name (M5b, offered, not picked). The glyph is hidden because the name
+                // already says current; exposing both would read it twice. The name starts with the visible
+                // zone text (WCAG 2.5.3). Removing the glyph or the name is a decision, not a cleanup.
                 label: (
                     <span
                         aria-current={tz.value === timezone ? 'true' : undefined}
-                        className={tz.value === timezone ? 'text-content-link' : undefined}
+                        className={tz.value === timezone ? 'text-content-link in-aria-selected:text-content-secondary' : undefined}
                     >
+                        {tz.value === timezone && <span aria-hidden="true" className="mr-1">{'\u2713'}</span>}
                         {tz.value.replace(/_/g, ' ')}
-                        {tz.abbr && <span className="text-content-muted ml-1">({tz.abbr}, {tz.offset})</span>}
+                        {tz.abbr && <span className="text-content-secondary ml-1">({tz.abbr}, {tz.offset})</span>}
                     </span>
                 ),
+                ariaLabel: tz.value === timezone
+                    ? `${tz.value.replace(/_/g, ' ')}${tz.abbr ? ` (${tz.abbr}, ${tz.offset})` : ''}, current`
+                    : undefined,
                 onSelect: () => handleTimezoneSelect(tz.value),
             };
         });
@@ -2256,7 +2287,17 @@ function Profile(){
                                 setSmsDisabledBannerDismissed(true);
                                 settle();
                             }}
-                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                            /* DECISION Phase 88.9-14 T1 (census R065, owner option (a)): the halo is the opaque
+                               amber-50 ground in light and the opaque PAGE ground in dark, chosen OVER the banner's own
+                               20%-alpha amber-900 dark fill: a halo is always opaque, and Tailwind paints the
+                               ring-offset shadow over the ring, so a 20% halo composites over the amber-400 ring into
+                               a muddy amber (1.33 against it, one thick amber band). The dark banner the user sees is
+                               amber-900 at 20% over the page (its composite is in the census row): page 1.09 and card 1.12
+                               against it, so page; ring vs halo 7.52 light / 10.13 dark (census, halo-approximate; the band
+                               belongs to plan 88.9-16). Only the class string
+                               gained the two halo tokens; the A10 and 88.6.1-53 markers above stand as written.
+                               Swapping the dark halo for the banner fill is a decision, not a cleanup. */
+                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
                             aria-label="Dismiss"
                         >
                             ×
@@ -2282,7 +2323,7 @@ function Profile(){
                     (R7-M7) rules the change, and plan 88.6.1-55 amends that marker in place.
                     Dropping any of the three is a decision, not a cleanup. */}
                 <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
                     <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     {/* DECISION Phase 88.6-17 (D-03 emphasis / T-88.6-138): the current-page span
                         takes 400 plus a colour token, and gains `aria-current="page"` in the SAME
@@ -2749,7 +2790,7 @@ function Profile(){
                                                 (R3 finding 144) — this control carried none. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                                             >
                                                 Change number
                                             </button>
@@ -2767,7 +2808,7 @@ function Profile(){
                                             {/* A10: floored in place — see the Remove marker below. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                                             >
                                                 Change number
                                             </button>
@@ -2816,7 +2857,7 @@ function Profile(){
                                             <button
                                                 onClick={handleRemovePhone}
                                                 aria-disabled={removingPhone ? 'true' : undefined}
-                                                className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                                                className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
                                                     removeArmed
                                                         ? 'text-content-status-error font-semibold'
                                                         : 'text-content-status-error hover:text-content-status-error'
@@ -3559,7 +3600,7 @@ function Profile(){
                                             variant="primary"
                                             onClick={handleCreateRecurringPattern}
                                             aria-disabled={savingPattern ? 'true' : undefined}
-                                            className="w-full"
+                                            className="w-full focus-visible:ring-offset-surface-page"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Schedule'}
                                         </Button>
@@ -3742,7 +3783,7 @@ function Profile(){
                                             variant="primary"
                                             onClick={handleCreateSpecificOverride}
                                             aria-disabled={savingPattern ? 'true' : undefined}
-                                            className="w-full"
+                                            className="w-full focus-visible:ring-offset-surface-page"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Override'}
                                         </Button>
@@ -3937,7 +3978,7 @@ function Profile(){
                                 onClick={handleImportCollectionClick}
                                 disabled={!bggUsername.trim()}
                                 aria-disabled={importingCollection ? 'true' : undefined}
-                                className="whitespace-nowrap"
+                                className="whitespace-nowrap focus-visible:ring-offset-surface-page"
                             >
                                 {importingCollection ? 'Importing...' : 'Import Collection'}
                             </Button>
@@ -4028,7 +4069,7 @@ function Profile(){
                                     onClick={searchBGG}
                                     disabled={!bggSearchQuery.trim()}
                                     aria-disabled={bggSearching ? 'true' : undefined}
-                                    className="whitespace-nowrap"
+                                    className="whitespace-nowrap focus-visible:ring-offset-surface-page"
                                 >
                                     {bggSearching ? 'Searching...' : 'Search'}
                                 </Button>

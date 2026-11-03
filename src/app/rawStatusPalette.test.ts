@@ -14,10 +14,14 @@
  * FeedbackButton, QRCodeModal) and one hover survived on `userProfile/page.js`; this suite is
  * the pin that they were converged and that nothing brings the literals back.
  *
- * SCOPE: status shades only (50 / 200 / 600 / 700 / 800). The `bg-red-500` unread badge on the
- * header bell (`Header.js`, `NotificationBell.js`) is a filled dot, not text on a ground, and is
- * deliberately NOT in this roster — widening the shade list to include it is a decision, not a
- * cleanup. Comment text is stripped first, so DECISION markers that NAME the old classes do not
+ * SCOPE: status shades only (50 / 200 / 600 / 700 / 800). The red-500 left in src is the Header.js
+ * 10px unread DOT, a filled dot with no text, and it is deliberately NOT in this roster (widening
+ * the shade list to include it is a decision, not a cleanup).
+ * AMENDED Phase 88.9-01 (M3b): the two NotificationBell.js count badges carry a digit, so they
+ * were text on a ground (white on red-500, 3.76:1); they now fill with the declared badge token
+ * (#b91c1c both themes, 6.47:1) and carry no raw red class, pinned by
+ * src/app/miniPicks.test.ts ("1. 88.9 M3").
+ * Comment text is stripped first, so DECISION markers that NAME the old classes do not
  * count.
  */
 import fs from 'node:fs';

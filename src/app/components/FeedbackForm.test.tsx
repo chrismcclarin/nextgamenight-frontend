@@ -809,8 +809,10 @@ describe('FeedbackForm — Phase 88.6.1-34 task 2 (MEDLOW-32, AC-33 stars, D-22 
 
   it('AC-33 / W024 — the two required stars are aria-hidden, keep their colour, and the inputs are named without them and stay required', () => {
     render(<FeedbackForm onClose={() => {}} />);
-    const stars = Array.from(document.querySelectorAll('label span.text-red-500'));
+    // The 88.9 A2c owner pick moved the stars to the accent ink (red-500 measured 3.76 light / 3.68 dark on the card).
+    const stars = Array.from(document.querySelectorAll('label span.text-content-accent'));
     expect(stars).toHaveLength(2);
+    expect(document.querySelectorAll('label span.text-red-500')).toHaveLength(0);
     stars.forEach((star) => {
       expect(star).toHaveAttribute('aria-hidden', 'true');
       expect(star.textContent).toBe('*');

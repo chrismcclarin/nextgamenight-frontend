@@ -55,6 +55,8 @@ function getColorFromText(text) {
  *   any other scheme (`javascript:`, `data:`, `blob:`, …) renders the fallback.
  * @param {string} props.alt - Alt text (also used for fallback color derivation)
  * @param {string} [props.fallbackIcon='🎲'] - Emoji or text for the fallback
+ * @param {string} [props.fallbackIconClassName='text-2xl'] - Classes for the
+ *   fallback glyph span only (its size). Boxes under 32px pass a smaller class.
  * @param {string} [props.className] - Applied to both img and fallback div
  * @param {string} [props.imgClassName] - Additional classes for img only
  * @param {object} rest - Passed through to img (style, onClick, etc.)
@@ -63,6 +65,15 @@ export default function SafeImage({
   src,
   alt,
   fallbackIcon = '\u{1F3B2}',
+  // DECISION Phase 88.9-CR d1: the fallback glyph's size is a PER-SITE class,
+  // defaulting to text-2xl so every other call site renders byte-identically,
+  // chosen OVER a container-scaled or inherit-size glyph (both move all 15 call
+  // sites and the 48px Library capture the owner ruled fine) and OVER
+  // overflow-hidden on the box (it crops a 24px emoji into a fragment). The 16px
+  // month-tile avatar passes a 12px class
+  // (src/app/components/CalendarMonthView.js ("fallbackIconClassName=")).
+  // Changing the default is a decision, not a cleanup.
+  fallbackIconClassName = 'text-2xl',
   className = '',
   imgClassName = '',
   ...rest
@@ -102,7 +113,7 @@ export default function SafeImage({
         role="img"
         aria-label={alt || 'Image placeholder'}
       >
-        <span className="text-2xl">{fallbackIcon}</span>
+        <span className={fallbackIconClassName}>{fallbackIcon}</span>
       </div>
     );
   }

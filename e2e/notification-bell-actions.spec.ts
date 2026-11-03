@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { holdWrites, holdUntilReleased, type WriteHold } from './support/inFlight';
+import { answerPendingInvites, pendingInvite, type PendingInvite } from './support/pendingInvite';
 
 // Phase 88.6.1-44 (W016, H9, W026; Req 4, 5, 8) — the notification bell's row actions in a real
 // browser at 375px (the phone project; the row variant lives in the phone hamburger,
@@ -25,16 +26,10 @@ import { holdWrites, holdUntilReleased, type WriteHold } from './support/inFligh
 // answered in the browser on release. The spec registers no route of its own, so nothing it does
 // reaches the shared CI database.
 
-const INVITE_A = {
-  id: 'e2e-bell-invite-a',
-  Group: { name: 'E2E Bell Alpha' },
-  Inviter: { username: 'E2E Host' },
-};
-const INVITE_B = {
-  id: 'e2e-bell-invite-b',
-  Group: { name: 'E2E Bell Beta' },
-  Inviter: { username: 'E2E Host' },
-};
+// The invite shape and its /invites/pending answerer are the shared e2e/support/pendingInvite.ts
+// module (Phase 88.9-01); this spec composes it with its own received-friendships answer.
+const INVITE_A = pendingInvite('e2e-bell-invite-a', 'E2E Bell Alpha');
+const INVITE_B = pendingInvite('e2e-bell-invite-b', 'E2E Bell Beta');
 const REQUEST_A = {
   id: 'e2e-bell-request-a',
   Requester: { id: '0e2eb0e1-0000-4000-8000-00000000000a', username: 'E2E Bell Ana' },
@@ -48,9 +43,11 @@ const REQUEST_B = {
 const N3 = "We couldn't accept that invite. Please try again.";
 
 // The lists the bell reads, answered in the browser; every other read goes through untouched.
-function answersFor(invites: unknown[], received: () => unknown[]) {
+function answersFor(invites: PendingInvite[], received: () => unknown[]) {
+  const answerInvites = answerPendingInvites(invites);
   return (url: URL): unknown => {
-    if (url.pathname.endsWith('/invites/pending')) return invites;
+    const invitesAnswer = answerInvites(url);
+    if (invitesAnswer !== undefined) return invitesAnswer;
     if (url.pathname.endsWith('/friendships') && url.searchParams.get('direction') === 'received') {
       return received();
     }

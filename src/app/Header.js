@@ -147,7 +147,11 @@ function Header(){
                 Rejected — a `dark:` variant fix. Useless here: the ground is dark in BOTH
                 themes, so there is no light/dark fork to hang the fix on.
 
-                Changing either of these is a decision, not a cleanup. */}
+                Changing either of these is a decision, not a cleanup.
+
+                AMENDED Phase 88.9-05 (owner pick A3d, 2026-10-31): the amber scope ends at the bell panel — its
+                light card section re-scopes --ring to the page ring
+                (src/app/components/NotificationBell.js ("DECISION Phase 88.9-05")); the chrome itself keeps amber-400. */}
             <div className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)]">
                 {/* DECISION Phase 88.6.1-45 (AC-18, HEADER-NAV-LANDMARK-RULING, copy row H5):
                     CHOSEN — this inner container is the ONE nav landmark, named by
@@ -172,11 +176,15 @@ function Header(){
                     and adopting the house ring is a look call routed to Phase 88.9
                     (.planning/deferred/phase-88.9.md, the entry headed "Header brand link and
                     desktop nav links ride the browser's default focus outline").
+                    AMENDED Phase 88.9-05 (owner pick A10c, 88.9-PICKS-A.json, 2026-10-31): answered — the
+                    brand link and both list links wear the HOUSE offset ring with the header-coloured
+                    halo (9.00 light / 10.76 dark), chosen OVER the UA outline (2.51:1 light at 1280)
+                    and OVER the fleet no-offset ring-ring (A10a, not picked).
                     Splitting, moving or renaming this landmark is a decision, not a cleanup. */}
                 <nav aria-label={MAIN_NAV_LABEL} className="w-full max-w-7xl mx-auto px-4 h-full">
                     <div className="flex justify-between items-center h-full">
                         {/* Brand */}
-                        <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity">
+                        <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-header">
                             <DieLogo size={34} />
                             {/* EXEMPT FROM THE R2 TYPE SWEEP — owner: Phase 88.9 (UI-SPEC §4.3,
                                 CONTEXT D-02). `text-lg md:text-xl` is a breakpoint-grown size, and
@@ -205,14 +213,14 @@ function Header(){
                                     {isLink ? (
                                         <Link
                                             href={href}
-                                            className="hover:text-accent transition-colors"
+                                            className="hover:text-accent transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-header"
                                         >
                                             {label}
                                         </Link>
                                     ) : (
                                         <a
                                             href={href}
-                                            className="hover:text-accent transition-colors"
+                                            className="hover:text-accent transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-header"
                                         >
                                             {label}
                                         </a>
@@ -261,6 +269,7 @@ function Header(){
 
                             {/* MOB-08: unread-notification dot.
                                 - bg-red-500 matches NotificationBell badge token verbatim.
+                                  AMENDED Phase 88.9-01 (M3b): no longer true — the NotificationBell count badges moved to the bg-badge-count token (#b91c1c, they carry a digit); this decorative dot keeps red-500 on purpose (no text, so no text-contrast floor applies).
                                 - rounded-full matches the bell badge shape language.
                                 - h-2.5 w-2.5 (~10px) reads as a dot, not a numeric badge.
                                 - absolute top-1.5 right-1.5 positions inside the button's p-2.5
@@ -309,6 +318,10 @@ function Header(){
                         (inert — `--ring` resolves on `:root`; see the container's marker), and
                         NOT a `dark:` variant (the ground is dark in both themes). That is a
                         decision, not a cleanup.
+
+                        AMENDED Phase 88.9-05 (owner pick A3d, 2026-10-31): the amber scope ends at the bell panel — its
+                        light card section re-scopes --ring to the page ring
+                        (src/app/components/NotificationBell.js ("DECISION Phase 88.9-05")); the chrome itself keeps amber-400.
 
                         DECISION Phase 88.3 (owner ruling R3-D, 2026-08-25): `inert` while the
                         menu is CLOSED — chosen OVER a conditional mount (Rejected). The comment directly

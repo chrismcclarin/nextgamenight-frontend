@@ -397,7 +397,7 @@ export default function KebabMenu({
         type="button"
         ref={triggerRef}
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        className="inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
         aria-expanded={open}
         /* DECISION Phase 88.6-16 (D-12): `aria-controls` is the HONEST replacement
            for the removed popup relationship — it says only what is true (this

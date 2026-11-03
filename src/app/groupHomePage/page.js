@@ -1027,7 +1027,7 @@ function GroupHomePage(){
                 plan (D-46), so a screen reader no longer reads "greater than" between the crumbs; it
                 looks the same. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || 'Group'}</span>
             </nav>
@@ -1529,6 +1529,14 @@ function GroupHomePage(){
                                 'whitespace-nowrap ' +
                                 'text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ' +
                                 'shadow-theme-md' +
+                                // DECISION Phase 88.9-12 T1 (census B098-B100, owner option (a)): the three
+                                // header Buttons fork their halo on `tinted`, the same test that picks the
+                                // header ground above. Untinted: the elevated halo, the ground they sit on.
+                                // Tinted: NO override, keeping the Button default card halo, chosen OVER a
+                                // group-colour halo — the ground is a runtime user hex with no token, and the
+                                // card halo clears 3:1 against the ring in both themes (census, halo-approximate).
+                                // Adding the elevated halo to the tinted arm too is a decision, not a cleanup.
+                                (tinted ? '' : ' focus-visible:ring-offset-surface-elevated') +
                                 // The 10% white wash moves from an inline `style` to
                                 // `dark:bg-white/10`, because an inline declaration cannot
                                 // be forked by a `dark:` class. On a light ground it was
@@ -1586,6 +1594,7 @@ function GroupHomePage(){
                         className={
                             'shadow-theme-lg enabled-hover:shadow-theme-lg ' +
                             'whitespace-nowrap text-center' +
+                            (tinted ? '' : ' focus-visible:ring-offset-surface-elevated') +
                             (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                         }
                     >
@@ -1641,6 +1650,7 @@ function GroupHomePage(){
                             className={
                                 'whitespace-nowrap ' +
                                 'shadow-theme-lg enabled-hover:shadow-theme-lg' +
+                                (tinted ? '' : ' focus-visible:ring-offset-surface-elevated') +
                                 (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                             }
                         >
@@ -1699,13 +1709,15 @@ function GroupHomePage(){
 
                 REJECTED: migrating these onto `Button`. They are tab chrome, not buttons — `.btn`
                 would impose its own padding, its 44px floor and the elevation pair on a flush tab
-                strip, which is a look change (P6). They wear no `.btn` today and no census counts
+                strip, which is a look change (P6). AMENDED Phase 88.9-10 (owner picks A7a + O3a):
+                the 44px floor arrives by min-h-11 min-w-11 on these buttons; migrating them onto
+                Button stays REJECTED. They wear no `.btn` today and no census counts
                 them. */}
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
                     aria-current={activeTab === 'home' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
                         activeTab === 'home'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'
@@ -1716,7 +1728,7 @@ function GroupHomePage(){
                 <button
                     onClick={() => setActiveTab('library')}
                     aria-current={activeTab === 'library' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
                         activeTab === 'library'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'

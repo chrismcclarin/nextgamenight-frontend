@@ -447,6 +447,7 @@ function HandoffSlide({ signupSource, onPrimary, onSecondary }) {
             element survived to move. */}
         <Button
           variant="primary"
+          className="focus-visible:ring-offset-surface-page"
           onClick={onPrimary}
         >
           {isInvited ? 'Set my availability' : 'Invite your group'}

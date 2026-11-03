@@ -1,5 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { holdWrites } from './support/inFlight';
+import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
+import { assertTheme, describeRatio, focusRingMeasurement, forceLightMode, haloGroundRatio } from './support/contrast';
 
 // Phase 88.6.1-28 (D-18, AC-17, register R128) — the notification bell's panel in a real browser.
 //
@@ -27,14 +29,37 @@ import { holdWrites } from './support/inFlight';
 // focus must come back to the trigger. The pending-invites list is answered in the browser with
 // one synthetic invite (the shared holdWrites net, which also holds every write, so nothing this
 // spec does reaches the shared CI database), so the panel always has a focusable row action.
-const PANEL_INVITE = {
-  id: 'e2e-bell-panel-invite',
-  Group: { name: 'E2E Bell Panel' },
-  Inviter: { username: 'E2E Host' },
-};
-const answerPendingInvites = (url: URL): unknown =>
-  url.pathname.endsWith('/invites/pending') ? [PANEL_INVITE] : undefined;
+// The invite shape and its answerer are the shared e2e/support/pendingInvite.ts module (Phase 88.9-01).
+const PANEL_INVITE = pendingInvite('e2e-bell-panel-invite', 'E2E Bell Panel');
 const PANEL_ACTION = 'Accept invite to E2E Bell Panel';
+
+// Phase 88.9-04 — the 1280 half of A3d: the desktop popover's Accept ring, both themes.
+// Red by design until plan 88.9-05 lands the house ring (pre-fix the ring reads 1.67:1 on its white
+// halo in both themes). haloGroundRatio reads the surface from the control's PARENT, so an
+// opaque-fill Accept is compared with the panel card, never with its own fill (e2e/support/contrast.ts ("this helper probes the parent")).
+const RING_FLOOR = 3;
+const HALO_EQUAL = 1.01;
+
+async function desktopAcceptRing(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const bell = page.getByRole('button', { name: 'Notifications', exact: true });
+  const region = page.getByRole('region', { name: 'Notifications', exact: true });
+  await bell.click();
+  await expect(region, `A3d desktop (${theme}): the Notifications region did not open.`).toBeVisible();
+  const action = region.getByRole('button', { name: PANEL_ACTION, exact: true });
+  await expect(action, `A3d desktop (${theme}): the synthetic invite's Accept action is not visible.`).toBeVisible();
+  // Focus INSIDE the panel first: focusRingMeasurement presses Tab to set keyboard modality, and
+  // from the bell that Tab could leave the trigger and close the panel.
+  await action.focus();
+  const label = `desktop bell popover Accept focus ring (A3d, ${theme})`;
+  const m = await focusRingMeasurement(page, action, label);
+  expect(m.ratio, describeRatio(label, RING_FLOOR, m)).toBeGreaterThanOrEqual(RING_FLOOR);
+  const h = await haloGroundRatio(m, action);
+  expect(
+    h.ratio,
+    `${label}: the ring halo ${h.halo} measured ${h.ratio.toFixed(3)}:1 against the surface under the control ` +
+      `${h.behind}; the house ring's halo must equal the surface (<= ${HALO_EQUAL}:1).`
+  ).toBeLessThanOrEqual(HALO_EQUAL);
+}
 
 test.describe('notification bell panel — phone (row variant in the hamburger)', () => {
   // Runs ONLY in the phone project. Both journeys and phone glob every e2e/*.spec.ts, so each
@@ -48,7 +73,7 @@ test.describe('notification bell panel — phone (row variant in the hamburger)'
 
   test.beforeEach(async ({ page }) => {
     // Registered BEFORE the first navigation (inFlight.ts: a route added after goto misses the load).
-    await holdWrites(page, { answerGet: answerPendingInvites });
+    await holdWrites(page, { answerGet: answerPendingInvites([PANEL_INVITE]) });
     await page.goto('/');
     // D-11 dark-theme pre-assertion (e2e/feedback-stacking.spec.ts): the reused storageState can
     // carry a stored theme key that outranks the config's colorScheme.
@@ -101,7 +126,7 @@ test.describe('notification bell panel — desktop (icon variant in the nav)', (
   });
 
   test.beforeEach(async ({ page }) => {
-    await holdWrites(page, { answerGet: answerPendingInvites });
+    await holdWrites(page, { answerGet: answerPendingInvites([PANEL_INVITE]) });
     await page.goto('/');
     // D-11 dark-theme pre-assertion (e2e/feedback-stacking.spec.ts).
     await expect(page.locator('html')).toHaveClass(/dark/);
@@ -123,5 +148,30 @@ test.describe('notification bell panel — desktop (icon variant in the nav)', (
     await page.keyboard.press('Escape');
     await expect(region).toHaveCount(0);
     await expect(bell).toBeFocused();
+  });
+  test('A3d (88.9): the desktop bell popover Accept ring clears 3:1 and its halo is the card, dark', async ({ page }) => {
+    await desktopAcceptRing(page, 'dark');
+  });
+});
+
+test.describe('notification bell panel — desktop, light (88.9)', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop-project block — the phone light twin lives in e2e/contrast.spec.ts');
+  // Both projects bake dark; colorScheme alone does not set the class, so forceLightMode writes the
+  // stored theme before the first navigation and assertTheme proves it after.
+  test.use({ colorScheme: 'light' });
+
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await forceLightMode(page);
+    await holdWrites(page, { answerGet: answerPendingInvites([PANEL_INVITE]) });
+    await page.goto('/');
+    await assertTheme(page, 'light');
+  });
+
+  test('A3d (88.9): the desktop bell popover Accept ring clears 3:1 and its halo is the card, light', async ({ page }) => {
+    await desktopAcceptRing(page, 'light');
   });
 });

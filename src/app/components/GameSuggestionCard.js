@@ -53,7 +53,7 @@ export default function GameSuggestionCard({ game, onClick }) {
       onClick={() => onClick(game)}
       aria-labelledby={nameId}
       aria-describedby={describedBy}
-      className={`card p-3 md:p-6 flex gap-4 hover:shadow-theme-md transition-shadow cursor-pointer w-full text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2`}
+      className={`card p-3 md:p-6 flex gap-4 hover:shadow-theme-md transition-shadow cursor-pointer w-full text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card`}
     >
       {/* Thumbnail.
           DECISION Phase 88.6.1-03 (D-38): the thumbnail is hidden from assistive tech by this

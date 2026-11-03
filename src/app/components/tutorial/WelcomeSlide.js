@@ -30,7 +30,7 @@ export default function WelcomeSlide({ onStart }) {
           `transition-colors` goes with them, because `.btn` declares
           `transition: var(--theme-transition)` unlayered in the same block, src/app/globals.css ("UNLAYERED with every other declaration it has today"). `w-full` STAYS — `.btn`
           declares no width, so it was never dead. */}
-      <Button variant="primary" onClick={onStart} className="w-full">
+      <Button variant="primary" onClick={onStart} className="w-full focus-visible:ring-offset-surface-page">
         Show me how it works
       </Button>
     </div>

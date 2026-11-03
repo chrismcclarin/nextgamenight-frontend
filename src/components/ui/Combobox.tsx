@@ -78,6 +78,17 @@ export interface ComboboxItem {
   /** Rendered option content. */
   label: React.ReactNode;
   /**
+   * The option's accessible name, set as aria-label on the role=option row itself (the
+   * focusable leaf under virtual focus). Omit it and the name comes from label. A consumer that
+   * puts an aria-hidden mark in label uses it so the meaning is still spoken; the name must begin
+   * with the label's visible text (WCAG 2.5.3).
+   * DECISION Phase 88.9-09 (M5a): the name sits on the option row, chosen OVER an sr-only span
+   * inside the label and OVER an aria-label on a container — both fail iOS VoiceOver (the
+   * labelled-focusable-leaf rule, measured on the owner's iPhone 2026-10-20). Moving it is a
+   * decision, not a cleanup.
+   */
+  ariaLabel?: string;
+  /**
    * Optional section heading. Consecutive items sharing a `group` render under one
    * `role="group"`; arrow keys still traverse the whole list, across sections.
    */
@@ -333,8 +344,25 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
           'flex min-h-11 w-full cursor-pointer items-center px-3 py-2',
           'text-base text-content-primary',
           activeIndex === index && 'bg-surface-muted',
+          // DECISION Phase 88.9-09 (owner pick A6e, 88.9-PICKS-A.json, 2026-10-31): the highlighted
+          // row is outlined 2px INSIDE in the focus-ring colour (5.18 light / 6.75 dark against the
+          // row), chosen OVER amber-subtle grounds (1.11, unpickable), an accent bar (1.43 light,
+          // unpickable) and the A6d 3px bar; dark had no visible highlight (row = list ground,
+          // 1.00). A separate arm so src/test-utils/sourceScan.ts keeps citing the ground arm. The
+          // next arm adds a forced-colors-only Highlight outline (2px, pulled inside by a -2px
+          // offset), chosen OVER the inset ring alone (rejected: forced-colors: active discards
+          // box-shadows and flattens the muted ground, and this list is virtual focus, so the row's
+          // class is its only highlight cue there; WCAG 2.4.7), following
+          // src/app/components/GroupSettings.js ("DECISION Phase 88.6-20 (A10 + ACCEPT §4 / #152)");
+          // it paints nothing outside that mode. Both arms skip a disabled row (!item.disabled):
+          // pointer hover makes a disabled row active, because floating-ui's item mouse-move has no
+          // disabled check and disabledIndices covers keys only, and an actionable ring on a greyed
+          // row misstates it. Removing any of this is a decision, not a cleanup.
+          activeIndex === index && !item.disabled && 'ring-2 ring-inset ring-focus-ring',
+          activeIndex === index && !item.disabled && 'forced-colors:outline forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]',
           item.disabled && 'cursor-not-allowed opacity-50'
         )}
+        aria-label={item.ariaLabel}
         {...getItemProps({
           active: activeIndex === index,
           selected: activeIndex === index,

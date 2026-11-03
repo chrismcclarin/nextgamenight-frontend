@@ -54,10 +54,12 @@
 //  * ALPHA IS INVISIBLE. The walk resolves TOKENS. An `opacity-*` utility, or a `text-*`/`bg-*`
 //    alpha modifier written with a slash, on the ink element OR ON ANY ANCESTOR composites the
 //    rendered colour — so a PASS here is NOT a WCAG 1.4.3 pass. Live specimen:
-//    src/app/components/CalendarMonthView.js ("isAdjacent ? 'opacity-60 ' : ''") over the ink at
-//    src/app/components/CalendarMonthView.js ("isAdjacent ? 'text-content-muted' :"), the SAME
-//    condition, so genuinely co-live.
-//    (Cites corrected in place by plan 88.6.1-02; they predated plan 88.6-27's moves.)
+//    src/app/components/BallotSection.js ("isToggling ? 'opacity-70' : ''") on the ballot option
+//    button, whose text-content-primary ink (set on both arms of its isVoted ternary) is
+//    composited at 0.7 while the vote toggles.
+//    (Cites corrected in place by plan 88.6.1-02; they predated plan 88.6-27's moves. Retargeted
+//    by plan 88.9-07: the former specimen, the adjacent-month cell dim in CalendarMonthView.js,
+//    was removed by that plan, owner picks A4b + O4b.)
 //  * RAW-PALETTE INK IS INVISIBLE. Ink written `text-<hue>-<n>` (87 non-test occurrences) is
 //    not a semantic token and is `rawColorValues.test.ts`'s and plan 10's territory.
 //  * VARIANT-PREFIXED INK IS OUT OF SCOPE, as a declared exclusion and not a silent filter.
@@ -94,7 +96,7 @@ import {
   MUTED_GROUND_CLASS,
   PRESCRIBED_INK_ON_MUTED,
 } from '../test-utils/inkRules';
-import { inkGroundPairs, sourceFiles } from '../test-utils/sourceScan';
+import { inkGroundPairs, readOpeningTag, sourceFiles, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -792,5 +794,131 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
         `${key} has no ${MUTED} candidate on the ground anchor's line ${groundLines[0]}`,
       ).toBe(true);
     }
+  });
+
+  it("10. 88.9 A6e + O1b — the Combobox active row keeps the muted ground, and every consumer's option label avoids the forbidden inks on it (by name)", () => {
+    // Added by plan 88.9-09 (owner picks A6e + O1b). It closes, BY NAME, the one live instance of
+    // the COMPONENT-SET GROUND limitation in the header: the Combobox primitive paints the muted
+    // ground on its active option row inside its own cn() call, so the ink each CALLER writes into
+    // an option label never shares an opening tag with that ground and the walk above cannot pair
+    // them. This test pairs them by name instead: (1) the ground is still set on the active arm,
+    // (2) no consumer label carries a bare forbidden ink, (3) the prescribed ink is really there
+    // (anti-vacuity), (4) the check itself can fail (negative control). Every file is read through
+    // withoutComments, and only className text inside opening tags of the option-label JSX is
+    // checked, so a DECISION comment that names the forbidden inks cannot red it.
+    const read = (rel: string) => withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8'));
+    const OVERRIDE = 'in-aria-selected:' + PRESCRIBED_INK_ON_MUTED.utility;
+
+    // The consumers, and where each one builds its option labels. The list is asserted complete
+    // below, so a third consumer cannot join unscanned.
+    const CONSUMERS = [
+      { file: 'app/userProfile/page.js', start: 'const timezoneItems = useMemo(', end: '}, [tzPickerOpen,' },
+      { file: 'app/components/GameComboInput.js', start: 'const items = useMemo(() => [', end: '], [localResults,' },
+    ];
+
+    // The ONE declared exception that is not an override. The Importing... span shows only while
+    // its BGG row is disabled (disabled: importingBggId === game.bgg_id), which renders it at
+    // opacity-50 as an inactive control. Pointer hover CAN still make that row the active one and
+    // put it on the muted ground (floating-ui syncs the active index on mouse move with no disabled
+    // check), but WCAG 1.4.3 exempts text that is part of an inactive user interface component.
+    const IMPORTING = {
+      file: 'app/components/GameComboInput.js',
+      className: 'ml-2 text-sm text-content-muted',
+      text: 'Importing...',
+    };
+
+    type Literal = { file: string; text: string; tail: string };
+
+    // Every quoted string inside the className value of every opening tag in the region.
+    const classNameLiterals = (file: string, src: string): Literal[] => {
+      const out: Literal[] = [];
+      const tagStart = /<[A-Za-z]/g;
+      let m: RegExpExecArray | null;
+      while ((m = tagStart.exec(src))) {
+        const tag = readOpeningTag(src, m.index);
+        if (!tag) continue;
+        const at = tag.indexOf('className=');
+        if (at < 0) continue;
+        const v = tag.slice(at + 'className='.length);
+        let value = '';
+        if (v[0] === '"' || v[0] === "'") {
+          value = v.slice(0, v.indexOf(v[0], 1) + 1);
+        } else if (v[0] === '{') {
+          let depth = 0;
+          let i = 0;
+          for (; i < v.length; i += 1) {
+            const c = v[i];
+            if (c === '"' || c === "'" || c === '`') {
+              const close = v.indexOf(c, i + 1);
+              i = close < 0 ? v.length : close;
+              continue;
+            }
+            if (c === '{') depth += 1;
+            else if (c === '}') {
+              depth -= 1;
+              if (depth === 0) break;
+            }
+          }
+          value = v.slice(0, i + 1);
+        }
+        const tail = src.slice(m.index + tag.length, m.index + tag.length + 40);
+        for (const lit of value.matchAll(/(['"`])([^'"`]*)\1/g)) out.push({ file, text: lit[2], tail });
+      }
+      return out;
+    };
+
+    const isImporting = (l: Literal) =>
+      l.file === IMPORTING.file && l.text === IMPORTING.className && l.tail.startsWith(IMPORTING.text);
+
+    // Clause (2)'s rule, one string literal (one conditional arm) at a time: a bare forbidden
+    // token is a violation unless that same literal also holds the override as one whole token
+    // (the O1b current-zone span: its forbidden ink shows only at rest on the elevated list
+    // ground, and the muted ground exists only on the aria-selected row, where the override
+    // applies), or it is the declared Importing... span.
+    const violations = (lits: Literal[]) =>
+      lits.flatMap((l) => {
+        const tokens = l.text.split(/\s+/).filter(Boolean);
+        if (tokens.includes(OVERRIDE) || isImporting(l)) return [];
+        return tokens.filter((t) => FORBIDDEN_INK_CLASSES.has(t)).map((t) => `${l.file}: ${t} in "${l.text}"`);
+      });
+
+    const regionOf = (src: string, start: string, end: string) => {
+      const a = src.indexOf(start);
+      const b = a < 0 ? -1 : src.indexOf(end, a);
+      expect(a, `${start} not found`).toBeGreaterThan(-1);
+      expect(b, `${end} not found after ${start}`).toBeGreaterThan(a);
+      return src.slice(a, b);
+    };
+
+    // (1) the ground is still set by the primitive, on the active arm.
+    const combobox = read('components/ui/Combobox.tsx');
+    expect(combobox.split(`activeIndex === index && '${MUTED}',`).length - 1).toBe(1);
+
+    // The consumer list is complete: every non-test source file that renders the primitive.
+    const rendering = FILES.filter((f) => withoutComments(fs.readFileSync(f, 'utf8')).includes('<Combobox'))
+      .map((f) => path.relative(SRC, f))
+      .sort();
+    expect(rendering).toEqual(CONSUMERS.map((c) => c.file).sort());
+
+    const literals = CONSUMERS.flatMap((c) => classNameLiterals(c.file, regionOf(read(c.file), c.start, c.end)));
+
+    // (2) no bare forbidden ink, except the two declared above.
+    expect(violations(literals)).toEqual([]);
+    // The Importing... exception is live: exactly one site matches it, so it cannot go stale.
+    expect(literals.filter(isImporting)).toHaveLength(1);
+
+    // (3) anti-vacuity: the userProfile label really carries the prescribed ink.
+    const prescribed = literals
+      .filter((l) => l.file === 'app/userProfile/page.js')
+      .flatMap((l) => l.text.split(/\s+/))
+      .filter((t) => t === PRESCRIBED_INK_ON_MUTED.utility || t === OVERRIDE);
+    expect(prescribed.length).toBeGreaterThanOrEqual(2);
+
+    // (4) negative control: the same check reports a bare link ink with no override, and does not
+    // report it once the override sits in the same literal.
+    const bare = '<span className={x ? \'text-content-link\' : undefined}>z</span>';
+    const overridden = `<span className={x ? 'text-content-link ${OVERRIDE}' : undefined}>z</span>`;
+    expect(violations(classNameLiterals('fixture', bare))).toHaveLength(1);
+    expect(violations(classNameLiterals('fixture', overridden))).toHaveLength(0);
   });
 });

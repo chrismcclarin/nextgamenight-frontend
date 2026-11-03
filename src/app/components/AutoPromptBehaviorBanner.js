@@ -125,7 +125,7 @@ export default function AutoPromptBehaviorBanner({ focusFallbackRef } = {}) {
                            way it would be on a `Button`), and Label 14 is the right rung for an
                            actionable label. `min-h-11` STAYS — it is this control's per-CTA 44px
                            floor, and it is not supplied by anything else here. */
-                        className="min-h-11 inline-flex items-center rounded-sm px-2 py-1 text-sm text-content-link underline transition-colors hover:no-underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                        className="min-h-11 inline-flex items-center rounded-sm px-2 py-1 text-sm text-content-link underline transition-colors hover:no-underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
                     >
                         Got it
                     </button>

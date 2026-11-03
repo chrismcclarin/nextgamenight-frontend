@@ -2563,7 +2563,7 @@ export default function GameDetailPage() {
                         heading-count pin, which is bookkeeping; the pin moved with this, review r2 #180). */}
                     <Heading ref={withdrawalTitleRef} level={2} size="heading" className="text-content-primary mb-2">{title}</Heading>
                     <p className="text-content-secondary mb-6">{detail}</p>
-                    <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                    <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page">
                         ← Back to Home
                     </Link>
                 </div>
@@ -2596,16 +2596,16 @@ export default function GameDetailPage() {
                         as before. */}
                     {group_id ? (
                         (userScope === 'group-member' || userScope === 'pending') ? (
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page">
                                 ← Back to Group
                             </Link>
                         ) : (
-                            <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                            <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page">
                                 ← Back to Home
                             </Link>
                         )
                     ) : (
-                        <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                        <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page">
                             ← Back to Home
                         </Link>
                     )}
@@ -2626,7 +2626,7 @@ export default function GameDetailPage() {
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
                     <p className="text-content-secondary mb-4">No game selected</p>
-                    <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                    <Link href="/" className="text-content-link hover:underline inline-flex min-h-11 items-center md:min-h-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page">
                         ← Back to Home
                     </Link>
                 </div>
@@ -2663,7 +2663,7 @@ export default function GameDetailPage() {
                     four links plus Profile's Home link (plan 88.6.1-53) are the five D-46 counted.
                     Removing the ring, the attribute or the cap is a decision, not a cleanup. */}
                 <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
                     {effectiveGroupId && singleEvent?.Group?.name && (
                         /* Phase 71.1-02 Blocker 2 fix: only render the group
                            segment when we actually have a group name. The
@@ -2677,7 +2677,7 @@ export default function GameDetailPage() {
                         <>
                             <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                             {(userScope === 'group-member' || userScope === 'pending') ? (
-                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">
                                     {singleEvent.Group.name}
                                 </Link>
                             ) : (
@@ -3064,6 +3064,7 @@ export default function GameDetailPage() {
                     <div className="mt-4 flex gap-2">
                         <Button
                             variant="primary"
+                            className="focus-visible:ring-offset-surface-page"
                             onClick={() => { setEditingEvent(singleEvent); setEditEventModal(true); }}
                         >
                             Edit Event
@@ -3529,7 +3530,7 @@ export default function GameDetailPage() {
             {/* Breadcrumbs */}
             {/* Same ring, hidden separators and `min-w-0` as the event-view breadcrumb — `DECISION Phase 88.6.1-52 (D-46 / R7-M7)`. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
                 {group_id && (
                     <>
                         <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
@@ -3538,7 +3539,7 @@ export default function GameDetailPage() {
                                see the link with the group name (or generic "Group"
                                while loading — graceful, not load-bearing for the
                                game-only flow). */
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">
                                 {singleEvent?.Group?.name || 'Group'}
                             </Link>
                         ) : singleEvent?.Group?.name ? (

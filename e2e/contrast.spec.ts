@@ -10,6 +10,8 @@ import {
   describeRatio,
   focusRingMeasurement,
   forceLightMode,
+  haloGroundRatio,
+  inkRatioThroughOpacity,
   groundResolutionOf,
   lStarOfGround,
   parseHex,
@@ -19,6 +21,9 @@ import {
   type Measurement,
 } from './support/contrast';
 import { switchToManualEntry } from './support/createEvent';
+import { holdWrites } from './support/inFlight';
+import { scrubbedFetch } from './support/scrubbedFetch';
+import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
 // Phase 88.3.1-W. The PALETTE, imported rather than transcribed — the AMENDMENT W tests below
 // pin the preset-only group's rendered ground to the `blue` preset's own stored values, and
 // this import is what stops that from being a hex literal (see the AMENDED block in
@@ -533,6 +538,322 @@ async function assertPresetGroundLanded(page: Page, theme: 'light' | 'dark'): Pr
         `Do NOT "fix" this by re-adding a hex to the fixture — that re-opens PLAN-REVIEW Defect 5.`
     ).toBe(expected);
   });
+}
+
+// Phase 88.9-01 — the house focus ring pins (A3d, A10c and the halo contract), Gate C at 375.
+//
+// The halo contract: planning:.planning/phases/88.9-fe-look-decisions-design-phase-mockup-gated-split-from-88-6/88.9-UI-SPEC.md ("## Contract item — the house offset ring takes the surface colour").
+// Each ring test asserts the ring clears 3:1 against its halo AND that the halo is the surface under
+// the control (haloGroundRatio <= 1.01, i.e. the halo reads as no band at all). Red by design until
+// the fixes land: the bell Accept ring and the halo on card ground with 88.9-05, the brand link ring
+// with its plan, the page ground with 88.9-11 and the elevated ground with 88.9-12.
+const HALO_EQUAL = 1.01;
+const RING_INVITE = pendingInvite('e2e-contrast-ring-invite', 'E2E Contrast Ring');
+
+function haloMessage(label: string, h: { ratio: number; halo: string; behind: string }): string {
+  return (
+    `${label}: the ring halo ${h.halo} measured ${h.ratio.toFixed(3)}:1 against the surface under the ` +
+    `control ${h.behind}; the house ring's halo must equal the surface (<= ${HALO_EQUAL}:1).`
+  );
+}
+
+/** A3d: the bell panel's Accept action, inside the region on the card ground. */
+async function bellAcceptRing(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  // Registered BEFORE the first navigation (e2e/support/inFlight.ts: a route added after goto misses
+  // the load); it answers /invites/pending with one synthetic invite and holds every write.
+  await holdWrites(page, { answerGet: answerPendingInvites([RING_INVITE]) });
+  try {
+    await page.goto('/');
+    await assertTheme(page, theme);
+    await page.getByRole('button', { name: 'Toggle menu' }).click();
+    await page.getByRole('button', { name: 'Invites notifications', exact: true }).click();
+    const region = page.getByRole('region', { name: 'Notifications', exact: true });
+    await expect(region, `A3d (${theme}): the Notifications region did not open.`).toBeVisible({ timeout: 15_000 });
+    const accept = region.getByRole('button', { name: 'Accept invite to E2E Contrast Ring', exact: true });
+    await expect(accept, `A3d (${theme}): the synthetic invite's Accept action is not visible.`).toBeVisible();
+    // Focus INSIDE the panel first: focusRingMeasurement presses Tab to set keyboard modality, and
+    // from the trigger that Tab could leave the bell and close the panel (88.9-RESEARCH L-5).
+    await accept.focus();
+    const label = `bell panel Accept focus ring (A3d, ${theme})`;
+    const m = await focusRingMeasurement(page, accept, label);
+    expectRatio(label, m, NON_TEXT);
+    const h = await haloGroundRatio(m, accept);
+    expect(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+  } finally {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  }
+}
+
+/** A10c: the header brand link. Pre-fix it wears the UA outline, so focusRingMeasurement throws. */
+async function brandLinkRing(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  await page.goto('/');
+  await assertTheme(page, theme);
+  // The logo SVG's aria-label joins the link's accessible name, so the name is matched by a regex.
+  const link = page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: /Next Game Night/ });
+  await expect(link, `A10c (${theme}): the header brand link is not visible.`).toBeVisible({ timeout: 15_000 });
+  const label = `header brand link focus ring (A10c, ${theme})`;
+  const m = await focusRingMeasurement(page, link, label);
+  expectRatio(label, m, NON_TEXT);
+  const h = await haloGroundRatio(m, link);
+  expect(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+}
+
+/** The page-ground halo step: the phone Calendar button on the home page ground. */
+async function haloPageGround(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  await page.goto('/');
+  await assertTheme(page, theme);
+  const button = page.getByRole('button', { name: /^Calendar\b/ });
+  await expect(button, `halo page (${theme}): the phone Calendar button is not visible.`).toBeVisible({ timeout: 15_000 });
+  const label = `halo on the PAGE ground — phone Calendar button (${theme})`;
+  const m = await focusRingMeasurement(page, button, label);
+  expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+  const h = await haloGroundRatio(m, button);
+  expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+}
+
+/* =========================================================================================
+ * Phase 88.9-03 — the three ink picks (A4b, A5a, A6e + O1b), pinned RED by design.
+ * Greened by the plans that land each pick; every read below pre-asserts the thing it
+ * measures is on screen and non-empty, and every message names the measured value and floor.
+ * ======================================================================================= */
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+interface InkRead { ratio: number; opacity: number; fg: string; effectiveFg: string; ground: string }
+
+function expectInk(label: string, r: InkRead, floor: number, assertOpacity: boolean): void {
+  if (assertOpacity) {
+    expect(r.opacity, `${label}: ancestor opacity product ${r.opacity} — the day number must not sit under a dimmed ancestor (A4b takes the whole-cell opacity-60 off it)`).toBe(1);
+  }
+  expect(r.ratio, `${label}: ${r.ratio.toFixed(2)}:1 through ancestor opacity ${r.opacity} (ink ${r.effectiveFg} on ${r.ground}), floor ${floor}:1`).toBeGreaterThanOrEqual(floor);
+}
+
+/** A4b: adjacent-month day numbers, an adjacent-month tile and its '+N more' label on the group compact grid. */
+async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const nextYear = month === 11 ? year + 1 : year;
+  const nextMonth = month === 11 ? 0 : month + 1;
+  // The grid is always 42 cells: the leading days of the previous month, this month, then the
+  // trailing days of the next month (getDaysInMonth). Same arithmetic, so the handler knows them.
+  const leading = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const trailing = 42 - leading - daysInMonth;
+  let syntheticDay = 0;
+
+  await page.route((url) => /\/events\/group\/[^/]+$/.test(url.pathname), async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    // scrubbedFetch, never a raw Playwright route fetch — the house rule (DECISION Phase 88.6.2-20
+    // (scrub)): a failing raw fetch prints the session cookie into the public Actions log.
+    const response = await scrubbedFetch(route);
+    const real: unknown = await response.json();
+    if (!Array.isArray(real)) throw new Error('A4b: the group events GET did not answer an array — the route matcher found the wrong request');
+    // Bucket the REAL events by LOCAL date, the way the grid does (getEventsForDate reads
+    // new Date(start_date)); the runner and the browser share the host timezone because the
+    // Playwright config sets no timezoneId.
+    const occupied = new Set<number>();
+    for (const e of real as { start_date?: string }[]) {
+      if (!e.start_date) continue;
+      const d = new Date(e.start_date);
+      if (d.getFullYear() === nextYear && d.getMonth() === nextMonth) occupied.add(d.getDate());
+    }
+    // DATE-PROOF: the CI seed puts the E2E group's events at +3 and +4 days, so real events
+    // occupy at most 2 distinct days among next-month days 1-4, and the 42-cell grid always has
+    // at least 5 trailing days — so at least 3 empty trailing days always exist. The synthetic
+    // day is the FIRST trailing day the real response leaves empty (never trailing day 1
+    // unconditionally, which the seed lands on during the last four days of every month), and
+    // a second empty trailing day is always left for the EMPTY-cell read.
+    syntheticDay = 0;
+    for (let d = 1; d <= trailing; d++) {
+      if (!occupied.has(d)) { syntheticDay = d; break; }
+    }
+    if (syntheticDay === 0) throw new Error('A4b: no empty trailing next-month day — the date-proof argument no longer holds');
+    // Shape copied from a real element when one exists; otherwise a minimal object with the
+    // fields the compact tile reads. No runtime schema checks this response (the events schema
+    // is typing only, z.infer), so a minimal object renders.
+    const template = (real[0] ?? {}) as Record<string, unknown>;
+    const start = new Date(nextYear, nextMonth, syntheticDay, 12);
+    const synthetic = ['A', 'B', 'C'].map((letter) => ({
+      ...template,
+      id: crypto.randomUUID(),
+      group_id: template.group_id ?? E2E_GROUP_ID,
+      start_date: start.toISOString(),
+      ...('end_date' in template ? { end_date: new Date(start.getTime() + 2 * 3600_000).toISOString() } : {}),
+      Game: { ...((template.Game as object | undefined) ?? {}), name: `E2E adjacent ${letter}` },
+    }));
+    await route.fulfill({ response, json: [...real, ...synthetic] });
+  });
+
+  try {
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await assertTheme(page, theme);
+    const heading = page.getByRole('heading', { name: `${MONTH_NAMES[month]} ${year}`, exact: true }).first();
+    await expect(heading, `A4b (${theme}): the compact grid heading is not the month the route handler built against`).toBeVisible({ timeout: 15_000 });
+    const next = MONTH_NAMES[nextMonth];
+    expect(syntheticDay, `A4b (${theme}): the route handler never answered the group events GET`).toBeGreaterThan(0);
+
+    const populated = page.getByRole('button', { name: `${next} ${syntheticDay}, 3 games. Open this day.`, exact: true });
+    await expect(populated, `A4b (${theme}): the populated adjacent-month day number is absent — the synthetic events did not reach the grid`).toBeVisible({ timeout: 15_000 });
+    await expect(populated).toHaveText(/\d/);
+    // EMPTY cell: a different trailing day the real response also leaves empty, by its accessible
+    // name. The CI user is a member who can create events, so empty days carry the add-event name.
+    const empty = page.getByRole('button', { name: new RegExp(`^${next} \\d+\\. Add an event on this day\\.$`) }).first();
+    await expect(empty, `A4b (${theme}): no empty adjacent-month day number on the grid`).toBeVisible();
+    await expect(empty).toHaveText(/\d/);
+
+    for (const [el, which] of [[populated, 'populated'], [empty, 'empty']] as const) {
+      const label = `A4b (${theme}) ${which} adjacent-month day number`;
+      expectInk(label, await inkRatioThroughOpacity(el, label), AA_TEXT, true);
+    }
+
+    // UI-SPEC E4 populated (amended C11): the tiles and the '+N more' label at full opacity too.
+    const cell = populated.locator('xpath=ancestor::*[.//*[starts-with(normalize-space(.), "E2E adjacent ")]][1]');
+    const tile = cell.getByText(/^E2E adjacent [ABC]$/).first();
+    await expect(tile, `A4b (${theme}): no synthetic tile inside the populated cell`).toBeVisible();
+    const tileLabel = `A4b (${theme}) adjacent-month event tile text through ancestor opacity`;
+    const tileRead = await inkRatioThroughOpacity(tile, tileLabel);
+    console.log(`${tileLabel}: opacity product ${tileRead.opacity} (diagnostic, not asserted)`);
+    expectInk(tileLabel, tileRead, AA_TEXT, false);
+
+    const more = cell.getByText(/^\+\d+ more$/);
+    await expect(more, `A4b (${theme}): the '+N more' label is absent — the three synthetic events did not reach the cell; fix the route, never delete this guard`).toBeVisible();
+    const moreLabel = `A4b (${theme}) adjacent-month '+N more' label through ancestor opacity`;
+    expectInk(moreLabel, await inkRatioThroughOpacity(more, moreLabel), AA_TEXT, false);
+  } finally {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  }
+}
+
+const NO_WASH = 'no availability wash on screen — the CI fixture week shows no availability; fix the navigation, never delete this guard';
+
+/** A5a: the week-strip aggregate and the scheduler count badge on their availability wash. */
+async function washInk(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  // The LIGHT arm is a confirm: the on-screen wash (0.29 step) passes before and after the pick.
+  // The red arms are the dark badge (3.56 at the 0.29 step) and Gate A test 55 (plan 88.9-08).
+  await openCreateEvent(page);
+  await assertTheme(page, theme);
+  const strip = page.locator('[role="tab"] > span[aria-hidden="true"]').filter({ hasText: /^[1-9]\d*$/ }).first();
+  await expect(strip, `A5a (${theme}): ${NO_WASH}`).toBeVisible({ timeout: 15_000 });
+  const badge = page.locator('[role="gridcell"] span[aria-hidden="true"]').filter({ hasText: /^\s*\d+(\s*\/\s*\d+)?\s*$/ }).first();
+  await expect(badge, `A5a (${theme}): ${NO_WASH}`).toBeVisible({ timeout: 15_000 });
+
+  const stripLabel = `A5a (${theme}) week-strip aggregate on its wash`;
+  const s = await ratioAgainstGround(strip, stripLabel);
+  expect(s.probe.levels[0]?.transparent === false, `A5a (${theme}): the strip aggregate's own background-color is ${s.probe.levels[0]?.backgroundColor} — ${NO_WASH}`).toBe(true);
+  expectRatio(stripLabel, s, AA_TEXT);
+
+  const badgeLabel = `A5a (${theme}) scheduler count badge on its cell wash`;
+  const b = await ratioAgainstGround(badge, badgeLabel);
+  const washed = b.probe.levels.slice(0, Math.max(b.probe.opaqueAt, 0)).some((l) => !l.transparent);
+  expect(washed, `A5a (${theme}): no translucent wash between the badge and its opaque ground (${b.ground}) — ${NO_WASH}`).toBe(true);
+  expectRatio(badgeLabel, b, AA_TEXT);
+}
+
+/** A6e + O1b: the highlighted timezone row's inset cue, its abbr ink and the current-zone ink. */
+async function timezoneRowCue(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  // Every selection write is held: nothing reaches the CI database.
+  await holdWrites(page, {});
+  // DECISION Phase 88.9-03 (tz-answer): the timezone PATCH is ANSWERED here, never left to the hold.
+  // A held write is released when interception is disabled at unrouteAll: Chromium resumes the
+  // paused request, so the PATCH reached the CI database, changed the e2e user's timezone and shifted
+  // the seeded availability out of every later scheduler read (CI 41396760316). Registered AFTER
+  // holdWrites on purpose: Playwright runs matching routes in reverse registration order, so a route
+  // registered before the catch-all hold never sees the request. Do not remove or reorder this route.
+  // Body mirrors the backend's success shape, backend:Sonnet/routes/users.js ("res.json({ timezone: user.timezone });");
+  // setTimezone ignores the response body, src/app/components/TimezoneProvider.js ("await usersAPI.updateTimezone(selfUuid, newTimezone);").
+  await page.route(
+    (url) => /\/users\/[^/]+\/timezone$/.test(url.pathname),
+    async (route) => {
+      const request = route.request();
+      if (request.method() === 'GET' || request.method() === 'HEAD') {
+        await route.fallback();
+        return;
+      }
+      const sent = (request.postDataJSON() ?? {}) as { timezone?: unknown };
+      await route.fulfill({ status: 200, json: { timezone: sent.timezone ?? null } });
+    },
+  );
+  try {
+    await page.goto('/userProfile');
+    await assertTheme(page, theme);
+    const field = page.getByRole('combobox', { name: 'Timezone' });
+    await expect(field, `A6e (${theme}): the Timezone field is not visible`).toBeVisible({ timeout: 15_000 });
+    const list = page.getByRole('listbox', { name: 'Timezones' });
+    const active = list.locator('[role="option"][aria-selected="true"]');
+
+    // ALWAYS select a fixed zone first, whatever the account has stored: the stored zone may be
+    // UTC or an alias outside the supported list (no aria-current row), and a zone read off the
+    // page must never reach a message in the public log. Constants only, never page text.
+    // The picker passes selectFirstOnEnter false, so Enter needs an ACTIVE option: ArrowDown first.
+    await field.click();
+    await field.fill('Los Angeles');
+    await expect(list.getByRole('option'), `A6e (${theme}): the fixed query did not filter to one option`).toHaveCount(1);
+    await field.press('ArrowDown');
+    await expect(active, `A6e (${theme}): ArrowDown did not activate the filtered option`).toHaveCount(1);
+    await field.press('Enter');
+
+    // Reopen on a fixed query with many rows, so another row can be active for the at-rest read.
+    await field.click();
+    await field.fill('America');
+    const options = list.getByRole('option');
+    await expect(options.nth(1), `A6e (${theme}): the America query shows fewer than two options`).toBeVisible();
+    const current = list.locator('[aria-current="true"]');
+    await expect(current, `A6e (${theme}): no filtered option carries aria-current`).toHaveCount(1);
+
+    // O1b AT REST: a DIFFERENT row active, the current zone keeps its link ink (plan 88.9-09).
+    await field.press('ArrowDown');
+    await expect(active, `A6e (${theme}): no row became active`).toHaveCount(1);
+    await expect(active.locator('[aria-current="true"]'), `O1b (${theme}): no other row can be active — the at-rest read needs one`).toHaveCount(0);
+    const restLabel = `O1b (${theme}) current zone at rest on the listbox ground`;
+    const rest = await ratioAgainstGround(current, restLabel);
+    expect(rest.ratio, `${describeRatio(restLabel, AA_TEXT, rest)} (at rest)`).toBeGreaterThanOrEqual(AA_TEXT);
+
+    // Bounded: the list wraps (loop true), so an unbounded loop would never end.
+    const n = await options.count();
+    for (let i = 0; i < n; i++) {
+      if ((await active.locator('[aria-current="true"]').count()) > 0) break;
+      await field.press('ArrowDown');
+    }
+    expect(await active.locator('[aria-current="true"]').count(), 'no filtered option carries aria-current').toBe(1);
+    const row = active;
+    await expect(row).toHaveText(/\S/);
+
+    // The cue: ring colour, ring-inset, AND a real inset box-shadow layer — ring-inset only sets
+    // a custom property and only a ring WIDTH utility writes box-shadow, so the first two reads
+    // alone would pass a fix that ships no ring width. Pre-fix the ring colour read throws.
+    const cueLabel = `A6e (${theme}) highlighted timezone row inset cue`;
+    const cue = await ratioAgainstGround(row, cueLabel, '--tw-ring-color');
+    expect(cue.ratio, describeRatio(cueLabel, NON_TEXT, cue)).toBeGreaterThanOrEqual(NON_TEXT);
+    const p = await probeElement(row, ['--tw-ring-inset', 'box-shadow']);
+    expect(p.computed['--tw-ring-inset']?.raw.trim(), `${cueLabel}: computed --tw-ring-inset is not inset`).toBe('inset');
+    const shadow = p.computed['box-shadow']?.raw ?? '';
+    const insetSpread = shadowLayers(shadow).some((layer) => {
+      if (!/\binset\b/.test(layer)) return false;
+      const lengths = [...layer.matchAll(/(-?[\d.]+)px/g)].map((m) => Number(m[1]));
+      return lengths.length >= 4 && lengths[3] !== 0;
+    });
+    expect(insetSpread, `${cueLabel}: computed box-shadow is ${shadow} — no inset layer with a non-zero spread`).toBe(true);
+
+    const abbrLabel = `A6e (${theme}) highlighted row abbr/offset text`;
+    // AMENDED Phase 88.9-09 (M5a): the aria-hidden check glyph is the first child span of the current option; the abbr span is the one that is not aria-hidden.
+    expectRatio(abbrLabel, await ratioAgainstGround(row.locator('[aria-current="true"] > span:not([aria-hidden="true"])'), abbrLabel), AA_TEXT);
+    const zoneLabel = `O1b (${theme}) current zone on the highlighted row`;
+    expectRatio(zoneLabel, await ratioAgainstGround(row.locator('[aria-current="true"]'), zoneLabel), AA_TEXT);
+
+    // UI Considerations E6, held-out steps (BACKSTOP, recorded as such): no horizontal overflow.
+    const rowBox = await row.boundingBox();
+    const listWidth = await list.evaluate((el) => el.clientWidth);
+    expect(rowBox?.width ?? Infinity, `E6 (${theme}): highlighted row width ${rowBox?.width}px exceeds the listbox client width ${listWidth}px`).toBeLessThanOrEqual(listWidth + 1);
+    await field.fill('Argentina');
+    const first = options.first();
+    await expect(first, `E6 (${theme}): the Argentina query shows no option`).toBeVisible();
+    const [sw, cw] = await first.evaluate((el) => [el.scrollWidth, el.clientWidth]);
+    expect(sw, `E6 (${theme}): first option scrollWidth ${sw}px exceeds its clientWidth ${cw}px`).toBeLessThanOrEqual(cw + 1);
+  } finally {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  }
 }
 
 test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
@@ -1211,6 +1532,30 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     await assertTheme(page, 'light');
     await assertAccentLabelRatio(page, 'light');
   });
+  test('A3d (88.9): the bell panel Accept ring at 375 clears 3:1 and its halo is the card, light', async ({ page }) => {
+    await bellAcceptRing(page, 'light');
+  });
+
+  test('A10c (88.9): the header brand link at 375 wears the house ring on a header halo, light', async ({ page }) => {
+    await brandLinkRing(page, 'light');
+  });
+
+  test('halo (88.9): the house ring halo equals the page ground under the phone Calendar button, light', async ({ page }) => {
+    await haloPageGround(page, 'light');
+  });
+
+  test('A4b (88.9): adjacent-month day numbers on the group compact grid are undimmed and clear 4.5:1, light', async ({ page }) => {
+    await adjacentMonthInk(page, 'light');
+  });
+
+  test('A5a (88.9): the week-strip aggregate and the scheduler badge clear 4.5:1 on their wash, light', async ({ page }) => {
+    await washInk(page, 'light');
+  });
+
+  test('A6e + O1b (88.9): the highlighted timezone row shows a 3:1 inset cue and its abbr and current-zone inks clear 4.5:1, light', async ({ page }) => {
+    await timezoneRowCue(page, 'light');
+  });
+
 });
 
 test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
@@ -1397,6 +1742,105 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     await page.goto('/');
     await assertTheme(page, 'dark');
     await assertAccentLabelRatio(page, 'dark');
+  });
+
+  // Phase 88.9-01, owner pick A1b (88.9-PICKS-A.json): the dark danger fill. The trigger is
+  // src/app/components/DangerZoneDeleteAccount.tsx ("onClick={handleOpen}>"),
+  // a steady-state .btn-danger on /userProfile that needs no fixture beyond the signed-in user.
+  // Its ground must be its OWN fill (opaqueAt 0), the same shape as the W23 accent probe: if
+  // .btn-danger stopped painting, the walk would reach the dark page ground and white on it
+  // would read as a pass. Red by design before the token change (white on #ef4444 is 3.76:1).
+  test('A1b (88.9): the Danger Zone trigger\'s white label clears 4.5:1 on the dark danger fill', async ({ page }) => {
+    await page.goto('/userProfile');
+    await assertTheme(page, 'dark');
+    const trigger = page.getByRole('button', { name: 'Delete My Account', exact: true });
+    await expect(
+      trigger,
+      'A1b (dark): the Delete My Account trigger is not visible on /userProfile.'
+    ).toBeVisible({ timeout: 15_000 });
+
+    const label = 'Danger Zone trigger label on the danger fill (A1b, dark)';
+    const m = await ratioAgainstGround(trigger, label);
+    expect(
+      m.probe.opaqueAt,
+      `A1b (dark): the ground walk did not terminate on the button's OWN background ` +
+        `(opaqueAt ${m.probe.opaqueAt}) — .btn-danger is not painting a fill, so the ratio ` +
+        `below is measured against whatever ancestor happens to be opaque.\n${describeGround(
+          'Danger Zone trigger (dark)',
+          m.resolution
+        )}`
+    ).toBe(0);
+
+    expectRatio(label, m, AA_TEXT);
+  });
+
+  test('A3d (88.9): the bell panel Accept ring at 375 clears 3:1 and its halo is the card, dark', async ({ page }) => {
+    await bellAcceptRing(page, 'dark');
+  });
+
+  test('A10c (88.9): the header brand link at 375 wears the house ring on a header halo, dark', async ({ page }) => {
+    await brandLinkRing(page, 'dark');
+  });
+
+  test('halo (88.9): the house ring halo equals the surface under the control on card, page and elevated grounds, dark', async ({ page }) => {
+    // Three navigations in all (one per ground), so the 30 s default timeout holds: the helper
+    // self-checks are FOLDED into the step that measures the same control, as hard expects
+    // before that step's soft assertions, and the page step runs last so both helper arms are
+    // proven before it relies on them.
+    await test.step('card ground — the Danger Zone trigger (opaque-fill arm)', async () => {
+      await page.goto('/userProfile');
+      await assertTheme(page, 'dark');
+      // Card ground: src/app/components/DangerZoneDeleteAccount.tsx ("card p-3 md:p-6 border border-status-error") hosts the trigger.
+      const trigger = page.getByRole('button', { name: 'Delete My Account', exact: true });
+      await expect(trigger, 'halo card (dark): the Delete My Account trigger is not visible.').toBeVisible({ timeout: 15_000 });
+      const label = 'halo on the CARD ground — Danger Zone trigger (dark)';
+      const m = await focusRingMeasurement(page, trigger, label);
+      const h = await haloGroundRatio(m, trigger);
+      // Self-check, opaque-fill arm: the walk stops on the button's own fill, so the surface must
+      // come from the parent and differ visibly from that fill.
+      expect(m.probe.opaqueAt, `halo self-check (card): the trigger does not paint its own fill.`).toBe(0);
+      expect(h.behindSource, 'halo self-check (card): the surface was not read from the parent.').toBe('parent');
+      const fillVsSurface = h.ownFill === null ? null : contrastRatio(h.behind, h.ownFill);
+      expect(
+        fillVsSurface,
+        `halo self-check (card): the surface ${h.behind} is indistinguishable from the button fill ${h.ownFill}, so the helper may be reading the fill.`
+      ).toBeGreaterThan(1.5);
+      expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+      expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+    });
+
+    await test.step('elevated ground — the Breadcrumb Home link (transparent arm)', async () => {
+      await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+      await assertTheme(page, 'dark');
+      const link = page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Home' });
+      await expect(link, 'halo elevated (dark): the Breadcrumb Home link is not visible.').toBeVisible({ timeout: 15_000 });
+      const label = 'halo on the ELEVATED ground — Breadcrumb Home link (dark)';
+      const m = await focusRingMeasurement(page, link, label);
+      const h = await haloGroundRatio(m, link);
+      // Self-check, transparent arm: for a control that paints nothing, the parent's composite is
+      // the ground just outside the control.
+      expect(h.behind, 'halo self-check (elevated): the parent surface differs from the ground outside the link.').toBe(
+        compositeGround(m.probe, 1)
+      );
+      expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+      expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+    });
+
+    await test.step('page ground — the phone Calendar button', async () => {
+      await haloPageGround(page, 'dark');
+    });
+  });
+
+  test('A4b (88.9): adjacent-month day numbers on the group compact grid are undimmed and clear 4.5:1, dark', async ({ page }) => {
+    await adjacentMonthInk(page, 'dark');
+  });
+
+  test('A5a (88.9): the week-strip aggregate and the scheduler badge clear 4.5:1 on their wash, dark', async ({ page }) => {
+    await washInk(page, 'dark');
+  });
+
+  test('A6e + O1b (88.9): the highlighted timezone row shows a 3:1 inset cue and its abbr and current-zone inks clear 4.5:1, dark', async ({ page }) => {
+    await timezoneRowCue(page, 'dark');
   });
 });
 

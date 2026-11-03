@@ -277,6 +277,26 @@ describe('Combobox', () => {
     }
   });
 
+  // 88.9-CR m2: the item ariaLabel lands ON the role=option row (the focusable leaf under
+  // virtual focus), never on a wrapper, and an item without one keeps its label as its name
+  // with no aria-label attribute at all. Pins src/components/ui/Combobox.tsx ("aria-label={item.ariaLabel}").
+  it('puts an item ariaLabel on the option row itself; an item without one is named by its label (88.9-CR m2)', () => {
+    render(
+      <Harness
+        items={[
+          { key: 'catan', label: 'Catan', ariaLabel: 'Catan, current', onSelect: onSelectSpies.catan },
+          { key: 'brass', label: 'Brass', onSelect: onSelectSpies.brass },
+        ]}
+      />
+    );
+    const named = screen.getByRole('option', { name: 'Catan, current' });
+    expect(named).toHaveAttribute('role', 'option');
+    expect(named).toHaveAttribute('aria-label', 'Catan, current');
+    const plain = screen.getByRole('option', { name: 'Brass' });
+    expect(plain).toHaveAttribute('role', 'option');
+    expect(plain).not.toHaveAttribute('aria-label');
+  });
+
   it('announces the loading and empty rows outside the listbox', () => {
     const { unmount } = render(<Harness items={[]} loading />);
     expect(screen.getByRole('status')).toHaveTextContent('Searching');
@@ -334,6 +354,70 @@ describe('Combobox', () => {
     // built from fragments so this assertion cannot trip the phase's own grep gate.
     expect(source).not.toContain(['cm', 'dk'].join(''));
     expect(source).not.toContain(['react-', 'popover'].join(''));
+  });
+
+  // A6e (88.9-09, owner pick A6e): the highlighted row is a CLASS cue only. The list is
+  // virtual focus (DOM focus stays in the text field, the row is named by
+  // aria-activedescendant), so the row's own classes are the only thing that shows a
+  // keyboard user which option Enter will pick. Dark painted the muted ground at 1.00
+  // against the list, so the cue is an inset 2px focus-ring outline plus a forced-colors
+  // Highlight outline (forced-colors mode discards box-shadows, so the ring alone vanishes
+  // there). The forced-colors tokens are asserted as cn() renders them: tailwind-merge 3.6.0
+  // drops the bare forced-colors:outline beside forced-colors:outline-2 (one outline-width
+  // group), which loses nothing in paint because outline-2 sets the outline style itself.
+  const A6E_RING_TOKENS = ['ring-2', 'ring-inset', 'ring-focus-ring'];
+  const A6E_FORCED_TOKENS = [
+    'forced-colors:outline-2',
+    'forced-colors:-outline-offset-2',
+    'forced-colors:outline-[Highlight]',
+  ];
+  const a6eClassesOf = (node: Element) => (node.getAttribute('class') ?? '').split(/\s+/);
+
+  it('A6e (88.9): the active option row carries the inset focus-ring cue and the forced-colors outline beside its muted ground, and no other row does', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    getInput().focus();
+
+    await user.keyboard('{ArrowDown}');
+    const options = screen.getAllByRole('option');
+    const active = options.filter((o) => o.getAttribute('aria-selected') === 'true');
+    // Anti-vacuity: exactly one row is active, and it is the one ArrowDown reached.
+    expect(active).toHaveLength(1);
+    expect(active[0]).toBe(screen.getByRole('option', { name: 'Catan' }));
+
+    const activeClasses = a6eClassesOf(active[0]);
+    expect(activeClasses).toContain('bg-surface-muted');
+    for (const token of [...A6E_RING_TOKENS, ...A6E_FORCED_TOKENS]) {
+      expect(activeClasses).toContain(token);
+    }
+
+    for (const other of options.filter((o) => o !== active[0])) {
+      const classes = a6eClassesOf(other);
+      for (const token of [...A6E_RING_TOKENS, ...A6E_FORCED_TOKENS, 'forced-colors:outline']) {
+        expect(classes).not.toContain(token);
+      }
+    }
+  });
+
+  it('A6e (88.9): a hovered disabled option becomes the active row but carries neither the ring nor the forced-colors outline', async () => {
+    // Why this case exists: disabledIndices governs KEY navigation only, while floating-ui's
+    // item mouse-move handler syncs the active index with no disabled check — so under the
+    // mouse a disabled row (GameComboInput's greyed "Importing..." BGG row, whose list stays
+    // open through the import) IS the active row, and an actionable ring would misstate it.
+    const user = userEvent.setup();
+    render(<Harness items={makeItems([{}, {}, { disabled: true }])} />);
+
+    const disabled = screen.getByRole('option', { name: 'Gloomhaven' });
+    await user.hover(disabled);
+
+    // Anti-vacuity first: the hover path reached the disabled row and made it active.
+    expect(disabled).toHaveAttribute('aria-selected', 'true');
+    const classes = a6eClassesOf(disabled);
+    expect(classes).toContain('bg-surface-muted');
+
+    for (const token of [...A6E_RING_TOKENS, ...A6E_FORCED_TOKENS, 'forced-colors:outline']) {
+      expect(classes).not.toContain(token);
+    }
   });
 
   it('passes an axe audit with no violations in the open state', async () => {

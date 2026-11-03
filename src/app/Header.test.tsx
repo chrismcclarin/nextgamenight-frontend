@@ -73,7 +73,7 @@ vi.mock('./components/ThemeToggle', () => ({ default: () => null }));
 
 import Header from './Header';
 
-const INVITE = { id: 'inv-1', Group: { name: 'Tuesday Night Crew' }, Inviter: { username: 'Bee' } };
+const INVITE = { id: 'inv-1', group_name: 'Tuesday Night Crew', invited_by_name: 'Bee' };
 
 beforeEach(() => {
   vi.clearAllMocks();

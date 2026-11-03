@@ -52,6 +52,23 @@
  * all of which execute in phone. A floor below the measured count lets the extra tests be
  * deleted with the gate still green.
  *
+ * RAISED 17 -> 18, Phase 88.9-01, MEASURED 2026-11-01: the same command
+ * (npx playwright test --list --project=phone) now reports 18 tests in e2e/contrast.spec.ts,
+ * the new one being the A1b dark Danger Zone trigger pin, and all of them execute in phone. A
+ * floor below the measured count lets the extra test be deleted with the gate still green.
+ *
+ * RAISED 18 -> 24, Phase 88.9-01, MEASURED 2026-11-01: the same command now reports 24 tests in
+ * e2e/contrast.spec.ts. Step 1 of plan 88.9-01 already took the floor 17 -> 18 (the A1b pin); this
+ * step adds the six phone ring pins (A3d and A10c, dark and light, and the two halo tests), all
+ * executing in phone. They are red by design until the ring fixes land, which a red e2e job
+ * already reports; the floor guards the other failure, the six being deleted or skipped.
+ *
+ * RAISED 24 -> 30, Phase 88.9-03, MEASURED 2026-11-01: npx playwright test --list --project=phone
+ * reports 30 tests in e2e/contrast.spec.ts, all of which execute in phone. The six new ones are the
+ * ink pins (A4b, A5a and A6e + O1b, each in light and dark); five are red by design until plans
+ * 88.9-07, -08 and -09 land the ink fixes, and A5a light is a confirm. The floor guards the six
+ * being deleted or skipped with the gate still green.
+ *
  * GENERALISED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4). DECISION Phase
  * 88.6-55: optional flags on THIS script, chosen OVER a second floor script — two copies of the
  * same report walk is the duplication the milestone tenet forbids, and they would drift. The
@@ -83,7 +100,7 @@ import { pathToFileURL } from 'node:url';
 const REPORT = process.argv[2] ?? 'playwright-results.json';
 const SPEC = 'e2e/contrast.spec.ts';
 const PROJECT = 'phone';
-const FLOOR = 17;
+const FLOOR = 30;
 
 // Optional overrides (see the GENERALISED note above). Parsed strictly: fail closed.
 const KNOWN_FLAGS = {

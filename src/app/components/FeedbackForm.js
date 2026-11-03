@@ -565,10 +565,15 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               scan would flag these two ratified stars; a gate change is Phase 88.6.2's charter.
               W024's other sites (this form's error box and FeedbackButton's) were already on
               status tokens before this phase (verified 2026-10-05, re-read 2026-10-16), so this record closes W024's
-              last part. Changing this is a decision, not a cleanup. */}
+              last part. Changing this is a decision, not a cleanup.
+              AMENDED Phase 88.9-06 (owner pick A2c, 2026-10-31): the look half above is now
+              ANSWERED by Phase 88.9, the charter it names. The stars stay RATIFIED-DECORATIVE and
+              hidden from assistive tech exactly as recorded; only their ink changed, to the accent
+              text token, by the DECISION directly below. The scan note above is unchanged. */}
           <div>
+            {/* DECISION Phase 88.9-06 (owner picks A2c + O2a, 88.9-PICKS-A.json / 88.9-PICKS-O.json, 2026-10-31): required marks wear the accent text ink (7.09 light / 6.45 dark), chosen OVER the red-500 palette ink (3.76 / 3.68, under 4.5) and OVER the status-error ink (it passes but reads as an error). One idiom with create-event's marks. Changing it back is a decision, not a cleanup. */}
             <label htmlFor="feedback-form-subject" className="block text-sm text-content-secondary mb-2">
-              Subject <span aria-hidden="true" className="text-red-500">*</span>
+              Subject <span aria-hidden="true" className="text-content-accent">*</span>
             </label>
             <Input
               ref={subjectInputRef}
@@ -585,7 +590,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
           {/* Description */}
           <div>
             <label htmlFor="feedback-form-description" className="block text-sm text-content-secondary mb-2">
-              Description <span aria-hidden="true" className="text-red-500">*</span>
+              Description <span aria-hidden="true" className="text-content-accent">*</span>
             </label>
             <Textarea
               id="feedback-form-description"
@@ -668,7 +673,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                   variant="ghost"
                   size="icon"
                   onClick={handleRemoveClick}
-                  className="text-content-muted hover:text-content-status-error shrink-0"
+                  className="text-content-muted hover:text-content-status-error shrink-0 focus-visible:ring-offset-surface-page"
                   aria-label="Remove screenshot"
                 >
                   <span aria-hidden="true" className="text-lg leading-none">
@@ -707,7 +712,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 <label
                   id={screenshotDropzoneId}
                   htmlFor={fileInputId}
-                  className="flex flex-col items-center justify-center w-full p-4 border-2 border-dashed border-line rounded-md cursor-pointer hover:border-accent hover:bg-surface-hover transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-focus-ring peer-focus-visible:ring-offset-2 peer-focus-visible:border-accent"
+                  className="flex flex-col items-center justify-center w-full p-4 border-2 border-dashed border-line rounded-md cursor-pointer hover:border-accent hover:bg-surface-hover transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-focus-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-card peer-focus-visible:border-accent"
                 >
                   <svg aria-hidden="true" className="w-6 h-6 text-content-muted mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />

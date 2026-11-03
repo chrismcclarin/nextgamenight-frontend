@@ -179,6 +179,9 @@ describe('ErrorFallback', () => {
     for (const name of ['Try again', 'Reload page']) {
       const btn = screen.getByRole('button', { name });
       expect(btn.className, name).toContain(HOUSE_RING);
+      // AMENDED Phase 88.9-14 (Task 3, halo census R071/R072): the halo follows the ring, both
+      // controls sit on this component's own bg-surface-card panel.
+      expect(btn.className, `${name}: card halo`).toContain(`${HOUSE_RING} focus-visible:ring-offset-surface-card`);
       expect(btn.className.split(/\s+/), `${name}: no bridge-token ring`).not.toContain('focus-visible:ring-ring');
     }
   });

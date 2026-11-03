@@ -862,7 +862,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                      stop and arrow keys come from it; its click handler calls the same
                      handleSelectDefaultPicture this tile used to call itself). They stay bare
                      buttons for this marker's reason, and the ring string is unchanged. */
-                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
                     profilePictureUrl === pic.url ? 'border-accent bg-surface-muted' : 'border-line'
                   }`}
                   title={pic.name}
@@ -1271,7 +1271,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   <button
                     key={preset.name}
                     onClick={() => handleSelectDefaultColor(preset.name)}
-                    className="group flex w-full max-w-16 min-w-11 min-h-11 flex-col items-center gap-1 rounded-lg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                    className="group flex w-full max-w-16 min-w-11 min-h-11 flex-col items-center gap-1 rounded-lg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                     // aria-label ONLY — a title alongside it becomes the accessible
                     // description and gets read as a second "Red" (round-3 #30, the
                     // "announced exactly ONCE" acceptance item). Sighted users have

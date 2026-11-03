@@ -61,7 +61,7 @@ import { describe, expect, it } from 'vitest';
 // matches yours", which is exactly the drift a transcribed hex hides.
 import { GROUP_COLOUR_PRESETS } from '../lib/groupColourPresets';
 import { contrastRatio } from '../lib/wcag';
-import { lineAt, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
+import { lineAt, readOpeningTag, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 const raw = (rel: string): string => fs.readFileSync(path.join(SRC, rel), 'utf8');
@@ -1359,8 +1359,20 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // this line protects — but the marker's own CONSEQUENCE clause says the per-CTA class becomes
     // redundant "ONLY once this element is a `<Button>`", and it now is. So the class is gone from
     // the call site and the floor must be shown to have moved, not merely to have vanished.
+    // AMENDED Phase 88.9-10 (A7a): read the CTA's own opening tag, not the whole file — the Overview/Library tab buttons now carry min-h-11 by owner pick, and the file-wide read collided with them.
+    const headerCode = code(HEADER);
+    const ctaLabelAt = headerCode.indexOf('Plan Game Session');
+    const ctaStart = ctaLabelAt === -1 ? -1 : headerCode.lastIndexOf('<Button', ctaLabelAt);
+    const ctaTag = ctaStart === -1 ? null : readOpeningTag(headerCode, ctaStart);
+    // Anti-vacuity: the read lands on the Button that wraps the Plan Game Session label, or this fails.
+    expect(ctaLabelAt, 'the Plan Game Session label was not found in the group page code').toBeGreaterThan(-1);
+    expect(ctaTag ?? '', 'the Plan Game Session CTA opening tag was not read').toMatch(/^<Button\b/);
     expect(
-      code(HEADER),
+      headerCode.slice(ctaStart, ctaLabelAt),
+      'the nearest Button before the Plan Game Session label is not the one that wraps it',
+    ).not.toContain('</Button>');
+    expect(
+      ctaTag,
       'the per-CTA min-h-11 is back at the call site — the primitive already supplies it',
     ).not.toContain('min-h-11');
     expect(

@@ -126,6 +126,27 @@ describe('Button', () => {
     }
   });
 
+  it("88.9 halo: every variant's base carries focus-visible:ring-offset-surface-card right after focus-visible:ring-offset-2, and a same-prefix call-site override replaces it", () => {
+    // 88.9-05 (owner pick A3d + A10c): the house ring's halo is the card
+    // surface by default, so the ring no longer sits on Tailwind's white
+    // offset. A call site on another ground overrides it with the SAME
+    // focus-visible: prefix through cn(); the merge must drop the card token.
+    for (const variant of VARIANT_KEYS) {
+      const toks = tokensOf(buttonVariants({ variant }));
+      const at = toks.indexOf('focus-visible:ring-offset-2');
+      expect(
+        toks,
+        `88.9-05 halo — variant=${variant}: the base must carry focus-visible:ring-offset-surface-card`
+      ).toContain('focus-visible:ring-offset-surface-card');
+      expect(at).toBeGreaterThanOrEqual(0);
+      expect(toks[at + 1]).toBe('focus-visible:ring-offset-surface-card');
+    }
+    render(<Button className="focus-visible:ring-offset-surface-page">Go</Button>);
+    const cls = tokensOf(screen.getByRole('button', { name: 'Go' }).className);
+    expect(cls).toContain('focus-visible:ring-offset-surface-page');
+    expect(cls).not.toContain('focus-visible:ring-offset-surface-card');
+  });
+
   it('maps secondary and danger to their legacy .btn-* classes', () => {
     const { rerender } = render(<Button variant="secondary">Cancel</Button>);
     expect(screen.getByRole('button')).toHaveClass('btn', 'btn-secondary');

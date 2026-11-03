@@ -245,7 +245,7 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
         {copyFailed && url ? (
           <a
             href={url}
-            className="block mb-3 text-sm text-content-link underline break-all focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="block mb-3 text-sm text-content-link underline break-all focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
           >
             {url}
           </a>

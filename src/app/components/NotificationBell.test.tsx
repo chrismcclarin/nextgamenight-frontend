@@ -84,7 +84,7 @@ const friendDecline = () => friendMocks.declineRequest as unknown as Mock;
 const declineInvite = () => invitesAPI.declineInvite as unknown as Mock;
 
 const GROUP_NAME = 'Tuesday Night Crew';
-const INVITE = { id: 'inv-1', Group: { name: GROUP_NAME }, Inviter: { username: 'Bee' } };
+const INVITE = { id: 'inv-1', group_name: GROUP_NAME, invited_by_name: 'Bee' };
 
 /** The 88.2 liveness-gate rejection: the group was soft-deleted under the invite. */
 function deadGroupError() {
@@ -642,8 +642,8 @@ describe('Phase 88.6.1-28 — the panel dismisses through the shared hook (D-18,
 // element); the real-browser proof is e2e/notification-bell-actions.spec.ts. Focus-after-removal
 // pins wait for a POSITIVE signal (the target has focus) and only then assert absences (CF-26).
 describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, focus after a row leaves, outcomes (W016, N8, H9, W026, MEDLOW-28)", () => {
-  const INVITE_A = { id: 'inv-a', Group: { name: 'Alpha Crew' }, Inviter: { username: 'Ann' } };
-  const INVITE_B = { id: 'inv-b', Group: { name: 'Beta Crew' }, Inviter: { username: 'Bo' } };
+  const INVITE_A = { id: 'inv-a', group_name: 'Alpha Crew', invited_by_name: 'Ann' };
+  const INVITE_B = { id: 'inv-b', group_name: 'Beta Crew', invited_by_name: 'Bo' };
 
   function deferred<T = unknown>() {
     let resolve!: (value: T) => void;
@@ -1168,7 +1168,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
 
     // (b) empty, held out.
     cleanup();
-    seedInvites([{ id: 'inv-blank', Group: { name: '   ' }, Inviter: { username: 'Ann' } }]);
+    seedInvites([{ id: 'inv-blank', group_name: '   ', invited_by_name: 'Ann' }]);
     renderBell();
     await openBell();
     const blankButtons = within(screen.getByRole('region', { name: 'Notifications' })).getAllByRole('button');
@@ -1179,7 +1179,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     // (c) encoding, held out.
     cleanup();
     const longName = `"Dice" \u{1F3B2} ${'a'.repeat(120)}`;
-    seedInvites([{ id: 'inv-long', Group: { name: longName }, Inviter: { username: 'Ann' } }]);
+    seedInvites([{ id: 'inv-long', group_name: longName, invited_by_name: 'Ann' }]);
     renderBell();
     await openBell();
     const longAccept = within(screen.getByRole('region', { name: 'Notifications' })).getAllByRole('button')[0];
@@ -1491,5 +1491,35 @@ describe('CR-2 / A-33 — the pending count is the triggers\' description', () =
     render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);
     const trigger = screen.getByRole('button', { name: 'Invites notifications' });
     expect(within(trigger).getByText('3')).toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
+// Phase 88.9 code review d2: the bell reads the FLAT pending-invite shape the backend sends,
+// backend:Sonnet/routes/invites.js ("invited_by_name: invite.Inviter ? invite.Inviter.username : 'Someone',"),
+// never a nested Group or Inviter object. Before the fix every production row read "Someone invited you".
+describe('Phase 88.9-CR d2 — the invite row reads the flat backend shape', () => {
+  it('a flat invite renders its inviter and its member count', async () => {
+    unreadState.invites = [
+      { id: 'inv-flat', group_id: 'g-flat', group_name: 'Alpha Crew', invited_by_name: 'Bee', member_count: 3, created_at: '2026-11-03T00:00:00.000Z' },
+    ];
+    unreadState.totalCount = 1;
+    renderBell();
+    await openBell();
+    const row = screen.getByText('Alpha Crew').closest('li') as HTMLElement;
+    expect(within(row).getByText('Bee invited you')).toBeInTheDocument();
+    expect(within(row).getByText('3 members')).toBeInTheDocument();
+  });
+
+  it('member_count 0 renders no stray 0 and no member line', async () => {
+    unreadState.invites = [
+      { id: 'inv-zero', group_id: 'g-zero', group_name: 'Zero Crew', invited_by_name: 'Bee', member_count: 0, created_at: '2026-11-03T00:00:00.000Z' },
+    ];
+    unreadState.totalCount = 1;
+    renderBell();
+    await openBell();
+    const row = screen.getByText('Zero Crew').closest('li') as HTMLElement;
+    expect(within(row).queryByText(/member/)).toBeNull();
+    expect(within(row).queryByText('0')).toBeNull();
+    expect(Array.from(row.querySelectorAll('p')).some((p) => p.textContent === '0')).toBe(false);
   });
 });

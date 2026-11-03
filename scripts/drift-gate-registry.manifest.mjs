@@ -40,7 +40,8 @@ export const gates = [
   { file: 'src/app/components/availabilityGridColumns.test.ts', min: 6, why: 'Phase 88 Req 4 phone geometry — the six aligned AvailabilityGrid column widths stay in lockstep' },
   { file: 'src/app/decisionMarkers.test.ts', min: 23, why: 'Phase 88 D-36 / D-37 — the decision markers Phase 88 overrode say so, in place' },
   { file: 'src/app/rawColorValues.test.ts', min: 7, why: 'Phase 88 Req 2 — no raw hex or black shadows' },
-  { file: 'src/app/tokenContrast.test.ts', min: 65, why: 'Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
+  { file: 'src/app/tokenContrast.test.ts', min: 67, why: 'Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
+  { file: 'src/app/miniPicks.test.ts', min: 5, why: '88.9 RULING A mini-page picks' },
   { file: 'src/app/surfaceHoverSweep.test.ts', min: 12, why: 'Phase 88.3 Req 1 / D-02 — the hover and sunken sweep' },
   { file: 'src/app/darkChromeLegibility.test.ts', min: 8, why: 'Phase 88.3 Req 7/8 — dark-chrome ring, muted-label corrections, mobile-panel inert guard' },
   { file: 'src/app/accentSweep.test.ts', min: 7, why: 'Phase 88.3 Req 4/5 — the text-safe accent sweep, incl. the today number' },
@@ -107,7 +108,7 @@ export const gates = [
   // with a green build — the exact hole this step exists to close, reopened by the phase
   // that was converging on it. Ledger rows R103 / R104 / H08 in 88.6-46-SUMMARY.md.
   // Floors since raised to live counts (Phase 88.6.2-26, C-10).
-  { file: 'src/app/groundInk.test.ts', min: 8, why: 'Phase 88.6-09 D-16 — ground-aware ink' },
+  { file: 'src/app/groundInk.test.ts', min: 9, why: 'Phase 88.6-09 D-16 — ground-aware ink' },
   { file: 'src/app/errorEnvelopeReads.test.ts', min: 16, why: 'Phase 88.6-14 R9 — default-deny error-envelope reads' },
   { file: 'src/app/components/btnCensus.test.tsx', min: 24, why: 'Phase 88.6-10 — the legacy .btn element census' },
   { file: 'src/app/shadowTier.test.ts', min: 9, why: 'Phase 88.6-12 — off-tier shadow families' },
@@ -134,7 +135,8 @@ export const gates = [
   { file: 'src/lib/sentryClientReplayGate.test.ts', min: 13, why: 'Phase 88.6 R-7 + 88.6-61 H-1 — Sentry init is handed the replay and tracing gates' },
   { file: 'src/lib/sentry.scrub.test.ts', min: 61, why: 'Phase 84 T-84-01 + 88.6-61 H-1 — the Sentry scrub functions' },
   { file: 'src/app/breadcrumbNavOverflow.test.ts', min: 12, why: 'Phase 88.6 UAT3-D1 — breadcrumb pills cap at their container; a tree walk over src' },
-  { file: 'src/app/cascadeOrder.test.ts', min: 11, why: 'Phase 88.6-05/06 — cascade order and the focus-ring home; a ring census over src' },
+  { file: 'src/app/cascadeOrder.test.ts', min: 12, why: 'Phase 88.6-05/06 — cascade order and the focus-ring home; a ring census over src; Phase 88.9-15 test 12, the halo contract' },
+  { file: 'src/app/haloCensus.test.ts', min: 4, why: 'Phase 88.9-15 SPEC R4 — every resolved non-card Button call site keeps its census halo, per JSX element, against scripts/baselines/button-halos.json' },
   { file: 'src/app/copyTable886_1.test.ts', min: 8, why: 'Phase 88.6.1-64 AC-33 — the owner-ratified copy table; a roster and sweep over src' },
   { file: 'src/app/loggerCtxShape.test.ts', min: 10, why: 'Phase 88.6.1 ACCEPT 14 — the one logger-context scanner (T-84-01); every file under src' },
   { file: 'src/app/rawStatusPalette.test.ts', min: 3, why: 'Phase 88.6 Top Fix 1 — no raw red palette on error ink; a scan over src (SPEC R6)' },

@@ -646,7 +646,7 @@ export default function ResponseDashboard({
           margins is a decision, not a cleanup. */}
       <button
         onClick={handleRefresh}
-        className="mt-1 -mb-3 min-h-11 text-sm text-content-muted hover:text-content-secondary active:opacity-75 inline-flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        className="mt-1 -mb-3 min-h-11 text-sm text-content-muted hover:text-content-secondary active:opacity-75 inline-flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
       >
         <RefreshIcon className={refreshing ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />
         Refresh
@@ -728,7 +728,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, statusId, onRemind 
       id={remindButtonIdFor(statusId)}
       onClick={() => onRemind(userId)}
       aria-disabled={isReminding || undefined}
-      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>

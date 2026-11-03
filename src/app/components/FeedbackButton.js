@@ -446,7 +446,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
           variant="primary"
           size="icon"
           onClick={(e) => open(e.currentTarget)}
-          className="fixed bottom-6 right-6 z-30 w-14 h-14 shadow-theme-lg enabled-hover:shadow-theme-lg"
+          className="fixed bottom-6 right-6 z-30 w-14 h-14 shadow-theme-lg enabled-hover:shadow-theme-lg focus-visible:ring-offset-surface-page"
           aria-label="Send feedback"
         >
           <svg

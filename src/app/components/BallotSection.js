@@ -539,7 +539,13 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   aria-disabled={resolvingOptionId === opt.id ? 'true' : undefined}
                   aria-label={resolvingOptionId === opt.id ? savingPickLabel(opt.game_name) : undefined}
                   aria-describedby={error ? 'ballot-tiebreak-error' : undefined}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                  /* DECISION Phase 88.9-13 T1 (census R006-R008, owner option (a)): all three option cards (this
+                     one, the fallback cards and the vote cards) take the CARD halo, chosen OVER the card's own
+                     warning-subtle fill (the halo is the ground OUTSIDE the card, not under it) and OVER the page
+                     halo the game-detail host would give: the card is the majority host ground and its halo clears
+                     3:1 against the ring in both themes (census, halo-approximate; the page band belongs to plan
+                     88.9-16). Swapping it for the fill or the page ground is a decision, not a cleanup. */
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                 >
                   {opt.game_name}
                 </button>
@@ -594,7 +600,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   aria-disabled={resolvingOptionId === opt.id ? 'true' : undefined}
                   aria-label={resolvingOptionId === opt.id ? savingPickLabel(opt.game_name) : undefined}
                   aria-describedby={error ? 'ballot-fallback-error' : undefined}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                 >
                   {opt.game_name}
                 </button>
@@ -677,7 +683,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   disabled={!!votingOptionId && !isToggling}
                   aria-disabled={isToggling ? 'true' : undefined}
                   aria-describedby={error ? 'ballot-vote-error' : undefined}
-                  className={`w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
+                  className={`w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card
                     ${isVoted
                       ? 'border-accent bg-surface-accent-subtle text-content-primary'
                       : 'border-line bg-surface-card text-content-primary hover:bg-surface-hover hover:border-line-strong'

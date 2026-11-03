@@ -1,5 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { holdWrites } from './support/inFlight';
+import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
+import { assertTheme, describeRatio, focusRingMeasurement, forceLightMode, haloGroundRatio } from './support/contrast';
 
 // Phase 88.6.1-45 (AC-18 + D-08a, copy row H5) — the header's one Main navigation landmark and
 // the layered Escape, in a real browser.
@@ -23,6 +25,38 @@ import { holdWrites } from './support/inFlight';
 
 const MAIN_NAV = 'nav[aria-label="Main"]';
 const UNNAMED_NAV = 'nav:not([aria-label]):not([aria-labelledby])';
+
+// Phase 88.9-04 — the 1280 half of A10c: the desktop brand link and one inline list link wear the
+// house offset ring, and its halo is the header ground. Red by design: pre-fix both links wear the
+// UA outline, so focusRingMeasurement throws on an empty --tw-ring-color (the phone brand-link twin
+// is in e2e/contrast.spec.ts ("async function brandLinkRing(")).
+const RING_FLOOR = 3;
+const HALO_EQUAL = 1.01;
+
+async function expectHouseRing(page: Page, link: Locator, label: string): Promise<void> {
+  await expect(link, `${label}: the link is not visible.`).toBeVisible();
+  const m = await focusRingMeasurement(page, link, label);
+  expect(m.ratio, describeRatio(label, RING_FLOOR, m)).toBeGreaterThanOrEqual(RING_FLOOR);
+  const h = await haloGroundRatio(m, link);
+  expect(
+    h.ratio,
+    `${label}: the ring halo ${h.halo} measured ${h.ratio.toFixed(3)}:1 against the surface under the control ` +
+      `${h.behind}; the house ring's halo must equal the surface (<= ${HALO_EQUAL}:1).`
+  ).toBeLessThanOrEqual(HALO_EQUAL);
+}
+
+async function desktopLinkRings(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const main = page.getByRole('navigation', { name: 'Main', exact: true });
+  await test.step(`the brand link (${theme})`, async () => {
+    // The logo SVG's aria-label joins the link's accessible name, so the name is matched by a regex.
+    const brand = main.getByRole('link', { name: /Next Game Night/ });
+    await expectHouseRing(page, brand, `desktop header brand link focus ring (A10c, ${theme})`);
+  });
+  await test.step(`a desktop list link — Friends (${theme})`, async () => {
+    const friends = main.getByRole('link', { name: 'Friends', exact: true });
+    await expectHouseRing(page, friends, `desktop header Friends link focus ring (A10c, ${theme})`);
+  });
+}
 
 test.describe('header main nav — phone (375, the hamburger)', () => {
   // Runs ONLY in the phone project. Both journeys and phone glob every e2e/*.spec.ts, so each
@@ -75,10 +109,7 @@ test.describe('header main nav — phone (375, the hamburger)', () => {
     // the shared holdWrites net, which also holds every write; it must be registered before a
     // navigation, so the page is loaded again here.
     await holdWrites(page, {
-      answerGet: (url) =>
-        url.pathname.endsWith('/invites/pending')
-          ? [{ id: 'e2e-nav-invite', Group: { name: 'E2E Nav Escape' }, Inviter: { username: 'E2E Host' } }]
-          : undefined,
+      answerGet: answerPendingInvites([pendingInvite('e2e-nav-invite', 'E2E Nav Escape')]),
     });
     await page.goto('/');
     await expect(page.locator('html')).toHaveClass(/dark/);
@@ -122,5 +153,25 @@ test.describe('header main nav — desktop (the inline list)', () => {
     for (const name of ['Home', 'Friends', 'Profile', 'Logout']) {
       await expect(main.getByRole('link', { name, exact: true })).toBeVisible();
     }
+  });
+  test('A10c (88.9): the desktop brand link and a list link wear the house ring on a header halo, dark', async ({ page }) => {
+    await desktopLinkRings(page, 'dark');
+  });
+});
+
+test.describe('header main nav — desktop, light (88.9)', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop-project block — the phone light twin lives in e2e/contrast.spec.ts');
+  // Both projects bake dark; colorScheme alone does not set the class, so forceLightMode writes the
+  // stored theme before the first navigation and assertTheme proves it after.
+  test.use({ colorScheme: 'light' });
+
+  test.beforeEach(async ({ page }) => {
+    await forceLightMode(page);
+    await page.goto('/');
+    await assertTheme(page, 'light');
+  });
+
+  test('A10c (88.9): the desktop brand link and a list link wear the house ring on a header halo, light', async ({ page }) => {
+    await desktopLinkRings(page, 'light');
   });
 });

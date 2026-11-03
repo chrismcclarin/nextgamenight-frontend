@@ -167,6 +167,31 @@ describe('the removed-from-group notice is spoken from a region that was already
     expect(box.querySelectorAll('[aria-live]')).toHaveLength(1);
   });
 
+  // 88.9-CR m6/m10: Dismiss wears the focus treatment of its amber-box twin in
+  // src/app/userProfile/page.js ("focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"),
+  // not the browser default outline on the amber notice box.
+  it('RB2b (88.9-CR m6/m10): Dismiss carries the amber-box focus-visible ring and its halo', () => {
+    vi.useFakeTimers();
+    h.selfUuid = SELF_UUID;
+    h.search = 'removedFrom=Weekend%20Warriors';
+    render(homeElement());
+    act(() => {
+      vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    });
+    const dismiss = screen.getByRole('button', { name: 'Dismiss' });
+    for (const token of [
+      'rounded-btn',
+      'focus:outline-hidden',
+      'focus-visible:ring-2',
+      'focus-visible:ring-focus-ring',
+      'focus-visible:ring-offset-2',
+      'focus-visible:ring-offset-amber-50',
+      'dark:focus-visible:ring-offset-surface-page',
+    ]) {
+      expect(dismiss.classList.contains(token), 'Dismiss class list carries ' + token).toBe(true);
+    }
+  });
+
   it('RB3: with no removed group the region is mounted, empty and sr-only, with no box and no Dismiss', () => {
     vi.useFakeTimers();
     h.selfUuid = SELF_UUID;

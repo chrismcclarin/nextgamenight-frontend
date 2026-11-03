@@ -80,7 +80,7 @@ const TabsTrigger = React.forwardRef<
       'data-[state=active]:border-line-accent data-[state=active]:text-content-primary',
       // §7.2: `focus-visible` only; `outline-hidden` keeps the transparent outline
       // forced-colors mode needs (v4's `outline-none` removes it outright).
-      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
+      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
       'disabled:cursor-not-allowed disabled:opacity-50',
       className
     )}

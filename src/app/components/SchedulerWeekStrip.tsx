@@ -143,7 +143,7 @@ function StripDayCell({
       // No border and no padding: at 375px each cell is 46.7px wide against a 44px floor, so the
       // 2.7px of margin is the entire budget. Selection is drawn with an INSET box-shadow below
       // for exactly that reason — a ring costs no layout, a border costs 2px.
-      className="flex h-14 flex-col overflow-hidden rounded-xs active:opacity-75 transition-opacity duration-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-1"
+      className="flex h-14 flex-col overflow-hidden rounded-xs active:opacity-75 transition-opacity duration-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-surface-card"
       style={
         selected
           ? { boxShadow: 'inset 0 0 0 2px var(--color-btn-primary-bg)' }
@@ -224,10 +224,13 @@ function StripDayCell({
           colour-vision-deficiency requirement, not decoration. UI-SPEC 4.5's table has no family
           for it, so a mechanical read would send it to 400. Settled at 700 alongside its two
           siblings, the per-cell count (EventHeatmapBackground.js) and the scheduler badge
-          (EventScheduler.tsx). */}
+          (EventScheduler.tsx).
+          AMENDED Phase 88.9-08 (owner pick A5a, 88.9-PICKS-A.json, 2026-10-31): the aggregate ink
+          is text-content-primary (11.21 light / 4.58 dark at the 0.55 step), chosen OVER
+          text-content-secondary (3.04 dark at that step); weight 700 kept. */}
       <span
         aria-hidden="true"
-        className="flex flex-1 items-center justify-center text-xs font-bold text-content-secondary"
+        className="flex flex-1 items-center justify-center text-xs font-bold text-content-primary"
         style={background ? { backgroundColor: background } : undefined}
       >
         {aggregate > 0 ? aggregate : ''}

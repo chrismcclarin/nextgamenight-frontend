@@ -1064,7 +1064,7 @@ describe('createEvent — required section titles are announced as required (88.
     expect(stars).toHaveLength(2);
     for (const star of stars) {
       expect(star).toHaveAttribute('aria-hidden', 'true');
-      expect(star).toHaveClass('text-content-status-error');
+      expect(star).toHaveClass('text-content-accent');
     }
     expect(within(dialog).queryAllByText('(required)')).toHaveLength(0);
   });
@@ -1079,9 +1079,45 @@ describe('createEvent — required section titles are announced as required (88.
     expect(stars).toHaveLength(4);
     for (const star of stars) {
       expect(star).toHaveAttribute('aria-hidden', 'true');
+      expect(star).toHaveClass('text-content-accent');
     }
     expect(within(dialog).queryAllByText('(required)')).toHaveLength(0);
     requiredTitleHeadings(dialog);
     expect(startDate).toBeRequired();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.9 adversarial code review (2026-11-03), findings m1 and m9.
+// m1: the Switch row's corridor margin (-mt-3, no mb-2) belongs to visual-calendar mode only —
+// the drag corridor it gives back is the EventScheduler below, which manual mode does not mount.
+// See src/app/components/createEvent.js ("DECISION Phase 88.9-10 (A9a geometry, 2026-11-02)").
+// m9: the week strip's Today chip must carry its visible text in its accessible name
+// (WCAG 2.5.3 Label in Name) — a voice-control user saying "tap Today" has to match it.
+// ---------------------------------------------------------------------------
+describe('createEvent — 88.9 code review: the Switch row margin and the Today chip name (m1, m9)', () => {
+  it('m1: the Switch row carries the corridor margin in visual mode and the plain mb-2 in manual mode', async () => {
+    const user = userEvent.setup();
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    const toManual = within(dialog).getByRole('button', { name: 'Switch to Manual Entry' });
+    const visualRow = toManual.parentElement as HTMLElement;
+    expect(visualRow).toHaveClass('-mt-3');
+    expect(visualRow).not.toHaveClass('mb-2');
+    await user.click(toManual);
+    const toVisual = await within(dialog).findByRole('button', { name: 'Switch to Visual Calendar' });
+    const manualRow = toVisual.parentElement as HTMLElement;
+    expect(manualRow).toHaveClass('mb-2');
+    expect(manualRow).not.toHaveClass('-mt-3');
+  });
+
+  it('m9: the week strip Today chip is named starting with its visible text and keeps the jump context', async () => {
+    const user = userEvent.setup();
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Switch to Manual Entry' }));
+    const today = await within(dialog).findByRole('button', { name: /^Today\b/ });
+    expect(today).toHaveTextContent(/^Today$/);
+    expect(today.getAttribute('aria-label') ?? '').toMatch(/jump to current week/i);
   });
 });

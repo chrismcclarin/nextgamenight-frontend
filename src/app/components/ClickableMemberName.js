@@ -596,7 +596,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       onFocus={armIndicatorRecovery}
       aria-disabled={sendingFrom === 'inline' ? 'true' : undefined}
       disabled={sendingFrom === 'popover'}
-      className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
       aria-label={`Add ${username} as a friend`}
     >
       +
@@ -898,7 +898,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
           tabIndex: 0,
           'aria-expanded': isOpen,
           className:
-            'cursor-pointer hover:underline rounded-xs focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
+            'cursor-pointer hover:underline rounded-xs focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
           onClick: (e) => {
             e.stopPropagation();
             // Hybrid touch laptop fallback — preserved verbatim. At ≥768px

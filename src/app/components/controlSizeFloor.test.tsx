@@ -254,6 +254,8 @@ describe('Req 1 (DES-01): the 16px iOS focus-zoom floor, repo-wide', () => {
 /** The WCAG 2.2 2.5.8 minimum, and the project's own phone floor, as pixels. */
 const MIN_TARGET_24 = 24;
 const MIN_TARGET_44 = 44;
+// 88.9 A8b: the owner's pick for the removed-member Dismiss is a 48 box, not the 44 floor (A8a).
+const MIN_TARGET_48 = 48;
 
 /**
  * Resolve a `min-h-*` / `h-*` / `min-w-*` / `w-*` utility to pixels, or `null` when it
@@ -638,6 +640,152 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: "BringSummary's viewer control (`Add games` / `Edit`), width; `Edit` is under 44px wide at text-sm",
     },
+    // 88.9 A7a / O3a (owner picks, 2026-10-31): the friends tab strip (Friends / Requests / Sent),
+    // one map-rendered button site, measured 34px tall at 375 by e2e/lane-a-tap-floors.spec.ts. Unprefixed
+    // min-h-11 min-w-11, so the floor holds at every width (the strip is flush, not phone-scoped).
+    friendsTabsHeight: {
+      anchor: "aria-current={activeTab === key ? 'true' : undefined}",
+      expectedFile: 'app/friends/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the friends page's tab buttons (Friends / Requests / Sent), height (88.9 A7a; measured 34px tall)",
+    },
+    // 88.9 A7a / O3a: the same site's width; Sent is the narrow tab, measured 31px wide.
+    friendsTabsWidth: {
+      anchor: "aria-current={activeTab === key ? 'true' : undefined}",
+      expectedFile: 'app/friends/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "the friends page's tab buttons (Friends / Requests / Sent), width (88.9 A7a; Sent measured 31px wide)",
+    },
+    // 88.9 A7a: the group page's Overview tab, measured 38px tall (93px wide) at 375. Inset ring, no halo (O3a).
+    groupTabHomeHeight: {
+      anchor: "onClick={() => setActiveTab('home')}",
+      expectedFile: 'app/groupHomePage/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the group page's Overview tab, height (88.9 A7a; measured 38px tall)",
+    },
+    // 88.9 A7a: the Overview tab's width, pinned so a shorter label can never drop it under 44.
+    groupTabHomeWidth: {
+      anchor: "onClick={() => setActiveTab('home')}",
+      expectedFile: 'app/groupHomePage/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "the group page's Overview tab, width (88.9 A7a)",
+    },
+    // 88.9 A7a: the group page's Library tab, measured 38px tall at 375, the Overview tab's twin.
+    groupTabLibraryHeight: {
+      anchor: "onClick={() => setActiveTab('library')}",
+      expectedFile: 'app/groupHomePage/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the group page's Library tab, height (88.9 A7a; measured 38px tall)",
+    },
+    // 88.9 A7a: the Library tab's width, pinned with its height as the Overview twin is.
+    groupTabLibraryWidth: {
+      anchor: "onClick={() => setActiveTab('library')}",
+      expectedFile: 'app/groupHomePage/page.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "the group page's Library tab, width (88.9 A7a)",
+    },
+    // 88.9 A8b: the removed-member notice's Dismiss, measured 47px wide x 16px tall at 375 (dark).
+    removedNoticeDismissHeight: {
+      anchor: 'onClick={dismissRemovedNotice}',
+      expectedFile: 'app/userHome/UserHomePage.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_48,
+      dimensions: ['min-h', 'h'],
+      label: 'the removed-member notice Dismiss, height (88.9 A8b; measured 16px tall)',
+    },
+    // 88.9 A8b: the Dismiss's width, pinned with its height (the owner picked a 48 x 48 box).
+    removedNoticeDismissWidth: {
+      anchor: 'onClick={dismissRemovedNotice}',
+      expectedFile: 'app/userHome/UserHomePage.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_48,
+      dimensions: ['min-w', 'w'],
+      label: 'the removed-member notice Dismiss, width (88.9 A8b; measured 47px wide)',
+    },
+    // 88.9 A9a: create-event's mode toggle (Switch to Manual Entry / Switch to Visual Calendar), a text link under 44 tall at 375. Halo card (O3a).
+    createEventSwitchHeight: {
+      anchor: 'onClick={() => setUseVisualCalendar(!useVisualCalendar)}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "create-event's Switch to Manual Entry / Visual Calendar link, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the week strip's Previous week arrow, under 44 tall and 24px wide at 375. Halo page (O3a).
+    createEventPrevWeekHeight: {
+      anchor: 'onClick={handlePrevWeek}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "create-event's Previous week arrow, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the Previous week arrow's width, the owner's square 44 (24 -> 44 wide).
+    createEventPrevWeekWidth: {
+      anchor: 'onClick={handlePrevWeek}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "create-event's Previous week arrow, width (88.9 A9a; measured 24px wide)",
+    },
+    // 88.9 A9a: the Today chip (named "Today, jump to current week" since the 88.9 code review, m9), under 44 tall; 50 wide already, so no width row.
+    createEventJumpWeekHeight: {
+      anchor: 'onClick={handleToday}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "create-event's Today chip, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the week strip's Next week arrow, the Previous week arrow's twin. Halo page (O3a).
+    createEventNextWeekHeight: {
+      anchor: 'onClick={handleNextWeek}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "create-event's Next week arrow, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the Next week arrow's width, the owner's square 44 (24 -> 44 wide).
+    createEventNextWeekWidth: {
+      anchor: 'onClick={handleNextWeek}',
+      expectedFile: 'app/components/createEvent.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: "create-event's Next week arrow, width (88.9 A9a; measured 24px wide)",
+    },
+    // 88.9 A9a: the footer's Report bug text button, under 44 tall. No ring today (X1, a round-2 register row), so no halo.
+    footerReportBugHeight: {
+      anchor: 'onClick={() => setShowFeedbackForm(true)}',
+      expectedFile: 'app/components/Footer.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the footer's Report bug button, height (88.9 A9a)",
+    },
+    // 88.9 A9a: the month grid's Go to Today text link, under 44 tall. Keeps ring-offset-2 (the 88.3-17 marker); halo card (O3a).
+    goToTodayHeight: {
+      anchor: 'onClick={onGoToday}',
+      expectedFile: 'app/components/CalendarMonthView.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the month grid's Go to Today link, height (88.9 A9a)",
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */
@@ -721,7 +869,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     });
   }
 
-  it('gates every named subject at its floor: the compact month tile >= 24px, the cog and the five recovery controls >= 44px (D-13 pattern)', () => {
+  it('gates every named subject at its floor: the compact month tile >= 24px, the cog, the five recovery controls and the 88.9 lane-A tabs and text buttons >= 44px, the removed-notice Dismiss >= 48px (D-13 pattern)', () => {
     /*
      * WHY 24 AND NOT 44 FOR THE TILE. WCAG 2.2 success criterion 2.5.8 (Target Size, Minimum)
      * sets 24x24 CSS px; 2.5.5's 44x44 is AAA. The month grid's DAY CELL (min-h-[80px]) is the

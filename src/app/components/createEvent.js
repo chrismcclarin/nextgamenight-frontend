@@ -1410,7 +1410,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Time Selection */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            {/* DECISION Phase 88.9-10 (A9a geometry, 2026-11-02): with the Switch link at min-h-11 this row is 44px tall; -mt-3 and no mb-2 give the 24px back to the scheduler below (measured +4px net at 375x667, e2e/event-scheduler-touch.spec.ts cases 3 and 8 need >= 3 corridor cells), chosen OVER negative margins on the link itself, whose lower 12px would sit on the scheduler's week toolbar (a tap on the top of "Next" would flip to manual entry). Removing -mt-3 or re-adding mb-2 shrinks the drag corridor. AMENDED Phase 88.9 code review (2026-11-03, finding m1): the corridor arm applies in visual-calendar mode only, so the branch reads useVisualCalendar && !hideVisualCalendar, the same condition that mounts EventScheduler below; manual entry has no scheduler under this row and keeps the plain mb-2 arm, the pre-A9a spacing. Branching on hideVisualCalendar alone left the corridor margin on after Switch to Manual Entry. */}
+            <div className={useVisualCalendar && !hideVisualCalendar ? 'flex items-center justify-between -mt-3' : 'flex items-center justify-between mb-2'}>
               {/* 88-33 Task 8 (census class C): a SPAN, not a <label> — this titles the
                   whole date/time SECTION (mode toggle + calendar or manual fields), so
                   there is no single control to point htmlFor at; the manual inputs below
@@ -1476,22 +1477,28 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   `aria-required` (unsupported on that role); the `Heading` primitive (it renders
                   at 700 weight — a look change that needs the owner and a mockup). The class
                   string and the star are untouched, so it looks the same. Removing the heading
-                  role, the label or the aria-hidden wrapper is a decision, not a cleanup. */}
+                  role, the label or the aria-hidden wrapper is a decision, not a cleanup.
+
+                  ——— AMENDED Phase 88.9-06 (owner pick O2a, 2026-10-31), reasoning above KEPT: the
+                  "COLOUR is not part of this decision" note still holds, and the ink moved again —
+                  from the error-ink token to the accent text token (text-content-accent) at all four
+                  stars, one required-mark idiom with the Report Bug form. Exposure is unchanged. */}
               <span
                 role="heading"
                 aria-level={3}
                 aria-label={`${DATE_TIME_SECTION_TITLE} ${REQUIRED_SR_LABEL}`}
                 className="block text-sm font-normal text-content-primary"
               >
+                {/* DECISION Phase 88.9-06 (owner pick O2a): the accent required mark, chosen OVER the error ink it wore before, one idiom with the Report Bug form — see src/app/components/FeedbackForm.js ("DECISION Phase 88.9-06"). */}
                 <span aria-hidden="true">
-                  {DATE_TIME_SECTION_TITLE} <span aria-hidden="true" className="text-content-status-error">*</span>
+                  {DATE_TIME_SECTION_TITLE} <span aria-hidden="true" className="text-content-accent">*</span>
                 </span>
               </span>
               {!hideVisualCalendar && (
                 <button
                   type="button"
                   onClick={() => setUseVisualCalendar(!useVisualCalendar)}
-                  className="text-sm text-content-link hover:text-content-link-hover active:opacity-75 underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                  className="text-sm text-content-link hover:text-content-link-hover active:opacity-75 underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11"
                 >
                   {useVisualCalendar ? 'Switch to Manual Entry' : 'Switch to Visual Calendar'}
                 </button>
@@ -1573,7 +1580,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handlePrevWeek}
                           disabled={!canGoBack}
                           aria-label="Previous week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11 min-w-11"
                         >
                           &lt;
                         </button>
@@ -1581,12 +1588,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           <span className="text-xs text-content-muted">
                             Week of {format(effectiveMondayForUI, 'EEE MMM d')}
                           </span>
+                          {/* DECISION Phase 88.9-CR m9: the name is the visible text first, then the context, chosen OVER the old name "Jump to current week" (no "Today" in it, so WCAG 2.5.3 Label in Name failed and a voice-control "tap Today" matched nothing) and OVER dropping the aria-label (a bare "Today" loses which week it jumps to). Same order as the timezone option names, which start with their visible text. */}
                           <button
                             type="button"
                             onClick={handleToday}
                             disabled={isOnTodayMonday}
-                            aria-label="Jump to current week"
-                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                            aria-label="Today, jump to current week"
+                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11"
                           >
                             Today
                           </button>
@@ -1596,7 +1604,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handleNextWeek}
                           disabled={!canGoForward}
                           aria-label="Next week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11 min-w-11"
                         >
                           &gt;
                         </button>
@@ -1623,7 +1631,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 {/* Start Date */}
                 <div>
                   <label htmlFor="start_date" className="block text-sm font-normal mb-1 text-content-primary">
-                    Start Date & Time {!editingEvent && <span aria-hidden="true" className="text-content-status-error">*</span>}
+                    Start Date & Time {!editingEvent && <span aria-hidden="true" className="text-content-accent">*</span>}
                   </label>
                   {/* Phase 88.6-44 (T-88.6-124): `name` added on this and the three controls
                       below (duration, RSVP deadline, comments) — the house rule requires id +
@@ -1644,7 +1652,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 {/* Duration */}
                 <div>
                   <label htmlFor="duration_minutes" className="block text-sm font-normal mb-1 text-content-primary">
-                    Duration (minutes) {!editingEvent && <span aria-hidden="true" className="text-content-status-error">*</span>}
+                    Duration (minutes) {!editingEvent && <span aria-hidden="true" className="text-content-accent">*</span>}
                   </label>
                   {(() => {
                     // Phase 66-03 CREVT-02 polish: inline error + red border when
@@ -1756,9 +1764,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   that role); the `Heading` primitive (700 weight — a look change, owner + mockup).
                   The id, the class string and the star are untouched, so it looks the same.
                   Removing the heading role, the label or the aria-hidden wrapper is a decision,
-                  not a cleanup. */}
+                  not a cleanup.
+
+                  ——— AMENDED Phase 88.9-06 (owner pick O2a, 2026-10-31): this star now wears the
+                  accent text token (text-content-accent), not the error ink; the exposure reasoning
+                  above is unchanged. */}
               <span aria-hidden="true">
-                {PARTICIPANTS_SECTION_TITLE} <span aria-hidden="true" className="text-content-status-error">*</span>
+                {PARTICIPANTS_SECTION_TITLE} <span aria-hidden="true" className="text-content-accent">*</span>
               </span>
             </span>
             <div

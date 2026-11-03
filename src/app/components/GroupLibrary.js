@@ -193,7 +193,7 @@ export default function GroupLibrary({ groupId }) {
           heading="This library is empty"
           body="Games your group owns show up here. Add a few from your profile to get started."
           action={
-            <Button asChild variant="primary" className="min-h-11">
+            <Button asChild variant="primary" className="min-h-11 focus-visible:ring-offset-surface-page">
               <Link href="/userProfile">Add games</Link>
             </Button>
           }
@@ -276,7 +276,7 @@ export default function GroupLibrary({ groupId }) {
         <button
           aria-pressed={selectedOwner === null}
           onClick={() => setSelectedOwner(null)}
-          className={`shrink-0 px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+          className={`shrink-0 px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page ${
             selectedOwner === null
               ? 'bg-btn-primary text-btn-primary-text'
               : 'bg-surface-muted text-content-secondary hover:text-content-primary'
@@ -289,7 +289,7 @@ export default function GroupLibrary({ groupId }) {
             key={member.user_id}
             aria-pressed={selectedOwner === member.user_id}
             onClick={() => setSelectedOwner(member.user_id === selectedOwner ? null : member.user_id)}
-            className={`shrink-0 px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+            className={`shrink-0 px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page ${
               selectedOwner === member.user_id
                 ? 'bg-btn-primary text-btn-primary-text'
                 : 'bg-surface-muted text-content-secondary hover:text-content-primary'
@@ -306,7 +306,7 @@ export default function GroupLibrary({ groupId }) {
           <p className="text-content-secondary mb-3">No games found</p>
           <button
             onClick={clearFilters}
-            className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
           >
             Clear filters
           </button>
@@ -382,7 +382,7 @@ export default function GroupLibrary({ groupId }) {
                       e.stopPropagation();
                       router.push(`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`);
                     }}
-                    className="mt-2 text-sm text-content-link hover:text-content-link-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                    className="mt-2 text-sm text-content-link hover:text-content-link-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
                   >
                     View game
                   </button>
@@ -415,7 +415,7 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
               e.stopPropagation();
               onSelectOwner(owner.user_id);
             }}
-            className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
           >
             {owner.username}
           </button>
@@ -427,7 +427,7 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
             e.stopPropagation();
             onToggleShowAll();
           }}
-          className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75 ml-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75 ml-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
         >
           and {remaining} more
         </button>
