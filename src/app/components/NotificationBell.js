@@ -445,7 +445,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       // Optimistic update via the shared context — drops totalCount
       // immediately for BOTH the bell badge and the mobile hamburger dot.
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
-      const groupName = invite.Group?.name || invite.group_name || 'the group';
+      const groupName = invite.group_name || 'the group';
       setConfirmation({ text: `Joined ${groupName}!`, tone: 'success' });
       // GROUP-08: signal the home page to refresh its groups list. sessionStorage
       // covers a later navigation; window event covers the in-place case where the
@@ -461,7 +461,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       if (err?.status === 410) {
         settle = armRowRecovery(pressedEl);
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
-        const groupName = invite.Group?.name || invite.group_name || 'This group';
+        const groupName = invite.group_name || 'This group';
         setConfirmation({ text: `${groupName} is no longer available.`, tone: 'muted' });
       } else if (err?.status === 404) {
         /* DECISION 88.6.1 code review A-28: the backend's 404 'Pending invite not found' (routes/invites.js, the
@@ -497,7 +497,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       await invitesAPI.declineInvite(invite.id);
       settle = armRowRecovery(pressedEl);
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
-      setConfirmation({ text: declinedInviteCopy(invite.Group?.name || invite.group_name || 'the group'), tone: 'success' });
+      setConfirmation({ text: declinedInviteCopy(invite.group_name || 'the group'), tone: 'success' });
     } catch (err) {
       // L-8: dead-group 410 — removing the row is exactly what the user asked
       // for, so no notice needed.
@@ -863,9 +863,17 @@ function NotificationBell({ user, variant = 'icon', label }) {
                     </p>
                     <ul>
                       {invites.map((invite) => {
-                        const groupName = invite.Group?.name || invite.group_name || 'Unknown Group';
-                        const inviterName = invite.Inviter?.username || invite.inviter_name || 'Someone';
-                        const memberCount = invite.Group?.memberCount || invite.member_count || null;
+                        /* DECISION Phase 88.9-CR d2: the row reads the FLAT shape GET /invites/pending sends,
+                           backend:Sonnet/routes/invites.js ("invited_by_name: invite.Inviter ? invite.Inviter.username : 'Someone',")
+                           (group_name, invited_by_name, member_count), over the nested Sequelize shape (Group.name,
+                           Inviter.username) the bell used to read first. REJECTED: keeping the nested arms as a
+                           fallback; the backend has never sent them, so every production row read "Someone invited
+                           you", and a kept arm lets a stale nested fixture keep a dead path looking alive. member_count
+                           is a real UserGroup count, so 0 is a value: it maps to null here so the guard below never
+                           prints a bare 0. Re-adding a nested arm is a decision, not a cleanup. */
+                        const groupName = invite.group_name || 'Unknown Group';
+                        const inviterName = invite.invited_by_name || 'Someone';
+                        const memberCount = invite.member_count > 0 ? invite.member_count : null;
                         const pressed = actionLoading[rowKey('invite', invite.id)];
 
                         return (
