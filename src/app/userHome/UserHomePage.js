@@ -640,10 +640,16 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 {/* DECISION Phase 88.9-10 (owner pick A8b, 88.9-PICKS-A.json, 2026-10-31): a 48 x 48 minimum
                     box with negative margins so the 66px notice does not grow, chosen OVER the 44 box (A8a)
                     and OVER the shipped 16px-tall text button. The negative margins are load-bearing. */}
+                {/* DECISION Phase 88.9-CR m6: the focus treatment is the amber-box Dismiss idiom of
+                    src/app/userProfile/page.js ("focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page")
+                    (census R065), chosen OVER the browser default outline that plan 88.9-10 left on this
+                    48px box. The dark halo is the page colour because the box is a translucent amber over
+                    the page, the same approximation R065 records. Round 2's X2 token ruling (register row
+                    "X2 — The removed-member notice box is raw palette") moves this halo together with R065's. */}
                 {removedNoticeShown && (
                     <button
                         onClick={dismissRemovedNotice}
-                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3"
+                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
                         aria-label="Dismiss"
                     >
                         Dismiss
