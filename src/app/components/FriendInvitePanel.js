@@ -643,7 +643,16 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                                 checked={isInGroup || selectedFriends.has(friend.id)}
                                                 disabled={isInGroup}
                                                 onChange={() => toggleFriend(friend.id)}
-                                                className="h-4 w-4 rounded-sm border-line text-content-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:opacity-40"
+                                                /* DECISION Phase 88.9-14 T2 (census R018, owner option (a)): one FULL ring literal per focusable
+                                                   arm of the label ground above, each with its own opaque halo: the muted surface when the friend
+                                                   is selected, the page surface otherwise (the unselected label paints only a hover tint, so the
+                                                   next ground is the page body of all three hosts). Chosen OVER one shared halo (wrong against one
+                                                   of the two grounds) and OVER a bare halo token inside an interpolation (the source scan reads it
+                                                   as a chunk with no ring). The in-group arm is disabled, never focusable, so it needs no arm of its
+                                                   own. Collapsing this to one literal is a decision, not a cleanup. */
+                                                className={!isInGroup && selectedFriends.has(friend.id)
+                                                    ? 'h-4 w-4 rounded-sm border-line text-content-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-muted disabled:opacity-40'
+                                                    : 'h-4 w-4 rounded-sm border-line text-content-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page disabled:opacity-40'}
                                             />
                                             <div className="flex-1 min-w-0">
                                                 {/* UI-SPEC §4.5, the EMPHASIS outcome: `font-medium` deleted, the
@@ -674,7 +683,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     onClick={handleBulkInvite}
                                     aria-disabled={selectedFriends.size === 0 || inviting ? 'true' : undefined}
                                     aria-busy={inviting || undefined}
-                                    className="w-full"
+                                    className="w-full focus-visible:ring-offset-surface-page"
                                 >
                                     {inviting && (
                                         <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -825,7 +834,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                 type="submit"
                                 aria-disabled={emailLoading || !email.trim() ? 'true' : undefined}
                                 aria-describedby={sendError ? 'invite-email-send-error' : undefined}
-                                className="shrink-0"
+                                className="shrink-0 focus-visible:ring-offset-surface-page"
                             >
                                 {emailLoading ? 'Sending...' : 'Send'}
                             </Button>
@@ -912,7 +921,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     onClick={handleAddFriend}
                                     aria-disabled={addingFriend ? 'true' : undefined}
                                     aria-describedby={friendRequestError ? 'invite-friend-request-error' : undefined}
-                                    className="shrink-0"
+                                    className="shrink-0 focus-visible:ring-offset-surface-sunken"
                                 >
                                     {addingFriend ? 'Sending...' : 'Add Friend'}
                                 </Button>
@@ -995,7 +1004,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                             variant="primary"
                                             size="default"
                                             onClick={handleCopyLink}
-                                            className="mt-3 w-full"
+                                            className="mt-3 w-full focus-visible:ring-offset-surface-page"
                                         >
                                             {copied ? 'Copied!' : 'Copy Invite Link'}
                                         </Button>
@@ -1057,7 +1066,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                         {copyFailed ? (
                                             <a
                                                 href={inviteUrl}
-                                                className="mt-1 block w-full text-center text-sm text-content-link underline break-all focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                                                className="mt-1 block w-full text-center text-sm text-content-link underline break-all focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
                                             >
                                                 {inviteUrl}
                                             </a>

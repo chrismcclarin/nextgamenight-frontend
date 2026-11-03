@@ -884,7 +884,7 @@ function FriendsPage() {
                         nothing survives: `px-6 py-2` and `inline-block` are all dead under
                         unlayered `.btn` (its padding and `display: inline-flex`, both in the block marked at
                         src/app/globals.css ("UNLAYERED with every other declaration it has today"); re-pointed 88.6.1-40). */}
-                    <Button asChild variant="primary" size="default">
+                    <Button asChild variant="primary" size="default" className="focus-visible:ring-offset-surface-page">
                         <a href="/api/auth/login">Log In</a>
                     </Button>
                 </div>
@@ -1428,7 +1428,7 @@ function FriendsPage() {
                                                                 checked={isInGroup || selectedFriends.has(friendUserId)}
                                                                 disabled={checkboxDisabled}
                                                                 onChange={() => toggleFriendSelection(friendUserId)}
-                                                                className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                                                                className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page ${
                                                                     checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                                 }`}
                                                             />
@@ -1601,6 +1601,7 @@ function FriendsPage() {
                                                         <Button
                                                             variant="primary"
                                                             size="default"
+                                                            className="focus-visible:ring-offset-surface-page"
                                                             onClick={(e) => handleAccept(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'accept' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'decline' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
@@ -1610,6 +1611,7 @@ function FriendsPage() {
                                                         <Button
                                                             variant="secondary"
                                                             size="default"
+                                                            className="focus-visible:ring-offset-surface-page"
                                                             onClick={(e) => handleDecline(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'decline' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'accept' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
