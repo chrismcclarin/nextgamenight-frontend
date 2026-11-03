@@ -101,6 +101,7 @@ interface FixtureEvent {
     background_color?: string | null;
     color_preset?: string | null;
     background_image_url?: string | null;
+    profile_picture_url?: string | null;
   } | null;
 }
 
@@ -503,5 +504,94 @@ test.describe('adjacent-month ink on the home full grid at 1280, light (88.9 O4b
 
   test('O4b (88.9): adjacent-month day numbers on the home full grid are undimmed and clear 4.5:1, light', async ({ page }) => {
     await adjacentHomeInk(page, 'light');
+  });
+});
+
+/* =========================================================================================
+ * Phase 88.9 code review d1 / d3 — the UNDER-32 fallback glyph, MEASURED (SPEC R3 / AC-5).
+ *
+ * The FULL tile mounts a 16px SafeImage avatar for a group whose profile_picture_url starts
+ * with http or a slash (src/app/components/CalendarMonthView.js ("w-4 h-4 rounded-full object-cover border border-line")).
+ * Every such URL passes the allow-list, so the fallback is reachable here ONLY through the
+ * img onError path: a dead picture URL. The register row closed this case from 48px and 32px
+ * boxes and said the under-32 box was not exercised; this test exercises it. The glyph span
+ * must lie inside the 16px box, and both boxes are printed in the assertion message so the
+ * record carries the numbers.
+ *
+ * DECISION Phase 88.9-CR d3: the dead URL is an https URL on the reserved .invalid TLD whose
+ * request is ABORTED by the route, chosen OVER reusing REJECTED_URL above: a javascript: value
+ * fails the http-or-slash test at the call site, takes the plain text branch and never mounts
+ * SafeImage, so it would measure nothing. Same GET-only render-data seed as the scenarios
+ * above (no database write), for the same reasons.
+ * ======================================================================================= */
+
+const BROKEN_AVATAR_URL = 'https://e2e.invalid/broken-avatar.png';
+
+test.describe('the 16px group avatar fallback on the FULL month tile (88.9-CR d1)', () => {
+  test('d1 (88.9-CR): a dead group picture URL falls back to a glyph that stays inside the 16px avatar box at 1280', async ({ page }) => {
+    await page.route('https://e2e.invalid/**', (route) => route.abort());
+    const seed: { event: FixtureEvent | null } = { event: null };
+    await page.route('**/api/events/user/**', async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      const response = await scrubbedFetch(route);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        await route.fulfill({ response });
+        return;
+      }
+      if (!Array.isArray(body) || body.length === 0) {
+        await route.fulfill({ response, json: body });
+        return;
+      }
+      const events = body as FixtureEvent[];
+      const target = events.find((e) => e.Group) ?? null;
+      if (target?.Group) {
+        for (const e of events) {
+          if (e.Group && e.Group.id === target.Group.id) {
+            e.Group = { ...e.Group, profile_picture_url: BROKEN_AVATAR_URL };
+          }
+        }
+        seed.event = target;
+      }
+      await route.fulfill({ response, json: events });
+    });
+
+    try {
+      await page.goto('/');
+      await expect(page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ })).toBeVisible({ timeout: 20_000 });
+      expect(seed.event, 'the events intercept found no event with a Group to carry the dead picture URL; nothing below is measured').not.toBeNull();
+      const tile = await tileFor(page, seed.event as FixtureEvent);
+
+      // The fallback is the div with role=img and the avatar's w-4 box (SafeImage passes the
+      // call site's className onto it). A class read here is the one exception to the selector
+      // policy: the box size IS the subject.
+      const box = tile.locator('[role="img"].w-4');
+      await expect(box, 'the avatar did not fall back: no role=img w-4 box on the tile after the aborted picture load').toHaveCount(1);
+      const glyph = box.locator('span');
+      await expect(glyph).toHaveCount(1);
+
+      const outer = await box.boundingBox();
+      const inner = await glyph.boundingBox();
+      expect(outer, 'the fallback box has no layout box').not.toBeNull();
+      expect(inner, 'the fallback glyph has no layout box').not.toBeNull();
+      const o = outer!;
+      const i = inner!;
+      const fmt = (b: { x: number; y: number; width: number; height: number }) =>
+        `x=${b.x.toFixed(2)} y=${b.y.toFixed(2)} w=${b.width.toFixed(2)} h=${b.height.toFixed(2)}`;
+      const record = `box ${fmt(o)}; glyph ${fmt(i)}`;
+      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log
+      console.log(`d1 16px avatar fallback: ${record}`);
+      const tol = 0.5;
+      const inside =
+        i.x >= o.x - tol &&
+        i.y >= o.y - tol &&
+        i.x + i.width <= o.x + o.width + tol &&
+        i.y + i.height <= o.y + o.height + tol;
+      expect(inside, `d1: the fallback glyph overflows the 16px avatar box (${record}, tolerance ${tol}px)`).toBe(true);
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
   });
 });
