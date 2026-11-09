@@ -2011,8 +2011,11 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     expect(css).toMatch(/@layer components\s*\{\s*\.btn\s*\{\s*border:\s*none;\s*\}\s*\}/);
   });
 
-  // D-11 outcome (a). The fill is byte-unchanged (P6) and the border survives (W19).
-  it('renders both theme toggles as `Button` with their fills, borders and pressed state intact', async () => {
+  // D-11 outcome (a). The border survives (W19).
+  // AMENDED Phase 88.9-32 (owner pick E4a): was 'renders both theme toggles as Button with their fills,
+  // borders and pressed state intact'. The raw-fill asserts (amber-50 / amber-500, the dark arm's source
+  // string, the amber hover pin) left with the raw fills; the pressed token arm is pinned by the E4a test below.
+  it('renders both theme toggles as `Button` with their borders and pressed state intact', async () => {
     renderProfile();
     const light = await screen.findByRole('button', { name: 'Light' });
     const dark = screen.getByRole('button', { name: 'Dark' });
@@ -2023,21 +2026,13 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     expect(light).toHaveAttribute('aria-pressed', 'true');
     expect(dark).toHaveAttribute('aria-pressed', 'false');
 
-    // P6: the fill and the amber border are byte-unchanged.
-    expect(lightClasses).toContain('bg-amber-50');
-    expect(lightClasses).toContain('border-amber-500');
     expect(lightClasses).toContain('border');
     // `resolvedTheme` is mocked 'light', so Dark renders its UNSELECTED arm here.
     expect(dark.className.split(/\s+/)).toContain('bg-surface-card');
     expect(dark.className.split(/\s+/)).toContain('border-line');
-    // The selected DARK arm is unreachable under this mock, so its fill and its hover pin
-    // are held at the source rather than left unasserted.
-    const source = await pageSource();
-    expect(source).toContain("'border-amber-500 bg-purple-900 enabled-hover:bg-purple-900 text-white'");
 
     // The selected fill is PINNED through hover: ghost's base carries
-    // `enabled-hover:bg-surface-hover`, which would otherwise wash the amber on hover.
-    expect(lightClasses).toContain('enabled-hover:bg-amber-50');
+    // `enabled-hover:bg-surface-hover`, which would otherwise wash the pressed fill on hover.
     expect(lightClasses).not.toContain('enabled-hover:bg-surface-hover');
 
     // The dead classes went with the migration.
@@ -2055,17 +2050,95 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     ).toBeInTheDocument();
   });
 
-  // T-88.6-138: once the current-page span drops to 400, colour is the only remaining
-  // VISUAL cue, so the state is exposed programmatically as well.
-  it('exposes the breadcrumb current page programmatically, at 400', async () => {
+  // T-88.6-138: the state is exposed programmatically as well as visually.
+  // AMENDED Phase 88.9-32 (owner pick C4a): was 'exposes the breadcrumb current page programmatically,
+  // at 400'; the weight now reads 700 and is pinned by the C4a test below, so only the 400 assert left.
+  it('exposes the breadcrumb current page programmatically', async () => {
     renderProfile();
     const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
     const current = within(nav).getByText('Profile');
     expect(current).toHaveAttribute('aria-current', 'page');
     const classes = current.className.split(/\s+/);
-    expect(classes).toContain('font-normal');
     expect(classes).not.toContain('font-semibold');
     expect(classes).toContain('text-content-primary');
+  });
+
+  // C4a (owner pick, 88.9-PICKS-B2.json, 2026-11-05; UI-SPEC R2-19): all five breadcrumb current
+  // crumbs read 700; the Profile one was the last at 400.
+  it('C4a (88.9): the Profile crumb reads 700', async () => {
+    renderProfile();
+    const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    const current = within(nav).getByText('Profile');
+    expect(current).toHaveAttribute('aria-current', 'page');
+    const classes = current.className.split(/\s+/);
+    expect(classes).toContain('font-bold');
+    expect(classes).toContain('text-content-primary');
+    expect(classes).not.toContain('font-normal');
+    expect(classes).not.toContain('font-semibold');
+  });
+
+  // E3a (owner pick, 88.9-PICKS-B4.json, 2026-11-06; UI-SPEC R2-24): the owned-game card is not a
+  // control, so it carries no hover lift; its border and padding are unchanged.
+  it('E3a (88.9): an owned-game card carries no hover shadow', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const owned = userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>;
+    owned.mockResolvedValue(OWNED_GAMES);
+    try {
+      renderProfile();
+      const heading = await screen.findByRole('heading', { level: 3, name: 'Catan' });
+      const grid = heading.closest('.grid');
+      expect(grid).not.toBeNull();
+      const card = Array.from((grid as HTMLElement).children).find((c) => c.contains(heading)) as HTMLElement;
+      expect(card).toBeTruthy();
+      const classes = card.className.split(/\s+/);
+      expect(classes.filter((c) => c.startsWith('hover:shadow-'))).toEqual([]);
+      expect(classes).not.toContain('transition-shadow');
+      for (const kept of ['border', 'border-line', 'rounded-lg', 'p-4']) expect(classes).toContain(kept);
+    } finally {
+      owned.mockReset().mockResolvedValue([]);
+    }
+  });
+
+  // E4a (owner pick, 88.9-PICKS-B4.json, 2026-11-06; UI-SPEC R2-44 + R2-87) and MED-74
+  // (88.9-RULINGS.md R-P3a, 2026-11-08): the pressed arm is ONE token string for both toggles, and
+  // the pressed button leads with the aria-hidden check glyph so the state is not colour alone.
+  it('E4a (88.9): pressed = border-line-accent bg-surface-muted text-content-accent', async () => {
+    renderProfile();
+    const light = await screen.findByRole('button', { name: 'Light' });
+    const dark = screen.getByRole('button', { name: 'Dark' });
+    expect(light).toHaveAttribute('aria-pressed', 'true');
+    expect(dark).toHaveAttribute('aria-pressed', 'false');
+
+    const lightClasses = light.className.split(/\s+/);
+    for (const cls of ['border-line-accent', 'bg-surface-muted', 'enabled-hover:bg-surface-muted', 'text-content-accent']) {
+      expect(lightClasses).toContain(cls);
+    }
+    for (const gone of ['bg-amber-50', 'border-amber-500', 'enabled-hover:bg-surface-hover']) {
+      expect(lightClasses).not.toContain(gone);
+    }
+    // `resolvedTheme` is mocked 'light', so Dark renders its UNSELECTED arm, byte-unchanged.
+    const darkClasses = dark.className.split(/\s+/);
+    expect(darkClasses).toContain('border-line');
+    expect(darkClasses).toContain('bg-surface-card');
+
+    // The pressed Dark arm is unreachable under this mock, so the ONE constant is held at the source.
+    const source = await pageSource();
+    expect(source.split("const THEME_TOGGLE_PRESSED = 'border-line-accent bg-surface-muted enabled-hover:bg-surface-muted text-content-accent';").length - 1).toBe(1);
+    expect(source.split('? THEME_TOGGLE_PRESSED').length - 1).toBe(2);
+    expect(source).not.toContain('bg-purple-900 enabled-hover:bg-purple-900');
+    expect(source).not.toContain("'border-amber-500");
+
+    // MED-74: the glyph leads the pressed button (the M5a shape) and is absent from the unpressed one.
+    const first = light.firstElementChild as HTMLElement | null;
+    expect(first?.tagName).toBe('SPAN');
+    expect(first).toHaveAttribute('aria-hidden', 'true');
+    expect(first?.textContent).toBe('\u2713');
+    expect(dark.textContent ?? '').not.toContain('\u2713');
+    // The glyph is outside the accessible name, which is still exactly the label.
+    expect(screen.getByRole('button', { name: 'Light' })).toBe(light);
+    // One shared width floor, so the pair does not shift when the glyph moves.
+    expect(lightClasses).toContain('min-w-32');
+    expect(darkClasses).toContain('min-w-32');
   });
 
   // D-01 / T-88.6-42: legal text is never caption-sized.
