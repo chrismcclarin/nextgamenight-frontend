@@ -11,6 +11,8 @@ import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { useInlineReceipt } from '../../components/ui/useInlineReceipt';
+import { announceStatus } from '@/components/ui/announcer';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
@@ -133,6 +135,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // the actual invite UI is the existing FriendInvitePanel modal.
     const [inviteModalOpen, setInviteModalOpen] = useState(false);
     const [resettingInvite, setResettingInvite] = useState(false);
+    // Save-feedback rule 3 (88.9-24): the Invite link reset caption beside the opener.
+    const { receipt, showReceipt, clearReceipt } = useInlineReceipt();
     // Phase 69-04 mirror: same confirm-modal Leave flow as GroupSettings,
     // so the in-row "Leave Group" button (non-owner self-row) gets the
     // canonical copy + inline error UX rather than window.confirm.
@@ -337,11 +341,17 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
-            // Req 12 receipt (UI-SPEC §6.2): `{Object} {past-tense verb}`, <=4 words,
-            // no exclamation mark and no adverb — the shipped error-toast voice.
-            // (The banned adverb is deliberately not spelled out here: Req 12's
-            // acceptance is a plain grep over this file that does not exempt comments.)
-            toast.success('Role updated');
+            /* DECISION Phase 88.9-24 (save-feedback rule 2; owner pick O16a, 88.9-PICKS-B9.json,
+               2026-11-07; owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): Role updated and Member removed
+               fire NO success toast — the role select shows the new role; the row leaves the roster and
+               focus goes to its neighbour — the outcome is still spoken once by the root announcer
+               (src/components/ui/announcer.ts). Chosen OVER the Req 12 receipts (UI-SPEC §6.2) these two
+               lines carried: rule 4 keeps a toast only for an outcome the person cannot see. Each call
+               sits where its toast was, in the one shared commit path, so the desktop dialog and the
+               mobile kebab still get the same words from one line. Errors still toast (rule 5). Invite
+               link reset goes inline instead (rule 3). Restoring a toast here is a decision, not a
+               cleanup. */
+            announceStatus('Role updated');
             return true;
         } catch (error) {
             logger.info('Error updating role:', errCtx(error));
@@ -412,10 +422,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
-            // Req 12 receipt (UI-SPEC §6.2). Deliberately here and not at the two
-            // call sites: the desktop dialog gate and the mobile kebab two-tap share
-            // this commit path, so both surfaces get the same receipt from one line.
-            toast.success('Member removed');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 marker at Role updated above.
+            announceStatus('Member removed');
             return true;
         } catch (error) {
             logger.info('Error removing member:', errCtx(error));
@@ -525,7 +534,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             await groupsAPI.resetInviteToken(group_id);
             // The one W11 receipt this phase wires. String ratified VERBATIM in
             // 88-UI-SPEC §6.2.1 and 88.6-UI-SPEC §6.3 — no copy is authored here.
-            toast.success('Invite link reset');
+            // AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json; save-feedback rule 3): the same
+            // words are now an inline caption beside the Reset invite link opener, in an always-mounted
+            // polite region (spoken by that region alone), chosen OVER the toast: the modal stays open
+            // on the button the person returns to.
+            showReceipt('Invite link reset');
             return true;
         } catch (err) {
             logger.info('Failed to reset invite token:', errCtx(err));
@@ -689,6 +702,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                 size="default"
                                 onClick={() => {
                                     if (resettingInvite) return;
+                                    clearReceipt();
                                     resetInviteGate.trigger();
                                 }}
                                 aria-disabled={resettingInvite || undefined}
@@ -698,6 +712,16 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                 {resettingInvite ? 'Resetting…' : RESET_INVITE_LINK_LABEL}
                             </Button>
                         )}
+                        {/* Save-feedback rule 3 (88.9-24): the Invite link reset caption. Mounted empty (and
+                            sr-only) with this stable row, outside the opener's own condition, so the reset's
+                            text is a CHANGE and is announced; the row wraps it under the buttons at 375. */}
+                        <StatusRegion
+                            data-testid="invite-reset-receipt"
+                            politeness="polite"
+                            srOnlyWhenEmpty
+                            message={receipt}
+                            className="text-xs text-content-status-success self-center"
+                        />
                     </div>
                 )}
 

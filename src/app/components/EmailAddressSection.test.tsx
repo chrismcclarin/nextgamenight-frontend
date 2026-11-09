@@ -807,6 +807,10 @@ describe('EmailAddressSection — Resend and Discard', () => {
       body({ outcome: 'cancelled', pending_email_change: null, verification_sent: false })
     );
 
+    // AMENDED Phase 88.9-24 (save-feedback rules 3/4): the discard receipt left the toaster. It is
+    // an inline caption beside Change, spoken once by the section's own always-mounted lane, which
+    // is captured BEFORE the press and compared after (never picked by index or by its text).
+    const lane = sectionRegion();
     await user.click(screen.getByRole('button', { name: 'Discard change' }));
 
     await waitFor(() => expect(api.cancelEmailChange).toHaveBeenCalledWith('u-uuid-1'));
@@ -814,6 +818,10 @@ describe('EmailAddressSection — Resend and Discard', () => {
       expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Change' }))
     );
     expect(api.requestEmailChange).not.toHaveBeenCalled();
+    expect(sectionRegion()).toBe(lane);
+    expect(lane).toHaveTextContent('Email change discarded');
+    expect(screen.getByTestId('email-receipt')).toHaveTextContent('Email change discarded');
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
   });
 });
 
@@ -872,6 +880,8 @@ describe('EmailAddressSection — revert (D-38)', () => {
       body({ outcome: 'reverted', email: REAL, pending_email_change: null, verification_sent: false, email_changed_at: null })
     );
 
+    // AMENDED Phase 88.9-24 (save-feedback rules 3/4): the lane is captured BEFORE the Revert press.
+    const lane = sectionRegion();
     await user.click(screen.getByRole('button', { name: 'Use my sign-in address' }));
     await waitFor(() => expect(api.revertEmailToSignIn).toHaveBeenCalled());
 
@@ -889,6 +899,12 @@ describe('EmailAddressSection — revert (D-38)', () => {
     );
     expect(document.activeElement).not.toBe(document.body);
     expect(screen.queryByRole('button', { name: 'Use my sign-in address' })).not.toBeInTheDocument();
+    // AMENDED Phase 88.9-24 (save-feedback rules 3/4): an inline caption beside Change, spoken once
+    // by the same lane, and no toast.
+    expect(sectionRegion()).toBe(lane);
+    expect(lane).toHaveTextContent('Email address reverted');
+    expect(screen.getByTestId('email-receipt')).toHaveTextContent('Email address reverted');
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
   });
 
   it('a FAILED revert (`address_taken`) leaves the control MOUNTED and focused, with the shared conflict copy', async () => {
@@ -2144,12 +2160,16 @@ const actionAlert = (container: HTMLElement) =>
   container.querySelector<HTMLElement>('[id$="-action-error"]');
 
 describe('EmailAddressSection — 88.6.1-13: the drift arms await the refetch and reconcile (D-11, W011)', () => {
-  it('A: a Verify drift whose refetched row shows the change LANDED reports it changed — toast once, code field gone, focus on Change', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rules 3/4): was '… toast once, …'. The changed receipt is
+  // an inline caption beside Change, spoken once by the section's lane (captured before the Verify
+  // press and compared after), and no toast.
+  it('A: a Verify drift whose refetched row shows the change LANDED reports it changed — caption beside Change, spoken once by the lane, code field gone, focus on Change', async () => {
     const user = userEvent.setup();
     renderAwaiting();
     seedRefetch(ROW({ email: NEW, pending_email_change: null, email_changed_at: '2026-10-04T12:00:00.000Z' }));
     api.verifyEmailChange.mockResolvedValue(DRIFT);
 
+    const lane = sectionRegion();
     await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
     await user.click(screen.getByRole('button', { name: 'Verify' }));
 
@@ -2157,8 +2177,10 @@ describe('EmailAddressSection — 88.6.1-13: the drift arms await the refetch an
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Change' }))
     );
-    expect(vi.mocked(toast.success)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Email address changed');
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    expect(sectionRegion()).toBe(lane);
+    expect(lane).toHaveTextContent('Email address changed');
+    expect(screen.getByTestId('email-receipt')).toHaveTextContent('Email address changed');
     expect(screen.queryByText(/couldn't read the answer/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/code from the email/i)).not.toBeInTheDocument();
     expect(cache.invalidate).toHaveBeenCalledTimes(1);

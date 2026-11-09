@@ -441,7 +441,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // name is `Mon`.
     await page.getByRole('button', { name: 'Mon', exact: true }).click();
 
-    const save = page.getByRole('button', { name: /^(Save Schedule|Saving\.\.\.)$/ });
+    // AMENDED Phase 88.9-24 (save-feedback rule 1): the label stays; busy adds the spinner and the
+    // sr-only ", saving" to the name. Chromium computes the busy name with a space before the comma
+    // (the label is a flex item and the sr-only suffix its own out-of-flow box), hence the optional
+    // space; read aloud it is the same "Save Schedule, saving".
+    const save = page.getByRole('button', { name: /^Save Schedule( ?, saving)?$/ });
     await focusByKeyboard(page, save);
     await page.keyboard.press('Enter');
     await create.arrived;
@@ -449,7 +453,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(save).toBeFocused();
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     await expect(save).not.toHaveAttribute('disabled');
-    await expect(save).toHaveText('Saving...');
+    // The visible label is the button's first text node; the sr-only suffix follows it.
+    expect(await save.evaluate((el) => el.firstChild?.textContent ?? '')).toBe('Save Schedule');
+    await expect(save).toHaveText('Save Schedule, saving');
+    await expect(save).toHaveAccessibleName(/^Save Schedule ?, saving$/);
+    await expect(save.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, save, 'primary', 'dark');
 
     await page.keyboard.press('Enter');
@@ -481,7 +489,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(toggle).toBeVisible();
     await toggle.click();
 
-    const save = page.getByRole('button', { name: /^(Save Override|Saving\.\.\.)$/ });
+    // AMENDED Phase 88.9-24 (save-feedback rule 1): the label stays; busy adds the spinner and the
+    // sr-only ", saving" to the name. Chromium computes the busy name with a space before the comma
+    // (the label is a flex item and the sr-only suffix its own out-of-flow box), hence the optional
+    // space; read aloud it is the same "Save Override, saving".
+    const save = page.getByRole('button', { name: /^Save Override( ?, saving)?$/ });
     await focusByKeyboard(page, save);
     await page.keyboard.press('Enter');
     await create.arrived;
@@ -489,7 +501,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(save).toBeFocused();
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     await expect(save).not.toHaveAttribute('disabled');
-    await expect(save).toHaveText('Saving...');
+    // The visible label is the button's first text node; the sr-only suffix follows it.
+    expect(await save.evaluate((el) => el.firstChild?.textContent ?? '')).toBe('Save Override');
+    await expect(save).toHaveText('Save Override, saving');
+    await expect(save).toHaveAccessibleName(/^Save Override ?, saving$/);
+    await expect(save.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, save, 'primary', 'dark');
 
     await page.keyboard.press('Enter');
@@ -623,7 +639,10 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // field (`BoardGameGeek username`; wave 7 CI gate, run 39020174955: strict-mode, 2 elements).
     await expect(page.getByRole('textbox', { name: 'Username', exact: true })).toBeFocused();
 
-    const save = page.getByRole('button', { name: /^(Save|Saving\.\.\.)$/ });
+    // AMENDED Phase 88.9-24 (save-feedback rule 1): the label stays; busy adds the spinner and the
+    // sr-only ", saving" to the name (optional space before the comma: Chromium's computed name,
+    // as at Save Schedule above).
+    const save = page.getByRole('button', { name: /^Save( ?, saving)?$/ });
     await focusByKeyboard(page, save);
     await page.keyboard.press('Enter');
     await rename.arrived;
@@ -631,7 +650,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(save).toBeFocused();
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     await expect(save).not.toHaveAttribute('disabled');
-    await expect(save).toHaveText('Saving...');
+    // The visible label is the button's first text node; the sr-only suffix follows it.
+    expect(await save.evaluate((el) => el.firstChild?.textContent ?? '')).toBe('Save');
+    await expect(save).toHaveText('Save, saving');
+    await expect(save).toHaveAccessibleName(/^Save ?, saving$/);
+    await expect(save.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, save, 'primary', 'dark');
     // Cancel is a sibling: natively disabled while the save runs (D-35).
     await expect(save.locator('xpath=..').getByRole('button', { name: 'Cancel' })).toBeDisabled();
@@ -642,10 +665,20 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // Answered with the captured self body: the username is unchanged.
     await rename.release(self.lastBody() ?? {});
     await expect(pencil).toBeFocused();
+    // Save-feedback rule 3 (88.9-24): the Username updated caption shows on its own line under the
+    // name row (no toast). At 375 its right edge stays inside the viewport.
+    const receipt = page.getByTestId('username-receipt');
+    await expect(receipt).toHaveText('Username updated');
+    await expect(receipt).toBeVisible();
+    if (testInfo.project.name === 'phone') {
+      const box = await receipt.boundingBox();
+      expect(box, 'the Username updated caption has a box').not.toBeNull();
+      expect((box?.x ?? 0) + (box?.width ?? 0), 'Username updated caption right edge').toBeLessThanOrEqual(375);
+    }
 
     // Cancel: reopen the editor from the focused pencil, then cancel by keyboard.
     await page.keyboard.press('Enter');
-    const saveAgain = page.getByRole('button', { name: /^(Save|Saving\.\.\.)$/ });
+    const saveAgain = page.getByRole('button', { name: /^Save( ?, saving)?$/ });
     await expect(saveAgain).toBeVisible();
     const cancel = saveAgain.locator('xpath=..').getByRole('button', { name: 'Cancel' });
     await focusByKeyboard(page, cancel);

@@ -58,6 +58,10 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
+// Save-feedback rule 2 (88.9-24): Role updated and Member removed fire no success toast and are
+// spoken once by the root announcer instead. Automocked; the root beforeEach clears its calls.
+vi.mock('@/components/ui/announcer');
+
 vi.mock('@/app/components/ClickableMemberName', () => ({
   default: ({ username }: { username?: string }) => <span>{username}</span>,
 }));
@@ -99,6 +103,7 @@ import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 // SAME error object, never typed.
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
+import { announceStatus } from '@/components/ui/announcer';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -435,20 +440,27 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
 });
 
 describe('ManageMembers Req 12 — success receipts for the two named silent mutations', () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 2): the row leaves the roster, so no success toast;
+  // the root announcer speaks the outcome once per completed action.
   it('member removal produces "Member removed" on BOTH entry points', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
     fireEvent.click(await liveConfirm('Remove'));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Member removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
 
     // The mobile kebab shares the same commit path, so it gets the same receipt.
     (toast.success as Mock).mockClear();
+    vi.mocked(announceStatus).mockClear();
     const menu = await openKebabList('Member actions for Target');
     const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
     passKebabGate();
     fireEvent.click(removeItem);
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Member removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('a role change produces "Role updated" on the escalation AND the demotion path', async () => {
@@ -456,10 +468,15 @@ describe('ManageMembers Req 12 — success receipts for the two named silent mut
     const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
     fireEvent.click(await liveConfirm('Make admin'));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): the select shows the new role, so no success
+    // toast; the root announcer speaks the outcome once per completed change.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Role updated'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
 
     cleanup();
     (toast.success as Mock).mockClear();
+    vi.mocked(announceStatus).mockClear();
     (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
       ROSTER[0],
       { ...ROSTER[1], UserGroup: { role: 'admin' } },
@@ -468,16 +485,28 @@ describe('ManageMembers Req 12 — success receipts for the two named silent mut
     await openMembersModal();
     const demote = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(demote, { target: { value: 'member' } });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Role updated'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
+  // AMENDED Phase 88.9-24 (save-feedback rules 2/3): the receipts left the toaster, so this reads
+  // what the surface now says instead of the success mock: the spoken remove outcome and the
+  // inline Invite link reset caption.
   it('no receipt on this surface uses "successfully" or an exclamation mark', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
     fireEvent.click(await liveConfirm('Remove'));
-    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset invite link' }));
+    fireEvent.click(await liveConfirm('Reset link'));
+    const caption = screen.getByTestId('invite-reset-receipt');
+    await waitFor(() => expect(caption.textContent).not.toBe(''));
 
-    for (const [message] of (toast.success as Mock).mock.calls) {
+    const messages = [...vi.mocked(announceStatus).mock.calls.map(([message]) => message), caption.textContent];
+    expect(messages).toHaveLength(2);
+    expect(toast.success).not.toHaveBeenCalled();
+    for (const message of messages) {
       expect(String(message)).not.toMatch(/successfully/i);
       expect(String(message)).not.toContain('!');
       expect(String(message).split(/\s+/).length).toBeLessThanOrEqual(4);
@@ -729,11 +758,28 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
 });
 
 describe('ManageMembers W11 receipt + AC-2 channel', () => {
-  it('a successful invite-link reset fires the ratified "Invite link reset" receipt', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 3): was 'a successful invite-link reset fires the
+  // ratified "Invite link reset" receipt' (a toast). The caption sits beside the button in a polite
+  // region mounted empty BEFORE the press; the node is captured first and compared after.
+  it('save-feedback rule 3 (88.9): a successful invite-link reset shows the ratified Invite link reset caption beside the button, and no toast', async () => {
     await openMembersModal();
-    fireEvent.click(await screen.findByText('Reset invite link'));
+    const opener = await screen.findByRole('button', { name: 'Reset invite link' });
+    const region = screen.getByTestId('invite-reset-receipt');
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region.textContent).toBe('');
+    fireEvent.click(opener);
     fireEvent.click(await liveConfirm('Reset link'));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Invite link reset'));
+
+    await waitFor(() => expect(screen.getByTestId('invite-reset-receipt')).toHaveTextContent('Invite link reset'));
+    expect(screen.getByTestId('invite-reset-receipt')).toBe(region);
+    expect(screen.getByText('Invite link reset').closest('[role="status"]')).toBe(region);
+    expect(region).not.toHaveClass('sr-only');
+    expect(region).toHaveClass('text-content-status-success');
+    // The caption sits in the opener's own row.
+    expect(opener.parentElement?.contains(region)).toBe(true);
+    expect(toast.success).not.toHaveBeenCalled();
+    // Cross note 4: a rule-3 receipt is spoken by its own region, never also by the root announcer.
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
   });
 
   it('a failed remove still reaches a LOG CHANNEL — the user-facing message is not one', async () => {
@@ -965,7 +1011,10 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     await act(async () => {
       held.resolve(WITHOUT_TARGET);
     });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): spoken by the root announcer, no success toast.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Member removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.queryByText('Target')).toBeNull();
   });
 
@@ -1055,7 +1104,10 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     select.focus();
     (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
     fireEvent.change(select, { target: { value: 'member' } });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): spoken by the root announcer, no success toast.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Role updated'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(select);
     expect(select.isConnected).toBe(true);
   });
@@ -1077,7 +1129,10 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     select.focus();
     (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(after);
     fireEvent.change(select, { target: { value: 'member' } });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): spoken by the root announcer, no success toast.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Role updated'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
     // The move committed: Target's row now follows Robin's.
     await waitFor(() =>
       expect(
@@ -1334,7 +1389,10 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     await user.click(opener);
     await screen.findByRole('dialog', { name: 'Remove Target from this group?' });
     await user.click(await liveConfirm('Remove'));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): spoken by the root announcer, no success toast.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Member removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(title()));
     expect(
       screen.getByRole('dialog', { name: 'Manage Group Members' }).contains(document.activeElement)
@@ -1495,6 +1553,7 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     const held = deferred<unknown>();
     (groupsAPI.resetInviteToken as Mock).mockReturnValueOnce(held.promise);
     await openMembersModal();
+    const caption = screen.getByTestId('invite-reset-receipt');
     fireEvent.click(await screen.findByRole('button', { name: 'Reset invite link' }));
     fireEvent.click(await liveConfirm('Reset link'));
 
@@ -1507,8 +1566,10 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     await act(async () => {
       held.resolve({});
     });
-    // Positive signal first (CF-26): the receipt fired.
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Invite link reset'));
+    // Positive signal first (CF-26): the receipt showed. AMENDED Phase 88.9-24 (save-feedback rule
+    // 3): an inline caption in the region mounted before the press, not a toast.
+    await waitFor(() => expect(caption).toHaveTextContent('Invite link reset'));
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Reset invite link' })).not.toHaveAttribute('aria-disabled');
   });
 });

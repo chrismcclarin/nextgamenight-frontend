@@ -201,7 +201,8 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // RE-DERIVED by plan 88.6.1-63 (task 3): 239 -> 240, pushed down by one import line (selfIdentityFailedWithNoRow).
     // RE-DERIVED 2026-10-19 (code review CR-5 / A-75, commit 9883474): 240 -> 244. A hoisted copy constant with
     // its DECISION comment (`DISCONNECT_CALENDAR_PENDING_LABEL`, copy row CR5a) landed above it. Kept as a line number.
-    declaredAt: 244,
+    // RE-DERIVED by plan 88.9-24 (Task 3, 2026-11-09): 244 -> 248. Not on its own: the useInlineReceipt and announceStatus import lines and the useInlineReceipt hook call with its comment line landed above it. Kept as a line number.
+    declaredAt: 248,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +

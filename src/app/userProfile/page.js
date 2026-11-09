@@ -44,6 +44,8 @@ import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Modal } from '../components/Modal';
 import { Combobox } from '../../components/ui/Combobox';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { useInlineReceipt } from '../../components/ui/useInlineReceipt';
+import { announceStatus } from '@/components/ui/announcer';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { Button } from '../../components/ui/Button';
@@ -184,6 +186,8 @@ function Profile(){
     const [editingUsername, setEditingUsername] = useState(false);
     const [username, setUsername] = useState('');
     const [savingUsername, setSavingUsername] = useState(false);
+    // Save-feedback rule 3 (88.9-24): the Username updated caption under the name row.
+    const { receipt: usernameReceipt, showReceipt, clearReceipt } = useInlineReceipt();
     
     // Availability settings state
     const [availabilityTab, setAvailabilityTab] = useState('recurring'); // 'recurring' or 'specific'
@@ -1357,7 +1361,9 @@ function Profile(){
             // verified phone vanish from the cached self for the session.
             patchSelfCache(queryClient, { username: updatedUser.username });
             setEditingUsername(false);
-            toast.success('Username updated');
+            // Save-feedback rule 3 (88.9-24): an inline caption in the always-mounted region under the
+            // name row, spoken by that region alone (never also by the root announcer).
+            showReceipt('Username updated');
             settle();
         } catch (error) {
             logger.info('Error updating username:', errCtx(error));
@@ -1455,7 +1461,17 @@ function Profile(){
         try {
             await googleCalendarAPI.disconnect(selfUuid);
             setGoogleCalendarConnected(false);
-            toast.success('Google Calendar disconnected');
+            /* DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes; owner pick O16a,
+               88.9-PICKS-B9.json, 2026-11-07; owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): these six
+               profile outcomes fire NO success toast — each result is in view (the Calendar card's button
+               flips, the collection list gains or loses the row with focus on + Add from BGG, the new rows
+               show in the list below, the pattern row leaves the list) — the outcome is still spoken once by
+               the root announcer (src/components/ui/announcer.ts). Chosen OVER the Req 12 toasts
+               (88-UI-SPEC §6.2) these lines carried: rule 4 keeps a toast only for an outcome the person
+               cannot see. The call keeps the toast's place, before any close or settle. Every error toast
+               stays (rule 5). Username updated is the seventh profile receipt and goes inline instead (rule
+               3). Restoring a toast here is a decision, not a cleanup. */
+            announceStatus('Google Calendar disconnected');
         } catch (error) {
             logger.info('Error disconnecting Google Calendar:', errCtx(error));
             toast.error(
@@ -1671,7 +1687,12 @@ function Profile(){
             await fetchOwnedGames();
             // Req 12: this mutation closes the search panel it was started from, so
             // without a receipt the only feedback is a panel vanishing.
-            toast.success('Game added');
+            // AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json; save-feedback rule 2, register
+            // 51.4 names Game added among the 11): the receipt is dropped — the game appears in the
+            // collection list and focus lands on + Add from BGG, which answers the panel-vanishing concern
+            // above; chosen OVER keeping this Req 12 toast. Spoken once by the root announcer: see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Game added');
             settle();
         } catch (error) {
             logger.info('Error adding game to collection:', errCtx(error));
@@ -1738,7 +1759,9 @@ function Profile(){
             await userGamesAPI.removeOwnedGame(selfUuid, game_id);
             const settle = dropRemovedGame();
             await fetchOwnedGames();
-            toast.success('Game removed');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Game removed');
             settle();
         } catch (error) {
             logger.info('Error removing game from collection:', errCtx(error));
@@ -1853,7 +1876,9 @@ function Profile(){
             // §6.2's form is `{Object} {past-tense verb}`, <=4 words — so the count
             // the old string carried is deliberately dropped rather than shortened
             // into it. The created rows are visible in the list directly below.
-            toast.success('Schedules created');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Schedules created');
             settle();
         } catch (error) {
             logger.info('Error creating schedule:', errCtx(error));
@@ -1930,7 +1955,9 @@ function Profile(){
                 endTime: '17:00',
                 isAvailable: true,
             });
-            toast.success('Override created');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Override created');
             settle();
         } catch (error) {
             logger.info('Error creating specific override:', errCtx(error));
@@ -1968,7 +1995,9 @@ function Profile(){
         try {
             await availabilityAPI.deleteAvailability(patternId);
             await patternsQuery.refetch();
-            toast.success('Pattern deleted');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Pattern deleted');
         } catch (error) {
             logger.info('Error deleting pattern:', errCtx(error));
             toast.error(
@@ -2404,21 +2433,23 @@ function Profile(){
                                             that opened the editor, mounted in the same commit), else the profile
                                             <h1>.
                                             REJECTED: (a) native `disabled` for the in-flight half (it drops focus in
-                                            a real browser); (b) focusing the <h1> on a save (the success toast
+                                            a real browser); (b) focusing the <h1> on a save (the inline Username updated receipt, an always-mounted polite status region since 88.9-24,
                                             already announces the outcome, and one target for Save and Cancel keeps
                                             the editor's exit predictable); (c) per-host inline focus code (D-04).
                                             Disclosed visible delta: while saving, Save shows the gated primary pair
                                             instead of the half-strength wash. Dropping either half of the pair is a
-                                            decision, not a cleanup. */}
+                                            decision, not a cleanup.
+                                            AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (name "Save, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word and narrowed the button). The aria-disabled gate and the saveUsernameInFlightRef latch are unchanged. */}
                                         <div className="flex gap-2">
                                             <Button
                                                 variant="primary"
                                                 onClick={handleSaveUsername}
                                                 disabled={!username.trim()}
                                                 aria-disabled={savingUsername ? 'true' : undefined}
+                                                busy={savingUsername}
                                                 className="whitespace-nowrap"
                                             >
-                                                {savingUsername ? 'Saving...' : 'Save'}
+                                                Save
                                             </Button>
                                             <Button
                                                 variant="secondary"
@@ -2496,7 +2527,10 @@ function Profile(){
                                             a decision, not a cleanup. */}
                                         <button
                                             ref={editUsernamePencilRef}
-                                            onClick={() => setEditingUsername(true)}
+                                            onClick={() => {
+                                                clearReceipt();
+                                                setEditingUsername(true);
+                                            }}
                                             className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                                             title="Edit username"
                                         >
@@ -2504,6 +2538,18 @@ function Profile(){
                                         </button>
                                     </div>
                                 )}
+                                {/* Save-feedback rule 3 (88.9-24): the Username updated caption. A SIBLING after the
+                                    whole editor ternary, never inside either branch: the pencil's branch mounts in
+                                    the same commit as the receipt, and a polite region that mounts holding text is
+                                    not announced (src/components/ui/StatusRegion.tsx ("EMPTY-FIRST")). Mounted empty
+                                    and sr-only until the save lands; its own line under the name row at 375. */}
+                                <StatusRegion
+                                    data-testid="username-receipt"
+                                    politeness="polite"
+                                    srOnlyWhenEmpty
+                                    message={usernameReceipt}
+                                    className="text-xs text-content-status-success"
+                                />
                                 {/* THE ADDRESS THIS APP USES, not the Auth0 SESSION claim
                                     (Phase 88.8 plan 13, SPEC R12). Until this phase this line
                                     rendered `user.email` — the session claim — which after an
@@ -3591,18 +3637,20 @@ function Profile(){
                                             the form's close then loses it again; (b) two latches — they would split
                                             a state the page deliberately keeps as one; (c) focusing the new rows — a
                                             multi-day save creates several, so "the new row" is not one element, and
-                                            the success toast already announces the outcome; (d) minting a heading or
+                                            the root announcer (src/components/ui/announcer.ts) already speaks the outcome since 88.9-24; (d) minting a heading or
                                             any text (D-05, D-31).
                                             Disclosed visible delta: while a save runs the button shows the gated
                                             primary pair instead of the half-strength wash. Dropping either half of
-                                            the pair is a decision, not a cleanup. */}
+                                            the pair is a decision, not a cleanup.
+                                            AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (names "Save Schedule, saving" and "Save Override, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word). The aria-disabled gate and the savePatternInFlightRef latch are unchanged. */}
                                         <Button
                                             variant="primary"
                                             onClick={handleCreateRecurringPattern}
                                             aria-disabled={savingPattern ? 'true' : undefined}
+                                            busy={savingPattern}
                                             className="w-full focus-visible:ring-offset-surface-page"
                                         >
-                                            {savingPattern ? 'Saving...' : 'Save Schedule'}
+                                            Save Schedule
                                         </Button>
                                     </div>
                                 </div>
@@ -3783,9 +3831,10 @@ function Profile(){
                                             variant="primary"
                                             onClick={handleCreateSpecificOverride}
                                             aria-disabled={savingPattern ? 'true' : undefined}
+                                            busy={savingPattern}
                                             className="w-full focus-visible:ring-offset-surface-page"
                                         >
-                                            {savingPattern ? 'Saving...' : 'Save Override'}
+                                            Save Override
                                         </Button>
                                     </div>
                                 </div>

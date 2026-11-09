@@ -182,6 +182,10 @@ vi.mock('sonner', () => {
   return { toast };
 });
 
+// Save-feedback rule 2 (88.9-24): a save whose result is in view fires no success toast and is
+// spoken once by the root announcer instead. Automocked; the root beforeEach clears its calls.
+vi.mock('@/components/ui/announcer');
+
 // Provider hooks the page consumes; each has its own dedicated identity suite.
 vi.mock('@/app/components/tutorial/TutorialProvider', () => ({
   useTutorial: () => ({ replayTutorial: h.replayTutorial, showTutorial: h.showTutorial }),
@@ -254,6 +258,7 @@ import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { availabilityKeys } from '@/lib/queryKeys/availabilityKeys';
 import { QueryClientContext, hashKey } from '@tanstack/react-query';
 import { UNAVAILABLE_COPY } from '@/app/components/EmailAddressSection';
+import { announceStatus } from '@/components/ui/announcer';
 
 /** Accessor for the mocked house logger — AC-2's channel on this surface. */
 export function loggerMock() {
@@ -1064,22 +1069,42 @@ describe('userProfile two-tap armed state (F-357)', () => {
 describe('userProfile toast register (OI-5)', () => {
   installGateClock();
 
-  it('converges the username receipt', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 3): was 'converges the username receipt', which
+  // asserted the success toast. The receipt is now an inline caption in a polite region that is
+  // mounted empty BEFORE the editor opens; the node is captured first and compared after, never
+  // picked by index or by its text after the save (either would pass an in-branch placement).
+  it('save-feedback rule 3 (88.9): a username save shows Username updated under the username row in a polite status region that was mounted empty before the save, and no toast', async () => {
     const { usersAPI } = await import('@/lib/api');
     (usersAPI.updateUsername as ReturnType<typeof vi.fn>).mockResolvedValue({
       username: 'Renamed',
     });
 
     renderProfile();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit username' }));
+    const pencil = await screen.findByRole('button', { name: 'Edit username' });
+    const region = screen.getByTestId('username-receipt');
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region.textContent).toBe('');
+    fireEvent.click(pencil);
     fireEvent.change(screen.getByRole('textbox', { name: 'Username' }), {
       target: { value: 'Renamed' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() =>
-      expect(toastMock().success).toHaveBeenCalledWith('Username updated')
-    );
+    await waitFor(() => expect(screen.getByTestId('username-receipt')).toHaveTextContent('Username updated'));
+    expect(screen.getByTestId('username-receipt')).toBe(region);
+    expect(screen.getByText('Username updated').closest('[role="status"]')).toBe(region);
+    // Visible: the region drops its sr-only class once it holds text, in the matrix's success ink.
+    expect(region).not.toHaveClass('sr-only');
+    expect(region).toHaveClass('text-content-status-success');
+    expect(toastMock().success).not.toHaveBeenCalled();
+    // Cross note 4: a rule-3 receipt is spoken by its own region, never also by the root announcer.
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
+
+    // The lifetime of the toast it replaced, then gone.
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+    expect(region.textContent).toBe('');
   });
 
   it('converges the Google Calendar receipt', async () => {
@@ -1094,9 +1119,12 @@ describe('userProfile toast register (OI-5)', () => {
     passGate();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
 
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): no success toast; the root announcer speaks it once.
     await waitFor(() =>
-      expect(toastMock().success).toHaveBeenCalledWith('Google Calendar disconnected')
+      expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Google Calendar disconnected')
     );
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toastMock().success).not.toHaveBeenCalled();
   });
 
   it('converges the pattern-deleted receipt', async () => {
@@ -1108,7 +1136,10 @@ describe('userProfile toast register (OI-5)', () => {
     passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
 
-    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Pattern deleted'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): no success toast; the root announcer speaks it once.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Pattern deleted'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toastMock().success).not.toHaveBeenCalled();
   });
 
   it('gives the collection mutations a receipt in the same register', async () => {
@@ -1120,19 +1151,25 @@ describe('userProfile toast register (OI-5)', () => {
     passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
 
-    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Game removed'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): no success toast; the root announcer speaks it once.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Game removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toastMock().success).not.toHaveBeenCalled();
   });
 
   // The register is a contract, not four hand-checked strings: this reads every
   // success string the file emits and holds them ALL to §6.2, so a sixth added
   // later cannot quietly arrive in the old voice.
+  // AMENDED Phase 88.9-24 (save-feedback rules 2/3): the success strings left the toaster — six are
+  // spoken by the root announcer and Username updated is an inline receipt — so the scan reads all
+  // three call shapes. The contract and the floor of 7 are unchanged.
   it('holds every success string on this surface to the §6.2 contract', async () => {
     const source = await import('node:fs/promises').then((fs) =>
       fs.readFile('src/app/userProfile/page.js', 'utf8')
     );
-    const strings = [...source.matchAll(/toast\.success\((['"`])([^'"`]*)\1\)/g)].map(
-      (match) => match[2]
-    );
+    const strings = [
+      ...source.matchAll(/(?:toast\.success|announceStatus|showReceipt)\((['"`])([^'"`]*)\1\)/g),
+    ].map((match) => match[2]);
 
     expect(strings.length).toBeGreaterThanOrEqual(7);
     for (const value of strings) {
@@ -2125,25 +2162,21 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
       'Please enter a username',
       'Username must be 50 characters or less',
       'Still loading your account — please try again in a moment.',
-      'Username updated',
+      // AMENDED Phase 88.9-24 (save-feedback rules 2/3): the seven success strings left the toaster
+      // (Username updated is an inline receipt; the other six are spoken by the root announcer).
+      // Every error string and the neutral No games found line stay, in order.
       "We couldn't connect Google Calendar. Please try again.",
-      'Google Calendar disconnected',
       'Still loading your account — please try again in a moment.',
       'No games found. Try a different search term.',
       'Still loading your account — please try again in a moment.',
-      'Game added',
       'Still loading your account — please try again in a moment.',
-      'Game removed',
       // 88.6.1-61 (review 65): the two availability create guards reuse the page's existing
       // still-loading sentence instead of returning without a word — no new string.
       'Still loading your account — please try again in a moment.',
       'Please select at least one day.',
       'Start time must be before end time.',
-      'Schedules created',
       'Still loading your account — please try again in a moment.',
       'Start time must be before end time.',
-      'Override created',
-      'Pattern deleted',
       'Please enter your BGG username',
       'Still loading your account — please try again in a moment.',
     ]);
@@ -2982,7 +3015,7 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
 // ---------------------------------------------------------------------------
 // 88.6.1-59 Task 1 (D-35, Req 4, Req 5; D-44, Req 6): Save Schedule and Save Override are
-// PRESSED controls. While a save runs each keeps its node, reads Saving..., carries
+// PRESSED controls. While a save runs each keeps its node and its label (88.9-24 rule 1), carries
 // aria-disabled (never native disabled) and refuses every further press through one shared
 // first-line latch; a success closes the form and focus lands on the form's own toggle. The two
 // toggles are disclosures: aria-expanded always, aria-controls only while the form exists.
@@ -3009,7 +3042,8 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     (availabilityAPI.createOverride as Mock).mockResolvedValue({});
   });
 
-  it('S1: Save Schedule keeps its node, reads Saving... under aria-disabled, and three presses send one request', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 1): the label no longer swaps to the in-flight word.
+  it('S1 rule 1 (88.9): Save Schedule keeps its label and shows the spinner while saving, under aria-disabled, and three presses send one request', async () => {
     const { availabilityAPI } = await import('@/lib/api');
     const pending = deferred();
     (availabilityAPI.createRecurringPattern as Mock).mockReturnValue(pending.promise);
@@ -3024,18 +3058,21 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
     expect(save).not.toBeDisabled();
     expect(save.isConnected).toBe(true);
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save Schedule');
+    expect(save).toHaveAccessibleName('Save Schedule, saving');
+    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
 
     fireEvent.click(save);
     fireEvent.click(save);
     expect(availabilityAPI.createRecurringPattern).toHaveBeenCalledTimes(1);
     expect(save).toHaveAttribute('aria-disabled', 'true');
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save Schedule');
 
     await act(async () => { pending.resolve({}); });
   });
 
-  it('S2: Save Override keeps its node, reads Saving... under aria-disabled, and three presses send one request', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 1): the label no longer swaps to the in-flight word.
+  it('S2 rule 1 (88.9): Save Override keeps its label and shows the spinner while saving, under aria-disabled, and three presses send one request', async () => {
     const user = userEvent.setup();
     const { availabilityAPI } = await import('@/lib/api');
     const pending = deferred();
@@ -3050,13 +3087,15 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
     expect(save).not.toBeDisabled();
     expect(save.isConnected).toBe(true);
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save Override');
+    expect(save).toHaveAccessibleName('Save Override, saving');
+    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
 
     fireEvent.click(save);
     fireEvent.click(save);
     expect(availabilityAPI.createOverride).toHaveBeenCalledTimes(1);
     expect(save).toHaveAttribute('aria-disabled', 'true');
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save Override');
 
     await act(async () => { pending.resolve({}); });
   });
@@ -3666,7 +3705,8 @@ describe('username Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     (usersAPI.updateUsername as Mock).mockResolvedValue({ username: 'Self' });
   });
 
-  it('U1: Save keeps its node, reads Saving... under aria-disabled, Cancel stays native, three presses send one request', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 1): the label no longer swaps to the in-flight word.
+  it('U1 rule 1 (88.9): Save keeps its label and shows the spinner while saving, under aria-disabled, Cancel stays native, three presses send one request', async () => {
     const { usersAPI } = await import('@/lib/api');
     const pending = deferred();
     (usersAPI.updateUsername as Mock).mockReturnValue(pending.promise);
@@ -3679,14 +3719,16 @@ describe('username Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
 
     await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
     expect(save).not.toBeDisabled();
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save');
+    expect(save).toHaveAccessibleName('Save, saving');
+    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(cancel).toBeDisabled();
 
     fireEvent.click(save);
     fireEvent.click(save);
     expect(usersAPI.updateUsername).toHaveBeenCalledTimes(1);
     expect(save).toHaveAttribute('aria-disabled', 'true');
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save');
 
     await act(async () => { pending.resolve({ username: 'Self' }); });
   });
@@ -5291,11 +5333,14 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
     expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2); // the refresh is still held
     expect(toastMock().success).not.toHaveBeenCalledWith('Game added');
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
 
     await act(async () => { refresh.resolve([...OWNED_GAMES, AZUL_ROW]); });
     await screen.findByRole('button', { name: 'Remove Azul' });
-    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Game added'));
-    expect(toastMock().success).toHaveBeenCalledTimes(1);
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): no success toast; the root announcer speaks it once.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Game added'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toastMock().success).not.toHaveBeenCalled();
   });
 
   it('A4: a failed add releases the latch and the label; toast and diagnostic unchanged', async () => {
