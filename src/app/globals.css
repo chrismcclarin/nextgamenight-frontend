@@ -1074,6 +1074,8 @@
      warm-100 page, 7.09 on the white card). The DARK arm is amber-500 on `#513902` at **5.05:1** —
      byte-identical to what shipped, because dark `--color-accent-text` is declared at today's
      `--color-accent` value on purpose.
+     AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark accent-text is
+     amber-400 now, 6.50:1 on #513902 (was 5.05), still a byte-copy of dark --color-accent.
      UNCHANGED, and this is the half a reader would get wrong: the owner-picked ARM B tint below is
      NOT touched, and the `DECISION 88-27 D-32` paired-ternary SHAPE is not touched either — only
      the class token inside the true arm moves (plan 08).
@@ -1938,26 +1940,40 @@
      its measured ratios sit at the light --color-text-heatmap-count above. */
   --color-text-heatmap-count: var(--warm-900);
 
-  --color-accent: var(--amber-500);
-  --color-accent-hover: var(--amber-400);
+  /* DECISION Phase 88.9-22 F4b (owner pick F4b, 88.9-PICKS-B8A.json, page 8a, O-11): every dark
+     accent role — accent, accent-text, accent-text-strong, border-accent and the count pill — sits
+     on amber-400, chosen OVER the shipped amber-500 (both passed; a taste call). The dark hovers
+     step to amber-300, 1.16:1 from resting, chosen OVER leaving them on amber-400, which would
+     equal the resting accent and delete the hover cue; it is the same step the dark link already
+     ships, this file ("--color-text-link-hover: var(--amber-300);"). The dark focus ring is
+     amber-400 too and reads 1.00 against an accent fill: every house ring keeps its offset halo,
+     src/app/cascadeOrder.test.ts ("every house offset ring in src declares a surface halo"); never
+     drop the offset on an accent control. The light theme does not move. */
+  --color-accent: var(--amber-400);
+  --color-accent-hover: var(--amber-300);
   /* Phase 88.3 (Req 4): the dark half of the accent rename + mint. The full rationale, the two
      rejected names and every measured ratio live at the light declarations above. These two values
      are today's `--color-accent` / `--color-accent-hover` VERBATIM, deliberately — that is what
      keeps "dark does not move" true across plan 08's sweep. amber-800 is not an option here: it
-     measures 1.95:1 on the dark card. */
+     measures 1.95:1 on the dark card.
+     AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark now moves — the
+     resting pair is amber-400 / amber-300, chosen OVER the "dark does not move" verbatim copy of
+     amber-500 / amber-400. */
   --color-on-accent: var(--purple-950);
-  --color-accent-text: var(--amber-500);
-  --color-accent-text-hover: var(--amber-400);
+  --color-accent-text: var(--amber-400);
+  --color-accent-text-hover: var(--amber-300);
   /* Phase 88.3-14 (owner ruling 3): copied VERBATIM from `--color-accent-text` two lines above —
-     NOT from `-hover` — so the dark glyph is byte-identical to today's. Gate A asserts it. */
-  --color-accent-text-strong: var(--amber-500);
+     NOT from `-hover` — so the dark glyph is byte-identical to today's. Gate A asserts it.
+     AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): still a verbatim copy of
+     the dark accent-text, so both moved to amber-400 together; test 41's byte-equality still holds. */
+  --color-accent-text-strong: var(--amber-400);
 
   --color-border: var(--purple-700);
   /* DECISION Phase 88-01 (D-34): darkened one step for the 1.4.11 hairline floor — see the full
      marker (and the two rejected alternatives) at the light declaration above. `--color-border`
      directly above stays put on purpose. */
   --color-border-strong: var(--purple-500);
-  --color-border-accent: var(--amber-500);
+  --color-border-accent: var(--amber-400);
 
   /* Dark mode: minimal shadows, replaced by borders/glow */
   /* AMENDED Phase 88.6-05 (N1): the DARK half of the same change — the bare `none` keyword becomes

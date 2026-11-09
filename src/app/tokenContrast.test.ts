@@ -334,7 +334,7 @@ function lStarOf(hex: string, what: string): number {
  *
  * Assertions here compare against FLOORS, never against a hex, so a future re-tint that
  * still clears its floor does not churn this file (e2e/tailwind-v4-styles.spec.ts ("every assertion pins WHICH PROPERTY is")).
- * The nine deliberate exceptions are marked at their sites.
+ * The ten deliberate exceptions are marked at their sites.
  */
 function expectRatio(theme: Theme, ink: string, ground: string, floor: number, req: string): number {
   const inkHex = resolve(theme, ink);
@@ -738,6 +738,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // RESTING colour would have made hover LESS readable than rest.
     // AMENDED 88.3-18 (ruling 1c): light amber-900 now reads 9.0722 on the card (unchanged) and
     // 6.9489 on the new warm-200 page (was 8.0072). Both clear with room.
+    // AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark --color-accent-hover is amber-300 now (light stays amber-400), so the dark hover reads ABOVE rest, not equal to it.
     for (const theme of ['light', 'dark'] as const) {
       expectRatio(theme, '--color-accent-text-hover', '--color-bg-card', 4.5, 'Req 4 / §5.11 rows 17-18');
       expectRatio(theme, '--color-accent-text-hover', '--color-bg-page', 4.5, 'Req 4 / §5.11 rows 17-18');
@@ -2043,6 +2044,54 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     for (const theme of ['light', 'dark'] as const) {
       expectRatio(theme, '--color-status-error-text', '--color-status-error-subtle', 4.5, '88.9 O20c toast ink');
+    }
+  });
+  it('63. F4b (88.9): every dark accent role is amber-400 and the dark hovers step to amber-300', () => {
+    // Deliberate hex exception (the tenth): SPEC R4 token pin — owner pick F4b (88.9-PICKS-B8A.json); the dark ring is also amber-400, so it reads 1.00 against an accent fill and the offset halo carries it.
+    for (const prop of ['--color-accent', '--color-accent-text', '--color-accent-text-strong', '--color-border-accent']) {
+      const value = resolve('dark', prop);
+      expect(value, `88.9 F4b — dark ${prop} resolves ${value}; the owner pick F4b puts every dark accent role on amber-400 #fbbf24`).toBe('#fbbf24');
+    }
+    for (const prop of ['--color-accent-hover', '--color-accent-text-hover']) {
+      const value = resolve('dark', prop);
+      expect(value, `88.9 F4b — dark ${prop} resolves ${value}; the dark hover steps to amber-300 #fcd34d`).toBe('#fcd34d');
+    }
+    expect(resolve('dark', '--color-accent-hover'), '88.9 F4b — the dark accent hover must differ from the resting accent, or hover paints no change').not.toBe(resolve('dark', '--color-accent'));
+    expect(resolve('dark', '--color-accent-text-hover'), '88.9 F4b — the dark accent-text hover must differ from the resting accent-text').not.toBe(resolve('dark', '--color-accent-text'));
+    for (const ground of ['--color-bg-card', '--color-bg-page', '--color-bg-elevated']) {
+      expectRatio('dark', '--color-accent-text', ground, 4.5, '88.9 F4b dark accent ink');
+    }
+    for (const ground of ['--color-bg-card', '--color-bg-page']) {
+      expectRatio('dark', '--color-accent-text-hover', ground, 4.5, '88.9 F4b dark accent hover ink');
+    }
+    expectRatio('dark', '--color-on-accent', '--color-accent', 4.5, '88.9 F4b on-accent ink on the dark accent fill');
+    // The light theme does not move: every light accent role is pinned at its shipped value.
+    const LIGHT = {
+      '--color-accent': '#f59e0b',
+      '--color-accent-hover': '#fbbf24',
+      '--color-accent-text': '#92400e',
+      '--color-accent-text-hover': '#78350f',
+      '--color-accent-text-strong': '#78350f',
+      '--color-border-accent': '#d97706',
+    } as const;
+    for (const [prop, hex] of Object.entries(LIGHT)) {
+      const value = resolve('light', prop);
+      expect(value, `88.9 F4b — light ${prop} resolves ${value}; F4b is dark only, the light value must stay ${hex}`).toBe(hex);
+    }
+  });
+
+  it('64. E4a (88.9): the pressed theme-toggle border clears 3:1 on the card and its accent ink 4.5:1 on the muted fill in both themes', () => {
+    // CONFIRM-ONLY (88.9-22): green on ccec7cc by design — it holds the pair 88.9-32's E4a toggles consume.
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-border-accent', '--color-bg-card', 3.0, '88.9 E4a pressed-toggle border');
+      expectRatio(theme, '--color-accent-text', '--color-bg-muted', 4.5, '88.9 E4a pressed-toggle ink');
+    }
+  });
+
+  it('65. E6a (88.9): muted label ink clears 4.5:1 on the card in both themes', () => {
+    // CONFIRM-ONLY (88.9-22): green on ccec7cc by design — it holds the pair 88.9-34's ScheduleList labels consume.
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-text-muted', '--color-bg-card', 4.5, '88.9 E6a muted label ink');
     }
   });
 });

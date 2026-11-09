@@ -1028,6 +1028,8 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                    `--color-focus-ring` is amber-400 and `--color-accent` is
                    amber-500 (1.29:1 apart): an accent selection ring would read
                    as "permanently focused" all over again, one shade off.
+                   AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): after F4b the dark ring and accent are both
+                   amber-400, 1.00:1 apart, so the rejection stands and is stronger.
                    ALSO REJECTED — a check glyph, which would be the strongest
                    separation available. Owner ruling R2-2 above rejected exactly
                    that, and this finding is not a reason to re-open it: the

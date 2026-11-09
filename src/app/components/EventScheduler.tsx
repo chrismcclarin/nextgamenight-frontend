@@ -297,6 +297,8 @@ const NAV_BUTTON_CLASS =
    6.26 on the warm-100 page and 7.09 on the white card. The DARK arm is amber-500 on `#513902`
    at **5.05:1**, BYTE-IDENTICAL to what shipped, because dark `--color-accent-text` is declared
    at today's `--color-accent` value on purpose.
+   AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark accent-text is amber-400
+   now, 6.50:1 on #513902 (was 5.05), still a byte-copy of dark --color-accent.
    UNCHANGED, and this is the half a reader would get wrong: the owner-picked ARM B tint is NOT
    touched, and the `DECISION Phase 88-27 D-32` paired-ternary SHAPE is not touched either — only
    the class token inside the TRUE ARM moves. `accentSweep.test.ts` test 6 and

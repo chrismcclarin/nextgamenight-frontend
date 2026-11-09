@@ -824,3 +824,21 @@ describe('BringGamePicker — the dynamic-viewport cap (88.6.1-56, W023 class)',
     expect(cls).not.toContain('max-h-[90dvh]');
   });
 });
+
+// Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json): the selected box's
+// tick reads the on-accent ink. Fixed white measured 1.67 on dark amber-400 and 2.15 on light
+// amber-500, both under the 3:1 a state glyph needs (WCAG 1.4.11).
+describe('BringGamePicker — the selected tick ink (88.9 F4b)', () => {
+  it('selected checkbox glyph takes the on-accent ink (88.9 F4b)', async () => {
+    const user = userEvent.setup();
+    render(<Host initiallyOpen />);
+    const catan = await settleOnRows();
+    await user.click(catan);
+    expect(catan).toHaveAttribute('aria-checked', 'true');
+    const tick = catan.querySelector('path[d="M5 13l4 4L19 7"]')?.closest('svg');
+    expect(tick, 'the selected row renders its tick glyph').toBeTruthy();
+    const cls = tick?.getAttribute('class') ?? '';
+    expect(cls).toContain('text-on-accent');
+    expect(cls).not.toContain('text-white');
+  });
+});
