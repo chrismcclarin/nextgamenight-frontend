@@ -10,7 +10,8 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
      and inside the viewport width, the notice sits above the page heading, and nothing scrolls
      sideways.
    - Test 2 (a 401, an access answer): the page keeps its one level-1 heading above the full banner;
-     `Try again` is at least 44 x 44 and inside the viewport width; nothing scrolls sideways.
+     its Sign in link is at least 44 x 44 and inside the viewport width; nothing scrolls sideways.
+     AMENDED Phase 88.9-26 (O22d): a 401 banner offers Sign in in place of Try again.
    A failed layout assertion is a STOP for the owner's mockup (88.6.1-70 contract C8 d), never an
    ad-hoc restyle.
 
@@ -165,23 +166,27 @@ test.describe('Profile identity refresh (88.6.1-79)', () => {
     expect(routes.aborted(), 'no unexpected write was attempted').toBe(0);
   });
 
+  // AMENDED Phase 88.9-26 (O22d): the 401 banner's control is a Sign in link in place of Try again,
+  // so the 44 x 44 fit and the heading-above check move onto it, and Try again must be absent.
   test('an access answer on the identity refresh keeps the page heading above the banner (88.6.1-79)', async ({ page }) => {
     const routes = await armIdentityRefresh(page, 401);
     await startEmailChange(page, routes);
 
     const h1 = page.getByRole('heading', { level: 1 });
     const headerCard = page.locator('.card').filter({ has: h1 });
-    const tryAgain = headerCard.getByRole('button', { name: 'Try again', exact: true });
-    await expect(tryAgain).toBeVisible({ timeout: 15_000 });
+    const signIn = headerCard.getByRole('link', { name: 'Sign in', exact: true });
+    await expect(signIn).toBeVisible({ timeout: 15_000 });
+    await expect(signIn).toHaveAttribute('href', /^\/api\/auth\/login\?returnTo=%2FuserProfile/);
+    await expect(headerCard.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0);
     await expect(page.getByText(RF1, { exact: true })).toHaveCount(0);
     await expect(h1).toHaveCount(1);
     await expect(h1).toBeVisible();
 
-    await expectFitsPhone(page, tryAgain);
+    await expectFitsPhone(page, signIn);
     const headingBox = await h1.boundingBox();
-    const tryAgainBox = await tryAgain.boundingBox();
-    expect(headingBox && tryAgainBox, 'both the heading and Try again have layout boxes').toBeTruthy();
-    expect(headingBox!.y).toBeLessThan(tryAgainBox!.y);
+    const signInBox = await signIn.boundingBox();
+    expect(headingBox && signInBox, 'both the heading and Sign in have layout boxes').toBeTruthy();
+    expect(headingBox!.y).toBeLessThan(signInBox!.y);
     await expectNoSidewaysScroll(page);
 
     expect(routes.aborted(), 'no unexpected write was attempted').toBe(0);
