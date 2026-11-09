@@ -1890,6 +1890,32 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
       probe.computed['box-shadow'].raw,
       'home card (Req 3, dark) — `--shadow-sm` paints nothing in BOTH themes (src/app/globals.css ("DECISION Phase 88.3 (Req 3 / UI-SPEC") light, src/app/globals.css ("AMENDED Phase 88.6-05 (N1): the DARK half") dark)'
     );
+
+    // Owner add-on ruling (2026-11-08, 88.9-RULINGS.md Q2 ADD-ON; UI-SPEC R2-02 amended): on the
+    // tinted no-image home card in DARK mode the Last Game row and its date take the title's ink
+    // (the --t-color pole) instead of the preset's dark inks, so the card reads in one treatment in
+    // dark as it already does in light. The coloured group carries no image here (W50 arm).
+    await test.step("Q2 add-on (88.9-27): the coloured card's Last Game row and date take the title's ink and clear 4.5", async () => {
+      const coloured = await patchColouredGroup(page, {});
+      const listRead = page.waitForResponse(isGroupListRead);
+      await page.goto('/');
+      await listRead;
+      await assertTheme(page, 'dark');
+      const name = coloured.name();
+      const colouredHome = colouredCard(page, name);
+      const title = colouredHome.getByRole('heading', { name, exact: true });
+      await expect(title, 'Q2 add-on: the coloured card title is not visible').toBeVisible({ timeout: 15_000 });
+      const label = colouredHome.getByText('Last Game:', { exact: true });
+      const row = label.locator('xpath=ancestor::div[1]');
+      const date = row.locator(':scope > span').last();
+      const titleInk = (await probeElement(title, ['color'])).computed['color']?.css ?? null;
+      const rowInk = (await probeElement(row, ['color'])).computed['color']?.css ?? null;
+      const dateInk = (await probeElement(date, ['color'])).computed['color']?.css ?? null;
+      expect.soft(rowInk, `Q2 add-on: the Last Game row ink ${rowInk} is not the title ink ${titleInk} in dark`).toBe(titleInk);
+      expect.soft(dateInk, `Q2 add-on: the Last Game date ink ${dateInk} is not the title ink ${titleInk} in dark`).toBe(titleInk);
+      expectRatio('Q2 add-on: Last Game row on the coloured card (dark)', await ratioAgainstGround(row, 'Q2 add-on: Last Game row (dark)'), AA_TEXT);
+      expectRatio('Q2 add-on: Last Game date on the coloured card (dark)', await ratioAgainstGround(date, 'Q2 add-on: Last Game date (dark)'), AA_TEXT);
+    });
   });
 
   test('create-event scheduler: the today number and the nested block hold in dark', async ({ page }) => {
