@@ -1214,10 +1214,12 @@ describe('Phase 88.6-30 task 3 — the primitives sweep (D-30, one pass)', () =>
     expect(btn.className).not.toMatch(/\bp[xy]-\d/);
   });
 
-  it('renders the destructive consequence copy at Body 16, not Label 14 (rule R2)', async () => {
-    // This is the text a user reads before permanently deleting their account. Under R2 it
-    // is running prose and goes to 16 — getting it wrong makes the most consequential text
-    // in the app smaller.
+  it('E5b (88.9): the three consequence paragraphs render at Label 14, not Body 16', async () => {
+    // AMENDED Phase 88.9-34 (owner pick E5b, 88.9-PICKS-B4.json, 2026-11-06): the owner chose
+    // fit-on-one-screen at 375x667 over Body 16. At 16/24 the delete-state dialog scrolled 32px
+    // and put the confirm field under the footer line; at 14/20 it fits. The rendered no-scroll
+    // check is e2e/account-delete-pending.spec.ts (E5b). The blocked branch and the card lede
+    // are not the picked state and stay Body 16.
     mockGetBlockers.mockResolvedValue({ groups: [] });
     const user = userEvent.setup();
     render(<DangerZoneDeleteAccount />);
@@ -1225,11 +1227,13 @@ describe('Phase 88.6-30 task 3 — the primitives sweep (D-30, one pass)', () =>
     await waitFor(() => expect(confirmInput()).not.toBeDisabled());
 
     const lead = screen.getByText(/This permanently deletes your account/i);
-    expect(lead).toHaveClass('text-base');
+    expect(lead).toHaveClass('text-sm');
+    expect(lead).not.toHaveClass('text-base');
     const consequences = screen.getByText(
       /The following are permanently destroyed/i
     ).parentElement as HTMLElement;
-    expect(consequences).toHaveClass('text-base');
+    expect(consequences).toHaveClass('text-sm');
+    expect(consequences).not.toHaveClass('text-base');
     // The field label stays at Label 14 — a `<label>` is not running prose.
     expect(screen.getByText(/To confirm, type/i)).toHaveClass('text-sm');
   });
