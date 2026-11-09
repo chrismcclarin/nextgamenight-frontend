@@ -737,34 +737,55 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     infoSpy.mockRestore();
   });
 
+  // AMENDED Phase 88.9-26 (O22d): a 401 banner shows Sign in in place of Try again, so this test
+  // now pins the Sign in link and no Try again, and drives the recovery by tab returns (the real
+  // trigger while the banner replaces the page) instead of Try again presses.
   it('MB-7. a 401 members refresh replaces the loaded page with the group banner until a load succeeds (C10)', async () => {
-    await renderHeaderAt('owner', { inMain: true });
-    expect(screen.getByText(/2 members/)).toBeInTheDocument();
-    const err = new ApiError('Unauthorized', 'unauthorized', 401);
-    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
-    await act(async () => {
-      await h.manageMembersProps!.onMembersUpdated();
-    });
-    await screen.findAllByText(G7);
-    expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/2 members/)).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
-    expect(pushSpy).not.toHaveBeenCalled();
-    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    window.history.pushState({}, '', '/groupHomePage?id=GROUP1');
+    try {
+      await renderHeaderAt('owner', { inMain: true });
+      expect(screen.getByText(/2 members/)).toBeInTheDocument();
+      const err = new ApiError('Unauthorized', 'unauthorized', 401);
+      (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
+      await act(async () => {
+        await h.manageMembersProps!.onMembersUpdated();
+      });
+      await screen.findAllByText(G7);
+      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+        'href',
+        '/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1'
+      );
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.queryByText(/2 members/)).toBeNull();
+      expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
+      expect(pushSpy).not.toHaveBeenCalled();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
 
-    const user = userEvent.setup();
-    const callsBefore = membersCalls();
-    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(internal());
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(membersCalls()).toBe(callsBefore + 1));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument());
-    expect(screen.getAllByText(G7).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/2 members/)).toBeNull();
+      // A tab return whose load fails keeps the banner (C10); that failure is not a 401, so the
+      // banner's control is Try again again.
+      const callsBefore = membersCalls();
+      (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(internal());
+      await act(async () => {
+        fireVisibility('visible');
+      });
+      await waitFor(() => expect(membersCalls()).toBe(callsBefore + 1));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument());
+      expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
+      expect(screen.getAllByText(G7).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/2 members/)).toBeNull();
 
-    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('link', { name: 'Plan Game Session' });
-    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+      // A second tab return whose load succeeds brings the page back.
+      (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
+      await act(async () => {
+        fireVisibility('visible');
+      });
+      await screen.findByRole('link', { name: 'Plan Game Session' });
+      expect(screen.getByText(/2 members/)).toBeInTheDocument();
+      expect(membersCalls()).toBe(callsBefore + 2);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
   });
 
   // A-57 (88.6.1 code review): each slot's error and the membership check belong to the group they
