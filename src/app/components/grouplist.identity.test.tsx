@@ -9,7 +9,7 @@
 // Follows the established `<name>.identity.test.tsx` convention
 // (groupHomePage.identity.test.tsx shows the useSelfIdentity mocking approach).
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -388,5 +388,71 @@ describe('D-37 — the home list refreshes in place (Req 9)', () => {
     await waitFor(() => expect(titleBlock('Zeta Crew')).toBeInTheDocument());
 
     expect(screen.queryByRole('button', { name: 'Alpha Crew' })).toBeNull();
+  });
+});
+
+// Owner ruling 88.9-RULINGS.md R-P4 (2026-11-08, MED-66 option A): with the photo dim gone (O21b),
+// every un-outlined word on a photo card needs a guaranteed treatment. On the image arm (coloured or
+// not, both themes) the Last Game row, its date and its label take the title's O02d1 outline
+// utilities; a plain card keeps the content tokens. The utilities resolve to the outline because the
+// card root carries the image arm's --t-* values (src/lib/colorUtils.js ("const STROKE_OUTLINE =")).
+describe("R-P4 (88.9-27): a photo card's secondary row takes the title's outline treatment", () => {
+  const R_P4 =
+    '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] ' +
+    '[paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] ' +
+    'dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)]';
+  const PHOTO = 'https://example.test/photo.png';
+  const getUserGroups = () => groupsAPI.getUserGroups as Mock;
+
+  beforeEach(() => {
+    getUserGroups().mockReset();
+    h.selfUuid = SELF_UUID;
+  });
+
+  const partsOf = (name: string) => {
+    const card = screen.getByRole('button', { name }).closest('[data-testid="group-card"]') as HTMLElement | null;
+    expect(card, `${name}: no group card found`).not.toBeNull();
+    const label = within(card!).getByText('Last Game:', { exact: true });
+    const row = label.closest('div') as HTMLElement;
+    const date = row.lastElementChild as HTMLElement;
+    return { card: card!, label, row, date };
+  };
+
+  it('R-P4. on a photo card the Last Game row, date and label take the O02d1 outline utilities in both themes; a plain card keeps the content tokens', async () => {
+    getUserGroups().mockResolvedValueOnce([
+      { ...crew('g-photo', 'Photo Crew'), background_image_url: PHOTO },
+      { ...crew('g-tint', 'Tint Crew'), color_preset: 'blue', background_image_url: PHOTO },
+      crew('g-plain', 'Plain Crew'),
+    ]);
+    render(<GroupList {...listProps} />);
+    await screen.findByRole('button', { name: 'Plain Crew' });
+
+    // Anti-vacuity: the coloured photo card really is on the tinted arm, so "the image wins over a
+    // stored colour" is exercised, not assumed.
+    expect(partsOf('Tint Crew').card.className, 'Tint Crew did not resolve a tinted ground').toContain(
+      'bg-[var(--group-ground-light)]',
+    );
+
+    for (const name of ['Photo Crew', 'Tint Crew']) {
+      const { card, label, row, date } = partsOf(name);
+      for (const [part, el] of [['row', row], ['date', date]] as const) {
+        expect(el.className, `${name}: the ${part} lost the O02d1 outline utilities`).toContain(R_P4);
+        for (const old of ['text-content-secondary', 'text-content-muted', 'var(--group-ink']) {
+          expect(el.className, `${name}: the ${part} still carries ${old}`).not.toContain(old);
+        }
+      }
+      expect(label.hasAttribute('class'), `${name}: the label kept a class and will not inherit the outline`).toBe(false);
+      expect(card.outerHTML, `${name}: the card root does not carry the O02d1 paint-order value`).toContain(
+        '--t-paint-l: stroke fill',
+      );
+    }
+
+    const plain = partsOf('Plain Crew');
+    expect(plain.row.className).toContain('text-content-secondary');
+    expect(plain.date.className).toContain('text-content-muted');
+    expect(plain.label.className).toContain('text-content-primary');
+    for (const el of [plain.row, plain.date, plain.label]) {
+      expect(el.className, 'Plain Crew picked up the photo-arm outline utilities').not.toContain(R_P4);
+    }
   });
 });

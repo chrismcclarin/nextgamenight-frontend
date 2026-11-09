@@ -1184,6 +1184,23 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     ]) {
       expect(title!.text, `the h1 lost its ${util} utility`).toContain(util);
     }
+
+    // AMENDED Phase 88.9-27 (owner ruling O21b / pick O02d1): the h1 AND the stats line read the
+    // paint-order pair beside the stroke pair, so the image arm's 1.5px outline is painted BEFORE
+    // the fill (outside the glyph). Every className expression carrying the light stroke utility
+    // must carry both halves; a no-image header reads them as normal (the pair is absent there).
+    const strokeCarriers = attrExprs(src, 'className').filter((e) =>
+      e.text.includes('[-webkit-text-stroke:var(--t-stroke-l)]'),
+    );
+    expect(strokeCarriers.length, 'the h1 and the stats line no longer both carry the stroke pair').toBeGreaterThanOrEqual(2);
+    for (const e of strokeCarriers) {
+      expect(e.text, 'a stroke-carrying header element lost the light paint-order utility').toContain(
+        '[paint-order:var(--t-paint-l,normal)]',
+      );
+      expect(e.text, 'a stroke-carrying header element lost the dark paint-order utility').toContain(
+        'dark:[paint-order:var(--t-paint,normal)]',
+      );
+    }
   });
 
   it('14. GATE B — the dim is three explicit cases and the 0.15 is never inline', () => {
@@ -1212,12 +1229,15 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       'dark:bg-black/15',
     );
 
-    // Only the IMAGE case keeps an inline backgroundColor. An inline
-    // `'transparent'` on the same property would outrank the `dark:` class and
-    // silently delete the dark dim in both themes.
-    expect(src, 'the photo dim is gone — it is needed in BOTH themes').toContain('rgba(0, 0, 0, 0.4)');
+    // AMENDED Phase 88.9-27 (owner ruling O21b / pick O02d1): case (1) now paints NO dim; the
+    // photo shows at full strength and the title + stats carry their own 1.5px outline. So the
+    // inline 0.4 black is gone and the overlay carries no inline backgroundColor in ANY case. An
+    // inline 'transparent' on the same property would still outrank the dark class and silently
+    // delete the dark dim in both themes, so that negative stays.
+    expect(src, 'the inline 0.4 photo dim came back (O21b ruled no photo dim)').not.toContain('rgba(0, 0, 0, 0.4)');
     const style = attrExprs(src, 'style').find((e) => e.text.includes('borderRadius'));
     expect(style, 'the overlay style object was not found').toBeTruthy();
+    expect(style!.text, 'the overlay carries an inline backgroundColor again').not.toContain('backgroundColor');
     expect(style!.text, 'an inline 0.15 remains on the overlay').not.toContain('0.15');
     expect(style!.text, "an inline 'transparent' remains on the overlay").not.toContain(
       "'transparent'",
@@ -2057,8 +2077,13 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(rowTag, 'grouplist.js: the Last Game row is not on the card ink').toContain(
       'var(--group-ink-l,var(--t-color-l))',
     );
-    expect(rowTag, 'grouplist.js: the Last Game row has no dark arm').toContain(
-      'dark:[color:var(--group-ink,var(--t-color))]',
+    // AMENDED Phase 88.9-27 (owner by chat 2026-11-08, RULINGS Q2 add-on): the dark arm of the
+    // Last Game row and date is the title's --t-* trio, light unchanged.
+    expect(rowTag, 'grouplist.js: the Last Game row has no dark title-treatment arm').toContain(
+      'dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]',
+    );
+    expect(rowTag, 'grouplist.js: the Last Game row still takes the preset dark ink').not.toContain(
+      'dark:[color:var(--group-ink,',
     );
     // and the old predicate is GONE, not merely overridden
     expect(
@@ -2076,8 +2101,12 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(dateTag, 'grouplist.js: the date is not on the muted rung of the card ink').toContain(
       'var(--group-ink-muted-l,var(--t-color-l))',
     );
-    expect(dateTag, 'grouplist.js: the date has no dark arm').toContain(
-      'dark:[color:var(--group-ink-muted,var(--t-color))]',
+    // AMENDED Phase 88.9-27 (owner by chat 2026-11-08, RULINGS Q2 add-on): same trio on the date.
+    expect(dateTag, 'grouplist.js: the date has no dark title-treatment arm').toContain(
+      'dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]',
+    );
+    expect(dateTag, 'grouplist.js: the date still takes the preset muted dark ink').not.toContain(
+      'dark:[color:var(--group-ink-muted,',
     );
 
     // site 2 — EventDayModal's "Duration:" line. Pinned as an exact literal by

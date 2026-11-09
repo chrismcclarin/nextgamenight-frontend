@@ -302,13 +302,18 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
     expect(scheduler).toMatch(/today \? 'text-content-accent' : 'text-content-primary'/);
 
     const grouplist = fs.readFileSync(path.join(SRC, 'app/components/grouplist.js'), 'utf8');
-    expect(grouplist).toMatch(/bg-\[var\(--color-bg-overlay\)\]/);
-    // the image-only gate is part of the contract — a colour-only card must not get a dim.
-    // Wave-12 follow-up (owner-ruled 2026-08-21): the gate keys on the VALIDATED style
-    // (hasBgImage = !!safeBgImageStyle(...)), not the raw string — a truthy-but-invalid
-    // URL must not render the dim over no image (the walk's solid-black-card edge).
-    expect(grouplist).toMatch(/\{hasBgImage && \(/);
+    // AMENDED Phase 88.9-27 (owner ruling O21b / pick O02d1): the home card's photo dim is gone,
+    // so grouplist.js carries NO overlay-token wash and no image-gated dim block; the title and the
+    // stats row carry the paint-order pair instead, so the O02d1 outline is painted first. The
+    // overlay token itself stays (the tutorial scrim uses it), it is simply no longer on this card.
+    expect(grouplist).not.toMatch(/bg-\[var\(--color-bg-overlay\)\]/);
+    expect(grouplist).not.toMatch(/\{hasBgImage && \(/);
+    // The VALIDATED image flag is still the one every image treatment keys on (Wave-12
+    // follow-up, owner-ruled 2026-08-21; FSEC-03): never the raw string.
     expect(grouplist).toMatch(/const hasBgImage = !!bgImageStyle/);
+    expect(
+      grouplist.split('[paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]').length - 1,
+    ).toBeGreaterThanOrEqual(2);
 
     const member = fs.readFileSync(path.join(SRC, 'app/components/ClickableMemberName.js'), 'utf8');
     expect(member).toMatch(/rounded-full bg-surface-muted text-btn-primary/);
