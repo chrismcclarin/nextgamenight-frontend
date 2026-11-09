@@ -75,6 +75,11 @@
  * build plans land each halo, which a red e2e job already reports; the floor guards the eight being
  * deleted or skipped.
  *
+ * RAISED 38 -> 41, Phase 88.9-20, MEASURED 2026-11-08: npx playwright test --list --project=phone
+ * reports 41 tests in e2e/contrast.spec.ts, all of which execute in phone. The three new ones are the
+ * D12b line ink, the O20c error toast and the SPEC A7 #207 image-arm title outline, red by design
+ * until plans 88.9-43, -22 and -27 land; the floor guards the three being deleted or skipped.
+ *
  * GENERALISED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4). DECISION Phase
  * 88.6-55: optional flags on THIS script, chosen OVER a second floor script — two copies of the
  * same report walk is the duplication the milestone tenet forbids, and they would drift. The
@@ -106,7 +111,7 @@ import { pathToFileURL } from 'node:url';
 const REPORT = process.argv[2] ?? 'playwright-results.json';
 const SPEC = 'e2e/contrast.spec.ts';
 const PROJECT = 'phone';
-const FLOOR = 38;
+const FLOOR = 41;
 
 // Optional overrides (see the GENERALISED note above). Parsed strictly: fail closed.
 const KNOWN_FLAGS = {

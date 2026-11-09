@@ -1109,6 +1109,57 @@ async function openBrowseGames(page: Page): Promise<Locator> {
   return browse;
 }
 
+// The Games to Bring answers (e2e/games-to-bring-picker-phone.spec.ts shape): one owned game, no
+// brings yet, so the Bringing section shows its Add games control and the picker lists one row.
+const R2_OWNED_GAME = { id: 'e2e-bring-game-1', name: 'E2E Bring Game' };
+function answerBringReads(url: URL): unknown {
+  if (url.pathname.startsWith('/api/user-games/user/')) return [R2_OWNED_GAME];
+  if (url.pathname.startsWith('/api/event-brings/event/')) return [];
+  return undefined;
+}
+
+// SPEC A7 #207: a failing https image on the coloured group. The host is RFC 2606 .invalid and the
+// request is route-fulfilled 404, so the image fails exactly as the #207 walk group's does and no
+// remote host is ever reached.
+const R2_FAILED_IMAGE_URL = 'https://e2e-r2-207.invalid/failed-photo.png';
+
+/**
+ * The image-arm title outline (O02d1 / O21b), read on one title element.
+ *
+ * The ground read takes the BETTER of the outline colour and the fill against the ground, per
+ * theme. WCAG 1.4.3 Note 5 ("A narrow border around the letter would be used as the letter") reads
+ * a narrow outline as part of the glyph, and UI-SPEC (d) O-02 says one of the two colours clears
+ * the ground on every fill; on the blue fixture's dark ground a black outline reads 1.40 while the
+ * white fill reads 15.03, so an outline-only read could never pass. The fill must still separate
+ * from its own outline (>= 4.5). The width, paint-order and no-shadow checks are what keep this
+ * pin RED on today's 0.5px stroke with a heavy shadow.
+ */
+async function titleOutline(el: Locator, label: string): Promise<void> {
+  await expect(el, `${label}: the title is not visible`).toBeVisible({ timeout: 15_000 });
+  const p = await probeElement(el, ['color', '-webkit-text-stroke-color', '-webkit-text-stroke-width', 'paint-order', 'text-shadow']);
+  const widthRaw = p.computed['-webkit-text-stroke-width']?.raw ?? '';
+  expect
+    .soft(Number.parseFloat(widthRaw), `${label}: -webkit-text-stroke-width is ${JSON.stringify(widthRaw)}; the image-arm outline is at least 1.5px`)
+    .toBeGreaterThanOrEqual(1.5);
+  const paintOrder = (p.computed['paint-order']?.raw ?? '').trim();
+  expect.soft(paintOrder, `${label}: paint-order is ${JSON.stringify(paintOrder)}; the outline is drawn first, under the fill`).toMatch(/^stroke\b/);
+  const shadow = (p.computed['text-shadow']?.raw ?? '').trim();
+  expect.soft(shadow, `${label}: text-shadow is ${JSON.stringify(shadow)}; the outline replaces the shadow`).toBe('none');
+  const outline = await ratioAgainstGround(el, `${label} — outline colour`, '-webkit-text-stroke-color');
+  const fill = await ratioAgainstGround(el, `${label} — fill`, 'color');
+  const better = Math.max(outline.ratio, fill.ratio);
+  expect
+    .soft(
+      better,
+      `${label}: the better of outline ${outline.fg} (${outline.ratio.toFixed(3)}:1) and fill ${fill.fg} (${fill.ratio.toFixed(3)}:1) on the ground ${fill.ground} is ${better.toFixed(3)}:1, floor ${AA_TEXT}:1`
+    )
+    .toBeGreaterThanOrEqual(AA_TEXT);
+  const fillVsOutline = contrastRatio(fill.fg, outline.fg) ?? 0;
+  expect
+    .soft(fillVsOutline, `${label}: fill ${fill.fg} vs outline ${outline.fg} measured ${fillVsOutline.toFixed(3)}:1, floor ${AA_TEXT}:1`)
+    .toBeGreaterThanOrEqual(AA_TEXT);
+}
+
 test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
   // Pitfall 4: `colorScheme` is ORTHOGONAL to the theme class. playwright.config.ts ("DECISION Phase 87.7 D-11: pin dark")
   // and playwright.config.ts ("same D-11 reasoning as journeys") pin `colorScheme: 'dark'` on both projects and carry a D-11 marker saying
@@ -2395,6 +2446,132 @@ test.describe('Req 11 Gate C — round 2 pins (88.9 R2), both themes per test', 
       await expect(increase, `R2-30 (${theme}): the Increase player count stepper is not visible`).toBeVisible();
       await increase.focus();
       await offsetRingBand(page, increase, `Browse Games stepper ring on the elevated ground (R2-30, B7a, ${theme})`);
+    });
+  });
+  test('D12b (88.9): failed-save line ink ≥ 4.5', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, { answerGet: answerBringReads });
+    await injectViewerYesRsvp(page);
+    // The forced failure, registered AFTER the hold so it sees the PUT first (the tz-answer
+    // ordering above). The PUT is a full replace of the viewer's brings; it never lands.
+    await page.route(
+      (url) => url.pathname.endsWith('/my-brings'),
+      async (route) => {
+        if (route.request().method() !== 'PUT') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({ status: 500, json: { error: 'E2E forced save failure' } });
+      }
+    );
+    await inBothThemes(page, 'D12b failed-save line (R2-16)', async (theme) => {
+      await page.goto(E2E_EVENT_DETAIL_PATH);
+      await assertTheme(page, theme);
+      const heading = page.getByRole('heading', { name: 'Bringing', exact: true });
+      await expect(heading, `D12b (${theme}): the Bringing section never rendered — its brings read is answered [] in the browser`).toBeVisible({ timeout: 15_000 });
+      const control = heading.locator('xpath=..').getByRole('button', { name: 'Add games', exact: true });
+      await expect(control, `D12b (${theme}): no Add games control — it shows only for a viewer whose RSVP reads yes with no brings`).toBeVisible();
+      await control.tap();
+      const dialog = page.getByRole('dialog', { name: 'Games to Bring', exact: true });
+      await expect(dialog, `D12b (${theme}): Add games did not open Games to Bring`).toBeVisible({ timeout: 10_000 });
+      const row = dialog.getByRole('checkbox', { name: R2_OWNED_GAME.name, exact: true });
+      await expect(row, `D12b (${theme}): the owned game row never rendered`).toBeVisible({ timeout: 10_000 });
+      await row.tap();
+      await expect(row, `D12b (${theme}): a tap on the game row did not check it`).toHaveAttribute('aria-checked', 'true');
+      await dialog.getByRole('button', { name: 'Save', exact: true }).tap();
+      const alert = dialog.getByRole('alert');
+      await expect(alert, `D12b (${theme}): the failed save never reached the assertive region`).toHaveText(/\S/, { timeout: 15_000 });
+      const sentence = ((await alert.textContent()) ?? '').trim();
+      const line = dialog
+        .getByText(sentence, { exact: true })
+        .and(dialog.locator(':not([role]):not([aria-live]):not(.sr-only)'))
+        .first();
+      await expect(line, 'D12b: no visible failure line carries the announced sentence (R2-16 — the sr-only region alone is what shipped)').toBeVisible();
+      const box = await line.boundingBox();
+      expect.soft(box?.width ?? 0, `D12b (${theme}): the failure line box is ${box?.width}px wide — not larger than 1x1`).toBeGreaterThan(1);
+      expect.soft(box?.height ?? 0, `D12b (${theme}): the failure line box is ${box?.height}px tall — not larger than 1x1`).toBeGreaterThan(1);
+      const label = `D12b failed-save line ink on its composited ground (R2-16, ${theme})`;
+      const m = await ratioAgainstGround(line, label);
+      expect.soft(m.ratio, describeRatio(label, AA_TEXT, m)).toBeGreaterThanOrEqual(AA_TEXT);
+      await page.keyboard.press('Escape');
+      await expect(dialog, `D12b (${theme}): Escape did not close Games to Bring before the next arm`).toBeHidden();
+    });
+  });
+
+  test('O20c (88.9): error toast ≥ 4.5 both themes', async ({ page }) => {
+    test.slow();
+    // DECISION Phase 88.9-20 (O20c OS-light arm): the OS is emulated LIGHT in both arms, chosen OVER
+    // matching the OS to each theme — Sonner's theme=system follows the OS, so the app-dark/OS-light
+    // arm is the mismatch the round-2 research measured and the one an app-theme fix must close.
+    await page.emulateMedia({ colorScheme: 'light' });
+    await holdWrites(page, {});
+    // The timezone write, answered 500 by a route registered AFTER the hold (the tz-answer reason
+    // above): it never lands, and the provider's catch raises the error toast.
+    await page.route(
+      (url) => /\/users\/[^/]+\/timezone$/.test(url.pathname),
+      async (route) => {
+        const method = route.request().method();
+        if (method === 'GET' || method === 'HEAD') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({ status: 500, json: { error: 'E2E forced timezone failure' } });
+      }
+    );
+    await inBothThemes(page, 'O20c error toast (O-20)', async (theme) => {
+      await page.goto('/userProfile');
+      await assertTheme(page, theme);
+      const field = page.getByRole('combobox', { name: 'Timezone' });
+      await expect(field, `O20c (${theme}): the Timezone field is not visible`).toBeVisible({ timeout: 15_000 });
+      const list = page.getByRole('listbox', { name: 'Timezones' });
+      const active = list.locator('[role="option"][aria-selected="true"]');
+      // The timezoneRowCue fixed-zone selection: constants only, never page text.
+      await field.click();
+      await field.fill('Los Angeles');
+      await expect(list.getByRole('option'), `O20c (${theme}): the fixed query did not filter to one option`).toHaveCount(1);
+      await field.press('ArrowDown');
+      await expect(active, `O20c (${theme}): ArrowDown did not activate the filtered option`).toHaveCount(1);
+      await field.press('Enter');
+      const toast = page.locator('[data-sonner-toast][data-type="error"]').filter({ hasText: 'Failed to save your timezone' });
+      await expect(toast, `O20c (${theme}): the failed timezone save raised no error toast`).toBeVisible({ timeout: 15_000 });
+      const title = toast.locator('[data-title]');
+      const label = `O20c error toast title ink (${theme}, OS light)`;
+      const m = await ratioAgainstGround(title, label);
+      expect.soft(m.ratio, describeRatio(label, AA_TEXT, m)).toBeGreaterThanOrEqual(AA_TEXT);
+      const painted = await probeElement(toast, ['background-color', 'color']);
+      const tokens = await probeElement(page.locator('html'), ['--color-status-error-subtle', '--color-status-error-text']);
+      const subtle = tokens.computed['--color-status-error-subtle'];
+      const ink = tokens.computed['--color-status-error-text'];
+      expect(subtle?.css ?? null, `O20c (${theme}): --color-status-error-subtle did not normalise (raw ${JSON.stringify(subtle?.raw)}) — a probe failure`).not.toBeNull();
+      expect(ink?.css ?? null, `O20c (${theme}): --color-status-error-text did not normalise (raw ${JSON.stringify(ink?.raw)}) — a probe failure`).not.toBeNull();
+      const message = `the error toast does not paint the app's status-error tokens in ${theme}`;
+      expect
+        .soft(painted.computed['background-color']?.css ?? null, `O20c: ${message} (background ${painted.computed['background-color']?.raw} vs --color-status-error-subtle ${subtle?.css})`)
+        .toBe(subtle?.css ?? null);
+      expect
+        .soft(painted.computed['color']?.css ?? null, `O20c: ${message} (color ${painted.computed['color']?.raw} vs --color-status-error-text ${ink?.css})`)
+        .toBe(ink?.css ?? null);
+    });
+  });
+
+  test('A7 #207 (88.9): image-arm title outline ≥ 4.5 on header and card', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    const coloured = await patchColouredGroup(page, { imageUrl: R2_FAILED_IMAGE_URL });
+    await page.route('https://e2e-r2-207.invalid/**', async (route) => {
+      await route.fulfill({ status: 404, body: '' });
+    });
+    await inBothThemes(page, 'A7 #207 image-arm title outline (O02d1 / O21b)', async (theme) => {
+      await page.goto(`/groupHomePage?id=${E2E_COLOURED_GROUP_ID}`);
+      await assertTheme(page, theme);
+      await titleOutline(page.getByRole('heading', { level: 1 }), `A7 #207 group header title (${theme})`);
+
+      const listRead = page.waitForResponse(isGroupListRead);
+      await page.goto('/');
+      await listRead;
+      await assertTheme(page, theme);
+      const name = coloured.name();
+      await titleOutline(colouredCard(page, name).getByRole('heading', { name, exact: true }), `A7 #207 home card title (${theme})`);
     });
   });
 });
