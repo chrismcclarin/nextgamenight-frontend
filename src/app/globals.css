@@ -385,6 +385,26 @@
      measurement's label would turn a true statement about what was measured then into a false one.
      Only pointers that direct a reader AT a live declaration or a live call site were amended. */
   --color-surface-muted: var(--color-bg-muted);
+  --color-surface-tile: var(--color-bg-tile);
+  --color-surface-tile-past: var(--color-bg-tile-past);
+  /* DECISION Phase 88.9-22 C2a / B2a: --color-surface-overlay points at the one scrim token, chosen
+     OVER the literal bg-[var(--color-bg-overlay)] (CR2-14; the build contract names
+     bg-surface-overlay). --color-surface-group-halo reads the host-set --group-halo and falls back
+     to --color-bg-card, chosen OVER no fallback (an unset variable invalidates the ring shadow and
+     the focus ring vanishes) and OVER a dark:-prefixed halo on Button (shared halo constraint 2:
+     the dark-on-Button cascade is unsettled). Hosts set --group-halo; controls take
+     ring-offset-surface-group-halo. */
+  --color-surface-overlay: var(--color-bg-overlay);
+  --color-surface-group-halo: var(--group-halo, var(--color-bg-card));
+  --color-chip-1: var(--color-member-chip-1);
+  --color-chip-2: var(--color-member-chip-2);
+  --color-chip-3: var(--color-member-chip-3);
+  --color-chip-4: var(--color-member-chip-4);
+  --color-chip-5: var(--color-member-chip-5);
+  --color-chip-6: var(--color-member-chip-6);
+  --color-chip-7: var(--color-member-chip-7);
+  --color-chip-8: var(--color-member-chip-8);
+  --color-chip-rim: var(--color-member-chip-rim);
   --color-surface-elevated: var(--color-bg-elevated);
   --color-surface-input: var(--color-bg-input);
   /* Phase 88.3 (D-02 / D-03, UI-SPEC §9.4): the two new surfaces, bridged in the house shape —
@@ -966,8 +986,32 @@
      `--color-bg-card-hover` until 88.6-02 (D-15); value byte-unchanged). */
   --color-bg-hover: var(--warm-50);
   --color-bg-sunken: var(--warm-50);
+  /* DECISION Phase 88.9-22 C3 (owner pick C3, 88.9-PICKS-B7A.json, CS-04): soft day tiles — the
+     tile is 55% and the past tile 28% of --color-bg-muted over --color-bg-card, written as literal
+     hexes per theme (dark pair in .dark), chosen OVER the collapsed 1px / 2px outline grid and the
+     hairline grid (CS-04 arms b and d) and OVER an inline color-mix(), which the Gate A resolver
+     cannot evaluate. A tile is a fill, not a control boundary: no 3:1 floor (1.24 light / 1.12 dark
+     against the card). Changing one hex without re-deriving it from the muted and card values is a
+     decision, not a cleanup. */
+  --color-bg-tile: #ebe6e0;
+  --color-bg-tile-past: #f5f2ef;
   --color-bg-elevated: #ffffff;
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  /* DECISION Phase 88.9-22 D1b / D3c (owner picks D1b votes-b3 v12 and D3c votes-b3a v2,
+     2026-11-05): eight theme-identical *-700 chip fills with white ink (5.02 minimum, green-700) and
+     a dark separation rim, purple-800 light / purple-950 dark, chosen OVER the shipped bg-white/85
+     tinted arm (dark initials 1.07) and OVER the page-3 D3a tap. The runtime names carry member-
+     because an @theme inline key pointing at its own name is a literal self-reference that emits
+     nothing. The rim is a separation edge with no floor. */
+  --color-member-chip-1: #b91c1c;
+  --color-member-chip-2: #c2410c;
+  --color-member-chip-3: #b45309;
+  --color-member-chip-4: #15803d;
+  --color-member-chip-5: #0f766e;
+  --color-member-chip-6: #0369a1;
+  --color-member-chip-7: #6d28d9;
+  --color-member-chip-8: #be185d;
+  --color-member-chip-rim: var(--purple-800);
   --color-bg-input: #ffffff;
   /* DECISION Phase 88-04 (D-15 / UI-SPEC §9.1): the EmptyState glyph circle gets its OWN accent
      tint token rather than reusing `--color-status-warning-subtle` (#f9ebda light / #423e36 dark,
@@ -1856,8 +1900,13 @@
      indistinguishable from the page and the three-surface ladder collapses back to two. Rounding
      this onto a neighbouring palette step is a decision, not a cleanup. */
   --color-bg-sunken: #1c2432;
+  /* Phase 88.9-22 C3: the dark tile pair — see the DECISION marker at the light declaration. */
+  --color-bg-tile: #2a3548;
+  --color-bg-tile-past: #263143;
   --color-bg-elevated: var(--purple-800);
   --color-bg-overlay: rgba(0, 0, 0, 0.7);
+  /* Phase 88.9-22 D3c: only the rim forks; the eight fills are theme-identical and inherit. */
+  --color-member-chip-rim: var(--purple-950);
   --color-bg-input: var(--purple-800);
   /* Phase 88-04 (D-15 / UI-SPEC §9.1) — OPAQUE literal, matching 88-01's D-32/D-33 treatment of
      the status tints: an `rgba()` amber over the card would shift with whatever sits behind it.
@@ -2403,6 +2452,20 @@ body {
   padding: 0.5rem 1rem;
   transition: var(--theme-transition);
   cursor: pointer;
+}
+
+/* DECISION Phase 88.9-22 O20c (owner direction 8b, confirmed page 9, 88.9-PICKS-B8B.json): the
+   Sonner rich error toast reads the status-error family. UNLAYERED on purpose: Sonner injects its
+   sheet at runtime, unlayered, so any rule inside a cascade layer loses to it whatever its
+   specificity; the selector is 0,3,0 against Sonner's 0,2,0 theme rule. Chosen OVER
+   toastOptions.classNames (every toast type would need it and the class must still out-rank
+   Sonner's attribute rule). The tokens fork on the .dark class, so the error toast follows the APP
+   theme although theme="system" follows the OS. Moving this into a layer or lowering the selector
+   is a decision, not a cleanup. */
+:root [data-sonner-toaster][data-sonner-theme] {
+  --error-bg: var(--color-status-error-subtle);
+  --error-border: var(--color-status-error-border);
+  --error-text: var(--color-status-error-text);
 }
 
 /* DECISION Phase 88.6-05 (W19): `.btn`'s `border: none` RESET — and ONLY that one declaration —

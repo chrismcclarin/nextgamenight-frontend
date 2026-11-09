@@ -334,7 +334,7 @@ function lStarOf(hex: string, what: string): number {
  *
  * Assertions here compare against FLOORS, never against a hex, so a future re-tint that
  * still clears its floor does not churn this file (e2e/tailwind-v4-styles.spec.ts ("every assertion pins WHICH PROPERTY is")).
- * The five deliberate exceptions are marked at their sites.
+ * The nine deliberate exceptions are marked at their sites.
  */
 function expectRatio(theme: Theme, ink: string, ground: string, floor: number, req: string): number {
   const inkHex = resolve(theme, ink);
@@ -1962,6 +1962,88 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       darkHover,
       `88.9 O23b — the dark error hover (${darkHover}) must stay distinct from the dark resting ground (${darkResting}), or hover paints no change`,
     ).not.toBe(darkResting);
+  });
+  it('58. C3 (88.9): the plain, today and next-month day-number inks clear 4.5:1 on their tile grounds in both themes', () => {
+    // Deliberate hex exception (the sixth): SPEC R4 token pin — the tiles ARE owner pick C3 (88.9-PICKS-B7A.json); tile vs card 1.24 light / 1.12 dark is a fill, not a control boundary, so no 3:1 row.
+    // The tile is 55% and the past tile 28% of the muted fill over the card, written as literal hexes per theme. The blend check below holds that derivation, so a hand-nudged hex reds here.
+    const PICK = { light: { tile: '#ebe6e0', past: '#f5f2ef' }, dark: { tile: '#2a3548', past: '#263143' } } as const;
+    for (const theme of ['light', 'dark'] as const) {
+      const tile = resolve(theme, '--color-bg-tile');
+      const past = resolve(theme, '--color-bg-tile-past');
+      expect(tile, `88.9 C3 — [${theme}] --color-bg-tile resolves ${tile}; the owner pick C3 is ${PICK[theme].tile}`).toBe(PICK[theme].tile);
+      expect(past, `88.9 C3 — [${theme}] --color-bg-tile-past resolves ${past}; the owner pick C3 is ${PICK[theme].past}`).toBe(PICK[theme].past);
+      const muted = resolve(theme, '--color-bg-muted');
+      const card = resolve(theme, '--color-bg-card');
+      expect(blend(muted, 0.55, card), `88.9 C3 — [${theme}] the tile must be 55% of the muted fill (${muted}) over the card (${card})`).toBe(tile);
+      expect(blend(muted, 0.28, card), `88.9 C3 — [${theme}] the past tile must be 28% of the muted fill (${muted}) over the card (${card})`).toBe(past);
+      expectRatio(theme, '--color-text-primary', '--color-bg-tile', 4.5, '88.9 C3 plain day number');
+      expectRatio(theme, '--color-text-primary', '--color-bg-tile-past', 4.5, '88.9 C3 past day number');
+      expectRatio(theme, '--color-text-muted', '--color-bg-tile-past', 4.5, '88.9 C3 past muted ink');
+      expectRatio(theme, '--color-accent-text', '--color-bg-muted', 4.5, '88.9 C3 today');
+      expectRatio(theme, '--color-text-muted', '--color-bg-page', 4.5, '88.9 C3 next month');
+    }
+    const themeBlock = blockOf('theme');
+    expect(declIn(themeBlock, '--color-surface-tile'), '88.9 C3 — the @theme inline key --color-surface-tile must read var(--color-bg-tile)').toBe('var(--color-bg-tile)');
+    expect(declIn(themeBlock, '--color-surface-tile-past'), '88.9 C3 — the @theme inline key --color-surface-tile-past must read var(--color-bg-tile-past)').toBe('var(--color-bg-tile-past)');
+  });
+
+  it('59. D1b (88.9): white clears 4.5:1 on each of the eight chip fills in both themes', () => {
+    // Deliberate hex exception (the seventh): SPEC R4 token pin — the eight fills ARE owner pick D1b (votes-b3 v12), theme-identical, in this order. The minimum is green-700 (research 5.0156).
+    const D1B = ['#b91c1c', '#c2410c', '#b45309', '#15803d', '#0f766e', '#0369a1', '#6d28d9', '#be185d'] as const;
+    const themeBlock = blockOf('theme');
+    let min = Infinity;
+    D1B.forEach((hex, i) => {
+      const n = i + 1;
+      for (const theme of ['light', 'dark'] as const) {
+        const fill = resolve(theme, `--color-member-chip-${n}`);
+        expect(fill, `88.9 D1b — [${theme}] --color-member-chip-${n} resolves ${fill}; the owner pick D1b slot ${n} is ${hex}`).toBe(hex);
+        const value = ratioHex('#ffffff', fill, `88.9 D1b white on chip ${n}`);
+        min = Math.min(min, value);
+        expect(value, `88.9 D1b — [${theme}] white on --color-member-chip-${n} (${fill}) measures ${value.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(declIn(themeBlock, `--color-chip-${n}`), `88.9 D1b — the @theme inline key --color-chip-${n} must read var(--color-member-chip-${n})`).toBe(`var(--color-member-chip-${n})`);
+    });
+    expect(min, `88.9 D1b — the weakest white-on-fill pair (green-700) measures ${min.toFixed(4)}:1`).toBeGreaterThanOrEqual(5.0);
+  });
+
+  it('60. D3c (88.9): the chip rim is purple-800 light and purple-950 dark, a separation edge with no floor', () => {
+    // Deliberate hex exception (the eighth): SPEC R4 token pin — the rim IS owner pick D3c (votes-b3a v2). It is a separation edge between stacked chips, not text or a control boundary, so it carries no floor (light rim vs card 11.28).
+    const light = resolve('light', '--color-member-chip-rim');
+    const dark = resolve('dark', '--color-member-chip-rim');
+    expect(light, `88.9 D3c — light --color-member-chip-rim resolves ${light}; the owner pick D3c is purple-800 #2f3b50`).toBe('#2f3b50');
+    expect(dark, `88.9 D3c — dark --color-member-chip-rim resolves ${dark}; the owner pick D3c is purple-950 #161d29`).toBe('#161d29');
+    expect(declIn(blockOf('theme'), '--color-chip-rim'), '88.9 D3c — the @theme inline key --color-chip-rim must read var(--color-member-chip-rim)').toBe('var(--color-member-chip-rim)');
+  });
+
+  it('61. R2-36 + B2a (88.9): the overlay and group-halo surface keys are declared in @theme inline', () => {
+    // Deliberate hex exception (the ninth): the scrim is pinned VERBATIM (rgba, not flattened) because the key below only points at it; its alpha is the dialog's dim in each theme.
+    // The group-halo key falls back to the card: an unset --group-halo would otherwise invalidate the ring shadow and the focus ring would vanish.
+    const themeBlock = blockOf('theme');
+    expect(declIn(themeBlock, '--color-surface-overlay'), '88.9 R2-36 C2a — the @theme inline key --color-surface-overlay must read var(--color-bg-overlay) (CR2-14)').toBe('var(--color-bg-overlay)');
+    expect(declIn(themeBlock, '--color-surface-group-halo'), '88.9 B2a — the @theme inline key --color-surface-group-halo must read the host --group-halo with a card fallback').toBe('var(--group-halo, var(--color-bg-card))');
+    expect(resolve('light', '--color-bg-overlay'), '88.9 R2-36 — the light scrim').toBe('rgba(0, 0, 0, 0.5)');
+    expect(resolve('dark', '--color-bg-overlay'), '88.9 R2-36 — the dark scrim').toBe('rgba(0, 0, 0, 0.7)');
+  });
+
+  it('62. O20c (88.9): the Sonner error override exists once, unlayered, and reads the status-error family', () => {
+    // Sonner's theme rule is 0,2,0 and Sonner injects its sheet at runtime, unlayered, so a rule inside any @layer loses to it whatever its specificity. Ours is 0,3,0 and sits at brace depth 0.
+    // Comments are masked before counting, so the DECISION marker that names this selector in prose does not count.
+    const hits = [...MASKED.matchAll(/:root \[data-sonner-toaster\]\[data-sonner-theme\][ \t]*\{/g)];
+    expect(hits.length, `88.9 O20c — expected exactly ONE Sonner error override rule in globals.css (comments stripped), found ${hits.length}`).toBe(1);
+    const before = MASKED.slice(0, hits[0].index);
+    const depth = (before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length;
+    expect(depth, `88.9 O20c — the Sonner override is nested at brace depth ${depth}; it MUST be unlayered (depth 0)`).toBe(0);
+    const body = RAW.slice(hits[0].index, RAW.indexOf('}', hits[0].index));
+    for (const decl of [
+      '--error-bg: var(--color-status-error-subtle);',
+      '--error-border: var(--color-status-error-border);',
+      '--error-text: var(--color-status-error-text);',
+    ]) {
+      expect(body, `88.9 O20c — the Sonner override must declare ${decl}`).toContain(decl);
+    }
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-status-error-text', '--color-status-error-subtle', 4.5, '88.9 O20c toast ink');
+    }
   });
 });
 
