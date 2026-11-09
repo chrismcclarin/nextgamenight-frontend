@@ -10,6 +10,7 @@ import { Modal } from './Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { Icon } from '@/components/ui/Icon';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
@@ -596,7 +597,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
     const body = (
         <>
                     {/* Friends section */}
-                    <div className="p-5">
+                    <div className="p-4 md:p-5">
                         <Heading level={3} size="label" className="text-content-muted uppercase tracking-wide mb-3">
                             Your Friends
                         </Heading>
@@ -764,7 +765,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                     </div>
 
                     {/* Email invite section */}
-                    <div className="p-5">
+                    <div className="p-4 md:p-5">
                         {/* `id` CARRIED THROUGH THE MIGRATION (WCAG 4.1.2): the `<Input>` below is
                             `aria-labelledby="invite-by-email-heading"`, so this heading is that
                             field's ONLY accessible name. Dropping the `id` here leaves an input
@@ -985,7 +986,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             </div>
 
                             {/* QR Code section */}
-                            <div className="p-5">
+                            <div className="p-4 md:p-5">
                                 <Heading level={3} size="label" className="text-content-muted uppercase tracking-wide mb-3">
                                     Share QR Code
                                 </Heading>
@@ -1138,8 +1139,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                 and its bottom border, except two things kept on purpose for the
                 two-line title stack beside the 44px close: items-start (the close
                 stays on the first line instead of centring on two) and gap-3 (the
-                Modal header carries no gap). The title is still the DialogTitle so
-                Radix keeps auto-wiring `aria-labelledby`.
+                Modal header carries no gap). AMENDED Phase 88.9-29 (owner pick E8b,
+                88.9-PICKS-B4.json, 2026-11-06): items-center now —
+                DECISION Phase 88.9-29 E8b: the close centres on the whole title block,
+                chosen OVER the title-line offset (E8a, the close on the first line), so
+                the X sits 11px below the title line, the same as every Modal header.
+                gap-3 stays. The title is still the DialogTitle so Radix keeps
+                auto-wiring `aria-labelledby`.
 
                 DECISION Phase 88.6.1-27 (R7-M5): this header shipped with fixed
                 padding — 24px on each side and 20px top and bottom at every width —
@@ -1150,7 +1156,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                 keeping the fixed padding with a recorded deviation. Measured in
                 e2e/friend-invite-panel-header.spec.ts at both widths. Changing this
                 is a decision, not a cleanup. */}
-            <div className="flex items-start justify-between gap-3 border-b border-border px-3 py-2 md:px-6 md:py-3">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 md:px-6 md:py-3">
                 {/* UAT3-D2 (owner device check 2026-09-30) + code review round 6: the user-supplied group
                     name lands in this column on EVERY entry point — in the title after creation
                     ("<name> is live — who's in?"), in the lead-in otherwise ("to <name>"). A 40-character
@@ -1159,7 +1165,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                     lead-in (a sibling) overflowing, which is what round 6 caught. Pinned for both paths in
                     FriendInvitePanel.test.tsx. */}
                 <div className="min-w-0 wrap-break-word">
-                    <DialogTitle className="text-xl font-bold text-content-primary">
+                    <DialogTitle className="text-content-primary">
                         {headerTitle}
                     </DialogTitle>
                     {headerLeadIn && (
@@ -1170,13 +1176,16 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                     ModalHeader DialogClose — this is the one freeform copy of that idiom. */}
                 <DialogClose
                     aria-label="Close"
-                    className="inline-flex min-h-11 min-w-11 items-center justify-center shrink-0 text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center shrink-0 text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                    &times;
+                    <Icon name="X" size={20} strokeWidth={2} />
                 </DialogClose>
             </div>
 
-            {/* p-0: every body section below carries its own `p-5`. */}
+            {/* p-0: every body section below carries its own p-4 md:p-5 —
+                DECISION Phase 88.9-29 O13a: 16px at phone, 20px from md, chosen OVER a fixed
+                20px at every width (owner pick O13a, 88.9-PICKS-B8B.json, 2026-11-07): the
+                section content widens 309 to 317px at 375. */}
             <Modal.Body className="p-0 md:p-0">{body}</Modal.Body>
 
             <Modal.Footer>
