@@ -393,12 +393,17 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 className="uppercase shadow-theme-sm enabled-hover:shadow-theme-lg"
                                 type="submit"
                                 aria-disabled={submitting || undefined}
+                                busy={submitting}
+                                busySuffix=", creating"
                             >
-                                {submitting ? 'Creating...' : 'Create Group'}
+                                Create Group
                             </Button>
                         </div>
-                        {/* The submit label swap alone is silent to screen readers — announce the
-                            in-flight state via a live region (empty-first, StatusRegion contract). */}
+                        {/* AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback
+                            rule 1): there is no label swap now — busy keeps Create Group, adds the house
+                            Spinner and the sr-only ", creating" (owner ruling Q6(b), its own verb). This
+                            polite region STAYS because a busy rename of the focused button is not reliably
+                            spoken, chosen OVER deleting it as redundant (empty-first, StatusRegion contract). */}
                         <StatusRegion politeness="polite" className="sr-only">
                             {submitting ? 'Creating group...' : ''}
                         </StatusRegion>

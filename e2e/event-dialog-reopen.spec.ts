@@ -94,7 +94,7 @@ test.describe('Edit Event on the event page — reopening while an update is sav
     await page.keyboard.press('Escape');
   });
 
-  test('R2: the ordinary update still closes the dialog, refreshes the page and says Event updated (confirm-only)', async ({ page }) => {
+  test('R2: the ordinary update still closes the dialog, refreshes the page and fires no success toast (save-feedback rule 2)', async ({ page }) => {
     await holdWrites(page);
     let readsAfterPut = 0;
     let put: Awaited<ReturnType<typeof holdUntilReleased>> | null = null;
@@ -116,8 +116,10 @@ test.describe('Edit Event on the event page — reopening while an update is sav
     await page.getByRole('dialog').getByLabel('Comments').fill(MARKER);
     await submit.click();
     await expect(editHeading(page)).toBeHidden();
-    await expect(page.getByText('Event updated', { exact: true })).toBeVisible();
     await expect.poll(() => readsAfterPut).toBeGreaterThanOrEqual(1);
+    // Save-feedback rule 2 (88.9-24): the page shows the result, so no toast. Scoped to sonner's
+    // toast items because the root announcer's sr-only region speaks the same words.
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Event updated' })).toHaveCount(0);
     await page.waitForTimeout(1000);
     await expect(editHeading(page)).toBeHidden();
     expect(put.count()).toBe(1);

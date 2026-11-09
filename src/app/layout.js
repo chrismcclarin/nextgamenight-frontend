@@ -13,6 +13,7 @@ import ThemeProvider from './components/ThemeProvider'
 import FriendshipStatusProvider from './components/FriendshipStatusProvider'
 import UnreadNotificationProvider from './components/UnreadNotificationProvider'
 import FeedbackModalProvider from './components/FeedbackModalProvider'
+import { RootAnnouncer } from '../components/ui/RootAnnouncer'
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -35,7 +36,16 @@ export default function RootLayout({ children }) {
           {/* GUARD-02 (Plan 86-08, D-08): exactly ONE sonner <Toaster/> mounted
               at the root layout (NOT per-route — the G2 check) providing the
               transient failure-visibility substrate. Has built-in aria-live. */}
+          {/* DECISION Phase 88.9-24 (owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): ONE
+              always-mounted sr-only polite region, fed by the module store in
+              src/components/ui/announcer.ts, speaks the outcomes that rule 2 no longer toasts —
+              chosen OVER a React context (this layout is a server component and this region sits
+              outside the children and every provider) and OVER a per-component region (createEvent
+              and GroupSettings unmount on close). It preserves a behaviour that already ships (the
+              Toaster's live region spoke these words), not a new capability (P4). Changing this is
+              a decision, not a cleanup. */}
           <Toaster position="top-right" richColors closeButton theme="system" />
+          <RootAnnouncer />
           {/* PRIM-07 (Plan 84-04): TanStack Query provider mounted at the app
               root via the server-fresh / browser-singleton getQueryClient()
               factory. Must sit ABOVE any component that calls useQuery. */}

@@ -28,6 +28,9 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 // it is the ONLY record from which a wiped colour can be restored by hand — so the
 // channel and the fields are pinned, not just the toast.
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
+// Save-feedback rule 2 (88.9-24, owner ruling R-F1): the dropped Settings saved toast is spoken
+// once by the root announcer instead. Automocked; the root beforeEach clears its calls.
+vi.mock('@/components/ui/announcer');
 
 // Read-only schedule panel does its own fetching and is irrelevant here.
 vi.mock('@/app/components/PromptScheduleReadOnly', () => ({ default: () => null }));
@@ -54,6 +57,7 @@ import { groupsAPI, ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { announceStatus } from '@/components/ui/announcer';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -137,18 +141,20 @@ describe('Phase 88-13 — the settings surface is on the shared Modal, and savin
     expect(document.querySelector('.modal-overlay')).toBeNull();
   });
 
-  it('fires the Settings saved receipt, in that exact register (Req 12 / §6.2)', async () => {
+  it('save-feedback rule 2 (88.9): a successful save fires NO success toast, then onUpdate and onClose', async () => {
     (groupsAPI.updateGroupSettings as Mock).mockResolvedValue({});
     const onClose = vi.fn();
     renderSettings({ onClose });
 
     fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
-    await waitFor(() => expect(toast.success as Mock).toHaveBeenCalledWith('Settings saved'));
-    // No exclamation, no "successfully" — and it must be fired BEFORE the
-    // unmount, or Sonner never shows it.
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    const successOrder = (toast.success as Mock).mock.invocationCallOrder[0];
-    expect(successOrder).toBeLessThan(onClose.mock.invocationCallOrder[0]);
+    // The modal closes and the group page refreshes: the result is in view, so no toast.
+    expect(toast.success as Mock).not.toHaveBeenCalled();
+    // Still spoken once, by the root announcer, in the same register (no exclamation).
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Settings saved');
+    const spokenOrder = vi.mocked(announceStatus).mock.invocationCallOrder[0];
+    expect(spokenOrder).toBeLessThan(onClose.mock.invocationCallOrder[0]);
   });
 
   it('does not claim success when the save fails', async () => {
@@ -553,9 +559,12 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
 
-    await waitFor(() => expect(toast.success as Mock).toHaveBeenCalledWith('Settings saved'));
-    expect(toast.error as Mock).not.toHaveBeenCalled();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(toast.error as Mock).not.toHaveBeenCalled();
+    // Save-feedback rule 2 (88.9-24): no success toast; the root announcer speaks it once.
+    expect(toast.success as Mock).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Settings saved');
     // …and it really did take the non-preset arm, or the case proves nothing.
     expect((groupsAPI.updateGroupSettings as Mock).mock.calls[0][1].color_preset).toBeNull();
   });
@@ -1074,7 +1083,7 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     (groupsAPI.leaveGroup as Mock).mockReset();
   });
 
-  it('PC1 (row 18): Save Changes stays focusable while saving, and two presses send one request', async () => {
+  it('PC1 (row 18) rule 1 (88.9): Save Changes keeps its label and shows the spinner while saving; it stays focusable, and two presses send one request', async () => {
     const request = held<Record<string, unknown>>();
     (groupsAPI.updateGroupSettings as Mock).mockReturnValue(request.promise);
     const onClose = vi.fn();
@@ -1085,7 +1094,9 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     fireEvent.click(save);
     fireEvent.click(save);
 
-    expect(await screen.findByRole('button', { name: 'Saving...' })).toBe(save);
+    expect(await screen.findByRole('button', { name: 'Save Changes, saving' })).toBe(save);
+    expect(save.firstChild?.textContent).toBe('Save Changes');
+    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(save).toHaveAttribute('aria-disabled', 'true');
     expect(save).not.toHaveAttribute('disabled');
     expect(save).toHaveClass('btn-primary');

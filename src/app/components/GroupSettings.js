@@ -14,6 +14,7 @@ import {
 import { GROUP_COLOUR_PRESETS, PRESET_IDS } from '@/lib/groupColourPresets';
 import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
+import { announceStatus } from '@/components/ui/announcer';
 // Relative (not `@/`) so this `.js` component resolves under vitest, matching
 // the sibling ManageMembers.js adopter.
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -417,10 +418,14 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         return;
       }
 
-      // Req 12 receipt (UI-SPEC §6.2). ORDER IS LOAD-BEARING, same reason as
-      // D-13's create-event redirect: fire the toast BEFORE onClose() unmounts
-      // this surface. Sonner outlives the unmount; the reverse order eats it.
-      toast.success('Settings saved');
+      /* DECISION Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 2;
+         owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): a successful settings save fires NO success
+         toast — the modal closes and onUpdate refreshes the group page — the outcome is still spoken
+         once by the root announcer (src/components/ui/announcer.ts) — chosen OVER the Req 12 receipt
+         (88-UI-SPEC §6.2) this line carried. The store outlives the unmount, so the old toast-first
+         ORDER is no longer load-bearing; the call keeps the toast's place anyway. Errors still toast
+         (rule 5). Restoring it is a decision, not a cleanup. */
+      announceStatus('Settings saved');
       if (onUpdate) onUpdate();
       if (onClose) onClose();
     } catch (error) {
@@ -1652,9 +1657,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <Modal.Action variant="secondary" onClick={onClose}>
             Cancel
           </Modal.Action>
-          {/* aria-disabled while saving, never native: see DECISION Phase 88.6.1-43 (W016 rows 10-11, 18-19 / D-35, D-39). */}
-          <Modal.Action variant="primary" onClick={handleSave} aria-disabled={saving || undefined}>
-            {saving ? 'Saving...' : 'Save Changes'}
+          {/* aria-disabled while saving, never native: see DECISION Phase 88.6.1-43 (W016 rows 10-11, 18-19 / D-35, D-39).
+              AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (name "<label>, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word and narrowed the button). The aria-disabled gate and this site's refusal latch are unchanged. */}
+          <Modal.Action variant="primary" onClick={handleSave} aria-disabled={saving || undefined} busy={saving}>
+            Save Changes
           </Modal.Action>
         </Modal.Footer>
       </Modal>

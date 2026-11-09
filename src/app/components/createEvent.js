@@ -19,6 +19,7 @@ import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { setPaintGestureActive } from './heatmap/paintGestureActiveStore';
 import { Modal } from './Modal';
 import { toast } from 'sonner';
+import { announceStatus } from '@/components/ui/announcer';
 import { Input, Textarea } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { Button } from '../../components/ui/Button';
@@ -31,8 +32,6 @@ const REQUIRED_SR_LABEL = '(required)';
 // heading's accessible name (WCAG 2.5.3 label-in-name) — quick-261020-tz3, VO-P2-4.
 const DATE_TIME_SECTION_TITLE = 'Date & Time';
 const PARTICIPANTS_SECTION_TITLE = 'Participants';
-const CREATING_EVENT_LABEL = 'Creating...';
-const UPDATING_EVENT_LABEL = 'Updating...';
 // Copy row E4 (ratified, D-30), reused for the Edit dialog's loading line — owner ruling 2026-10-05; see DECISION Phase 88.6.1-68 (edit reads the event fresh).
 const LOADING_GAME_NIGHT_LABEL = 'Loading game night...';
 /* DECISION Phase 88.6.1-81 (one payload in flight): a module-level map from a write's key (the
@@ -133,7 +132,7 @@ function registerEventWrite(eventId) {
     if (writes.size === 0) eventWritesInFlight.delete(eventId);
   };
 }
-function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId: rawPromptId = null }) {
+function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId: rawPromptId = null }) {
   // DECISION quick-261026-pi6 (coordinator ruling 1, 2026-10-26): a promptId that is not a UUID is
   // treated as absent (no poll-heatmap request; the group heatmap path runs), chosen OVER passing
   // it through to the backend's 400 or 404 and OVER a visible error, because a malformed email link
@@ -1122,11 +1121,29 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
            `ballotError` notice could never show: it is set and then cleared by the reset below in
            the same run, and the dialog closes. REJECTED: keeping the dialog open on a ballot
            failure (the event itself DID update, so the close and the host's refresh stay). */
+        /* DECISION Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rules 2
+           and 4; owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): a create or update that succeeds in its
+           own dialog session on a host that shows the event fires NO success toast — the dialog closes
+           and the host shows it — the outcome is still spoken once by the root announcer
+           (src/components/ui/announcer.ts) — chosen OVER the Req 12 receipt (88-UI-SPEC §6.2) this line
+           carried (the DECISION Phase 88-16 receipt-position reasoning above now governs only the toast
+           arm and the announce, which keep the same place: before the close). The toast STAYS (rule 4: an
+           outcome the person cannot see happen) where resultInView is false (groupPlanning renders no
+           events) and for a write that settles after its dialog session ended (the person closed the
+           dialog first; DECISION Phase 88.6.1-81), chosen OVER the register's literal DROP row and OVER
+           inferring it from a missing onEventCreated (that absence is the 88.6.1-68 close-owner
+           contract); on those two arms the toast speaks the outcome and the announcer is NOT called, so
+           each outcome is spoken exactly once — in view by the hidden announcer, out of view by the
+           visible toast; an Undo toast is the only exception (v2.1 todo
+           2026-11-07-undo-toast-review-for-save-and-close-actions). Errors still toast (rule 5).
+           Restoring it is a decision, not a cleanup. */
         if (!joinedWrite) {
           if (ballotSaveFailed) {
             toast.error('Event updated but ballot options could not be saved.');
-          } else {
+          } else if (!resultInView || !sessionIsCurrent()) {
             toast.success(editingEvent ? 'Event updated' : 'Event created');
+          } else {
+            announceStatus(editingEvent ? 'Event updated' : 'Event created');
           }
         }
         if (sessionIsCurrent()) {
@@ -1899,11 +1916,17 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 look is the shipped primary pair; no new token. VISIBLE DELTA, disclosed: while in
                 flight the text is shorter, so the button narrows slightly inside this right-aligned
                 row; its 44px floor is unchanged. Removing the latch, the attribute or the label
-                swap is a decision, not a cleanup. */}
-            <Button type="submit" data-testid="create-event-submit" aria-disabled={eventSubmitting || undefined}>
-              {eventSubmitting
-                ? (editingEvent ? UPDATING_EVENT_LABEL : CREATING_EVENT_LABEL)
-                : (editingEvent ? 'Update Event' : 'Create Event')}
+                swap is a decision, not a cleanup.
+                AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1):
+                the label now STAYS (Create Event / Update Event) and busy adds the house Spinner and the
+                sr-only ", creating" / ", updating" — copy row C7's ratified words, now the suffix (owner
+                ruling Q6(b), 2026-11-08: each busy button keeps its own verb) — chosen OVER the visible
+                word swap (the C7 literals are retired at src/app/copyTable886_1.test.ts ("id: 'C7c'")).
+                Both reasons above for the swap are answered: the spinner shows the press registered and
+                the name says so. The VISIBLE DELTA above is reversed — the button now WIDENS by the
+                spinner while in flight. Restoring the swap is a decision, not a cleanup. */}
+            <Button type="submit" data-testid="create-event-submit" aria-disabled={eventSubmitting || undefined} busy={eventSubmitting} busySuffix={editingEvent ? ', updating' : ', creating'}>
+              {editingEvent ? 'Update Event' : 'Create Event'}
             </Button>
           </div>
         </form>

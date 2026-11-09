@@ -923,6 +923,9 @@ export default function GroupPlanningPage() {
                 reachable here today — the change makes all five mounts follow one rule. Re-adding a
                 callback that closes is a decision, not a cleanup. */}
             <CreateEvent
+                // resultInView false: this page renders no events, so a create keeps its toast — see
+                // DECISION Phase 88.9-24 (save-feedback rules 2 and 4) in createEvent.js.
+                resultInView={false}
                 group_id={groupId}
                 modal={eventModal}
                 modaltoggle={toggleEventModal}

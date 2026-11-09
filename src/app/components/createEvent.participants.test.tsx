@@ -7,7 +7,7 @@
 //
 // Since plan 88.6.1-26 it also covers the submit's in-flight guard and its in-flight label in both
 // modes (create and edit): one submit at a time, `aria-disabled` (never native `disabled`), and
-// copy row C7 `Creating...` / `Updating...`. The guard needs none of the scheduling half.
+// copy row C7's words, heard since 88.9-24 as the busy suffix ', creating' / ', updating'. The guard needs none of the scheduling half.
 //
 // The modal's scheduling half is stubbed out: this file is about the
 // participants list, and EventScheduler/heatmap are expensive to mount (a 28-row x 7-column
@@ -44,6 +44,9 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 // can count receipts. The EventDayModal.test.tsx idiom (hoisted spies, a factory that returns them).
 const toastSpies = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: toastSpies.success, error: toastSpies.error } }));
+// Save-feedback rules 2/4 (88.9-24, owner ruling R-F1): an in-session success on a host that shows
+// the event is spoken by the root announcer instead of a toast. Automocked; beforeEach clears it.
+vi.mock('@/components/ui/announcer');
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'America/New_York', browserTimezone: 'America/New_York' }),
@@ -90,6 +93,7 @@ import { toast } from 'sonner';
 import { ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { logger } from '@/lib/logger';
+import { announceStatus } from '@/components/ui/announcer';
 
 // createEvent is a JS component whose inferred prop types come from its defaults
 // (`editingEvent = null` infers `null`); cast to a permissive type so the edit-mode arm can pass
@@ -296,7 +300,8 @@ describe('add-participant focus (UAT row 542)', () => {
 // submit had NO in-flight guard: one double tap created two events and sent two rounds of
 // notifications, and the button gave no sign it was working. It now refuses a second submit on
 // the first statement after `e.preventDefault()`, carries `aria-disabled` (never native
-// `disabled`, which drops a keyboard user to <body>) and reads `Creating...` / `Updating...`.
+// `disabled`, which drops a keyboard user to <body>); since 88.9-24 it keeps its label and is named
+// 'Create Event, creating' / 'Update Event, updating' while it works (save-feedback rule 1).
 describe('createEvent — the submit refuses a second press, stays focusable and says it is working (88.6.1-26, D-35, C7)', () => {
   type Mock = ReturnType<typeof vi.fn>;
 
@@ -327,7 +332,7 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
   });
 
-  it('C2: while creating, the submit is aria-disabled (not disabled) and reads Creating...; then Create Event again', async () => {
+  it('C2 rule 1 (88.9): Create Event keeps its label and shows the spinner while saving; the submit is aria-disabled (not disabled), then Create Event again with no success toast', async () => {
     const release = holdOnce(eventsAPI.createEvent);
     await renderModal();
     const form = submitButton().closest('form') as HTMLFormElement;
@@ -336,18 +341,25 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1));
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
     expect(submitButton()).not.toHaveAttribute('disabled');
-    // Copy row C7, exact bytes: three ASCII full stops.
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    // Rule 1 (88.9-24): the label stays; copy row C7's word lives on as the suffix (Q6(b)).
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
+    expect(submitButton().firstChild?.textContent).toBe('Create Event');
+    expect(submitButton().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
 
     fireEvent.submit(form);
     await new Promise((r) => setTimeout(r, 30));
     expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
 
     // The modaltoggle stub keeps the dialog mounted, so the restore after a SUCCESS is observable.
     release({});
     await waitFor(() => expect(submitButton()).not.toHaveAttribute('aria-disabled'));
     expect(submitButton()).toHaveAccessibleName('Create Event');
+    // Rule 2 (88.9-24): an in-session success on a host that shows the event fires no toast and
+    // is spoken once by the root announcer.
+    expect(toastSpies.success).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Event created');
   });
 
   // CONFIRM-ONLY (green before the fix by design): guards the release in `finally`.
@@ -367,7 +379,7 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
   });
 
-  it('C4: in EDIT mode the submit reads Updating... while it works, then Update Event again', async () => {
+  it('C4 rule 1 (88.9): in EDIT mode Update Event keeps its label and shows the spinner while saving, then Update Event again with no success toast', async () => {
     const release = holdOnce(eventsAPI.updateEvent);
     // Plan 88.6.1-68: the Edit dialog now reads the event fresh when it opens, so the arm hands
     // that read the same event it passes as `editingEvent`.
@@ -405,7 +417,9 @@ describe('createEvent — the submit refuses a second press, stays focusable and
 
     fireEvent.submit(form);
     await waitFor(() => expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(1));
-    expect(submitButton()).toHaveAccessibleName('Updating...');
+    expect(submitButton()).toHaveAccessibleName('Update Event, updating');
+    expect(submitButton().firstChild?.textContent).toBe('Update Event');
+    expect(submitButton().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
     expect(submitButton()).not.toHaveAttribute('disabled');
 
@@ -416,6 +430,20 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     release({});
     await waitFor(() => expect(submitButton()).toHaveAccessibleName('Update Event'));
     expect(submitButton()).not.toHaveAttribute('aria-disabled');
+    expect(toastSpies.success).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Event updated');
+  });
+
+  // Save-feedback rule 4 (88.9-24): groupPlanning renders no events, so the person cannot see the
+  // result — the toast stays there and the root announcer is not also called.
+  it('rule 4 (88.9): a create on a host that renders no events (resultInView false) keeps the Event created toast', async () => {
+    await renderModal({ resultInView: false });
+    const form = submitButton().closest('form') as HTMLFormElement;
+    fireEvent.submit(form);
+    await waitFor(() => expect(toastSpies.success).toHaveBeenCalledTimes(1));
+    expect(toastSpies.success).toHaveBeenCalledWith('Event created');
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
   });
 });
 
@@ -503,6 +531,8 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     expect(props.onEventCreated).toHaveBeenCalledWith({ id: 'evt-1' });
     expect(toastSpies.success).toHaveBeenCalledTimes(1);
     expect(toastSpies.success).toHaveBeenCalledWith('Event created');
+    // Rule 4 (88.9-24): a late success keeps its toast, which speaks it; the announcer stays silent.
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
     await flush();
     // Then the absences: the reopened dialog is not closed, wiped or latched.
     expect(props.modaltoggle).not.toHaveBeenCalled();
@@ -521,6 +551,7 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     first.resolve({ id: 'evt-1' });
     await waitFor(() => expect(props.onEventCreated).toHaveBeenCalledTimes(1));
     expect(toastSpies.success).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
     await flush();
     // The person's own close already ran the host's close; a second call is what closes a
     // reopened dialog.
@@ -546,21 +577,26 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     submitForm();
     await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
     // Session 2's own press.
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
 
     first.resolve({ id: 'evt-1' });
     await waitFor(() => expect(props.onEventCreated).toHaveBeenCalledTimes(1));
     await flush();
     // The stale request released nothing and closed nothing.
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
     expect(props.modaltoggle).not.toHaveBeenCalled();
 
     second.resolve({ id: 'evt-2' });
     // Session 2's own success closes its own dialog.
     await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
-    expect(toastSpies.success).toHaveBeenCalledTimes(2);
+    // Rule 2/4 (88.9-24): the stale first create keeps its toast; session 2's in-session success
+    // fires none and is spoken once by the root announcer — each outcome spoken once.
+    expect(toastSpies.success).toHaveBeenCalledTimes(1);
+    expect(toastSpies.success).toHaveBeenCalledWith('Event created');
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Event created');
     expect(props.onEventCreated).toHaveBeenCalledTimes(2);
   });
 
@@ -579,7 +615,7 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     await renderModal({ ...props, onEventCreated: onEventCreatedB });
     submitForm();
     // B's own press shows at once (copy row C7)...
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
     // ...and inside the join window no second request is sent.
     await new Promise((r) => setTimeout(r, 50));
@@ -595,8 +631,9 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     expect(onEventCreatedB.mock.invocationCallOrder[0]).toBeLessThan(
       (props.modaltoggle as Mock).mock.invocationCallOrder[0]
     );
-    // One write, one receipt: the originator's.
+    // One write, one receipt: the originator's (its session ended, so rule 4 keeps the toast).
     expect(toastSpies.success).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
     await waitFor(() => expectLiveCreate());
   });
 
@@ -610,7 +647,7 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     viewA.unmount();
     await renderModal(props);
     submitForm();
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
     await new Promise((r) => setTimeout(r, 50));
     expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
 
@@ -650,7 +687,7 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
       submitForm();
       // A new originator: it sends, and shows its own press.
       await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
-      expect(submitButton()).toHaveAccessibleName('Creating...');
+      expect(submitButton()).toHaveAccessibleName('Create Event, creating');
       expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
 
       // Settle both before the test ends: the newer first, then the hung one.

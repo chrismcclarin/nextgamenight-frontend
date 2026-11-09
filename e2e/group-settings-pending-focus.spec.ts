@@ -126,7 +126,8 @@ test.describe('Group settings — pressed controls keep focus and send one write
     await page.keyboard.press('Enter');
     await expect.poll(() => hold.count('PUT', SETTINGS_PATH), { timeout: 15_000 }).toBe(1);
 
-    const saving = page.getByRole('button', { name: 'Saving...', exact: true });
+    // Save-feedback rule 1 (88.9-24): the label stays and the name gains the sr-only ', saving'.
+    const saving = page.getByRole('button', { name: 'Save Changes, saving', exact: true });
     await expect(saving).toBeFocused();
     await expect(saving).toHaveAttribute('aria-disabled', 'true');
     await expect(saving).not.toHaveAttribute('disabled');

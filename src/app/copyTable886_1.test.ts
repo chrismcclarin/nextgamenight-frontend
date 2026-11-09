@@ -130,9 +130,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'G8', text: "Couldn't load this group's events", site: 'app/groupHomePage/page.js', kind: 'chunk' },
   { id: 'S1a', text: 'Sort order: ascending', site: 'app/components/GroupGamesList.js', kind: 'chunk' },
   { id: 'S1b', text: 'Sort order: descending', site: 'app/components/GroupGamesList.js', kind: 'chunk' },
-  // C7: `Creating...` is checked at createEvent.js only — createGroup.js ships its own.
-  { id: 'C7a', text: 'Creating...', site: 'app/components/createEvent.js', kind: 'chunk' },
-  { id: 'C7b', text: 'Updating...', site: 'app/components/createEvent.js', kind: 'chunk' },
+  // C7 (88.9-24, save-feedback rule 1 + owner ruling Q6(b)): the in-flight word swap is retired; C7c is the Button default; createEvent keeps C7's ratified words as its suffix (", creating" / ", updating") and createGroup its own (", creating"), owner ruling Q6(b) "with its own verb".
+  { id: 'C7c', text: ', saving', site: 'components/ui/Button.tsx', kind: 'chunk' },
   { id: 'P7', text: 'Adding...', site: 'app/userProfile/page.js', kind: 'chunk' },
   { id: 'P8', text: "Couldn't load your collection", site: 'app/userProfile/page.js', kind: 'chunk' },
   { id: 'E15', text: "Couldn't load the game vote", site: 'app/components/BallotSection.js', kind: 'chunk' },
@@ -206,7 +205,7 @@ const EXPECTED_IDS = [
   'E8', 'E9', 'E10', 'E11', 'E12', 'E13', 'E14', 'E15', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6',
   'G7', 'G8', 'P1', 'P2', 'P7', 'P8', 'F1', 'F2', 'F7', 'L1a', 'L1b', 'L1c', 'L2', 'X1',
   'X3', 'X3r', 'R1', 'R2', 'R3', 'R4', 'R5', 'R9', 'FR1', 'N7', 'N8a', 'N8b', 'N8c', 'N8d',
-  'S1a', 'S1b', 'C7a', 'C7b', 'B1', 'RF1', 'Q1a', 'Q1b', 'NC-1', 'NC-2', 'NC-3', 'NC-4',
+  'S1a', 'S1b', 'C7c', 'B1', 'RF1', 'Q1a', 'Q1b', 'NC-1', 'NC-2', 'NC-3', 'NC-4',
   // owner rulings 2026-10-13 to 2026-10-15
   'GD1', 'GD2', 'E16', 'E17', 'E18', 'GD3', 'GD4', 'N9', 'N10', 'G9', 'F8a', 'F8b', 'C8',
   // close rulings 2026-10-17 to 2026-10-18
@@ -275,6 +274,9 @@ const RETIRED_LITERALS: Retired[] = [
   { text: 'No games in your collection.', scope: 'tree' },
   { text: 'Below minimum threshold', scope: 'tree' },
   { text: 'Already converted to event', scope: 'tree' },
+  // C7 (88.9-24): the visible in-flight words are retired; heard on as createEvent's busy suffix.
+  { text: 'Creating...', scope: 'tree' },
+  { text: 'Updating...', scope: 'tree' },
   { text: 'Availability for ', scope: ['app/components/EventScheduler.tsx', 'app/components/EventHeatmapBackground.js'] },
   { text: 'Reset Token', scope: ['app/components/QRCodeModal.js'] },
   { text: 'Loading...', scope: LOADING_SITES, whole: true },
@@ -397,11 +399,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (125 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (124 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(125);
+    expect(ids).toHaveLength(124);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });

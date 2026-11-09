@@ -590,7 +590,7 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
   // POSITION, `DECISION Phase 88.6-22` in FriendInvitePanel.js). The RED half is the attributes
   // and the request count (C-11): jsdom never blurs a disabled element
   // (`ScheduleForm.test.tsx`, its CONFIRM-ONLY note), so the focus claim is confirm-only here.
-  it('S1. while a save is IN FLIGHT the pressed Save is aria-disabled, NOT natively disabled, and reads Saving... (D-35)', async () => {
+  it('S1 rule 1 (88.9): Save keeps its label and shows the spinner while saving; the pressed Save is aria-disabled, NOT natively disabled (D-35)', async () => {
     api.updateMyBrings.mockReturnValue(new Promise(() => {}));
     render(<Host initiallyOpen />);
     await settleOnRows();
@@ -598,14 +598,17 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     save.focus();
 
     fireEvent.click(save);
-    expect(save).toHaveTextContent('Saving...');
+    // Rule 1 (88.9-24): the visible label stays, the house spinner shows, the name gains ', saving'.
+    expect(save.firstChild?.textContent).toBe('Save');
+    expect(save).toHaveAccessibleName('Save, saving');
+    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(save).toHaveAttribute('aria-disabled', 'true');
     expect(save).not.toHaveAttribute('disabled');
     // CONFIRM-ONLY in jsdom (see above): focus is still on the pressed control.
     expect(document.activeElement).toBe(save);
   });
 
-  it('S2. two synchronous presses while the first PUT is pending send exactly ONE PUT (Edge R4 idempotency)', async () => {
+  it('S2. two synchronous presses while the first PUT is pending send exactly ONE PUT (Edge R4 idempotency); Save keeps its label (rule 1, 88.9)', async () => {
     api.updateMyBrings.mockReturnValue(new Promise(() => {}));
     render(<Host initiallyOpen />);
     await settleOnRows();
@@ -614,7 +617,9 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     fireEvent.click(save);
     fireEvent.click(save);
     expect(api.updateMyBrings).toHaveBeenCalledTimes(1);
-    expect(save).toHaveTextContent('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save');
+    expect(save).toHaveAccessibleName('Save, saving');
+    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
   });
 
   it('S3. once the pending PUT REJECTS the gate lifts, and a fresh press sends a second PUT (Edge R4 concurrency)', async () => {

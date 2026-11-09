@@ -309,7 +309,7 @@ describe('88.6-63 (review round 2 #25) — the submit is aria-disabled + latched
   // request count at one, but it returned early INSIDE react-hook-form's second run, whose settle
   // flipped `isSubmitting` back to false: the button read `Create Schedule` again and lost
   // `aria-disabled` while the first save was still pending. `useAppForm` now refuses first.
-  it('S1: after a second press the button still reads Saving... and stays aria-disabled until the FIRST save settles', async () => {
+  it('S1 rule 1 (88.9): Create Schedule keeps its label and shows the spinner while saving; after a second press it stays aria-disabled until the FIRST save settles', async () => {
     const held = holdCreate();
     const user = userEvent.setup();
     render(<ScheduleForm groupId="g1" />);
@@ -322,7 +322,9 @@ describe('88.6-63 (review round 2 #25) — the submit is aria-disabled + latched
     await user.click(submit);
     await new Promise((r) => setTimeout(r, 50));
     expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1);
-    expect(submit).toHaveAccessibleName('Saving...');
+    expect(submit).toHaveAccessibleName('Create Schedule, saving');
+    expect(submit.firstChild?.textContent).toBe('Create Schedule');
+    expect(submit.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(submit).toHaveAttribute('aria-disabled', 'true');
     expect(submit).not.toHaveAttribute('disabled');
 
@@ -330,7 +332,7 @@ describe('88.6-63 (review round 2 #25) — the submit is aria-disabled + latched
     expect(fireEvent.submit(form)).toBe(false);
     await new Promise((r) => setTimeout(r, 50));
     expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1);
-    expect(submit).toHaveAccessibleName('Saving...');
+    expect(submit).toHaveAccessibleName('Create Schedule, saving');
 
     held.reject(new Error('Server boom'));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(UNKNOWN_COPY));

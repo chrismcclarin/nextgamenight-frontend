@@ -571,14 +571,16 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
             drop. Visible delta, disclosed: while saving, the button takes the shipped gated
             colour pair (`.btn-primary[aria-disabled='true']` in `globals.css`) instead of the
             `.btn:disabled` 50% wash. Dropping either half, or restoring the native attribute for
-            the in-flight case, is a decision, not a cleanup. */}
+            the in-flight case, is a decision, not a cleanup.
+            AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (name "<label>, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word and narrowed the button). The aria-disabled gate and this site's refusal latch are unchanged. */}
         <Button
           variant="primary"
           onClick={handleSave}
           disabled={loading || !!loadError || identityFailed}
           aria-disabled={saving ? 'true' : undefined}
+          busy={saving}
         >
-          {saving ? 'Saving...' : 'Save'}
+          Save
         </Button>
       </Modal.Footer>
     </Modal>

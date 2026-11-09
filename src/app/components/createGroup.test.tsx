@@ -376,7 +376,7 @@ describe('createGroup in-flight guard (UAT row 447)', () => {
   // disabled button leaves the focus order and strands a keyboard or switch user mid-create).
   // The RED half is the ATTRIBUTES (C-11: jsdom never blurs a disabled element, so a focus
   // assertion here cannot fail on the old code; the phone e2e arm proves focus in a browser).
-  it('G1 (D-35): the pressed submit is aria-disabled, never natively disabled, while in flight; a forced re-submit is inert', async () => {
+  it('G1 (D-35) rule 1 (88.9): Create Group keeps its label and shows the spinner while creating; the pressed submit is aria-disabled, never natively disabled, while in flight; a forced re-submit is inert', async () => {
     const user = userEvent.setup();
     const deferred = deferCreate();
     renderCreateGroup();
@@ -385,8 +385,12 @@ describe('createGroup in-flight guard (UAT row 447)', () => {
     const submit = screen.getByRole('button', { name: /create group/i });
     await user.click(submit);
 
-    // In-flight presentation: gated + label swap, announced via a live region.
-    const creating = screen.getByRole('button', { name: /creating/i });
+    // In-flight presentation (rule 1, 88.9-24): gated, label kept + spinner, name gains its own
+    // verb (owner ruling Q6(b)), and the in-flight state is still announced via a live region.
+    const creating = screen.getByRole('button', { name: 'Create Group, creating' });
+    expect(creating).toBe(submit);
+    expect(creating.firstChild?.textContent).toBe('Create Group');
+    expect(creating.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(creating).not.toHaveAttribute('disabled');
     expect(creating).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('status')).toHaveTextContent('Creating group...');
