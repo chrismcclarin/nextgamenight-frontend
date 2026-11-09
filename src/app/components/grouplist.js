@@ -714,6 +714,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                    * REJECTED: `!!bgImage`, the raw URL — a URL the allowlist rejects
                    * paints no image, so that card IS a plain coloured card and must
                    * get its ink. A decision, not a cleanup.
+                   *
+                   * AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json,
+                   * 2026-11-07): on the image arm the card title and the stats row
+                   * fall back to the --t-* channel's O02d1 values (white, 1.5px
+                   * black outline painted first via --t-paint, no shadow), chosen
+                   * OVER the heavy blurred shadow + 0.5px stroke; the ink stays off
+                   * on an image.
                    */
                   ...groupInkVars(cardGround, {
                     surface: 'card',
@@ -725,33 +732,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   backgroundPosition: 'center',
                 }}
               >
-                {hasBgImage && (
-                  // Phase 73-02 gave this overlay a semantic surface tint at 85%
-                  // so the bg image dims and the title stays readable; that
-                  // slash-opacity was inert on v3's var()-backed tokens and
-                  // 87.7 D-18 stripped it rather than let v4 start rendering it
-                  // (census: 87.7-OPACITY-CENSUS.md). The div was kept so the
-                  // fix would be a class edit, not a structure change.
-                  //
-                  // DECISION Phase 88-27 (D-32 bucket D): the dim is now
-                  // `--color-bg-overlay`, one of the three UI-SPEC §10.3
-                  // exemplars. Chosen OVER restoring what 73-02 actually wrote —
-                  // 85% of the CARD colour, which is near-WHITE in light mode.
-                  // A group title over a background image is ALWAYS white text
-                  // with a dark shadow, in both themes, unconditionally
-                  // (colorUtils.js getTextStyle, the `hasBackgroundImage`
-                  // branch). So a card-coloured wash in light mode would have
-                  // put white text on a near-white ground — the overlay would
-                  // have caused the illegibility it exists to prevent.
-                  // `--color-bg-overlay` darkens in both themes, which is what
-                  // white text needs. Re-deriving this from the card surface is
-                  // a decision that breaks light mode, not a fidelity fix.
-                  //
-                  // The `{bgImage && …}` gate is deliberate and unchanged: this
-                  // never renders for colour-only cards, whose title takes a
-                  // contrast-computed pole instead and needs no dim.
-                  <div className="absolute inset-0 z-0 rounded-card bg-[var(--color-bg-overlay)]" />
-                )}
+                {/* DECISION Phase 88.9-27 (owner ruling O21b, chat 2026-11-07 6:18 PM Pacific; pick O02d1,
+                    88.9-PICKS-B9.json): no photo dim on the home card, chosen OVER the overlay-token wash that
+                    DECISION Phase 88-27 (D-32 bucket D) put here - the title and Last Game row carry O02d1's own
+                    1.5px outline, so the photo is shown undimmed. The bg-overlay token itself stays (the tutorial
+                    scrim uses it). Re-adding a dim is a decision, not a cleanup. */}
                 <div className="relative z-1">
                   {/* 87.8-13 walkthrough F-8: single row at ALL widths — the old
                       max-[480px] column-stack dropped the players pill to its own
@@ -828,7 +813,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         <Heading
                           level={3}
                           size="heading"
-                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]"
                         >
                           {group.name}
                         </Heading>
@@ -1021,7 +1006,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       - IF YOU ARE HERE TO "RESTORE" `text-content-primary` ON THE
                         TINTED ARM: that is a decision requiring an owner ruling, not
                         a cleanup. See the DECISION marker directly below. */}
-                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-bold' : ''}`}>
+                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] ${cardTextBold ? 'font-bold' : ''}`}>
                   {/* DECISION Phase 88.3.1 (SPEC Req 8, site 1 of 3 — UI-SPEC 3.5). This block
                       REPLACES the 88.3-cr M1 LIMIT block (2026-08-28), which is closed, not lost:
                       that LIMIT said these two rows take the THEME token on the tinted arm rather
@@ -1063,8 +1048,19 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       `var(--t-color-l)` / `var(--t-color)` is the card's own `getTextStyle` output,
                       computed against the rendered ground, and it is emitted on this card's root in
                       every one of those cases. Verified 2026-08-29 that tailwindcss@4.3.3 in this
-                      tree compiles the nested-fallback arbitrary value and its `dark:` variant. */}
-                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${tinted ? '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--group-ink,var(--t-color))]' : 'text-content-secondary'}`}>
+                      tree compiles the nested-fallback arbitrary value and its `dark:` variant.
+
+                      AMENDED Phase 88.9-27 (owner by chat 2026-11-08, RULINGS Q2 add-on): in DARK
+                      mode the secondary row and date take the title's --t-* pole treatment, chosen
+                      OVER the preset inkDark / mutedDark so a coloured card carries ONE treatment in
+                      dark as it already reads in light; LIGHT keeps the preset inks (W50 F10 keep).
+                      Reverting the dark arm to the preset inks is a decision, not a cleanup. On the
+                      IMAGE arm (owner ruling 88.9-RULINGS.md R-P4, 2026-11-08) the secondary row and
+                      date take the title's O02d1 outline treatment in both themes, coloured or not,
+                      chosen OVER content tokens / preset inks under no dim (white on a white photo
+                      measured 1.00:1); this is a third arm, not a convergence - the uncoloured
+                      no-image arm keeps its content tokens. */}
+                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)]' : tinted ? '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-secondary'}`}>
                     {/* DECISION Phase 88.3.1: the `Last Game:` LABEL moves WITH the row on the
                         tinted arm — it drops its class and inherits the row's ink — chosen so a
                         coloured card reads in ONE ink instead of two.
@@ -1077,9 +1073,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         REJECTED (b): dropping the class outright. That would also re-tone the
                         UNCOLOURED card, where the shipped look is deliberately a primary label on a
                         secondary row and nobody has complained about it — an unasked visual change
-                        on a surface outside this phase. Hence the ternary rather than a deletion. */}
-                    <span><strong className={tinted ? undefined : 'text-content-primary'}>Last Game:</strong> {lastGame?.name || 'None'}</span>
-                    <span className={`text-xs ${tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--group-ink-muted,var(--t-color))]' : 'text-content-muted'}`}>
+                        on a surface outside this phase. Hence the ternary rather than a deletion.
+                        AMENDED Phase 88.9-27 (owner ruling 88.9-RULINGS.md R-P4, 2026-11-08): the
+                        label also drops its class on a photo card and inherits the row's O02d1
+                        outline treatment, chosen OVER the primary label under a black outline;
+                        REJECTED (b) still holds for the uncoloured no-image card. */}
+                    <span><strong className={hasBgImage || tinted ? undefined : 'text-content-primary'}>Last Game:</strong> {lastGame?.name || 'None'}</span>
+                    <span className={`text-xs ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)]' : tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-muted'}`}>
                       {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
                     </span>
                   </div>

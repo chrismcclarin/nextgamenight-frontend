@@ -1107,6 +1107,12 @@ function GroupHomePage(){
                      * file, and it needs its own look at 375px; registered in
                      * `.planning/deferred/phase-88.6.md`. The channel is wired here so
                      * that change is a className edit, not a re-plumb.
+                     *
+                     * AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json,
+                     * 2026-11-07): on the image arm the h1 and stats line fall back to
+                     * the --t-* channel's O02d1 values (white, 1.5px black outline
+                     * painted first via --t-paint, no shadow), chosen OVER the heavy
+                     * blurred shadow + 0.5px stroke; the ink stays off on an image.
                      */
                     ...groupInkVars(headerGroundPair, {
                         surface: 'card',
@@ -1163,6 +1169,14 @@ function GroupHomePage(){
                     // the rendered check reads the class in dark mode too.
                     // The class-vs-inline split is PRESERVED exactly: the 0.15
                     // stays a `dark:` class and is never an inline value.
+                    //
+                    // AMENDED Phase 88.9-27 (owner ruling O21b, chat 2026-11-07 6:18 PM
+                    // Pacific, UI-SPEC round-2 (d) O-21; with pick O02d1,
+                    // 88.9-PICKS-B9.json): case (1) paints NO dim, chosen OVER the
+                    // shipped 0.4 black in both themes - the photo shows at full
+                    // strength and the title + stats carry their own 1.5px outline.
+                    // Cases (2) and (3) are unchanged; the 0.15 stays a dark-only class
+                    // and is never inline.
                     className={
                         tinted && !hasHeaderImage
                             ? 'dark:bg-[rgb(0_0_0/0.15)]'
@@ -1176,9 +1190,6 @@ function GroupHomePage(){
                         bottom: 0,
                         zIndex: 0,
                         borderRadius: 'inherit',
-                        ...(hasHeaderImage && {
-                            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-                        }),
                     }}
                 />
                 {/* z-30, not z-10: this row hosts the kebab dropdown, and its z-index
@@ -1223,13 +1234,13 @@ function GroupHomePage(){
                                later one wins. `wrap-break-word` is dropped for the primitive's
                                own `wrap-anywhere`, the same trade plans 17-19 made on every
                                migrated heading. */
-                            className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                            className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]"
                             style={headerTitleVars}
                         >
                             {Group?.name || 'Group'}
                         </Heading>
                         <p
-                            className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                            className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]"
                             style={headerSubtitleVars}
                         >
                             {gamesList.length} {gamesList.length === 1 ? 'game' : 'games'} played
@@ -1543,7 +1554,15 @@ function GroupHomePage(){
                                 // invisible, and it is what made this control disappear.
                                 // `backdrop-blur-xs` comes with it: it only ever did
                                 // visible work over that translucent wash or an image.
-                                (darkArm
+                                // DECISION Phase 88.9-27 (owner ruling 88.9-RULINGS.md R-P4, 2026-11-08; MED-66
+                                // option A): on the IMAGE arm Manage Members takes the opaque elevated surface in
+                                // dark, chosen OVER the translucent 10% white wash and blur, which over a white
+                                // photo leaves white ink at 1.00:1 now that O21b removed the photo dim; warm-50 on
+                                // purple-800 is 10.64:1 on any photo. REJECTED: a scrim behind the row (a black
+                                // wash drops the light-mode ink it sits under). The image arm is tested BEFORE the
+                                // D-10 darkArm fork, which still decides every no-image header. No-image arms keep
+                                // the owner-ruled wash byte for byte. Changing this is a decision, not a cleanup.
+                                (hasHeaderImage ? ' dark:bg-surface-elevated' : darkArm
                                     ? ' dark:text-white dark:bg-white/10 dark:enabled-hover:bg-white/20 dark:backdrop-blur-xs'
                                     : '')
                             }
