@@ -641,8 +641,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     box with negative margins so the 66px notice does not grow, chosen OVER the 44 box (A8a)
                     and OVER the shipped 16px-tall text button. The negative margins are load-bearing. */}
                 {/* DECISION Phase 88.9-CR m6: the focus treatment is the amber-box Dismiss idiom of
-                    src/app/userProfile/page.js ("focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page")
-                    (census R065), chosen OVER the browser default outline that plan 88.9-10 left on this
+                    src/app/userProfile/page.js ("AMENDED Phase 88.9-32 (owner pick B3a")
+                    (census R065; that twin moved to the B3a warning family in plan 88.9-32 — this halo still reads
+                    the amber-50 / page pair until X2 moves it, plan 88.9-42), chosen OVER the browser default outline that plan 88.9-10 left on this
                     48px box. The dark halo is the page colour because the box is a translucent amber over
                     the page, the same approximation R065 records. Round 2's X2 token ruling (register row
                     "X2 — The removed-member notice box is raw palette") moves this halo together with R065's. rounded-btn as on R065, so the

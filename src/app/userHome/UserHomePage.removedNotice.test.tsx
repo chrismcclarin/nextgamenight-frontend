@@ -168,7 +168,8 @@ describe('the removed-from-group notice is spoken from a region that was already
   });
 
   // 88.9-CR m6/m10: Dismiss wears the focus treatment of its amber-box twin in
-  // src/app/userProfile/page.js ("focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"),
+  // src/app/userProfile/page.js ("AMENDED Phase 88.9-32 (owner pick B3a")
+  // (its twin moved to B3a in 88.9-32; this one moves with X2, plan 88.9-42),
   // not the browser default outline on the amber notice box.
   it('RB2b (88.9-CR m6/m10): Dismiss carries the amber-box focus-visible ring and its halo', () => {
     vi.useFakeTimers();

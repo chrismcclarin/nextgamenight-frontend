@@ -2283,10 +2283,10 @@ function Profile(){
                     who never had a phone. Also gated on sms_enabled per the
                     admin-entitlement model: non-entitled users never see SMS UI,
                     including this banner. Banner clears automatically when user
-                    re-adds a phone. Tokens mirror Phase 62-02 TimezoneNudgeBanner. */}
+                    re-adds a phone. Tokens: the B3a status-warning family (owner pick B3a, plan 88.9-32). */}
                 {userData?.sms_enabled && phoneJustRemoved && !userData?.phone && !smsDisabledBannerDismissed && (
-                    <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 flex items-start gap-3">
-                        <p ref={smsDisabledBannerTextRef} className="flex-1 text-sm text-amber-900 dark:text-amber-100">
+                    <div className="mb-4 p-3 rounded-lg bg-status-warning-subtle border border-status-warning flex items-start gap-3">
+                        <p ref={smsDisabledBannerTextRef} className="flex-1 text-sm text-content-status-warning">
                             SMS disabled — add a phone number to re-enable.
                         </p>
                         {/* DECISION Phase 88.6-17 (A10 / T-88.6-43 + R3 finding 144): this dismiss stays a
@@ -2334,8 +2334,17 @@ function Profile(){
                                against it, so page; ring vs halo 7.52 light / 10.13 dark (census, halo-approximate; the band
                                belongs to plan 88.9-16). Only the class string
                                gained the two halo tokens; the A10 and 88.6.1-53 markers above stand as written.
-                               Swapping the dark halo for the banner fill is a decision, not a cleanup. */
-                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
+                               Swapping the dark halo for the banner fill is a decision, not a cleanup.
+                               AMENDED Phase 88.9-32 (owner pick B3a, 88.9-PICKS-B1.json, 2026-11-04): the box is the OPAQUE
+                               status-warning family (the status-warning-subtle fill in each theme, values in UI-SPEC R2-69 and not
+                               spelled here so this file's untagged-raw-hex pin stays honest, warning border and ink) and the halo is
+                               that same declared key with no dark variant, chosen OVER option (a)'s amber-50 light halo and
+                               page-ground dark halo, which approximated a 20%-alpha box (band 1.09 dark). Measured: ring vs
+                               halo 6.65 / 6.37, band 1.00 in both themes (UI-SPEC R2-69). The ink moved with the box (build
+                               contract); the A10 marker's byte-unchanged sentence described plan 88.6-17's own edit and still
+                               holds for the glyph size and the 44 floor. Putting a dark variant back on this halo is a
+                               decision, not a cleanup. */
+                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-status-warning hover:text-content-primary text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
                             aria-label="Dismiss"
                         >
                             ×
