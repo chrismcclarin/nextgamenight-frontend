@@ -232,11 +232,12 @@ export default function ScheduleList({
                 {/* Pause/Resume toggle. 88.6.1 code review A-47: the in-flight state is SHOWN as
                     well as exposed — `aria-disabled:opacity-50`, the house raw-button wash
                     (ResponseDashboard's Remind, KebabMenu items), so a sighted user sees why a
-                    second press does nothing. */}
+                    second press does nothing.
+                    AMENDED Phase 88.9-23 (O-17): the in-flight look is muted ink, not an opacity wash, with the kebab items. */}
                 <button
                   onClick={() => onToggle?.(schedule.id)}
                   aria-disabled={togglingIds?.[schedule.id] ? 'true' : undefined}
-                  className={`px-3 py-1.5 text-sm rounded-btn transition-colors aria-disabled:opacity-50 ${
+                  className={`px-3 py-1.5 text-sm rounded-btn transition-colors aria-disabled:text-content-muted ${
                     isActive
                       ? 'bg-status-warning-subtle text-content-status-warning enabled-hover:bg-status-warning-subtle-hover'
                       : 'bg-status-success-subtle text-content-status-success enabled-hover:bg-status-success-subtle-hover'

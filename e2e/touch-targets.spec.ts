@@ -1350,8 +1350,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
       const LIST_CLASS =
         'absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-theme-lg py-1';
+      // AMENDED Phase 88.9-23 (O-17): the gated item's look is muted ink, transcribed in lockstep.
       const ITEM_CLASS =
-        'w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
+        'w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
       const ARMED_EXTRA = 'text-content-status-error bg-status-error-subtle font-semibold';
       const RESTING_EXTRA = 'text-content-primary hover:bg-surface-hover';
 

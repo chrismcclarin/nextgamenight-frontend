@@ -173,7 +173,11 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
 
     await trigger.tap();
     await dialog.getByRole('button', { name: 'Remove', exact: true }).tap();
-    await dialog.getByRole('button', { name: 'Tap again to remove' }).tap();
+    // F9b (88.9-23): the armed item is gated for 3 s; wait for the live label before the
+    // committing tap (the 5 s expect timeout covers the gate).
+    const confirmRemove = dialog.getByRole('button', { name: 'Tap again to remove' });
+    await expect(confirmRemove).toHaveText('Tap again to remove');
+    await confirmRemove.tap();
 
     // POSITIVE signal: the refresh after the removal reached the route and is held.
     await postRemovalArrived;

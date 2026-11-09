@@ -190,6 +190,13 @@ async function liveConfirm(name: string): Promise<HTMLElement> {
   return screen.findByRole('button', { name });
 }
 
+/** F9b (88.9-23): step past the kebab twoTap Remove's CONFIRM_DELAY_MS gate after arming it. */
+function passKebabGate() {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+}
+
 /**
  * Open a KebabMenu by its trigger's accessible label and return its OPEN item list.
  *
@@ -439,6 +446,7 @@ describe('ManageMembers Req 12 — success receipts for the two named silent mut
     const menu = await openKebabList('Member actions for Target');
     const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
+    passKebabGate();
     fireEvent.click(removeItem);
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
   });
@@ -825,6 +833,8 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
     const menu = await openKebabList('Member actions for Target');
     const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
+    // F9b: the armed label reads once the gate has run out.
+    passKebabGate();
 
     // Armed: the SAME node swaps its label rather than the menu closing. Re-query
     // through the same open list node — it is the element `aria-controls` names, and
@@ -1255,6 +1265,7 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     const menu = await openKebabList('Member actions for Target');
     const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
+    passKebabGate();
     fireEvent.click(removeItem);
   }
 

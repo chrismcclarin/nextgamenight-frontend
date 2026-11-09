@@ -31,8 +31,9 @@ describe('ScheduleList — the in-flight Pause/Resume looks unavailable, not onl
     render(<ScheduleList schedules={[SCHEDULE]} onToggle={vi.fn()} togglingIds={{ s1: true }} />);
     const pause = screen.getByRole('button', { name: 'Pause' });
     expect(pause).toHaveAttribute('aria-disabled', 'true');
-    // The KebabMenu / ResponseDashboard Remind precedent: the gated look is `aria-disabled:opacity-50`.
-    expect(pause.className.split(/\s+/)).toContain('aria-disabled:opacity-50');
+    // The KebabMenu / ResponseDashboard Remind precedent: the gated look is `aria-disabled:text-content-muted`.
+    // AMENDED Phase 88.9-23 (O-17): muted ink replaced the opacity wash, with the kebab items.
+    expect(pause.className.split(/\s+/)).toContain('aria-disabled:text-content-muted');
   });
 });
 

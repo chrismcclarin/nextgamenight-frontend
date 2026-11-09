@@ -25,13 +25,18 @@
  *     component's own shipped class strings. Read a red here against a red there.
  */
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import KebabMenu from './KebabMenu';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 // axe-core's `runOnly` takes ONE selector, so the two rules run as two explicit passes — the same
 // shape src/app/components/PromptScheduleManager.test.tsx ("const WCAG_412 = { runOnly: { type: 'tag' as const") uses.
@@ -84,9 +89,21 @@ describe('KebabMenu composed axe audit — the OPEN menu, where the ARIA change 
     // `aria-pressed` on a plain button is the attribute D-12 traded the item role FOR (it is
     // illegal on the old role: axe-core 4.12.1's allowed-attrs list is posinset/setsize/expanded).
     // Auditing only the disarmed menu would never exercise it.
+    // F9b (88.9-23): the armed item is first GATED (aria-pressed + aria-disabled, the countdown
+    // label), then live. Both armed states are audited.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
     const { list } = openMenu();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    const gated = within(list).getByRole('button', { name: 'Tap again (3)' });
+    expect(gated).toHaveAttribute('aria-pressed', 'true');
+    expect(gated).toHaveAttribute('aria-disabled', 'true');
+    expect(await axe(document.body, WCAG_412)).toHaveNoViolations();
+    expect(await axe(document.body, HEADING_ORDER)).toHaveNoViolations();
+
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(within(list).getByRole('button', { name: 'Tap again to remove' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -163,6 +180,8 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
   it('E6-long-text (source half). No clipping utility on the item, disarmed OR armed, and the height is a FLOOR', () => {
     const LONG =
       'Transfer ownership of this group to this member right now, permanently and irreversibly';
+    // F9b (88.9-23): the long armed label shows once the gate has run out.
+    vi.useFakeTimers();
     render(
       <KebabMenu
         ariaLabel="Member actions"
@@ -188,6 +207,9 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
     ).not.toMatch(/(^|\s)h-\d/);
 
     fireEvent.click(disarmed);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     const armed = within(list).getByRole('button', { name: `${LONG} — tap again` });
     expect(armed, 'the armed label swap must not remount the item').toBe(disarmed);
     expect(
@@ -215,5 +237,90 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
       /(^|\s)(w-\[|w-\d|left-0)/,
     );
     expect('w-full min-h-11 text-left px-3 py-2').not.toMatch(/(^|\s)h-\d/);
+  });
+});
+
+// F9b (88.9-23, owner pick F9b, 88.9-PICKS-B5.json item F9; window = the Q4 ruling in
+// 88.9-RULINGS.md round 2): a twoTap item is inert for CONFIRM_DELAY_MS after arming, then
+// live; the gated look is a muted ink, never an opacity wash (O-17).
+describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () => {
+  it('F9b (88.9): a twoTap item stays inert 3 s then commits', async () => {
+    // shouldAdvanceTime: user-event's keyboard waits on a timeout of its own.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const onClose = vi.fn();
+    render(
+      <KebabMenu
+        ariaLabel="Poll actions"
+        items={[{ label: 'Close poll', danger: true, twoTap: true, onClick: onClose }]}
+      />
+    );
+    const { list } = openMenu('Poll actions');
+    const item = within(list).getByRole('button', { name: 'Close poll' });
+
+    fireEvent.click(item);
+    expect(item).toHaveTextContent('Tap again (3)');
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).toHaveAttribute('aria-pressed', 'true');
+    // DEC-5: nothing is announced while pressing would do nothing.
+    expect(screen.getByRole('status').textContent).toBe('');
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    fireEvent.click(item);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(item).toHaveTextContent('Tap again (2)');
+    expect(item).toHaveAttribute('aria-pressed', 'true');
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    item.focus();
+    await user.keyboard('{Enter}');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('status').textContent).toBe('');
+
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS - 2500);
+    });
+    expect(item).toHaveTextContent('Tap again to confirm');
+    expect(item).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('status').textContent).toBe('Press again to confirm: Close poll');
+
+    fireEvent.click(item);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // No keepOpen: the commit closes the menu as before.
+    expect(list).not.toBeInTheDocument();
+  });
+
+  it('F9b: gated look is colour, no opacity class', () => {
+    vi.useFakeTimers();
+    render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[
+          { label: 'Cancelling\u2026', danger: true, ariaDisabled: true, onClick: vi.fn() },
+          { label: 'Leave event', danger: true, twoTap: true, onClick: vi.fn() },
+        ]}
+      />
+    );
+    const { list } = openMenu('Event actions');
+    const inFlight = within(list).getByRole('button', { name: 'Cancelling\u2026' });
+    const twoTap = within(list).getByRole('button', { name: 'Leave event' });
+    const expectGatedLook = (button: HTMLElement) => {
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(button.className, 'the gated state changes INK').toContain(
+        'aria-disabled:text-content-muted',
+      );
+      expect(button.className, 'and never dims the row (O-17)').not.toMatch(
+        /aria-disabled:opacity/,
+      );
+    };
+
+    // The in-flight item (Cancelling…) first, then a twoTap item inside its gate.
+    expectGatedLook(inFlight);
+    fireEvent.click(twoTap);
+    expectGatedLook(twoTap);
   });
 });

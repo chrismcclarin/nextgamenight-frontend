@@ -1975,6 +1975,21 @@ async function openEventActions(user: ReturnType<typeof userEvent.setup>) {
   return { trigger, list: list as HTMLElement };
 }
 
+/**
+ * F9b (88.9-23): Cancel event / Leave event are twoTap, gated for CONFIRM_DELAY_MS after the
+ * first tap. Arm, step past the gate, commit. The fake clock (shouldAdvanceTime, so findBy and
+ * waitFor keep working) is the calling describe's, or installed here and restored by the
+ * calling describe's afterEach.
+ */
+async function commitEventAction(user: ReturnType<typeof userEvent.setup>, item: HTMLElement) {
+  if (!vi.isFakeTimers()) vi.useFakeTimers({ shouldAdvanceTime: true });
+  await user.click(item);
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+  await user.click(item);
+}
+
 /** A promise-returning mock that stays IN FLIGHT until `settle`/`fail` is called. */
 function deferred(mock: Mock) {
   let settle: (value?: unknown) => void = () => {};
@@ -2109,6 +2124,47 @@ describe('gameDetail event-actions kebab: the three authorization gates (D56)', 
 });
 
 describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-entry latch', () => {
+  // F9b (88.9-23): Cancel event / Leave event are twoTap, gated for CONFIRM_DELAY_MS after the
+  // first tap. Describe-level and shouldAdvanceTime, per this file's fake-timer rule.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('F9b (88.9): Cancel event arms, stays inert 3 s, then commits once and keeps Cancelling… readable', async () => {
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    deferred(eventsAPI.deleteEvent as Mock);
+    renderEventDetail({ role: 'owner' });
+    const { list } = await openEventActions(user);
+    const cancel = within(list).getByRole('button', { name: 'Cancel event' });
+
+    await user.click(cancel);
+    expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+    expect(cancel).toHaveTextContent('Tap again (3)');
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    await user.click(cancel);
+    expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS - 1000);
+    });
+    expect(cancel).toHaveTextContent('Tap again to confirm');
+    await user.click(cancel);
+
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
+    // D24 c: the menu stays OPEN and the in-flight label is readable in place, focused.
+    expect(list).toBeInTheDocument();
+    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    expect(inFlight).toBe(cancel);
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(document.activeElement).toBe(inFlight);
+  });
+
   it('keeps the menu OPEN and readable while Cancel is in flight, and sends exactly one DELETE', async () => {
     const user = userEvent.setup();
     deferred(eventsAPI.deleteEvent as Mock);
@@ -2120,6 +2176,14 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     // dispatched inside ONE `act()`, so the second runs the previous render's
     // closure where `cancellingEvent` is still false. After a flush the item gate
     // alone satisfies this and the test passes with no latch in the code.
+    // F9b (88.9-23): arm and step past the gate first, so the pair below is two activations
+    // of the LIVE item.
+    await act(async () => {
+      cancel.click();
+    });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       cancel.click();
       cancel.click();
@@ -2140,6 +2204,13 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     const { list } = await openEventActions(user);
 
     const leave = within(list).getByRole('button', { name: 'Leave event' });
+    // F9b (88.9-23): arm and step past the gate first, as above.
+    await act(async () => {
+      leave.click();
+    });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       leave.click();
       leave.click();
@@ -2157,7 +2228,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     renderEventDetail({ role: 'owner' });
     const { trigger, list } = await openEventActions(user);
 
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     // The whole reason the gate is `ariaDisabled` and not the native attribute:
     // a natively-disabled focused element blurs to <body>, which is exactly the
     // state this menu's container-bound Escape cannot see.
@@ -2185,7 +2256,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     rerender(<GameDetailPage />);
 
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Leave event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Leave event' }));
     expect(eventsAPI.leaveEvent).not.toHaveBeenCalled();
     // `keepOpen` means the rejected activation left the menu open, so the SAME
     // list is still mounted for the retry — no second trigger click (which would
@@ -2197,7 +2268,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     // mount. Nothing else in this suite catches that.
     h.selfUuid = SELF_UUID;
     rerender(<GameDetailPage />);
-    await user.click(within(list).getByRole('button', { name: 'Leave event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Leave event' }));
 
     await waitFor(() => expect(eventsAPI.leaveEvent).toHaveBeenCalledTimes(1));
   });
@@ -2215,12 +2286,12 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     rerender(<GameDetailPage />);
 
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
 
     h.userSub = 'auth0|self-sub';
     rerender(<GameDetailPage />);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
 
     await waitFor(() => expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1));
   });
@@ -2538,6 +2609,8 @@ async function expectGameNotFoundWithZeroRequests(search: string) {
 
 describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
   afterEach(() => {
+    // F9b (88.9-23): commitEventAction may install a fake clock mid-test; restore it here.
+    vi.useRealTimers();
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
@@ -2984,7 +3057,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
     renderEventDetail({ role: 'owner', urlGroupId: null });
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
   });
 
@@ -3015,7 +3088,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
     expect(lastCreateEventGroupId()).toBe(GROUP_ID);
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
     // getEventSuggestions is event-scoped: the group only decides WHETHER to ask, so the URL hint
     // giving way to the event's group must not ask a second time.
@@ -3035,7 +3108,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
     expect(lastCreateEventGroupId()).toBe(GROUP_ID);
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
   });
 

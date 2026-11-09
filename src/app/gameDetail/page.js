@@ -2813,7 +2813,13 @@ export default function GameDetailPage() {
                             is in flight.
                             Neither item is `twoTap`: single-tap commit is the Phase 65-02 decision
                             recorded above — the kebab PLACEMENT is the friction — and adding a
-                            confirm here would be a behaviour change, not a hardening. */}
+                            confirm here would be a behaviour change, not a hardening.
+                            AMENDED Phase 88.9-23 (owner pick F9b, 88.9-PICKS-B5.json, 2026-11-07): both
+                            items are now twoTap + keepOpen with the delayed enable, chosen OVER the
+                            single-tap commit above — one capture tap on Cancel event hard-deleted the
+                            walk DB's ballot night with every RSVP, vote and option (2026-11-07 ~12:03 AM
+                            Pacific). D24 c holds: the menu stays open and Cancelling… / Leaving… stays
+                            readable after the commit. */}
                         {((userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')) || userScope === 'game-only') && (
                             <KebabMenu
                                 ariaLabel="Event actions"
@@ -2824,6 +2830,7 @@ export default function GameDetailPage() {
                                             onClick: handleCancelEvent,
                                             ariaDisabled: cancellingEvent,
                                             danger: true,
+                                            twoTap: true,
                                             keepOpen: true,
                                         }]
                                         : []),
@@ -2833,6 +2840,7 @@ export default function GameDetailPage() {
                                             onClick: handleLeaveEvent,
                                             ariaDisabled: leavingEvent,
                                             danger: true,
+                                            twoTap: true,
                                             keepOpen: true,
                                         }]
                                         : []),

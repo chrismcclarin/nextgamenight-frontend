@@ -690,7 +690,8 @@ export default function ResponseDashboard({
    test pins (`e2e/response-dashboard-remind.spec.ts`, test 3). Changing the margin, the padding
    or the gap is a decision, not a cleanup.
    The in-flight wash is the aria-disabled opacity variant at the same 0.5 as before (house
-   raw-button precedent at src/app/components/KebabMenu.js ("the items behind it were not")). */
+   raw-button precedent at src/app/components/KebabMenu.js ("the items behind it were not")).
+   AMENDED Phase 88.9-23 (O-17): the in-flight look is muted ink, not an opacity wash, with the kebab items. */
 
 /** The Remind button's id, derived from its row's status id in ONE place (Req 5 guard). */
 function remindButtonIdFor(statusId) {
@@ -728,7 +729,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, statusId, onRemind 
       id={remindButtonIdFor(statusId)}
       onClick={() => onRemind(userId)}
       aria-disabled={isReminding || undefined}
-      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:text-content-muted shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>

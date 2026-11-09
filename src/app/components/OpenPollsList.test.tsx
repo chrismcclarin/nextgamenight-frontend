@@ -49,6 +49,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import { promptAPI, ApiError } from '@/lib/api';
 import { promptKeys } from '@/lib/queryKeys/promptKeys';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import OpenPollsList from './OpenPollsList';
 // A namespace import, so a missing label export fails the LBL tests alone and the rest of the
 // file still runs (quick-261026-pi6).
@@ -97,12 +98,31 @@ function openKebab(trigger: HTMLElement) {
   return list as HTMLElement;
 }
 
+// F9b (88.9-23): the item is gated for CONFIRM_DELAY_MS after the first tap. The drives below
+// run on a fake clock that still advances with real time (installed once per test, before the
+// arming tap; the file-level afterEach restores real timers) and step past the gate.
+function installGateClock() {
+  if (!vi.isFakeTimers()) vi.useFakeTimers({ shouldAdvanceTime: true });
+}
+
+function passGate() {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 // Two-tap "End check-in". The second tap goes to the confirm label when it appears; when the item
 // refuses the first tap (aria-disabled), the label never changes and the second tap goes to the
 // same item, so this drive works on both a fixed and an unfixed tree.
 function endCheckIn(trigger: HTMLElement) {
+  installGateClock();
   const list = openKebab(trigger);
   fireEvent.click(within(list).getByRole('button', { name: 'End check-in' }));
+  passGate();
   const confirm =
     within(list).queryByRole('button', { name: 'Tap again to end' }) ??
     within(list).getByRole('button', { name: 'End check-in' });
@@ -267,8 +287,10 @@ describe('OpenPollsList: ending a check-in (Req 4, D-24, R5)', () => {
     ));
     await screen.findByText('Started by Ana');
 
+    installGateClock();
     const list = openKebab(triggers()[0]);
     fireEvent.click(within(list).getByRole('button', { name: 'End check-in' }));
+    passGate();
     (document.activeElement as HTMLElement | null)?.blur();
     expect(document.activeElement).toBe(document.body);
     fireEvent.click(within(list).getByRole('button', { name: 'Tap again to end' }));

@@ -531,6 +531,9 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(monday).toBeVisible({ timeout: 15_000 });
     await focusByKeyboard(page, monday);
     await page.keyboard.press('Enter');
+    // F9b (88.9-23): the second press is refused for 3 s after arming; wait for the live label
+    // (the 5 s expect timeout covers the gate) before the committing press.
+    await expect(monday).toHaveText('Tap again to confirm');
     await page.keyboard.press('Enter');
     await removal.arrived;
     await expect(monday).toBeFocused();
@@ -545,6 +548,8 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     const tuesday = page.getByRole('button', { name: /^(Delete Tuesday schedule|Tap again to confirm)$/ });
     await focusByKeyboard(page, tuesday);
     await page.keyboard.press('Enter');
+    // F9b (88.9-23): as above, wait for the live label before the committing press.
+    await expect(tuesday).toHaveText('Tap again to confirm');
     await page.keyboard.press('Enter');
     // The Tuesday DELETE is answered at once: the shared hold was released in Arm 1, and
     // holdUntilReleased answers any later match at once after release (its `arrived` already

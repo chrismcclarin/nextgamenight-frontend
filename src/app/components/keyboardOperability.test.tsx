@@ -49,6 +49,7 @@ import PromptScheduleSection from './PromptScheduleSection';
 import ClickableMemberName from './ClickableMemberName';
 import MemberChipStack from './MemberChipStack';
 import KebabMenu from './KebabMenu';
+import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 import GroupList from './grouplist';
 import CalendarMonthView from './CalendarMonthView';
 import { Modal } from './Modal';
@@ -143,6 +144,24 @@ function renderMemberName(extra?: { onParentKeyDown?: (e: React.KeyboardEvent) =
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
+
+// F9b (88.9-23): a kebab twoTap item is gated for CONFIRM_DELAY_MS after arming, then live, and
+// its NC-1 arm text is written at the live edge. The KebabMenu describes below that commit or
+// read the armed text run on a fake clock (installKebabGateClock) and step past the gate here.
+function passKebabGate() {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+}
+
+function installKebabGateClock() {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+}
 
 describe('PromptScheduleSection check-ins header is keyboard-operable (87.8-08 -> 88-28)', () => {
   function header() {
@@ -659,6 +678,8 @@ describe('KebabMenu Escape INSIDE the shipped Modal — the two ManageMembers si
 });
 
 describe('KebabMenu focusout — the keyboard half beside the shipped mousedown close', () => {
+  installKebabGateClock();
+
   const TWO_TAP_ITEMS = (onRemove = vi.fn()) => [
     { label: 'Make admin', onClick: vi.fn() },
     {
@@ -698,6 +719,7 @@ describe('KebabMenu focusout — the keyboard half beside the shipped mousedown 
     render(<KebabMenu ariaLabel={KEBAB_LABEL} items={TWO_TAP_ITEMS()} />);
     const { list } = openKebab();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    passKebabGate();
     const armed = within(list).getByRole('button', { name: 'Tap again to remove' });
 
     fireEvent.focusOut(armed, { relatedTarget: null });
@@ -722,6 +744,7 @@ describe('KebabMenu focusout — the keyboard half beside the shipped mousedown 
     const remove = within(list).getByRole('button', { name: 'Remove' });
     fireEvent.click(remove);
     expect(onRemove).not.toHaveBeenCalled();
+    passKebabGate();
     fireEvent.click(remove);
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
@@ -746,6 +769,7 @@ describe('KebabMenu focusout — the keyboard half beside the shipped mousedown 
     item = within(opened.list).getByRole('button', { name: 'Remove' });
     item.focus();
     fireEvent.click(item);
+    passKebabGate();
     fireEvent.click(within(opened.list).getByRole('button', { name: 'Tap again to remove' }));
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(opened.trigger).toHaveFocus();
@@ -753,6 +777,8 @@ describe('KebabMenu focusout — the keyboard half beside the shipped mousedown 
 });
 
 describe('KebabMenu aria-pressed — present only while armed (legal only once the item role is gone)', () => {
+  installKebabGateClock();
+
   it('KM-11. armed exposes aria-pressed=true; at rest the attribute is ABSENT on both item kinds', () => {
     render(
       <KebabMenu
@@ -775,6 +801,7 @@ describe('KebabMenu aria-pressed — present only while armed (legal only once t
     expect(del).not.toHaveAttribute('aria-pressed');
 
     fireEvent.click(remove);
+    passKebabGate();
     expect(within(list).getByRole('button', { name: 'Tap again to remove' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -784,6 +811,8 @@ describe('KebabMenu aria-pressed — present only while armed (legal only once t
 });
 
 describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => {
+  installKebabGateClock();
+
   const announcingItems = () => [
     { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
   ];
@@ -798,6 +827,7 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
 
     const { list } = openKebab();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    passKebabGate();
     expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove');
   });
 
@@ -857,9 +887,11 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
     );
     const { list } = openKebab();
     fireEvent.click(within(list).getByRole('button', { name: 'End check-in' }));
+    passKebabGate();
     expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: End check-in');
 
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    passKebabGate();
     expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove');
   });
 
@@ -877,6 +909,7 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
     const { list } = openKebab();
     const remove = within(list).getByRole('button', { name: 'Remove' });
     fireEvent.click(remove);
+    passKebabGate();
     fireEvent.click(within(list).getByRole('button', { name: 'Tap again to remove' }));
 
     expect(onRemove).toHaveBeenCalledTimes(1);
@@ -889,6 +922,7 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
     render(<KebabMenu ariaLabel={KEBAB_LABEL} items={announcingItems()} />);
     const { list } = openKebab();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    passKebabGate();
     fireEvent.keyDown(within(list).getByRole('button', { name: 'Tap again to remove' }), {
       key: 'Escape',
     });
@@ -897,6 +931,8 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
 });
 
 describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () => {
+  installKebabGateClock();
+
   it('KM-18 (i). INERTNESS: with no item passing the flag, a single-tap activation still closes', () => {
     // This is what makes all 6 shipped render sites unaffected by the flag existing.
     const onEdit = vi.fn();
@@ -921,11 +957,13 @@ describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () =
       );
       const { list } = openKebab();
       fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+      passKebabGate();
       expect(within(list).getByRole('button', { name: 'Tap again to remove' })).toBeInTheDocument();
 
       // the 3s revert timer still reverts, and still announces for itself
+      // F9b: the revert lands at the end of the live window (gated + live).
       act(() => {
-        vi.advanceTimersByTime(3100);
+        vi.advanceTimersByTime(CONFIRM_LIVE_MS + 100);
       });
       expect(within(list).getByRole('button', { name: 'Remove' })).toBeInTheDocument();
       expect(screen.getByRole('status')).toHaveTextContent('Confirmation cancelled.');
@@ -933,6 +971,7 @@ describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () =
 
       // and the commit path still commits AND closes — a twoTap item never consults the flag
       fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+      passKebabGate();
       fireEvent.click(within(list).getByRole('button', { name: 'Tap again to remove' }));
       expect(onRemove).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('list')).not.toBeInTheDocument();
@@ -1131,6 +1170,8 @@ describe('KebabMenu edge coverage — SPEC E6 empty / zero-one-many (R5)', () =>
 // hook in src/components/ui/useDismissal.ts. Before this describe, no test fired a mousedown at the
 // kebab at all (research ST-4), so the outside close was pinned by nothing.
 describe('KebabMenu outside pointer — the pointer half, extracted to useDismissal (88.6.1-05)', () => {
+  installKebabGateClock();
+
   it('KM-23. an outside mousedown closes the open menu; a mousedown on an item or on the trigger does not', () => {
     render(
       <>
@@ -1169,6 +1210,7 @@ describe('KebabMenu outside pointer — the pointer half, extracted to useDismis
     );
     const { list } = openKebab();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    passKebabGate();
     expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove');
 
     fireEvent.mouseDown(screen.getByRole('button', { name: 'outside' }));

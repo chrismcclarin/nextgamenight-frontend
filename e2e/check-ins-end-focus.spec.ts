@@ -121,7 +121,11 @@ async function endFirstCheckIn(page: Page): Promise<Locator> {
   expect(listId, 'the kebab names its open list through aria-controls').toBeTruthy();
   const list = page.locator(`[id="${listId}"]`);
   await list.getByRole('button', { name: 'End check-in' }).click();
-  await list.getByRole('button', { name: 'Tap again to end' }).click();
+  // F9b (88.9-23): the armed item is gated for 3 s (Tap again (3)…(1)); wait for the live label
+  // before the committing tap (the 5 s expect timeout covers the gate).
+  const end = list.getByRole('button', { name: 'Tap again to end' });
+  await expect(end).toHaveText('Tap again to end');
+  await end.click();
   return trigger;
 }
 

@@ -625,7 +625,8 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await screen.findByText('Member A');
 
     const tokens = remindIn('Member A').className.split(/\s+/);
-    for (const token of ['min-h-11', '-my-2', 'inline-flex', 'items-center', 'aria-disabled:opacity-50']) {
+    // AMENDED Phase 88.9-23 (O-17): the in-flight token is muted ink, not the opacity wash.
+    for (const token of ['min-h-11', '-my-2', 'inline-flex', 'items-center', 'aria-disabled:text-content-muted']) {
       expect(tokens).toContain(token);
     }
     expect(tokens).not.toContain('disabled:opacity-50');
