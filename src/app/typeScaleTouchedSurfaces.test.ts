@@ -1335,9 +1335,10 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // `ErrorFallback.tsx`'s `<Heading level={1}>` is literal and IS counted; this one is not.
       // Raising the floor by two would have RED the floor assertion, which is the honest outcome — do
       // not "fix" that by resolving the expression (see `PROP_SEAM_EXPRESSION`).
+      // AMENDED Phase 88.9-22 (owner pick F4b): the EmptyState entry moved 179 -> 182 because 88.9-22 added a three-line F4b AMENDED comment above the same Heading; the skipped element is unchanged.
     ).toEqual([
       'app/components/CalendarListView.js:1069',
-      'components/ui/EmptyState.tsx:179',
+      'components/ui/EmptyState.tsx:182',
     ]);
   });
 
