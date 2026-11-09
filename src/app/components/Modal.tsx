@@ -28,7 +28,7 @@
 
 import * as React from 'react';
 
-import { Button } from '@/components/ui/Button';
+import { Button, type ButtonProps } from '@/components/ui/Button';
 import {
   Dialog,
   DialogClose,
@@ -618,7 +618,8 @@ export type ModalActionVariant = 'primary' | 'secondary' | 'danger';
    Re-pointing this back at a bare `<button>` with a local variant map is a decision, not a
    cleanup. */
 export interface ModalActionProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    Pick<ButtonProps, 'busy' | 'busySuffix'> {
   /** Visual intent. @default 'primary' */
   variant?: ModalActionVariant;
 }

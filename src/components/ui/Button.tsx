@@ -41,12 +41,17 @@
  * - **No raw palette classes** — semantic tokens only inside `src/components/ui/`.
  * - **No barrel export.** There is no `src/components/ui/index.ts` and this
  *   phase does not add one; import from `@/components/ui/Button`.
+ *
+ * What it does add:
+ * - **Busy (rule 1)** — `busy` / `busySuffix`; see the 88.9-24 marker on the render.
  */
 import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '@/lib/cn';
+
+import { Spinner } from './Spinner';
 
 /* DECISION Phase 88-02 (D-01/D-02): Button COMPOSES the legacy `.btn` class rather than
    re-emitting its properties as Tailwind utilities. Chosen OVER a pure-utility base
@@ -274,15 +279,48 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {
   /** Render the single child element instead of a `<button>` (Radix Slot). */
   asChild?: boolean;
+  /**
+   * In flight (save-feedback rule 1): sets `aria-disabled`, keeps the label and adds the
+   * house Spinner plus an sr-only suffix. Never swallows the press — the site's own latch
+   * is the refusal. Ignored for rendering under `asChild` (only `aria-disabled` is set).
+   */
+  busy?: boolean;
+  /**
+   * The sr-only words appended to the accessible name while `busy`. Defaults to the
+   * Q6(b) suffix (", saving"); a site passes its own verb (", creating", ", sending" ...).
+   */
+  busySuffix?: string;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    { variant, size, asChild = false, className, type = 'button', ...props },
+    {
+      variant,
+      size,
+      asChild = false,
+      className,
+      type = 'button',
+      busy = false,
+      busySuffix = ', saving',
+      children,
+      ...props
+    },
     ref
   ) => {
     const Comp = asChild ? Slot : 'button';
 
+    /* DECISION Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1):
+       busy is ONE prop carrying the whole in-flight affordance — aria-disabled (whose dim is the gated
+       colour pair at src/app/globals.css ("DECISION Phase 88.8 (plan 13, DR-C)")), the house Spinner
+       beside the UNCHANGED label, and an sr-only suffix (", saving" by default; a site passes its own
+       verb through busySuffix, owner ruling Q6(b) 2026-11-08) so the name reads "<label>, saving" or
+       "<label>, <its verb>". Chosen OVER the per-site label swap (it replaced the whole accessible name
+       with a bare progress word and narrowed the button 128 to 92px) and OVER an opacity dim (2.0974:1
+       on a composited label, 88.8 HIGH-A). It does NOT swallow the press: each site's own refusal latch
+       stays the refusal (src/app/components/ScheduleForm.js ("The refusal is the latch, not the")),
+       chosen over a central click guard that would preventDefault a submit and double up with the
+       latches. Not applied under asChild (Slot takes one child). Changing any of this is a decision,
+       not a cleanup. */
     return (
       <Comp
         ref={ref}
@@ -290,7 +328,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...(asChild ? {} : { type })}
         className={cn(buttonVariants({ variant, size }), className)}
         {...props}
-      />
+        {...(busy ? { 'aria-disabled': true } : {})}
+      >
+        {busy && !asChild ? (
+          <>
+            {children}
+            <Spinner />
+            <span className="sr-only">{busySuffix}</span>
+          </>
+        ) : (
+          children
+        )}
+      </Comp>
     );
   }
 );
