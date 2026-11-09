@@ -513,7 +513,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
         <Modal.Body>
           <div className="text-center">
             <div className="text-content-status-success text-5xl mb-4">✓</div>
-            <DialogTitle className="text-xl font-bold text-content-primary mb-2">Thank You!</DialogTitle>
+            <DialogTitle className="text-content-primary mb-2">Thank You!</DialogTitle>
             <p className="text-content-secondary">Your feedback has been submitted successfully.</p>
           </div>
         </Modal.Body>
