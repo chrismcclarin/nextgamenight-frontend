@@ -564,14 +564,17 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-base text-content-primary">
+              <p className="text-sm text-content-primary">
                 This permanently deletes your account. It cannot be undone.
               </p>
-              {/* R2 / UI-SPEC §4.3: this is the consequence copy a user reads before
-                  permanently deleting their account — RUNNING PROSE, so Body 16, not the
-                  Label 14 it shipped at. Classified explicitly because getting it wrong
-                  makes the most consequential text in the app smaller. */}
-              <div className="space-y-2 text-base text-content-secondary">
+              {/* AMENDED Phase 88.9-34 (owner pick E5b, 88.9-PICKS-B4.json, 2026-11-06): the
+                  consequence copy of the delete state moved to Label 14 (text-sm, 14/20), chosen
+                  OVER the R2 / UI-SPEC §4.3 Body 16 it carried (16/24), because at 375x667 Body 16
+                  scrolled the dialog 32px and put the confirm field under the footer line; the
+                  owner ruled fit-on-one-screen on a rendered pair. The blocked-branch paragraphs
+                  above and the card lede stay Body 16 — not the picked state. Ink is unchanged
+                  (primary lead, secondary list). */}
+              <div className="space-y-2 text-sm text-content-secondary">
                 <p>The following are permanently destroyed:</p>
                 <ul className="list-disc space-y-1 pl-5">
                   <li>Your groups and group memberships</li>

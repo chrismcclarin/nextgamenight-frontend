@@ -7,7 +7,7 @@ import { useState } from 'react';
  * Behavior:
  * - Each star has two clickable halves: left = N - 0.5, right = N
  * - Desktop: hover preview fills up to cursor; mouseleave returns to committed value
- * - Mobile: tap commits directly (same halves; star size ≥40px)
+ * - Mobile: tap commits directly (same halves; star box 48px, each half 24 x 48)
  * - Empty state (value = 0): 5 outlined grey stars + "—" indicator
  *
  * Props:
@@ -33,9 +33,11 @@ import { useState } from 'react';
  *   - is the value exposed?          YES — each half button carries `role="radio"` + `aria-checked`,
  *                                    with an `aria-live="polite"` readout at this file ("displayValue.toFixed(1)").
  *   - is there a keyboard path?      YES, but not the RIGHT one — see residual 1.
- * Each half button also carries `focus-visible:ring-2`, which
+ * Each half button also carries `focus-visible:ring-2` in the house colour (focus-visible:ring-focus-ring), which
  * src/app/focusAndMotionTreatment.test.ts ("the three pre-88-28 compliant files still carry their") pins by name;
- * do not remove it.
+ * do not remove it. AMENDED Phase 88.9-34: the amber-400 ring it shipped with measured 1.67:1 on the
+ * white dialog in light and 1.00 against a filled star, under the 3:1 non-text floor; the house ring
+ * reads 7.79 / 4.67 in light and is the same amber-400 in dark.
  *
  * (Every cite in this block is a same-file anchor, re-read at FE e70c9a3 on 2026-10-24; the line
  * numbers an earlier version carried had drifted ~10 lines, which is why it no longer uses them.)
@@ -44,11 +46,13 @@ import { useState } from 'react';
  *   1. TEN INDIVIDUALLY TABBABLE RADIOS. There is no roving tabindex and no Arrow-key traversal,
  *      so reaching the next control costs ten Tab presses and the group departs from the ARIA APG
  *      radiogroup pattern. This is a pattern departure, not an absent keyboard path.
- *   2. SUB-44px HIT ZONES. Each half is `w-1/2 h-full` of a `w-10 h-10` star box
- *      (this file ("relative w-10 h-10 cursor-pointer select-none")), i.e. half of 40px wide by
- *      40px tall. That figure is ARITHMETIC FROM THE CLASS
- *      STRINGS — jsdom performs no layout and no rendered measurement was taken, so it is stated
- *      as derived, not measured. It is below the 44px floor either way.
+ *   2. SUB-44px HIT ZONES — RULED Phase 88.9-34 (owner pick O15b, 88.9-PICKS-B8B.json, 2026-11-07):
+ *      the star box is 48x48 and each half 24 wide by 48 tall
+ *      (this file ("relative w-12 h-12 cursor-pointer select-none")), chosen OVER the shipped 40px
+ *      star (20 x 40 halves). 24 CSS px meets WCAG 2.2 SC 2.5.8; the whole star clears the 44
+ *      floor; a half alone does not reach 44 wide, which the owner ruled on the rendered page.
+ *      Still arithmetic from the class strings in jsdom; the rendered size is pinned by
+ *      e2e/touch-targets.spec.ts (stars 48).
  *   3. THE READOUT IS HOVER-DRIVEN, NOT FOCUS-DRIVEN. `setHoverValue` is wired to `onMouseEnter`
  *      only (this file ("handleHalfHover(starIndex, 'left')"), this file ("handleHalfHover(starIndex, 'right')")),
  *      so a keyboard user moving through the radios gets no live readout at
@@ -92,24 +96,24 @@ export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rat
         return (
           <div
             key={starIndex}
-            className="relative w-10 h-10 cursor-pointer select-none"
+            className="relative w-12 h-12 cursor-pointer select-none"
           >
             {/* Background outline (always renders behind any fill) */}
             <StarSVG
-              className="absolute inset-0 w-10 h-10 text-content-muted"
+              className="absolute inset-0 w-12 h-12 text-content-muted"
               filled={false}
             />
             {/* Full fill */}
             {filledFull && (
               <StarSVG
-                className="absolute inset-0 w-10 h-10 text-amber-400"
+                className="absolute inset-0 w-12 h-12 text-amber-400"
                 filled={true}
               />
             )}
             {/* Half fill (left half only) */}
             {filledHalf && (
               <StarSVG
-                className="absolute inset-0 w-10 h-10 text-amber-400"
+                className="absolute inset-0 w-12 h-12 text-amber-400"
                 filled={true}
                 clipHalf="left"
               />
@@ -117,7 +121,7 @@ export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rat
             {/* Hit zones — absolutely-positioned buttons spanning each half of the star */}
             <button
               type="button"
-              className="absolute left-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 rounded-l"
+              className="absolute left-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring rounded-l"
               onMouseEnter={() => handleHalfHover(starIndex, 'left')}
               onClick={() => handleHalfClick(starIndex, 'left')}
               aria-label={`${starIndex - 0.5} stars`}
@@ -126,7 +130,7 @@ export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rat
             />
             <button
               type="button"
-              className="absolute right-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 rounded-r"
+              className="absolute right-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring rounded-r"
               onMouseEnter={() => handleHalfHover(starIndex, 'right')}
               onClick={() => handleHalfClick(starIndex, 'right')}
               aria-label={`${starIndex} stars`}
