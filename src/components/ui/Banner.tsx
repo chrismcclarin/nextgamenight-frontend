@@ -43,7 +43,7 @@ import { StatusRegion } from './StatusRegion';
    `tailwind-merge` also keeps both (a shorthand does not conflict-eat a longhand). If you ever
    see the accent stripe go neutral, that ordering is what changed. */
 const bannerVariants = cva(
-  'flex items-start gap-3 rounded-card border border-line border-l-4 px-4 py-3 text-sm bg-surface-elevated text-content-primary',
+  'flex items-start gap-3 rounded-card border border-line border-l-4 px-4 py-3 text-base bg-surface-elevated text-content-primary',
   {
     variants: {
       tone: {
@@ -118,8 +118,10 @@ const Banner = React.forwardRef<HTMLDivElement, BannerProps>(
             itself from the message directly beneath it — same ink, same rung, same box — so
             dropping to 400 would erase the distinction rather than re-carry it. 600 is a
             prohibition outside `Button` (§4.2), and this is the last 600 in this primitive.
-            The banner BODY stays at `text-sm` (the cva base above): that rung is a ruled
-            question for the whole banner family, not this sweep's to answer. */}
+            The banner BODY is 16 (text-base on the cva base above AND on the region, because
+            StatusRegion paints its own text-sm). AMENDED Phase 88.9-26 (owner pick C7a,
+            88.9-PICKS-B2.json, 2026-11-05): the family body moved to 16, chosen OVER the shipped
+            text-sm (14); a consumer's action row keeps its own text-sm on the Button rung. */}
         {title && <span className="block font-bold">{title}</span>}
         {children}
       </>
@@ -139,12 +141,14 @@ const Banner = React.forwardRef<HTMLDivElement, BannerProps>(
           />
         )}
         {actions === undefined ? (
-          <StatusRegion politeness={politeness} className="flex-1">
+          <StatusRegion politeness={politeness} className="flex-1 text-base">
             {body}
           </StatusRegion>
         ) : (
           <div className="flex-1">
-            <StatusRegion politeness={politeness}>{body}</StatusRegion>
+            <StatusRegion politeness={politeness} className="text-base">
+              {body}
+            </StatusRegion>
             {actions}
           </div>
         )}

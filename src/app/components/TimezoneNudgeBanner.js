@@ -97,7 +97,7 @@ export default function TimezoneNudgeBanner() {
       {/* DECISION Phase 88.6-26 (UI-SPEC 4.3 vs the shipped Banner family): the body STAYS at 14,
           chosen OVER the 16 a mechanical read of 4.3's "<p> running prose -> Body 16" row gives.
           On the merits 16 is the wrong answer HERE: the shipped Banner primitive's own cva base is
-          text-sm (src/components/ui/Banner.tsx ("px-4 py-3 text-sm bg-surface-elevated")) and three banners render through it, src/app/components/PendingMemberBanner.js ("text-content-secondary text-sm") —
+          text-sm (src/components/ui/Banner.tsx ("rounded-card border border-line border-l-4 px-4 py-3")) and three banners render through it, src/app/components/PendingMemberBanner.js ("text-content-secondary text-sm") —
           the sibling this file's docblock says it matches "for visual cohesion" — is text-sm, and
           two plans in this same phase already answered this exact question the same way (88.6-17
           kept the SMS-disabled banner at 14 "because Banner.tsx's own copy is 14"; 88.6-19 kept a
@@ -105,7 +105,11 @@ export default function TimezoneNudgeBanner() {
           Raising this one banner would make it the only 16px banner in the app and, MEASURED in
           Chromium at 375px, would grow it 110px -> 150px inside the create-event modal — a visible
           delta with no V-row, on the phone-primary surface, in exchange for LESS consistency.
-          Moving the whole family to 16 is a decision for a plan that owns the primitive. */}
+          Moving the whole family to 16 is a decision for a plan that owns the primitive.
+          AMENDED Phase 88.9-26 (owner pick C7a, 88.9-PICKS-B2.json, 2026-11-05): the Banner
+          primitive's body moved 14 → 16, so the first premise above no longer holds; this banner's
+          own text-sm is NOT changed here — its rung is ruled with its B3a status-warning move in
+          plan 88.9-42, chosen OVER silently re-pointing the cite. */}
       <div className="flex-1 text-sm text-amber-900">
         <p className="mb-1">
           Your timezone isn&apos;t set. We&apos;re showing times in{' '}
