@@ -348,3 +348,34 @@ describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 });
+
+// Phase 88.9-25 (the D5a / R2-27 lift): the guest derivation moved out of this card into
+// src/lib/eventClassification.ts ("export function isGuestEvent"). This pins what the user sees
+// across that refactor: a guest row keeps its dashed edge and its Guest pill, a member row has
+// neither, and with no viewer id nothing is a guest row. Green before and after the lift by design;
+// its detection power was shown by a mutation (the card call forced to false fails it).
+describe('UpcomingEventsCard — guest rows (Phase 71.1 GAMP-09, 88.9-25 lift)', () => {
+  const VIEWER = 'u-viewer';
+  const GUEST_AND_MEMBER = [
+    { ...ev('guest', '2026-08-23T23:00:00.000Z', 'Guest Night Game'), EventParticipations: [{ user_id: VIEWER, is_guest: true }] },
+    { ...ev('member', '2026-08-24T23:00:00.000Z', 'Member Night Game'), EventParticipations: [{ user_id: VIEWER, is_guest: false }] },
+  ];
+
+  it('GAMP-09 (88.9-25 lift): a guest row carries the dashed edge and the Guest pill; a member row and a viewer-less render carry neither', () => {
+    renderCard({ events: GUEST_AND_MEMBER, viewerDbUserId: VIEWER });
+    const guestRow = screen.getByRole('button', { name: /^Guest Night Game/ });
+    const memberRow = screen.getByRole('button', { name: /^Member Night Game/ });
+    expect(guestRow.className, 'the guest row carries the dashed edge').toContain('border-dashed');
+    expect(within(guestRow).queryByText('Guest'), 'the guest row carries the Guest pill').not.toBeNull();
+    expect(memberRow.className, 'the member row carries no dashed edge').not.toContain('border-dashed');
+    expect(within(memberRow).queryByText('Guest'), 'the member row carries no Guest pill').toBeNull();
+
+    cleanup();
+    renderCard({ events: GUEST_AND_MEMBER, viewerDbUserId: null });
+    for (const name of [/^Guest Night Game/, /^Member Night Game/]) {
+      const row = screen.getByRole('button', { name });
+      expect(row.className, 'no viewer id: no dashed edge').not.toContain('border-dashed');
+      expect(within(row).queryByText('Guest'), 'no viewer id: no Guest pill').toBeNull();
+    }
+  });
+});
