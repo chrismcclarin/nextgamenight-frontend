@@ -37,6 +37,7 @@ import * as React from 'react';
 import { render, screen, within, cleanup, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 
 const SELF_UUID = '11111111-1111-4111-8111-111111111111';
 const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
@@ -801,6 +802,15 @@ describe('gameDetail role-gated session affordances', () => {
 // gate must BLOCK: nothing is deleted until an explicit confirmation, and cancel
 // aborts. These two pins are the mitigation the threat register names.
 describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
+  // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open; the commits
+  // below step past it. Describe-level and shouldAdvanceTime, per this file's fake-timer rule.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   async function openDeleteFromKebab(user: ReturnType<typeof userEvent.setup>) {
     // sessionsSection() now resolves only on the settled heading (rows present);
     // findByRole keeps the kebab query itself retrying too.
@@ -847,6 +857,9 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     renderGameDetail({ role: 'owner' });
 
     const dialog = await openDeleteFromKebab(user);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
     expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
     expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(SESSION.id);
@@ -878,6 +891,9 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     const desktopDelete = within(sessions).getByRole('button', { name: 'Delete' });
     await user.click(desktopDelete);
     const dialog = await screen.findByRole('dialog');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(SESSION.id);
@@ -925,6 +941,9 @@ describe('gameDetail session delete — focus lands on the list heading (88.6.1-
     expect(list, 'the Session actions kebab names its open list through aria-controls').not.toBeNull();
     await user.click(within(list as HTMLElement).getByRole('button', { name: 'Delete' }));
     const dialog = await screen.findByRole('dialog');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
     return trigger;
   }
@@ -1050,8 +1069,19 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
 // 3s revert, never a modal — is unchanged and re-pinned below.
 const RESTING_REMOVE = /^Remove .+ from this event$/;
 const ARMED_REMOVE = 'Tap again to confirm';
+// F9b (88.9-23): the armed label while the gate runs (it counts 3, 2, 1, then ARMED_REMOVE).
+const GATED_REMOVE = /^Tap again \(\d\)$/;
 
 describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)', () => {
+  // F9b (88.9-23): the second click is refused for CONFIRM_DELAY_MS after arming; the commits
+  // below step past it. Describe-level and shouldAdvanceTime, per this file's fake-timer rule.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('arms on the first click and deletes nothing yet, announcing the target', async () => {
     const user = userEvent.setup();
     (eventsAPI.removeParticipation as Mock).mockResolvedValue({});
@@ -1061,6 +1091,11 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
     const removes = within(dialog).getAllByRole('button', { name: RESTING_REMOVE });
     await user.click(removes[0]);
 
+    // F9b: gated first (the countdown label), and the announcement lands at the live edge.
+    expect(within(dialog).getByRole('button', { name: GATED_REMOVE })).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(
       within(dialog).getByRole('button', { name: ARMED_REMOVE })
     ).toBeInTheDocument();
@@ -1090,6 +1125,9 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
 
     const dialog = await openParticipantsModal(user);
     await user.click(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0]);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await user.click(within(dialog).getByRole('button', { name: ARMED_REMOVE }));
 
     expect(eventsAPI.removeParticipation).toHaveBeenCalledTimes(1);
@@ -1111,15 +1149,17 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
 
       const dialog = await openParticipantsModal(user);
       await user.click(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0]);
-      within(dialog).getByRole('button', { name: ARMED_REMOVE });
+      within(dialog).getByRole('button', { name: GATED_REMOVE });
 
+      // F9b: the window is now gated CONFIRM_DELAY_MS + live CONFIRM_LIVE_MS.
       await act(async () => {
-        vi.advanceTimersByTime(3100);
+        vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS + 100);
       });
 
       expect(
         within(dialog).queryByRole('button', { name: ARMED_REMOVE })
       ).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: GATED_REMOVE })).toBeNull();
       // Every row is back at rest — none of the six is self, so all six are removable.
       expect(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })).toHaveLength(
         SIX_PARTICIPANTS.length

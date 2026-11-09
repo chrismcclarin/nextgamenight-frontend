@@ -1462,7 +1462,11 @@ function FriendsPage() {
                                                                     // visible label is "Removing...", so the accessible name
                                                                     // must contain it. The hook only owns resting-vs-armed.
                                                                     {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
-                                                                    aria-disabled={removing ? 'true' : undefined}
+                                                                    // F9b (88.9-23): a conditional spread, the house form
+                                                                    // (src/components/ui/useConfirmAction.ts ("'aria-pressed': true as const")),
+                                                                    // so the hook's gated aria-disabled is not overwritten by an
+                                                                    // explicit undefined while the request is idle.
+                                                                    {...(removing ? { 'aria-disabled': 'true' } : {})}
                                                                     // DECISION Phase 88-27 (D-32 bucket D): the hover affordance
                                                                     // 87.7 stripped from here was a TEXT alpha (error text at
                                                                     // 80% on hover). It comes back as a subtle SURFACE, chosen

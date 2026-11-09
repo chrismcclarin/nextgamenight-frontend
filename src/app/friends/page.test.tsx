@@ -155,6 +155,21 @@ import { ApiError, friendshipsAPI, groupsAPI, invitesAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { queryCacheOnError } from '@/lib/queryClient';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+
+// F9b (88.9-23): the two-tap gate refuses the second tap for CONFIRM_DELAY_MS after arming.
+// A test that commits installs a fake clock that still advances with real time (so the
+// promise-driven renders keep flowing; installed after the mount fetches settle, as the
+// revert test below does) BEFORE the arming tap, then steps past the gate with passGate().
+function fakeClock() {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+}
+
+function passGate() {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+}
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -385,7 +400,9 @@ describe('remove friend prunes the bulk-invite selection (MED#1)', () => {
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Dana' }));
     expect(screen.getByText('1 selected')).toBeInTheDocument();
 
+    fakeClock();
     fireEvent.click(screen.getByRole('button', { name: 'Remove Dana' }));
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
 
     await waitFor(() =>
@@ -468,10 +485,20 @@ describe('remove friend (two-tap tier)', () => {
 
   it('arms on the first tap and sends nothing', async () => {
     renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
 
     expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
     expect(screen.getByText('Dana')).toBeInTheDocument();
+
+    // F9b (MED-62): inside the gate the armed Remove counts down and is aria-disabled, and
+    // nothing is announced yet.
+    const gated = screen.getByRole('button', { name: 'Tap again (3)' });
+    expect(gated).toHaveAttribute('aria-disabled', 'true');
+    expect(gated).toHaveAttribute('aria-pressed', 'true');
+    expect(gateStatus().textContent).toBe('');
+    passGate();
 
     const armed = screen.getByRole('button', { name: 'Tap again to confirm' });
     expect(armed).toHaveTextContent('Tap again to confirm');
@@ -484,7 +511,10 @@ describe('remove friend (two-tap tier)', () => {
 
   it('commits on a second tap inside the window and drops the row', async () => {
     renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
 
     await waitFor(() =>
@@ -505,10 +535,11 @@ describe('remove friend (two-tap tier)', () => {
     // first would stall the promise-driven render this test depends on.
     vi.useFakeTimers();
     fireEvent.click(button);
-    expect(button).toHaveTextContent('Tap again to confirm');
+    // F9b: the armed label counts down first; the window is now gated + live.
+    expect(button).toHaveTextContent('Tap again (3)');
 
     act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
     });
 
     expect(button).toHaveTextContent('Remove');
@@ -523,11 +554,14 @@ describe('remove friend (two-tap tier)', () => {
   // without that, arming one row and single-tapping another destroys the second.
   it('re-arms rather than commits when a DIFFERENT row is tapped inside the window', async () => {
     renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
     fireEvent.click(removeButton('Sam'));
 
     expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
     expect(screen.getByText('Sam')).toBeInTheDocument();
+    passGate();
 
     // Sam is now the armed row; Dana has reverted to resting.
     const armed = screen.getByRole('button', { name: 'Tap again to confirm' });
@@ -540,8 +574,11 @@ describe('remove friend (two-tap tier)', () => {
 
   it('removes the row that is actually armed after a cross-row switch', async () => {
     renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
     fireEvent.click(removeButton('Sam'));
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
 
     await waitFor(() =>
@@ -658,7 +695,10 @@ describe('friends AC-2 — the converted channel, and what it did NOT become', (
   it('a failed REMOVE keeps its sink — which is why it is EXCLUDED from that residual', async () => {
     (friendshipsAPI.removeFriend as Mock).mockRejectedValue(boom());
     renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
+    passGate();
     fireEvent.click(await screen.findByRole('button', { name: 'Tap again to confirm' }));
 
     await waitFor(() =>
@@ -1212,7 +1252,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     (friendshipsAPI.removeFriend as Mock).mockReturnValueOnce(held.promise);
     renderFriends();
     const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     expect(remove).toHaveAttribute('aria-disabled', 'true');
     expect(remove).not.toHaveAttribute('disabled');
@@ -1231,7 +1273,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
     const remove = await screen.findByRole('button', { name: 'Remove Dana' });
     act(() => remove.focus());
+    fakeClock();
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     // No group is selected, so Sam's checkbox is natively disabled and his Remove is first.
     await waitFor(() =>
@@ -1244,7 +1288,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     const remove = await screen.findByRole('button', { name: 'Remove Dana' });
     // iOS Safari does not focus a tapped button: nothing is focused for either tap.
     (document.activeElement as HTMLElement | null)?.blur();
+    fakeClock();
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     expect(document.activeElement).toBe(document.body);
     await waitFor(() => expect(screen.queryByText('Dana')).not.toBeInTheDocument());
@@ -1257,7 +1303,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     renderFriends();
     const remove = await screen.findByRole('button', { name: 'Remove Dana' });
     act(() => remove.focus());
+    fakeClock();
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Friends/ }))
@@ -1848,7 +1896,10 @@ describe('friends — the Requests tab tells the truth (88.6.1-72, owner rulings
   it('L4. the same tab change clears the Friends tab remove line (#83, review r3 L-20)', async () => {
     (friendshipsAPI.removeFriend as Mock).mockRejectedValue(boom());
     renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
+    passGate();
     fireEvent.click(await screen.findByRole('button', { name: 'Tap again to confirm' }));
     expect(await screen.findByText("We couldn't remove that friend. Please try again.")).toBeInTheDocument();
 

@@ -9,6 +9,9 @@
 //      (a remounted live region is silently never announced)
 //   4. The 3s window, its auto-revert, and its unmount cleanup are the SHIPPED
 //      `KebabMenu.js` semantics, absorbed rather than reinvented
+//      AMENDED Phase 88.9-23 (F9b): the window is now gated CONFIRM_DELAY_MS, then live
+//      CONFIRM_LIVE_MS (TWO_TAP_WINDOW_MS = 6000); "3s" in the titles below is the historical
+//      name. Every commit below advances CONFIRM_DELAY_MS first (confirmed inside the gate).
 //   5. Pending: a slow `onConfirm` cannot be double-fired
 //   6. Typed tier compares with `!==` string equality, never a built pattern
 import * as React from 'react';
@@ -25,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { ConfirmDialog, isDismissableTier } from './ConfirmDialog';
+import { CONFIRM_DELAY_MS } from './confirmDelay';
 import {
   useConfirmAction,
   TWO_TAP_WINDOW_MS,
@@ -132,6 +136,16 @@ function deferred<T = void>() {
 }
 
 describe('useConfirmAction — dialog tier', () => {
+  // F9b (88.9-23): confirm() is refused for CONFIRM_DELAY_MS after open, so the commits
+  // below advance the (fake) clock past the gate first.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('does not call onConfirm when the gate is merely opened', () => {
     const onConfirm = vi.fn();
     render(<DialogHarness onConfirm={onConfirm} />);
@@ -158,6 +172,9 @@ describe('useConfirmAction — dialog tier', () => {
     render(<DialogHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       fireEvent.click(screen.getByTestId('confirm'));
     });
@@ -172,6 +189,9 @@ describe('useConfirmAction — dialog tier', () => {
     render(<DialogHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       fireEvent.click(screen.getByTestId('confirm'));
     });
@@ -265,6 +285,12 @@ describe('useConfirmAction — two-tap tier', () => {
 
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('armed')).toHaveTextContent('alex');
+    // F9b: the armed label counts down first, then reads the live label.
+    expect(screen.getByTestId('trigger-alex')).toHaveTextContent('Tap again (3)');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('trigger-alex')).toHaveTextContent(DEFAULT_ARMED_LABEL);
     expect(screen.getByTestId('trigger-bo')).toHaveTextContent('Remove Bo');
   });
@@ -294,6 +320,9 @@ describe('useConfirmAction — two-tap tier', () => {
     const trigger = screen.getByTestId('trigger-bo');
     (document.activeElement as HTMLElement | null)?.blur();
     fireEvent.click(trigger);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       fireEvent.click(trigger);
     });
@@ -308,6 +337,10 @@ describe('useConfirmAction — two-tap tier', () => {
     render(<TwoTapHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    // F9b: the arm text is written at the live edge.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(screen.getByRole('status')).toHaveTextContent('Alex');
 
     act(() => {
@@ -317,6 +350,12 @@ describe('useConfirmAction — two-tap tier', () => {
 
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('armed')).toHaveTextContent('bo');
+    // B starts its own gate: A's live state is never inherited by B.
+    expect(screen.getByTestId('trigger-bo')).toHaveTextContent('Tap again (3)');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('trigger-bo')).toHaveTextContent(DEFAULT_ARMED_LABEL);
     expect(screen.getByTestId('trigger-alex')).toHaveTextContent('Remove Alex');
     // The announcement names the NEW target — a guaranteed text change, hence a
@@ -330,11 +369,13 @@ describe('useConfirmAction — two-tap tier', () => {
     render(<TwoTapHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    // AMENDED Phase 88.9-23 (F9b): re-arm B 1000ms before A's window ends (it was 2000 of the
+    // old 3000ms window), so the check below still lands after A's original revert time.
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(TWO_TAP_WINDOW_MS - 1000);
     });
     fireEvent.click(screen.getByTestId('trigger-bo'));
-    // A's original timer would have fired at 3000ms (i.e. 1000ms from here).
+    // A's original timer would have fired at TWO_TAP_WINDOW_MS (i.e. 1000ms from here).
     act(() => {
       vi.advanceTimersByTime(1200);
     });
@@ -364,7 +405,8 @@ describe('useConfirmAction — two-tap tier', () => {
     const { unmount } = render(<TwoTapHarness onConfirm={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
-    expect(vi.getTimerCount()).toBe(1);
+    // F9b: two timers while gated — the arm revert and the countdown tick.
+    expect(vi.getTimerCount()).toBe(2);
 
     unmount();
     expect(vi.getTimerCount()).toBe(0);
@@ -376,6 +418,9 @@ describe('useConfirmAction — two-tap tier', () => {
     render(<TwoTapHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       fireEvent.click(screen.getByTestId('trigger-alex'));
     });
@@ -424,6 +469,10 @@ describe('useConfirmAction — the always-mounted announcement region', () => {
 
     const node = screen.getByRole('status');
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    // F9b: the arm text lands at the live edge — the same node, updated in place.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
 
     expect(screen.getByRole('status')).toBe(node);
     expect(node).toHaveTextContent('Alex');
@@ -446,6 +495,9 @@ describe('useConfirmAction — the always-mounted announcement region', () => {
     render(<TwoTapHarness onConfirm={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(screen.getByRole('status')).toHaveTextContent('Alex');
     await act(async () => {
       fireEvent.click(screen.getByTestId('trigger-alex'));
@@ -473,7 +525,13 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
     fireEvent.click(alex);
 
     // Visible label and accessible name agree — a static aria-label over a
-    // changed visible label is the 2.5.3 failure this pin forbids.
+    // changed visible label is the 2.5.3 failure this pin forbids. F9b: they agree
+    // through the countdown and again at the live label.
+    expect(alex).toHaveTextContent('Tap again (3)');
+    expect(alex).toHaveAttribute('aria-label', 'Tap again (3)');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(alex).toHaveTextContent(DEFAULT_ARMED_LABEL);
     expect(alex).toHaveAttribute('aria-label', DEFAULT_ARMED_LABEL);
     expect(alex).toHaveAttribute('aria-pressed', 'true');
@@ -510,6 +568,10 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
 
     expect(screen.getByTestId('trigger')).not.toHaveAttribute('aria-label');
     fireEvent.click(screen.getByTestId('trigger'));
+    expect(screen.getByTestId('trigger')).not.toHaveAttribute('aria-label');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(screen.getByTestId('trigger')).not.toHaveAttribute('aria-label');
     expect(screen.getByTestId('trigger')).toHaveTextContent(DEFAULT_ARMED_LABEL);
   });
@@ -907,12 +969,25 @@ function PendingDialogHarness({
 }
 
 describe('ConfirmDialog — a pending commit through the real hook (AC-9, R123 / D-39)', () => {
+  // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open; the
+  // presses below are made after the gate. shouldAdvanceTime keeps waitFor working.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('two synchronous presses reach onConfirm once; the confirm stays aria-disabled and focused until it settles', async () => {
     const gate = deferred();
     const onConfirm = vi.fn(() => gate.promise);
     render(<PendingDialogHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     const confirmButton = screen.getByRole('button', { name: 'Delete' });
     confirmButton.focus();
 
@@ -949,6 +1024,15 @@ describe('ConfirmDialog — a pending commit through the real hook (AC-9, R123 /
 });
 
 describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', () => {
+  // F9b (88.9-23): as above, the press is made after the CONFIRM_DELAY_MS gate.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('the pressed confirm swaps to the pending text in place, keeps focus, and returns to the verb on a failed commit', async () => {
     const gate = deferred();
     const onConfirm = vi.fn(() => gate.promise.then(() => {
@@ -957,6 +1041,9 @@ describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', (
     render(<PendingDialogHarness onConfirm={onConfirm} pendingLabel={'Deleting\u2026'} />);
 
     fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     const confirmButton = screen.getByRole('button', { name: 'Delete' });
     confirmButton.focus();
 
@@ -977,6 +1064,60 @@ describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', (
       expect(screen.getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled')
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+});
+
+// F9b (88.9-23, owner pick F9b, 88.9-PICKS-B5.json item F9): the dialog tier is gated for
+// CONFIRM_DELAY_MS from OPEN. The gate is aria-disabled (the .btn-danger colour pair), never
+// native disabled, and the countdown is in the confirm's own label, so a screen reader that
+// reaches the confirm hears its current state (88.9-RULINGS.md R-F2).
+describe('ConfirmDialog — F9b delayed enable through the real hook (88.9-23)', () => {
+  // shouldAdvanceTime: user-event's keyboard waits on a timeout of its own, which a fully
+  // frozen clock never fires; the countdown steps are still driven by advanceTimersByTime.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('F9b (88.9): the dialog-tier confirm is aria-disabled with a countdown label for 3 s', async () => {
+    const onConfirm = vi.fn();
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    render(<PendingDialogHarness onConfirm={onConfirm} />);
+
+    fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    const gated = screen.getByRole('button', { name: 'Delete (3)' });
+    expect(gated).toHaveAttribute('aria-disabled', 'true');
+    expect(gated).not.toHaveAttribute('disabled');
+    expect(gated).toHaveClass('btn-danger');
+    // Opening focus is unchanged: Cancel, on the button-only tiers.
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(gated).toHaveAccessibleName('Delete (1)');
+    // Pointer and keyboard are both refused inside the gate.
+    fireEvent.click(gated);
+    gated.focus();
+    await user.keyboard('{Enter}');
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS - 2000);
+    });
+    const live = screen.getByRole('button', { name: 'Delete' });
+    expect(live).toBe(gated);
+    expect(live).not.toHaveAttribute('aria-disabled');
+    await act(async () => {
+      fireEvent.click(live);
+    });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });
 

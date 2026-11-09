@@ -41,6 +41,7 @@ import * as React from 'react';
 
 import { Modal } from '@/app/components/Modal';
 import { Button } from '@/components/ui/Button';
+import { countdownLabel, useConfirmCountdown } from '@/components/ui/confirmDelay';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/cn';
 import type { ConfirmTier } from '@/components/ui/useConfirmAction';
@@ -112,6 +113,13 @@ export interface ConfirmDialogProps {
   pendingLabel?: string;
   /** @default 'Cancel' */
   cancelLabel?: string;
+  /**
+   * F9b (88.9-23): gate the confirm for CONFIRM_DELAY_MS from open — aria-disabled with the
+   * label `<confirmLabel> (n)` counting down, then live until the dialog closes. The hook's
+   * `dialogProps` sets it for the `dialog` tier only. Default false, so a standalone mount is
+   * unchanged.
+   */
+  confirmDelay?: boolean;
   /** `typed` tier: the phrase that must be entered exactly. */
   expectedPhrase?: string;
   /**
@@ -146,6 +154,7 @@ export function ConfirmDialog({
   confirmLabel,
   pendingLabel,
   cancelLabel = 'Cancel',
+  confirmDelay = false,
   expectedPhrase,
   blockerPanel,
   blocked = false,
@@ -194,6 +203,12 @@ export function ConfirmDialog({
       inputRef.current?.focus();
     }
   }, [pending, open, typedInputRendered]);
+
+  // F9b (88.9-23): this dialog's own countdown — the per-second state re-renders the dialog
+  // only, never the host page (the AMENDED line on the R2-M16 marker in useConfirmAction.ts).
+  // Called above the early return below (rules of hooks).
+  const { secondsLeft } = useConfirmCountdown(open && confirmDelay ? 'open' : null);
+  const gated = secondsLeft > 0;
 
   if (tier === 'two-tap' || !open) return null;
 
@@ -310,16 +325,26 @@ export function ConfirmDialog({
              region inside the dialog (a second idiom; the page controls already speak in-flight
              by a label swap). Default-off: a gate that passes no `pendingLabel` keeps
              `confirmLabel` while pending, byte-identical to before. */
+          /* DECISION Phase 88.9-23 F9b: the dialog tier is gated for CONFIRM_DELAY_MS from OPEN and
+             then stays live until the dialog closes, over reverting after a live window — the open
+             dialog IS the arm, and an auto-revert would yank a decision the user is still reading.
+             The gate is aria-disabled (the .btn-danger colour pair, tokenContrast test 53), never
+             native disabled and never opacity, per DECISION Phase 88.6.1-22 (R123 / D-39) and
+             O-17. */
           <Button
             variant="danger"
             onClick={() => {
-              if (pending) return;
+              if (gated || pending) return;
               onConfirm(committedValue);
             }}
             disabled={!pending && confirmDisabled(committedValue)}
-            aria-disabled={pending || undefined}
+            aria-disabled={pending || gated || undefined}
           >
-            {pending && pendingLabel ? pendingLabel : confirmLabel}
+            {gated
+              ? countdownLabel(confirmLabel, secondsLeft)
+              : pending && pendingLabel
+                ? pendingLabel
+                : confirmLabel}
           </Button>
         ) : null}
       </Modal.Footer>

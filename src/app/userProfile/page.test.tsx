@@ -40,6 +40,7 @@ import * as React from 'react';
 import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 import { axe } from 'vitest-axe';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -667,6 +668,26 @@ const PATTERNS = [
   },
 ];
 
+/**
+ * F9b (88.9-23): every two-tap and dialog-tier confirm is gated for CONFIRM_DELAY_MS after it
+ * arms or opens. The describes that commit run on a fake clock that still advances with real
+ * time (findBy and waitFor keep working), and step past the gate here before the commit.
+ */
+function passGate() {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+}
+
+function installGateClock() {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+}
+
 /** The armed live-region text, as composed by the hook's default announcement. */
 function armedAnnouncement() {
   return screen
@@ -676,6 +697,8 @@ function armedAnnouncement() {
 }
 
 describe('userProfile destructive gates (Req 11)', () => {
+  installGateClock();
+
   it('disconnect Google Calendar blocks in a dialog and does not call the API until confirmed', async () => {
     const { googleCalendarAPI } = await import('@/lib/api');
     (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -689,6 +712,7 @@ describe('userProfile destructive gates (Req 11)', () => {
     expect(within(dialog).getByText('Disconnect Google Calendar?')).toBeInTheDocument();
     expect(googleCalendarAPI.disconnect).not.toHaveBeenCalled();
 
+    passGate();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
     await waitFor(() =>
       expect(googleCalendarAPI.disconnect).toHaveBeenCalledWith(SELF_UUID)
@@ -711,6 +735,7 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
     const dialog = await screen.findByRole('dialog');
 
+    passGate();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
     const pendingConfirm = await within(dialog).findByRole('button', { name: 'Disconnecting\u2026' });
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
@@ -765,6 +790,8 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(trigger);
     expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
     // Armed: aria-pressed appears (F-357) and the live region names the target.
+    // F9b: the live region names it at the live edge, past the gate.
+    passGate();
         expect(armedAnnouncement()).toContain('Catan');
 
     // 88-33 Task 5 (fork 7, walk row 381): the GLYPH control arms into the
@@ -789,11 +816,16 @@ describe('userProfile destructive gates (Req 11)', () => {
     expect(trigger.className).toContain('border');
     // The invisible sizer carries the armed label so the box is armed-width at rest.
     const sizer = trigger.querySelector('[aria-hidden="true"]');
-    expect(sizer?.textContent).toBe('Remove');
+    // F9b (MED-61): the sizer reserves the widest armed state, the countdown label.
+    expect(sizer?.textContent).toBe('Remove (3)');
     expect(sizer?.className).toContain('invisible');
 
-    // Armed: visible label swaps to 'Remove' on the error-subtle treatment.
+    // Armed: visible label swaps to 'Remove (3)' counting down, then 'Remove', on the
+    // error-subtle treatment.
     fireEvent.click(trigger);
+    const gated = screen.getByRole('button', { name: 'Remove (3)' });
+    expect(gated.className).toContain('bg-status-error-subtle');
+    passGate();
     const armed = screen.getByRole('button', { name: 'Remove' });
     expect(armed.className).toContain('bg-status-error-subtle');
   });
@@ -809,6 +841,7 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Brass' }));
 
     expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    passGate();
     // The new target is armed (labeled 'Remove' — fork 7), the old one is back at rest.
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove Catan' })).toBeInTheDocument();
@@ -830,6 +863,7 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete Tuesday schedule' }));
     expect(availabilityAPI.deleteAvailability).not.toHaveBeenCalled();
 
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
     await waitFor(() =>
       expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-tue')
@@ -999,13 +1033,15 @@ describe('userProfile two-tap armed state (F-357)', () => {
       );
 
       fireEvent.click(screen.getByRole('button', { name: 'Remove Catan' }));
-      expect(screen.getByRole('button', { name: 'Remove' })).toHaveAttribute(
+      // F9b: armed first as the countdown label 'Remove (3)'.
+      expect(screen.getByRole('button', { name: 'Remove (3)' })).toHaveAttribute(
         'aria-pressed',
         'true'
       );
 
+      // F9b: the window is now gated CONFIRM_DELAY_MS + live CONFIRM_LIVE_MS.
       await act(async () => {
-        vi.advanceTimersByTime(3000);
+        vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
       });
 
       const reverted = screen.getByRole('button', { name: 'Remove Catan' });
@@ -1026,6 +1062,8 @@ describe('userProfile two-tap armed state (F-357)', () => {
 // time — which no shape-based assertion would catch.
 
 describe('userProfile toast register (OI-5)', () => {
+  installGateClock();
+
   it('converges the username receipt', async () => {
     const { usersAPI } = await import('@/lib/api');
     (usersAPI.updateUsername as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -1053,6 +1091,7 @@ describe('userProfile toast register (OI-5)', () => {
     renderProfile();
     fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
     const dialog = await screen.findByRole('dialog');
+    passGate();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
 
     await waitFor(() =>
@@ -1066,6 +1105,7 @@ describe('userProfile toast register (OI-5)', () => {
 
     const trigger = await screen.findByRole('button', { name: 'Delete Monday schedule' });
     fireEvent.click(trigger);
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
 
     await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Pattern deleted'));
@@ -1077,6 +1117,7 @@ describe('userProfile toast register (OI-5)', () => {
 
     renderProfile();
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Catan' }));
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
 
     await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Game removed'));
@@ -3150,6 +3191,8 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
 // when nothing is retained, or on an access answer); focus never falls to the body when a row,
 // the notice or the rows leave; a row Delete lands on the panel's toggle.
 describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 5)', () => {
+  installGateClock();
+
   type Mock = ReturnType<typeof vi.fn>;
   // Copy row RF1 (D-47), written ONCE here (contract C7). The notice renders it twice while it
   // shows (the visible line and its polite region), so every query is an All query. A notice
@@ -3534,6 +3577,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
 
     const del = await screen.findByRole('button', { name: 'Delete Monday schedule' });
     await user.click(del);
+    passGate();
     await user.click(del);
     // CONFIRM-ONLY in jsdom (C-11): the committed Delete still holds focus while it is held.
     await waitFor(() => expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon'));
@@ -3563,6 +3607,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
     // iOS Safari does not focus a tapped button: nothing is focused for either tap.
     (document.activeElement as HTMLElement | null)?.blur();
     fireEvent.click(del);
+    passGate();
     fireEvent.click(del);
     expect(document.activeElement).toBe(document.body);
     await waitFor(() => expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon'));
@@ -3586,6 +3631,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
 
     const del = await screen.findByRole('button', { name: /^Delete .+ override$/ });
     await user.click(del);
+    passGate();
     await user.click(del);
 
     await waitFor(() =>
@@ -4558,6 +4604,8 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
 });
 
 describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)', () => {
+  installGateClock();
+
   type Mock = ReturnType<typeof vi.fn>;
   // Copy row P8 (owner-ratified 2026-10-05), straight apostrophe.
   const P8 = "Couldn't load your collection";
@@ -4576,6 +4624,7 @@ describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)
   // The collection Remove is a two-tap gate: the glyph arms into the labelled verb `Remove`.
   async function twoTapRemove(name: string) {
     fireEvent.click(await screen.findByRole('button', { name: `Remove ${name}` }));
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
   }
 
@@ -4802,6 +4851,8 @@ describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)
 });
 
 describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', () => {
+  installGateClock();
+
   type Mock = ReturnType<typeof vi.fn>;
   // Copy row RF1 (D-47), written ONCE here (88.6.1-70 contract C7): plan 70's notice renders it
   // twice while it shows (the visible line and its polite region), so every lookup is an All query.
@@ -4823,6 +4874,7 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
   // Both taps of the two-tap Remove with real focus (userEvent), so the focus hook has a seed.
   async function twoTapRemove(user: ReturnType<typeof userEvent.setup>, name: string) {
     await user.click(await screen.findByRole('button', { name: `Remove ${name}` }));
+    passGate();
     await user.click(screen.getByRole('button', { name: 'Remove' }));
   }
 
@@ -4912,6 +4964,7 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
     // iOS Safari does not focus a tapped button: nothing is focused for either tap.
     (document.activeElement as HTMLElement | null)?.blur();
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
     expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
@@ -4931,6 +4984,7 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
 
     const remove = await screen.findByRole('button', { name: 'Remove Catan' });
     await user.click(remove);
+    passGate();
     await user.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1));
     // CONFIRM-ONLY in jsdom: the pressed Remove keeps focus and its row stays while the call is held.

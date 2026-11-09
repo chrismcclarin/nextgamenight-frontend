@@ -48,6 +48,7 @@ vi.mock('./AvailabilityGrid', () => ({ default: () => <div data-testid="grid" />
 import type { ComponentType } from 'react';
 import AvailabilityFormDefault from './AvailabilityForm';
 import { logger } from '@/lib/logger';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { ApiError, availabilityFormAPI } from '@/lib/api';
 
 // AvailabilityForm is a JS component; its inferred prop type marks every prop
@@ -285,9 +286,16 @@ describe('Phase 88-13 — replacing painted selections is gated by a styled dial
   };
 
   beforeEach(() => {
+    // F9b (88.9-23): a fake clock that still advances with real time, so the confirms
+    // below can step past the dialog tier's gate.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.clearAllMocks();
     (availabilityFormAPI.prefillFromGcal as Mock).mockResolvedValue({ slot_ids: [], count: 0 });
     (availabilityFormAPI.prefillFromSaved as Mock).mockResolvedValue({ slot_ids: [], count: 0 });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   /** The replace gate, addressed by its accessible name (UI-SPEC §11.2 copy). */
@@ -312,6 +320,10 @@ describe('Phase 88-13 — replacing painted selections is gated by a styled dial
     // Blocking, not advisory: nothing has been fetched or painted yet.
     expect(availabilityFormAPI.prefillFromGcal).not.toHaveBeenCalled();
 
+    // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Replace' }));
     await waitFor(() => expect(availabilityFormAPI.prefillFromGcal).toHaveBeenCalledTimes(1));
   });
@@ -384,6 +396,10 @@ describe('Phase 88-13 — replacing painted selections is gated by a styled dial
 
     // ...and confirming the SECOND trigger runs the SECOND action, not the
     // first: one shared config must not mean one shared target.
+    // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     fireEvent.click(within(replaceDialog()).getByRole('button', { name: 'Replace' }));
     await waitFor(() => expect(availabilityFormAPI.prefillFromSaved).toHaveBeenCalledTimes(1));
     expect(availabilityFormAPI.prefillFromGcal).not.toHaveBeenCalled();
@@ -426,6 +442,15 @@ describe('Phase 88.6-54 (R7 / SC-4, UI-SPEC §7.5) — composed axe audit of the
   const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
   const DIALOG_NAME = 'Replace your current selections?';
 
+  // F9b (88.9-23): the audit runs on the LIVE gate (its confirm past CONFIRM_DELAY_MS).
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   // Its own fixture, same shape as the replace-gate describe's: one painted slot is "anything to lose".
   const PAINTED = {
     time_slots: [{ slotId: '2026-08-10T18:00:00.000Z', preference: 'preferred' }],
@@ -451,6 +476,10 @@ describe('Phase 88.6-54 (R7 / SC-4, UI-SPEC §7.5) — composed axe audit of the
     fireEvent.click(screen.getByRole('button', { name: /import from google calendar/i }));
     const dialog = await screen.findByRole('dialog', { name: DIALOG_NAME });
     // A branch-specific control of the open dialog: the audit runs on the settled gate, not a frame.
+    // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(within(dialog).getByRole('button', { name: 'Replace' })).toBeInTheDocument();
     return dialog;
   }

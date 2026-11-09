@@ -98,6 +98,7 @@ import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 // Plan 88.6.1-78 (C8 e): every expected register line is read through the shipped helper on the
 // SAME error object, never typed.
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -123,6 +124,10 @@ function renderManageMembers() {
 }
 
 beforeEach(() => {
+  // F9b (88.9-23): the four gates below are dialog tier, gated for CONFIRM_DELAY_MS from
+  // open. A fake clock that still advances with real time (findBy and waitFor keep working)
+  // lets liveConfirm step past the gate instead of waiting it out.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.clearAllMocks();
   h.selfUuid = OWNER_UUID;
   h.invitePanelProps = null;
@@ -153,6 +158,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 /**
@@ -171,6 +177,17 @@ async function openMembersModal() {
 /** The confirm control of whichever gate dialog is currently open. */
 function confirmButton(name: string) {
   return screen.getByRole('button', { name });
+}
+
+/**
+ * F9b (88.9-23): step the clock past the dialog tier's CONFIRM_DELAY_MS gate, then find
+ * the now-live confirm by its bare verb (while gated it reads "<verb> (n)").
+ */
+async function liveConfirm(name: string): Promise<HTMLElement> {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+  return screen.findByRole('button', { name });
 }
 
 /**
@@ -209,7 +226,7 @@ describe('ManageMembers group-admin mutations target member.id (UUID), not user_
   it('rejectMember is invoked with the member UUID once the gate is confirmed', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Reject'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    fireEvent.click(await liveConfirm('Reject'));
     await waitFor(() =>
       expect(groupsAPI.rejectMember as Mock).toHaveBeenCalledWith(GROUP_ID, PENDING_UUID)
     );
@@ -220,7 +237,7 @@ describe('ManageMembers group-admin mutations target member.id (UUID), not user_
     // The one role <select> belongs to the non-owner, non-self active member.
     const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Make admin' }));
+    fireEvent.click(await liveConfirm('Make admin'));
     await waitFor(() =>
       expect(groupsAPI.updateUserRole as Mock).toHaveBeenCalledWith(GROUP_ID, TARGET_UUID, 'admin')
     );
@@ -229,7 +246,7 @@ describe('ManageMembers group-admin mutations target member.id (UUID), not user_
   it('removeUserFromGroup is invoked with the member UUID once the gate is confirmed', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await waitFor(() =>
       expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledWith(GROUP_ID, TARGET_UUID)
     );
@@ -322,7 +339,7 @@ describe('ManageMembers Req 11 gates — blocking semantics (no API call until c
     expect(groupsAPI.resetInviteToken as Mock).not.toHaveBeenCalled();
 
     fireEvent.click(await screen.findByText('Reset invite link'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
+    fireEvent.click(await liveConfirm('Reset link'));
     await waitFor(() =>
       expect(groupsAPI.resetInviteToken as Mock).toHaveBeenCalledWith(GROUP_ID)
     );
@@ -341,7 +358,9 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     expect(
       screen.getByText('Admins can edit events, manage members, and approve or remove people.')
     ).toBeInTheDocument();
-    expect(confirmButton('Make admin')).toBeInTheDocument();
+    // F9b: the confirm opens gated with its countdown label, then reads the verb.
+    expect(confirmButton('Make admin (3)')).toBeInTheDocument();
+    expect(await liveConfirm('Make admin')).toBeInTheDocument();
     expect(groupsAPI.updateUserRole as Mock).not.toHaveBeenCalled();
   });
 
@@ -375,6 +394,9 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
     const dialog = await screen.findByRole('dialog', { name: 'Make Target an admin?' });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Make admin' }));
     const pendingConfirm = await within(dialog).findByRole('button', { name: 'Promoting\u2026' });
@@ -409,7 +431,7 @@ describe('ManageMembers Req 12 — success receipts for the two named silent mut
   it('member removal produces "Member removed" on BOTH entry points', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
 
     // The mobile kebab shares the same commit path, so it gets the same receipt.
@@ -425,7 +447,7 @@ describe('ManageMembers Req 12 — success receipts for the two named silent mut
     await openMembersModal();
     const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Make admin' }));
+    fireEvent.click(await liveConfirm('Make admin'));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
 
     cleanup();
@@ -444,7 +466,7 @@ describe('ManageMembers Req 12 — success receipts for the two named silent mut
   it('no receipt on this surface uses "successfully" or an exclamation mark', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
 
     for (const [message] of (toast.success as Mock).mock.calls) {
@@ -473,7 +495,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     (groupsAPI.removeUserFromGroup as Mock).mockRejectedValue(upstream());
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     const [message] = (toast.error as Mock).mock.calls[0];
@@ -485,7 +507,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     (groupsAPI.removeUserFromGroup as Mock).mockRejectedValue(upstream());
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
 
     // POSITIVE settle signal first — the failure has to have LANDED before an
     // is-still-open claim means anything. `waitFor(expect(...).toBeInTheDocument())`
@@ -500,7 +522,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     (groupsAPI.resetInviteToken as Mock).mockRejectedValue(upstream());
     await openMembersModal();
     fireEvent.click(await screen.findByText('Reset invite link'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
+    fireEvent.click(await liveConfirm('Reset link'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(
@@ -514,7 +536,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     await openMembersModal();
     const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Make admin' }));
+    fireEvent.click(await liveConfirm('Make admin'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(screen.getByRole('dialog', { name: 'Make Target an admin?' })).toBeInTheDocument();
@@ -538,7 +560,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     (groupsAPI.removeUserFromGroup as Mock).mockRejectedValue(forbidden);
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -702,7 +724,7 @@ describe('ManageMembers W11 receipt + AC-2 channel', () => {
   it('a successful invite-link reset fires the ratified "Invite link reset" receipt', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Reset invite link'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
+    fireEvent.click(await liveConfirm('Reset link'));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Invite link reset'));
   });
 
@@ -710,7 +732,7 @@ describe('ManageMembers W11 receipt + AC-2 channel', () => {
     (groupsAPI.removeUserFromGroup as Mock).mockRejectedValue(new Error('boom'));
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
 
     await waitFor(() => expect(logger.info).toHaveBeenCalled());
     const [message, ctx] = (logger.info as Mock).mock.calls.at(-1) as [string, unknown];
@@ -926,7 +948,7 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
 
     const held = holdNextMembersGet();
     fireEvent.click(screen.getAllByTitle('Remove from group')[0]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await refreshRequested();
     expectRosterKept(self);
 
@@ -965,7 +987,7 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     const self = await loadRosterAndCaptureSelf();
     const held = holdNextMembersGet();
     fireEvent.click(screen.getByText('Reject'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    fireEvent.click(await liveConfirm('Reject'));
     await refreshRequested();
     // getByText ignores Radix's aria-hide, so the roster behind the open dialog is queryable.
     expectRosterKept(self);
@@ -991,7 +1013,7 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     const self = await loadRosterAndCaptureSelf();
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
     fireEvent.click(screen.getAllByTitle('Remove from group')[0]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await waitFor(() =>
       expect(logger.info).toHaveBeenCalledWith('Error fetching members:', expect.anything())
     );
@@ -1149,7 +1171,7 @@ describe('ManageMembers W027 + honest failures (88.6.1-42)', () => {
     const self = screen.getByText('(You)');
     (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce({ members: [] });
     fireEvent.click(screen.getAllByTitle('Remove from group')[0]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await waitFor(() =>
       expect(logger.info).toHaveBeenCalledWith('Members data is not an array:', { received: 'object' })
     );
@@ -1300,7 +1322,7 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     opener.focus();
     await user.click(opener);
     await screen.findByRole('dialog', { name: 'Remove Target from this group?' });
-    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await user.click(await liveConfirm('Remove'));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
     await waitFor(() => expect(document.activeElement).toBe(title()));
     expect(
@@ -1324,7 +1346,7 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     expect(document.activeElement).toBe(document.body);
     fireEvent.click(opener);
     await screen.findByRole('dialog', { name: 'Reject Pend?' });
-    const confirm = screen.getByRole('button', { name: 'Reject' });
+    const confirm = await liveConfirm('Reject');
     act(() => {
       (document.activeElement as HTMLElement | null)?.blur();
     });
@@ -1346,7 +1368,7 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     opener.focus();
     await user.click(opener);
     await screen.findByRole('dialog', { name: 'Reject Pend?' });
-    await user.click(screen.getByRole('button', { name: 'Reject' }));
+    await user.click(await liveConfirm('Reject'));
     await waitFor(() =>
       expect(groupsAPI.rejectMember as Mock).toHaveBeenCalledWith(GROUP_ID, PENDING_UUID)
     );
@@ -1463,7 +1485,7 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     (groupsAPI.resetInviteToken as Mock).mockReturnValueOnce(held.promise);
     await openMembersModal();
     fireEvent.click(await screen.findByRole('button', { name: 'Reset invite link' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
+    fireEvent.click(await liveConfirm('Reset link'));
 
     // RED half is the attribute (C-11); the focus claim (the dialog's close restore can land
     // on it) is CONFIRM-ONLY in jsdom.

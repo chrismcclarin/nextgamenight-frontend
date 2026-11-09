@@ -4268,9 +4268,10 @@ function Profile(){
                                                 `removeGameGate.isArmed(...)` call four lines up. It is
                                                 therefore carried in WEIGHT_ROSTER instead, which is why
                                                 that entry floors at FIVE and not at the armed roster's
-                                                four. Converting it is a decision, not a cleanup. */}
+                                                four. Converting it is a decision, not a cleanup.
+                                                AMENDED Phase 88.9-23 (F9b): the sizer reserves the countdown label, the widest armed state. */}
                                             <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
-                                                Remove
+                                                Remove (3)
                                             </span>
                                             <span className="col-start-1 row-start-1">
                                                 {removeGameGate.labelFor(game.id, '×')}
