@@ -1326,15 +1326,46 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     }
   });
 
-  it('H: the header row is on the Modal header phone-first scale (R7-M5), keeping items-start and gap-3', async () => {
+  // AMENDED Phase 88.9-29 (owner pick E8b, 88.9-PICKS-B4.json, 2026-11-06): renamed from
+  // 'H: the header row is on the Modal header phone-first scale (R7-M5), keeping items-start and
+  // gap-3'. The close now centres on the whole title block (items-center) like every Modal
+  // header; the R7-M5 padding scale and gap-3 reads are unchanged.
+  it('H: the header row is on the Modal header phone-first scale (R7-M5), centring the close (E8b) with gap-3', async () => {
     renderPanel();
     const column = (await screen.findByRole('heading', { name: 'Invite Members' })).closest('div');
     const tokens = column?.parentElement?.className.split(/\s+/) ?? [];
-    for (const cls of ['px-3', 'py-2', 'md:px-6', 'md:py-3', 'items-start', 'gap-3']) {
+    for (const cls of ['px-3', 'py-2', 'md:px-6', 'md:py-3', 'items-center', 'gap-3']) {
       expect(tokens).toContain(cls);
     }
+    expect(tokens).not.toContain('items-start');
     expect(tokens).not.toContain('px-6');
     expect(tokens).not.toContain('py-5');
+  });
+
+  // Phase 88.9-29 (owner picks E8b and O13a): the invite panel's freeform close is the same
+  // stroked 20px icon as every dialog close, and its body sections are phone-first padded.
+  it('E8b (88.9): the invite panel close is the stroked SVG, label Close, 44 box', async () => {
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite Members' });
+    const close = screen.getByRole('button', { name: 'Close' });
+    const svgs = close.querySelectorAll('svg');
+    expect(svgs).toHaveLength(1);
+    expect(svgs[0].getAttribute('width')).toBe('20');
+    expect(svgs[0].getAttribute('aria-hidden')).toBe('true');
+    expect((close.textContent ?? '').trim()).toBe('');
+    const tokens = close.className.split(/\s+/);
+    expect(tokens).toContain('min-h-11');
+    expect(tokens).toContain('min-w-11');
+    expect(tokens).not.toContain('text-2xl');
+  });
+
+  it('O13a (88.9): invite panel body sections are p-4 at phone and p-5 from md', async () => {
+    renderPanel();
+    const heading = await screen.findByRole('heading', { level: 3, name: 'Your Friends' });
+    const tokens = heading.parentElement?.className.split(/\s+/) ?? [];
+    expect(tokens).toContain('p-4');
+    expect(tokens).toContain('md:p-5');
+    expect(tokens).not.toContain('p-5');
   });
 });
 
