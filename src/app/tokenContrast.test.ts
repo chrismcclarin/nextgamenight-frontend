@@ -334,7 +334,7 @@ function lStarOf(hex: string, what: string): number {
  *
  * Assertions here compare against FLOORS, never against a hex, so a future re-tint that
  * still clears its floor does not churn this file (e2e/tailwind-v4-styles.spec.ts ("every assertion pins WHICH PROPERTY is")).
- * The four deliberate exceptions are marked at their sites.
+ * The five deliberate exceptions are marked at their sites.
  */
 function expectRatio(theme: Theme, ink: string, ground: string, floor: number, req: string): number {
   const inkHex = resolve(theme, ink);
@@ -1947,6 +1947,21 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       lightGround,
       `88.9 E7a — light --color-status-error-subtle resolves ${lightGround}; E7a is a dark-only pick, the light ground must not move from #fadede`,
     ).toBe('#fadede');
+  });
+
+  it('57. O23b (88.9): dark error-chip hover #5c1d1d', () => {
+    // Deliberate hex exception (the fifth): SPEC R4 token pin — the hover twin of E7a IS the owner pick O23b (88.9-PICKS-B8B.json, 2026-11-07); the shipped wine hover measured 5.76:1.
+    const darkHover = resolve('dark', '--color-status-error-subtle-hover');
+    expect(
+      darkHover,
+      `88.9 O23b — dark --color-status-error-subtle-hover resolves ${darkHover}; the owner pick O23b (88.9-PICKS-B8B.json) is #5c1d1d`,
+    ).toBe('#5c1d1d');
+    expectRatio('dark', '--color-status-error-text', '--color-status-error-subtle-hover', 4.5, '88.9 O23b');
+    const darkResting = resolve('dark', '--color-status-error-subtle');
+    expect(
+      darkHover,
+      `88.9 O23b — the dark error hover (${darkHover}) must stay distinct from the dark resting ground (${darkResting}), or hover paints no change`,
+    ).not.toBe(darkResting);
   });
 });
 

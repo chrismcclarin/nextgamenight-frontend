@@ -2039,6 +2039,8 @@
      test 24 pins its literal).
      AMENDED Phase 88.9-19 (owner pick E7a, 88.9-PICKS-B4.json, 2026-11-06): on the red-950
      resting ground #450a0a red-300 reads 8.51 (the 6.41 above is the retired wine ground).
+     AMENDED Phase 88.9-19 (owner pick O23b, 88.9-PICKS-B8B.json, 2026-11-07): on the hover
+     ground #5c1d1d red-300 reads 6.71 (the 5.76 above is the retired wine hover).
      Folding the byte-identical pairs back into the hues above, or "upgrading" dark error's border
      to red-300 for symmetry with its text, is a decision, not a cleanup. */
   --color-status-success-text: #22c55e;
@@ -2064,9 +2066,11 @@
      owner called "rather pink", UAT3-J1) and OVER E7b #5c1d1d as the ground. Ink #fca5a5 and
      border #ef4444 do not move: ink 8.51 on it, border 3.68 on the card, fill 1.17 on the card.
      This pair no longer follows the tint formula above — on purpose; re-deriving it from the
-     formula reverses an owner pick, a decision, not a cleanup. */
+     formula reverses an owner pick, a decision, not a cleanup. Hover twin O23b
+     (88.9-PICKS-B8B.json, 2026-11-07): #5c1d1d, chosen OVER the shipped wine hover #54333f
+     (ink 5.76); ink 6.71 on it. */
   --color-status-error-subtle: #450a0a;
-  --color-status-error-subtle-hover: #54333f;
+  --color-status-error-subtle-hover: #5c1d1d;
   --color-status-warning-subtle: #423e36;
   --color-status-warning-subtle-hover: #554832;
 
