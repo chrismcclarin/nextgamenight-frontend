@@ -38,7 +38,10 @@
 import * as React from 'react';
 import { QueryClientContext, hashKey, type QueryKey } from '@tanstack/react-query';
 
+import { cn } from '@/lib/cn';
+
 import { Banner } from './Banner';
+import { hostGroundHalo, type HostGround } from './hostGround';
 import { Icon } from './Icon';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { useFeedbackReport } from '@/app/components/FeedbackModalProvider';
@@ -50,8 +53,14 @@ import { DIALOG_ROLE_SELECTOR, focusElement, focusPageFloor, isFocusLost, isOpen
 export interface FetchErrorBannerProps {
   /** Derived state from {@link useFetchErrorState}. */
   state: FetchErrorState;
-  /** Bold heading above the message. */
+  /** Bold heading above the message. Wins over `thing` when both are passed. */
   title?: string;
+  /* DECISION Phase 88.9-26 (BANNER-01, owner ruling short, 2026-11-07): the title composes Couldn't
+     load {thing} (no We, no period, straight apostrophe), chosen OVER a required prop (13 compact
+     mounts take no title, 2 mounts use the default) and OVER removing title (it stays the escape
+     hatch and wins when passed); with neither, Something went wrong stays. */
+  /** What failed to load, in the reader's words (`your groups`): the title becomes `Couldn't load {thing}`. */
+  thing?: string;
   /** Subject prefilled into the bug-report form. */
   reportSubject?: string;
   /** Human context (surface/action) folded into the report description. */
@@ -80,6 +89,11 @@ export interface FetchErrorBannerProps {
    * behaviour).
    */
   focusTarget?: React.RefObject<HTMLElement | null>;
+  /**
+   * The ground the compact notice's HOST paints under its `Retry` (R073), resolved to a literal
+   * halo by `hostGroundHalo`; absent, `card`. Read by the compact branch only.
+   */
+  hostGround?: HostGround;
 }
 
 /**
@@ -348,6 +362,8 @@ interface NoticeRowProps {
    *  `Retry`'s description and a swipe through the page carry it; absent, the line is `text` alone.
    *  Only `RefreshFailedNotice` passes it (its `sectionName`, close ruling P-78). */
   spokenPrefix?: string;
+  /** The host's ground under the `Retry`, for its halo (R073); absent, `card`. */
+  hostGround?: HostGround;
 }
 
 /* DECISION Phase 88.6.1-70 (one row): ONE row element for the small notices — the compact
@@ -365,8 +381,13 @@ interface NoticeRowProps {
    row through `cn` — the row's class strings stay byte-identical (the description tie above is a
    deliberate addition, not a style change), so a consumer's spacing lives on the RF1 wrapper
    instead. The prop is named `handleRetry` ON PURPOSE: the floor suite anchors on the button's
-   handler attribute. Changing this is a decision, not a cleanup. */
-function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: NoticeRowProps) {
+   handler attribute. Changing this is a decision, not a cleanup.
+   AMENDED Phase 88.9-26 (owner pick B1a, 88.9-PICKS-B1.json, 2026-11-04): the Retry's halo key now
+   comes from the host through hostGround (default card, byte-identical output); every other class
+   token is unchanged. (b) stands: the host passes a typed key resolved from a literal map, never a
+   class string, and the default card token stays inside the literal with the host's key merged
+   after it (the last one wins). */
+function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, hostGround }: NoticeRowProps) {
   const textId = React.useId();
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm text-content-secondary">
@@ -424,7 +445,10 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
         onFocus={watchFocus}
         aria-disabled={retrying || undefined}
         aria-describedby={textId}
-        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+        className={cn(
+          'inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+          hostGroundHalo(hostGround)
+        )}
       >
         <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
         {retrying ? 'Retrying…' : 'Retry'}
@@ -435,11 +459,13 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
 
 export function FetchErrorBanner({
   state,
-  title = 'Something went wrong',
+  title,
+  thing,
   reportSubject,
   reportContext,
   compact = false,
   focusTarget,
+  hostGround,
 }: FetchErrorBannerProps) {
   // Never the feedback context: its value changes on every feedback-button open / close and route
   // change, and this banner would re-render on each (review #150). Null outside the host.
@@ -590,12 +616,20 @@ export function FetchErrorBanner({
           {regionQuiet ? '' : state.showError ? noticeText : ''}
         </StatusRegion>
         {state.showError ? (
-          <NoticeRow text={noticeText} retrying={retrying} handleRetry={handleRetry} watchFocus={watchFocus} />
+          <NoticeRow
+            text={noticeText}
+            retrying={retrying}
+            handleRetry={handleRetry}
+            watchFocus={watchFocus}
+            hostGround={hostGround}
+          />
         ) : null}
       </>
     );
   }
 
+  // BANNER-01: a passed title wins; else Couldn't load {thing}; else the shipped default.
+  const resolvedTitle = title ?? (thing ? `Couldn't load ${thing}` : 'Something went wrong');
   const subject = reportSubject ?? `Couldn't load: ${state.message}`;
   const description =
     `An error occurred (code: ${state.code}).\n\n` +
@@ -656,7 +690,7 @@ export function FetchErrorBanner({
      settle (stale by one macrotask, node_modules:@tanstack/query-core/build/modern/notifyManager.js ("var defaultScheduler = systemSetTimeoutZero;")). */
   const politeTitle =
     retryOutcome === 'none' && retryFailedAgain && state.showError && !assertiveChangedRef.current;
-  const politeText = retrying ? 'Retrying…' : politeTitle ? title : '';
+  const politeText = retrying ? 'Retrying…' : politeTitle ? resolvedTitle : '';
 
   // The full branch's controls, rendered in Banner's `actions` slot (outside the live region).
   // Hoisted so the Banner's own opening tag carries no handler of its own.
@@ -677,7 +711,11 @@ export function FetchErrorBanner({
           compact Retry above is NOT inside Banner, so it carries the CARD halo of its host majority
           (halo-approximate, recorded for plan 88.9-16). Rejected: one shared string for all three
           (the card halo would paint a card band on the elevated Banner). The three strings differ
-          on purpose; making them byte-identical again is a decision, not a cleanup. */}
+          on purpose; making them byte-identical again is a decision, not a cleanup.
+          AMENDED Phase 88.9-26 (owner pick B1a, 88.9-PICKS-B1.json, 2026-11-04): the compact
+          Retry's halo is its HOST's ground through src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO"),
+          default card, chosen OVER round 1's fixed card halo of the host majority (a 1.31 / 1.22
+          band on the 48 page paths). Try again, Report this and Sign in stay elevated. */}
       <button
         ref={tryAgainRef}
         type="button"
@@ -726,9 +764,14 @@ export function FetchErrorBanner({
 
   return (
     <div className={state.showError ? undefined : 'sr-only'}>
+      {/* DECISION Phase 88.9-26 (AMBER vs RED): a LOAD failure is this amber component (tone
+          warning, the status-warning stripe) and stays its own component, chosen OVER folding it
+          into the red status-error family that follows an ACTION (a save, a send, a validation).
+          The two converge in wording only: Couldn't load {thing} here, Couldn't {verb} {thing} on
+          red titles. Moving this banner to tone error is a decision, not a cleanup. */}
       <Banner
         tone="warning"
-        title={state.showError ? title : undefined}
+        title={state.showError ? resolvedTitle : undefined}
         actions={actionRow}
       >
         {state.showError ? <p>{state.message}</p> : null}
