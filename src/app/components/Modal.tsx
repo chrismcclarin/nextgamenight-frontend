@@ -29,6 +29,7 @@
 import * as React from 'react';
 
 import { Button, type ButtonProps } from '@/components/ui/Button';
+import { Icon } from '@/components/ui/Icon';
 import {
   Dialog,
   DialogClose,
@@ -427,8 +428,8 @@ export interface ModalHeaderProps {
    */
   closeDisabled?: boolean;
   /**
-   * PRESENTATION ONLY (88-33 Task 9): extra classes merged onto the close `×`
-   * button. Exists for consumers whose × carries a deliberate accent (createGroup's
+   * PRESENTATION ONLY (88-33 Task 9): extra classes merged onto the close (X icon)
+   * button; the icon strokes in currentColor, so a text colour here colours it. Exists for consumers whose × carries a deliberate accent (createGroup's
    * error-red ×, UAT row 283 — the owner's replacement for its removed red Close
    * button). Never grows behavior.
    */
@@ -463,7 +464,7 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
         className
       )}
     >
-      <DialogTitle className="text-xl font-bold text-content-primary">
+      <DialogTitle className="text-content-primary">
         {children}
       </DialogTitle>
       {/* 88-CODE-REVIEW D1 (2026-08-06): 44px REAL box (min-h-11/min-w-11, the KebabMenu/88-28
@@ -472,7 +473,10 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
           that spec's own "WHY NOT `boundingBox()`" note). The bare glyph measured ~15x24px,
           below even WCAG 2.5.8's 24px, on all 19 `Modal.Header` call sites in 16 files (the
           same grep as the header marker above, measured 2026-10-15). Header grows ~68px ->
-          ~84px. */}
+          ~84px.
+          DECISION Phase 88.9-29 E8b: a stroked 20px X icon over the 24px text glyph (owner pick
+          E8b, 88.9-PICKS-B4.json, 2026-11-06) — one close icon on every dialog; the 44px box is
+          unchanged. */}
       {/* 88.6.1 code review A-44: `data-modal-close` is the STABLE hook a consumer uses to ask "is
           focus still on the header close?" (createEvent.js's late initial focus), so no consumer
           matches the label text, which a rename or translation would silently break. Removing it is
@@ -482,7 +486,7 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
         aria-label="Close"
         aria-disabled={closeDisabled || undefined}
         className={cn(
-          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
+          'inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
           // Unavailable presentation only — stays focusable (a real `disabled`
           // would drop keyboard focus mid-interaction); the consumer's onClose
           // guard is what makes the click inert. See `closeDisabled` doc above.
@@ -495,7 +499,7 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
           closeClassName
         )}
       >
-        &times;
+        <Icon name="X" size={20} strokeWidth={2} />
       </DialogClose>
     </div>
   );

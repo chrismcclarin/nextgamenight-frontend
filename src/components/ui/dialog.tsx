@@ -20,7 +20,13 @@ import { cn } from '@/lib/cn';
    visible gain. This pass therefore closes only the four CONTRACT conflicts D-35 named:
    the title weight, the focus trigger, the accent misuse and the bare border.
 
-   Re-authoring the vocabulary is a decision that needs its own phase, not a cleanup. */
+   Re-authoring the vocabulary is a decision that needs its own phase, not a cleanup.
+
+   AMENDED Phase 88.9-29 (owner pick C2a, 88.9-PICKS-B2.json, 2026-11-05): DialogOverlay paints
+   the surface-overlay theme key, one semantic-token class in this bridge-vocabulary file, inside
+   this charter's spirit: the bridge names stay, and only the overlay's raw black alpha, which was
+   raw palette, moves to the ONE scrim token every dialog, sheet and the tutorial now share, chosen
+   OVER the shipped black at 0.8 in both themes (now 0.5 light / 0.7 dark). */
 
 const Dialog = DialogPrimitive.Root;
 
@@ -37,7 +43,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+      'fixed inset-0 z-50 bg-surface-overlay data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
       className
     )}
     {...props}
@@ -127,7 +133,13 @@ const DialogTitle = React.forwardRef<
     ref={ref}
     // §4.1/§4.2: a dialog title is the Heading role — 20px/700. 600 is
     // Button-only in this phase's type contract (D-01).
-    className={cn('text-xl font-bold leading-none tracking-tight', className)}
+    // DECISION Phase 88.9-29 C6a: the dialog title rung is ONE class string here, the Heading
+    // primitive's heading rung (20/700, leading-tight, no tracking), chosen OVER the shipped
+    // leading-none plus tracking-tight base that every consumer re-stated with its own size.
+    // cn() runs tailwind-merge, and a consumer that re-passes a text-* size drops this leading-*
+    // (a font-size utility carries its own line height) — that is why a 28px line rendered.
+    // Consumers pass ink and spacing only; re-passing a size re-breaks it.
+    className={cn('text-xl font-bold leading-tight', className)}
     {...props}
   />
 ));
