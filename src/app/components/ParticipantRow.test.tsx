@@ -208,3 +208,36 @@ describe('Phase 88.6-29 — the type/weight sweep outcomes', () => {
     expect(customPill.className).toContain('text-xs');
   });
 });
+
+// Phase 88.9-34 (owner pick C5a, 88.9-PICKS-B2.json item C5): the row's six form labels
+// (Participant Name as span or label, New Player as span and label, Score, Faction) step up
+// from Caption 12 to Label 14 with their shipped inks unchanged. The two Guest badges and the
+// duplicate-name hint stay Caption 12 (the test above pins the badges). The one-line geometry
+// at 375 is pinned in e2e/participant-row-one-line.spec.ts.
+describe('C5a (88.9) — the form labels on Label 14', () => {
+  it('C5a (88.9): the six form labels are 14px', () => {
+    const labelTexts = ['Participant Name', 'New Player', 'Score', 'Faction'];
+    const readLabels = () => labelTexts.flatMap((text) => screen.getAllByText(text, { exact: true }));
+
+    // A member row: Participant Name is a span, New Player renders twice (phone span, sm label).
+    renderRow({
+      participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true },
+    });
+    const memberLabels = readLabels();
+    expect(memberLabels).toHaveLength(5);
+    for (const el of memberLabels) {
+      expect(el.className.split(/\s+/), el.textContent ?? '').toContain('text-sm');
+      expect(el.className.split(/\s+/), el.textContent ?? '').not.toContain('text-xs');
+    }
+    cleanup();
+
+    // A custom row: Participant Name is a label tied to the editable name input.
+    renderRow();
+    const customLabels = readLabels();
+    expect(customLabels).toHaveLength(5);
+    for (const el of customLabels) {
+      expect(el.className.split(/\s+/), el.textContent ?? '').toContain('text-sm');
+      expect(el.className.split(/\s+/), el.textContent ?? '').not.toContain('text-xs');
+    }
+  });
+});

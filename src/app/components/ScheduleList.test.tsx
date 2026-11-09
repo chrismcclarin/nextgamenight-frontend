@@ -66,3 +66,31 @@ describe('ScheduleList — opening the delete confirm moves focus into it (A-43)
     expect(cancel).toHaveAccessibleDescription(/^Delete .+\? This will stop sending prompts\.$/);
   });
 });
+
+// Phase 88.9-34 (owner pick E6a, 88.9-PICKS-B4.json item E6, #91): value first. The four
+// fact labels step down to the muted ink and the row wrapper carries the primary ink, so
+// every value (including the computed Response window) reads primary. Muted on the card
+// measures 6.58 light / 6.00 dark (tokenContrast test 65). The status badges are untouched.
+describe('E6a (88.9) — value first', () => {
+  it('E6a (88.9): values primary, labels muted', () => {
+    render(
+      <ScheduleList
+        schedules={[{ ...SCHEDULE, min_participants: 3, default_deadline_hours: 48 }]}
+      />
+    );
+    for (const text of ['When:', 'Game:', 'Min players:', 'Response window:']) {
+      const label = screen.getByText(text);
+      const classes = label.className.split(/\s+/);
+      expect(classes, text).toContain('text-content-muted');
+      expect(classes, text).not.toContain('text-content-primary');
+      const wrapper = label.closest('div')!;
+      const wrapperClasses = wrapper.className.split(/\s+/);
+      expect(wrapperClasses, text).toContain('text-content-primary');
+      expect(wrapperClasses, text).not.toContain('text-content-secondary');
+    }
+    // The values themselves are bare text inside the wrapper, so they inherit its ink.
+    expect(screen.getByText('2 days', { exact: false }).closest('div')).toBe(
+      screen.getByText('When:').closest('div')
+    );
+  });
+});
