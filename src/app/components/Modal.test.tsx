@@ -901,8 +901,6 @@ describe('Modal padding scale (fork 6)', () => {
     const close = screen.getByRole('button', { name: 'Close' });
     expect(close.className).toContain('min-h-11');
     expect(close.className).toContain('min-w-11');
-    // Optical centering of the glyph inside the taller box.
-    expect(close.className).toContain('leading-none');
   });
 
   it('88.6.1 code review A-44: the header close carries the stable `data-modal-close` hook (consumers never match its label text)', () => {
@@ -910,5 +908,59 @@ describe('Modal padding scale (fork 6)', () => {
     const close = screen.getByRole('button', { name: 'Close' });
     expect(close).toHaveAttribute('data-modal-close');
     expect(document.querySelectorAll('[data-modal-close]')).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.9 round 2 (plan 88.9-29) — the dialog fleet reads the same: ONE title
+// rung (C6a, UI-SPEC R2-15), ONE close icon (E8b, R2-75) and ONE scrim token
+// (C2a, R2-36). Every pin reads a real render's class tokens or attributes.
+// ---------------------------------------------------------------------------
+describe('Phase 88.9 round 2 — dialog fleet (C6a, E8b, C2a)', () => {
+  function tokens(el: Element): string[] {
+    return (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  }
+
+  it('C6a (88.9): DialogTitle 20/700 leading-tight, no stacked override', () => {
+    renderModal();
+    const title = screen.getByRole('heading', { level: 2, name: 'Start a check-in' });
+    const t = tokens(title);
+    for (const token of ['text-xl', 'font-bold', 'leading-tight', 'text-content-primary']) {
+      expect(t, `title carries ${token}`).toContain(token);
+    }
+    expect(t, 'no leading-none on the title').not.toContain('leading-none');
+    expect(t, 'no tracking-tight on the title').not.toContain('tracking-tight');
+    // The header passes ink only: re-passing a text size makes tailwind-merge drop the base's leading.
+    expect(MODAL_SRC).toContain('<DialogTitle className="text-content-primary">');
+  });
+
+  it('E8b: header close is the stroked SVG, label Close, 44 box', () => {
+    renderModal();
+    const close = screen.getByRole('button', { name: 'Close' });
+    const svgs = close.querySelectorAll('svg');
+    expect(svgs).toHaveLength(1);
+    const svg = svgs[0];
+    expect(svg.getAttribute('width')).toBe('20');
+    expect(svg.getAttribute('height')).toBe('20');
+    expect(svg.getAttribute('stroke-width')).toBe('2');
+    expect(svg.getAttribute('aria-hidden')).toBe('true');
+    expect((close.textContent ?? '').trim()).toBe('');
+    const t = tokens(close);
+    expect(t).toContain('min-h-11');
+    expect(t).toContain('min-w-11');
+    expect(t).not.toContain('text-2xl');
+    expect(t).not.toContain('leading-none');
+  });
+
+  it('C2a: fleet overlay is bg-surface-overlay', () => {
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    const overlays = Array.from(document.querySelectorAll('[data-state="open"]')).filter(
+      (el) => el !== dialog && el.getAttribute('role') !== 'dialog' && tokens(el).includes('fixed') && tokens(el).includes('inset-0')
+    );
+    expect(overlays).toHaveLength(1);
+    const t = tokens(overlays[0]);
+    expect(t).toContain('bg-surface-overlay');
+    expect(t.filter((c) => c.startsWith('bg-black'))).toEqual([]);
   });
 });
