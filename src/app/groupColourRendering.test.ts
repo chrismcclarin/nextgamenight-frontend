@@ -700,6 +700,12 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      * channel gets its own positive assertion in test 27 rather than being folded
      * in here, because a counter that admits both shapes could no longer tell a
      * site that kept its fallback from one that dropped it.
+     *
+     * AMENDED Phase 88.9-27 (owner by chat 2026-11-08, RULINGS Q2 add-on; owner ruling R-P4):
+     * the grouplist.js half of the paragraph above no longer holds for its DARK arm. The Last
+     * Game row and date now read the --t-* channel directly in dark (the tinted arm) and on the
+     * image arm, so this regex also matches there; the floor of 1 still guards the title fork,
+     * and test 27 pins the new arms. EventDayModal's Req 8 site is unchanged.
      */
     const floors: Record<string, number> = {
       'app/components/grouplist.js': 1,
