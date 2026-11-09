@@ -660,11 +660,20 @@ export function resolveGroupGround(stored) {
  * it would then bold every descendant, which the per-element treatments it
  * replaces never did). Callers apply `font-semibold` at the text element.
  *
- * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, fontWeight?: string}} dark
+ * The paint-order pair (Phase 88.9-27, pick O02d1): `--t-paint` / `--t-paint-l` are added ONLY
+ * when one of the two treatments carries `paintOrder`, which only the image arm of `getTextStyle`
+ * / `getSubtitleStyle` does. Every tile and row caller (CalendarListView, CalendarMonthView,
+ * EventDayModal) and every no-image host therefore gets the six shipped keys and renders a
+ * byte-identical inline style; a consumer reads the pair as
+ * `[paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]`, so an absent
+ * pair falls back to `normal`.
+ *
+ * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string}} dark
  *        the treatment computed against the STORED hex (what dark mode paints)
- * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, fontWeight?: string}} light
+ * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string}} light
  *        the treatment computed against the RENDERED tint (what light mode paints)
- * @returns {Record<string, string>} the six `--t-*` properties, plus fontWeight
+ * @returns {Record<string, string>} the six `--t-*` properties, plus the `--t-paint` pair on an
+ *          O02d1 arm
  */
 export function themedTextStyleVars(dark, light) {
   return {
@@ -674,6 +683,10 @@ export function themedTextStyleVars(dark, light) {
     '--t-shadow-l': light.textShadow || 'none',
     '--t-stroke': dark.WebkitTextStroke || 'none',
     '--t-stroke-l': light.WebkitTextStroke || 'none',
+    ...((dark.paintOrder || light.paintOrder) && {
+      '--t-paint': dark.paintOrder || 'normal',
+      '--t-paint-l': light.paintOrder || 'normal',
+    }),
   };
 }
 
@@ -765,6 +778,10 @@ export function groupInkVars(ground, options) {
    * VALIDATED image flag (the `safeBgImageStyle` result, wave-12 owner ruling
    * at src/app/components/grouplist.js ("Wave-12 review follow-up (owner-ruled fix, 2026-08-21)")), never the raw string, so an invalid or relative
    * URL (FSEC-03) does not trigger the white-text treatment.
+   *
+   * AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json, 2026-11-07): the image branch it
+   * defers to is now white + 1.5px black outline painted first, no shadow, chosen OVER white +
+   * heavy blurred shadow + 0.5px stroke; returning no ink on an image is unchanged.
    */
   if (hasBackgroundImage) return {};
 
@@ -843,6 +860,19 @@ const SHADOW_LIGHT_SUBTLE = '1px 1px 2px rgba(255, 255, 255, 0.8), -1px -1px 2px
 const SHADOW_LIGHT_MEDIUM = '1px 1px 3px rgba(255, 255, 255, 0.9)';
 const SHADOW_DARK_HEAVY = '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8), 1px -1px 2px rgba(0, 0, 0, 0.8), -1px 1px 2px rgba(0, 0, 0, 0.8)';
 const STROKE_DARK = '0.5px rgba(0, 0, 0, 0.9)';
+/*
+ * DECISION Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json, 2026-11-07; Q2 default,
+ * 88.9-RULINGS.md round 2): a photo or failed-image ground gets ONE treatment, white ink with a
+ * 1.5px solid black outline painted BEFORE the fill so it sits outside the glyph, no shadow,
+ * chosen OVER the shipped white + four-part 0.8 black blurred shadow + 0.5px 0.9 stroke (1.35:1
+ * white on the blue tint behind a failed image, register #207) and OVER the outline on every
+ * coloured ground (the research reading, Q2 'all cards' - not ruled). WCAG 1.4.3 Note 5: a narrow
+ * border is read as the letter, so on any fill one of the two colours clears 15:1 (black 15.56 on
+ * #c4e1ff, white 15.03 on #00274d). No-image arms are W50 F10 as shipped (R2-02, owner keep
+ * 2026-11-07). Changing this is a decision, not a cleanup.
+ */
+const STROKE_OUTLINE = '1.5px #000000';
+const PAINT_STROKE_FIRST = 'stroke fill';
 
 /**
  * Calculate perceived brightness of a hex color.
@@ -926,15 +956,17 @@ export function getEventTileTextColor(hexColor) {
  *
  * @param {boolean} hasBackgroundImage - Whether the element has a background image
  * @param {string|null|undefined} backgroundColor - Background hex color
- * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, fontWeight?: string }}
+ * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string }}
  */
 export function getTextStyle(hasBackgroundImage, backgroundColor) {
-  // Background image: always white text with dark outline for readability
+  // Background image (a photo, or a stored URL that fails to load): O02d1, white text with a
+  // 1.5px black outline painted first, no shadow (see the O02d1 marker above STROKE_OUTLINE).
   if (hasBackgroundImage) {
     return {
       color: TITLE_LIGHT,
-      textShadow: SHADOW_DARK_HEAVY,
-      WebkitTextStroke: STROKE_DARK,
+      textShadow: SHADOW_NONE,
+      WebkitTextStroke: STROKE_OUTLINE,
+      paintOrder: PAINT_STROKE_FIRST,
       fontWeight: '600',
     };
   }
@@ -986,15 +1018,17 @@ export function getTextStyle(hasBackgroundImage, backgroundColor) {
  *
  * @param {boolean} hasBackgroundImage - Whether the element has a background image
  * @param {string|null|undefined} backgroundColor - Background hex color
- * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string }}
+ * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, paintOrder?: string }}
  */
 export function getSubtitleStyle(hasBackgroundImage, backgroundColor) {
-  // Background image: off-white text with dark outline
+  // Background image: O02d1, the title's white + 1.5px black outline painted first, no shadow
+  // ("white title + stats", UI-SPEC round-2 (d) O-02).
   if (hasBackgroundImage) {
     return {
-      color: SUBTITLE_DARK_BG,
-      textShadow: SHADOW_DARK_HEAVY,
-      WebkitTextStroke: STROKE_DARK,
+      color: TITLE_LIGHT,
+      textShadow: SHADOW_NONE,
+      WebkitTextStroke: STROKE_OUTLINE,
+      paintOrder: PAINT_STROKE_FIRST,
     };
   }
 
