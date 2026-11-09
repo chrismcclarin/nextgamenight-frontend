@@ -1745,6 +1745,8 @@
             channel — t=0.15 resting, t=0.24 hover — against the CARD ground (`#ffffff` light,
             `#232d3e` dark), NOT the page. Painting one straight onto the page ground is a
             contrast change, not a reskin; re-derive against the page if you ever need that.
+            AMENDED Phase 88.9-19 (owner pick E7a): the dark ERROR pair is an owner-picked
+            exception to rule (i) — see the dark status-tint block.
        (ii) THERE IS DELIBERATELY NO FIFTH `info` FAMILY (D-33). Informational surfaces reuse
             Banner's shipped treatment — `border-line` on the container, `text-content-secondary`
             on the glyph. Minting an info colour is a decision, not a completion of the set.
@@ -2035,6 +2037,8 @@
      AMENDED Phase 88.9-01: the dark error BORDER stays #ef4444 while the dark error hue is now
      #b91c1c, so the border is no longer the hue verbatim; it still does not move (tokenContrast
      test 24 pins its literal).
+     AMENDED Phase 88.9-19 (owner pick E7a, 88.9-PICKS-B4.json, 2026-11-06): on the red-950
+     resting ground #450a0a red-300 reads 8.51 (the 6.41 above is the retired wine ground).
      Folding the byte-identical pairs back into the hues above, or "upgrading" dark error's border
      to red-300 for symmetry with its text, is a decision, not a cleanup. */
   --color-status-success-text: #22c55e;
@@ -2048,10 +2052,20 @@
      `round((1-t)*card + t*hue)` per channel against the dark card `#232d3e`, t=0.15 resting /
      t=0.24 hover. See the full marker at the light declarations above for the two rejected
      mechanisms and the card-surface rule. Nudging one of these by eye desynchronises it from that
-     formula and from its hover step — a decision, not a cleanup. */
+     formula and from its hover step — a decision, not a cleanup.
+     AMENDED Phase 88.9-19 (owner picks E7a + O23b, 88.9-PICKS-B4.json / 88.9-PICKS-B8B.json,
+     2026-11-06 / 2026-11-07): the ERROR pair below is exempt from this formula (see its DECISION
+     marker), chosen OVER the derived wine pair (ink 6.41 resting); success and warning still
+     follow it. */
   --color-status-success-subtle: #234443;
   --color-status-success-subtle-hover: #235146;
-  --color-status-error-subtle: #42303f;
+  /* DECISION Phase 88.9-19 E7a (owner pick E7a, 88.9-PICKS-B4.json, 2026-11-06): the dark error
+     box ground is red-950 #450a0a, chosen OVER the shipped wine #42303f (ink 6.41, the pair the
+     owner called "rather pink", UAT3-J1) and OVER E7b #5c1d1d as the ground. Ink #fca5a5 and
+     border #ef4444 do not move: ink 8.51 on it, border 3.68 on the card, fill 1.17 on the card.
+     This pair no longer follows the tint formula above — on purpose; re-deriving it from the
+     formula reverses an owner pick, a decision, not a cleanup. */
+  --color-status-error-subtle: #450a0a;
   --color-status-error-subtle-hover: #54333f;
   --color-status-warning-subtle: #423e36;
   --color-status-warning-subtle-hover: #554832;

@@ -334,7 +334,7 @@ function lStarOf(hex: string, what: string): number {
  *
  * Assertions here compare against FLOORS, never against a hex, so a future re-tint that
  * still clears its floor does not churn this file (e2e/tailwind-v4-styles.spec.ts ("every assertion pins WHICH PROPERTY is")).
- * The three deliberate exceptions are marked at their sites.
+ * The four deliberate exceptions are marked at their sites.
  */
 function expectRatio(theme: Theme, ink: string, ground: string, floor: number, req: string): number {
   const inkHex = resolve(theme, ink);
@@ -1932,6 +1932,21 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(failures, `88.9 A5a — ${failures.join(' | ')}`).toEqual([]);
     expect(measured, '88.9 A5a — anti-vacuity: expected 4 measured pairs (2 sites x 2 themes)').toBe(4);
+  });
+
+  it('56. E7a (88.9): dark error box ground #450a0a, ink ≥ 4.5', () => {
+    // Deliberate hex exception (the fourth): SPEC R4 token pin — the shipped dark resting error ground IS the owner pick E7a (88.9-PICKS-B4.json, 2026-11-06), red-950; the shipped wine ground measured 6.41:1 under the same ink and read pink (UAT3-J1).
+    const darkGround = resolve('dark', '--color-status-error-subtle');
+    expect(
+      darkGround,
+      `88.9 E7a — dark --color-status-error-subtle resolves ${darkGround}; the owner pick E7a (88.9-PICKS-B4.json) is red-950 #450a0a`,
+    ).toBe('#450a0a');
+    expectRatio('dark', '--color-status-error-text', '--color-status-error-subtle', 4.5, '88.9 E7a');
+    const lightGround = resolve('light', '--color-status-error-subtle');
+    expect(
+      lightGround,
+      `88.9 E7a — light --color-status-error-subtle resolves ${lightGround}; E7a is a dark-only pick, the light ground must not move from #fadede`,
+    ).toBe('#fadede');
   });
 });
 
