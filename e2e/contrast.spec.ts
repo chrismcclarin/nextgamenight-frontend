@@ -24,6 +24,7 @@ import { switchToManualEntry } from './support/createEvent';
 import { holdWrites, settleAnimations } from './support/inFlight';
 import { injectViewerYesRsvp } from './support/viewerRsvp';
 import { scrubbedFetch } from './support/scrubbedFetch';
+import { advanceMonths, monthWithTrailingDays } from './support/calendarGrid';
 import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
 // Phase 88.3.1-W. The PALETTE, imported rather than transcribed — the AMENDMENT W tests below
 // pin the preset-only group's rendered ground to the `blue` preset's own stored values, and
@@ -632,16 +633,13 @@ function expectInk(label: string, r: InkRead, floor: number, assertOpacity: bool
 
 /** A4b: adjacent-month day numbers, an adjacent-month tile and its '+N more' label on the group compact grid. */
 async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  // Since CS-05 the grid is whole weeks (28, 35 or 42 cells) and a month ending on a Saturday has
+  // no trailing day, so the read happens in the first month from now whose grid ends with at least
+  // 4 next-month days, its geometry taken from the app's own getDaysInMonth:
+  // e2e/support/calendarGrid.ts ("export function monthWithTrailingDays")
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const nextYear = month === 11 ? year + 1 : year;
-  const nextMonth = month === 11 ? 0 : month + 1;
-  // The grid is always 42 cells: the leading days of the previous month, this month, then the
-  // trailing days of the next month (getDaysInMonth). Same arithmetic, so the handler knows them.
-  const leading = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const trailing = 42 - leading - daysInMonth;
+  const target = monthWithTrailingDays(now, 4);
+  const { nextYear, nextMonth, trailing } = target;
   let syntheticDay = 0;
 
   await page.route((url) => /\/events\/group\/[^/]+$/.test(url.pathname), async (route) => {
@@ -660,9 +658,10 @@ async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<vo
       const d = new Date(e.start_date);
       if (d.getFullYear() === nextYear && d.getMonth() === nextMonth) occupied.add(d.getDate());
     }
-    // DATE-PROOF: the CI seed puts the E2E group's events at +3 and +4 days, so real events
-    // occupy at most 2 distinct days among next-month days 1-4, and the 42-cell grid always has
-    // at least 5 trailing days — so at least 3 empty trailing days always exist. The synthetic
+    // DATE-PROOF: the target month has at least 4 trailing days. The CI seed puts the E2E group's
+    // events at +3 and +4 days, so they occupy at most 2 of them (none when the target is a later
+    // month) — so at least 2 empty trailing days always exist: one for the synthetic events, one
+    // for the EMPTY-cell read. The synthetic
     // day is the FIRST trailing day the real response leaves empty (never trailing day 1
     // unconditionally, which the seed lands on during the last four days of every month), and
     // a second empty trailing day is always left for the EMPTY-cell read.
@@ -690,9 +689,10 @@ async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<vo
   try {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertTheme(page, theme);
-    const heading = page.getByRole('heading', { name: `${MONTH_NAMES[month]} ${year}`, exact: true }).first();
-    await expect(heading, `A4b (${theme}): the compact grid heading is not the month the route handler built against`).toBeVisible({ timeout: 15_000 });
-    const next = MONTH_NAMES[nextMonth];
+    const heading = page.getByRole('heading', { name: `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`, exact: true }).first();
+    await expect(heading, `A4b (${theme}): the compact grid did not open on the current month`).toBeVisible({ timeout: 15_000 });
+    await advanceMonths(page, { year: now.getFullYear(), month: now.getMonth() }, target.steps);
+    const next = MONTH_NAMES[target.nextMonth];
     expect(syntheticDay, `A4b (${theme}): the route handler never answered the group events GET`).toBeGreaterThan(0);
 
     const populated = page.getByRole('button', { name: `${next} ${syntheticDay}, 3 games. Open this day.`, exact: true });
@@ -1546,7 +1546,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
 
       // Locate the CELLS grid, not the day-name header row. `CalendarMonthView.js` renders the
       // day-name header as its own `.grid.grid-cols-7.gap-1.mb-4` with exactly 7 children, and the
-      // cells grid with ~35-42. Scoped by child count so the two cannot be confused.
+      // cells grid with 28, 35 or 42 (CS-05). Scoped by child count so the two cannot be confused;
+      // the floor stays 28 because a four-week February (2026, 2037, 2043) has exactly 28.
       const grids = page.locator('.grid.grid-cols-7');
       const gridCount = await grids.count();
       let cellsGrid: Locator | null = null;
@@ -1595,8 +1596,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       expect(
         matches,
         `ruling 1c: expected EXACTLY ONE \`[aria-current="date"]\` inside the month cells grid ` +
-          `(today's day number), found ${matches}. 0 means today is not in the rendered 42-cell ` +
-          `window or the attribute moved; >1 means the locator caught a sibling surface. Either ` +
+          `(today's day number), found ${matches}. 0 means today is not in the rendered month ` +
+          `grid or the attribute moved; >1 means the locator caught a sibling surface. Either ` +
           `way this is a LOCATOR failure, not a contrast failure — do not relax it into a ` +
           `contrast pass.`
       ).toBe(1);

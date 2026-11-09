@@ -93,7 +93,7 @@ describe('CalendarMonthView compact tile — keyboard + accessible name (88.3-cr
  * THE INVARIANT IS PER RENDERED **GRID**, NOT PER MONTH, and neither half is gated on
  * `isCurrentMonth`. `isCurrentDay` is computed from the date ALONE, and the cell's ground
  * ternary awards the today treatment BEFORE the adjacent-month branch is reached (the adjacent
- * page-ground arm comes after the today and full-variant past arms, 88.9 A4b). `getDaysInMonth` returns 42 cells including adjacent-month days,
+ * page-ground arm comes after the today and full-variant past arms, 88.9 A4b). `getDaysInMonth` returns whole weeks (28, 35 or 42 cells, CS-05) including any adjacent-month days,
  * so a grid whose OVERFLOW contains today already renders that overflow cell tinted as today.
  * Gating either half on `isCurrentMonth` would desync the pair — and nothing in this suite
  * asserted the pair before this plan.
@@ -110,7 +110,7 @@ describe('CalendarMonthView compact tile — keyboard + accessible name (88.3-cr
  */
 describe('CalendarMonthView — aria-current="date" is per rendered GRID (88.6-40, W41)', () => {
   // 1 September 2031. August 2031 starts on a Friday, so `getDaysInMonth(August)`'s 42-cell
-  // window runs Sun 27 Jul -> Sat 6 Sep and contains 1 September in its OVERFLOW. That is the
+  // window (a six-row month under CS-05) runs Sun 27 Jul -> Sat 6 Sep and contains 1 September in its OVERFLOW. That is the
   // case which distinguishes a per-GRID implementation from an `isCurrentMonth`-gated one.
   const PINNED_TODAY = new Date(2031, 8, 1, 12, 0, 0, 0);
 
@@ -177,7 +177,7 @@ describe('CalendarMonthView — aria-current="date" is per rendered GRID (88.6-4
     expect(cells.indexOf(tinted[0])).toBeGreaterThan(lastOfMonth);
   });
 
-  it('W41-3. a grid whose FULL 42-day window contains no today carries the attribute ZERO times', () => {
+  it('W41-3. a grid whose FULL rendered window contains no today carries the attribute ZERO times', () => {
     // Two months away, deliberately — "a month with no today" is satisfiable by an overflow day
     // and would make this arm vacuous.
     const { container } = renderGrid(new Date(2031, 10, 1, 12, 0, 0, 0)); // November 2031
@@ -246,7 +246,7 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
   it('A4b (88.9): an adjacent-month cell is undimmed on the page ground and nothing in it carries the mute', () => {
     // Compact grid, August 2031: 3 September sits in the trailing overflow and holds an event.
     const { days, cells } = renderAt(new Date(2031, 7, 1, 12, 0, 0, 0), 'compact', [eventOn('evt-adj', '2031-09-03', 'Azul')]);
-    expect(cells).toHaveLength(42);
+    expect(cells, 'August 2031 is a six-row month under CS-05 (starts on a Friday, 31 days)').toHaveLength(42);
     const i = days.findIndex((c) => !c.isCurrentMonth && c.date.getMonth() === 8 && c.date.getDate() === 3);
     expect(i).toBeGreaterThan(-1);
     const cell = cells[i];

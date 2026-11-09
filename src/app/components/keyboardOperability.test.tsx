@@ -1638,7 +1638,7 @@ describe('Phase 88.6-40 AC-5 / R5 (W39): the calendar day cell has a keyboard pa
     expect(target.getAttribute('aria-label')).toContain('Open this day');
   });
 
-  it('DC-2. a NON-ACTIONABLE day gets NO tab stop (42 empty stops is worse than none)', () => {
+  it('DC-2. a NON-ACTIONABLE day gets NO tab stop (a stop on every empty day is worse than none)', () => {
     renderMonth({ events: [], showEmptyDayHint: false });
     expect(screen.queryByRole('button', { name: /Open this day/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Add an event/ })).toBeNull();

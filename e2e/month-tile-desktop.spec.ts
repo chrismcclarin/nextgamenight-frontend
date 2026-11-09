@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { scrubbedFetch } from './support/scrubbedFetch';
+import { advanceMonths, monthWithTrailingDays } from './support/calendarGrid';
 import {
   assertTheme,
   blend,
@@ -361,18 +362,15 @@ const O4B_FLOOR = 4.5;
 const O4B_GAME = 'E2E adjacent home';
 
 async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<void> {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const nextYear = month === 11 ? year + 1 : year;
-  const nextMonth = month === 11 ? 0 : month + 1;
   // Since CS-05 the grid is whole weeks, 28, 35 or 42 cells:
   // src/lib/calendarUtils.js ("while (cells.length % 7 !== 0) {")
-  // The arithmetic below still assumes the old fixed grid; Task 2 of plan 88.9-25 re-points it
-  // (and replaces this sentence).
-  const leading = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const trailing = 42 - leading - daysInMonth;
+  // and a month ending on a Saturday has no trailing day, so the read happens in the first month
+  // from now whose grid ends with at least 3 next-month days (one for the synthetic tile, two more
+  // day numbers), its geometry taken from the app's own getDaysInMonth:
+  // e2e/support/calendarGrid.ts ("export async function advanceMonths")
+  const now = new Date();
+  const target = monthWithTrailingDays(now, 3);
+  const { nextYear, nextMonth, trailing } = target;
   const syntheticId = crypto.randomUUID();
   let syntheticDay = 0;
   let seedError = '';
@@ -404,9 +402,10 @@ async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<voi
       const d = new Date(e.start_date);
       if (d.getFullYear() === nextYear && d.getMonth() === nextMonth) occupied.add(d.getDate());
     }
-    // DATE-PROOF: the CI seed puts events at +3 and +4 days, so on the last days of a month they land
-    // on trailing days and a fixed seed day would share its cell. The synthetic day is computed from
-    // THIS response — the FIRST trailing day it leaves empty — so no real event can share it.
+    // DATE-PROOF: the target month has at least 3 trailing days. The CI seed puts events at +3 and
+    // +4 days, so they occupy at most 2 of them (none when the target is a later month) and a fixed
+    // seed day could share its cell. The synthetic day is computed from THIS response — the FIRST
+    // trailing day it leaves empty — so no real event can share it.
     syntheticDay = 0;
     for (let d = 1; d <= trailing; d++) {
       if (!occupied.has(d)) { syntheticDay = d; break; }
@@ -437,26 +436,36 @@ async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<voi
   try {
     await page.goto('/');
     await assertTheme(page, theme);
-    const wanted = `${O4B_MONTHS[month]} ${year}`;
+    const current = `${O4B_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+    const wanted = target.label;
     const heading = page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ });
     await expect(heading, `O4b (${theme}): the home full grid's month heading is not visible`).toBeVisible({ timeout: 20_000 });
-    // A stored calendar preference can reopen another month; Go to Today brings the grid to the month
-    // the route handler built against.
-    if ((await heading.textContent())?.trim() !== wanted) {
-      await page.getByRole('button', { name: 'Go to Today', exact: true }).click();
+    // A stored calendar preference can reopen another month; the Today control brings the grid back
+    // to the current month, the walk's starting point. Plan 88.9-28 (N1) turns Go to Today into a
+    // "Today" pill, so both names are accepted.
+    if ((await heading.textContent())?.trim() !== current) {
+      const today = page.getByRole('button', { name: /^(Go to )?Today$/ });
+      await expect(today, `O4b (${theme}): expected exactly one Today control on the home grid`).toHaveCount(1);
+      await today.click();
     }
+    await expect(heading, `O4b (${theme}): the home full grid is not on the current month`).toHaveText(current);
+    await advanceMonths(page, { year: now.getFullYear(), month: now.getMonth() }, target.steps);
     await expect(heading, `O4b (${theme}): the home full grid is not on ${wanted}`).toHaveText(wanted);
     expect(seedError, `O4b (${theme}): ${seedError}`).toBe('');
     expect(rewrites, `O4b (${theme}): the route handler never answered the home events GET with an array`).toBeGreaterThan(0);
 
     // DECISION Phase 88.9-04 (O4b grid): the trailing cells are found by STRUCTURE — the one element
-    // under the month card with exactly 42 children (the calendarUtils grid) — chosen OVER a Tailwind
-    // class locator (SELECTOR POLICY above) and over day-number names alone: the home grid passes no
-    // onEmptyDayClick, so an empty or one-event day number has NO accessible name to find it by.
-    const card = heading.locator('xpath=ancestor::*[.//div[count(*)=42]][1]');
-    const grid = card.locator('xpath=.//div[count(*)=42]');
-    await expect(grid, `O4b (${theme}): no 42-cell month grid under the home calendar heading`).toHaveCount(1);
-    const cellOf = (day: number): Locator => grid.locator('xpath=./*').nth(42 - trailing + day - 1);
+    // under the month card with exactly the target month's cell count of children (28, 35 or 42; the
+    // calendarUtils grid) — chosen OVER a Tailwind class locator (SELECTOR POLICY above) and over
+    // day-number names alone: the home grid passes no onEmptyDayClick, so an empty or one-event day
+    // number has NO accessible name to find it by.
+    // AMENDED Phase 88.9-25 (owner ruling CS-05, chat 2026-11-07, P7a item P — no pick by design): the
+    // grid is found by its CS-05 cell count from getDaysInMonth, chosen OVER a fixed count of 42,
+    // which matches no grid in a five-week month (November 2026: 35).
+    const card = heading.locator(`xpath=ancestor::*[.//div[count(*)=${target.cellCount}]][1]`);
+    const grid = card.locator(`xpath=.//div[count(*)=${target.cellCount}]`);
+    await expect(grid, `O4b (${theme}): no ${target.cellCount}-cell month grid under the home calendar heading`).toHaveCount(1);
+    const cellOf = (day: number): Locator => grid.locator('xpath=./*').nth(target.cellCount - target.trailing + day - 1);
 
     // The tile, located by its role=button name, which begins with the fixed game name
     // (src/app/components/CalendarMonthView.js ("const tileLabel =")).
