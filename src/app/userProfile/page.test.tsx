@@ -3044,6 +3044,47 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
     expect(screen.queryByText(BANNER)).toBeNull();
   });
 
+  // R065 / B3a (owner pick, 88.9-PICKS-B1.json, 2026-11-04; UI-SPEC R2-69): the SMS-disabled box is the
+  // OPAQUE status-warning family, and its Dismiss halo is that same declared key with no dark variant
+  // (ring vs halo 6.65 / 6.37, band 1.00 in both themes). Only classes move; the R4 flow above is reused.
+  it('R065 halo (88.9): the SMS-disabled box and its Dismiss sit on the status-warning family, halo the same token', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockResolvedValue(REMOVED_USER);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    await user.click(remove);
+    await user.click(remove);
+    const sentence = await screen.findByText(BANNER);
+    const box = sentence.parentElement as HTMLElement;
+
+    const boxClasses = box.className.split(/\s+/);
+    for (const cls of ['bg-status-warning-subtle', 'border', 'border-status-warning']) expect(boxClasses).toContain(cls);
+    expect(boxClasses.filter((c) => c.includes('amber'))).toEqual([]);
+
+    const sentenceClasses = sentence.className.split(/\s+/);
+    expect(sentenceClasses).toContain('text-sm');
+    expect(sentenceClasses).toContain('text-content-status-warning');
+    expect(sentenceClasses.filter((c) => c.includes('amber'))).toEqual([]);
+
+    const dismissClasses = screen.getByRole('button', { name: 'Dismiss' }).className.split(/\s+/);
+    for (const cls of [
+      'text-content-status-warning',
+      'focus-visible:ring-2',
+      'focus-visible:ring-focus-ring',
+      'focus-visible:ring-offset-2',
+      'focus-visible:ring-offset-status-warning-subtle',
+      'min-h-11',
+      'min-w-11',
+      '-m-2',
+    ]) {
+      expect(dismissClasses).toContain(cls);
+    }
+    expect(dismissClasses.filter((c) => c.startsWith('dark:focus-visible:ring-offset-'))).toEqual([]);
+    expect(dismissClasses.filter((c) => c.includes('amber'))).toEqual([]);
+  });
+
   it('F1: the format hint is one always-mounted polite region, empty and visually hidden until an error, and the same node after', async () => {
     renderProfile({ sms_enabled: true });
     const phone = await screen.findByRole('textbox', { name: 'Phone number' });
