@@ -46,6 +46,7 @@ import { Icon } from './Icon';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { useFeedbackReport } from '@/app/components/FeedbackModalProvider';
 import { logger, errCtx } from '@/lib/logger';
+import { buildSignInUrl } from '@/lib/signIn';
 import { RETRY_OUTCOME_WINDOW_MS, type FetchErrorCode, type FetchErrorState } from './useFetchErrorState';
 import { useFocusRecovery } from './useFocusRecovery';
 import { DIALOG_ROLE_SELECTOR, focusElement, focusPageFloor, isFocusLost, isOpenDialog } from './focusPageFloor';
@@ -154,6 +155,11 @@ type RetryEpisodeOptions = {
   quietOnMount: boolean;
   /** The host's section heading: plan 04's `fallback`, where focus goes when a control leaves. */
   focusTarget?: React.RefObject<HTMLElement | null>;
+  /**
+   * Plan 04's `preferred` for a PRESSED retry only (O22d): where focus goes when the pressed control
+   * leaves, tried before `focusTarget`. Only `FetchErrorBanner` passes it (its Sign in link).
+   */
+  preferredAfterPress?: () => HTMLElement | null | undefined;
 };
 
 /* DECISION Phase 88.6.1-70 (one mechanism): plan 21's retry machinery lives in this ONE
@@ -165,7 +171,7 @@ type RetryEpisodeOptions = {
    copies of a latch, a dwell and an outcome rule drift apart (tenet: one mechanism). Changing
    this is a decision, not a cleanup. */
 function useRetryEpisode(options: RetryEpisodeOptions) {
-  const { state, failureShown, dwellOnPress, quietOnMount, focusTarget } = options;
+  const { state, failureShown, dwellOnPress, quietOnMount, focusTarget, preferredAfterPress } = options;
   const [retrying, setRetrying] = React.useState(false);
   // A retry in THIS failure episode is KNOWN to have failed (its own result said so and the
   // committed state agreed).
@@ -270,11 +276,13 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
      the host target or the floor, never `<body>`; a user who moved to another live control has
      already disarmed it. REJECTED: an arm tied to the tab-return effect (it lives in
      `useFetchErrorState`, which owns no target), and extending plan 04 with a press-free arm (its
-     published arm plus settle already express a watch). */
+     published arm plus settle already express a watch).
+     AMENDED Phase 88.9-26 (O22d): the unauthorized branch's Sign in link arms the same watch on
+     focus, and a pressed retry that turns 401 prefers it (plan 04's `preferred`). */
   const handleRetry = async (event: React.MouseEvent<HTMLButtonElement>) => {
     if (retryInFlightRef.current) return;
     retryInFlightRef.current = true;
-    const settle = retryRecovery.arm({ from: event.currentTarget });
+    const settle = retryRecovery.arm({ from: event.currentTarget, preferred: preferredAfterPress });
     if (outcomeTimerRef.current !== null) {
       clearTimeout(outcomeTimerRef.current);
       outcomeTimerRef.current = null;
@@ -471,6 +479,7 @@ export function FetchErrorBanner({
   // change, and this banner would re-render on each (review #150). Null outside the host.
   const openReport = useFeedbackReport();
   const tryAgainRef = React.useRef<HTMLButtonElement>(null);
+  const signInRef = React.useRef<HTMLAnchorElement>(null);
   const {
     retrying,
     retryOutcome,
@@ -486,6 +495,8 @@ export function FetchErrorBanner({
     dwellOnPress: compact,
     quietOnMount: false,
     focusTarget,
+    // O22d: a pressed Try again whose retry answers 401 is replaced by Sign in; land there.
+    preferredAfterPress: () => signInRef.current,
   });
 
   /* DECISION Phase 88.6-36 (T-88.6-102, W38 class): the compact branch's announcement is a
@@ -641,7 +652,7 @@ export function FetchErrorBanner({
   const handleReportPress = (event: React.MouseEvent<HTMLButtonElement>) => {
     openReport?.({ subject, description, invoker: event.currentTarget, fallback: focusTarget });
   };
-  const watchReportFocus = () => watchFocusPreferring(() => tryAgainRef.current);
+  const watchReportFocus = () => watchFocusPreferring(() => tryAgainRef.current ?? signInRef.current);
 
   /* DECISION Phase 88.6.1-21 (AC-11 / D-42): the full branch keeps its Banner MOUNTED in both
      states, inside a wrapper that is `sr-only` while `state.showError` is false — chosen over the
@@ -694,6 +705,8 @@ export function FetchErrorBanner({
 
   // The full branch's controls, rendered in Banner's `actions` slot (outside the live region).
   // Hoisted so the Banner's own opening tag carries no handler of its own.
+  // O22d: a 401 cannot be retried, so its full banner offers Sign in instead of Try again.
+  const sessionDead = state.code === 'unauthorized';
   const actionRow = state.showError ? (
     <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
       {/* DECISION Phase 88.6-36 (D-03 / UI-SPEC §4.5): the three link-buttons in this file
@@ -716,17 +729,36 @@ export function FetchErrorBanner({
           Retry's halo is its HOST's ground through src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO"),
           default card, chosen OVER round 1's fixed card halo of the host majority (a 1.31 / 1.22
           band on the 48 page paths). Try again, Report this and Sign in stay elevated. */}
-      <button
-        ref={tryAgainRef}
-        type="button"
-        onClick={handleRetry}
-        onFocus={watchFocus}
-        aria-disabled={retrying || undefined}
-        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
-      >
-        <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
-        {retrying ? 'Retrying…' : 'Try again'}
-      </button>
+      {/* DECISION Phase 88.9-26 (O22d, owner pick page 9, 88.9-PICKS-B9.json): for code unauthorized
+          the full banner's action is a Sign in link IN PLACE OF Try again (a 401 cannot be
+          retried), chosen OVER F8a's Sign in BESIDE Try again (88.9-PICKS-B5.json, superseded in
+          form) and applied to EVERY full unauthorized banner, not only the page-level one (one
+          rule, one branch). 44x44 at every width (min-h-11 min-w-11, no desktop reset), chosen OVER
+          Try again's md:min-h-0 because it is the screen's only remedy. The compact notice keeps
+          its Retry: a Sign in there was not asked for, and SESSION-02 has the home page yield it
+          to the page-level banner (plan 88.9-42). */}
+      {sessionDead ? (
+        <a
+          ref={signInRef}
+          href={buildSignInUrl()}
+          onFocus={watchFocus}
+          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
+        >
+          Sign in
+        </a>
+      ) : (
+        <button
+          ref={tryAgainRef}
+          type="button"
+          onClick={handleRetry}
+          onFocus={watchFocus}
+          aria-disabled={retrying || undefined}
+          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
+        >
+          <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
+          {retrying ? 'Retrying…' : 'Try again'}
+        </button>
+      )}
       {/* DECISION Phase 88.6.1-69 (owner ruling 2026-10-05, Report this after a failed retry):
           option C of the owner's three (375px mockup
           https://claude.ai/artifact/So2zG4F5qpHWzRaibS2V4N) — `Try again` always; `Report this`
@@ -747,7 +779,10 @@ export function FetchErrorBanner({
           (`FeedbackModalProvider`'s `openReport`, read through its own report context) and is
           not rendered without one (no host, no dead link). Its focus watch (plan 70's C12 b)
           stays and now prefers the adjacent `Try again` (plan 04's `preferred`, review #235), so
-          a link withdrawn beside a live `Try again` lands there, never a heading a screen away. */}
+          a link withdrawn beside a live `Try again` lands there, never a heading a screen away.
+          AMENDED Phase 88.9-26 (O22d): for code unauthorized the always-present control is Sign in,
+          not Try again; this link keeps its own condition, and its watch prefers whichever of the
+          two is present. */}
       {state.retryFailed && openReport ? (
         <button
           type="button"

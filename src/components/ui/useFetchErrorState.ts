@@ -135,6 +135,10 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   // (CONTEXT D-01). REJECTED: a sign-in link or button on the banner (D-33 row 24, not this
   // phase; plan 88.6.1-58 writes its pointer). REJECTED: per-surface overrides (this register
   // line is the one carrier). Reverting to reload advice is a decision, not a cleanup.
+  // AMENDED Phase 88.9-26 (owner pick F8a then O22d, 88.9-PICKS-B5.json / 88.9-PICKS-B9.json,
+  // 2026-11-07): the banner now carries a Sign in link in place of Try again for this code
+  // (FetchErrorBanner's unauthorized branch), reversing the REJECTED sign-in control above, chosen
+  // OVER the shipped banner with no control; the sentence itself is unchanged.
   unauthorized: 'Your session may have expired. Sign in again to continue.',
   forbidden: "You don't have access to this. Refresh the page to try again.",
   not_found: "We couldn't find what you were looking for.",
