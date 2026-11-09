@@ -337,3 +337,35 @@ describe('BottomSheet focus floor on close (N6, 88.6.1-20)', () => {
     }
   });
 });
+
+// Phase 88.9-29 D6c (UI-SPEC R2-26 build contract): an optional typed titleSize prop.
+// The default stays on the DialogTitle rung (20/700, leading-tight); 'display' is the
+// Heading primitive's display rung (30/700, leading-tight), passed only by the Calendar sheet.
+describe('BottomSheet titleSize (D6c, 88.9-29)', () => {
+  function titleTokens(): string[] {
+    const sheet = screen.getByRole('dialog', { name: TITLE });
+    const heading = sheet.querySelector('h2');
+    expect(heading, 'the sheet renders its DialogTitle as an h2').not.toBeNull();
+    return (heading?.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  }
+
+  it('titleSize renders 30/700, default 20/700', async () => {
+    const user = userEvent.setup();
+    const first = render(<SheetHarness />);
+    await openSheet(user);
+    const base = titleTokens();
+    for (const token of ['text-xl', 'font-bold', 'leading-tight']) {
+      expect(base, `default title carries ${token}`).toContain(token);
+    }
+    first.unmount();
+
+    const props = { titleSize: 'display' } as Partial<React.ComponentProps<typeof BottomSheet>>;
+    render(<SheetHarness {...props} />);
+    await openSheet(user);
+    const display = titleTokens();
+    for (const token of ['text-3xl', 'font-bold', 'leading-tight']) {
+      expect(display, `display title carries ${token}`).toContain(token);
+    }
+    expect(display, 'display title drops the 20px size').not.toContain('text-xl');
+  });
+});

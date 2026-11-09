@@ -62,6 +62,9 @@ describe('QRCodeModal (migrated onto <Modal size="sm">)', () => {
   // glyph "sits LOWER" than the fleet's: it carried the shared 44px box and the
   // text-2xl size but NOT `leading-none`, so the glyph rode the line-box. The
   // insets now land on the same edge the fleet header's close box does.
+  // AMENDED Phase 88.9-29 (owner pick E8b, 88.9-PICKS-B4.json, 2026-11-06): the text glyph is
+  // now the stroked 20px X icon, which has no line-box to ride, so the leading-none read is
+  // replaced by the icon read; the 44px box and the inset reads stay.
   it('centers its close glyph optically and sits on the fleet header inset', () => {
     render(
       <QRCodeModal
@@ -74,7 +77,11 @@ describe('QRCodeModal (migrated onto <Modal size="sm">)', () => {
     // Two controls share the name 'Close' (corner glyph + footer button); the
     // corner one is first in DOM order.
     const [corner] = screen.getAllByRole('button', { name: 'Close' });
-    expect(corner.className).toContain('leading-none');
+    const svgs = corner.querySelectorAll('svg');
+    expect(svgs).toHaveLength(1);
+    expect(svgs[0].getAttribute('width')).toBe('20');
+    expect(svgs[0].getAttribute('aria-hidden')).toBe('true');
+    expect((corner.textContent ?? '').trim()).toBe('');
     expect(corner.className).toContain('min-h-11');
     expect(corner.className).toContain('min-w-11');
     expect(corner.className).toContain('right-3');
@@ -401,13 +408,17 @@ describe('QRCodeModal — controls (88.6.1-12, D-27, W037)', () => {
     expect(screen.queryByRole('button', { name: /reset/i })).toBeNull();
   });
 
-  it('H: three controls, and only the corner close is off the house focus ring', () => {
+  // AMENDED Phase 88.9-29 (owner pick B6a, 88.9-PICKS-B1.json, 2026-11-04): renamed from
+  // 'H: three controls, and only the corner close is off the house focus ring'. The corner
+  // close now wears the fleet no-offset ring, so the inventory is three controls, none off it.
+  it('B6a (88.9): every control in the QR dialog is on the house ring', () => {
     render(dialogAt(true));
     const buttons = Array.from(screen.getByRole('dialog').querySelectorAll('button'));
     expect(buttons).toHaveLength(3);
     const offRing = buttons.filter((b) => !b.classList.contains('focus-visible:ring-2'));
-    expect(offRing).toHaveLength(1);
-    expect(offRing[0]).toBe(buttons[0]);
-    expect(offRing[0]).toHaveAccessibleName('Close');
+    expect(offRing).toHaveLength(0);
+    expect(buttons[0]).toHaveAccessibleName('Close');
+    expect(buttons[0].classList.contains('focus:outline-hidden')).toBe(true);
+    expect(buttons[0].classList.contains('focus-visible:ring-ring')).toBe(true);
   });
 });
