@@ -127,7 +127,9 @@ test.describe('Group settings — pressed controls keep focus and send one write
     await expect.poll(() => hold.count('PUT', SETTINGS_PATH), { timeout: 15_000 }).toBe(1);
 
     // Save-feedback rule 1 (88.9-24): the label stays and the name gains the sr-only ', saving'.
-    const saving = page.getByRole('button', { name: 'Save Changes, saving', exact: true });
+    // AMENDED Phase 88.9-24 (CI 42677038697 at 4c66253): Chromium computes it with a space before the
+    // comma (flex-item label, out-of-flow sr-only suffix), so the space is optional here.
+    const saving = page.getByRole('button', { name: /^Save Changes ?, saving$/ });
     await expect(saving).toBeFocused();
     await expect(saving).toHaveAttribute('aria-disabled', 'true');
     await expect(saving).not.toHaveAttribute('disabled');

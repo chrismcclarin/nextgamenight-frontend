@@ -154,14 +154,18 @@ test.describe('Create Event — a second press while creating changes nothing (D
 
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await expect(submit).not.toHaveAttribute('disabled');
-    await expect(submit).toHaveAccessibleName('Create Event, creating');
+    // AMENDED Phase 88.9-24 (CI 42677038697 at 4c66253): Chromium computes the busy name as
+    // "Create Event , creating" (the label is a flex item and the sr-only suffix its own out-of-flow
+    // box, so a space is inserted before the comma); read aloud it is the same words. The optional
+    // space keeps the pin on label-first plus the verb.
+    await expect(submit).toHaveAccessibleName(/^Create Event ?, creating$/);
     await expect(submit).toBeFocused();
     await expectTouchTarget(submit, 'the busy Create Event submit', { axes: 'height', withinViewportOf: page });
 
     await submit.click({ force: true });
     await page.waitForTimeout(500);
     expect(create.count()).toBe(1);
-    await expect(submit).toHaveAccessibleName('Create Event, creating');
+    await expect(submit).toHaveAccessibleName(/^Create Event ?, creating$/);
 
     // Abort the held create: the failure is a toast, the dialog stays open, and the person is
     // left where they pressed, on the re-enabled submit.
@@ -202,7 +206,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     const submit = page.getByTestId('create-event-submit');
     await submit.click();
     await create.arrived;
-    await expect(submit).toHaveAccessibleName('Create Event, creating');
+    await expect(submit).toHaveAccessibleName(/^Create Event ?, creating$/);
 
     // Close mid-create, then reopen. The reopen re-runs the members read (`GET /api/groups/<id>/users`),
     // which rebuilds the form; wait for it so nothing below races that rebuild.
@@ -227,7 +231,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     // and no second POST is sent.
     await fillCreateEventFields(page, { switchMode: 'if-offered' });
     await submit.click();
-    await expect(submit).toHaveAccessibleName('Create Event, creating');
+    await expect(submit).toHaveAccessibleName(/^Create Event ?, creating$/);
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await page.waitForTimeout(500);
     expect(create.count()).toBe(1);
