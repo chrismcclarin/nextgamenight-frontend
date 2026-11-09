@@ -2408,6 +2408,115 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // A sort press would have sent a write to the API (held in the browser, never sent).
     expectNoApiWrites(hold);
   });
+
+  test('R4 (88.9 B5a): every footer control in both footers measures >= 44px tall at 375px', async ({ page, browser, baseURL }) => {
+    // Signed in: AuthFooter (src/app/components/Footer.js ("function AuthFooter() {")).
+    await page.goto('/');
+    const footer = page.getByRole('contentinfo');
+    const signedIn = [
+      { label: 'About (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'About', exact: true }) },
+      { label: 'Privacy (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'Privacy', exact: true }) },
+      { label: 'Terms (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'Terms', exact: true }) },
+      { label: 'Report bug (AuthFooter, 375px)', control: footer.getByRole('button', { name: /^Report bug/ }) },
+    ];
+    for (const { label, control } of signedIn) {
+      await expect(control, `${label}: no such control in the footer — a zero-count locator measures nothing`).toBeVisible({ timeout: 15_000 });
+      await expectTouchTarget(control, label, { axes: 'height' });
+    }
+
+    // Signed out: PublicFooter (src/app/components/Footer.js ("function PublicFooter() {")), on the
+    // e2e/feedback-stacking.spec.ts ("const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });") idiom.
+    const context = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+      baseURL,
+      viewport: { width: 375, height: 667 },
+      isMobile: true,
+      hasTouch: true,
+      colorScheme: 'dark',
+    });
+    try {
+      const anon = await context.newPage();
+      await anon.goto('/');
+      const publicFooter = anon.getByRole('contentinfo');
+      for (const name of ['About', 'Privacy', 'Terms']) {
+        const control = publicFooter.getByRole('link', { name, exact: true });
+        const label = `${name} (PublicFooter, signed out, 375px)`;
+        await expect(control, `${label}: no such link in the footer — a zero-count locator measures nothing`).toBeVisible({ timeout: 15_000 });
+        await expectTouchTarget(control, label, { axes: 'height' });
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  // DECISION Phase 88.9-21 O15b: a route-served custom game, chosen over a seeded game — the seed has none in CI and the review is never submitted.
+  test('R4 (88.9 O15b): each review star is 48 x 48 and each half-star radio 24 x 48 at 375px', async ({ page }) => {
+    // The fake custom-game idiom of e2e/gamedetail-refresh-failed.spec.ts ("No game fixture exists in CI, so the game arm serves a CUSTOM game").
+    const gameId = '0e2e0000-0000-4000-8000-000000000921';
+    const gamePath = new RegExp(`^/api/games/${gameId}$`);
+    const reviewsPrefix = `/api/game-reviews/game/${gameId}/`;
+    await page.route('**/api/game-reviews/**', async (route) => {
+      const request = route.request();
+      if (request.method() === 'GET' && new URL(request.url()).pathname.startsWith(reviewsPrefix)) {
+        await route.fulfill({ json: [] });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route('**/api/games/**', async (route) => {
+      const request = route.request();
+      if (request.method() === 'GET' && gamePath.test(new URL(request.url()).pathname)) {
+        await route.fulfill({
+          json: {
+            id: gameId,
+            name: 'E2E Star Game',
+            is_custom: true,
+            bgg_id: null,
+            theme: null,
+            image_url: null,
+            min_players: 2,
+            max_players: 4,
+            playing_time: 45,
+          },
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    try {
+      await page.goto(`/gameDetail?game_id=${gameId}&group_id=${E2E_GROUP_ID}`);
+      const add = page.getByRole('button', { name: 'Add Review', exact: true });
+      await expect(add, 'O15b: Add Review never rendered — the custom game or the member roster did not load').toBeVisible({ timeout: 15_000 });
+      await add.click();
+      const rating = page.getByRole('radiogroup', { name: 'Game rating' });
+      await expect(rating, 'O15b: the review dialog has no Game rating radiogroup').toBeVisible();
+      const radios = rating.getByRole('radio');
+      await expect(radios).toHaveCount(10);
+
+      const tol = 0.5;
+      for (let i = 0; i < 10; i += 1) {
+        const radio = radios.nth(i);
+        const box = await radio.boundingBox();
+        const starBox = await radio.locator('xpath=..').boundingBox();
+        expect(box, `O15b: half-star radio ${i + 1} has no layout box`).not.toBeNull();
+        expect(starBox, `O15b: star ${Math.floor(i / 2) + 1} has no layout box`).not.toBeNull();
+        const r = box!;
+        const s = starBox!;
+        const record = `radio ${r.width}x${r.height}px, star ${s.width}x${s.height}px`;
+        expect(Math.abs(r.width - 24), `O15b: half-star radio ${i + 1} is not 24px wide (${record})`).toBeLessThanOrEqual(tol);
+        expect(Math.abs(r.height - 48), `O15b: half-star radio ${i + 1} is not 48px tall (${record})`).toBeLessThanOrEqual(tol);
+        expect(Math.abs(s.width - 48), `O15b: star ${Math.floor(i / 2) + 1} is not 48px wide (${record})`).toBeLessThanOrEqual(tol);
+        expect(Math.abs(s.height - 48), `O15b: star ${Math.floor(i / 2) + 1} is not 48px tall (${record})`).toBeLessThanOrEqual(tol);
+      }
+
+      // Closed without submitting (Esc closes the shared Modal).
+      await page.keyboard.press('Escape');
+      await expect(rating).toBeHidden();
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
+  });
 });
 
 /* ==========================================================================================
