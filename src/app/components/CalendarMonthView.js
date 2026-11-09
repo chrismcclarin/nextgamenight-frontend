@@ -147,7 +147,7 @@ const tileTextTreatment = (tileGround, hasBgImage) => {
  * Monthly grid renderer.
  *
  * Phase 64-02 (CAL-01 / CAL-04 / CAL-05):
- *   - `days` is now {date: Date, isCurrentMonth: boolean}[] (42 cells).
+ *   - `days` is now {date: Date, isCurrentMonth: boolean}[] — whole weeks, 28, 35 or 42 cells (CS-05, 88.9-25).
  *   - Adjacent-month cells sit on the page ground with their day number muted; nothing in the cell is dimmed (AMENDED Phase 88.9-07, owner picks A4b + O4b; tile dim dropped at the plan review, 2.39 / 2.88 through .6)
  *     but their events use the same tile styling as current-month cells.
  *   - Whole-cell click invokes `onDayClick(date, dayEvents)` — the parent
@@ -366,7 +366,7 @@ export default function CalendarMonthView({
                      four ways for exactly the hierarchy the weight was carrying — accent for
                      today, muted for an adjacent-month or past date, primary otherwise — and
                      today's cell additionally has its own ground and accent border. Promoting to
-                     700 instead would bold all 42 day numbers in the grid and flatten that fork
+                     700 instead would bold every day number in the grid and flatten that fork
                      rather than support it. */}
                   {/* DECISION Phase 88.6-40 (W39, SPEC R5 / AC-5): THE DAY'S KEYBOARD TARGET IS
                       THIS ELEMENT, not the cell that wraps it.
@@ -451,7 +451,7 @@ export default function CalendarMonthView({
                        than merely unchosen. `isCurrentDay` is computed from the date ALONE, the
                        cell's ground ternary awards the today treatment BEFORE the adjacent branch
                        is reached (isAdjacent selects the page-ground arm, which comes AFTER the today and full-variant past arms — 88.9 A4b), and `getDaysInMonth`
-                       returns 42 cells including adjacent-month days — so a grid whose OVERFLOW
+                       returns whole weeks (28, 35 or 42 cells; AMENDED Phase 88.9-25 CS-05 — the count only, the per-grid invariant below is unchanged) including any adjacent-month days — so a grid whose OVERFLOW
                        contains today ALREADY renders that overflow cell tinted as today. The
                        invariant is therefore per rendered GRID, not per month: exactly ONE
                        `aria-current="date"` per grid, INSIDE the tinted cell. The tint must not

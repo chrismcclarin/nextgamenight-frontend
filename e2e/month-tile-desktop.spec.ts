@@ -366,9 +366,10 @@ async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<voi
   const month = now.getMonth();
   const nextYear = month === 11 ? year + 1 : year;
   const nextMonth = month === 11 ? 0 : month + 1;
-  // The grid is always 42 cells (src/lib/calendarUtils.js ("while (cells.length < 42) {")): the
-  // leading days of the previous month, this month, then the trailing next-month days. The same
-  // arithmetic here, so the handler and the reads know which days trail.
+  // Since CS-05 the grid is whole weeks, 28, 35 or 42 cells:
+  // src/lib/calendarUtils.js ("while (cells.length % 7 !== 0) {")
+  // The arithmetic below still assumes the old fixed grid; Task 2 of plan 88.9-25 re-points it
+  // (and replaces this sentence).
   const leading = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const trailing = 42 - leading - daysInMonth;

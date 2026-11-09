@@ -399,7 +399,7 @@ export default function EventCalendar({
     ? formatWithTzAbbr(currentDate || new Date(), timezone, 'zzz')
     : null;
 
-  // CAL-01: getDaysInMonth now returns {date, isCurrentMonth}[] — 42 cells.
+  // CAL-01: getDaysInMonth now returns {date, isCurrentMonth}[] — whole weeks, 28, 35 or 42 cells (CS-05).
   const days = getDaysInMonth(currentDate);
 
   // CAL-06 (revised): if the surface has list view disabled, force month view
