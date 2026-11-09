@@ -1,4 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
+import {
+  assertTheme,
+  describeRatio,
+  focusRingMeasurement,
+  forceLightMode,
+  haloGroundRatio,
+  ratioAgainstGround,
+} from './support/contrast';
 
 /** Plan 88.6.1-82: the in-page trace written by the recorder below. `attach` = the region (or
  *  an element containing it) was added to the document, with the region's text at that moment;
@@ -119,5 +127,53 @@ test.describe('Phase 88.6.1-82 — the removed-from-group notice (phone project)
     await expect(region).toBeAttached();
     await expect(region).toHaveText('');
     expect(await wrapperHeight(page)).toBe(0);
+  });
+
+  // Phase 88.9-21 (X2, UI-SPEC row R2-49): the box moves from raw amber palette to the
+  // status-warning tokens (src/app/globals.css, light subtle #f9ebda with text and border #854d0e;
+  // dark subtle #423e36 with text and border #f59e0b), and the Dismiss halo becomes the box itself
+  // (band 1.00) instead of the page colour. RED until plan 88.9-42. Read-only, nothing is pressed,
+  // no capture (the WR-02 rule above). Messages print colours and ratios only.
+  test('X2 (88.9): the removed-member box paints the status-warning tokens and its Dismiss halo is the box, dark and light', async ({
+    page,
+  }) => {
+    const url = '/?removedFrom=' + encodeURIComponent('Removed Check Group');
+    const arms: Array<{ theme: 'dark' | 'light'; ground: string; ink: string }> = [
+      { theme: 'dark', ground: 'rgb(66, 62, 54)', ink: 'rgb(245, 158, 11)' },
+      { theme: 'light', ground: 'rgb(249, 235, 218)', ink: 'rgb(133, 77, 14)' },
+    ];
+    for (const arm of arms) {
+      if (arm.theme === 'light') {
+        // Both projects bake dark; the init script writes the stored theme before any page script.
+        await page.emulateMedia({ colorScheme: 'light' });
+        await forceLightMode(page);
+      }
+      await page.goto(url);
+      const region = page.locator(REGION);
+      await expect(region).toHaveText("You're no longer a member of that group.");
+      await assertTheme(page, arm.theme);
+
+      const box = region.locator('xpath=..');
+      const paint = await box.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { bg: cs.backgroundColor, border: cs.borderTopColor };
+      });
+      const regionInk = await region.evaluate((el) => getComputedStyle(el).color);
+      expect(paint.bg, `${arm.theme}: the box ground is the status-warning subtle token`).toBe(arm.ground);
+      expect(paint.border, `${arm.theme}: the box border is the status-warning border token`).toBe(arm.ink);
+      expect(regionInk, `${arm.theme}: the notice ink is the status-warning text token`).toBe(arm.ink);
+
+      const ink = await ratioAgainstGround(region, `${arm.theme} removed-member notice ink`);
+      expect(ink.ratio, describeRatio(`${arm.theme} removed-member notice ink`, 4.5, ink)).toBeGreaterThanOrEqual(4.5);
+
+      const dismiss = page.getByRole('button', { name: 'Dismiss', exact: true });
+      const ring = await focusRingMeasurement(page, dismiss, `${arm.theme} Dismiss focus ring`);
+      expect(ring.ratio, describeRatio(`${arm.theme} Dismiss focus ring`, 3, ring)).toBeGreaterThanOrEqual(3);
+      const halo = await haloGroundRatio(ring, dismiss);
+      expect(
+        halo.ratio,
+        `${arm.theme}: the Dismiss halo ${halo.halo} against the box ${halo.behind} reads ${halo.ratio.toFixed(3)}:1, want below 1.05 (the halo is the box)`
+      ).toBeLessThan(1.05);
+    }
   });
 });

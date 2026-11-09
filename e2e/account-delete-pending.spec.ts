@@ -117,4 +117,52 @@ test.describe('Account deletion — the pressed danger action stays focusable at
     await page.waitForTimeout(500);
     expect(heldDeletes()).toBe(1);
   });
+
+  // Phase 88.9-21 (E5b, UI-SPEC row R2-35): in the no-blocker state the whole dialog fits a
+  // 375 x 667 phone without scrolling. Today its body scrolls (32px at planning, not re-measured
+  // here). RED until plan 88.9-34. The same hold as above is registered
+  // before navigation, and nothing is pressed inside the dialog, so no DELETE is ever held.
+  test('E5b (88.9): the delete dialog in the no-blocker state does not scroll at 375x667', async ({ page }) => {
+    const hold = await holdWrites(page, {
+      answerGet: (url) =>
+        url.pathname.endsWith('/users/me/deletion-blockers') ? { groups: [] } : undefined,
+    });
+
+    expect(page.viewportSize(), 'the phone project is 375 x 667').toEqual({ width: 375, height: 667 });
+    await page.goto('/userProfile');
+
+    const opener = page.getByRole('button', { name: 'Delete My Account', exact: true });
+    await opener.scrollIntoViewIfNeeded();
+    await opener.click();
+
+    const dialog = page.getByRole('dialog', { name: 'Delete your account' });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    const input = dialog.getByPlaceholder('delete my account');
+    await expect(input).toBeEnabled({ timeout: 15_000 });
+
+    // The dialog and every descendant that can scroll vertically: none may hold hidden content.
+    const scrollers = await dialog.evaluate((root) => {
+      const out: Array<{ overflowBy: number }> = [];
+      for (const el of [root, ...Array.from(root.querySelectorAll('*'))]) {
+        const overflowY = getComputedStyle(el).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll') {
+          out.push({ overflowBy: el.scrollHeight - el.clientHeight });
+        }
+      }
+      return out;
+    });
+    expect(scrollers.length, 'anti-vacuity: the dialog has at least one vertical scroll container').toBeGreaterThan(0);
+    for (const [index, scroller] of scrollers.entries()) {
+      expect(
+        scroller.overflowBy,
+        `scroll container ${index + 1} of ${scrollers.length} scrolls ${scroller.overflowBy}px at 375 x 667`
+      ).toBeLessThanOrEqual(1);
+    }
+
+    const inputBox = await input.boundingBox();
+    expect(inputBox, 'the confirm input has a box').not.toBeNull();
+    expect(inputBox!.y + inputBox!.height, 'the confirm input ends inside the 667px viewport').toBeLessThanOrEqual(667);
+
+    expect(hold.count('DELETE', /\/users\/me$/), 'nothing was pressed, so no DELETE was held').toBe(0);
+  });
 });
