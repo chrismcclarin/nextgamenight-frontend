@@ -1550,7 +1550,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
         {/* Delete Group Section - Owner Only */}
         {userRole === 'owner' && (
-          <div className="mb-6 pt-6 border-t border-red-200">
+          <div className="mb-6 pt-6 border-t border-status-error">
             {/* DECISION Phase 88.6-20 (§4.4 + P6): `text-red-600` -> `text-content-status-error`,
                 the destructive INK token. It is not a token-hygiene tidy — it is a WCAG 1.4.3 fix.
 
@@ -1571,10 +1571,11 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 because they were a look call with no measured failure behind them; this one has
                 one, so the same determination reaches the opposite action.
 
-                NOT CHANGED HERE: `border-red-200` on the divider above. Same palette-step class,
-                but a 1px decorative divider is outside 1.4.11 and its treatment is a look call
-                with no floor to breach — routed to `.planning/deferred/phase-88.6.md` rather
-                than swept in silently on the back of this fix. */}
+                AMENDED Phase 88.9-34 (owner pick O14a, 88.9-PICKS-B8B.json, 2026-11-07): the
+                divider above now takes border-status-error (--color-status-error-border), chosen
+                OVER the raw red palette step it shipped with (a light-only value that did not
+                follow the theme); it is decorative, outside 1.4.11, and the owner ruled the look
+                as part of O20c (every passive error surface on the status-error family). */}
             <Heading level={3} size="heading" className="text-content-status-error mb-3">Danger Zone</Heading>
 
             {/* Phase 88.2 / SPEC-REQ-5: three short beats — blast radius,
