@@ -366,8 +366,14 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
   it('7. the 27 protected raw-colour tints still exist — this sweep must not have eaten them', () => {
     const header = fs.readFileSync(path.join(SRC, 'app/Header.js'), 'utf8');
     expect(header).toMatch(/bg-black\/60/);
+    // AMENDED Phase 88.9-29 (C2a): the dialog scrim left this protected list ON PURPOSE by owner
+    // pick C2a (88.9-PICKS-B2.json, 2026-11-05) — DialogOverlay now paints the ONE overlay token
+    // (0.5 light / 0.7 dark) over the raw black at 0.8, so it was moved by ruling, not eaten by a
+    // sweep. This arm now pins that move (token present, raw black 80 gone); the header tint
+    // above is still protected and unchanged.
     const dialog = fs.readFileSync(path.join(SRC, 'components/ui/dialog.tsx'), 'utf8');
-    expect(dialog).toMatch(/bg-black\/80/);
+    expect(dialog).toMatch(/bg-surface-overlay/);
+    expect(dialog).not.toMatch(/bg-black\/80/);
   });
 
   // -------------------------------------------------------------------------
