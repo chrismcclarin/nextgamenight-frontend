@@ -144,6 +144,9 @@ const VERIFY_CODE_IN_FLIGHT_LABEL = 'Verifying...';
 const COLLECTION_LOAD_FAILED_TITLE = "Couldn't load your collection";
 // Copy row P7 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; three ASCII full stops): the pressed Add to Collection's in-flight label.
 const ADDING_TO_COLLECTION_LABEL = 'Adding...';
+// E4a (88.9-32, owner pick 2026-11-06): the ONE pressed arm both theme toggles read. A full literal so
+// Tailwind v4 emits every class. See the DECISION Phase 88.6-17 (D-11, outcome (a)) marker at the toggles.
+const THEME_TOGGLE_PRESSED = 'border-line-accent bg-surface-muted enabled-hover:bg-surface-muted text-content-accent';
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -2269,6 +2272,12 @@ function Profile(){
     return (
         user && (
             <div className="p-3 md:p-6 max-w-4xl mx-auto">
+                {/* DECISION Phase 88.9-32 NAV-01 (R2-82, owner ruling 2026-11-07 1:08 PM): the profile body KEEPS
+                    its own max-w-4xl mx-auto cap, chosen OVER the 7xl chrome cap the ruling gave the home and
+                    group bodies (and gameDetail, 6xl to 7xl). NAV-01 fixed bodies that stretched PAST the 1280px
+                    header and footer; this settings column is centred inside them and never reaches their edge,
+                    and widening it to 1280 was never put to the owner. The owner confirms this at the 1280 / 1440
+                    glance (plan 88.9-51); widening it is a decision, not a cleanup. */}
                 {/* SMS-disabled banner — gated on phoneJustRemoved (session flag
                     set by handleRemovePhone success) so it does NOT fire for users
                     who never had a phone. Also gated on sms_enabled per the
@@ -2359,8 +2368,12 @@ function Profile(){
                         edit — chosen OVER the colour token alone. Its `font-semibold` was the only
                         thing distinguishing it from the sibling link; once that becomes 400, colour
                         is the sole remaining VISUAL cue, so the state is exposed programmatically
-                        as well. Dropping `aria-current` later is a decision, not a cleanup. */}
-                    <span aria-current="page" className="text-content-primary font-normal">Profile</span>
+                        as well. Dropping `aria-current` later is a decision, not a cleanup.
+                        AMENDED Phase 88.9-32 (owner pick C4a, 88.9-PICKS-B2.json, 2026-11-05): the current-page
+                        span reads 700 (font-bold), chosen OVER the shipped 400 — all five breadcrumb current
+                        crumbs now read 700 (UI-SPEC R2-19). aria-current stays, so the state is still exposed
+                        programmatically as well as by weight. */}
+                    <span aria-current="page" className="text-content-primary font-bold">Profile</span>
                 </nav>
 
                 {/* Profile Header */}
@@ -3091,6 +3104,23 @@ function Profile(){
                         below spells a utility in words. Converging these fills onto semantic tokens
                         is a look change and is out of this phase's contract.
 
+                        AMENDED Phase 88.9-32 (owner pick E4a, 88.9-PICKS-B4.json, 2026-11-06): this phase is that
+                        contract. The pressed arm of BOTH toggles is ONE token string (THEME_TOGGLE_PRESSED: the
+                        accent line border, the muted fill held through hover, the accent ink), chosen OVER the
+                        shipped raw pair — amber-500 on amber-50 in light (border 2.15 and fill 1.04 against the
+                        card, under 3:1) and amber-500 on purple-900 with white ink in dark. Measured: border vs
+                        card 3.19 light / 8.30 dark, ink on the muted fill 4.71 / 6.75 (tokenContrast 64, plan
+                        88.9-22). The raw-palette roster entry in btnCensus.test.tsx is deleted in the same commit;
+                        the label-size delta above stands. The weight cue lost in 88.6-17 is replaced by a check
+                        glyph (U+2713, aria-hidden, in the button's own ink) before the pressed button's label,
+                        with both buttons on one shared min width so the pair does not shift (owner ruling
+                        88.9-RULINGS.md R-P3a, 2026-11-08): pressed vs unpressed measure fill 1.50, border 1.38,
+                        ink 1.48 in light, colour alone without it (WCAG 1.4.1), so the sentence above that border
+                        and fill still carry selection no longer holds on its own. Chosen OVER a thicker inset edge
+                        on the pressed arm (option b, a 1px-vs-2px step that may not read at phone size) and OVER
+                        font-bold (option a, dead under the unlayered .btn font-weight). Removing the glyph or the
+                        shared width is a decision, not a cleanup. DECISION Phase 88-10 (aria-pressed) is unchanged.
+
                         `enabled-hover:bg-*` pins the SELECTED arm's fill through hover: ghost's base
                         carries `enabled-hover:bg-surface-hover`, which would otherwise wash the amber
                         (and the purple) on hover — a fill change P6 forbids. */}
@@ -3100,12 +3130,13 @@ function Profile(){
                                 variant="ghost"
                                 onClick={() => setTheme('light')}
                                 aria-pressed={resolvedTheme === 'light'}
-                                className={`border transition-colors ${
+                                className={`border min-w-32 transition-colors ${
                                     resolvedTheme === 'light'
-                                        ? 'border-amber-500 bg-amber-50 enabled-hover:bg-amber-50 text-content-primary'
+                                        ? THEME_TOGGLE_PRESSED
                                         : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
+                                {resolvedTheme === 'light' && <span aria-hidden="true">{'\u2713'}</span>}
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                                 </svg>
@@ -3115,12 +3146,13 @@ function Profile(){
                                 variant="ghost"
                                 onClick={() => setTheme('dark')}
                                 aria-pressed={resolvedTheme === 'dark'}
-                                className={`border transition-colors ${
+                                className={`border min-w-32 transition-colors ${
                                     resolvedTheme === 'dark'
-                                        ? 'border-amber-500 bg-purple-900 enabled-hover:bg-purple-900 text-white'
+                                        ? THEME_TOGGLE_PRESSED
                                         : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
+                                {resolvedTheme === 'dark' && <span aria-hidden="true">{'\u2713'}</span>}
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                                 </svg>
@@ -4260,13 +4292,15 @@ function Profile(){
                         {ownedGames.length > 0 ? (
                         <div aria-busy={loadingGames || undefined} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {ownedGames.map((game) => (
-                                // D49-b (owner ruling 2026-09-09, option i): `hover:shadow-md` here was
-                                // Tailwind's INLINED built-in scale, not the theme tier, so it snaps to
-                                // `hover:shadow-theme-md`. Plain `hover:` and not plan 05's
-                                // `enabled-hover:` — this is a card `div`, not a `.btn`. The snap
-                                // changes hue (warm tint in light, purple hairline plus glow in dark);
-                                // that is disclosed, not accidental.
-                                <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-theme-md transition-shadow">
+                                // D49-b (owner ruling 2026-09-09, option i): the inlined built-in md hover shadow was
+                                // snapped to the theme tier in 88.6, D49-b (a plain hover variant, not plan 05's
+                                // enabled-hover one, because this is a card div and not a .btn; the snap changed hue).
+                                // AMENDED Phase 88.9-32 (owner pick E3a, 88.9-PICKS-B4.json, 2026-11-06): the card carries
+                                // NO hover shadow and no shadow transition, chosen OVER the theme-tier md hover lift D49-b
+                                // shipped — the card is not a control (no click target of its own), so a hover lift
+                                // promised an action that does not exist. Re-adding a hover shadow here is a decision,
+                                // not a cleanup.
+                                <div key={game.id} className="border border-line rounded-lg p-4">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
                                             <Heading level={3} size="body" className="text-content-primary">{game.name}</Heading>

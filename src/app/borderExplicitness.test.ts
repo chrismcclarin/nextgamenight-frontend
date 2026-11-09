@@ -257,7 +257,7 @@ const PAIRED_ELSEWHERE: Record<string, string> = {
   'app/gameDetail/page.js':
     'two-tap remove ternary: both branches name a colour (status-error / line)',
   'app/userProfile/page.js':
-    'theme buttons and the day-of-week toggles: every branch names a colour (amber-500 / line, btn-primary / line)',
+    'theme buttons and the day-of-week toggles: every branch names a colour (line-accent / line, btn-primary / line)',
 
   // ── uncoloured WIDTH-utility sites, added by 88-31 with the DEF-88-27-02 widening ──
   // All eight were read one at a time before being listed. Two shapes: a ternary written
