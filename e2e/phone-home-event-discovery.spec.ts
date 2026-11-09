@@ -479,8 +479,8 @@ async function assertNoCalendarLabelFlip(page: Page): Promise<void> {
  * SPEC Req 2, at 375px: the pill is VISIBLE inside the Calendar button, the button still
  * clears 44x44 WITH it, and the count reaches assistive tech through the button's name.
  *
- * Run in both themes — the pill FORKS by theme (amber-700/white in light, amber-500/warm-900
- * in dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-500)]")), so a single-theme pass would leave one of the two
+ * Run in both themes — the pill FORKS by theme (amber-700/white in light, amber-400/warm-900
+ * in dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-400)]")), so a single-theme pass would leave one of the two
  * shipped arms unrendered by any gate.
  */
 async function assertCountedCalendarButton(page: Page): Promise<number> {
@@ -920,8 +920,8 @@ test.describe('Phase 88.5 Req 2/3 — the counted button and the hero, LIGHT (ph
   test.skip(({ isMobile }) => !isMobile, 'phone-tenet requirements — phone project only');
 
   // UI-SPEC section 12 item 14: the hero and BOTH pills are asserted in both themes. The
-  // pill's colour genuinely forks (amber-700 on white in light, amber-500 on warm-900 in
-  // dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-500)]")) and so does the chip/card treatment beneath the
+  // pill's colour genuinely forks (amber-700 on white in light, amber-400 on warm-900 in
+  // dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-400)]")) and so does the chip/card treatment beneath the
   // hero, so a dark-only pass leaves one shipped arm rendered by nothing.
   //
   // BOTH halves of the theme mechanism, exactly as e2e/contrast.spec.ts ("is ORTHOGONAL to the theme class") records:

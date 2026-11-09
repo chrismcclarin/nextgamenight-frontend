@@ -2292,7 +2292,7 @@
      here rather than folded into the JS list.
      DELIBERATELY EXCLUDED: code that reads a RAW palette token outside the `--color-*` namespace
      this alternative would rename — Header.js (twice) and LandingPage.js `[--ring:var(--amber-400)]`,
-     UpcomingCountPill.tsx `dark:[background-color:var(--amber-500)]` and `dark:[color:var(--warm-900)]`
+     UpcomingCountPill.tsx `dark:[background-color:var(--amber-400)]` and `dark:[color:var(--warm-900)]`
      (by `grep -rnE "var\(--(amber|purple|warm)-[0-9]+" src`, every hit opened; the rest are comment
      prose). Nothing reads `var(--amber-600)` any more: plan 88.6-21 moved the group page's CTA onto
      the accent Button, and that file names the shade only in comment prose. Line numbers in this

@@ -1256,7 +1256,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     //
     // NOTE Phase 88.5 (owner ruling 2026-08-31) — a deliberate dark FORK now exists in
     // `components/UpcomingCountPill.tsx` and DOES NOT CONTRADICT this equality. The pill forks at
-    // its USE SITE (`dark:[background-color:var(--amber-500)]` + `dark:[color:var(--warm-900)]`),
+    // its USE SITE (`dark:[background-color:var(--amber-400)]` + `dark:[color:var(--warm-900)]`),
     // reading a different token family in dark rather than re-pointing this one; that is why it
     // could not be spelled `.btn-accent`. This row therefore stays green and stays the guard on
     // the accent CTA family. Tests 51-52 below own the pill's own floors and its fork.
@@ -1595,15 +1595,16 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // ratio. Recorded because the sentence used to say "semibold" and a stale one here would
     // read as a pin on something this file cannot see.
     expectRatio('light', '--color-btn-accent-text', '--color-btn-accent-bg', 4.5, '88.5 Req 2 / LIGHT arm — white on amber-700 (5.0216)');
-    expectRatio('dark', '--warm-900', '--amber-500', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-500 (8.3660). White here is 2.1477, an AA failure: the ink MUST fork with the fill');
+    // AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): the dark rows measure the amber-400 fill the pill now paints (were amber-500: 8.3660 / 5.2506 / 6.4483).
+    expectRatio('dark', '--warm-900', '--amber-400', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-400 (10.7630, F4b). White here is 1.6694, an AA failure: the ink MUST fork with the fill');
 
     // Fill vs ground, use site 1 — the home Calendar button (3.0, WCAG 1.4.11 non-text).
     expectRatio('light', '--color-btn-accent-bg', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / LIGHT pill on the Calendar button fill (4.4321)');
-    expectRatio('dark', '--amber-500', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / DARK pill on the Calendar button fill (5.2506). amber-700 here is 2.2456 — this is the number the fork exists to fix');
+    expectRatio('dark', '--amber-400', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / DARK pill on the Calendar button fill (6.7549, F4b). amber-700 here is 2.2456 — this is the number the fork exists to fix');
 
     // Fill vs ground, use site 2 — the sheet's "This week" subheader on `bg-surface-card`.
     expectRatio('light', '--color-btn-accent-bg', '--color-bg-card', 3.0, '88.5 Req 2 / LIGHT twin pill on the sheet card (5.0216)');
-    expectRatio('dark', '--amber-500', '--color-bg-card', 3.0, '88.5 Req 2 / DARK twin pill on the sheet card (6.4483). amber-700 here is 2.7578');
+    expectRatio('dark', '--amber-400', '--color-bg-card', 3.0, '88.5 Req 2 / DARK twin pill on the sheet card (8.2958, F4b). amber-700 here is 2.7578');
   });
 
   it('52. 88.5 — the pill\'s two theme arms are DIFFERENT ON PURPOSE (a theme-equal pill is a regression)', () => {
@@ -1616,18 +1617,18 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     //
     // Asserted in the DARK block, because that is the theme where the `dark:` variant wins and
     // therefore the theme where the two spellings must disagree.
-    const darkForkFill = resolve('dark', '--amber-500');
+    const darkForkFill = resolve('dark', '--amber-400');
     const lightArmFill = resolve('dark', '--color-btn-accent-bg');
     expect(
       darkForkFill,
-      `88.5 (owner ruling 2026-08-31) — the pill's DARK fill --amber-500 (${darkForkFill}) must NOT be byte-equal to the light arm's --color-btn-accent-bg (${lightArmFill}). A theme-equal pill is a REGRESSION, not a simplification: amber-700 measures 2.2456:1 on the dark button fill and 2.7578:1 on the dark sheet, under SPEC Req 2's 3:1 acceptance — which the owner KEPT rather than relax. Re-unifying the arms is a decision, not a cleanup`,
+      `88.5 (owner ruling 2026-08-31) — the pill's DARK fill --amber-400 (${darkForkFill}) must NOT be byte-equal to the light arm's --color-btn-accent-bg (${lightArmFill}). A theme-equal pill is a REGRESSION, not a simplification: amber-700 measures 2.2456:1 on the dark button fill and 2.7578:1 on the dark sheet, under SPEC Req 2's 3:1 acceptance — which the owner KEPT rather than relax. Re-unifying the arms is a decision, not a cleanup`,
     ).not.toBe(lightArmFill);
 
     const darkForkInk = resolve('dark', '--warm-900');
     const lightArmInk = resolve('dark', '--color-btn-accent-text');
     expect(
       darkForkInk,
-      `88.5 (owner ruling 2026-08-31) — the pill's DARK ink --warm-900 (${darkForkInk}) must NOT be byte-equal to the light arm's --color-btn-accent-text (${lightArmInk}). The ink forks WITH the fill by necessity: white on amber-500 is 2.1477:1, an AA failure`,
+      `88.5 (owner ruling 2026-08-31) — the pill's DARK ink --warm-900 (${darkForkInk}) must NOT be byte-equal to the light arm's --color-btn-accent-text (${lightArmInk}). The ink forks WITH the fill by necessity: white on amber-400 is 1.6694:1, an AA failure`,
     ).not.toBe(lightArmInk);
 
     // Anti-vacuity: all four resolve to real hexes, so the two inequalities above cannot be
