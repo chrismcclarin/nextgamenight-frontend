@@ -465,7 +465,7 @@ const CARD_BODY_STATIC_CLASS = 'min-w-0 flex-1 p-3';
 const CARD_KEBAB_CELL_CLASS = 'shrink-0 py-3 pr-3';
 const CARD_KEBAB_CELL_SELECTED_CLASS = 'shrink-0 py-[11px] pr-[11px]';
 const VIEWING_TAG = 'Viewing';
-const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wide text-content-link mb-0.5';
+const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wider text-content-link mb-0.5';
 
 /**
  * OpenPollCard — single prompt row in the unified list.

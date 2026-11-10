@@ -791,7 +791,7 @@ export default function CalendarListView({
                         literal `>Later<`, and a heading split across lines to satisfy a
                         formatter reads as absent to it. Single-text-child JSX on one line is
                         the shipped idiom in this file anyway. */}
-                    <Heading level={4} size="label" id={laterId} className="uppercase tracking-[0.08em] text-content-secondary">Later</Heading>
+                    <Heading level={4} size="label" id={laterId} className="uppercase tracking-wider text-content-secondary">Later</Heading>
                     <section aria-labelledby={laterId} className="space-y-6">
                       {laterGroups.map((group) => (
                         <DateGroup
@@ -1021,7 +1021,7 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
           `text-xs` STAYS — 12px is this role's rung, not a miss — and only the WEIGHT moves,
           600 -> 700. It remains a `<span>`: an eyebrow is not a heading, and making it one
           would put a level into an outline that deliberately has none here. */}
-      <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-content-link text-white shadow-theme-sm">
+      <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-content-link text-white shadow-theme-sm">
         {label}
       </span>
     </div>
@@ -1069,7 +1069,7 @@ function DateGroup({
       {/* UI-SPEC §4.5: HIERARCHY, so 600 -> 700. The 14px rung is unchanged — this is the
           Label rung and it is on the scale already. The element stays the `headingLevel` seam
           (see the DR2-7b marker above); only the weight utility moves. */}
-      <DayHeading className="text-sm font-bold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
+      <DayHeading className="text-sm font-bold text-content-secondary uppercase tracking-wider pb-1 border-b border-line">
         {formatDayHeader(group.sample)}
       </DayHeading>
       <div className="space-y-2">

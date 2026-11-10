@@ -447,7 +447,7 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
 
   return (
     <div className="mt-1 mb-1">
-      <div className="text-xs font-bold text-content-muted uppercase tracking-wide mb-1">Suggestions</div>
+      <div className="text-xs font-bold text-content-muted uppercase tracking-wider mb-1">Suggestions</div>
       <QuickSuggestionsSlot
         desired={desired}
         onSelectGame={onSelectGame}

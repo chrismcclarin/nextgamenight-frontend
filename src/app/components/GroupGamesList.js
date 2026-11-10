@@ -574,7 +574,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                                     700 because 600 is a prohibition outside the `Button` label (§4.2). It
                                     stays a `<div>`: an eyebrow is not a heading, and making it one would
                                     put a level into an outline that deliberately has none here. */}
-                                <div className={`text-xs font-bold text-content-secondary uppercase tracking-wide border-b border-line pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
+                                <div className={`text-xs font-bold text-content-secondary uppercase tracking-wider border-b border-line pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
                                     {group.theme}
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
