@@ -270,3 +270,26 @@ describe('EventHeatmapBackground — the day header is named with the full day (
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Plan 88.9-42 — round-2 look pins on this surface. jsdom loads no stylesheet, so these read the
+// rendered class strings; the token values behind them are pinned by tokenContrast.test.ts.
+// ---------------------------------------------------------------------------
+describe('EventHeatmapBackground — K8, the Google Calendar conflict box on the B3a status-warning family (plan 88.9-42)', () => {
+  // Copy census K8: the "Heads up" box was light-only raw amber with no dark twin. It wears the
+  // same opaque status-warning tokens as the home page's removed-member notice, in both themes.
+  const withOneConflict = {
+    ...heatmapData,
+    gcalConflicts: [{ user_id: 'b', username: 'Bob', date: '2026-06-29', hour: 18 }],
+  };
+
+  it('K8 (88.9): the Google Calendar conflict box and conflict lines sit on the status-warning family', () => {
+    render(<EventHeatmapBackground heatmapData={withOneConflict} loading={false} anchorDate="2026-06-29" />);
+    const box = screen.getByText(/Heads up: Bob may have Google Calendar conflicts/);
+    expect(box).toHaveClass('bg-status-warning-subtle', 'border-status-warning', 'text-content-status-warning');
+    expect(
+      Array.from(box.classList).filter((c) => c.includes('amber')),
+      'no raw amber class on the conflict box'
+    ).toEqual([]);
+  });
+});
