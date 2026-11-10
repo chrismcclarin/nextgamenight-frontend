@@ -4600,15 +4600,29 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
     expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
   });
 
-  it('SR-17. a group read\'s 401 takes the primary-401 path: the sign-in line, never a silent page (review r2 #311)', async () => {
-    const r = renderGameDetail();
-    await screen.findByRole('heading', { name: 'Wingspan' });
-    const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
-    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(e401);
-    forceRefresh(r.rerender);
-    expect(await screen.findByText(getFetchErrorMessage(e401))).toBeInTheDocument();
-    expect(screen.getByText(GAME_LOAD_FAILED)).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+  it('SR-17. a group read\'s 401 takes the primary-401 path: sign-in once, never a silent page (review r2 #311) (redirects once, 88.9-40)', async () => {
+    const search = `?game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search });
+    try {
+      const r = renderGameDetail();
+      await screen.findByRole('heading', { name: 'Wingspan' });
+      // AMENDED Phase 88.9-40 (SR-17): the primary-401 path now redirects once (the shared guard).
+      // The game read's own success clears the latch in the same run, so this is the REDIRECT arm,
+      // not a declined one: one replace with the game as returnTo and the loader frame — never a
+      // silent page, which is the property #311 pinned.
+      const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
+      (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(e401);
+      forceRefresh(r.rerender);
+      await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+      expect(replace).toHaveBeenCalledWith(
+        '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}`)
+      );
+      expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
+      expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+    }
   });
 
   it('SR-18. the event roster\'s own 403 removes the member actions and keeps the event (review r2 #316)', async () => {
