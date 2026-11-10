@@ -271,6 +271,47 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
   });
 });
 
+// Plan 88.9-43 — O06c (owner pick 2026-11-07 4:37 PM Pacific, 88.9-PICKS-B8B.json): the page
+// leads to the event the link names, on SUCCESS and on EXPIRED_LINK only.
+describe('rsvp/[token] — O06c Go to the event (plan 88.9-43)', () => {
+  const eventLink = () => screen.queryByRole('link', { name: 'Go to the event' });
+  const goHome = () => screen.getByRole('link', { name: 'Go to Home' });
+
+  it('O06c (88.9): Go to the event opens the event view on SUCCESS and EXPIRED_LINK, never on ACCOUNT_NOT_FOUND', async () => {
+    // SUCCESS: a primary link to the event_id-only route, placed before the close-this-tab line.
+    respond().mockResolvedValue(BODY_SUCCESS);
+    render(<RsvpPage />);
+    await screen.findByRole('heading', { name: "You're in!" });
+    expect(eventLink(), 'SUCCESS offers Go to the event').not.toBeNull();
+    expect(eventLink()).toHaveAttribute('href', `/gameDetail?event_id=${EVENT_ID}`);
+    const closeLine = screen.getByText('You can safely close this tab.');
+    expect(eventLink()!.compareDocumentPosition(closeLine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    cleanup();
+
+    // EXPIRED_LINK: the same link precedes Go to Home, which keeps href '/' and steps to secondary.
+    respond().mockReset();
+    respond().mockResolvedValue(BODY_EXPIRED_LINK_403);
+    render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'This link has already been used' });
+    expect(eventLink(), 'EXPIRED_LINK offers Go to the event').not.toBeNull();
+    expect(eventLink()).toHaveAttribute('href', `/gameDetail?event_id=${EVENT_ID}`);
+    expect(goHome()).toHaveAttribute('href', '/');
+    expect(eventLink()!.compareDocumentPosition(goHome()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(goHome().className).toContain('btn-secondary');
+    expect(goHome().className).not.toContain('btn-primary');
+    cleanup();
+
+    // ACCOUNT_NOT_FOUND: byte-unchanged — no event link, Go to Home primary.
+    respond().mockReset();
+    respond().mockResolvedValue(BODY_ACCOUNT_NOT_FOUND_403);
+    render(<RsvpPage />);
+    await screen.findByRole('heading', { name: "We couldn't find your account" });
+    expect(eventLink()).toBeNull();
+    expect(goHome()).toHaveAttribute('href', '/');
+    expect(goHome().className).toContain('btn-primary');
+  });
+});
+
 describe('rsvp/[token] — r2 #181 / AC-19: the LOADING to result swap is announced', () => {
   it('fills the SAME slot-0 region on the LOADING to SUCCESS flip — node identity, not presence', async () => {
     let resolveRespond: (v: unknown) => void = () => {};

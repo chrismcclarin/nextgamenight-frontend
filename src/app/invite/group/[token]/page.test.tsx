@@ -20,7 +20,7 @@
 //
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only.
 import * as React from 'react';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TOKEN = 'c'.repeat(64);
@@ -56,6 +56,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import GroupInvitePage from './page';
 import { groupsAPI, ApiError } from '@/lib/api';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 type Mock = ReturnType<typeof vi.fn>;
 const preview = () => groupsAPI.getInvitePreview as unknown as Mock;
@@ -311,5 +312,107 @@ describe('invite/group/[token] — R8 page announcement, L1 and the preview fail
 
     await screen.findByRole('heading', { name: 'Unable to join group' });
     expect(screen.getByText('This invite link is no longer valid.')).toBeInTheDocument();
+  });
+});
+
+// Plan 88.9-43 — D14a (R2-41, owner pick by chat 2026-11-06): Try again on a non-404 preview
+// failure, ported from the game page's Retry focus edge; none on a 404, an empty body or a
+// failed join. Region assertions use `toContain` on the register sentence because Task 3 of the
+// same plan changes the preview-failure headline (K11(c)).
+describe('invite/group/[token] — D14a Try again on the preview failure (plan 88.9-43)', () => {
+  const serverError = () => new ApiError('HTTP error! status: 500', 'server_error', 500, { error: 'boom' });
+  const notFound = () => new ApiError('HTTP error! status: 404', 'not_found', 404, { error: 'Invalid invite link' });
+  const REGISTER_LINE = getFetchErrorMessage(serverError());
+  const tryAgain = () => screen.queryByRole('button', { name: 'Try again' });
+  const goHome = () => screen.getByRole('link', { name: 'Go Home' });
+
+  it('D14a (88.9): Try again on a 500 sits above Go Home, which steps to secondary; none on a 404, an empty body or after a failed join', async () => {
+    // (1) a 500 on the preview: Try again precedes Go Home; Go Home is secondary.
+    preview().mockRejectedValue(serverError());
+    render(<GroupInvitePage />);
+    await screen.findByText(REGISTER_LINE);
+    expect(tryAgain(), 'a non-404 preview failure offers Try again').not.toBeNull();
+    expect(tryAgain()!.compareDocumentPosition(goHome()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(goHome().className).toContain('btn-secondary');
+    expect(goHome().className).not.toContain('btn-primary');
+    cleanup();
+
+    // (2) a 404: the invalid-link line, no Try again, Go Home primary.
+    preview().mockReset();
+    preview().mockRejectedValue(notFound());
+    render(<GroupInvitePage />);
+    await screen.findByText('This invite link is no longer valid.');
+    expect(tryAgain()).toBeNull();
+    expect(goHome().className).toContain('btn-primary');
+    cleanup();
+
+    // (3) an empty 2xx body (the F-190 arm): the same invalid-link line, no Try again.
+    preview().mockReset();
+    preview().mockResolvedValue(null);
+    render(<GroupInvitePage />);
+    await screen.findByText('This invite link is no longer valid.');
+    expect(tryAgain()).toBeNull();
+    expect(goHome().className).toContain('btn-primary');
+    cleanup();
+
+    // (4) a signed-in user whose JOIN rejects: the join failure, no Try again (the join is single-shot).
+    preview().mockReset();
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(PREVIEW_BODY);
+    join().mockRejectedValue(serverError());
+    render(<GroupInvitePage />);
+    await screen.findByRole('heading', { name: 'Unable to join group' });
+    expect(tryAgain()).toBeNull();
+    expect(goHome().className).toContain('btn-primary');
+  });
+
+  it('D14a (88.9): pressing Try again re-runs the preview in place — focus rides the pending line, then the settled heading; a repeat failure re-announces', async () => {
+    // Arm A: fail, press (held), resolve — focus on the loading line in flight, then the settled h1.
+    let resolvePreview: (v: unknown) => void = () => {};
+    preview()
+      .mockRejectedValueOnce(serverError())
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolvePreview = resolve;
+        })
+      );
+    render(<GroupInvitePage />);
+    await screen.findByText(REGISTER_LINE);
+    const retry = tryAgain() as HTMLElement;
+    expect(retry).not.toBeNull();
+    retry.focus();
+    await act(async () => {
+      retry.click();
+    });
+    expect(preview()).toHaveBeenCalledTimes(2);
+    const line = await screen.findByText('Loading your group invite...');
+    await waitFor(() => expect(document.activeElement).toBe(line));
+
+    await act(async () => {
+      resolvePreview(PREVIEW_BODY);
+    });
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Tuesday Night Crew' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(tryAgain()).toBeNull();
+    cleanup();
+
+    // Arm B (the B1-fast shape of the game page): fail, press, fail at once — the region stays
+    // empty for the dwell, then carries the register sentence again (the same text re-announced).
+    preview().mockReset();
+    preview().mockRejectedValueOnce(serverError()).mockRejectedValueOnce(serverError());
+    render(<GroupInvitePage />);
+    await screen.findByText(REGISTER_LINE);
+    const region = screen.getByTestId(PAGE_STATUS_TESTID);
+    expect(region.textContent).toContain(REGISTER_LINE);
+    const pressedAt = performance.now();
+    await act(async () => {
+      (tryAgain() as HTMLElement).click();
+    });
+    expect(preview()).toHaveBeenCalledTimes(2);
+    expect(region.textContent, 'the region must read empty right after an instant failure').toBe('');
+    await waitFor(() => expect(region.textContent).toContain(REGISTER_LINE));
+    expect(performance.now() - pressedAt).toBeGreaterThanOrEqual(100);
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+    expect(tryAgain()).not.toBeNull();
   });
 });
