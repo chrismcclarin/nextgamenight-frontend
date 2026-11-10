@@ -20,11 +20,13 @@ const h = vi.hoisted(() => ({
 
 // Phase 88.6-27 (AC-2): the house logger, spied rather than stubbed away — WHICH channel the
 // fetch failure uses, and WHAT it passes, are the assertions.
-const loggerSpies = vi.hoisted(() => ({ info: vi.fn() }));
+// AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-3 = b): warn is spied beside info — the
+// fetch failure now files a warning event, and info is asserted unused.
+const loggerSpies = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn() }));
 vi.mock('@/lib/logger', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/logger')>();
   // `errCtx` is the REAL one: the ctx-shape assertion is about what the CALL SITE passes.
-  return { ...actual, logger: { ...actual.logger, info: loggerSpies.info } };
+  return { ...actual, logger: { ...actual.logger, info: loggerSpies.info, warn: loggerSpies.warn } };
 });
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -120,6 +122,7 @@ beforeEach(() => {
   h.monthViewEvents = [];
   h.monthViewRenders = 0;
   loggerSpies.info.mockClear();
+  loggerSpies.warn.mockClear();
 });
 
 afterEach(cleanup);
@@ -198,8 +201,9 @@ describe('EventCalendar — a FAILED events fetch is not an empty calendar (§6.
     render(<EventCalendar />);
     await screen.findByTestId('identity-degrade-banner');
 
-    expect(loggerSpies.info).toHaveBeenCalledTimes(1);
-    const [msg, ctx] = loggerSpies.info.mock.calls[0];
+    expect(loggerSpies.warn).toHaveBeenCalledTimes(1);
+    expect(loggerSpies.info).not.toHaveBeenCalled();
+    const [msg, ctx] = loggerSpies.warn.mock.calls[0];
     expect(msg).toBe('Error fetching events');
     // `errCtx`'s shape exactly: name AND message, nothing else. The shipped call passed a bare
     // string, so the NAME is a deliberate (and disclosed) widening of what egresses.
@@ -218,6 +222,7 @@ describe('EventCalendar — a FAILED events fetch is not an empty calendar (§6.
     await vi.waitFor(() => expect(h.monthViewRenders).toBeGreaterThan(0));
     expect(h.monthViewEvents).toHaveLength(1);
     expect(screen.queryByTestId('identity-degrade-banner')).not.toBeInTheDocument();
+    expect(loggerSpies.warn).not.toHaveBeenCalled();
     expect(loggerSpies.info).not.toHaveBeenCalled();
   });
 });

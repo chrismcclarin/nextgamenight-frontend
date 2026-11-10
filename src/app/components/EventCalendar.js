@@ -314,8 +314,14 @@ export default function EventCalendar({
          (`error.message || 'Unknown error'`); `errCtx` adds the error's NAME. Nothing else —
          no response body, no event or group title, no attendee name or email (T-84-01).
          Reported REGARDLESS of cancellation: a developer log is not user-facing context, and a
-         failure that happened still happened. */
-      logger.info('Error fetching events', errCtx(error));
+         failure that happened still happened.
+         AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-3 = F1-1 = b, chat 2026-11-07 6:35 PM
+         Pacific; 88.9-UI-SPEC.md (d) Resolutions of (c)): the level moved to logger.warn — an
+         event of its own — chosen OVER the logger.info breadcrumb of 2026-09-13 (D2); the cost
+         paragraph above is the record of that level. ctx unchanged. Phase 89 removes this fetch
+         when the home page passes events in; the level travels with the surviving catch
+         (UserHomePage.js). */
+      logger.warn('Error fetching events', errCtx(error));
       if (isCancelled()) return undefined;
       /* §6.2: the error branch is now DISTINGUISHABLE from a genuinely empty calendar. The list
          is still cleared — a stale list beside an error banner is its own lie — but `fetchError`

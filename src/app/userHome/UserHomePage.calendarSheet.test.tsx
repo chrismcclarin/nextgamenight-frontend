@@ -558,14 +558,14 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
     const dialog = await openCalendarSheet(user);
     await within(dialog).findByText("We couldn't load your calendar");
 
-    // THE LEVEL IS `info`, not `error`. Owner ruling 2026-09-13 (D2): `logger.error` is
-    // `Sentry.captureException`, an EVENT; `logger.info` is a breadcrumb. Both other levels are
-    // asserted UNUSED so a future "promote it while we're here" edit reds rather than shipping.
-    expect(loggerSpies.info).toHaveBeenCalledTimes(1);
+    // THE LEVEL IS warn: owner ruling F1 / O-05 (F1-1 = b, 2026-11-07) — a Sentry warning event
+    // of its own — superseding the 2026-09-13 D2 ruling that kept it an info breadcrumb. info and
+    // error are both asserted UNUSED so a later demote or promote reds rather than shipping.
+    expect(loggerSpies.warn).toHaveBeenCalledTimes(1);
+    expect(loggerSpies.info).not.toHaveBeenCalled();
     expect(loggerSpies.error).not.toHaveBeenCalled();
-    expect(loggerSpies.warn).not.toHaveBeenCalled();
 
-    const [msg, ctx] = loggerSpies.info.mock.calls[0];
+    const [msg, ctx] = loggerSpies.warn.mock.calls[0];
     expect(msg).toBe('[UserHomePage] The upcoming-events request did not complete:');
     // `errCtx`'s shape EXACTLY — name and message and nothing else (T-84-01). The raw `Error` is
     // not passed; `checkJs: false` means typecheck cannot see that mistake at a `.js` call site,

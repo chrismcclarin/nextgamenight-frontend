@@ -97,7 +97,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        fires at all; both are needed and they are checked in that order at the render site.
        Phase 88.6-27 (W17/A8) landed the TELEMETRY half this marker's first sentence refers to:
        the `console.error` it describes is now `logger.info` + `errCtx`, while the user-facing
-       error state below — which is what THIS decision is about — is byte-unchanged. */
+       error state below — which is what THIS decision is about — is byte-unchanged.
+       AMENDED Phase 88.9-38 (F1-1 = b, 2026-11-07): now logger.warn + errCtx; the user-facing
+       error state is still byte-unchanged. */
     const [upcomingError, setUpcomingError] = useState(null);
     const [upcomingRetryKey, setUpcomingRetryKey] = useState(0);
     // Req 11b: the phone calendar sheet's open state, owned here for the same
@@ -200,7 +202,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                false` hides that mistake in a `.js` file).
 
                STATE THE COST, because the obvious reading of "it now reaches Sentry" is too
-               strong: `logger.info` is `Sentry.addBreadcrumb` (`logger.ts:34-36`), so this
+               strong: `logger.info` is `Sentry.addBreadcrumb`
+               (src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg, level: 'info', data: ctx });")), so this
                failure surfaces only ATTACHED TO some later event filed in the same session. It
                does not become independently visible to an operator. Whether these paths deserve
                a Sentry EVENT is routed to the owner in `.planning/deferred/phase-88.6.md`, not
@@ -216,8 +219,19 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                survives the level amendment for a SECOND reason — Sentry's breadcrumb buffer is
                finite (`DEFAULT_BREADCRUMBS = 100`, nothing sets `maxBreadcrumbs`), so an
                unlatched render-body `logger.info` would evict every other breadcrumb in the
-               session. */
-            logger.info('[UserHomePage] The upcoming-events request did not complete:', errCtx(err));
+               session.
+
+               AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-1 = b, chat 2026-11-07 6:35 PM
+               Pacific — a D-03 dialog-only item, no picks page; 88.9-UI-SPEC.md (d) Resolutions
+               of (c)): the level moved to logger.warn —
+               src/lib/logger.ts ("Sentry.captureMessage(msg, { level: 'warning', extra: ctx });"), an event of its own —
+               chosen OVER the logger.info breadcrumb of the 2026-09-13 ruling (D2), which reached
+               Sentry only attached to a later event. The paragraphs above that state the
+               breadcrumb cost and the REJECTED arms are the record of that earlier level. The ctx
+               (errCtx) is unchanged. Stale-session 401s share the count — owner-accepted; a 401
+               guard was offered and not ruled. Phase 89 rewires this request; the level travels
+               with whichever catch survives. */
+            logger.warn('[UserHomePage] The upcoming-events request did not complete:', errCtx(err));
             if (cancelled) return;
             // Keep the ERROR object: useFetchErrorState reads `ApiError.code` off
             // it to pick the right user-facing copy.
