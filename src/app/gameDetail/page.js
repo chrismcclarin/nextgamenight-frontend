@@ -2996,6 +2996,8 @@ export default function GameDetailPage() {
                 <div className="space-y-4">
                     <RsvpSection
                         key={`rsvp-${rsvpRefreshKey}`}
+                        /* DECISION Phase 88.9-35 (B1a): see the BallotSection mount below — the single-event host passes its page ground. */
+                        hostGround="page"
                         eventId={singleEvent.id}
                         self={self}
                         eventDate={singleEvent.start_date}

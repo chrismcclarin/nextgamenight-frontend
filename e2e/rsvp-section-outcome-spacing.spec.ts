@@ -5,8 +5,10 @@
 //   A. while both outcome regions are empty they are visually hidden and out of flow, so the gap
 //      between their in-flow neighbours is the stack's own 16px; a visible failure line ("Could
 //      not save your response...") has 16px above it AND 16px below it;
-//   B. a visible "Note saved" line has 16px above and below, and the failure line it follows has
-//      been cleared (empty, out of flow again).
+//   B. the note outcome regions are heard-only (plan 88.9-35, owner picks E2a + E2f2): set with the
+//      note failure or with "Note saved", each stays visually hidden and out of flow, so the
+//      in-flow neighbours across the regions keep the stack's own 16px; the visible half of the
+//      note outcome is the counter-row line test 3 measures.
 // Before plan 88.6.1-38 the gap BELOW a visible outcome read 0px: the regions sat inside a
 // display-contents wrapper, and Tailwind v4's stack rule gives margin-block-end to every child but
 // the last, which the wrapper's own children never received (WR-301).
@@ -36,6 +38,7 @@ const E2E_EVENT_DETAIL_PATH =
 const STACK_GAP_PX = 16;
 const RESPONSE_FAILURE = 'Could not save your response. Please try again.';
 // DECISION Phase 88.9-21 (owner pick E2f2, votes-b4 v11): the ratified short sentence, chosen over the shipped long one — this file reds until plan 88.9-35 changes the setError string.
+// AMENDED Phase 88.9-35: the setError string is changed (RsvpSection's NOTE_FAILURE_MESSAGE), and test 2 reads the heard-only regions.
 const NOTE_FAILURE = "Couldn't save. Try again.";
 const NOTE_SAVED = 'Note saved';
 const RSVP_WRITE_ROUTE = '**/api/rsvp';
@@ -84,6 +87,16 @@ async function measure(stack: Locator): Promise<Geometry> {
 }
 
 const inFlow = (child: Child) => child.position !== 'absolute';
+
+// The gap between the in-flow neighbours on either side of the run of outcome regions.
+function gapAcrossRegions(children: Child[]): number {
+  const regionIdx = children
+    .map((c, i) => (c.role === 'alert' || c.role === 'status' ? i : -1))
+    .filter((i) => i >= 0);
+  const before = children.slice(0, Math.min(...regionIdx)).filter(inFlow).pop();
+  const after = children.slice(Math.max(...regionIdx) + 1).find(inFlow);
+  return before && after ? after.top - before.bottom : Number.NaN;
+}
 
 // The gap above and below the child at `index`, between its in-flow neighbours.
 function gapsAround(children: Child[], index: number): { above: number; below: number } {
@@ -177,7 +190,7 @@ test.describe('RsvpSection outcome spacing at 375 (Phase 88.6.1-38, W029)', () =
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
-  test("RsvpSection at 375 — 'Note saved' has 16px above and below, and the failure line clears", async ({
+  test('RsvpSection at 375 — the note outcome regions are heard-only (E2a/E2f2): set, they stay out of flow and add no gap', async ({
     page,
   }) => {
     const { stack } = await openEventWithViewerAnswer(page);
@@ -186,41 +199,50 @@ test.describe('RsvpSection outcome spacing at 375 (Phase 88.6.1-38, W029)', () =
 
     await routeRsvpWrite(page, 500, { error: 'e2e mock failure' });
     await save.click();
-    await expect(alert, 'a rejected note write shows the note failure line').toHaveText(NOTE_FAILURE);
+    await expect(alert, 'a rejected note write puts the note failure in the alert region').toHaveText(NOTE_FAILURE);
+
+    const failed = await measure(stack);
+    sanity(failed);
+    const alertChild = failed.children.find((c) => c.role === 'alert')!;
+    expect(alertChild.position, `the alert region holding the note failure is position ${alertChild.position}; heard-only means out of flow (absolute)`).toBe('absolute');
+    const failedGap = gapAcrossRegions(failed.children);
+    expect(
+      Math.abs(failedGap - STACK_GAP_PX),
+      `gap across the regions after the note failure = ${failedGap}px; the stack's own 16px means a heard-only region adds nothing`,
+    ).toBeLessThanOrEqual(1);
 
     await routeRsvpWrite(page, 200, { id: 'e2e-viewer-rsvp', status: 'yes', note: null });
     await save.click();
     await expect(
       stack.locator(':scope > [role="status"]').filter({ hasText: NOTE_SAVED }),
-      "a successful note write shows 'Note saved' in the stack",
-    ).toBeVisible();
+      "a successful note write puts 'Note saved' in the status region",
+    ).toHaveCount(1);
 
     const saved = await measure(stack);
     sanity(saved);
     const savedIdx = saved.children.findIndex((c) => c.role === 'status' && c.text === NOTE_SAVED);
     expect(savedIdx, "the 'Note saved' region is a direct child of the stack").toBeGreaterThanOrEqual(0);
-    expect(saved.children[savedIdx].position, `the 'Note saved' region is position ${saved.children[savedIdx].position}; a visible line must be in flow`).not.toBe('absolute');
-    const gaps = gapsAround(saved.children, savedIdx);
+    expect(saved.children[savedIdx].position, `the 'Note saved' region is position ${saved.children[savedIdx].position}; heard-only means out of flow (absolute)`).toBe('absolute');
+    const savedGap = gapAcrossRegions(saved.children);
     expect(
-      Math.abs(gaps.above - STACK_GAP_PX),
-      `gap ABOVE 'Note saved' = ${gaps.above}px; 16px is the stack's own spacing`,
-    ).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(gaps.below - STACK_GAP_PX),
-      `gap BELOW 'Note saved' = ${gaps.below}px; it read 0 before plan 88.6.1-38 (WR-301), 16px is the stack's own spacing`,
+      Math.abs(savedGap - STACK_GAP_PX),
+      `gap across the regions after the save = ${savedGap}px; the stack's own 16px means a heard-only region adds nothing`,
     ).toBeLessThanOrEqual(1);
 
-    const alertChild = saved.children.find((c) => c.role === 'alert')!;
-    expect(alertChild.text, `the failure region holds "${alertChild.text}" after the save; success and failure clear each other`).toBe('');
-    expect(alertChild.position, `the cleared failure region is position ${alertChild.position}; empty means out of flow (absolute)`).toBe('absolute');
+    const cleared = saved.children.find((c) => c.role === 'alert')!;
+    expect(cleared.text === '', 'the failure region still holds text after the save; success and failure clear each other').toBe(true);
+    expect(cleared.position, `the cleared failure region is position ${cleared.position}; empty means out of flow (absolute)`).toBe('absolute');
 
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
   test('E2a/E2f2 (88.9): the note outcome renders on the counter row and Save note does not move', async ({ page }) => {
-    await openEventWithViewerAnswer(page);
+    const { stack } = await openEventWithViewerAnswer(page);
     const save = page.getByRole('button', { name: 'Save note' });
     const counter = page.getByText(/^\d+\/500$/);
+    // The visible-line locators are scoped to the counter row (the counter's parent): the heard-only
+    // live regions hold the same words in a 1px sr-only box, which Playwright counts as visible.
+    const counterRow = counter.locator('xpath=..');
     await expect(counter, 'E2a: the note character counter is not visible').toBeVisible();
     const saveBefore = await save.boundingBox();
     const counterBox = await counter.boundingBox();
@@ -238,8 +260,9 @@ test.describe('RsvpSection outcome spacing at 375 (Phase 88.6.1-38, W029)', () =
     // Failure arm (E2f2): the ratified sentence, on the counter row between the counter and Save note.
     await routeRsvpWrite(page, 500, { error: 'e2e mock failure' });
     await save.click();
-    const failure = page.getByText(NOTE_FAILURE, { exact: true }).filter({ visible: true });
+    const failure = counterRow.getByText(NOTE_FAILURE, { exact: true }).filter({ visible: true });
     await expect(failure, 'E2f2: exactly one visible note failure line').toHaveCount(1);
+    await expect(stack.locator(':scope > [role="alert"]'), 'E2f2: the alert region does not hold the same sentence').toHaveText(NOTE_FAILURE);
     const f = await failure.boundingBox();
     expect(f, 'E2a: the failure line has no layout box').not.toBeNull();
     const fy = f!.y + f!.height / 2;
@@ -254,7 +277,7 @@ test.describe('RsvpSection outcome spacing at 375 (Phase 88.6.1-38, W029)', () =
     // Success arm: a 16px check and Note saved in the same slot; the failure line clears.
     await routeRsvpWrite(page, 200, { id: 'e2e-viewer-rsvp', status: 'yes', note: null });
     await save.click();
-    const saved = page.getByText(NOTE_SAVED, { exact: true }).filter({ visible: true });
+    const saved = counterRow.getByText(NOTE_SAVED, { exact: true }).filter({ visible: true });
     await expect(saved, 'E2a: exactly one visible Note saved').toHaveCount(1);
     const s = await saved.boundingBox();
     expect(s, 'E2a: Note saved has no layout box').not.toBeNull();
@@ -267,7 +290,7 @@ test.describe('RsvpSection outcome spacing at 375 (Phase 88.6.1-38, W029)', () =
     expect(Math.abs(k!.height - 16), `E2a: the check is not 16px tall (${fmt(k!)})`).toBeLessThanOrEqual(0.5);
     expect(k!.x + k!.width, `E2a: the check is not before the text (check ${fmt(k!)}; text ${fmt(s!)})`).toBeLessThanOrEqual(s!.x + 1);
     await expectSaveStill('after the save');
-    await expect(page.getByText(NOTE_FAILURE, { exact: true }).filter({ visible: true }), 'E2a: the failure line is still visible after the save').toHaveCount(0);
+    await expect(counterRow.getByText(NOTE_FAILURE, { exact: true }).filter({ visible: true }), 'E2a: the failure line is still visible after the save').toHaveCount(0);
 
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
