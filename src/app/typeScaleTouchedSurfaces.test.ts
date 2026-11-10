@@ -571,7 +571,10 @@ const REVIEWS_HEADING = (h: Heading) =>
  * The five LITERAL prop seams, enumerated so one appearing or disappearing is visible.
  * Re-measured at this plan's commit.
  */
-const EXPECTED_PROP_SEAMS = 5;
+// AMENDED Phase 88.9-39 (owner pick D6c): 5 -> 3. The THIS WEEK DateGroup call site left
+// CalendarListView.js with its headingLevel="h5" / rowHeadingLevel="h6" pair (the next-7-day rows
+// fold into the default-level upcoming list); the Later pair and the EventRow seam remain.
+const EXPECTED_PROP_SEAMS = 3;
 
 /**
  * The `heading-primitive` floor, asserted SEPARATELY from `prop-seam` so neither can be
@@ -777,7 +780,10 @@ const EXPECTED_PROP_SEAMS = 5;
 // DECISION Phase 88.6.2-15 (EMP): compared EXACTLY (toBe) over the >= floor this constant was, and over deriving it from the other rosters (a number derived from the scan it pins can never disagree with it). Measured at FE 995023d: 136 heading-primitive call sites against a floor of 131 — five migrations landed without a raise and the >= stayed green. A sweep that adds OR removes a primitive now reds until this number moves in the same commit. The RAISED history above, and its ">=" sentences, describe the floor before 88.6.2-15.
 // Re-measured at execution (FE de26524, 88.6.2-15 task 2): 136, by this suite's own failure
 // message — "expected 137 to be 131" with a one-site plant present, then the plant deleted.
-const EXPECTED_PRIMITIVES = 136;
+// AMENDED Phase 88.9-39 (owner pick D6c): 136 -> 135. The THIS WEEK `<Heading level={4}>` left
+// CalendarListView.js's sheet arm (its rows fold into the default-level upcoming list); measured by
+// this suite's own failure message, "expected 135 to be 136".
+const EXPECTED_PRIMITIVES = 135;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -1336,8 +1342,9 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // Raising the floor by two would have RED the floor assertion, which is the honest outcome — do
       // not "fix" that by resolving the expression (see `PROP_SEAM_EXPRESSION`).
       // AMENDED Phase 88.9-22 (owner pick F4b): the EmptyState entry moved 179 -> 182 because 88.9-22 added a three-line F4b AMENDED comment above the same Heading; the skipped element is unchanged.
+      // AMENDED Phase 88.9-39 (owner picks F2c / D5a / D6c): the CalendarListView entry (DateGroup's `<DayHeading`) moved 1069 -> 1071 because 88.9-39's OWNER RULING 2a sentence and D6c fold sit above it; the skipped element is unchanged.
     ).toEqual([
-      'app/components/CalendarListView.js:1069',
+      'app/components/CalendarListView.js:1071',
       'components/ui/EmptyState.tsx:182',
     ]);
   });
@@ -1647,7 +1654,10 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/components/BallotOptionsEditor.js': { 3: 1 },
   'app/components/BallotSection.js': { 3: 6 },
   'app/components/BringSummary.js': { 3: 1 },
-  'app/components/CalendarListView.js': { 3: 2, 4: 2, 5: 2, 6: 2 },
+  // AMENDED Phase 88.9-39 (owner pick D6c): { 3: 2, 4: 2, 5: 2, 6: 2 } -> one level-4 `Heading` (the
+  // THIS WEEK subheader left the sheet) and one h5 / h6 seam pair (Later's; the next-7-day rows
+  // render at the default levels). Not an R7 outline violation: a level LEFT, none moved.
+  'app/components/CalendarListView.js': { 3: 2, 4: 1, 5: 1, 6: 1 },
   'app/components/CalendarMonthView.js': { 3: 1 },
   'app/components/DangerZoneDeleteAccount.tsx': { 2: 1 },
   'app/components/EmailAddressSection.tsx': { 2: 3 },
