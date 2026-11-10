@@ -130,6 +130,20 @@ test.describe('invite landing pages at phone width (88.6.1-19)', () => {
     await expect(
       page.getByText('Something went wrong on our end. Please try again shortly.', { exact: true }),
     ).toBeVisible();
+    // 88.9 D14a (owner pick, 88.9-PICKS-B3.json item D14, ruled by chat 2026-11-06): a non-404
+    // preview failure offers Try again (primary, >= 44 tall) ABOVE Go Home, both inside the viewport.
+    const retry = page.getByRole('button', { name: 'Try again', exact: true });
+    await expect(retry).toBeVisible();
+    const home = page.getByRole('link', { name: 'Go Home', exact: true });
+    await expect(home).toBeVisible();
+    const retryBox = await retry.boundingBox();
+    const homeBox = await home.boundingBox();
+    expect(retryBox, 'the Try again button has no layout box').not.toBeNull();
+    expect(homeBox, 'the Go Home link has no layout box').not.toBeNull();
+    expect(retryBox!.height, 'Try again is shorter than 44px').toBeGreaterThanOrEqual(44);
+    expect(retryBox!.y + retryBox!.height, 'Try again does not sit above Go Home').toBeLessThanOrEqual(homeBox!.y);
+    await expectInsideViewport(page, retry);
+    await expectInsideViewport(page, home);
     await expectNoHorizontalScroll(page);
   });
 });
