@@ -804,6 +804,15 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: 'the month nav chevrons, width (88.9 N1)',
     },
+    // 88.9-39 N1: the Month | List switch's two segments are raw buttons (no .btn), one JSX site, floored in the inline literal.
+    segmentedToggleHeight: {
+      anchor: 'aria-pressed={pressed}',
+      expectedFile: 'components/ui/SegmentedToggle.tsx',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the Month | List switch's segments, height (88.9 N1)",
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */

@@ -346,8 +346,9 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     viewerDbUserId?: string;
     onNavigateMonth?: (delta: number) => void;
     onGoToday?: () => void;
+    viewSwitch?: React.ReactNode;
   };
-  function renderGrid({ anchor = new Date(2031, 8, 1, 12, 0, 0, 0), variant, events = [], viewerDbUserId, onNavigateMonth = vi.fn(), onGoToday = vi.fn() }: GridOpts) {
+  function renderGrid({ anchor = new Date(2031, 8, 1, 12, 0, 0, 0), variant, events = [], viewerDbUserId, onNavigateMonth = vi.fn(), onGoToday = vi.fn(), viewSwitch }: GridOpts) {
     const days = getDaysInMonth(anchor);
     const out = render(
       <CalendarMonthView
@@ -362,6 +363,7 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
         monthNames={MONTHS}
         tzLegend={null}
         viewerDbUserId={viewerDbUserId}
+        viewSwitch={viewSwitch}
       />,
     );
     const grids = out.container.querySelectorAll('.grid.grid-cols-7');
@@ -400,6 +402,20 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
       expect(screen.queryByRole('button', { name: 'Go to Today' }), `${variant}: the retired Go to Today name is still rendered`).toBeNull();
       cleanup();
     }
+  });
+  it('N1 (88.9): the viewSwitch slot renders in the nav row beside the Today pill', () => {
+    // 88.9-39: EventCalendar passes the Month | List switch in; the nav row seats it next to Today.
+    for (const variant of ['full', 'compact'] as const) {
+      renderGrid({ variant, viewSwitch: <span data-testid="slot" /> });
+      const slot = screen.getByTestId('slot');
+      const today = screen.getByRole('button', { name: 'Today' });
+      expect(slot.parentElement, `${variant}: the slot and the Today pill share one parent`).toBe(today.parentElement);
+      cleanup();
+    }
+    // No slot passed: nothing extra renders beside Today.
+    renderGrid({ variant: 'full' });
+    expect(screen.queryByTestId('slot')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Today' })).toBeTruthy();
   });
   const cellOf = (days: { date: Date; isCurrentMonth: boolean }[], cells: HTMLElement[], month: number, date: number) => {
     const i = days.findIndex((c) => c.date.getMonth() === month && c.date.getDate() === date);

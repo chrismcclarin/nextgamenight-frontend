@@ -2106,6 +2106,28 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       expectRatio(theme, '--color-status-warning-border', '--color-bg-card', 3.0, '88.9 D1b pending cue vs inner band');
     }
   });
+
+  it('67. 88.9 N1 / MED-78 — the Month | List pressed segment clears 3:1 against the unpressed segment and the card, and its ink clears 4.5:1, in BOTH themes', () => {
+    // 88.9-39 (88.9-RULINGS.md R-P3b, 2026-11-08, option A): the pressed segment paints the
+    // toggle-on pair. Light points at the btn-primary values (5.00 vs the unpressed warm-100
+    // segment, 5.66 vs the card, ink 5.66); dark has its own arm, purple-400 fill / warm-900 ink
+    // (4.02 vs the unpressed purple-800 segment, 4.93 vs the purple-900 card, ink 6.40), replacing
+    // the 1.99 / 2.45 the dark primary fill measured. WCAG 1.4.11: the fill is the only pressed cue.
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-toggle-pressed-bg', '--color-btn-secondary-bg', 3.0, '88.9 N1 / MED-78 pressed segment vs unpressed segment');
+      expectRatio(theme, '--color-toggle-pressed-bg', '--color-bg-card', 3.0, '88.9 N1 / MED-78 pressed segment vs card');
+      expectRatio(theme, '--color-toggle-pressed-text', '--color-toggle-pressed-bg', 4.5, '88.9 N1 / MED-78 pressed ink');
+      measured += 3;
+    }
+    expect(measured, 'anti-vacuity: 3 pairs x 2 themes').toBe(6);
+    // The utilities bg-toggle-on / text-toggle-on-text / hover:bg-toggle-on-hover exist only through
+    // the @theme inline keys, so the keys are part of the requirement (the test-14 idiom).
+    const theme = blockOf('theme');
+    expect(declIn(theme, '--color-toggle-on'), '@theme inline must expose --color-toggle-on').toBe('var(--color-toggle-pressed-bg)');
+    expect(declIn(theme, '--color-toggle-on-text'), '@theme inline must expose --color-toggle-on-text').toBe('var(--color-toggle-pressed-text)');
+    expect(declIn(theme, '--color-toggle-on-hover'), '@theme inline must expose --color-toggle-on-hover').toBe('var(--color-toggle-pressed-hover)');
+  });
 });
 
 // =====================================================================================
