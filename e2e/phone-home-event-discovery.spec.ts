@@ -857,6 +857,24 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
      * Playwright's (visual-viewport-SCALED) `boundingBox()` and probing afterwards would mix
      * two coordinate systems on an emulated phone.
      */
+    // Plan 88.9-46 (the flake recorded in the phase's deferred-items.md — seen on f5c02e1 and once
+    // more, flaky-passed, on 273f8cc): the page can grow by a hair AFTER scrollToSettledBottom
+    // lands, leaving the link's centre ~1px past the fold, where elementFromPoint returns null and
+    // the probe names a phantom occluder. So the LINK is scrolled into view immediately before the
+    // read, and an under-scroll is asserted by name first (its centre inside the viewport) — never
+    // reported as an occlusion. Not a waitForTimeout: the same observable-gate reasoning as the
+    // helper's block.
+    await privacy.first().evaluate((link) => link.scrollIntoView({ block: 'nearest' }));
+    const inViewport = await privacy.first().evaluate((link) => {
+      const r = link.getBoundingClientRect();
+      const centreY = Math.round((r.top + r.height / 2) * 100) / 100;
+      return { centreY, innerHeight: window.innerHeight, inside: centreY >= 0 && centreY < window.innerHeight };
+    });
+    expect(
+      inViewport.inside,
+      `the /Privacy link's centre (y ${inViewport.centreY}) is outside the ${inViewport.innerHeight}px viewport after the scroll — an under-scroll, not an occluder; the occlusion probe below would read a phantom hit`,
+    ).toBe(true);
+
     const probe = await privacy.first().evaluate((link) => {
       const r = link.getBoundingClientRect();
       const hit = (x: number, y: number) => {
