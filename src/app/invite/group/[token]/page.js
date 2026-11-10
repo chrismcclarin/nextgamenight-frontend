@@ -23,6 +23,12 @@ const LOADING_LABEL = 'Loading your group invite...';
 // screen-reader announcement read ONE source and cannot drift apart (no new words, D-31).
 const REDIRECTING_DETAIL = 'Redirecting to your group...';
 const JOIN_ERROR_HEADLINE = 'Unable to join group';
+/* DECISION Phase 88.9-43 K11(c) (owner Q6(a), 88.9-RULINGS.md round 2, 2026-11-08 9:07 AM Pacific):
+   a PREVIEW failure (any kind) takes the load headline and a JOIN failure keeps the join headline,
+   chosen OVER the shipped single headline for both (it said "join" when nobody had tried to join).
+   The red error glyph stays: the D14a pick was rendered on it; the AMBER-vs-RED colour half was not
+   rendered for this card (hand-off to 88.9-51). ASCII apostrophe, house punctuation. */
+const PREVIEW_ERROR_HEADLINE = "Couldn't load this invite";
 const INVALID_LINK_DETAIL = 'This invite link is no longer valid.';
 
 /** Join the non-empty parts of an announcement with one space (never a trailing space). */
@@ -294,7 +300,7 @@ function GroupInvitePage() {
   } else if (status === 'already-member') {
     announcement = joinParts(alreadyMemberHeadline, REDIRECTING_DETAIL);
   } else if (status === 'error') {
-    announcement = joinParts(JOIN_ERROR_HEADLINE, error);
+    announcement = joinParts(previewFailed ? PREVIEW_ERROR_HEADLINE : JOIN_ERROR_HEADLINE, error);
   }
 
   let body;
@@ -405,7 +411,7 @@ function GroupInvitePage() {
                 </svg>
               </div>
               <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
-                {JOIN_ERROR_HEADLINE}
+                {previewFailed ? PREVIEW_ERROR_HEADLINE : JOIN_ERROR_HEADLINE}
               </Heading>
               <p className="text-content-secondary mb-6">{error}</p>
               {/* D14a (88.9-43): Try again on the non-404 PREVIEW failure only, primary, above a
