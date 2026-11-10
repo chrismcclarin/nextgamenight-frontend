@@ -325,7 +325,7 @@ test('S5: a shared link opens its poll; an unknown poll id falls back to the act
   await expect(cardBody(page, 'E2E Ana')).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).searchParams.has('poll')).toBe(false);
   expect(new URL(page.url()).searchParams.get('group_id')).toBe(E2E_GROUP_ID);
-  await expect(page.getByText("We couldn't load the poll responses")).toHaveCount(0);
+  await expect(page.getByText("Couldn't load the poll responses")).toHaveCount(0);
 
   // F16: a malformed poll id is dropped before the person taps, so back after a tap returns to
   // the active poll's entry, with no poll parameter (the drop is a replace, never a new entry).

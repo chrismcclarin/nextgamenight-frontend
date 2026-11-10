@@ -514,7 +514,7 @@ export default function EventCalendar({
           <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
           <FetchErrorBanner
             state={selfIdentityErrorState}
-            title="Couldn't load your calendar"
+            thing="your calendar"
             reportContext="event calendar — self-identity resolution"
           />
         </div>
@@ -562,7 +562,7 @@ export default function EventCalendar({
             <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
             <FetchErrorBanner
               state={fetchErrorState}
-              title="Couldn't load your calendar"
+              thing="your calendar"
               reportContext="event calendar — events fetch"
               focusTarget={calendarHeadingRef}
             />

@@ -772,7 +772,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 {membersErrorState.showError && !rosterRetained && (
                     <FetchErrorBanner
                         state={membersErrorState}
-                        title="Couldn't load members"
+                        thing="members"
                         reportContext="manage members — member list fetch"
                     />
                 )}

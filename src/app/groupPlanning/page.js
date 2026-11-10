@@ -622,7 +622,7 @@ export default function GroupPlanningPage() {
     }
     if (!user) {
         return <div className="flex items-center justify-center min-h-screen text-content-secondary">
-            <FetchErrorBanner state={signIn.signedOutErrorState} title="Couldn't load this group" reportContext="Group planning — signed out" />
+            <FetchErrorBanner state={signIn.signedOutErrorState} thing="this group" reportContext="Group planning — signed out" />
         </div>;
     }
 
@@ -789,7 +789,7 @@ export default function GroupPlanningPage() {
                 <div className="mb-6">
                     <FetchErrorBanner
                         state={groupErrorState}
-                        title="We couldn't load this group"
+                        thing="this group"
                         reportContext="Group planning page — group details fetch"
                     />
                 </div>
@@ -849,7 +849,7 @@ export default function GroupPlanningPage() {
                             <div className="py-4">
                                 <FetchErrorBanner
                                     state={heatmapErrorState}
-                                    title="We couldn't load the poll responses"
+                                    thing="the poll responses"
                                     reportContext="Group planning page — availability poll fetch"
                                 />
                             </div>

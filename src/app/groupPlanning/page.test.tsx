@@ -589,7 +589,7 @@ describe('groupPlanning page — one load per visit (88.6.1-16, W060)', () => {
   it('L4: a failed group fetch is a logger breadcrumb with errCtx, and the group banner still shows', async () => {
     (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('group failed', 'internal', 500));
     render(<GroupPlanningPage />);
-    await screen.findByText("We couldn't load this group");
+    await screen.findByText("Couldn't load this group");
     expect(h.logInfo).toHaveBeenCalledWith('Error fetching group:', { name: 'ApiError', message: 'group failed' });
   });
 });
@@ -859,7 +859,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(replaced).toHaveLength(1);
     expect(queryOf(replaced[0]).get('group_id')).toBe(G1);
     expect(queryOf(replaced[0]).has('poll')).toBe(false);
-    expect(screen.queryByText("We couldn't load the poll responses")).toBeNull();
+    expect(screen.queryByText("Couldn't load the poll responses")).toBeNull();
     expect(h.logInfo).toHaveBeenCalledWith('Selected poll did not load; showing the active poll:', expect.anything());
 
     reRender(rerender);
@@ -960,7 +960,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     await user.click(ben);
     reRender(rerender);
     await settledOn(P2);
-    expect(screen.queryByText("We couldn't load the poll responses")).toBeNull();
+    expect(screen.queryByText("Couldn't load the poll responses")).toBeNull();
     expect(promptAPI.getPromptById).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(ben);
   });
@@ -1012,7 +1012,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${P2}`);
     (promptAPI.getPromptById as Mock).mockRejectedValueOnce(new ApiError('failed', 'internal', 500));
     render(<GroupPlanningPage />);
-    expect(await screen.findByText("We couldn't load the poll responses")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load the poll responses")).toBeInTheDocument();
     expect(replaced).toHaveLength(0);
     expect(h.PARAMS.get('poll')).toBe(P2);
     expect(h.logError).toHaveBeenCalledTimes(1);
