@@ -1387,6 +1387,37 @@ export default function EventScheduler({
         )}
       </div>
 
+      {/* DECISION Phase 88.1-11 (UI-SPEC Copywriting, PRESCRIBED CHANGE — not a parity
+          carry): the prompt names the gesture THE DEVICE CAN ACTUALLY PERFORM. The shipped
+          string says "Click and drag" on a surface whose primary device is a phone at
+          somebody's kitchen table; Req 5 ships long-press-to-paint there, and an instruction
+          naming a mouse gesture on a touch device is a phone-forward failure, not a wording
+          nit. AMENDED Phase 88.9-41 (owner pick S1a, 88.9-PICKS-B8C.json, 2026-11-07 3:41 PM
+          Pacific): the prompt moves ABOVE the grid as a one-line 14px caption that names the
+          RANGE (phone: tap and hold a time, then drag to pick how long; desktop: click and drag
+          to pick a time range), chosen OVER the shipped boxed page-ground prompt BELOW the grid
+          (16px body in a padded box, about 58px tall at 375) that named one time and gave no
+          hint that a range exists — a real user missed the drag (register row 70). Its text
+          shows only until a slot commits; after the commit the p stays mounted as `invisible`
+          + aria-hidden — a reserved line OVER an unmount that moved the grid 36px up right
+          after the pick (owner ruling 88.9-RULINGS.md R-P5, 2026-11-08). Not taken: S1b's grab
+          handle and S2a's keyboard extend, both built with Phase 89's cell rework. Moving it
+          back below the grid, boxing it again, or unmounting it on commit, is a decision, not a
+          cleanup. The two class arms are whole literals (Tailwind v4 emits nothing for an
+          interpolated class). */}
+      <p
+        className={
+          selectedSlot
+            ? 'text-sm text-content-secondary invisible'
+            : 'text-sm text-content-secondary'
+        }
+        aria-hidden={selectedSlot ? 'true' : undefined}
+      >
+        {isPhoneViewport
+          ? 'Tap and hold a time, then drag to pick how long'
+          : 'Click and drag to pick a time range'}
+      </p>
+
       {/* 4px between the strip and the column, per the measured budget — the root's `space-y-4`
           would spend 16px of the ~365px the two of them share. Inert at desktop, where this
           wrapper has a single child. */}
@@ -1476,24 +1507,6 @@ export default function EventScheduler({
             {formatSlotRange(selectedSlot.start, selectedSlot.end)}
             {' '}
             <span className="text-content-accent">({formatDuration(selectedSlot.start, selectedSlot.end)})</span>
-          </p>
-        </div>
-      )}
-
-      {!selectedSlot && (
-        <div className="p-4 bg-surface-page rounded-card border border-line">
-          {/* DECISION Phase 88.1-11 (UI-SPEC Copywriting, PRESCRIBED CHANGE — not a parity
-              carry): the prompt names the gesture THE DEVICE CAN ACTUALLY PERFORM. The shipped
-              string says "Click and drag" on a surface whose primary device is a phone at
-              somebody's kitchen table; Req 5 ships long-press-to-paint there, and an instruction
-              naming a mouse gesture on a touch device is a phone-forward failure, not a wording
-              nit. Both strings are kept — the desktop one is verbatim from the pre-rebuild
-              component deleted in FE commit `3ff46e7` (88.1-09) and is what the plan-01 pin
-              locates. */}
-          <p className="text-base text-content-secondary">
-            {isPhoneViewport
-              ? 'Tap and hold on a day to pick a time.'
-              : 'Click and drag on the calendar to select a time slot for your event.'}
           </p>
         </div>
       )}

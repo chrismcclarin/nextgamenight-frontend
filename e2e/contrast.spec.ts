@@ -1398,9 +1398,12 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     });
 
     await test.step('surface 5 — Req 1: a nested block is distinct from its parent card', async () => {
-      // The scheduler's "no slot selected yet" prompt (src/app/components/EventScheduler.tsx ("Tap and hold on a day to pick a time"))
-      // is a `bg-surface-page` block INSIDE the modal's `bg-card` body. It renders
-      // unconditionally until a slot is picked, which is the state this test is in.
+      // The scheduler's Selected Time panel (src/app/components/EventScheduler.tsx ("{SELECTED_TIME_LABEL}</p>"))
+      // is a `bg-surface-sunken` block INSIDE the modal's `bg-card` body. It mounts once a slot
+      // is committed, so this step commits ONE slot first with a plain mouse click on a gridcell:
+      // a mouse press engages the paint gesture at once and commits on release
+      // (src/app/components/heatmap/usePaintGesture.ts ("Mouse (and synthetic test events with no pointerType) engage immediately")).
+      // 88.9-41 S1a removed the boxed prompt this step used to read; the panel is the same requirement (a sunken block inside the card) and computes 2.35 light / 4.23 dark.
       //
       // DEVIATION FROM THE PLAN, recorded rather than silently substituted: the plan names
       // `ManageMembers.js:410` or `userProfile/page.js:1839`. VERIFIED 2026-08-26 — the
@@ -1408,10 +1411,13 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // second is gated on `userData?.sms_enabled`, a DB-only admin entitlement the fixture
       // does not set. Both would be zero-element locators. This block is the same
       // requirement (a sunken/recessed block inside a card) at a site that actually renders. DECISION Phase 88.6.2-31 (ruling-B-e2e): line number kept as quoted text over an anchor — both numbers are the plan's own words, which this DEVIATION note quotes to refuse them.
-      const nested = page
-        .locator('p')
-        .filter({ hasText: /Tap and hold on a day to pick a time\.|Click and drag on the calendar/ });
-      await expect(nested).toBeVisible({ timeout: 15_000 });
+      const grid = page.getByRole('grid', { name: 'Group availability by day and time' });
+      await grid.getByRole('gridcell').nth(1).click();
+      const nested = page.locator('p').filter({ hasText: 'Selected Time:' });
+      await expect(
+        nested,
+        'Req 1: the Selected Time panel did not mount within 15 s of a mouse click on a gridcell — the one-slot commit did not happen. This is a LOCATOR failure, not a contrast failure.'
+      ).toBeVisible({ timeout: 15_000 });
       const nestedProbe = await probeElement(nested, []);
       const nestedGround = compositeGround(nestedProbe);
 
@@ -1928,10 +1934,16 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     const m = await ratioAgainstGround(todayCell.getByTestId('strip-day-number'), 'today number on the today tint (Req 5, dark)');
     expectRatio('today number on the today tint (Req 5, dark)', m, AA_TEXT);
 
-    const nested = page
-        .locator('p')
-        .filter({ hasText: /Tap and hold on a day to pick a time\.|Click and drag on the calendar/ });
-    await expect(nested).toBeVisible({ timeout: 15_000 });
+    // The nested block is the Selected Time panel (src/app/components/EventScheduler.tsx ("{SELECTED_TIME_LABEL}</p>")),
+    // mounted by a one-slot mouse-click commit, as in the light test's step 'surface 5' above
+    // (88.9-41 S1a removed the boxed prompt this read used to target).
+    const grid = page.getByRole('grid', { name: 'Group availability by day and time' });
+    await grid.getByRole('gridcell').nth(1).click();
+    const nested = page.locator('p').filter({ hasText: 'Selected Time:' });
+    await expect(
+      nested,
+      'Req 1 (dark): the Selected Time panel did not mount within 15 s of a mouse click on a gridcell — the one-slot commit did not happen. This is a LOCATOR failure, not a contrast failure.'
+    ).toBeVisible({ timeout: 15_000 });
     const nestedProbe = await probeElement(nested, []);
     const nestedGround = compositeGround(nestedProbe);
     const cardProbe = await probeElement(page.getByRole('heading', { name: /create event/i }), []);
