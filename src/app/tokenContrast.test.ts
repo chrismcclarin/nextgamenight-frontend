@@ -1398,7 +1398,15 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       if (legacy) {
         expect(slice, `88.3-18 — the Share Game QR button in ${rel} still wears the legacy \`btn btn-accent\` string, so it must carry the house focus-visible ring string, like the Create-Event button it copies`).toContain('focus-visible:ring-focus-ring');
       } else {
-        expect(slice, `88.3-18 / A-2 — the Share Game QR button in ${rel} is now a \`<Button>\`, so it must NOT carry a per-site \`focus-visible:ring\` string; the ring lives once in \`Button.tsx\`'s cva base and a second copy paints nothing extra but re-splits the decision`).not.toContain('focus-visible:ring');
+        // AMENDED Phase 88.9-39 (owner pick B2a, R014 / B025): the per-site HALO override
+        // `focus-visible:ring-offset-surface-group-halo` on EventDayModal's Share Game QR is the
+        // 88.9-05 sanctioned call-site form (Button.tsx's A-2 amendment: a call site on another
+        // ground overrides the halo through cn() with the same focus-visible: prefix), not a second
+        // ring string. The negative now reads the RING STRING PROPER — `ring-2`, `ring-focus-ring`,
+        // `ring-offset-2` — and leaves a `focus-visible:ring-offset-<surface>` colour alone, so the
+        // A-2 decision (one ring, in the primitive) is still pinned and the halo decision is not.
+        const ringProper = slice.match(/focus-visible:ring-(?!offset-[a-z])[\w-]+/g) ?? [];
+        expect(ringProper, `88.3-18 / A-2 — the Share Game QR button in ${rel} is now a \`<Button>\`, so it must NOT carry a per-site focus-visible ring string (width, ring colour or offset width); the ring lives once in \`Button.tsx\`'s cva base and a second copy paints nothing extra but re-splits the decision. Found: ${ringProper.join(' ') || '(none)'}`).toEqual([]);
       }
 
       expect(slice, `88.3-18 — the Share Game QR button's decorative icon in ${rel} must be hidden from AT; the visible label already names the control`).toContain('aria-hidden="true"');
