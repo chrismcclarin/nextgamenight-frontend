@@ -465,7 +465,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // ruling 1c took warm-200 for the PAGE, so leaving it would make this row's `!= page`
     // assertion AND its L* ordering both false, and would be a real render defect at
     // src/app/components/GroupLibrary.js ("bg-surface-page rounded-card animate-pulse") (card-hover skeleton bars inside a bg-surface-page parent) and
-    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :") (today's cell would be byte-identical to an empty one).
+    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border border-line-accent' :") (today's cell would be byte-identical to an empty one).
     // The rejected alternative warm-300 measures accent-text 4.4440 on it, an AA failure.
     expect(
       lStarOf(cardHover, 'card-hover'),
@@ -1212,7 +1212,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // future re-tint inside the feasible window (t ∈ [0.60, 0.92]) does not churn this row — but a
     // collapse back onto either neighbour does red it. warm-200 IS the page (byte-equality, a real
     // render defect at src/app/components/GroupLibrary.js ("bg-surface-page rounded-card animate-pulse") and
-    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :")); warm-300 drops
+    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border border-line-accent' :")); warm-300 drops
     // accent-text to 4.4440 and reds test 14's row 13.
     const mint = resolve('light', '--warm-250');
     expect(mint, '88.3-18 ruling 1c — `--warm-250` must be declared in the palette').toMatch(/^#[0-9a-f]{6}$/i);

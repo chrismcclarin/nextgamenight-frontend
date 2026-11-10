@@ -55,11 +55,13 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-// Plan 88.3.1-09: imported so test 21's fixture is CHECKED against the shipped table
-// rather than transcribed from it. A source-scan file importing production data is the
-// exception here, not the rule — it is safe because the assertion is "my fixture still
-// matches yours", which is exactly the drift a transcribed hex hides.
-import { GROUP_COLOUR_PRESETS } from '../lib/groupColourPresets';
+// Plan 88.3.1-09 imported GROUP_COLOUR_PRESETS here so test 21's fixture was CHECKED against the
+// shipped table. AMENDED Phase 88.9-28 (E1a): test 21 no longer measures RSVP text on a tint (the
+// compact tile renders no count), so that import went; test 21 now RENDERS the compact tile, the
+// one place this source-scan file imports a component and the testing library.
+import { createElement } from 'react';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import CalendarMonthView from './components/CalendarMonthView';
 import { contrastRatio } from '../lib/wcag';
 import { lineAt, readOpeningTag, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
@@ -1657,95 +1659,50 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     }
   });
 
-  it('21. the compact tile\'s RSVP text clears 4.5:1 on every pinned tint once tinted', () => {
-    // T-88.3-79. These three colours are hard-coded in `RsvpCount.js` and pass
-    // 4.5:1 only against the compact tile's SHIPPED `bg-surface-muted`
-    // ground. Once the tile takes `--group-ground-light` they fail on the
-    // majority of preset/status pairings, so plan 16 forks them onto the tile's
-    // own tint pole via a defaulted `inheritColor` prop. This pins BOTH halves:
-    // the wiring, and the number that made it necessary.
-    const rsvp = code('app/components/RsvpCount.js');
-    expect(rsvp, 'RsvpCount lost its inheritColor opt-in').toMatch(/inheritColor\s*=\s*false/);
-    expect(
-      rsvp,
-      'the compact spans no longer drop their status class when inheritColor is set',
-    ).toMatch(/inheritColor \? undefined : token/);
-    // the UNTINTED default is byte-unchanged: all three status tokens still here
-    for (const token of [
-      'text-content-status-success',
-      'text-content-status-warning',
-      'text-content-status-error',
-    ]) {
-      expect(rsvp, `the untinted compact tile lost ${token}`).toContain(token);
-    }
-    // the other call site passes no prop, so it renders exactly as before
-    const list = code('app/components/CalendarListView.js');
-    expect(list, 'CalendarListView started passing inheritColor — it must not').not.toContain(
-      'inheritColor',
-    );
-
-    // …and the compact tile passes it keyed on the SAME `tinted` value that
-    // gates the title fork, never on a second computation.
-    expect(code('app/components/CalendarMonthView.js')).toMatch(/inheritColor=\{!!tinted\}/);
-
-    /*
-     * RE-PINNED plan 88.3.1-09: from the eight **t = 0.70 derived tints** to the eight
-     * **stored LIGHT SURFACES**.
-     *
-     * WHY, and it is not a cosmetic swap. This tile's light-mode ground is no longer
-     * computed by mixing a near-black preset toward white — Phase 88.3.1 replaced that
-     * whole model (withdrawn ruling 4a; the eight old tints measured ΔE2000 **1.62**
-     * apart, sub-JND, which is the UAT finding that created this phase). A group now
-     * stores a preset id and the FE resolves it to a hand-tuned light surface. Leaving
-     * the old hexes here would have kept measuring a ground that nothing paints any
-     * more: the assertion would stay green while the shipped pixels went unmeasured,
-     * which is the worst failure mode a contrast gate has.
-     *
-     * The FLOOR is deliberately unchanged at 4.5 and the actual is deliberately NOT
-     * asserted — that is `groupColourPresets.test.ts`'s job (UI-SPEC 10.1 tests 8-10),
-     * and duplicating a number here would give two places to update and one to forget.
-     * Measured on the new surfaces: **6.44-6.50:1**, comfortably up from the 4.5-5.7
-     * band the tints gave.
-     *
-     * The pole is UNCHANGED: `getEventTileTextColor(light surface)` still resolves to
-     * `TILE_TEXT_LIGHT_BG`, because every light surface is W3C-brighter than 128
-     * (measured 211-227; `groupColourPresets.test.ts` test 11 pins the tier per
-     * preset). `#1e40af` being BLUE rather than near-black is a deliberate shipped
-     * decision (src/lib/colorUtils.js ("Intentionally different from getContrastColor.")),
-     * flagged to the owner as one line at the Req 10 check and
-     * NOT changed by this plan. If he picks near-black, this test still passes and the
-     * literal below moves with the pole.
-     */
-    const TILE_POLE = '#1e40af';
-    const LIGHT_SURFACES: Record<string, string> = {
-      red: '#ffd3d4',
-      orange: '#ffd6b1',
-      amber: '#e7e0aa',
-      green: '#bde9c2',
-      teal: '#94edf0',
-      blue: '#c4e1ff',
-      violet: '#dfd9ff',
-      rose: '#fdd1f8',
+  it('21. E1a (88.9): the compact tile renders no RsvpCount, so no RSVP text sits on a tint; the count stays in the tile\'s accessible name', () => {
+    // T-88.3-79 (history, kept): the three RSVP colours were hard-coded in `RsvpCount.js` and
+    // passed 4.5:1 only against the compact tile's shipped `bg-surface-muted` ground. Once the
+    // tile took `--group-ground-light` they failed on most preset/status pairings, so plan 16
+    // forked them onto the tile's own tint pole via a defaulted `inheritColor` prop, and this test
+    // pinned the wiring and the number (6.44-6.50:1 on the eight stored light surfaces, re-pinned
+    // by plan 88.3.1-09).
+    // AMENDED Phase 88.9-28 (E1a): the element this test floored is gone; RsvpCount no longer has a
+    // compact variant or an inheritColor prop (its only consumer was this tile). The pin is now the
+    // removal itself, on a rendered TINTED compact tile, plus the spoken count that stays.
+    const date = new Date(2099, 5, 15, 19, 0, 0, 0);
+    const event = {
+      id: 'evt-21',
+      start_date: '2099-06-15T19:00:00',
+      Game: { name: 'Catan' },
+      Group: { name: 'Tuesday Crew', background_color: '#722f37' },
+      rsvp_summary: { yes: 3, maybe: 1, no: 2 },
     };
-    // ANTI-VACUITY: eight surfaces, and each must be the hex the shipped table holds.
-    // A rename or a re-sort of the palette reds here rather than silently shrinking
-    // the population this loop measures.
-    expect(Object.keys(LIGHT_SURFACES)).toHaveLength(8);
-    for (const [name, hex] of Object.entries(LIGHT_SURFACES)) {
-      expect(
-        GROUP_COLOUR_PRESETS.find((p) => p.name === name)?.light,
-        `the shipped '${name}' light surface no longer matches this test's fixture`,
-      ).toBe(hex);
+    const noop = () => {};
+    render(
+      createElement(CalendarMonthView, {
+        days: [{ date, isCurrentMonth: true }],
+        activeEvents: [event],
+        currentDate: date,
+        variant: 'compact',
+        onDayClick: noop,
+        onEventClick: noop,
+        onNavigateMonth: noop,
+        onGoToday: noop,
+        monthNames: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+        tzLegend: null,
+      }),
+    );
+    try {
+      const tile = screen.getByRole('button', { name: "Catan - Tuesday Crew, 3 going, 1 maybe, 2 can't" });
+      expect(tile.style.getPropertyValue('--group-ground-light'), 'the fixture tile must be TINTED, or this pins nothing').not.toBe('');
+      for (const chip of ['3Y', '1M', '2N']) {
+        expect(within(tile).queryByText(chip), `the tinted compact tile still renders the ${chip} RSVP chip`).toBeNull();
+      }
+    } finally {
+      cleanup();
     }
-    for (const [name, surface] of Object.entries(LIGHT_SURFACES)) {
-      const ratio = contrastRatio(TILE_POLE, surface)!;
-      expect(
-        Number(ratio.toFixed(2)),
-        `compact RSVP text on the ${name} light surface measures ${ratio.toFixed(2)}:1 — ` +
-          'needs >= 4.5 (the hard-coded status colours it replaces measured 3.55-4.56 on the ' +
-          'superseded tints and FAILED)',
-      ).toBeGreaterThanOrEqual(4.5);
-    }
+    expect(code('app/components/CalendarMonthView.js'), 'CalendarMonthView renders RsvpCount again').not.toContain('<RsvpCount');
+    expect(code('app/components/RsvpCount.js')).not.toMatch(/inheritColor|variant === 'compact'/);
   });
   it('22. EVERY focusable in the group-page render tree carries a project focus ring (DEF-88.3-13-04, owner ruling A)', () => {
     // The primitive exemption, PAID FOR rather than asserted. Each exempted tag is

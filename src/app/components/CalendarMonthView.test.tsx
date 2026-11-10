@@ -93,7 +93,7 @@ describe('CalendarMonthView compact tile — keyboard + accessible name (88.3-cr
  * THE INVARIANT IS PER RENDERED **GRID**, NOT PER MONTH, and neither half is gated on
  * `isCurrentMonth`. `isCurrentDay` is computed from the date ALONE, and the cell's ground
  * ternary awards the today treatment BEFORE the adjacent-month branch is reached (the adjacent
- * page-ground arm comes after the today and full-variant past arms, 88.9 A4b). `getDaysInMonth` returns whole weeks (28, 35 or 42 cells, CS-05) including any adjacent-month days,
+ * page-ground arm comes straight after the today arm, its full-variant past case nested inside it, 88.9 A4b, reordered by 88.9-28 C3). `getDaysInMonth` returns whole weeks (28, 35 or 42 cells, CS-05) including any adjacent-month days,
  * so a grid whose OVERFLOW contains today already renders that overflow cell tinted as today.
  * Gating either half on `isCurrentMonth` would desync the pair — and nothing in this suite
  * asserted the pair before this plan.
@@ -265,7 +265,7 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
   it('A4b (88.9): a clickable PAST adjacent cell on the full grid keeps the past treatment — page ground, no hover ground', () => {
     // Full grid, September 2031: 31 August is the leading overflow day, already past, and holds an
     // event (so it is cellClickable). The no-hover half is the ARM-ORDER guard: green before and
-    // after this plan, red only if the adjacent arm is placed ahead of the full-variant past arm.
+    // after this plan; since 88.9-28 C3 the adjacent arm comes straight after the today arm and nests the full-variant past case, so this half reds only if that nested past case is lost.
     const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', [eventOn('evt-past', '2031-08-31', 'Azul')]);
     const i = days.findIndex((c) => !c.isCurrentMonth && c.date.getMonth() === 7 && c.date.getDate() === 31);
     expect(i).toBeGreaterThan(-1);
@@ -300,7 +300,9 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
     const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', [eventOn('evt-past-cm', '2031-09-10', 'Azul')]);
     const cell = cellOn(days, cells, 8, 10);
     expect(within(cell).getByText('Azul')).toBeTruthy();
-    expect(cell.classList.contains('bg-surface-page')).toBe(true);
+    // AMENDED Phase 88.9-28 (C3): a full-grid past this-month cell sits on bg-surface-tile-past
+    // (owner pick C3), chosen OVER the page ground this line read before; the pointer half is unchanged.
+    expect(cell.classList.contains('bg-surface-tile-past')).toBe(true);
     expect(cell.classList.contains('cursor-pointer')).toBe(true);
   });
 
@@ -315,7 +317,8 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
     vi.setSystemTime(new Date(2031, 8, 15, 12, 0, 0, 0));
     const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', []);
     const cell = cellOn(days, cells, 8, 10);
-    expect(cell.classList.contains('bg-surface-page')).toBe(true);
+    // AMENDED Phase 88.9-28 (C3): the past this-month ground is bg-surface-tile-past now, as in (b).
+    expect(cell.classList.contains('bg-surface-tile-past')).toBe(true);
     expect(cell.classList.contains('cursor-pointer')).toBe(false);
   });
 });
@@ -395,5 +398,80 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
       expect(screen.queryByRole('button', { name: 'Go to Today' }), `${variant}: the retired Go to Today name is still rendered`).toBeNull();
       cleanup();
     }
+  });
+  const cellOf = (days: { date: Date; isCurrentMonth: boolean }[], cells: HTMLElement[], month: number, date: number) => {
+    const i = days.findIndex((c) => c.date.getMonth() === month && c.date.getDate() === date);
+    expect(i).toBeGreaterThan(-1);
+    return cells[i];
+  };
+  const groundsOf = (el: Element) => tokens(el).filter((t) => /^bg-surface-/.test(t));
+
+  it('C3 (88.9): this-month tile / past / adjacent untiled', () => {
+    // Full grid, September 2031, today the 15th: 10 Sept is past, 20 Sept is future, 31 Aug and
+    // 2 Oct are the leading and trailing adjacent cells.
+    vi.setSystemTime(new Date(2031, 8, 15, 12, 0, 0, 0));
+    const { days, cells } = renderGrid({ variant: 'full' });
+    for (const cell of cells) {
+      expect(tokens(cell), 'every cell is radius 6px').toContain('rounded-md');
+      expect(tokens(cell), 'no cell keeps the old small radius').not.toContain('rounded-sm');
+      expect(tokens(cell), 'no cell keeps the old 1px line outline').not.toContain('border-line');
+      expect(tokens(cell).filter((t) => t === 'border'), 'every cell carries exactly one 1px border width').toHaveLength(1);
+      expect(groundsOf(cell), 'every cell carries exactly one ground').toHaveLength(1);
+    }
+    expect(groundsOf(cellOf(days, cells, 8, 20))).toEqual(['bg-surface-tile']);
+    expect(tokens(cellOf(days, cells, 8, 20))).toContain('border-transparent');
+    expect(groundsOf(cellOf(days, cells, 8, 10))).toEqual(['bg-surface-tile-past']);
+    for (const [month, date] of [[7, 31], [9, 2]] as const) {
+      const adjacent = cellOf(days, cells, month, date);
+      expect(groundsOf(adjacent), `adjacent ${month + 1}/${date} stays untiled on the page ground`).toEqual(['bg-surface-page']);
+    }
+    const today = cellOf(days, cells, 8, 15);
+    expect(groundsOf(today)).toEqual(['bg-surface-muted']);
+    expect(tokens(today)).toContain('border-line-accent');
+  });
+
+  it('C8a (88.9): weekday row 12/700', () => {
+    for (const variant of ['full', 'compact'] as const) {
+      const { weekdays } = renderGrid({ variant });
+      expect(weekdays).toHaveLength(7);
+      for (const cell of weekdays) {
+        expect(tokens(cell), `${variant}: weekday ${cell.textContent} is not 12px`).toContain('text-xs');
+        expect(tokens(cell), `${variant}: weekday ${cell.textContent} is not 700`).toContain('font-bold');
+        expect(tokens(cell), `${variant}: weekday ${cell.textContent} keeps the 14px size`).not.toContain('text-sm');
+      }
+      cleanup();
+    }
+  });
+
+  const rsvpEvent = {
+    id: 'evt-rsvp',
+    start_date: '2031-09-20T19:00:00',
+    Game: { name: 'Catan' },
+    Group: { name: 'Tuesday Crew', background_color: '#722f37' },
+    rsvp_summary: { yes: 3, maybe: 1, no: 2 },
+  };
+
+  it('E1a (88.9): compact tile carries no RSVP count', () => {
+    renderGrid({ variant: 'compact', events: [rsvpEvent] });
+    const tile = screen.getByRole('button', { name: "Catan - Tuesday Crew, 3 going, 1 maybe, 2 can't" });
+    for (const chip of ['3Y', '1M', '2N']) {
+      expect(within(tile).queryByText(chip), `the compact tile still renders the ${chip} count chip`).toBeNull();
+    }
+    expect((tile.textContent ?? '').trim()).toBe('Catan');
+  });
+
+  it("F7a (88.9): an image tile's light arm has no shadow and no stroke; its dark arm is unchanged", () => {
+    const imageEvent = {
+      ...rsvpEvent,
+      id: 'evt-image',
+      rsvp_summary: null,
+      Group: { name: 'Photo Crew', background_color: '#722f37', background_image_url: 'https://i.imgur.com/x.png' },
+    };
+    renderGrid({ variant: 'full', events: [imageEvent] });
+    const tile = screen.getByRole('button', { name: 'Catan - Photo Crew' });
+    expect(tile.style.getPropertyValue('--t-shadow-l'), 'light arm shadow').toBe('none');
+    expect(tile.style.getPropertyValue('--t-stroke-l'), 'light arm stroke').toBe('none');
+    expect(tile.style.getPropertyValue('--t-shadow'), 'dark arm shadow').toBe('2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)');
+    expect(tile.style.getPropertyValue('--t-stroke'), 'dark arm stroke').toBe('0.5px rgba(0, 0, 0, 0.9)');
   });
 });

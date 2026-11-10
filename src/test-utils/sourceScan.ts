@@ -461,7 +461,7 @@ export interface InkGroundRow {
    * EVERY candidate from the nearest ancestor frames that set any ground — an ARRAY, never a
    * scalar. One `className` template can carry several mutually exclusive ground arms
    * (the ground template around
-   * src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :")
+   * src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border border-line-accent' :")
    * carries five), and picking one of them would make every
    * downstream by-name assertion a coin flip. Consumers must not index into this array.
    */
