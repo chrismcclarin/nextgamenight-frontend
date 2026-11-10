@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
 import ClickableMemberName from './ClickableMemberName';
+import { MemberChip } from './MemberChipStack';
 import KebabMenu from './KebabMenu';
 import FriendInvitePanel from './FriendInvitePanel';
 import { toast } from 'sonner';
@@ -595,7 +596,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             owner: 'bg-purple-100 text-purple-800 border-purple-300',
             admin: 'bg-surface-muted text-content-accent border-accent',
             member: 'bg-surface-muted text-content-secondary border-line',
-            pending: 'bg-amber-100 text-amber-800 border-amber-300'
+            pending: 'bg-status-warning-subtle text-content-status-warning border-status-warning'
         };
         
         /* DECISION Phase 88.6-19 (§4.5, D-03): the role pill keeps a WEIGHT and takes 700, not
@@ -783,18 +784,24 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             <div className="mb-6">
                                 <div className="flex items-center gap-2 mb-2">
                                     <Heading level={3} size="heading" className="text-content-primary">Pending Members</Heading>
-                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                         {members.filter(m => m.UserGroup?.role === 'pending').length}
                                     </span>
                                 </div>
                                 <p className="text-sm text-content-muted mb-3">Auto-approved after 24h</p>
+                                {/* DECISION Phase 88.9-30 B3a (owner pick B3a, 88.9-PICKS-B1.json, votes-b1 v9, 2026-11-04):
+                                    the pending and pending-invites boxes, their pills and the Approve / Reject halo ride
+                                    the status-warning family, which has a dark twin, chosen OVER the raw amber palette the
+                                    boxes shipped with (no dark twin: name ink 1.02 and halo 1.61 in dark). The pills follow
+                                    (research open question 11) so no light pill sits on the dark box; owner glance at plan
+                                    88.9-51. */}
                                 <div className="space-y-3">
                                     {members.filter(m => m.UserGroup?.role === 'pending').map((member) => (
-                                        <div key={member.id} className="flex items-center justify-between p-4 border border-amber-200 rounded-lg bg-amber-50">
+                                        <div key={member.id} className="flex items-center justify-between p-4 border border-status-warning rounded-lg bg-status-warning-subtle">
                                             <div className="flex items-center gap-3 flex-1">
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2">
-                                                        <p className="font-bold text-content-primary"><ClickableMemberName userId={member.id} username={member.username || member.email} /></p>
+                                                        <p className="font-bold text-content-status-warning"><ClickableMemberName userId={member.id} hostGround="warning" username={member.username || member.email} /></p>
                                                         {getRoleBadge('pending')}
                                                     </div>
                                                 </div>
@@ -803,6 +810,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <Button
                                                     variant="primary"
                                                     size="default"
+                                                    className="focus-visible:ring-offset-status-warning-subtle"
                                                     onClick={(event) => handleApproveMember(member.id, event)}
                                                 >
                                                     Approve
@@ -810,6 +818,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <Button
                                                     variant="danger"
                                                     size="default"
+                                                    className="focus-visible:ring-offset-status-warning-subtle"
                                                     onClick={() => handleRejectMember(member.id, member.username || member.email)}
                                                 >
                                                     Reject
@@ -834,6 +843,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                         className="flex items-center justify-between p-4 border border-line rounded-lg hover:bg-surface-hover"
                                     >
                                         <div className="flex items-center gap-3 flex-1">
+                                            {/* DECISION Phase 88.9-30 D4a (owner pick D4a, 88.9-PICKS-B3.json, votes-b3 v12 + chat
+                                                2026-11-06 'the manage members spot is great'): a 32px D1b chip opens each ACTIVE
+                                                row, chosen OVER name text alone (W62) and OVER chips on the pending rows too (the
+                                                build contract's pin names active rows; a pending row is a request on the warning
+                                                box, not a member yet). The chip is aria-hidden: identity is the name beside it. */}
+                                            <MemberChip label={member.username || member.email} colorKey={member.id} />
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-bold text-content-primary">
@@ -1047,7 +1062,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     <div className="mt-6">
                         <div className="flex items-center gap-2 mb-3">
                             <Heading level={3} size="heading" className="text-content-primary">Pending Invites</Heading>
-                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                 {pendingInvites.length}
                             </span>
                         </div>
@@ -1055,15 +1070,15 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             {pendingInvites.map((invite) => (
                                 <div
                                     key={invite.id}
-                                    className="flex items-center justify-between p-4 border border-line rounded-lg bg-amber-50"
+                                    className="flex items-center justify-between p-4 border border-status-warning rounded-lg bg-status-warning-subtle"
                                 >
                                     <div className="flex items-center gap-3 flex-1">
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
-                                                <p className="font-bold text-content-primary">
+                                                <p className="font-bold text-content-status-warning">
                                                     {invite.invited_email}
                                                 </p>
-                                                <span className="px-2 py-1 rounded-sm text-xs font-bold border bg-amber-100 text-amber-800 border-amber-300">
+                                                <span className="px-2 py-1 rounded-sm text-xs font-bold border bg-status-warning-subtle text-content-status-warning border-status-warning">
                                                     Pending
                                                 </span>
                                             </div>
