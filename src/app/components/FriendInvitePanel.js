@@ -48,6 +48,12 @@ const COPY_FAILED_MESSAGE = "Couldn't copy the link. Press and hold the link to 
 // header. Deliberately a plain comment, NOT a JSDoc `@param` block — under
 // checkJs a partial @param list becomes the component's whole props type and
 // every other prop then fails to typecheck at the call sites.
+// Rule 1 (88.9-45, B08): the bulk invite's resting label, written once; the pressed label is read
+// from it at the press (the pressed-label ref beside the in-flight latch) so a mid-send tick cannot change the text.
+function bulkInviteLabel(count) {
+    return count > 0 ? `Invite ${count} Friend${count !== 1 ? 's' : ''}` : 'Select friends to invite';
+}
+
 function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = 'default' }) {
     const { user } = useUser();
     // FE-18 cutover: exclude-self keys on the resolved Users.id UUID (async).
@@ -140,8 +146,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        ink/ground pair no gate measures in dark mode — a look decision for Phase 88.9). The Send
        button's Sending... label and gated colour pair carry the in-flight state. The friend
        checkbox stays the rule-of-KIND example: a state gate on a control nobody pressed. The
-       paragraphs above are kept as history. */
+       paragraphs above are kept as history.
+       AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07): the Send button keeps
+       its label; the house spinner, the sr-only suffix and the gated colour pair carry the in-flight
+       state, chosen OVER the Sending swap (rule 1). */
     const bulkInviteInFlightRef = useRef(false);
+    const bulkInviteLabelRef = useRef('');
     const emailInviteInFlightRef = useRef(false);
     const addFriendInFlightRef = useRef(false);
 
@@ -244,6 +254,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         if (bulkInviteInFlightRef.current) return;
         if (!group?.id || selectedFriends.size === 0) return;
         bulkInviteInFlightRef.current = true;
+        bulkInviteLabelRef.current = bulkInviteLabel(selectedFriends.size);
         setInviting(true);
         setInviteResult(null);
 
@@ -678,22 +689,21 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                         {/* Bulk invite button */}
                         {selectableCount > 0 && (
                             <div className="mt-4">
+                                {/* DECISION Phase 88.9-45 (rule 1 B08): while sending, the button shows the label the user
+                                    pressed, chosen OVER the live selection count — the checkboxes stay live mid-send, so a
+                                    toggle would change the text under the finger while the request still covers the
+                                    pressed selection. */}
                                 <Button
                                     variant="primary"
                                     size="default"
                                     onClick={handleBulkInvite}
                                     aria-disabled={selectedFriends.size === 0 || inviting ? 'true' : undefined}
                                     aria-busy={inviting || undefined}
+                                    busy={inviting}
+                                    busySuffix=", sending"
                                     className="w-full focus-visible:ring-offset-surface-page"
                                 >
-                                    {inviting && (
-                                        <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                                    )}
-                                    {inviting
-                                        ? 'Sending...'
-                                        : selectedFriends.size > 0
-                                            ? `Invite ${selectedFriends.size} Friend${selectedFriends.size !== 1 ? 's' : ''}`
-                                            : 'Select friends to invite'}
+                                    {inviting ? bulkInviteLabelRef.current : bulkInviteLabel(selectedFriends.size)}
                                 </Button>
 
                                 {/* DECISION Phase 88-27 (D-32 buckets A/B): only the first branch
@@ -834,10 +844,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                 size="default"
                                 type="submit"
                                 aria-disabled={emailLoading || !email.trim() ? 'true' : undefined}
+                                busy={emailLoading}
+                                busySuffix=", sending"
                                 aria-describedby={sendError ? 'invite-email-send-error' : undefined}
                                 className="shrink-0 focus-visible:ring-offset-surface-page"
                             >
-                                {emailLoading ? 'Sending...' : 'Send'}
+                                Send
                             </Button>
                         </form>
                         {/* DECISION Phase 88.6-22 (R2 #177): this is a real FIELD error on the
@@ -921,10 +933,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     size="default"
                                     onClick={handleAddFriend}
                                     aria-disabled={addingFriend ? 'true' : undefined}
+                                    busy={addingFriend}
+                                    busySuffix=", sending"
                                     aria-describedby={friendRequestError ? 'invite-friend-request-error' : undefined}
                                     className="shrink-0 focus-visible:ring-offset-surface-sunken"
                                 >
-                                    {addingFriend ? 'Sending...' : 'Add Friend'}
+                                    Add Friend
                                 </Button>
                             </div>
                         )}

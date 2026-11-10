@@ -20,8 +20,9 @@ const LOADING_NOTIFICATIONS = 'Loading notifications';
 // straight apostrophe (D-32 R8).
 const NOTIFICATIONS_LOAD_FAILED_COPY = "Couldn't load your notifications";
 
-// Copy row N2 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:101) — seen and heard.
-const ACCEPTING_COPY = 'Accepting...';
+// Rule 1 (88.9-45, owner pick O16a): the sr-only suffix heard after the KEPT Accept label while a
+// row's accept runs; copy row N2's swap word is retired (the visible label no longer changes).
+const ACCEPT_BUSY_SUFFIX = ', accepting';
 
 // Copy rows N3-N6 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:102-105), each U+2019
 // written as the straight apostrophe (D-32 R8). Each failure arm passes its own row as the fallback
@@ -67,7 +68,13 @@ const declinedInviteCopy = (groupName) => `Declined invite to ${groupName}.`;
    REJECTED (e): truncating long names.
    NOTE: Sentry click breadcrumbs copy a clicked control's name; plan 88.6.1-76 (split from 08)
    keeps only the static prefix of those values (its NAMED_ATTRIBUTE_PREFIXES lists the four N8
-   prefixes). Changing how these buttons are named is a decision, not a cleanup. */
+   prefixes). Changing how these buttons are named is a decision, not a cleanup.
+   AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; Q3 scope B): in flight the
+   visible label stays Accept and the name becomes "Accept, accepting" — the house busy suffix (an
+   sr-only span inside the button). REJECTED (d) is overruled by rule 1 for the in-flight state only
+   (one app-wide busy shape beats a per-site naming rule); copy row N2's swap word is retired. The
+   pressed Decline now also drops its N8 name while in flight (heard as "Decline, declining", the
+   same busy suffix). The at-rest N8 names are unchanged. */
 // The per-row record's key: the row's kind, a colon, then its id (two id spaces from two tables in
 // one map, so the kind rules out a collision). Built only here: it is a map key, never a class, and
 // one spelling keeps all six sites in step. Spelled inline as a literal kind, a colon and an
@@ -290,7 +297,10 @@ function NotificationBell({ user, variant = 'icon', label }) {
      A press made here keeps its rule of POSITION: the fact is read only while the row has no
      record of its own.
      Going back to one shared flag, or dropping either half of the gate, is a decision, not a
-     cleanup. */
+     cleanup.
+     AMENDED Phase 88.9-45 (rule 1): Decline still takes no swap word (D-33 row 15); it gains the house
+     spinner and the heard suffix, by REJECTED (d)'s own reason — the friends page's Decline (88.9-46
+     B25) shows the spinner for the same action. */
   function beginRowAction(key, action) {
     if (inFlightRef.current.has(key)) return false;
     inFlightRef.current.add(key);
@@ -340,7 +350,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
      REJECTED: arming on the status code (a 400) — a 500 after a committed accept removes the row
      with nothing armed, and a 400 whose reconcile read failed keeps the row with the hook armed;
      the mark is the provider's own record of what it did. Since the friend row now stays while
-     its request runs, Accepting... paints on friend rows too.
+     its request runs, the busy spinner shows on friend rows too.
      Arming earlier, or focusing inside the handler, is a decision, not a cleanup. */
   function armRowRecovery(pressedEl) {
     const row = pressedEl?.closest?.('li');
@@ -904,16 +914,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
                                 onClick={(e) => handleAccept(invite, e.currentTarget)}
                                 aria-label={pressed === 'accept' ? undefined : acceptInviteLabel(groupName)}
                                 aria-disabled={pressed === 'accept' ? 'true' : undefined}
+                                busy={pressed === 'accept'}
+                                busySuffix={ACCEPT_BUSY_SUFFIX}
                                 disabled={pressed === 'decline'}
                                 className="flex-1"
                               >
-                                {pressed === 'accept' ? ACCEPTING_COPY : 'Accept'}
+                                Accept
                               </Button>
                               <Button
                                 variant="secondary"
                                 onClick={(e) => handleDecline(invite, e.currentTarget)}
-                                aria-label={declineInviteLabel(groupName)}
+                                aria-label={pressed === 'decline' ? undefined : declineInviteLabel(groupName)}
                                 aria-disabled={pressed === 'decline' ? 'true' : undefined}
+                                busy={pressed === 'decline'}
+                                busySuffix=", declining"
                                 disabled={pressed === 'accept'}
                                 className="flex-1"
                               >
@@ -954,16 +968,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
                                 onClick={(e) => handleAcceptFriend(request, e.currentTarget)}
                                 aria-label={pressed === 'accept' ? undefined : acceptFriendLabel(requesterName)}
                                 aria-disabled={pressed === 'accept' ? 'true' : undefined}
+                                busy={pressed === 'accept'}
+                                busySuffix={ACCEPT_BUSY_SUFFIX}
                                 disabled={pressed === 'decline' || (!pressed && isRequestActionPending(request.id))}
                                 className="flex-1"
                               >
-                                {pressed === 'accept' ? ACCEPTING_COPY : 'Accept'}
+                                Accept
                               </Button>
                               <Button
                                 variant="secondary"
                                 onClick={(e) => handleDeclineFriend(request, e.currentTarget)}
-                                aria-label={declineFriendLabel(requesterName)}
+                                aria-label={pressed === 'decline' ? undefined : declineFriendLabel(requesterName)}
                                 aria-disabled={pressed === 'decline' ? 'true' : undefined}
+                                busy={pressed === 'decline'}
+                                busySuffix=", declining"
                                 disabled={pressed === 'accept' || (!pressed && isRequestActionPending(request.id))}
                                 className="flex-1"
                               >

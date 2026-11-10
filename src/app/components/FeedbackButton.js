@@ -635,9 +635,12 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                       variant="primary"
                       disabled={text.trim().length < 10}
                       aria-disabled={submitting || undefined}
+                      busy={submitting}
+                      busySuffix=", submitting"
                       aria-describedby={error ? errorId : undefined}
                     >
-                      {submitting ? 'Submitting...' : 'Submit'}
+                      {/* DECISION Phase 88.9-45 (rule 1): Submit keeps its label + spinner while sending, chosen OVER the Submitting swap — the house busy idiom (src/components/ui/Button.tsx ("', saving'")). */}
+                      Submit
                     </Button>
                   </div>
                 </form>
