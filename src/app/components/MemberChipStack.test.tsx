@@ -45,7 +45,7 @@ import * as React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 
-import { MemberChip, MemberChipStack } from './MemberChipStack';
+import { MemberChip, MemberChipStack, chipFillIndex, CHIP_FILLS } from './MemberChipStack';
 import { FriendshipContext } from './FriendshipStatusProvider';
 
 const COMPONENT_SRC = fs.readFileSync(path.join(__dirname, 'MemberChipStack.tsx'), 'utf8');
@@ -100,6 +100,17 @@ describe('MemberChip — fills and ring cues (D-10, D-11, D-12, D-12b)', () => {
     cleanup();
     render(<MemberChip label="ada" status="unknown" />);
     expect(screen.getByText('AD').className).not.toContain('outline-');
+    // AMENDED Phase 88.9-30 (D1b cue, owner pick 88.9-RULINGS.md R-P1, 2026-11-08): the 2px
+    // surface-card inner band rides the status cue ONLY, so none, self, unknown and the +N chip
+    // carry no inset-ring utility either.
+    cleanup();
+    for (const status of ['none', 'self', 'unknown'] as const) {
+      render(<MemberChip label="ada" status={status} colorKey="u1" />);
+      expect(screen.getByText('AD').className, `${status}: no inner band`).not.toContain('inset-ring-');
+      cleanup();
+    }
+    render(<MemberChip overflow={3} />);
+    expect(screen.getByText('+3').className, '+N: no inner band').not.toContain('inset-ring-');
   });
 
   it('7. ANTI-VACUITY: the dash, not the width, is what separates friend from pending', () => {
@@ -114,9 +125,17 @@ describe('MemberChip — fills and ring cues (D-10, D-11, D-12, D-12b)', () => {
     expect(pending.className).toContain('outline-2');
     const dashed = [friend, pending].filter((el) => el.className.includes('outline-dashed'));
     expect(dashed).toEqual([pending]);
+    // AMENDED Phase 88.9-30 (D1b cue, owner pick 88.9-RULINGS.md R-P1, 2026-11-08): on the D1b
+    // fills the cue read 1.00-1.42 light against the fill, so a 2px inner band in surface-card
+    // sits between fill and cue on BOTH statuses (inset-ring, which composes with the rim ring).
+    for (const el of [friend, pending]) {
+      expect(el.className).toContain('inset-ring-4');
+      expect(el.className).toContain('inset-ring-surface-card');
+    }
   });
 
   it('8. the NEUTRAL arm is the card-hover fill with secondary ink', () => {
+    // AMENDED Phase 88.9-30 (D1b): an id-less chip — this arm is the W63 fallback
     render(<MemberChip label="ada" />);
     const chip = screen.getByText('AD');
     expect(chip.className).toContain('bg-surface-muted');
@@ -124,45 +143,55 @@ describe('MemberChip — fills and ring cues (D-10, D-11, D-12, D-12b)', () => {
     expect(chip.className).not.toContain('bg-white/85');
   });
 
-  it('9. the TINTED arm swaps to the white wash, the neutral hairline and the card ink', () => {
+  it('9. the TINTED arm keeps the neutral hairline and drops the white wash (D1b); an id-less chip there takes the neutral fill', () => {
+    // AMENDED Phase 88.9-30 (owner pick D1b, 88.9-PICKS-B3.json, 2026-11-05): this pinned the
+    // white wash and the card ink; the wash read 1.07 on dark tints, so the D1b fills replace it
+    // on every arm. The hairline survives on the tinted arm; a chip with no id (W63) takes the
+    // neutral pair (6.96), never a hash of its label.
     render(<MemberChip label="ada" tinted />);
     const chip = screen.getByText('AD');
-    expect(chip.className).toContain('bg-white/85');
     expect(chip.className).toContain('ring-1');
     expect(chip.className).toContain('ring-black/25');
-    expect(chip.className).toContain('--group-ink-l');
-    expect(chip.className).toContain('--group-ink,');
-    // The neutral fill measures 1.11:1 on the blue preset tint — invisible. It must be GONE,
-    // not merely overridden by a later utility (source order is not a contract).
-    expect(chip.className).not.toContain('bg-surface-muted');
-    expect(chip.className).not.toContain('text-content-secondary');
+    expect(chip.className).not.toContain('bg-white/85');
+    expect(chip.className).not.toContain('--group-ink-l');
+    expect(chip.className).toContain('bg-surface-muted');
+    expect(chip.className).toContain('text-content-secondary');
   });
 
-  it('10. the collapsed cut-out separation ring is neutral-arm ONLY', () => {
-    render(<MemberChip label="ada" separated />);
-    expect(screen.getByText('AD').className).toContain('ring-surface-card');
+  it('10. D3c (88.9): rim — the collapsed cut-out separation is ring-chip-rim, neutral-arm ONLY', () => {
+    // AMENDED Phase 88.9-30 (owner pick D3c, 88.9-PICKS-B3.json, 2026-11-05): the cut-out ring
+    // was the card ground, which drew a white ring in light on the D1b fills; it is the rim token
+    // now. On a tinted card the hairline still does the separating, so no rim there.
+    render(<MemberChip label="ada" separated colorKey="u1" />);
+    const neutral = screen.getByText('AD').className;
+    expect(neutral).toContain('ring-2');
+    expect(neutral).toContain('ring-chip-rim');
+    expect(neutral).not.toContain('ring-surface-card');
     cleanup();
-    // On a tinted card the ground is NOT `surface-card`, so a cut-out ring in that token
-    // would draw a stray white outline. The tinted hairline does the separating instead.
-    render(<MemberChip label="ada" separated tinted />);
-    expect(screen.getByText('AD').className).not.toContain('ring-surface-card');
+    render(<MemberChip label="ada" separated tinted colorKey="u1" />);
+    const tintedCls = screen.getByText('AD').className;
+    expect(tintedCls).not.toContain('ring-chip-rim');
+    expect(tintedCls).toContain('ring-black/25');
   });
 
-  it('11. the `+N` variant renders the literal plus-number on the same fill and the SAME AA ink as the initials chips', () => {
-    // AMENDED Phase 88.6-28 (D-15/D-16): this pinned `text-content-muted` until the ink/ground
-    // pairing was measured — 4.3725:1 on `bg-surface-muted`, BELOW AA for 12px. It now pins
-    // `text-content-secondary` (6.9620), the ink §5.6 prescribes on this ground, which is also
-    // what the initials chips carry. The two chip kinds are distinguished by their CONTENT
-    // (`+3` versus initials), never by ink — re-forking the ink is what put this site under AA.
-    // `groundInk.test.ts` never rostered this pairing: both halves are module-level constants
-    // referenced through `cn(...)` rather than spelled in one JSX tag, which is limitation 2 of
-    // that walk. This assertion is therefore the ONLY gate on the site.
+  it('11. D2b (88.9): +N ink — the overflow chip wears the accent pair and its label stays a count', () => {
+    // AMENDED Phase 88.9-30 (owner pick D2b, 88.9-PICKS-B3.json, 2026-11-06): this pinned the
+    // neutral pair the +N shared with the initials (the 88.6-28 D-15/D-16 collapse). The owner
+    // re-opened the fork: +N wears the Owner badge's accent pair (6.37 light / 7.51 dark). What it
+    // SAYS is unchanged (K11(a)): the collapsed control still hears a count.
     render(<MemberChip overflow={3} />);
     const chip = screen.getByText('+3');
-    expect(chip.className).toContain('text-content-secondary');
-    expect(chip.className).not.toContain('text-content-muted');
-    expect(chip.className).toContain('bg-surface-muted');
+    expect(chip.className).toContain('bg-surface-accent-subtle');
+    expect(chip.className).toContain('text-content-accent');
+    expect(chip.className).not.toContain('bg-surface-muted');
+    expect(chip.className).not.toContain('text-content-secondary');
     expect(chip.className).not.toContain('outline-');
+    cleanup();
+    render(<MemberChip overflow={3} tinted />);
+    expect(screen.getByText('+3').className).toContain('ring-black/25');
+    cleanup();
+    renderStack();
+    expect(collapsed().getAttribute('aria-label')).toContain(' and 2 more.');
   });
 
   it('12. every chip is `aria-hidden` — it is a glyph, never the identity carrier', () => {
@@ -730,5 +759,88 @@ describe('MemberChipStack — source properties the render cannot see', () => {
 
   it('43. no per-component reduced-motion override (the global contract owns it)', () => {
     expect(COMPONENT_SRC).not.toContain('motion-reduce:');
+  });
+});
+
+// Phase 88.9-30 pins (round 2): D1b hashed fills (owner pick D1b, 88.9-PICKS-B3.json, votes-b3 v12)
+// and the R034 / R035 group halos (owner pick B2a, 88.9-PICKS-B1.json, votes-b1 v9).
+describe('MemberChipStack — Phase 88.9-30 D1b fills and G halos', () => {
+  const ID_A = '11111111-1111-4111-8111-111111111111';
+  const ID_B = '22222222-2222-4222-8222-222222222222';
+
+  it('44. D1b (88.9): fill from hash(user.id) on every card arm', () => {
+    expect(CHIP_FILLS, 'the eight literal fills, in order').toEqual([
+      'bg-chip-1',
+      'bg-chip-2',
+      'bg-chip-3',
+      'bg-chip-4',
+      'bg-chip-5',
+      'bg-chip-6',
+      'bg-chip-7',
+      'bg-chip-8',
+    ]);
+    for (const fill of CHIP_FILLS) {
+      expect(COMPONENT_SRC, `${fill} is one whole quoted literal`).toContain(`'${fill}'`);
+    }
+    // FNV-1a 32-bit over the UTF-16 code units, modulo 8 (computed at planning).
+    expect(chipFillIndex(ID_A)).toBe(3);
+    expect(chipFillIndex(ID_B)).toBe(1);
+    expect(chipFillIndex(ID_A), 'stable across calls').toBe(chipFillIndex(ID_A));
+
+    // Same label, different ids: the fill follows the id, never the initials.
+    render(<MemberChip label="ada" colorKey={ID_A} />);
+    render(<MemberChip label="ada" colorKey={ID_B} />);
+    const [a, b] = screen.getAllByText('AD');
+    expect(a.className).toContain('bg-chip-4');
+    expect(b.className).toContain('bg-chip-2');
+    for (const el of [a, b]) {
+      expect(el.className).toContain('text-white');
+      expect(el.className).not.toContain('bg-surface-muted');
+    }
+    cleanup();
+
+    render(<MemberChip label="ada" colorKey={ID_A} tinted />);
+    render(<MemberChip label="ada" colorKey={ID_B} tinted />);
+    const [ta, tb] = screen.getAllByText('AD');
+    expect(ta.className).toContain('bg-chip-4');
+    expect(tb.className).toContain('bg-chip-2');
+    for (const el of [ta, tb]) {
+      expect(el.className).toContain('ring-black/25');
+      expect(el.className).not.toContain('bg-white/85');
+    }
+    cleanup();
+
+    renderStack({
+      members: [
+        { id: SELF, username: 'me' },
+        { id: ID_A, username: 'ada' },
+        { id: ID_B, username: 'ada' },
+      ],
+    });
+    const stackChips = screen.getAllByText('AD');
+    expect(stackChips).toHaveLength(2);
+    const fillOf = (el: HTMLElement) => el.className.split(/\s+/).find((c) => c.startsWith('bg-chip-'));
+    expect(fillOf(stackChips[0])).toBeDefined();
+    expect(fillOf(stackChips[0]), 'two AD members wear different fills').not.toBe(fillOf(stackChips[1]));
+    cleanup();
+
+    render(<MemberChip label="ada" colorKey="" />);
+    render(<MemberChip label="ada" colorKey={null} />);
+    for (const el of screen.getAllByText('AD')) {
+      expect(el.className, 'an empty or null id: the neutral fill').toContain('bg-surface-muted');
+      expect(el.className).not.toContain('bg-chip-');
+    }
+  });
+
+  it('45. R034 / R035 (88.9): both chip-stack triggers take the group-halo key', () => {
+    renderStack();
+    const trigger = collapsed();
+    expect(trigger).toHaveClass('focus-visible:ring-offset-surface-group-halo');
+    expect(trigger).not.toHaveClass('focus-visible:ring-offset-surface-card');
+    fireEvent.click(trigger);
+    const less = screen.getByRole('button', { name: 'Show less' });
+    expect(less).toHaveClass('focus-visible:ring-offset-surface-group-halo');
+    expect(less).not.toHaveClass('focus-visible:ring-offset-surface-card');
+    expect(COMPONENT_SRC.split('hostGround="group"').length - 1, 'the expanded name sits on the group ground').toBe(1);
   });
 });

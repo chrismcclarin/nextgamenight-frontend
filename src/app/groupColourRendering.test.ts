@@ -2454,7 +2454,14 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     ).toBeGreaterThanOrEqual(3);
   });
 
-  it('30. the member chip forks its fill on the TINT, in BOTH disclosure states (88.5 SPEC Req 5)', () => {
+  it('30. the member chip forks its HAIRLINE on the TINT and its fill on user.id, in BOTH disclosure states (88.5 SPEC Req 5; D1b 88.9)', () => {
+    // AMENDED Phase 88.9-30 (owner pick D1b, 88.9-PICKS-B3.json, votes-b3 v12, 2026-11-05): the
+    // white wash below is HISTORY. Its dark-mode initials read 1.07, so every chip with an id now
+    // wears one of eight saturated literal fills picked by a hash of the member's user id, with
+    // white ink, on EVERY card arm (neutral, tinted, photo). What still forks on the tint is the
+    // neutral hairline (TINTED_HAIRLINE), and the two-state property this test owns is unchanged:
+    // both disclosure states must pass the tint flag AND the id, or one state drifts. The photo
+    // gate (d) is kept: it still decides the hairline and the visible text carriers' ink.
     /*
      * Phase 88.5 puts member-initials chips on the home group card, and a chip is the first
      * thing this phase family has drawn ON TOP of a tinted ground rather than beside it. The
@@ -2500,9 +2507,10 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     //     semantic tokens, so `tintTreatment.test.ts`'s `parseAlphaToken(token, semantic)`
     //     detector does not fire on them and they must NOT be "fixed" into a semantic token —
     //     the shipped `bg-white/80` at `groupHomePage/page.js` is the precedent.
-    expect(src, 'the tinted chip lost its white wash').toMatch(
-      /TINTED_FILL\s*=\s*'bg-white\/85 ring-1 ring-black\/25'/,
+    expect(src, 'the tinted chip lost its neutral hairline').toMatch(
+      /TINTED_HAIRLINE\s*=\s*'ring-1 ring-black\/25'/,
     );
+    expect(src, 'the white wash came back (its dark-mode initials read 1.07)').not.toContain('bg-white/85');
     expect(src, 'the tinted chip stopped taking the card ink through the shipped fallback chain')
       .toMatch(
         /TINTED_INK\s*=\s*\n?\s*'\[color:var\(--group-ink-l,var\(--t-color-l\)\)\] dark:\[color:var\(--group-ink,var\(--t-color\)\)\]'/,
@@ -2539,16 +2547,19 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         'pairing because both halves are module-level constants',
     ).not.toMatch(/neutralInk[\s\S]{0,80}text-content-muted/);
 
-    // (b) ONE fork, and it keys on the TINT ALONE. A `tinted && separated ?` — the shape that
-    //     applies the arm to the collapsed stack only — fails here, which is the anti-vacuity
-    //     probe recorded in 88.5-09-SUMMARY.md.
-    const FILL_FORK =
-      /(?:^|[^\w.])tinted\s*\?\s*`\$\{TINTED_FILL\} \$\{TINTED_INK\}`\s*:\s*`\$\{NEUTRAL_FILL\} \$\{neutralInk\}`/g;
+    // (b) ONE fork each. AMENDED Phase 88.9-30 (D1b): FILL_FORK pinned the wash/neutral ternary;
+    //     the fill is now selected from the id in exactly one place, and the hairline forks on
+    //     the tint alone in exactly one place. A `tinted && separated ?` hairline (the
+    //     half-applied arm 88.5-09 probed) fails the second count.
     expect(
-      (src.match(FILL_FORK) ?? []).length,
-      'the chip fill arm is not selected in exactly one place by the tint alone — either a ' +
-        'second fork appeared (the two states can now drift) or the one fork grew a condition ' +
-        'beyond the tint (the arm is half-applied)',
+      src.split('chipFillIndex(colorKey)').length - 1,
+      'the chip fill is not selected from the id in exactly one place',
+    ).toBe(1);
+    const HAIRLINE_FORK = /(?:^|[^\w.&])tinted\s*\?\s*TINTED_HAIRLINE\s*:/g;
+    expect(
+      (src.match(HAIRLINE_FORK) ?? []).length,
+      'the hairline is not selected in exactly one place by the tint alone — either a second ' +
+        'fork appeared (the two states can now drift) or the one fork grew a condition',
     ).toBe(1);
 
     // (c) EVERY chip render passes the flag, in BOTH states. `separated` is the collapsed-only
@@ -2572,6 +2583,17 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         `MemberChipStack.tsx:${site.line}: a chip renders without the tint flag, so this ` +
           'disclosure state keeps the neutral fill on a coloured card (1.11:1 — invisible)',
       ).toMatch(/\btinted\b/);
+    }
+    // AMENDED Phase 88.9-30 (D1b): every NON-overflow chip site also passes the member id, in
+    // both states, or that state renders the neutral fallback for a real member.
+    const idSites = [...collapsedSites, ...expandedSites].filter((t) => !/\boverflow=/.test(t.attrs));
+    expect(idSites.length, 'no non-overflow chip site found').toBeGreaterThanOrEqual(3);
+    for (const site of idSites) {
+      expect(
+        site.attrs,
+        `MemberChipStack.tsx:${site.line}: a chip renders without colorKey, so it takes the neutral ` +
+          'fallback instead of its D1b fill',
+      ).toMatch(/\bcolorKey=/);
     }
 
     // (d) the call site hands over the CARD's own flag, gated on the photo case.

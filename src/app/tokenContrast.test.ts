@@ -2095,6 +2095,17 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       expectRatio(theme, '--color-text-muted', '--color-bg-card', 4.5, '88.9 E6a muted label ink');
     }
   });
+
+  it('66. D1b cue (88.9): the friend and pending outline clear 3:1 against their inner neighbour, both themes', () => {
+    // CONFIRM-ONLY (88.9-30): green on ccec7cc by design — it holds the inner-band pair the D1b status cue now sits on (owner pick R-P1); the RED-first proof is MemberChipStack test 7.
+    // inset-ring-surface-card resolves to --color-bg-card (globals.css surface-card key); the
+    // outline-status-success / -warning theme keys resolve to the two border roles read here
+    // (the theme-inline bridge sits outside this parser's four blocks).
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-status-success-border', '--color-bg-card', 3.0, '88.9 D1b friend cue vs inner band');
+      expectRatio(theme, '--color-status-warning-border', '--color-bg-card', 3.0, '88.9 D1b pending cue vs inner band');
+    }
+  });
 });
 
 // =====================================================================================
