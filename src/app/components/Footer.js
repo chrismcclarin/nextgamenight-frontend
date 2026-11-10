@@ -108,22 +108,23 @@ function PublicFooter() {
             reasoning in AuthFooter below; the two must move together or the footer prints one strip
             at two sizes depending on auth state. Going back to 12 is a decision, not a cleanup. */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-sm text-content-muted">
+          {/* DECISION Phase 88.9-37 B5a (owner pick B5a, 88.9-PICKS-B1.json item B5, votes-b1 v9, 2026-11-04 8:01 PM Pacific; X1, UI-SPEC R2-48): every footer control — About, Privacy, Terms, and Report bug in the signed-in footer — wears the house focus ring with the page-ground halo, and the three links are 44px-tall flex boxes. Chosen OVER the register's arm (b), the ring on Report bug only with the links left on the browser outline: that outline measured 1.84:1 on the page ground in light (under 3:1) and the links measured 20px tall (under WCAG 2.5.8's 24). The ring reads 5.97 light / 10.13 dark against both the halo and the ground outside it (band 1.00). Both footers move together, as the 88.6-34 marker above requires. The capital-P Privacy path is untouched (the note at the top of this file). Going back is a decision, not a cleanup. */}
           <div className="flex items-center gap-4">
             <a
               href="/about"
-              className="hover:text-content-secondary transition-colors"
+              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
             >
               About
             </a>
             <a
               href="/Privacy"
-              className="hover:text-content-secondary transition-colors"
+              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
             >
               Privacy
             </a>
             <a
               href="/terms"
-              className="hover:text-content-secondary transition-colors"
+              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
             >
               Terms
             </a>
@@ -149,28 +150,29 @@ function AuthFooter() {
           {/* Label 14, matching PublicFooter above — full reasoning at that site's marker. The two
               strips are the same surface in two auth states and must carry the same rung. */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-sm text-content-muted">
+            {/* B5a ring and 44px links, matching PublicFooter above — full reasoning at that site's 88.9-37 marker. */}
             <div className="flex items-center gap-4">
               <a
                 href="/about"
-                className="hover:text-content-secondary transition-colors"
+                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
               >
                 About
               </a>
               <a
                 href="/Privacy"
-                className="hover:text-content-secondary transition-colors"
+                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
               >
                 Privacy
               </a>
               <a
                 href="/terms"
-                className="hover:text-content-secondary transition-colors"
+                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
               >
                 Terms
               </a>
               <button
                 onClick={() => setShowFeedbackForm(true)}
-                className="hover:text-content-secondary transition-colors min-h-11"
+                className="hover:text-content-secondary transition-colors min-h-11 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
                 aria-label="Report bug or suggest feature"
               >
                 Report bug

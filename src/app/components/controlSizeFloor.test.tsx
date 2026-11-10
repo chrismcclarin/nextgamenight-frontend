@@ -768,7 +768,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: "create-event's Next week arrow, width (88.9 A9a; measured 24px wide)",
     },
-    // 88.9 A9a: the footer's Report bug text button, under 44 tall. No ring today (X1, a round-2 register row), so no halo.
+    // 88.9 A9a: the footer's Report bug text button, under 44 tall. Halo page since X1 B5a (plan 88.9-37): it added the house ring with the page halo; the round-1 note read no ring.
     footerReportBugHeight: {
       anchor: 'onClick={() => setShowFeedbackForm(true)}',
       expectedFile: 'app/components/Footer.js',
