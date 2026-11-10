@@ -15,6 +15,7 @@ import {
   TEXT_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { statusTagLabel } from '../../lib/upcomingEvents';
 import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
@@ -200,6 +201,13 @@ export default function EventDayModal({
               {selectedDay.events.map(event => {
                 const eventDate = new Date(event.start_date);
                 const isPastEvent = eventDate < new Date();
+                /* DECISION Phase 88.9-39 W57 / F2c: a cancelled / completed night's tag reads Cancelled /
+                   Completed on the muted pair from statusTagLabel, chosen OVER the Upcoming tag keyed on
+                   the date alone. The Share Game QR gate is unchanged (look-only phase). The tag, whichever
+                   renders, carries an id the row names through aria-describedby (MED-80) — a description
+                   ADDS to the computed name and never replaces it (the NO aria-label note below stands). */
+                const statusTag = statusTagLabel(event);
+                const dayTagId = `day-tag-${event.id}`;
                 const groupProfilePic = event.Group?.profile_picture_url;
                 const groupBgImage = event.Group?.background_image_url;
                 /*
@@ -436,7 +444,11 @@ export default function EventDayModal({
                        template expression reads to it as exactly that offence, and it reds.
                        Each arm therefore carries width AND colour together. Hoisting the width
                        out is a decision, not a cleanup. */
-                    className={`p-4 ${isPastEvent ? 'border border-line-control' : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+                    /* DECISION Phase 88.9-39 B2a (R014 / B025): a tinted card sets --group-halo from its own
+                       ground pair and the row and Share Game QR take ring-offset-surface-group-halo, which
+                       falls back to the card ground when unset, chosen OVER the card offset on a tinted
+                       ground; the modal is portalled, so no ancestor's --group-halo reaches it. */
+                    className={`p-4 ${isPastEvent ? 'border border-line-control' : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]' : 'bg-surface-card'}`}
                     style={{
                       ...(tinted && {
                         '--group-ground': ground,
@@ -486,7 +498,8 @@ export default function EventDayModal({
                       backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
                       borderRadius: '0.5rem',
                     }} />
-                    <div className="flex justify-between items-start relative z-10">
+                    {/* F3b (88.9-39, owner pick, votes-b5 v10): gap-2 — 8px between the tag column and the picture. */}
+                    <div className="flex justify-between items-start gap-2 relative z-10">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           {/* DECISION Phase 88.6-27 (D-14b, RESEARCH §C.2 Open Question 6):
@@ -545,7 +558,8 @@ export default function EventDayModal({
                                 onEventClick(event);
                               }
                             }}
-                            className="rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                            aria-describedby={!isPastEvent ? dayTagId : undefined}
+                            className="rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo"
                           >
                             {/* D-04: this `<h4>` carries NO SIZE class, so it renders at body
                                 size — `<Heading level={4} size="body">` (16) states that rather
@@ -604,9 +618,15 @@ export default function EventDayModal({
                                `text-xs` STAYS: a chip label is Caption 12 by §4.2's closed role
                                list. */}
                           {!isPastEvent && (
-                            <span className="px-2 py-0.5 bg-status-success-subtle text-content-status-success text-xs rounded-sm ml-auto">
-                              Upcoming
-                            </span>
+                            statusTag ? (
+                              <span id={dayTagId} className="px-2 py-0.5 bg-surface-muted text-content-secondary text-xs rounded-sm ml-auto">
+                                {statusTag}
+                              </span>
+                            ) : (
+                              <span id={dayTagId} className="px-2 py-0.5 bg-status-success-subtle text-content-status-success text-xs rounded-sm ml-auto">
+                                Upcoming
+                              </span>
+                            )
                           )}
                         </div>
                         {/* DECISION Phase 88.3.1 (SPEC Req 8, site 2 of 3 — UI-SPEC 3.5).
@@ -709,7 +729,10 @@ export default function EventDayModal({
                                [AMENDED Phase 88.6.1-47 (D-35)] The control no longer carries the
                                native attribute: it is gated by `aria-disabled` plus the handler's
                                per-row latch (see the marker at `handleShowGameQR`). [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).] */
-                            className="mt-2"
+                            // B2a (88.9-39): the group-ground halo rides the Button's ONE className (a second
+                            // className attribute would be dropped by JSX); no dark: utility — the key's dark
+                            // twin rides --group-ground.
+                            className="mt-2 focus-visible:ring-offset-surface-group-halo"
                             title="Share Game QR"
                           >
                             {/* Decorative: the visible "Share Game QR" label, or the in-flight label
@@ -726,11 +749,16 @@ export default function EventDayModal({
                           </Button>
                         )}
                       </div>
-                      <SafeImage
-                        src={event.Game?.image_url}
-                        alt={event.Game?.name}
-                        className="w-16 h-16 object-cover rounded-sm"
-                      />
+                      {/* DECISION Phase 88.9-39 F3b: the picture slot renders only when the night has a
+                          picture of its own, chosen OVER SafeImage's fallback glyph (the default die the
+                          owner named). */}
+                      {event.Game?.image_url && (
+                        <SafeImage
+                          src={event.Game.image_url}
+                          alt={event.Game?.name}
+                          className="w-16 h-16 object-cover rounded-sm"
+                        />
+                      )}
                     </div>
                   </div>
                 );

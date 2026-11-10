@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { eventsAPI } from '../../lib/api';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { getDaysInMonth } from '../../lib/calendarUtils';
+import { eventDetailHref } from '../../lib/eventDetailHref';
 import { loadCalendarPrefs, saveCalendarPrefs } from '../../lib/calendarViewPrefs';
 import CalendarMonthView from './CalendarMonthView';
 import CalendarListView from './CalendarListView';
@@ -364,13 +365,9 @@ export default function EventCalendar({
     setCurrentDate(new Date());
   };
 
+  // DECISION Phase 88.9 (W59): routes through eventDetailHref — see the helper's marker.
   const defaultEventClick = (event) => {
-    const isFutureEvent = event.start_date && new Date(event.start_date) >= new Date();
-    if (isFutureEvent || !event.game_id) {
-      router.push(`/gameDetail?event_id=${event.id}&group_id=${event.group_id}`);
-    } else {
-      router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
-    }
+    router.push(eventDetailHref(event, Date.now()));
   };
 
   const handleEventClick = externalOnEventClick || defaultEventClick;
