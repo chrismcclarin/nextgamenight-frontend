@@ -630,27 +630,26 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     release();
   });
 
-  it('the spinner arcs carry SVG `opacity` attributes, never the bare utility', async () => {
-    // The blocker this conversion had to clear, pinned so re-introducing the utility spelling
+  it('AMENDED Phase 88.9-45 (rule 1): the busy CTA shows the house spinner — no SVG arc, no bare opacity utility', async () => {
+    // Pinned by 88.6-42 as "the spinner arcs carry SVG opacity attributes, never the bare
+    // utility": the blocker that conversion had to clear, so re-introducing the utility spelling
     // reds HERE as well as in tokenContrast test 53(b2) — two independent layers, because the
-    // gate's 400-character window is a heuristic and this one is exact.
+    // gate's 400-character window is a heuristic and this one is exact. Rule 1 (88.9-45) deletes
+    // the white SVG arc for the house Spinner (src/components/ui/Spinner.tsx ("export const SPINNER_CLASS")), whose class string
+    // carries no opacity at all, so the pin now reads: one [data-slot="spinner"], no svg arc, and
+    // no bare opacity-<n> utility anywhere inside the busy CTA.
     const user = userEvent.setup();
     (availabilityFormAPI.submitResponse as Mock).mockImplementation(
       () => new Promise(() => {})
     );
     const { container } = render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
     await user.click(screen.getByRole("checkbox", { name: /unavailable this week/i }));
-    await user.click(screen.getByRole("button", { name: /submit availability/i }));
+    const cta = screen.getByRole("button", { name: /submit availability/i });
+    await user.click(cta);
 
-    const spinner = await waitFor(() => {
-      const found = container.querySelector('svg.animate-spin');
-      expect(found).not.toBeNull();
-      return found as SVGElement;
-    });
-    expect(spinner.querySelector('circle')?.getAttribute('opacity')).toBe('0.25');
-    expect(spinner.querySelector('path')?.getAttribute('opacity')).toBe('0.75');
-    expect(spinner.innerHTML).not.toContain('opacity-25');
-    expect(spinner.innerHTML).not.toContain('opacity-75');
+    await waitFor(() => expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(container.querySelector('svg.animate-spin')).toBeNull();
+    expect(cta.innerHTML).not.toMatch(/(^|[\s"])opacity-\d/);
   });
 
   // Plan 88.6.1-26 (W001 / R3-M19, AC-12, Edge R4). The latch kept the request count at one, but
