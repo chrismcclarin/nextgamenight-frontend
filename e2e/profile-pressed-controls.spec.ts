@@ -185,7 +185,7 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
-  test('phone Verify: the pressed button keeps focus and reads "Verifying..." in flight, a second Enter sends nothing, and focus lands on "Phone verified" after success', async ({ page }, testInfo) => {
+  test('phone Verify: the pressed button keeps focus and keeps its Verify label with the spinner in flight (rule 1), a second Enter sends nothing, and focus lands on "Phone verified" after success', async ({ page }, testInfo) => {
     backstop = await holdWrites(page);
     const mocks = await interceptWrites(page);
     await patchSelfRow(page, { sms_enabled: true, phone: null, phone_verified: false });
@@ -200,36 +200,39 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     await code.fill(FAKE_CODE);
 
     // Scoped to the code row: the SMS rows carry a second button named "Verify".
-    // The name matches BOTH labels of this one control, idle "Verify" and in-flight "Verifying..."
-    // (userProfile/page.js, VERIFY_CODE_IN_FLIGHT_LABEL, no aria-label), so the locator follows the
-    // same button through its label flip. An exact "Verify" locator stopped matching once the label
-    // flipped, and every in-flight assertion failed with "element(s) not found" (CI run 38878098281,
-    // both projects). The idle name is asserted before the press, so nothing the old locator
-    // implied is lost.
-    const verify = code.locator('xpath=..').getByRole('button', { name: /^Verif(y|ying\.\.\.)$/ });
+    // The name matches BOTH names of this one control, idle "Verify" and busy "Verify, verifying"
+    // (rule 1, 88.9-46 B32: the label is kept, the sr-only suffix VERIFY_CODE_BUSY_SUFFIX is heard;
+    // Chromium may insert a space before the comma), so the locator follows the same button through
+    // its busy flip. An exact "Verify" locator stopped matching once the name changed, and every
+    // in-flight assertion failed with "element(s) not found" (CI run 38878098281, both projects).
+    // The idle name is asserted before the press, so nothing the old locator implied is lost.
+    const verify = code.locator('xpath=..').getByRole('button', { name: /^Verify( ?, verifying)?$/ });
     await expect(verify).toHaveText('Verify');
     await verify.focus();
     await page.keyboard.press('Enter');
     await mocks.verify.arrived;
 
-    // While the check is held: the pressed control stays focused and focusable (D-35).
+    // While the check is held: the pressed control stays focused and focusable (D-35), keeps its
+    // label beside the one house spinner, and is named label plus suffix.
     await expect(verify).toBeFocused();
     await expect(verify).toHaveAttribute('aria-disabled', 'true');
     await expect(verify).not.toHaveAttribute('disabled');
-    await expect(verify).toHaveText('Verifying...');
+    await expect(verify).toHaveText(/^Verify/);
+    await expect(verify).toHaveAccessibleName(/^Verify ?, verifying$/);
+    await expect(verify.locator('[data-slot="spinner"]')).toHaveCount(1);
 
     if (testInfo.project.name === 'phone') {
-      // The measurement is provably at phone width, and the in-flight label fits.
+      // The measurement is provably at phone width, and the busy control (label + spinner) fits.
       expect(page.viewportSize()?.width).toBe(375);
       const fits = await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
       );
-      expect(fits, 'horizontal overflow at 375px while "Verifying..." shows').toBe(true);
+      expect(fits, 'horizontal overflow at 375px while Verify is busy (label plus spinner)').toBe(true);
     }
 
     // The latch refuses a second press.
     await page.keyboard.press('Enter');
-    await expect(verify).toHaveText('Verifying...');
+    await expect(verify).toHaveAccessibleName(/^Verify ?, verifying$/);
     expect(mocks.verify.count()).toBe(1);
 
     await mocks.verify.release({ verified: true });
@@ -240,7 +243,7 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     expect(mocks.savePosts()).toBe(1);
   });
 
-  test('Replay Tutorial: the pressed button keeps focus and reads "Starting..." in flight, and a second Enter sends no second reset', async ({ page }) => {
+  test('Replay Tutorial: the pressed button keeps focus and keeps its label with the spinner in flight (rule 1), and a second Enter sends no second reset', async ({ page }) => {
     backstop = await holdWrites(page);
     const mocks = await interceptWrites(page);
     await page.goto('/userProfile');
@@ -252,15 +255,17 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     await page.keyboard.press('Enter');
     await mocks.reset.arrived;
 
-    // The label changed, so re-locate by role on the same control's in-flight name.
-    const pressed = page.getByRole('button', { name: 'Starting...' });
+    // The name gained its suffix, so re-locate by role on the same control's busy name (rule 1,
+    // 88.9-46 B33: the label is kept beside the house spinner).
+    const pressed = page.getByRole('button', { name: /^Replay Tutorial ?, starting$/ });
     await expect(pressed).toBeFocused();
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
-    await expect(pressed).toHaveText('Starting...');
+    await expect(pressed).toHaveText(/^Replay Tutorial/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
 
     await page.keyboard.press('Enter');
-    await expect(pressed).toHaveText('Starting...');
+    await expect(pressed).toHaveAccessibleName(/^Replay Tutorial ?, starting$/);
     expect(mocks.reset.count()).toBe(1);
 
     await mocks.reset.release({ tutorial_version: 0 });
@@ -776,8 +781,9 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(region).toHaveAttribute('role', 'status');
     await expect(region).toHaveText('');
 
-    // One locator for both labels of the one control, so it follows the label flip.
-    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    // One locator for both names of the one control (idle, and busy with the ', importing' suffix —
+    // rule 1, 88.9-46 B34), so it follows the busy flip.
+    const importBtn = page.getByRole('button', { name: /^Import Collection( ?, importing)?$/ });
     await focusByKeyboard(page, importBtn);
     await page.keyboard.press('Enter');
 
@@ -798,7 +804,9 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(importBtn).toBeFocused();
     await expect(importBtn).toHaveAttribute('aria-disabled', 'true');
     await expect(importBtn).not.toHaveAttribute('disabled');
-    await expect(importBtn).toHaveText('Importing...');
+    await expect(importBtn).toHaveText(/^Import Collection/);
+    await expect(importBtn).toHaveAccessibleName(/^Import Collection ?, importing$/);
+    await expect(importBtn.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, importBtn, 'primary', 'dark');
 
     // A press mid-import neither reopens the dialog nor sends a second import.
@@ -849,7 +857,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(field).toBeVisible({ timeout: 15_000 });
     await field.fill('e2e-meeple');
     const region = page.locator('#bgg-import-status');
-    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    const importBtn = page.getByRole('button', { name: /^Import Collection( ?, importing)?$/ });
     await openImportDialog(page, field, importBtn, 'e2e-meeple');
     await focusByKeyboard(page, page.getByRole('dialog').getByRole('button', { name: 'Continue' }));
     await page.keyboard.press('Enter');
@@ -887,7 +895,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(field).toBeVisible({ timeout: 15_000 });
     await field.fill('e2e-meeple');
     const region = page.locator('#bgg-import-status');
-    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    const importBtn = page.getByRole('button', { name: /^Import Collection( ?, importing)?$/ });
     const dialog = page.getByRole('dialog');
     await openImportDialog(page, field, importBtn, 'e2e-meeple');
     await focusByKeyboard(page, dialog.getByRole('button', { name: 'Continue' }));
@@ -932,7 +940,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await field.fill('e2e-meeple');
 
     const region = page.locator('#bgg-import-status');
-    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    const importBtn = page.getByRole('button', { name: /^Import Collection( ?, importing)?$/ });
     await openImportDialog(page, field, importBtn, 'e2e-meeple');
 
     const dialog = page.getByRole('dialog');
@@ -977,7 +985,8 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     const field = page.getByRole('textbox', { name: 'Search BoardGameGeek' });
     await field.fill('catan');
 
-    const search = page.getByRole('button', { name: /^(Search|Searching\.\.\.)$/ });
+    // Idle "Search" and busy "Search, searching" (rule 1, 88.9-46 B35) through one locator.
+    const search = page.getByRole('button', { name: /^Search( ?, searching)?$/ });
     await focusByKeyboard(page, search);
     await page.keyboard.press('Enter');
     await s.arrived;
@@ -985,7 +994,9 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(search).toBeFocused();
     await expect(search).toHaveAttribute('aria-disabled', 'true');
     await expect(search).not.toHaveAttribute('disabled');
-    await expect(search).toHaveText('Searching...');
+    await expect(search).toHaveText(/^Search/);
+    await expect(search).toHaveAccessibleName(/^Search ?, searching$/);
+    await expect(search.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, search, 'primary', 'dark');
 
     // A second press is refused...
@@ -1268,7 +1279,7 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await expect(collection.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);
     await expect(collection.getByRole('heading', { level: 2, name: 'My Game Collection (1)' })).toBeFocused();
   });
-  test('Add to Collection reads Adding..., refuses a second press, then lands on + Add from BGG', async ({ page }) => {
+  test('Add to Collection keeps its label with the spinner (rule 1), refuses a second press, then lands on + Add from BGG', async ({ page }) => {
     const THREE = { id: 'e2e-game-three', name: 'E2E Meeple Three', bgg_id: 990201, year_published: 2003, image_url: null };
     let owned: unknown[] = [ONE];
     // The owned-games read and the BGG search are answered in the browser (CI never calls
@@ -1293,14 +1304,18 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await field.press('Enter');
     await expect(page.getByText('E2E Meeple Three (2003)')).toBeVisible({ timeout: 15_000 });
 
-    const addBtn = page.getByRole('button', { name: /^(Add to Collection|Adding\.\.\.)$/ });
+    // Idle "Add to Collection" and busy "Add to Collection, adding" (rule 1, 88.9-46 B36; copy row
+    // P7's word is now the heard suffix) through one locator.
+    const addBtn = page.getByRole('button', { name: /^Add to Collection( ?, adding)?$/ });
     await focusByKeyboard(page, addBtn);
     await page.keyboard.press('Enter');
     await imp.arrived;
     await expect(addBtn).toBeFocused();
     await expect(addBtn).toHaveAttribute('aria-disabled', 'true');
     await expect(addBtn).not.toHaveAttribute('disabled');
-    await expect(addBtn).toHaveText('Adding...');
+    await expect(addBtn).toHaveText(/^Add to Collection/);
+    await expect(addBtn).toHaveAccessibleName(/^Add to Collection ?, adding$/);
+    await expect(addBtn.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, addBtn, 'primary', 'dark');
 
     await page.keyboard.press('Enter');
