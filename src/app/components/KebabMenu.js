@@ -10,6 +10,7 @@ import {
   useConfirmCountdown,
 } from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { Spinner } from '@/components/ui/Spinner';
 import { useDismissal } from '@/components/ui/useDismissal';
 import { hostGroundHalo } from '@/components/ui/hostGround';
 import { cn } from '@/lib/cn';
@@ -59,6 +60,11 @@ const REVERT_ANNOUNCEMENT = 'Confirmation cancelled.';
  * @property {boolean} [ariaDisabled] - `aria-disabled` + a handler refusal, never the native
  *   attribute. For the control being ACTED ON, whose label must stay readable and which must
  *   stay in the focus order.
+ * @property {boolean} [busy] - In flight (rule 1, 88.9-46): the label is KEPT, the house Spinner
+ *   renders beside it and `busySuffix` is appended sr-only, so the item is named label plus
+ *   suffix. Never a refusal on its own — pass `ariaDisabled` beside it for the gate.
+ * @property {string} [busySuffix] - The sr-only words appended to the name while `busy`
+ *   (", cancelling", ", leaving", ...).
  * @property {boolean} [keepOpen] - Suppress the close after activation — on the single-tap path
  *   and on the twoTap commit.
  */
@@ -592,6 +598,20 @@ export default function KebabMenu({
                   }`}
                 >
                   {label}
+                  {item.busy ? (
+                    /* DECISION Phase 88.9-46 (rule 1 kebab busy): a busy item keeps its label and
+                       shows the house spinner plus a heard suffix (the same sr-only span Button
+                       renders), chosen OVER the caller swapping the label string (the shipped
+                       gameDetail pattern — the in-flight word replaced the whole name) and OVER a
+                       native disabled item (the 88.6-18 D3 marker: a focused natively-disabled item
+                       blurs to body). The item is a block w-full button, not flex, so the spinner
+                       carries its own ml-2 (the raw-button composition of 88.9-45). busy is not a
+                       refusal: `item.ariaDisabled` stays the gate. */
+                    <>
+                      <Spinner className="ml-2 align-middle" />
+                      <span className="sr-only">{item.busySuffix}</span>
+                    </>
+                  ) : null}
                 </button>
               </li>
             );

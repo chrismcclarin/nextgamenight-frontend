@@ -14,7 +14,6 @@ import BringGamePicker from '../components/BringGamePicker';
 import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import QRCodeModal from '../components/QRCodeModal';
-import { SHARE_GAME_QR_LOADING_LABEL } from '../components/shareGameQrCopy';
 import { Modal } from '../components/Modal';
 import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -186,6 +185,12 @@ function GuestInviteButton({ groupId, userId }) {
        2026-09-14 amendment the in-flight gate is `aria-disabled`, which does not stop the browser
        firing this handler. The attribute without this latch is a re-sendable invite button. */
     const sendingRef = useRef(false);
+    /* DECISION Phase 88.9-46 (rule 1 B26): the invite keeps the label the user PRESSED while
+       sending — Invite to group from rest, Retry after an error — held in this ref at the press,
+       chosen OVER showing the rest label during a retry, which would change the text under the
+       user's finger, and OVER the shipped swap to an in-flight word (the whole name changed). The
+       house Spinner and the heard ", sending" suffix ride Button's busy prop. */
+    const pressedLabelRef = useRef('Invite to group');
     // 88.6.1-47 (D-06): the settled chip's node, and the shared focus-recovery instance that
     // lands focus on it. Above the settled early return below (hooks order).
     const chipRef = useRef(null);
@@ -209,6 +214,7 @@ function GuestInviteButton({ groupId, userId }) {
     const handleInvite = async (event) => {
         if (sendingRef.current || status === 'sending' || settled) return;
         const settle = inviteFocus.arm({ preferred: () => chipRef.current, from: event.currentTarget });
+        pressedLabelRef.current = status === 'error' ? 'Retry' : 'Invite to group';
         sendingRef.current = true;
         setStatus('sending');
         try {
@@ -338,8 +344,9 @@ function GuestInviteButton({ groupId, userId }) {
        `aria-disabled={isFlight`; `src/app/components/EmailAddressSection.tsx` states the split
        outright at `the control being ACTED ON gets` — the control being acted on gets
        `aria-disabled`, a control nobody is standing on may be natively disabled). COST, disclosed: the `.btn:disabled` wash no longer renders while
-       sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is the shipped
-       "Sending..." label swap plus the house `aria-disabled` treatment already in globals.css
+       sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is rule 1's
+       kept label with the house spinner (Phase 88.9-46 B26, Button busy — the label swap it
+       replaced is retired) plus the house `aria-disabled` treatment already in globals.css
        (`cursor: not-allowed`) and on ghost (`aria-disabled:text-content-muted`, which beats this
        call site's `text-content-link` on specificity). Do NOT add a `disabled:opacity-*` utility
        here: it keys on the native attribute this control no longer carries and is dead on a
@@ -390,8 +397,10 @@ function GuestInviteButton({ groupId, userId }) {
                conflicting with the base token instead of stacking a second background. */
             className={`border border-line ${branchInk}`}
             title={title}
+            busy={status === 'sending'}
+            busySuffix=", sending"
         >
-            {status === 'sending' && 'Sending...'}
+            {status === 'sending' && pressedLabelRef.current}
             {status === 'error' && 'Retry'}
             {!status && 'Invite to group'}
         </Button>
@@ -1368,8 +1377,9 @@ export default function GameDetailPage() {
     // handleShowGameQR pattern (loading state + error swallow).
     /* DECISION Phase 88.6.1-47 (D-35): CHOSEN — the pressed control stays focusable
        (`aria-disabled`) and a synchronous ref latch (`qrLoadingRef`) refuses a second press,
-       released beside the loading reset in the `finally`; the in-flight label is copy row E6, read
-       from the one constant in `shareGameQrCopy.ts`. REJECTED — (a) the native attribute: it drops
+       released beside the loading reset in the `finally`; the in-flight cue is rule 1's kept label
+       with the house spinner, heard as the ", loading" busy suffix (Phase 88.9-46 B29; copy row E6
+       and its constant module retired). REJECTED — (a) the native attribute: it drops
        focus off the control the user just pressed, and the QR dialog then records no opener to
        return focus to (W014 case 1); (b) a state-only guard: a second press in the same tick reads
        the previous render's `false` and sends a second request. The look follows the owner's
@@ -2806,16 +2816,25 @@ export default function GameDetailPage() {
                             single-tap commit above — one capture tap on Cancel event hard-deleted the
                             walk DB's ballot night with every RSVP, vote and option (2026-11-07 ~12:03 AM
                             Pacific). D24 c holds: the menu stays open and Cancelling… / Leaving… stays
-                            readable after the commit. */}
+                            readable after the commit.
+                            AMENDED Phase 88.9-46 (owner pick O16a + Q3, 88.9-PICKS-B9.json, 2026-11-08): rule 1
+                            ends the in-flight WORD on both items — the label stays Cancel event / Leave
+                            event with the house spinner (KebabMenu's per-item busy flag) and the in-flight
+                            word moves into the heard name (Cancel event, cancelling / Leave event, leaving),
+                            chosen OVER the shipped swap to the in-flight word (D24 c, 2026-09-09: the items
+                            read Cancelling… / Leaving…); keepOpen and the D3 ariaDisabled rule are kept, so
+                            the menu still stays open and focused for the whole request. */}
                         {((userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')) || userScope === 'game-only') && (
                             <KebabMenu
                                 ariaLabel="Event actions"
                                 items={[
                                     ...(userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')
                                         ? [{
-                                            label: cancellingEvent ? 'Cancelling…' : 'Cancel event',
+                                            label: 'Cancel event',
                                             onClick: handleCancelEvent,
                                             ariaDisabled: cancellingEvent,
+                                            busy: cancellingEvent,
+                                            busySuffix: ', cancelling',
                                             danger: true,
                                             twoTap: true,
                                             keepOpen: true,
@@ -2823,9 +2842,11 @@ export default function GameDetailPage() {
                                         : []),
                                     ...(userScope === 'game-only'
                                         ? [{
-                                            label: leavingEvent ? 'Leaving…' : 'Leave event',
+                                            label: 'Leave event',
                                             onClick: handleLeaveEvent,
                                             ariaDisabled: leavingEvent,
+                                            busy: leavingEvent,
+                                            busySuffix: ', leaving',
                                             danger: true,
                                             twoTap: true,
                                             keepOpen: true,
@@ -2906,14 +2927,18 @@ export default function GameDetailPage() {
                                        prop and took the count to 2. [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).] */
                                     className="shrink-0"
                                     title="Share Game QR"
+                                    busy={qrLoading}
+                                    busySuffix=", loading"
                                 >
                                     {/* Decorative — the visible label names the button. Same pair
-                                        as the twin's decorative `<svg` in `EventDayModal.js`. */}
+                                        as the twin's decorative `<svg` in `EventDayModal.js`. While the
+                                        code loads the label is kept and the name reads ", loading"
+                                        (rule 1, 88.9-46 B29 — the same word 88.9-45 gave the twin). */}
                                     <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                                     </svg>
-                                    {qrLoading ? SHARE_GAME_QR_LOADING_LABEL : 'Share Game QR'}
+                                    Share Game QR
                                 </Button>
                             )}
                         </div>

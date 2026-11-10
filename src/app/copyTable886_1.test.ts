@@ -234,7 +234,7 @@ interface Importer {
   noCopyOf?: string[];
 }
 // E6's gameDetail entry (SHARE_GAME_QR_LOADING_LABEL) retired with rule 1 (88.9-46 B29); the
-// module shareGameQrCopy.ts is deleted — see RETIRED_LITERALS.
+// constant's module under app/components is deleted — see RETIRED_LITERALS.
 const IMPORTERS: Importer[] = [
   { importer: 'F2', file: 'app/components/FeedbackButton.js', constant: 'FEEDBACK_SEND_FAILED_COPY', from: './FeedbackForm', minUses: 1 },
   { importer: 'E9/R6', file: 'app/components/BringGamePicker.js', constant: 'EMPTY_COLLECTION_LINE', minUses: 2 },

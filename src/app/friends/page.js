@@ -36,6 +36,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { Spinner } from '../../components/ui/Spinner';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '../../lib/logger';
@@ -1050,14 +1051,25 @@ function FriendsPage() {
                             className="flex-1"
                             required
                         />
+                        {/* DECISION Phase 88.9-46 (rule 1 B21-B25): every in-flight friends button keeps its
+                            resting label with the house spinner and a heard suffix that re-uses its shipped
+                            in-flight word (Search, searching / Send Request, sending / Remove <name>, removing /
+                            Accept, accepting / Decline, declining), chosen OVER the shipped label swaps (five
+                            sites, 88.6.1 era — a swap replaced the whole accessible name and changed the
+                            control's width under the finger) and OVER minting new suffix words (Q6(b)). Owner
+                            pick O16a extended by the Q3 ruling (88.9-RULINGS.md, 2026-11-08); B25's word
+                            confirmed at R-W4. Each site's own latch stays the refusal. The search status line
+                            below the form is a status caption, not a button, and keeps its text. */}
                         <Button
                             type="submit"
                             variant="primary"
                             size="default"
                             disabled={!searching && !searchEmail.trim()}
                             aria-disabled={searching ? 'true' : undefined}
+                            busy={searching}
+                            busySuffix=", searching"
                         >
-                            {searching ? 'Searching...' : 'Search'}
+                            Search
                         </Button>
                     </form>
 
@@ -1149,8 +1161,10 @@ function FriendsPage() {
                                                     size="default"
                                                     onClick={(e) => handleSendRequest(searchResult.id, e)}
                                                     aria-disabled={sendingRequest ? 'true' : undefined}
+                                                    busy={sendingRequest}
+                                                    busySuffix=", sending"
                                                 >
-                                                    {sendingRequest ? 'Sending...' : 'Send Request'}
+                                                    Send Request
                                                 </Button>
                                             );
                                         default:
@@ -1486,9 +1500,11 @@ function FriendsPage() {
                                                                         `Remove ${friendName}`
                                                                     )}
                                                                     // Label-in-Name (WCAG 2.5.3) during the commit: the
-                                                                    // visible label is "Removing...", so the accessible name
-                                                                    // must contain it. The hook only owns resting-vs-armed.
-                                                                    {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
+                                                                    // visible label stays Remove (rule 1, 88.9-46 B23) and
+                                                                    // the name adds the removing suffix — the aria-label
+                                                                    // overrides content, so it carries the person AND the
+                                                                    // suffix. The hook only owns resting-vs-armed.
+                                                                    {...(removing ? { 'aria-label': `Remove ${friendName}, removing` } : {})}
                                                                     // F9b (88.9-23): a conditional spread, the house form
                                                                     // (src/components/ui/useConfirmAction.ts ("'aria-pressed': true as const")),
                                                                     // so the hook's gated aria-disabled is not overwritten by an
@@ -1511,9 +1527,11 @@ function FriendsPage() {
                                                                             : 'border-transparent'
                                                                     }`}
                                                                 >
-                                                                    {removing
-                                                                        ? 'Removing...'
-                                                                        : removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                                    {removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                                    {/* Raw host (not Button, not flex): the house spinner with
+                                                                        the same ml-2 spacing plan 88.9-45 gives AvailabilityForm's
+                                                                        raw buttons; the suffix rides the aria-label above. */}
+                                                                    {removing && <Spinner className="ml-2 align-middle" />}
                                                                 </button>
                                                             );
                                                         })()}
@@ -1636,8 +1654,10 @@ function FriendsPage() {
                                                             onClick={(e) => handleAccept(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'accept' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'decline' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
+                                                            busy={actionLoading[request.id] === 'accept'}
+                                                            busySuffix=", accepting"
                                                         >
-                                                            {actionLoading[request.id] === 'accept' ? 'Accepting...' : 'Accept'}
+                                                            Accept
                                                         </Button>
                                                         <Button
                                                             variant="secondary"
@@ -1646,8 +1666,10 @@ function FriendsPage() {
                                                             onClick={(e) => handleDecline(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'decline' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'accept' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
+                                                            busy={actionLoading[request.id] === 'decline'}
+                                                            busySuffix=", declining"
                                                         >
-                                                            {actionLoading[request.id] === 'decline' ? 'Declining...' : 'Decline'}
+                                                            Decline
                                                         </Button>
                                                     </div>
                                                 </div>
