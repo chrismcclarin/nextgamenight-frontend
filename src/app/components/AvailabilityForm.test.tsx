@@ -657,7 +657,7 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
   // a second click re-ran react-hook-form, whose settle dropped `isSubmitting` mid-request: the
   // CTA read `Submit Availability` again with `aria-disabled="false"`. `useAppForm` now refuses
   // the second submit before react-hook-form runs.
-  it('A1: a second press while submitting sends nothing, and the CTA keeps Submitting... and aria-disabled', async () => {
+  it('A1 rule 1 (88.9): Submit keeps its label + spinner while busy; a second press sends nothing', async () => {
     const user = userEvent.setup();
     let release: () => void = () => {};
     (availabilityFormAPI.submitResponse as Mock).mockImplementationOnce(
@@ -673,12 +673,15 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     const form = cta.closest('form') as HTMLFormElement;
     await user.click(cta);
     await waitFor(() => expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1));
-    expect(cta).toHaveAccessibleName('Submitting...');
+    // Rule 1 (88.9-45): the label stays, the house spinner joins it and the sr-only suffix is heard.
+    expect(cta).toHaveAccessibleName('Submit Availability, submitting');
+    expect(cta).toHaveTextContent('Submit Availability');
+    expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
 
     await user.click(cta);
     await new Promise((r) => setTimeout(r, 50));
     expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
-    expect(cta).toHaveAccessibleName('Submitting...');
+    expect(cta).toHaveAccessibleName('Submit Availability, submitting');
     expect(cta).toHaveAttribute('aria-disabled', 'true');
     expect(cta).not.toHaveAttribute('disabled');
 
@@ -686,10 +689,11 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     expect(fireEvent.submit(form)).toBe(false);
     await new Promise((r) => setTimeout(r, 50));
     expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
-    expect(cta).toHaveAccessibleName('Submitting...');
+    expect(cta).toHaveAccessibleName('Submit Availability, submitting');
 
     release();
     await waitFor(() => expect(cta).toHaveAccessibleName('Submit Availability'));
+    expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
   });
 });
 
@@ -730,18 +734,19 @@ describe('AvailabilityForm "unavailable this week" toggle — exposes its state 
   });
 });
 
-// Plan 88.6.1-26 (D-35 rule of POSITION, copy row A5, Requirement 8). The pre-fill button the
+// Plan 88.6.1-26 (D-35 rule of POSITION, copy row A5 — retired by rule 1, 88.9-45, Requirement 8). The pre-fill button the
 // person pressed stays in the focus order (`aria-disabled` + a first-line ref latch) and names
 // what it is loading; the OTHER button keeps native `disabled`. Before this plan both buttons were
 // natively disabled during either pre-fill (a pressed button dropped a keyboard user to <body>)
 // and BOTH switched to their loading words, because their labels read `prefillStatus`, which is
 // null until the fetch settles. The outcome sentence is now also spoken through an always-mounted
 // sr-only polite region, and one ref-held timer clears it (two timers used to collide).
-describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its timer (D-35, A5)', () => {
-  // Copy row A5, byte-equal to 88.6.1-COPY-TABLE.html (the ellipsis is U+2026).
-  const A5 = 'Loading your availability…';
+describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its timer (D-35; A5 retired by rule 1, 88.9-45)', () => {
   const SAVED = 'Use my saved availability';
   const GCAL = 'Import from Google Calendar';
+  // Rule 1 (88.9-45): the pressed button keeps its label; the busy suffix joins its NAME.
+  const SAVED_BUSY = 'Use my saved availability, loading';
+  const GCAL_BUSY = 'Import from Google Calendar, importing';
 
   // mockReset, not only clearAllMocks: earlier describes leave persistent and once-only
   // implementations on the two pre-fill mocks, and an unconsumed once-value would leak across arms.
@@ -762,14 +767,16 @@ describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its 
     return (v: T) => release(v);
   }
 
-  it('P1: Saved pressed — it reads A5, stays aria-disabled (never disabled) at 44px; GCal is natively disabled; one call', async () => {
+  it('P1 rule 1 (88.9): Saved pressed — it keeps Use my saved availability + spinner (named with ", loading"), stays aria-disabled (never disabled) at 44px; GCal is natively disabled; one call', async () => {
     const release = hold<{ slot_ids: string[]; count: number }>('prefillFromSaved');
     render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability gcalConnected />);
     const saved = screen.getByRole('button', { name: SAVED });
     const gcal = screen.getByRole('button', { name: GCAL });
 
     fireEvent.click(saved);
-    await waitFor(() => expect(saved).toHaveAccessibleName(A5));
+    await waitFor(() => expect(saved).toHaveAccessibleName(SAVED_BUSY));
+    expect(saved).toHaveTextContent(SAVED);
+    expect(saved.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(saved).toHaveAttribute('aria-disabled', 'true');
     expect(saved).not.toHaveAttribute('disabled');
     expect(saved).toHaveClass('min-h-11');
@@ -787,14 +794,16 @@ describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its 
     expect(gcal).toBeEnabled();
   });
 
-  it('P2: GCal pressed — it reads Importing… and stays aria-disabled; Saved keeps its name and is natively disabled', async () => {
+  it('P2 rule 1 (88.9): Import from Google Calendar keeps its label + spinner while busy; Saved stays natively disabled', async () => {
     const release = hold<{ slot_ids: string[]; count: number }>('prefillFromGcal');
     render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability gcalConnected />);
     const saved = screen.getByRole('button', { name: SAVED });
     const gcal = screen.getByRole('button', { name: GCAL });
 
     fireEvent.click(gcal);
-    await waitFor(() => expect(gcal).toHaveAccessibleName('Importing…'));
+    await waitFor(() => expect(gcal).toHaveAccessibleName(GCAL_BUSY));
+    expect(gcal).toHaveTextContent(GCAL);
+    expect(gcal.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(gcal).toHaveAttribute('aria-disabled', 'true');
     expect(gcal).not.toHaveAttribute('disabled');
     expect(gcal).toHaveClass('min-h-11');

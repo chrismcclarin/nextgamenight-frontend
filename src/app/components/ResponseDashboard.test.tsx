@@ -480,7 +480,7 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     return { promise, resolve, reject };
   }
 
-  it('AC-12: the pressed Remind carries aria-disabled (never native disabled), reads "Sending...", and a second press sends nothing', async () => {
+  it('AC-12 rule 1 (88.9): Remind keeps its label + spinner while busy; the pressed Remind carries aria-disabled (never native disabled), and a second press sends nothing', async () => {
     api.getRespondents.mockResolvedValue([memberA]);
     const d = deferred();
     api.sendReminder.mockImplementationOnce(() => d.promise);
@@ -492,7 +492,9 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await user.click(button);
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).not.toHaveAttribute('disabled');
-    expect(button).toHaveTextContent(/^Sending\.\.\.$/);
+    expect(button).toHaveAccessibleName('Remind, sending');
+    expect(button).toHaveTextContent(/^Remind/);
+    expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     fireEvent.click(button);
     fireEvent.click(button);
     expect(api.sendReminder).toHaveBeenCalledTimes(1);
@@ -502,7 +504,7 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await act(async () => { d.resolve({}); });
   });
 
-  it('per row: two rows in flight each keep "Sending..." and aria-disabled, and settling one does not flip the other', async () => {
+  it('per row rule 1 (88.9): two rows in flight each keep "Remind, sending" and aria-disabled, and settling one does not flip the other', async () => {
     api.getRespondents.mockResolvedValue([memberA, memberB]);
     const dA = deferred();
     const dB = deferred();
@@ -516,7 +518,8 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await user.click(remindIn('Member A'));
     await user.click(remindIn('Member B'));
     for (const name of ['Member A', 'Member B']) {
-      expect(remindIn(name)).toHaveTextContent(/^Sending\.\.\.$/);
+      expect(remindIn(name)).toHaveAccessibleName('Remind, sending');
+      expect(remindIn(name).querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
       expect(remindIn(name)).toHaveAttribute('aria-disabled', 'true');
     }
     expect(api.sendReminder).toHaveBeenCalledWith('prompt-1', 'uA');
@@ -525,7 +528,7 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await act(async () => { dA.resolve({}); });
     // POSITIVE signal: A settled into its "Reminded ..." text; B is still in flight.
     expect(await within(rowOf('Member A')).findByText(/^Reminded \d+m ago$/)).toBeInTheDocument();
-    expect(remindIn('Member B')).toHaveTextContent(/^Sending\.\.\.$/);
+    expect(remindIn('Member B')).toHaveAccessibleName('Remind, sending');
     expect(remindIn('Member B')).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => { dB.resolve({}); });

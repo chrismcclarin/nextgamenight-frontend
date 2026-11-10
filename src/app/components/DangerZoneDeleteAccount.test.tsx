@@ -542,7 +542,7 @@ async function enterDeletingState(user: ReturnType<typeof userEvent.setup>) {
   await user.type(confirmInput(), 'delete my account');
   await user.click(screen.getByRole('button', { name: 'Delete my account' }));
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument()
   );
   return inFlight;
 }
@@ -695,7 +695,7 @@ describe('AC-21 as amended by D52 — an in-flight DELETE cannot be dismissed', 
 
     // `aria-disabled` is advisory — the HANDLER guard is what enforces the ruling.
     await user.click(cancel);
-    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument();
     expect(confirmInput()).toHaveValue('delete my account');
   });
 
@@ -723,7 +723,7 @@ describe('AC-21 as amended by D52 — an in-flight DELETE cannot be dismissed', 
     const user = userEvent.setup();
     await enterDeletingState(user);
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument();
     expect(confirmInput()).toHaveValue('delete my account');
   });
 });
@@ -866,13 +866,13 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
   it('DZ1: the pressed danger action stays in the document with aria-disabled and NO native disabled', async () => {
     const user = userEvent.setup();
     await enterDeletingState(user);
-    const action = screen.getByRole('button', { name: 'Deleting…' });
+    const action = screen.getByRole('button', { name: 'Delete my account, deleting' });
     expect(action).toHaveAttribute('aria-disabled', 'true');
     expect(action).not.toHaveAttribute('disabled');
     expect(action.isConnected).toBe(true);
   });
 
-  it('DZ2: two synchronous presses send exactly ONE DELETE; Deleting… and aria-disabled hold until it settles', async () => {
+  it('DZ2 rule 1 (88.9): Delete my account keeps its label + spinner while busy; two presses send ONE DELETE', async () => {
     mockGetBlockers.mockResolvedValue({ groups: [] });
     const inFlight = deferred<{ message: string }>();
     mockDeleteAccount.mockReturnValue(inFlight.promise);
@@ -896,8 +896,13 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
       fireEvent.click(action);
     });
     expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
-    expect(action).toHaveTextContent('Deleting…');
+    // Rule 1 (88.9-45): the label stays, the house spinner joins it, the suffix is heard; the
+    // polite progress region still shows the in-flight line.
+    expect(action).toHaveAccessibleName('Delete my account, deleting');
+    expect(action).toHaveTextContent('Delete my account');
+    expect(action.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(action).toHaveAttribute('aria-disabled', 'true');
+    expect(progressRegion()).toHaveTextContent('Deleting…');
   });
 
   it('DZ3: idle with a partial phrase, the action is natively disabled with NO aria-disabled (rule of KIND)', async () => {
@@ -969,7 +974,7 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
     const close = within(dialog).getByRole('button', { name: 'Close' });
     expect(close).toHaveAttribute('aria-disabled', 'true');
     await user.click(close);
-    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument();
     expect(confirmInput()).toHaveValue('delete my account');
   });
 
@@ -1093,7 +1098,7 @@ describe('D1 — the in-flight DELETE is BOUNDED', () => {
         await Promise.resolve();
       });
 
-      expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument();
       expect(mockDeleteAccount).toHaveBeenCalledWith(expect.any(AbortSignal));
       // Nothing has happened yet — an unbounded request would stay here forever,
       // with Cancel guarded, Escape guarded and the overlay already closed.
@@ -1147,11 +1152,13 @@ describe('Phase 88.6-30 — source-level invariants', () => {
     expect(source).toContain('disabled={confirmInvalid}');
   });
 
-  it('DZ7 (W008): the in-flight literal appears ONCE in code and the action reads DELETING_LABEL', () => {
-    // Comment-stripped source: the hoisted constant is the one literal, so the button
-    // label and the polite announcement cannot drift apart.
+  it('DZ7 (W008, rule 1 (88.9)): the in-flight literal appears ONCE in code and only the progress region reads DELETING_LABEL', () => {
+    // Comment-stripped source: the hoisted constant is the one literal. Since rule 1 (88.9-45)
+    // the danger action keeps its label, so the constant has ONE reader — the progress region.
     expect(source.match(/'Deleting…'/g) ?? []).toHaveLength(1);
-    expect(source).toMatch(/deleting \? DELETING_LABEL : 'Delete my account'/);
+    expect(source).not.toMatch(/DELETING_LABEL : 'Delete my account'/);
+    expect(source).toMatch(/deleting \? DELETING_LABEL : null/);
+    expect(source.match(/\bDELETING_LABEL\b/g) ?? []).toHaveLength(2);
   });
 
   it('stores the generation counter in a REF, never useState and never a closured local', () => {

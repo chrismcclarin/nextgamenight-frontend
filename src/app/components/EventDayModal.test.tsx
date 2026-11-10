@@ -299,7 +299,8 @@ describe('EventDayModal — R7 composed axe audit + focus contract (88.6-44)', (
 // page twin's real-browser proof is e2e/share-game-qr-pending.spec.ts.
 // ---------------------------------------------------------------------------
 describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)', () => {
-  const LOADING = 'Loading QR code...';
+  // Rule 1 (88.9-45): the label stays; the busy suffix joins the NAME while the QR loads.
+  const BUSY = 'Share Game QR, loading';
   const secondEvent = { ...upcomingEvent, id: 'evt-2', Game: { name: 'Azul' } };
   const twoEventDay = { date: future, events: [upcomingEvent, secondEvent] };
 
@@ -328,7 +329,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     return { onEventClick };
   }
 
-  it('EQ1: two presses with no render flush send ONE request; the pressed node is aria-disabled with the E6 label and never opens the event', async () => {
+  it('EQ1 rule 1 (88.9): Share Game QR keeps its label + spinner while busy; two presses with no render flush send ONE request; the pressed node is aria-disabled and never opens the event', async () => {
     const { onEventClick } = renderDay(selectedDay);
     const share = screen.getByRole('button', { name: 'Share Game QR' });
     share.focus();
@@ -342,8 +343,10 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
 
     expect(h.getEventInviteToken).toHaveBeenCalledTimes(1);
     expect(h.getEventInviteToken).toHaveBeenCalledWith('evt-1');
-    const loading = screen.getByRole('button', { name: LOADING });
+    const loading = screen.getByRole('button', { name: BUSY });
     expect(loading).toBe(share);
+    expect(loading).toHaveTextContent('Share Game QR');
+    expect(loading.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(loading).toHaveAttribute('aria-disabled', 'true');
     expect(loading.hasAttribute('disabled')).toBe(false);
     // Confirm-only in jsdom (see the describe comment).
@@ -365,7 +368,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
 
     expect(h.getEventInviteToken).toHaveBeenCalledTimes(2);
     expect(h.getEventInviteToken.mock.calls.map((call) => call[0])).toEqual(['evt-1', 'evt-2']);
-    expect(share2).toHaveAccessibleName(LOADING);
+    expect(share2).toHaveAccessibleName(BUSY);
     expect(share2).toHaveAttribute('aria-disabled', 'true');
     // The superseded row reads idle again.
     expect(share1).toHaveAccessibleName('Share Game QR');
@@ -387,7 +390,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     // Still evt-2's QR after the late response landed.
     expect(qrProps.current?.isOpen).toBe(true);
     expect(qrProps.current?.url).toBe('https://example.test/i/evt-2');
-    expect(screen.queryByRole('button', { name: LOADING })).toBeNull();
+    expect(screen.queryByRole('button', { name: BUSY })).toBeNull();
   });
 
   it('EQ3 (control): a failed request toasts, releases the row, and the next press sends a second request', async () => {
@@ -434,7 +437,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     await waitFor(() => expect(loggerSpies.warn).toHaveBeenCalledTimes(1));
     expect(loggerSpies.info).not.toHaveBeenCalled();
     expect(loggerSpies.warn.mock.calls[0][1]).toEqual({ name: 'Error', message: 'superseded' });
-    expect(share2).toHaveAccessibleName(LOADING);
+    expect(share2).toHaveAccessibleName(BUSY);
     expect(share2).toHaveAttribute('aria-disabled', 'true');
     expect(toastSpies.error).not.toHaveBeenCalled();
 

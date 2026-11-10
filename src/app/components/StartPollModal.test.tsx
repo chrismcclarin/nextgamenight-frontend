@@ -223,7 +223,7 @@ describe('StartPollModal — one submit per press, R1 on a blocked or code-less 
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
-  it('S5. two submits while the first is pending send ONE request; Start poll stays focusable with aria-disabled, Cancel is natively gated (D-35)', () => {
+  it('S5 rule 1 (88.9): two submits while the first is pending send ONE request; Start poll keeps its label + spinner, stays focusable with aria-disabled, Cancel is natively gated (D-35)', () => {
     const pending = deferred();
     (apiFetch as Mock).mockReturnValueOnce(pending.promise);
     render(<StartPollModal {...baseProps} />);
@@ -234,7 +234,9 @@ describe('StartPollModal — one submit per press, R1 on a blocked or code-less 
     expect(apiFetch).toHaveBeenCalledTimes(1);
 
     const submitButton = footerSubmit();
-    expect(submitButton).toHaveTextContent('Starting...');
+    expect(submitButton).toHaveTextContent('Start poll');
+    expect(submitButton).toHaveAccessibleName('Start poll, starting');
+    expect(submitButton.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(submitButton).toHaveAttribute('aria-disabled', 'true');
     expect(submitButton).not.toHaveAttribute('disabled');
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveAttribute('disabled');
@@ -264,7 +266,7 @@ describe('StartPollModal — one submit per press, R1 on a blocked or code-less 
     expect(footerSubmit()).not.toHaveAttribute('disabled');
   });
 
-  it('S8. a close and reopen while the first request works still shows Starting... and aria-disabled until it settles (#35)', async () => {
+  it('S8 rule 1 (88.9): a close and reopen while the first request works still keeps Start poll + spinner and aria-disabled until it settles (#35)', async () => {
     const pending = deferred<{ prompt: { id: string } }>();
     (apiFetch as Mock).mockReturnValueOnce(pending.promise);
     const onClose = vi.fn();
@@ -277,13 +279,16 @@ describe('StartPollModal — one submit per press, R1 on a blocked or code-less 
     rerender(<StartPollModal {...baseProps} onClose={onClose} isOpen={false} />);
     rerender(<StartPollModal {...baseProps} onClose={onClose} isOpen />);
 
-    expect(footerSubmit()).toHaveTextContent('Starting...');
+    expect(footerSubmit()).toHaveTextContent('Start poll');
+    expect(footerSubmit()).toHaveAccessibleName('Start poll, starting');
+    expect(footerSubmit().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(footerSubmit()).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => {
       pending.resolve({ prompt: { id: 'p1' } });
     });
-    expect(footerSubmit()).toHaveTextContent('Start poll');
+    expect(footerSubmit()).toHaveAccessibleName('Start poll');
+    expect(footerSubmit().querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
     expect(footerSubmit()).not.toHaveAttribute('aria-disabled');
   });
 
