@@ -609,7 +609,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         <>
                     {/* Friends section */}
                     <div className="p-4 md:p-5">
-                        <Heading level={3} size="label" className="text-content-muted uppercase tracking-wide mb-3">
+                        <Heading level={3} size="label" className="text-content-muted uppercase tracking-wider mb-3">
                             Your Friends
                         </Heading>
 
@@ -766,10 +766,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                         <div className="flex items-center gap-3">
                             <div className="flex-1 border-t border-line" />
                             {/* UI-SPEC §4.5 Eyebrow role (D-03): Caption 12 / 700 / uppercase /
-                                tracking. `font-bold` ADDED; `tracking-wide` is the spelling the
-                                nearest shipped eyebrow uses (src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)"), `uppercase tracking-wide`). See the
+                                tracking. `font-bold` ADDED; the tracking spelling is `tracking-wider`
+                                per K7 (plan 88.9-47, owner pick C3b) — the ONE spelling every uppercase
+                                letter-spaced label takes, the nearest shipped eyebrow included
+                                (src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)")). See the
                                 DECISION marker on the second eyebrow below. */}
-                            <span className="text-xs font-bold text-content-muted uppercase tracking-wide">or</span>
+                            <span className="text-xs font-bold text-content-muted uppercase tracking-wider">or</span>
                             <div className="flex-1 border-t border-line" />
                         </div>
                     </div>
@@ -788,7 +790,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             level={3}
                             size="label"
                             id="invite-by-email-heading"
-                            className="text-content-muted uppercase tracking-wide mb-3"
+                            className="text-content-muted uppercase tracking-wider mb-3"
                         >
                             Invite by Email
                         </Heading>
@@ -993,15 +995,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                         not heading tags, and P4 forbids inventing a level. There is
                                         deliberately no `eyebrow` variant on the primitive
                                         (src/components/ui/Heading.tsx ("That would mint a fifth type role")) — uppercase, tracking and colour ride on
-                                        `className`. */}
-                                    <span className="text-xs font-bold text-content-muted uppercase tracking-wide">or</span>
+                                        `className`.
+
+                                        AMENDED Phase 88.9-47 (owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): both or eyebrows and the three section labels move to tracking-wider (0.05em), chosen OVER the 0.025em step this marker matched; the tracking-match sentence above is superseded. */}
+                                    <span className="text-xs font-bold text-content-muted uppercase tracking-wider">or</span>
                                     <div className="flex-1 border-t border-line" />
                                 </div>
                             </div>
 
                             {/* QR Code section */}
                             <div className="p-4 md:p-5">
-                                <Heading level={3} size="label" className="text-content-muted uppercase tracking-wide mb-3">
+                                <Heading level={3} size="label" className="text-content-muted uppercase tracking-wider mb-3">
                                     Share QR Code
                                 </Heading>
                                 {tokenLoading ? (

@@ -71,14 +71,14 @@ function RsvpStatusPill({ status }) {
        can wrap; every other badge on this surface is a single word. */
     if (!status) {
         return (
-            <span className="text-xs whitespace-nowrap uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-secondary">
+            <span className="text-xs whitespace-nowrap uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-secondary">
                 No reply
             </span>
         );
     }
     const m = map[status] || map.no;
     return (
-        <span className={`text-xs uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${m.cls}`}>
+        <span className={`text-xs uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${m.cls}`}>
             {m.label}
         </span>
     );
@@ -131,14 +131,14 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
                 chip says "No reply" for a list that failed. */}
             {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} />}
             {role === 'owner' && (
-                <span className="text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
+                <span className="text-xs uppercase tracking-wider bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
             )}
             {role === 'admin' && (
-                <span className="text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded-sm font-bold">Admin</span>
+                <span className="text-xs uppercase tracking-wider bg-blue-100 text-blue-700 px-1 rounded-sm font-bold">Admin</span>
             )}
             {participant.is_guest && viewerScope === 'group-member' && (
                 <span
-                    className="text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
+                    className="text-xs uppercase tracking-wider rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
                     title="Joined via game-invite QR (not a group member)"
                 >
                     Guest
@@ -3252,7 +3252,7 @@ export default function GameDetailPage() {
                                             // (Owner=purple, Admin=blue) while staying distinguishable from
                                             // Owner's purple. Self is a viewer-perspective indicator, not a
                                             // role, but the visual family is the closest existing pattern.
-                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
+                                            <span className="align-middle text-xs uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
                                                 You
                                             </span>
                                         )}
@@ -3264,15 +3264,15 @@ export default function GameDetailPage() {
                                             // through ClickableMemberName above. Emerald color echoes the
                                             // text-status-success used by that mobile inline indicator for
                                             // visual continuity across viewports.
-                                            <span className="hidden md:inline-flex items-center align-middle text-xs uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
+                                            <span className="hidden md:inline-flex items-center align-middle text-xs uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
                                                 Friend
                                             </span>
                                         )}
                                         {role === 'owner' && (
-                                            <span className="align-middle text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
+                                            <span className="align-middle text-xs uppercase tracking-wider bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
                                         )}
                                         {role === 'admin' && (
-                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
+                                            <span className="align-middle text-xs uppercase tracking-wider bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
                                         )}
                                         {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                             when viewer is a full group member. Skips render for game-only
@@ -3282,7 +3282,7 @@ export default function GameDetailPage() {
                                             can decide who to onboard via admin-initiated invite. */}
                                         {p.is_guest && userScope === 'group-member' && (
                                             <span
-                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs uppercase tracking-wider rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
                                                 title="Joined via game-invite QR (not a group member)"
                                             >
                                                 Guest

@@ -769,7 +769,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange, ho
                       500/600 -> 400 or 700" and nothing wider. Plan 28 made the identical call at
                       `NextGameNightCard.tsx:389` and plan 22 at the site cited above; a third
                       spelling of it here would be the drift. Re-spacing the eyebrow family is a
-                      look decision and belongs to a plan that opens a V-row for it. */}
+                      look decision and belongs to a plan that opens a V-row for it.
+
+                      AMENDED Phase 88.9-47 (owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): the family now converges ON this site's tracking-wider (0.05em), chosen OVER the former majority 0.025em (0.3px, under a device pixel); this site's class is unchanged. */}
                   <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${config.textColor}`}>
                     {config.sectionTitle} ({group.length})
                   </p>

@@ -17,6 +17,7 @@ import * as React from 'react';
 
 import { useTimezone } from '@/app/components/TimezoneProvider';
 import { Card } from '@/components/ui/Card';
+import { Spinner } from '@/components/ui/Spinner';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { rsvpAPI } from '@/lib/api';
@@ -385,8 +386,10 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             at V-19 with no tracking row in it — V-6 sanctions "weights 500/600 -> 400 or 700"
             and nothing wider. Plan 22 made the identical call at the site cited above. Re-spacing
             the eyebrow family is a look decision and belongs to a plan that opens a V-row for it.
+
+            AMENDED Phase 88.9-47 (owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): the V-row this paragraph asked for is C3b (UI-SPEC R2-13); the eyebrow moves to tracking-wider, 0.05em (0.6px at 12px), chosen OVER the shipped 0.08em (0.96px), which the owner read as loose on the mockup; the whole family converges on the same step.
           */}
-          <span className="block text-xs font-bold uppercase tracking-[0.08em] text-content-accent">
+          <span className="block text-xs font-bold uppercase tracking-wider text-content-accent">
             Next game night
           </span>
           {/*
@@ -528,17 +531,20 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
                 >
                   {isFlight ? (
                     <>
-                      <span
-                        // The shipped spinner, swapped in PLACE so the button element —
-                        // and therefore DOM focus — survives the submit.
-                        className="inline-block animate-spin h-4 w-4 border-2 border-line-strong border-t-transparent rounded-full"
-                        aria-hidden="true"
-                      />
+                      {/* DECISION Phase 88.9-47 (rule 1, hero RSVP): the in-flight hero button keeps its visible label beside the house Spinner, chosen OVER the shipped spinner-only state — rule 1 (the label never changes while busy) is universal; the heard name is unchanged. */}
+                      {HERO_BUTTON_TEXT[key]}
+                      {/* The house Spinner (src/components/ui/Spinner.tsx ("export { Spinner };")),
+                          swapped in PLACE so the button element — and therefore DOM focus —
+                          survives the submit. The raw hero button is not flex, so the spinner
+                          takes the same spacing plan 88.9-45 gives AvailabilityForm's raw buttons. */}
+                      <Spinner className="ml-2 align-middle" />
                       {/* The button deliberately KEEPS focus in flight (aria-disabled,
                           D-08/A-5) — so it must keep an accessible NAME too, or the
                           focused control announces as nothing for the whole round trip
-                          (WCAG 4.1.2; adversarial review 2026-09-01, ML13). */}
-                      <span className="sr-only">{HERO_BUTTON_TEXT[key]}, saving</span>
+                          (WCAG 4.1.2; adversarial review 2026-09-01, ML13). The visible
+                          label now STAYS (rule 1), so this sr-only span adds only the
+                          suffix and the heard name is still '<label>, saving'. */}
+                      <span className="sr-only">, saving</span>
                     </>
                   ) : (
                     HERO_BUTTON_TEXT[key]
