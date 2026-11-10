@@ -58,7 +58,6 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'H5', text: 'Main', site: 'app/Header.js', kind: 'chunk' },
   // Notifications (D-30; N3-N6 passed as `fallback`, D-33 row 22)
   { id: 'N1', text: 'Loading notifications', site: 'app/components/NotificationBell.js', kind: 'chunk' },
-  { id: 'N2', text: 'Accepting...', site: 'app/components/NotificationBell.js', kind: 'chunk' },
   { id: 'N3', text: "We couldn't accept that invite. Please try again.", site: 'app/components/NotificationBell.js', kind: 'chunk' },
   { id: 'N4', text: "We couldn't decline that invite. Please try again.", site: 'app/components/NotificationBell.js', kind: 'chunk' },
   { id: 'N5', text: "We couldn't accept that friend request. Please try again.", site: 'app/components/NotificationBell.js', kind: 'chunk' },
@@ -200,7 +199,7 @@ const RATIFIED_ROWS: RatifiedRow[] = [
 
 // The exact roster: a dropped or renamed row fails.
 const EXPECTED_IDS = [
-  'H1', 'H2', 'H3', 'H4', 'H5', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'T2', 'T3', 'T4',
+  'H1', 'H2', 'H3', 'H4', 'H5', 'N1', 'N3', 'N4', 'N5', 'N6', 'T2', 'T3', 'T4',
   'A1', 'A2', 'A3', 'A4', 'C1', 'C2', 'E1', 'E2', 'E3', 'E4', 'E4b', 'E5', 'E6',
   'E8', 'E9', 'E10', 'E11', 'E12', 'E13', 'E14', 'E15', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6',
   'G7', 'G8', 'P1', 'P2', 'P7', 'P8', 'F1', 'F2', 'F7', 'L1a', 'L1b', 'L1c', 'L2', 'X1',
@@ -278,6 +277,9 @@ const RETIRED_LITERALS: Retired[] = [
   { text: 'Updating...', scope: 'tree' },
   // A5 (88.9-45 rule 1): the saved pre-fill's swap word is retired; heard as the ', loading' suffix.
   { text: 'Loading your availability…', scope: 'tree' },
+  // N2 (88.9-45 rule 1): the bell's Accept keeps its label; heard as ', accepting'. Scoped to the
+  // bell: friends/page.js keeps its own swap word until 88.9-46 (B24) widens this to 'tree'.
+  { text: 'Accepting...', scope: ['app/components/NotificationBell.js'] },
   { text: 'Availability for ', scope: ['app/components/EventScheduler.tsx', 'app/components/EventHeatmapBackground.js'] },
   { text: 'Reset Token', scope: ['app/components/QRCodeModal.js'] },
   // Phase 88.9-31 (owner pick T1): the games section's former name, retired where it lived.
@@ -402,11 +404,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (123 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (122 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(123);
+    expect(ids).toHaveLength(122);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });

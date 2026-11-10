@@ -939,7 +939,7 @@ describe('FeedbackForm — Phase 88.6.1-34 task 3 (D-35, Req 5, F2, R8 idempoten
     await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
     await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description.');
   };
-  const submitButton = () => screen.getByRole('button', { name: /^(Submit|Submitting\.\.\.)$/ });
+  const submitButton = () => screen.getByRole('button', { name: /^Submit(, submitting)?$/ });
   const flushMacrotask = () => act(() => new Promise((r) => setTimeout(r, 0)));
 
   beforeEach(() => {
@@ -976,7 +976,7 @@ describe('FeedbackForm — Phase 88.6.1-34 task 3 (D-35, Req 5, F2, R8 idempoten
     await waitFor(() => expect(submitButton()).toHaveTextContent('Submit'));
   });
 
-  it('D-35 attributes, Edge R4 concurrency — while sending, the pressed Submit is aria-disabled (never natively), reads "Submitting...", keeps focus, and a second press sends nothing; all of it releases when the FIRST send settles', async () => {
+  it('D-35 attributes, Edge R4 concurrency — rule 1 (88.9): while sending, the pressed Submit is aria-disabled (never natively), keeps its label + spinner (named "Submit, submitting"), keeps focus, and a second press sends nothing; all of it releases when the FIRST send settles', async () => {
     const d = deferredFetch();
     vi.stubGlobal('fetch', d.fn);
     const user = userEvent.setup();
@@ -991,7 +991,9 @@ describe('FeedbackForm — Phase 88.6.1-34 task 3 (D-35, Req 5, F2, R8 idempoten
     const pressed = submitButton();
     expect(pressed).toHaveAttribute('aria-disabled', 'true');
     expect(pressed).not.toHaveAttribute('disabled');
-    expect(pressed).toHaveTextContent('Submitting...');
+    expect(pressed).toHaveTextContent('Submit');
+    expect(pressed).toHaveAccessibleName('Submit, submitting');
+    expect(pressed.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     // CONFIRM-ONLY in jsdom (C-11: jsdom never blurs a disabled element); the phone spec's
     // Test C proves the focus half in a real browser. The two attribute lines above are the red half.
     expect(document.activeElement).toBe(pressed);
