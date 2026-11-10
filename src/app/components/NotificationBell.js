@@ -20,8 +20,11 @@ const LOADING_NOTIFICATIONS = 'Loading notifications';
 // straight apostrophe (D-32 R8).
 const NOTIFICATIONS_LOAD_FAILED_COPY = "Couldn't load your notifications";
 
-// Rule 1 (88.9-45, owner pick O16a): the sr-only suffix heard after the KEPT Accept label while a
-// row's accept runs; copy row N2's swap word is retired (the visible label no longer changes).
+// DECISION Phase 88.9-45 (rule 1, owner pick O16a, 88.9-PICKS-B9.json; Q3 scope B): both row Accepts
+// and both row Declines keep their labels with the house spinner while busy, named "Accept, accepting"
+// / "Decline, declining" through Button's busy / busySuffix — chosen OVER copy row N2's swap word
+// (retired) and OVER the N8 marker's REJECTED (d) for the in-flight state only (one app-wide busy
+// shape beats a per-site naming rule). This constant is the Accepts' suffix.
 const ACCEPT_BUSY_SUFFIX = ', accepting';
 
 // Copy rows N3-N6 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:102-105), each U+2019
