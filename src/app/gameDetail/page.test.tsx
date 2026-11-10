@@ -2364,6 +2364,33 @@ describe('gameDetail breadcrumb landmarks are named (#175)', () => {
   });
 });
 
+// 88.9-36 NAV-01 (owner ruling (a), chat 2026-11-07 1:08 PM Pacific, register row 69.9): both
+// gameDetail page roots cap at the header's 1280px box, centred, so at wide screens the body box
+// and the header box share their edges. The padding stays (DEF-88-24-01); the two roots move
+// together. Each root is found as the Breadcrumb navigation's parent, checked to be the render
+// container's first element child (one Breadcrumb navigation per view).
+describe('gameDetail page width — NAV-01 (88.9-36)', () => {
+  it("NAV-01 cap (88.9): both gameDetail roots are max-w-7xl mx-auto, the header's box", async () => {
+    const expectHeaderBox = (container: HTMLElement) => {
+      const root = screen.getByRole('navigation', { name: 'Breadcrumb' }).parentElement as HTMLElement;
+      expect(root).toBe(container.firstElementChild);
+      for (const cls of ['max-w-7xl', 'mx-auto', 'p-3', 'md:p-6']) {
+        expect(root.classList.contains(cls), `root class ${cls}`).toBe(true);
+      }
+      expect(root.classList.contains('max-w-6xl'), 'root keeps the 6xl cap').toBe(false);
+    };
+
+    const event = renderEventDetail({ role: 'owner' });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    expectHeaderBox(event.container);
+    event.unmount();
+
+    const game = renderGameDetail({ role: 'member' });
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    expectHeaderBox(game.container);
+  });
+});
+
 // ── Phase 88.6-47 (todo 2026-09-21, "date range inputs allow end before start") ──
 //
 // The session filter's From/To pair is pure CLIENT state — an inverted range simply

@@ -2644,8 +2644,9 @@ export default function GameDetailPage() {
                the deferral happened to cite by line number would have made the phone gutter
                depend on whether the URL carried a game_id, which nobody would read as
                intentional. This is also the branch `/gameDetail?event_id=…&group_id=…`
-               actually renders, so it is the one the padding-budget e2e loads. */
-            <div className="p-3 md:p-6 max-w-6xl mx-auto">
+               actually renders, so it is the one the padding-budget e2e loads.
+               NAV-01 (88.9-36): capped together with the game view — see this file ("DECISION Phase 88.9-36 NAV-01"). */
+            <div className="p-3 md:p-6 max-w-7xl mx-auto">
                 {/* DECISION Phase 88.6.1-52 (D-46 / R7-M7): this breadcrumb and the game view's below
                     reach the house standard. CHOSEN (a): the house focus ring on both links, per
                     site (`DECISION Phase 88.3-17`, which chose per-site OVER a global
@@ -3535,8 +3536,14 @@ export default function GameDetailPage() {
            gameDetail URL renders a 24px gutter and another a 12px one.
 
            Restoring `p-6` is a DECISION (it re-tightens the budget to ~72/75 and re-splits the
-           two branches), not a cleanup. */
-        <div className="p-3 md:p-6 max-w-6xl mx-auto">
+           two branches), not a cleanup.
+
+           DECISION Phase 88.9-36 NAV-01 (owner ruling (a), chat 2026-11-07 1:08 PM Pacific): this
+           root and the event-view root cap at 7xl (1280px), centred, the same box as
+           src/app/Header.js ("w-full max-w-7xl mx-auto px-4 h-full"), chosen OVER the shipped 6xl
+           (1152px) cap, which stopped 64px inside the header and footer box on each side at wide
+           screens. Narrowing it again is a decision, not a cleanup. */
+        <div className="p-3 md:p-6 max-w-7xl mx-auto">
             {/* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): the group-content guard. */}
             <RetainedContentFocusGuard retained={groupContentRetained} focusTarget={gameTitleRef} />
             {/* Breadcrumbs */}
