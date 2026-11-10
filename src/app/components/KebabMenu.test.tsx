@@ -324,3 +324,41 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
     expectGatedLook(twoTap);
   });
 });
+
+// Plan 88.9-35 (owner pick B2a, 88.9-PICKS-B1.json): the trigger's focus halo is the ground its
+// HOST paints, passed as a typed hostGround key, card by default (every live phone host is a card).
+describe('KebabMenu trigger host halo (88.9-35)', () => {
+  const SHIPPED = [
+    'min-h-11',
+    'min-w-11',
+    'text-2xl',
+    'leading-none',
+    'focus:outline-hidden',
+    'focus-visible:ring-2',
+    'focus-visible:ring-focus-ring',
+    'focus-visible:ring-offset-2',
+  ];
+  const trigger = () => screen.getByRole('button', { name: 'Member actions' });
+
+  it('R033 (88.9): the trigger halo comes from hostGround — card by default, the host\'s ground when passed', () => {
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    for (const token of SHIPPED) expect(trigger()).toHaveClass(token);
+    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-card');
+    cleanup();
+
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround="page" />);
+    for (const token of SHIPPED) expect(trigger()).toHaveClass(token);
+    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-page');
+    expect(trigger()).not.toHaveClass('focus-visible:ring-offset-surface-card');
+    cleanup();
+
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround="group" />);
+    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-group-halo');
+    expect(trigger()).not.toHaveClass('focus-visible:ring-offset-surface-card');
+    cleanup();
+
+    const unknown = 'not-a-ground' as unknown as 'card';
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround={unknown} />);
+    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-card');
+  });
+});
