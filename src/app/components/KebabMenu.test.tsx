@@ -300,13 +300,14 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
       <KebabMenu
         ariaLabel="Event actions"
         items={[
-          { label: 'Cancelling\u2026', danger: true, ariaDisabled: true, onClick: vi.fn() },
+          // The in-flight shape since rule 1 (88.9-46): the label kept, busy + the heard suffix.
+          { label: 'Cancel event', danger: true, ariaDisabled: true, busy: true, busySuffix: ', cancelling', onClick: vi.fn() },
           { label: 'Leave event', danger: true, twoTap: true, onClick: vi.fn() },
         ]}
       />
     );
     const { list } = openMenu('Event actions');
-    const inFlight = within(list).getByRole('button', { name: 'Cancelling\u2026' });
+    const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
     const twoTap = within(list).getByRole('button', { name: 'Leave event' });
     const expectGatedLook = (button: HTMLElement) => {
       expect(button).toHaveAttribute('aria-disabled', 'true');
@@ -318,10 +319,51 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
       );
     };
 
-    // The in-flight item (Cancelling…) first, then a twoTap item inside its gate.
+    // The in-flight item (Cancel event, busy) first, then a twoTap item inside its gate.
     expectGatedLook(inFlight);
     fireEvent.click(twoTap);
     expectGatedLook(twoTap);
+  });
+});
+
+// Rule 1 (88.9-46, owner pick O16a + the Q3 ruling): a per-item `busy` flag. The item keeps its
+// label, renders the house Spinner (data-slot spinner, plan 88.9-24) and the same sr-only suffix
+// span Button renders, so it is NAMED label plus suffix. busy never refuses on its own — the
+// caller's `ariaDisabled` stays the gate (the 88.6-16 D-12 split).
+describe('KebabMenu busy item (rule 1, 88.9-46)', () => {
+  it('rule 1 (88.9): a busy item keeps its label, shows the spinner and is named label plus suffix', () => {
+    const onClick = vi.fn();
+    render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[
+          { label: 'Cancel event', danger: true, ariaDisabled: true, busy: true, busySuffix: ', cancelling', onClick },
+        ]}
+      />
+    );
+    const { list } = openMenu('Event actions');
+    const item = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
+    expect(item).toHaveTextContent(/^Cancel event/);
+    expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).not.toHaveAttribute('disabled');
+    fireEvent.click(item);
+    expect(onClick).not.toHaveBeenCalled();
+    cleanup();
+
+    // At rest the same item carries neither the spinner nor the suffix (anti-vacuity for the
+    // busy branch), and a press reaches the handler.
+    render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[{ label: 'Cancel event', danger: true, busy: false, busySuffix: ', cancelling', onClick }]}
+      />
+    );
+    const resting = within(openMenu('Event actions').list).getByRole('button', { name: 'Cancel event' });
+    expect(resting.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    expect(resting.textContent).toBe('Cancel event');
+    fireEvent.click(resting);
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });
 

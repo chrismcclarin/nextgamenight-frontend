@@ -81,7 +81,6 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'E4', text: 'Loading game night...', site: 'app/gameDetail/page.js', kind: 'chunk' },
   { id: 'E4b', text: 'Loading game night...', site: 'app/components/createEvent.js', kind: 'chunk' },
   { id: 'E5', text: 'To Date must be on or after From Date.', site: 'app/gameDetail/page.js', kind: 'chunk' },
-  { id: 'E6', text: 'Loading QR code...', site: 'app/components/shareGameQrCopy.ts', kind: 'chunk' },
   { id: 'E8', text: 'Updating suggestions…', site: 'app/components/BrowseMoreModal.js', kind: 'chunk' },
   { id: 'E9', text: "You haven't added any games to your collection yet.", site: 'app/components/BringGamePicker.js', kind: 'chunk' },
   { id: 'E10', text: "We couldn't load your games. Close this and try again.", site: 'app/components/BringGamePicker.js', kind: 'chunk' },
@@ -198,7 +197,7 @@ const RATIFIED_ROWS: RatifiedRow[] = [
 // The exact roster: a dropped or renamed row fails.
 const EXPECTED_IDS = [
   'H1', 'H2', 'H3', 'H4', 'H5', 'N1', 'N3', 'N4', 'N5', 'N6', 'T2', 'T3', 'T4',
-  'A1', 'A2', 'A3', 'A4', 'C1', 'C2', 'E1', 'E2', 'E3', 'E4', 'E4b', 'E5', 'E6',
+  'A1', 'A2', 'A3', 'A4', 'C1', 'C2', 'E1', 'E2', 'E3', 'E4', 'E4b', 'E5',
   'E8', 'E9', 'E10', 'E11', 'E12', 'E13', 'E14', 'E15', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6',
   'G7', 'G8', 'P1', 'P2', 'P7', 'P8', 'F1', 'F2', 'F7', 'L1a', 'L1b', 'L1c', 'L2', 'X1',
   'X3', 'X3r', 'R1', 'R2', 'R3', 'R4', 'R5', 'R9', 'FR1', 'N7', 'N8a', 'N8b', 'N8c', 'N8d',
@@ -234,8 +233,9 @@ interface Importer {
   // sentences this file must NOT carry a copy of
   noCopyOf?: string[];
 }
+// E6's gameDetail entry (SHARE_GAME_QR_LOADING_LABEL) retired with rule 1 (88.9-46 B29); the
+// module shareGameQrCopy.ts is deleted — see RETIRED_LITERALS.
 const IMPORTERS: Importer[] = [
-  { importer: 'E6', file: 'app/gameDetail/page.js', constant: 'SHARE_GAME_QR_LOADING_LABEL', from: '../components/shareGameQrCopy', minUses: 1 },
   { importer: 'F2', file: 'app/components/FeedbackButton.js', constant: 'FEEDBACK_SEND_FAILED_COPY', from: './FeedbackForm', minUses: 1 },
   { importer: 'E9/R6', file: 'app/components/BringGamePicker.js', constant: 'EMPTY_COLLECTION_LINE', minUses: 2 },
   { importer: 'N5r', file: 'app/friends/page.js', constant: 'ACCEPT_FRIEND_FAILED_COPY', from: '../components/NotificationBell', minUses: 1, noCopyOf: ["We couldn't accept that friend request. Please try again."] },
@@ -275,9 +275,13 @@ const RETIRED_LITERALS: Retired[] = [
   { text: 'Updating...', scope: 'tree' },
   // A5 (88.9-45 rule 1): the saved pre-fill's swap word is retired; heard as the ', loading' suffix.
   { text: 'Loading your availability…', scope: 'tree' },
-  // N2 (88.9-45 rule 1): the bell's Accept keeps its label; heard as ', accepting'. Scoped to the
-  // bell: friends/page.js keeps its own swap word until 88.9-46 (B24) widens this to 'tree'.
-  { text: 'Accepting...', scope: ['app/components/NotificationBell.js'] },
+  // N2 (88.9-45 rule 1) + B24 (88.9-46 rule 1): the bell's and the friends page's Accept keep
+  // their labels; heard as ', accepting'. Tree-wide since 88.9-46.
+  { text: 'Accepting...', scope: 'tree' },
+  // E6 (88.9-46 rule 1, B29 + 45's B05): both Share Game QR buttons keep their label; heard as
+  // ', loading'. Scoped to E6's two former BUTTON sites: FriendInvitePanel.js keeps its QR status
+  // caption (a role=status region, not a button — outside rule 1), so tree scope would hold red.
+  { text: 'Loading QR code...', scope: ['app/gameDetail/page.js', 'app/components/EventDayModal.js'] },
   // CR5a / CR5b (88.9-45 rule 1): ConfirmDialog's pending text became the busy suffix; the two
   // swap words are retired tree-wide (heard as ', disconnecting' / ', promoting').
   { text: 'Disconnecting…', scope: 'tree' },
@@ -406,11 +410,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (120 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (119 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(120);
+    expect(ids).toHaveLength(119);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });

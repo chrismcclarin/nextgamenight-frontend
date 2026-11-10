@@ -1414,11 +1414,12 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
       invite.click();
     });
 
-    const sending = screen.getByRole('button', { name: 'Sending...' });
+    const sending = screen.getByRole('button', { name: 'Invite to group, sending' });
     expect(sending).toHaveAttribute('aria-disabled', 'true');
     expect(sending.hasAttribute('disabled')).toBe(false);
-    // The visible in-flight cue that replaces the `.btn:disabled` wash (V-17).
-    expect(sending).toHaveTextContent('Sending...');
+    // The visible in-flight cue that replaces the `.btn:disabled` wash (V-17): since rule 1
+    // (88.9-46 B26) the kept label plus the house spinner, never a label swap.
+    expect(sending).toHaveTextContent(/^Invite to group/);
     // No `disabled:opacity-*` utility was added at the call site — it keys on
     // the native attribute this control no longer carries.
     expect(sending.className).not.toMatch(/(^|[\s:])disabled:opacity-/);
@@ -1433,7 +1434,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     await user.click(invite);
     // The whole point of the 2026-09-14 amendment: a natively-disabled element
     // leaves the focus order and focus drops to <body> mid-submit.
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Sending...' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Invite to group, sending' }));
 
     await act(async () => {
       invite$.settle({});
@@ -1600,7 +1601,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     const invite = await screen.findByRole('button', { name: INVITE });
 
     await user.click(invite);
-    const sending = screen.getByRole('button', { name: 'Sending...' });
+    const sending = screen.getByRole('button', { name: 'Invite to group, sending' });
     expect(sending).toBe(invite);
 
     await act(async () => {
@@ -1610,6 +1611,67 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     const retry = await screen.findByRole('button', { name: 'Retry' });
     expect(retry).toBe(invite);
     expect(document.activeElement).toBe(retry);
+  });
+
+  // Rule 1 (88.9-46 B26 / B29, owner pick O16a + the Q3 ruling): the invite keeps the label the
+  // user PRESSED while sending (Invite to group from rest, Retry from the error state), and Share
+  // Game QR keeps its label; each shows the one house spinner and is named label plus suffix.
+  it('rule 1 (88.9): Invite to group and Share Game QR keep their labels and show the spinner while busy (B26, B29)', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await user.click(invite);
+    expect(invite).toHaveAccessibleName('Invite to group, sending');
+    expect(invite).toHaveTextContent(/^Invite to group/);
+    expect(invite.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(invite).toHaveAttribute('aria-disabled', 'true');
+    expect(invite.hasAttribute('disabled')).toBe(false);
+    await user.click(invite);
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      invite$.fail(new Error('network'));
+    });
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    expect(retry).toBe(invite);
+    expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+
+    // Pressed from the error state: Retry is the label under the user's finger, so Retry stays.
+    const retry$ = deferredInvite();
+    await user.click(retry);
+    expect(retry).toHaveAccessibleName('Retry, sending');
+    expect(retry).toHaveTextContent(/^Retry/);
+    expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(retry).toHaveAttribute('aria-disabled', 'true');
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      retry$.settle({});
+    });
+    await screen.findByText('Invite sent!');
+
+    // B29 (R-W4: ', loading'): two presses in one act send ONE request; the busy control keeps its
+    // label with the spinner.
+    const token = deferred(eventsAPI.getEventInviteToken as Mock);
+    const share = screen.getByRole('button', { name: 'Share Game QR' });
+    await act(async () => {
+      share.click();
+      share.click();
+    });
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(1);
+    expect(share).toHaveAccessibleName('Share Game QR, loading');
+    expect(share).toHaveTextContent(/^Share Game QR/);
+    expect(share.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(share).toHaveAttribute('aria-disabled', 'true');
+    expect(share.hasAttribute('disabled')).toBe(false);
+
+    await act(async () => {
+      token.settle({ invite_url: 'https://example.test/i/rule1' });
+    });
+    const idle = await screen.findByRole('button', { name: 'Share Game QR' });
+    expect(idle).toBe(share);
+    expect(idle.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
   });
 });
 
@@ -2051,10 +2113,11 @@ function deferred(mock: Mock) {
   return { settle: (v?: unknown) => settle(v), fail: (r?: unknown) => fail(r) };
 }
 
-// 88.6.1-47 (D-35, AC-12, copy row E6): the event page's Share Game QR is a PRESSED control.
-// While its invite-token request is in flight it keeps focus (aria-disabled, never the native
-// attribute), reads the E6 label, and a synchronous ref latch refuses a second press, so two
-// presses send ONE request. The label literal below is byte-equal to the copy table's row E6.
+// 88.6.1-47 (D-35, AC-12): the event page's Share Game QR is a PRESSED control. While its
+// invite-token request is in flight it keeps focus (aria-disabled, never the native attribute),
+// keeps its label with the house spinner and is named by the heard suffix (rule 1, 88.9-46 B29 —
+// copy row E6's swap word is retired), and a synchronous ref latch refuses a second press, so two
+// presses send ONE request.
 //
 // The jsdom focus claim here is NODE IDENTITY only: jsdom never blurs a natively disabled
 // element (FE-TESTING-CONVENTIONS C-11), so `document.activeElement` staying on the button
@@ -2062,7 +2125,8 @@ function deferred(mock: Mock) {
 // request count. The real-browser focus proof (and the QR dialog handing focus back) is the
 // phone e2e, e2e/share-game-qr-pending.spec.ts, run in CI.
 describe('gameDetail Share Game QR in flight (88.6.1-47, D-35)', () => {
-  const LOADING = 'Loading QR code...';
+  // The busy NAME: the kept label plus the heard suffix (rule 1, 88.9-46; R-W4 ', loading').
+  const LOADING = 'Share Game QR, loading';
 
   it('Q1: two presses with no render flush between them send ONE request, and the pressed node stays focusable', async () => {
     deferred(eventsAPI.getEventInviteToken as Mock);
@@ -2180,7 +2244,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     vi.useRealTimers();
   });
 
-  it('F9b (88.9): Cancel event arms, stays inert 3 s, then commits once and keeps Cancelling… readable', async () => {
+  it('F9b (88.9): Cancel event arms, stays inert 3 s, then commits once and keeps Cancel event readable with the spinner', async () => {
     const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
     deferred(eventsAPI.deleteEvent as Mock);
     renderEventDetail({ role: 'owner' });
@@ -2204,10 +2268,13 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     await user.click(cancel);
 
     expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
-    // D24 c: the menu stays OPEN and the in-flight label is readable in place, focused.
+    // D24 c: the menu stays OPEN and the busy item is readable in place, focused — since rule 1
+    // (88.9-46 B27) the kept label with the house spinner, named 'Cancel event, cancelling'.
     expect(list).toBeInTheDocument();
-    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
     expect(inFlight).toBe(cancel);
+    expect(inFlight).toHaveTextContent(/^Cancel event/);
+    expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(inFlight);
   });
@@ -2237,9 +2304,11 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     });
 
     expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
-    // The ruled arm (c): still OPEN, with the in-flight label readable IN PLACE —
-    // not "after reopening".
-    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    // The ruled arm (c): still OPEN, with the busy item readable IN PLACE — not "after
+    // reopening". Rule 1 (88.9-46 B27): the label is kept beside the spinner.
+    const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
+    expect(inFlight).toHaveTextContent(/^Cancel event/);
+    expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight.hasAttribute('disabled')).toBe(false);
   });
@@ -2264,7 +2333,10 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     });
 
     expect(eventsAPI.leaveEvent).toHaveBeenCalledTimes(1);
-    const inFlight = within(list).getByRole('button', { name: 'Leaving…' });
+    // Rule 1 (88.9-46 B28): Leave event keeps its label with the spinner, named ', leaving'.
+    const inFlight = within(list).getByRole('button', { name: 'Leave event, leaving' });
+    expect(inFlight).toHaveTextContent(/^Leave event/);
+    expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight.hasAttribute('disabled')).toBe(false);
   });
@@ -2279,14 +2351,14 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     // The whole reason the gate is `ariaDisabled` and not the native attribute:
     // a natively-disabled focused element blurs to <body>, which is exactly the
     // state this menu's container-bound Escape cannot see.
-    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
     expect(document.activeElement).toBe(inFlight);
     expect(document.activeElement).not.toBe(document.body);
     expect(document.activeElement).not.toBe(trigger);
 
     await user.keyboard('{Escape}');
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Cancelling…' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Cancel event, cancelling' })).toBeNull()
     );
     expect(document.activeElement).toBe(trigger);
   });

@@ -981,20 +981,25 @@ describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () =
   });
 
   it('KM-18 (iii). a flagged item stays open AND re-renders from the parent\'s NEW props', () => {
-    // Asserting "the menu did not close" is not enough: the point of the flag is that an
-    // in-flight label such as "Cancelling…" becomes VISIBLE on the item the user just activated,
-    // which only happens if the parent's next props reach the still-mounted item.
+    // Asserting "the menu did not close" is not enough: the point of the flag is that the
+    // in-flight state (rule 1, 88.9-46: the kept label with the house spinner and the heard
+    // suffix) becomes VISIBLE on the item the user just activated, which only happens if the
+    // parent's next props reach the still-mounted item.
     const onCancel = vi.fn();
-    const items = (label: string) => [{ label, onClick: onCancel, keepOpen: true, danger: true }];
-    const { rerender } = render(<KebabMenu ariaLabel={KEBAB_LABEL} items={items('Cancel event')} />);
+    const items = (busy: boolean) => [
+      { label: 'Cancel event', onClick: onCancel, keepOpen: true, danger: true, busy, busySuffix: ', cancelling' },
+    ];
+    const { rerender } = render(<KebabMenu ariaLabel={KEBAB_LABEL} items={items(false)} />);
     const { list } = openKebab();
     fireEvent.click(within(list).getByRole('button', { name: 'Cancel event' }));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('list'), 'the flagged item suppressed the close').toBeInTheDocument();
 
-    rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={items('Cancelling…')} />);
-    expect(within(list).getByRole('button', { name: 'Cancelling…' })).toBeInTheDocument();
+    rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={items(true)} />);
+    const busy = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
+    expect(busy).toHaveTextContent(/^Cancel event/);
+    expect(busy.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
   });
 
   it('KM-19. a menu left open by the flag is still dismissible by Escape and by an outside focusout', () => {
@@ -1033,30 +1038,34 @@ describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () =
 });
 
 describe('KebabMenu ariaDisabled — the flag that makes keepOpen\'s focus promise true', () => {
-  const inFlightItems = (label: string, busy: boolean, onClick = vi.fn()) => [
-    { label, onClick, danger: true, keepOpen: true, ariaDisabled: busy },
+  // The in-flight item shape since rule 1 (88.9-46): the label is KEPT and the parent flips
+  // `busy` (the house spinner + the heard suffix) beside `ariaDisabled`; the busy name is
+  // 'Cancel event, cancelling'.
+  const IN_FLIGHT_NAME = 'Cancel event, cancelling';
+  const inFlightItems = (busy: boolean, onClick = vi.fn()) => [
+    { label: 'Cancel event', onClick, danger: true, keepOpen: true, ariaDisabled: busy, busy, busySuffix: ', cancelling' },
   ];
 
   it('KM-20 (i). the flag renders aria-disabled="true" and NEVER the native disabled attribute', () => {
-    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancelling…', true)} />);
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems(true)} />);
     const { list } = openKebab();
-    const item = within(list).getByRole('button', { name: 'Cancelling…' });
+    const item = within(list).getByRole('button', { name: IN_FLIGHT_NAME });
     expect(item).toHaveAttribute('aria-disabled', 'true');
     expect(item, 'a natively disabled element leaves the focus order').not.toHaveAttribute('disabled');
     expect((item as HTMLButtonElement).disabled).toBe(false);
     // and the press is refused in the HANDLER
     const onClick = vi.fn();
     cleanup();
-    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancelling…', true, onClick)} />);
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems(true, onClick)} />);
     const reopened = openKebab();
-    fireEvent.click(within(reopened.list).getByRole('button', { name: 'Cancelling…' }));
+    fireEvent.click(within(reopened.list).getByRole('button', { name: IN_FLIGHT_NAME }));
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it('KM-20 (ii). focus stays on the SAME item node across the parent\'s in-flight label swap', () => {
+  it('KM-20 (ii). focus stays on the SAME item node across the parent\'s in-flight busy flip', () => {
     const onCancel = vi.fn();
     const { rerender } = render(
-      <KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancel event', false, onCancel)} />,
+      <KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems(false, onCancel)} />,
     );
     const { list } = openKebab();
     const item = within(list).getByRole('button', { name: 'Cancel event' });
@@ -1070,25 +1079,28 @@ describe('KebabMenu ariaDisabled — the flag that makes keepOpen\'s focus promi
     fireEvent.click(item);
     expect(onCancel).toHaveBeenCalledTimes(1);
 
-    // (c) the parent flips the label to the in-flight string and gates the item — what plan 18
-    // actually does, and the only way the remount hazard is reachable.
-    rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancelling…', true, onCancel)} />);
+    // (c) the parent flips the item to busy (spinner + suffix) and gates it — what gameDetail
+    // does since rule 1, and the only way the remount hazard is reachable.
+    rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems(true, onCancel)} />);
 
     // (d) BOTH halves. Node identity alone passes with focus on <body>, and a focus assertion
     // alone passes against an item that never re-rendered — so neither is sufficient on its own.
     expect(document.activeElement, 'the SAME node, not a remounted twin').toBe(item);
-    expect(item).toHaveTextContent('Cancelling…');
+    expect(item).toHaveAccessibleName(IN_FLIGHT_NAME);
+    expect(item).toHaveTextContent(/^Cancel event/);
+    expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
   });
 
   it('KM-20 (iii). Escape from that state closes the menu and restores focus to the trigger', () => {
     const { rerender } = render(
-      <KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancel event', false)} />,
+      <KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems(false)} />,
     );
     const { trigger, list } = openKebab();
     const item = within(list).getByRole('button', { name: 'Cancel event' });
     item.focus();
     fireEvent.click(item);
-    rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancelling…', true)} />);
+    rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems(true)} />);
+    expect(item).toHaveAccessibleName(IN_FLIGHT_NAME);
 
     // Delivered at document.activeElement, NEVER at a node fetched by query: a keydown dispatched
     // at the item bubbles to the container regardless of where focus actually is, so a queried
@@ -1121,9 +1133,11 @@ describe('KebabMenu ariaDisabled — the flag that makes keepOpen\'s focus promi
     item.focus();
     expect(item).toHaveFocus();
 
-    rerender(<LabelKeyedList labels={['Cancelling…']} />);
+    // The replica's key is label-derived, so ANY text change under focus remounts it — here the
+    // busy name rule 1 renders (the replica has no sr-only span; the whole name is the label).
+    rerender(<LabelKeyedList labels={[IN_FLIGHT_NAME]} />);
 
-    const after = screen.getByRole('button', { name: 'Cancelling…' });
+    const after = screen.getByRole('button', { name: IN_FLIGHT_NAME });
     expect(after, 'a label-derived key produces a FRESH element at the same position').not.toBe(item);
     expect(document.activeElement, 'and focus lands on <body>').not.toBe(after);
   });

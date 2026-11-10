@@ -1184,7 +1184,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(search);
     expect(search).toHaveAttribute('aria-disabled', 'true');
     expect(search).not.toHaveAttribute('disabled');
-    expect(search).toHaveTextContent('Searching...');
+    // rule 1 (88.9-46 B21): the label is kept; the busy name adds the heard suffix.
+    expect(search).toHaveAccessibleName('Search, searching');
+    expect(search).toHaveTextContent(/^Search/);
     fireEvent.click(search);
     // The Enter-from-field path.
     fireEvent.submit(search.closest('form') as HTMLFormElement);
@@ -1195,7 +1197,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     });
   });
 
-  it('S2: Send Request in flight is aria-disabled, reads Sending..., and sends once for two presses', async () => {
+  it('S2: Send Request in flight is aria-disabled, keeps its label (rule 1), and sends once for two presses', async () => {
     renderFriends({ friends: [] });
     await screen.findByRole('heading', { name: 'No friends yet' });
     const send = await searchTo(RILEY_HIT, 'riley@example.com');
@@ -1205,7 +1207,8 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(send);
     expect(send).toHaveAttribute('aria-disabled', 'true');
     expect(send).not.toHaveAttribute('disabled');
-    expect(send).toHaveTextContent('Sending...');
+    expect(send).toHaveAccessibleName('Send Request, sending');
+    expect(send).toHaveTextContent(/^Send Request/);
     fireEvent.click(send);
     expect(friendshipsAPI.sendRequest as Mock).toHaveBeenCalledTimes(1);
 
@@ -1266,7 +1269,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     await act(async () => {
       held.resolve({});
     });
-    // Positive signal: the send settled (Morgan's button no longer reads Sending...).
+    // Positive signal: the send settled (Morgan's button is no longer busy — its name is the bare label).
     expect(await screen.findByRole('button', { name: 'Send Request' })).toBeInTheDocument();
     expect(screen.queryByText('Request sent')).toBeNull();
     expect(document.activeElement?.textContent).not.toBe('Request sent');
@@ -1288,7 +1291,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('R1: Remove in flight is aria-disabled, reads Removing..., names the person, and removes once', async () => {
+  it('R1: Remove in flight is aria-disabled, keeps Remove (rule 1), names the person, and removes once', async () => {
     const held = deferred<unknown>();
     (friendshipsAPI.removeFriend as Mock).mockReturnValueOnce(held.promise);
     renderFriends();
@@ -1299,8 +1302,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(remove);
     expect(remove).toHaveAttribute('aria-disabled', 'true');
     expect(remove).not.toHaveAttribute('disabled');
-    expect(remove).toHaveTextContent('Removing...');
-    expect(remove).toHaveAccessibleName('Removing Dana');
+    // rule 1 (88.9-46 B23): the visible word stays Remove; the aria-label carries the suffix.
+    expect(remove).toHaveTextContent(/^Remove/);
+    expect(remove).toHaveAccessibleName('Remove Dana, removing');
     // GUARD half: the confirm hook's own re-entry refusal.
     fireEvent.click(remove);
     expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledTimes(1);
@@ -1362,7 +1366,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(samAccept);
     expect(samAccept).toHaveAttribute('aria-disabled', 'true');
     expect(samAccept).not.toHaveAttribute('disabled');
-    expect(samAccept).toHaveTextContent('Accepting...');
+    expect(samAccept).toHaveAccessibleName('Accept, accepting');
     expect(sam.getByRole('button', { name: 'Decline' })).toHaveAttribute('disabled');
     fireEvent.click(samAccept);
     expect(providerCtx.acceptRequest).toHaveBeenCalledTimes(1);
@@ -1373,11 +1377,123 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     const rileyDecline = riley.getByRole('button', { name: 'Decline' });
     fireEvent.click(rileyDecline);
     expect(rileyDecline).toHaveAttribute('aria-disabled', 'true');
-    expect(rileyDecline).toHaveTextContent('Declining...');
+    expect(rileyDecline).toHaveAccessibleName('Decline, declining');
     expect(riley.getByRole('button', { name: 'Accept' })).toHaveAttribute('disabled');
     fireEvent.click(rileyDecline);
     expect(providerCtx.declineRequest).toHaveBeenCalledTimes(1);
     expect(requestRow('Sam')).toHaveAttribute('data-request-row', 'req-1');
+
+    await act(async () => {
+      accepting.resolve({});
+      declining.resolve({});
+    });
+  });
+
+  // Rule 1 (88.9-46, owner pick O16a extended by the Q3 ruling): every in-flight friends button
+  // keeps its resting label, shows the one house spinner (data-slot spinner, plan 88.9-24) and is
+  // NAMED label plus a heard suffix that re-uses its retired in-flight word. The visible text is
+  // read as /^Label/ because the sr-only suffix is part of textContent, not of what is painted.
+  it('rule 1 (88.9): Search and Send Request keep their labels and show the spinner while busy (B21, B22)', async () => {
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    const search = screen.getByRole('button', { name: 'Search' });
+    fireEvent.change(emailField(), { target: { value: 'riley@example.com' } });
+    const heldSearch = deferred<unknown>();
+    (friendshipsAPI.searchUserByEmail as Mock).mockReturnValueOnce(heldSearch.promise);
+    fireEvent.click(search);
+    // B21: the SAME node, now busy.
+    expect(search).toHaveAccessibleName('Search, searching');
+    expect(search).toHaveTextContent(/^Search/);
+    expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(search).toHaveAttribute('aria-disabled', 'true');
+    expect(search).not.toHaveAttribute('disabled');
+    // The status line below the form is a caption, not a button (census B note): it keeps its word.
+    expect(screen.getByRole('status', { name: 'Searching for that email address' })).toHaveTextContent(
+      'Searching...'
+    );
+    fireEvent.click(search);
+    expect(friendshipsAPI.searchUserByEmail as Mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      heldSearch.resolve(RILEY_HIT);
+    });
+    expect(search).not.toHaveAttribute('aria-disabled');
+    expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+
+    // B22: the hit's Send Request, held.
+    const send = await screen.findByRole('button', { name: 'Send Request' });
+    const heldSend = deferred<unknown>();
+    (friendshipsAPI.sendRequest as Mock).mockReturnValueOnce(heldSend.promise);
+    fireEvent.click(send);
+    expect(send).toHaveAccessibleName('Send Request, sending');
+    expect(send).toHaveTextContent(/^Send Request/);
+    expect(send.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(send).toHaveAttribute('aria-disabled', 'true');
+    expect(send).not.toHaveAttribute('disabled');
+    fireEvent.click(send);
+    expect(friendshipsAPI.sendRequest as Mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      heldSend.resolve({});
+    });
+  });
+
+  it('rule 1 (88.9): Remove, Accept and Decline keep their labels and show the spinner while busy (B23-B25)', async () => {
+    // B23 — a RAW button behind the two-tap gate: the visible word stays Remove, the spinner sits
+    // beside it, and the aria-label (which overrides content) carries the person and the suffix,
+    // so Label-in-Name (WCAG 2.5.3) still holds.
+    const heldRemove = deferred<unknown>();
+    (friendshipsAPI.removeFriend as Mock).mockReturnValueOnce(heldRemove.promise);
+    renderFriends();
+    const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(remove);
+    passGate();
+    fireEvent.click(remove);
+    expect(remove).toHaveAccessibleName('Remove Dana, removing');
+    expect(remove).toHaveTextContent(/^Remove/);
+    expect(remove.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(remove).not.toHaveAttribute('disabled');
+    fireEvent.click(remove);
+    expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      heldRemove.resolve({});
+    });
+    vi.useRealTimers();
+    cleanup();
+
+    // B24 / B25 — the Requests tab: the pressed control is busy, its sibling natively disabled
+    // (the 88.6-22 rule of KIND split is unchanged).
+    await openRequests([SAM_REQUEST, RILEY_REQUEST]);
+    const accepting = deferred<unknown>();
+    providerCtx.acceptRequest.mockReturnValueOnce(accepting.promise);
+    const sam = within(requestRow('Sam'));
+    const samAccept = sam.getByRole('button', { name: 'Accept' });
+    fireEvent.click(samAccept);
+    expect(samAccept).toHaveAccessibleName('Accept, accepting');
+    expect(samAccept).toHaveTextContent(/^Accept/);
+    expect(samAccept.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(samAccept).toHaveAttribute('aria-disabled', 'true');
+    expect(samAccept).not.toHaveAttribute('disabled');
+    expect(sam.getByRole('button', { name: 'Decline' })).toHaveAttribute('disabled');
+    fireEvent.click(samAccept);
+    expect(providerCtx.acceptRequest).toHaveBeenCalledTimes(1);
+
+    const declining = deferred<unknown>();
+    providerCtx.declineRequest.mockReturnValueOnce(declining.promise);
+    const riley = within(requestRow('Riley'));
+    const rileyDecline = riley.getByRole('button', { name: 'Decline' });
+    fireEvent.click(rileyDecline);
+    // R-W4 (owner, 2026-11-08): ', declining' — the same word the bell's Declines took in 88.9-45.
+    expect(rileyDecline).toHaveAccessibleName('Decline, declining');
+    expect(rileyDecline).toHaveTextContent(/^Decline/);
+    expect(rileyDecline.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(rileyDecline).toHaveAttribute('aria-disabled', 'true');
+    expect(rileyDecline).not.toHaveAttribute('disabled');
+    expect(riley.getByRole('button', { name: 'Accept' })).toHaveAttribute('disabled');
+    fireEvent.click(rileyDecline);
+    expect(providerCtx.declineRequest).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       accepting.resolve({});
