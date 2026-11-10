@@ -28,6 +28,15 @@ const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
   isError: false,
+  // Plan 88.9-42 (SESSION-02): the identity query's error object, so a test can hand the page an
+  // ApiError whose `code` is `unauthorized`. `null` keeps the shipped generic Error.
+  error: null as Error | null,
+}));
+
+// Plan 88.9-42 (O22d): what the GroupList stub reports and receives, per render.
+const gl = vi.hoisted(() => ({
+  unauthorized: false,
+  lastProps: null as null | Record<string, unknown>,
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -37,7 +46,7 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
     self: h.selfUuid ? { id: h.selfUuid, user_id: 'auth0|self' } : undefined,
     query: {
       isError: h.isError,
-      error: h.isError ? new Error('identity failed') : null,
+      error: h.isError ? (h.error ?? new Error('identity failed')) : null,
       refetch: vi.fn(),
     },
     isPending: !h.selfUuid && !h.isError,
@@ -58,7 +67,23 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 }));
 
 // Siblings that own their own fetches are out of scope for this pin.
-vi.mock('@/app/components/grouplist', () => ({ default: () => <div>group list</div> }));
+// Plan 88.9-42 (O22d): the stub records its props and, when told to, reports a groups 401 the
+// way the real GroupList does — a boolean through `onGroupsUnauthorized`, from an effect.
+vi.mock('@/app/components/grouplist', async () => {
+  const ReactModule = await import('react');
+  return {
+    default: (props: Record<string, unknown>) => {
+      gl.lastProps = props;
+      const report = props.onGroupsUnauthorized as ((value: boolean) => void) | undefined;
+      ReactModule.useEffect(() => {
+        if (!report) return undefined;
+        report(gl.unauthorized);
+        return () => report(false);
+      }, [report]);
+      return <div>group list</div>;
+    },
+  };
+});
 vi.mock('@/app/components/EventCalendar', () => ({ default: () => <div>calendar</div> }));
 vi.mock('@/app/components/FriendInvitePanel', () => ({ default: () => null }));
 
@@ -89,6 +114,7 @@ vi.mock('@/components/ui/useFetchErrorState', async (importOriginal) => {
 });
 
 import UserHome from './UserHomePage';
+import { ApiError } from '@/lib/api';
 
 /** UserHomePage is `.js`, so its inferred prop type has every prop REQUIRED. */
 function renderHome() {
@@ -107,6 +133,9 @@ afterEach(() => {
   cleanup();
   h.selfUuid = undefined;
   h.isError = false;
+  h.error = null;
+  gl.unauthorized = false;
+  gl.lastProps = null;
   vi.restoreAllMocks();
 });
 
@@ -217,5 +246,67 @@ describe('A-66 / WR-10 — a Retry of the upcoming list never hangs while identi
       });
     });
     await waitFor(() => expect(settled).toBeUndefined());
+  });
+});
+
+// Plan 88.9-42 — O22d (owner pick page 9 v3, 88.9-PICKS-B9.json; UI-SPEC (d) O-22) + SESSION-02.
+// A dead session on the home page says so ONCE, at every width, in a page-level banner titled
+// "Couldn't load this page" whose action is Sign in (plan 88.9-26's unauthorized branch); the
+// in-column copy yields while it shows, so nothing beneath it claims the calendar or the group
+// list is empty after a failure.
+describe('O22d + SESSION-02 — one page-level session banner on the home page (88.9-42)', () => {
+  const SESSION_ERROR = () => new ApiError('Not signed in', 'unauthorized', 401);
+  const pageBanner = () => screen.getAllByText("Couldn't load this page");
+
+  it('O22d (88.9): a 401 on either home fetch shows ONE page-level banner with Sign in; the column copy yields', async () => {
+    const api = await import('@/lib/api');
+    // Arm 1: the upcoming-events fetch answers 401.
+    (api.eventsAPI.getUserEvents as ReturnType<typeof vi.fn>).mockRejectedValue(SESSION_ERROR());
+    h.selfUuid = SELF_UUID;
+    h.isError = false;
+    const first = renderHome();
+
+    await waitFor(() => expect(pageBanner()).toHaveLength(1));
+    const banner = pageBanner()[0];
+    // Above the two-column row: the banner precedes the group list in document order.
+    const groupList = screen.getByText('group list');
+    expect(banner.compareDocumentPosition(groupList) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
+    expect(screen.queryByText('Nothing on the calendar')).toBeNull();
+    expect(screen.queryByRole('heading', { name: /Upcoming events/i })).toBeNull();
+    expect(gl.lastProps?.sessionBannerShown).toBe(true);
+    first.unmount();
+
+    // Arm 2: upcoming loads fine; the group list reports its own 401.
+    (api.eventsAPI.getUserEvents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    gl.unauthorized = true;
+    renderHome();
+
+    await waitFor(() => expect(pageBanner()).toHaveLength(1));
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByText('Nothing on the calendar')).toBeNull();
+    expect(gl.lastProps?.sessionBannerShown).toBe(true);
+  });
+
+  it('SESSION-02 (88.9): an identity 401 shows the page banner and the compact identity notice yields', async () => {
+    h.selfUuid = undefined;
+    h.isError = true;
+    h.error = SESSION_ERROR();
+    const first = renderHome();
+
+    await waitFor(() => expect(pageBanner()).toHaveLength(1));
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByText(/Some personal controls are unavailable/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull();
+    expect(gl.lastProps?.sessionBannerShown).toBe(true);
+    first.unmount();
+
+    // A NON-unauthorized identity failure keeps the shipped shape: compact notice, no page banner.
+    h.error = null;
+    renderHome();
+    expect(screen.queryByText("Couldn't load this page")).toBeNull();
+    expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument();
+    expect(gl.lastProps?.sessionBannerShown).toBe(false);
   });
 });
