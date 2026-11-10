@@ -166,6 +166,19 @@ const CANCELLED_SOON = {
   EventParticipations: [],
 };
 
+// 88.9-39 F2c: a COMPLETED night that is still future-dated (an after-the-fact log with a wrong
+// date, or a backend status flip) — it stays in Later (OWNER RULING 2a) and carries the tag.
+const COMPLETED_FUTURE = {
+  id: 'e-completed-future',
+  group_id: 'g8',
+  game_id: 'game-codenames',
+  start_date: at(4 * DAY),
+  status: 'completed',
+  Game: { name: 'Codenames' },
+  Group: { name: 'Theta' },
+  EventParticipations: [],
+};
+
 /**
  * Phase 88.6-27: jsdom implements NO `IntersectionObserver`, and until this plan no test in
  * this file ever reached the one `CalendarListView` constructs — its effect early-returns on
@@ -381,10 +394,10 @@ function calendarButton(): HTMLElement {
  * than by role: `<section>` only maps to `region` when it has an accessible name, and this
  * asserts the WIRING (subheader id ↔ section label) at the same time as it finds the element.
  */
-function subSection(dialog: HTMLElement, name: 'This week' | 'Later'): HTMLElement {
-  // Prefix match, not exact: the This-week subheader's accessible name carries an
-  // sr-only count clause (", N upcoming this week" — ML15, 2026-09-01) whenever the
-  // pill shows one, mirroring the Calendar button's counted name.
+function subSection(dialog: HTMLElement, name: 'Later'): HTMLElement {
+  // AMENDED Phase 88.9-39 (owner pick D6c): the name union is `Later` alone — the This-week
+  // subheader, its pill and its sr-only count clause left the sheet. Prefix match kept as the
+  // shipped shape of this helper.
   const heading = within(dialog).getByRole('heading', {
     level: 4,
     name: new RegExp(`^${name}\\b`),
@@ -397,6 +410,26 @@ function subSection(dialog: HTMLElement, name: 'This week' | 'Later'): HTMLEleme
 /** Row count inside a sub-section — `EventRow` is the `role="button"` container. */
 function sectionRowCount(section: HTMLElement): number {
   return within(section).queryAllByRole('button').length;
+}
+
+/**
+ * 88.9-39: the `EventRow` (`role="button"` container) whose title heading reads `name` exactly.
+ * By STRUCTURE, like `rowOrder`: the hero is a native `<button>` with no `role` attribute, so a
+ * game name that also appears in the hero cannot make a role query ambiguous.
+ */
+function sheetRow(scope: HTMLElement, name: string): HTMLElement {
+  const row = Array.from(scope.querySelectorAll('[role="button"]')).find((el) =>
+    Array.from(el.querySelectorAll('h4, h5, h6')).some((h) => (h.textContent ?? '').trim() === name),
+  );
+  expect(row, `no sheet row titled "${name}"`).toBeDefined();
+  return row as HTMLElement;
+}
+
+/** The sheet's upcoming section (labelled by the `Upcoming events` h3). */
+function upcomingSection(dialog: HTMLElement): HTMLElement {
+  const section = dialog.querySelector('section[aria-labelledby$="-upcoming"]');
+  expect(section, 'no <section> is labelled by the Upcoming events heading').not.toBeNull();
+  return section as HTMLElement;
 }
 
 /** True when `a` precedes `b` in DOM order. */
@@ -767,7 +800,7 @@ describe('Req 12 — upcoming first, past collapsed', () => {
 // first thing the sheet shows have to be the same set. These pin that promise mechanically, and
 // each fixture is chosen so a plausible wrong implementation fails rather than coincides.
 describe('Phase 88.5 — Happening now / This week / Later', () => {
-  it('the button count, the twin pill and the This-week rows are ONE value in one render', async () => {
+  it('the button count and the next-7-day rows are ONE value in one render (AMENDED 88.9-39 D6c: no twin pill)', async () => {
     // SPEC Req 2's acceptance, stated mechanically. DISCRIMINATING FIXTURE: Brass is 10 days
     // out. An implementation that counted the raw list, or re-derived "this week" from
     // `futureGroups`' date keys, reads 3 where the selector says 2 — so it reds here. A fixture
@@ -777,17 +810,16 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
 
     expect(calendarButton()).toHaveAccessibleName('Calendar, 2 upcoming games this week');
 
-    const heading = within(dialog).getByRole('heading', { level: 4, name: /^This week\b/ });
-    // The twin pill's digits. It is `aria-hidden` (the count is in the button's name), which is
-    // why the heading's own accessible name above is still exactly "This week".
-    expect(within(heading).getByText('2')).toBeInTheDocument();
-
-    expect(sectionRowCount(subSection(dialog, 'This week'))).toBe(2);
-    // and the out-of-window event is visible under Later rather than quietly counted.
-    expect(within(subSection(dialog, 'Later')).getByText('Brass')).toBeInTheDocument();
+    // AMENDED Phase 88.9-39 (owner pick D6c + chat 2026-11-06 "drop the this week and the pill"):
+    // the twin pill and its This week subheader left the sheet; the two counted rows now sit
+    // under Upcoming events at the default levels, and the out-of-window event is still visible
+    // under Later rather than quietly counted.
+    expect(within(dialog).queryByRole('heading', { name: /^This week\b/ })).toBeNull();
+    expect(rowOrder(upcomingSection(dialog))).toEqual(['Catan', 'Gloomhaven', 'Brass']);
+    expect(rowOrder(subSection(dialog, 'Later'))).toEqual(['Brass']);
   });
 
-  it('an already-started event renders ABOVE This week and is counted nowhere', async () => {
+  it('an already-started event renders ABOVE the next-7-day rows and is counted nowhere', async () => {
     // OWNER RULING 2a. Root began 2h ago, so it is still on today's date key (inside
     // `futureGroups`) but is no longer "upcoming".
     const { dialog } = await openSheetWith([HAPPENING_NOW, FUTURE_EVENT, FAR_FUTURE]);
@@ -795,21 +827,20 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
 
     expect(rowOrder(dialog)).toEqual(['Root', 'Catan', 'Brass']);
 
-    const thisWeekHeading = within(dialog).getByRole('heading', { level: 4, name: /^This week\b/ });
-    const rootRow = within(dialog).getByRole('button', { name: /Root/ });
-    expect(precedes(rootRow, thisWeekHeading)).toBe(true);
+    // AMENDED Phase 88.9-39 (owner pick D6c): with no This week subheader between them, Root
+    // (started) and Catan (not yet) sit under ONE day heading, Root first — the same calendar day
+    // renders one header.
+    const friday = within(dialog).getByRole('heading', { level: 4, name: 'Friday, September 4' });
+    expect(rowOrder(friday.closest('section') as HTMLElement)).toEqual(['Root', 'Catan']);
+    expect(precedes(sheetRow(dialog, 'Root'), sheetRow(dialog, 'Catan'))).toBe(true);
 
-    // UNCOUNTED, in all three places the number surfaces, and absent from the counted section.
+    // UNCOUNTED, in the one place the number surfaces now.
     expect(calendarButton()).toHaveAccessibleName('Calendar, 1 upcoming game this week');
-    expect(within(thisWeekHeading).getByText('1')).toBeInTheDocument();
-    const week = subSection(dialog, 'This week');
-    expect(sectionRowCount(week)).toBe(1);
-    expect(within(week).queryByText('Root')).toBeNull();
   });
 
   it('a cancelled future event renders under Later in date order, and is counted nowhere', async () => {
     // OWNER RULING 2a's other half. Terraforming Mars is 2 days out — INSIDE the 7-day window
-    // by date — so only the status half of the predicate keeps it out of This week.
+    // by date — so only the status half of the predicate keeps it out of the counted rows.
     const { dialog } = await openSheetWith([FUTURE_EVENT, CANCELLED_SOON, FAR_FUTURE]);
     await within(dialog).findByText('Catan');
 
@@ -818,14 +849,16 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
     // live ones, which is what a two-pass "live first, then the rest" build would produce.
     expect(rowOrder(later)).toEqual(['Terraforming Mars', 'Brass']);
 
-    const week = subSection(dialog, 'This week');
-    expect(sectionRowCount(week)).toBe(1);
-    expect(within(week).queryByText('Terraforming Mars')).toBeNull();
+    // AMENDED Phase 88.9-39 (owner pick D6c): the counted row sits under Upcoming events OUTSIDE
+    // Later; there is no This week section to read.
+    expect(rowOrder(dialog)).toEqual(['Catan', 'Terraforming Mars', 'Brass']);
+    expect(later.contains(sheetRow(dialog, 'Catan'))).toBe(false);
     expect(calendarButton()).toHaveAccessibleName('Calendar, 1 upcoming game this week');
   });
 
   it('the sheet arm nests its headings h3 > h4 > h5 > h6 with no shared level (DR2-7b)', async () => {
     // All three groups present in ONE render, so the pin exercises the whole outline.
+    const errorSpy = vi.spyOn(console, 'error');
     const { dialog } = await openSheetWith([HAPPENING_NOW, FUTURE_EVENT, FAR_FUTURE]);
     await within(dialog).findByText('Root');
 
@@ -835,25 +868,113 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
         .map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim());
 
     expect(levelText(3)).toEqual(['Upcoming events']);
-    // h4 = the happening-now group's DAY header (it has no sub-section heading above it, so it
-    // keeps `DateGroup`'s default level) plus the two sub-section headings. "This week1" is the
-    // subheader with its twin pill seated inside it, followed by the sr-only count clause
-    // (", 1 upcoming this week" — ML15, 2026-09-01) that announces what the aria-hidden pill
-    // only shows.
-    expect(levelText(4)).toEqual([
-      'Friday, September 4',
-      'This week1, 1 upcoming this week',
-      'Later',
-    ]);
-    // h5 = the happening-now ROW title (default `EventRow` level), then This-week/Later's day
-    // headers, demoted one level beneath their `h4` sub-section heading.
-    expect(levelText(5)).toEqual(['Root', 'Friday, September 4', 'Monday, September 14']);
-    // h6 = This-week/Later ROW titles only.
-    expect(levelText(6)).toEqual(['Catan', 'Brass']);
+    // AMENDED Phase 88.9-39 (owner pick D6c): h4 = the ONE day header of the happening-now and
+    // next-7-day rows (one list at `DateGroup`'s default levels, no sub-section heading between
+    // them) plus the Later subheader.
+    expect(levelText(4)).toEqual(['Friday, September 4', 'Later']);
+    // h5 = the upcoming ROW titles (default `EventRow` level), then Later's day header, demoted
+    // one level beneath its `h4` sub-section heading.
+    expect(levelText(5)).toEqual(['Root', 'Catan', 'Monday, September 14']);
+    // h6 = Later ROW titles only.
+    expect(levelText(6)).toEqual(['Brass']);
 
-    // Friday September 4 appears at BOTH h4 and h5 above: the same calendar day holds Root
-    // (started) and Catan (not yet), and the date group was split BY EVENT rather than assigned
-    // to one bucket wholesale. A wholesale assignment renders that header once and reds here.
+    // AMENDED Phase 88.9-39 (owner pick D6c): the same-day split now renders ONE header. The
+    // same calendar day holds Root (started) and Catan (not yet); the bucketing still keeps Root
+    // out of the count, but the two buckets fold back by date key into one rendered group, as a
+    // NEW object per key — so React sees one header and no duplicate key.
+    expect(within(dialog).getAllByRole('heading', { name: 'Friday, September 4' })).toHaveLength(1);
+    expect(errorSpy.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
+  });
+
+  // 88.9-39 (owner picks F2c / D5a / D6c): the round-2 sheet-row rulings.
+  it('W57 (88.9): a cancelled and a completed future night carry their status tag and muted ink in Later', async () => {
+    // F2c (votes-b5 v10). The cancelled fixture also carries a valid https group image: a status
+    // row paints NO image (DEC-18), proven against a positive control — the live Gloomhaven row
+    // with the SAME image, which does paint it. The past completed Wingspan night keeps its group
+    // tint and gets no tag (DEC-17): the past list holds every after-the-fact log.
+    const IMAGE = 'https://example.com/eta.jpg';
+    const cancelledWithImage = { ...CANCELLED_SOON, Group: { name: 'Eta', background_image_url: IMAGE } };
+    const liveWithImage = { ...FUTURE_LATER, Group: { name: 'Gamma', background_image_url: IMAGE } };
+    const pastTinted = { ...PAST_EVENT, Group: { name: 'Beta', background_color: '#722f37' } };
+    const { user, dialog } = await openSheetWith([FUTURE_EVENT, liveWithImage, cancelledWithImage, COMPLETED_FUTURE, pastTinted]);
+    await within(dialog).findByText('Catan');
+
+    const later = subSection(dialog, 'Later');
+    const tmRow = sheetRow(later, 'Terraforming Mars');
+    const cnRow = sheetRow(later, 'Codenames');
+    for (const [row, label] of [[tmRow, 'Cancelled'], [cnRow, 'Completed']] as const) {
+      const tag = within(row).getByText(label);
+      const tagClasses = tag.className.split(/\s+/);
+      expect(tagClasses, `${label}: the tag fill`).toContain('bg-surface-muted');
+      expect(tagClasses, `${label}: the tag ink`).toContain('text-content-secondary');
+      expect(within(row).getAllByText(/^(Cancelled|Completed)$/), `${label}: one tag per row`).toHaveLength(1);
+      const title = within(row).getByRole('heading');
+      expect(title.className.split(/\s+/), `${label}: the title ink`).toContain('text-content-muted');
+      expect(title.className, `${label}: no themed ink chain on a status title`).not.toContain('--t-color');
+    }
+    // A live row carries no tag (R2E3 zero-one-many).
+    expect(within(sheetRow(dialog, 'Catan')).queryByText(/^(Cancelled|Completed)$/)).toBeNull();
+
+    // DEC-18: the status row paints no image and its wash is transparent; the live control does paint it.
+    expect(sheetRow(dialog, 'Gloomhaven').style.backgroundImage, 'positive control: the live row paints its image').toContain('example.com/eta.jpg');
+    expect(tmRow.style.backgroundImage).toBe('');
+    expect((tmRow.querySelector(':scope > div') as HTMLElement).style.backgroundColor).toBe('transparent');
+
+    // DEC-17: the past list — a night logged after the fact keeps its colour and gets no tag.
+    await user.click(pastToggle(dialog));
+    const wingspanRow = sheetRow(dialog, 'Wingspan');
+    expect(within(wingspanRow).getByRole('heading')).toHaveTextContent('Wingspan');
+    expect(within(wingspanRow).queryByText('Completed')).toBeNull();
+    expect(wingspanRow.className.split(/\s+/)).toContain('bg-[var(--group-ground-light)]');
+  });
+
+  it("D5a (88.9): a guest night's sheet row carries the dashed amber edge and the Guest pill", async () => {
+    // The viewer (SELF_UUID) joined Cascadia as a guest; Catan is an ordinary membership row.
+    const guestNight = {
+      ...FUTURE_LATER,
+      id: 'e-guest',
+      game_id: 'game-cascadia',
+      Game: { name: 'Cascadia' },
+      EventParticipations: [{ user_id: SELF_UUID, is_guest: true }],
+    };
+    const { dialog } = await openSheetWith([FUTURE_EVENT, guestNight]);
+    await within(dialog).findByText('Catan');
+
+    const guestRow = sheetRow(dialog, 'Cascadia');
+    const classes = guestRow.className.split(/\s+/);
+    expect(classes).toContain('border-dashed');
+    expect(classes).toContain('border-amber-400');
+    expect(classes, 'the edge is an exclusive arm, never stacked on the hairline').not.toContain('border-line');
+    expect(within(guestRow).getByText('Guest')).toBeInTheDocument();
+    // NEW-1: no inline borderColor — an inline declaration would beat both border arms.
+    expect(guestRow.style.borderColor).toBe('');
+
+    const memberRow = sheetRow(dialog, 'Catan');
+    expect(memberRow.className.split(/\s+/)).not.toContain('border-dashed');
+    expect(memberRow.className.split(/\s+/)).toContain('border-line');
+    expect(within(memberRow).queryByText('Guest')).toBeNull();
+    expect(memberRow.style.borderColor).toBe('');
+  });
+
+  it('D6c (88.9): the sheet has no This week subheader, pill or sr-only count, and the next-7-day rows sit under Upcoming events', async () => {
+    const { dialog } = await openSheetWith([FUTURE_EVENT, FUTURE_LATER, FAR_FUTURE]);
+    await within(dialog).findByText('Catan');
+
+    expect(within(dialog).queryByRole('heading', { name: /^this week\b/i })).toBeNull();
+    expect(dialog.textContent).not.toMatch(/upcoming this week/i);
+    expect(within(dialog).queryAllByRole('heading').map((h) => h.textContent)).not.toContain('This week2');
+    // The Calendar BUTTON's count is untouched.
+    expect(calendarButton()).toHaveAccessibleName('Calendar, 2 upcoming games this week');
+
+    // The next-7-day rows' day headers are h4s directly under the Upcoming events h3 (the default
+    // levels, like the happening-now rows) and their titles h5.
+    const upcoming = upcomingSection(dialog);
+    const friday = within(upcoming).getByRole('heading', { level: 4, name: 'Friday, September 4' });
+    within(upcoming).getByRole('heading', { level: 4, name: 'Monday, September 7' });
+    expect(within(friday.closest('section') as HTMLElement).getByRole('heading', { level: 5, name: 'Catan' })).toBeInTheDocument();
+    // Later stays, with its demoted levels.
+    expect(rowOrder(subSection(dialog, 'Later'))).toEqual(['Brass']);
+    expect(rowOrder(dialog)).toEqual(['Catan', 'Gloomhaven', 'Brass']);
   });
 });
 
@@ -1117,13 +1238,13 @@ describe('Phase 88.6-27 — W58 + W59: the sheet has ONE time boundary', () => {
     const { dialog } = await openAt(LATE_NIGHT_NOW, NIGHT_SET);
     await within(dialog).findByText('Dune');
 
-    // Happening now is the unlabelled group ABOVE This week — the OWNER RULING 2a shape.
-    const thisWeek = within(dialog).getByRole('heading', { level: 4, name: /^This week\b/ });
-    const duneRow = within(dialog).getByRole('button', { name: /Dune/ });
-    expect(precedes(duneRow, thisWeek)).toBe(true);
+    // Happening now is the unlabelled group at the TOP of the upcoming list — the OWNER RULING 2a
+    // shape. AMENDED Phase 88.9-39 (owner pick D6c): there is no This week subheader to precede
+    // any more; the live row is the first row of the upcoming section.
+    expect(rowOrder(upcomingSection(dialog))[0]).toBe('Dune');
 
     // ...and the row is NOT inside the past disclosure, which is where shipped code put it.
-    expect(within(subSection(dialog, 'This week')).queryByText('Dune')).toBeNull();
+    expect(rowOrder(upcomingSection(dialog))).toContain('Dune');
 
     // THE NEGATIVE HALF, asserted against the ruled 8h constant rather than implied by it: a
     // `scheduled` row three days old with a null duration must NOT be lifted into Happening now.
@@ -1140,7 +1261,8 @@ describe('Phase 88.6-27 — W58 + W59: the sheet has ONE time boundary', () => {
     expect(
       within(dialog).queryByRole('heading', { level: 4, name: /^Later\b/ })
     ).toBeNull();
-    expect(within(subSection(dialog, 'This week')).queryByText('Everdell')).toBeNull();
+    // AMENDED Phase 88.9-39 (owner pick D6c): read against the whole upcoming section.
+    expect(rowOrder(upcomingSection(dialog))).not.toContain('Everdell');
 
     await user.click(pastToggle(dialog));
 

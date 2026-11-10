@@ -188,9 +188,9 @@ const NAMED_SURFACES = [
  * §4.1's working set, as Tailwind utilities: 14 / 16 / 20 / 30.
  *
  * DO NOT ADD `xs` HERE. These assertions are HEADING-scoped, and admitting `text-xs`
- * would re-legalize the two text-xs h4s plan 88.6-27 retired — now
- * src/app/components/CalendarListView.js ("id={thisWeekId}") and
- * src/app/components/CalendarListView.js ("id={laterId}"), both Heading level 4 size label at
+ * would re-legalize the two text-xs h4s plan 88.6-27 retired — now the one surviving
+ * src/app/components/CalendarListView.js ("id={laterId}") (the This-week h4 left the sheet with
+ * 88.9-39 D6c), Heading level 4 size label at
  * 14 — the exact sites UI-SPEC §1.2 row V-5
  * (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 1.2 The sanctioned visible deltas"),
  * "h4 12px → 14px") exists to move UP. 12px is the tree-wide FLOOR (task 2's sub-12px
