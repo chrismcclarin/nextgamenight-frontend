@@ -486,6 +486,63 @@ describe('BrowseMoreModal refresh keeps the list (88.6.1-32, D-09, D-41, AC-27, 
     await waitFor(() => expect(slotRegions().polite.textContent).toBe(UPDATING));
     expect(screen.queryByText(FIRST_LOAD_LINE)).toBeNull();
   });
+
+  // Plan 88.9-44 (owner pick D15b, 88.9-PICKS-B3.json, 2026-11-05; Q7 85% and its ADDENDUM / R-P2,
+  // 88.9-RULINGS.md): the previous results dim during a refresh, keyed on the same value as the
+  // E8 busy line AND a non-empty settled result — never on the first load (no previous rows; the
+  // first-load caption would drop under 4.5), never over an empty result (its Reset filters
+  // label would read 4.07 light through the dim). The class is the whole Tailwind literal.
+  it('D15b (88.9): the results dim class rides the aria-busy list only during a refresh over previous cards — never on the first load, never over an empty result', async () => {
+    const user = userEvent.setup();
+    const DIM = '[&>*]:opacity-85';
+    const increase = () => screen.getByRole('button', { name: 'Increase player count' });
+
+    // First load: busy, never dimmed.
+    const d1 = holdNext();
+    render(<BrowseMoreModal {...baseProps} />);
+    expect(await screen.findByText(FIRST_LOAD_LINE)).toBeInTheDocument();
+    const results = screen.getByTestId('browse-more-results');
+    expect(results).toHaveAttribute('aria-busy', 'true');
+    expect(results).not.toHaveClass(DIM);
+    await act(async () => {
+      d1.resolve({ suggestions: [CATAN, AZUL] });
+    });
+    expect(await screen.findByRole('button', { name: 'Catan' })).toBeInTheDocument();
+    expect(results).not.toHaveAttribute('aria-busy');
+    expect(results).not.toHaveClass(DIM);
+
+    // Refresh over previous cards: positive signal first (busy), then the dim rides it.
+    const d2 = holdNext();
+    await user.click(increase());
+    await waitFor(() => expect(results).toHaveAttribute('aria-busy', 'true'));
+    expect(results).toHaveClass(DIM);
+    await act(async () => {
+      d2.resolve({ suggestions: [CATAN, CARCASSONNE] });
+    });
+    expect(await screen.findByRole('button', { name: 'Carcassonne' })).toBeInTheDocument();
+    expect(results).not.toHaveAttribute('aria-busy');
+    expect(results).not.toHaveClass(DIM);
+
+    // Empty-state arm (R-P2): settle on the filters-yield-none variant, then refresh over it.
+    const d3 = holdNext();
+    await user.click(increase());
+    await waitFor(() => expect(results).toHaveAttribute('aria-busy', 'true'));
+    await act(async () => {
+      d3.resolve({ suggestions: [] });
+    });
+    expect(await screen.findByText(FILTERS_EMPTY)).toBeInTheDocument();
+    expect(results).not.toHaveAttribute('aria-busy');
+    const d4 = holdNext();
+    await user.click(increase());
+    await waitFor(() => expect(results).toHaveAttribute('aria-busy', 'true'));
+    expect(results).not.toHaveClass(DIM);
+    expect(screen.getByText(FILTERS_EMPTY)).toBeInTheDocument();
+    await act(async () => {
+      d4.resolve({ suggestions: [] });
+    });
+    await waitFor(() => expect(results).not.toHaveAttribute('aria-busy'));
+    expect(results).not.toHaveClass(DIM);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
