@@ -2472,6 +2472,7 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 import { axe } from 'vitest-axe';
 import { auditFormControls } from '../../test-utils/formControlAudit';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
 const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
@@ -2572,7 +2573,9 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
 
 const REAL_LOCATION = window.location;
 const SECOND_EVENT_ID = '88888888-8888-4888-8888-888888888888';
-const SIGN_IN_LATCH = `ngevent:signinRedirect:${EVENT_ID}`;
+// AMENDED Phase 88.9-40 (SESSION-01): the latch key is the shared guard's — one per path + search,
+// read from the CURRENT (stubbed) location — so every test stubs the location BEFORE setting it.
+const signInLatch = () => signInLatchKey(window.location);
 const UNAUTHORIZED = () => new ApiError('Unauthorized', 'unauthorized', 401);
 const FORBIDDEN = () => new ApiError('Access denied', 'forbidden', 403);
 const ACCOUNT_DELETED = () => new ApiError('gone', 'account_deleted', 410);
@@ -2811,7 +2814,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     expect(replace).toHaveBeenCalledWith(
       '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}#vote`)
     );
-    expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBe('1');
+    expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
     expect(screen.getByText('Loading game night...')).toBeInTheDocument();
     expect(screen.queryByText('Event not found')).toBeNull();
     // Prohibition 1: the redirect path paints no event detail.
@@ -2915,18 +2918,93 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     expect(await screen.findByLabelText('Bringing a game')).toBeInTheDocument();
   });
 
+  // ---- Phase 88.9-40 (SESSION-01, SPEC A8): the shared guard on both views ----
+
+  // The game view's twin of R1 / C1: a primary 401 on the game read now takes the same answer arm.
+  // Render helper, not renderGameDetail: the game read must be a rejection from the first call.
+  function renderGameRejecting(error: unknown, search: string) {
+    h.selfUuid = SELF_UUID;
+    h.search = search;
+    (gamesAPI.getGame as Mock).mockRejectedValue(error);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('member'));
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
+    return renderPage(false);
+  }
+
+  it('SESSION-01 (88.9): a game link whose read answers 401 goes to sign-in once with the game as returnTo; back with the latch set it is the game banner with Sign in, never a second redirect; then game B in the same mount redirects once', async () => {
+    const searchA = `?game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search: searchA });
+    renderGameRejecting(UNAUTHORIZED(), searchA.slice(1));
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${searchA}`)
+    );
+    const keyA = signInLatch();
+    expect(window.sessionStorage.getItem(keyA)).toBe('1');
+    // The redirect frame is the loader, never the banner (P-5).
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    cleanup();
+
+    // Back with the latch set: the game banner with X1 and Sign in, no second redirect.
+    const r = renderGameRejecting(UNAUTHORIZED(), searchA.slice(1));
+    expect(await screen.findByText(GAME_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByText(X1_SENTENCE)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.getItem(keyA)).toBe('1');
+
+    // Game B in the same mount: the clean slate resets the decision, B's own latch is clear, so one
+    // replace with B as returnTo; A's latch is untouched.
+    const searchB = `?game_id=${SECOND_GAME_ID}&group_id=${GROUP_ID}`;
+    const replaceB = stubLocation({ search: searchB });
+    h.search = searchB.slice(1);
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(replaceB).toHaveBeenCalledTimes(1));
+    expect(replaceB).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${searchB}`)
+    );
+    expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
+    expect(window.sessionStorage.getItem(keyA)).toBe('1');
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("SESSION-01 (88.9): another event in the same mount decides afresh — A declined with its latch set, B's 401 redirects once with B as returnTo, A's latch untouched", async () => {
+    const searchA = `?event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    const replaceA = stubLocation({ search: searchA });
+    window.sessionStorage.setItem(signInLatch(), '1');
+    const keyA = signInLatch();
+    const r = renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(replaceA).not.toHaveBeenCalled();
+
+    const searchB = `?event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    const replaceB = stubLocation({ search: searchB });
+    h.search = searchB.slice(1);
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(replaceB).toHaveBeenCalledTimes(1));
+    expect(replaceB).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${searchB}`)
+    );
+    expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
+    expect(window.sessionStorage.getItem(keyA)).toBe('1');
+    expect(replaceA).not.toHaveBeenCalled();
+  });
+
   // ---- Task 2: every other answer the event fetch can get has its own honest screen ----
 
   it('C1: a 401 with the latch already set (back from sign-in) renders the E3 banner with X1, never a second redirect (AC-2)', async () => {
-    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
     const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    window.sessionStorage.setItem(signInLatch(), '1');
     renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
     expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
     expect(screen.getByText(X1_SENTENCE)).toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
     expect(screen.queryByText('Event not found')).toBeNull();
     // A 401 never clears the latch (review r2 #305): clearing it would rebuild the loop.
-    expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBe('1');
+    expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
   });
 
   it('C2: a latch read that throws fails CLOSED: the banner, never a redirect (P-4)', async () => {
@@ -2958,10 +3036,11 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
   });
 
   it('C4: a successful event load clears the latch', async () => {
-    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    window.sessionStorage.setItem(signInLatch(), '1');
     renderEventDetail();
     expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
-    await waitFor(() => expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBeNull());
+    await waitFor(() => expect(window.sessionStorage.getItem(signInLatch())).toBeNull());
   });
 
   it('C5: a 403 renders the no-access screen (E1, E2) with Back to Home, no banner, no redirect (AC-3)', async () => {
@@ -2990,18 +3069,19 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
   });
 
   it('C7: back from sign-in (latch set) and the answer is 403: the no-access screen, no second redirect (SPEC adjacency / R1)', async () => {
-    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
     const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    window.sessionStorage.setItem(signInLatch(), '1');
     renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
     expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
   });
 
   it('C7b: an answer that proves the session (403) clears the latch (review r2 #305)', async () => {
-    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    window.sessionStorage.setItem(signInLatch(), '1');
     renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
     expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
-    await waitFor(() => expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBeNull());
+    await waitFor(() => expect(window.sessionStorage.getItem(signInLatch())).toBeNull());
   });
 
   it('C8: a 404 keeps today\'s words, now as a heading, with the Back link, no banner and no redirect (AC-4)', async () => {
@@ -4037,9 +4117,16 @@ describe('gameDetail retained-content notice, game view — RF1 (88.6.1-74)', ()
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
-  it('GV-8. a 401 refresh drops the game to the full banner with its register line (C10, C8 e)', async () => {
+  it('GV-8. a 401 refresh drops the game to the full banner with its register line (C10, C8 e) (latch set, 88.9-40)', async () => {
     const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
-    await refreshGameRejecting(e401);
+    // AMENDED Phase 88.9-40 (SESSION-01): a 401 refresh now redirects once (the shared guard), so the
+    // latch is set AFTER the loaded game (the load that succeeds clears a latch set before it) and
+    // this test pins the DECLINED arm — the full banner it always held.
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    window.sessionStorage.setItem(signInLatch(), '1');
+    (gamesAPI.getGame as Mock).mockRejectedValue(e401);
+    forceRefresh(r.rerender);
     expect(await screen.findByText(getFetchErrorMessage(e401))).toBeInTheDocument();
     expect(screen.queryByText('Wingspan')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);

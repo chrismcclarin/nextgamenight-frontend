@@ -12,8 +12,10 @@ import PromptScheduleSection from '../components/PromptScheduleSection';
 import { pollChipLabels, pollTitle } from '../components/OpenPollsList';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
@@ -55,7 +57,7 @@ function sameId(a, b) {
 }
 
 export default function GroupPlanningPage() {
-    const { user, isLoading: authLoading } = Auth();
+    const { user, error: authError, isLoading: authLoading } = Auth();
     // Phase 87.3-05 (D-02): resolve the caller's own Users.id UUID via the
     // shared identity primitive, collapsing the former per-page usersAPI
     // self-fetch (getUser by sub). selfUuid feeds the self-role derive
@@ -162,13 +164,6 @@ export default function GroupPlanningPage() {
         enabled: Boolean(groupId) && Boolean(userRole) && userRole !== 'pending',
     });
     const openPolls = Array.isArray(openPollsData?.prompts) ? openPollsData.prompts : [];
-
-    useEffect(() => {
-        if (!authLoading && !user) {
-            const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
-            window.location.href = `/api/auth/login?returnTo=${returnTo}`;
-        }
-    }, [authLoading, user]);
 
     /* DECISION Phase 88.6.1-16 (W060 double fetch): the group and poll loads run ONCE per user
        and group; only the role re-derive follows identity. Two effects, chosen OVER the single
@@ -502,6 +497,20 @@ export default function GroupPlanningPage() {
         error: groupError,
         refetch: retryGroup,
     });
+    // DECISION Phase 88.9-40 (SESSION-01): this page's guard is the shared useSignInRedirect (a latched
+    // location.replace, returnTo = path + search + hash from window.location), chosen OVER the effect
+    // it replaces, which assigned location.href with returnTo = path + search — the Back button
+    // returned to a page that redirected again (gameDetail's DECISION Phase 88.6.1-25 (D-01)
+    // REJECTED (c)), the hash was lost, and nothing bounded a repeat. A 401 on the group read now
+    // redirects too (SPEC A8); a return with the latch set gets the group banner with Sign in. A
+    // useUser() error shows Reload, never a redirect.
+    const signIn = useSignInRedirect({
+        authLoading,
+        signedOut: !user,
+        authError,
+        unauthorized: groupErrorState.showError && groupErrorState.code === 'unauthorized',
+        sessionProven: Boolean(group),
+    });
     const heatmapErrorState = useFetchErrorState({
         isError: Boolean(heatmapError),
         error: heatmapError,
@@ -594,9 +603,26 @@ export default function GroupPlanningPage() {
     };
 
 
+    // 88.9-40 (SESSION-01): four branches, in order — the session still loading (G5), the redirect
+    // frame (both arms), a useUser() failure (Reload, never a redirect), and the declined signed-out
+    // return (the group banner with Sign in). The title is plan 88.9-48's target form for this page's
+    // banner title; the body is userProfile's 88-19 sentence — no new copy.
+    if (authLoading && !user) {
+        return <div className="flex items-center justify-center min-h-screen text-content-secondary">
+            {AUTH_LOADING_MESSAGE}
+        </div>;
+    }
+    if (signIn.holding) {
+        return <div className="flex items-center justify-center min-h-screen text-content-secondary">
+            Redirecting to login...
+        </div>;
+    }
+    if (signIn.sessionError) {
+        return <ErrorFallback title="Couldn't load this group" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />;
+    }
     if (!user) {
         return <div className="flex items-center justify-center min-h-screen text-content-secondary">
-            {authLoading ? AUTH_LOADING_MESSAGE : 'Redirecting to login...'}
+            <FetchErrorBanner state={signIn.signedOutErrorState} title="Couldn't load this group" reportContext="Group planning — signed out" />
         </div>;
     }
 

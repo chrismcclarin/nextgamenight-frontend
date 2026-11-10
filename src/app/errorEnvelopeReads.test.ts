@@ -226,7 +226,8 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // its marker, and the swap-announcement state above the role state). Kept as a line number.
     // RE-DERIVED by the pi6 scoped-check fix SC-1 (2026-10-26): 138 -> 141, the loadingPollId
     // state and its two comment lines above the role state.
-    declaredAt: 141,
+    // RE-DERIVED by plan 88.9-40 (Task 2, 2026-11-10): 141 -> 143. The SESSION-01 ErrorFallback and useSignInRedirect imports landed above it. Kept as a line number.
+    declaredAt: 143,
     declaration: 'const [roleRecord, setRoleRecord] = useState(',
     why:
       'Local role-read state { groupId, role, error } written only by the page\'s own ' +
