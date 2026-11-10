@@ -675,6 +675,42 @@ describe('Req 11b — tapping an event', () => {
       `/gameDetail?game_id=${PAST_EVENT.game_id}&group_id=${PAST_EVENT.group_id}`
     );
   });
+
+  // Plan 88.9-42 (R2-26, owner pick D6c + chat 2026-11-06): the Calendar sheet title renders at
+  // the display rung through BottomSheet's titleSize prop (plan 88.9-29), never through a text-*
+  // size merged in className (tailwind-merge would drop the title's leading).
+  it('R2-26 (88.9): the Calendar sheet title is the display rung (30/700)', async () => {
+    const { dialog } = await openSheetWith(EVENTS);
+    const title = within(dialog).getByRole('heading', { name: SHEET_TITLE });
+    expect(title).toHaveClass('text-3xl', 'font-bold');
+    expect(title).not.toHaveClass('text-xl');
+  });
+
+  // Plan 88.9-42 (W59, owner by chat 2026-11-07 3:15 AM Pacific "W59 event."): the sheet routes
+  // through src/lib/eventDetailHref.ts, the same helper as EventCalendar, so a night that has
+  // STARTED but is still running (live status, inside its run window) opens the EVENT page. The
+  // inline start-time test it replaces sent a live night with a game to the game view.
+  it('W59 (88.9): a live sheet row with a game, started an hour ago, opens the event page', async () => {
+    const LIVE_HOUR_AGO = {
+      id: 'e-live-hour',
+      group_id: 'g9',
+      game_id: 'game-pandemic',
+      start_date: at(-1 * HOUR),
+      status: 'in_progress',
+      Game: { name: 'Pandemic' },
+      Group: { name: 'Iota' },
+      EventParticipations: [],
+    };
+    const { user, dialog } = await openSheetWith([LIVE_HOUR_AGO, FUTURE_EVENT]);
+    await within(dialog).findByText('Pandemic');
+    await user.click(sheetRow(dialog, 'Pandemic'));
+
+    expect(screen.queryByRole('dialog', { name: SHEET_TITLE })).toBeNull();
+    expect(h.push).toHaveBeenCalledTimes(1);
+    expect(h.push).toHaveBeenCalledWith(
+      `/gameDetail?event_id=${LIVE_HOUR_AGO.id}&group_id=${LIVE_HOUR_AGO.group_id}`
+    );
+  });
 });
 
 // Plan 88.1-17 — SPEC Req 12 (owner walkthrough 2026-08-24, CONTEXT D-09).

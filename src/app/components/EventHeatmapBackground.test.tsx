@@ -293,3 +293,28 @@ describe('EventHeatmapBackground — K8, the Google Calendar conflict box on the
     ).toEqual([]);
   });
 });
+
+describe('EventHeatmapBackground — O08b, the legend ramp on tokens (plan 88.9-42, owner pick 2026-11-07)', () => {
+  // The five legend swatches were bg-green-100..500 raw palette in both themes. O08b: five
+  // per-theme tokens (--color-status-success-border mixed into the card at 20 / 35 / 50 / 70 /
+  // 90 percent, literal hexes in globals.css) and the legend words on text-content-secondary.
+  // The grid cells keep ReadCell's ramp — the pick changed the legend only.
+  it('O08b (88.9): the five legend swatches take the heatmap-legend tokens and the legend words are text-content-secondary', () => {
+    render(<EventHeatmapBackground heatmapData={heatmapData} loading={false} anchorDate="2026-06-29" />);
+    const less = screen.getByText('Less');
+    const more = screen.getByText('More available');
+    expect(less).toHaveClass('text-content-secondary');
+    expect(more).toHaveClass('text-content-secondary');
+
+    const strip = less.parentElement as HTMLElement;
+    expect(more.parentElement).toBe(strip);
+    const swatches = Array.from(strip.querySelectorAll<HTMLElement>('div'));
+    expect(swatches).toHaveLength(6);
+    expect(swatches[0]).toHaveClass('bg-surface-elevated');
+    swatches.slice(1).forEach((swatch, i) => {
+      expect(swatch, `legend step ${i + 1}`).toHaveClass(`bg-surface-heatmap-legend-${i + 1}`);
+    });
+    const green = swatches.map((el) => el.className).filter((c) => /\bbg-green-\d/.test(c));
+    expect(green, 'no raw green palette class on the legend').toEqual([]);
+  });
+});
