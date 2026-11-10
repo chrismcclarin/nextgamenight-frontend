@@ -449,6 +449,17 @@ async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<voi
       await today.click();
     }
     await expect(heading, `O4b (${theme}): the home full grid is not on the current month`).toHaveText(current);
+    // DECISION Phase 88.9-28 N1 (square read): the chevrons are measured square in the real cascade at 1280, chosen OVER trusting the class list — a 52x44 lozenge carries the same classes when the unlayered rule loses to .btn.
+    for (const name of ['Previous month', 'Next month']) {
+      const chevron = page.getByRole('button', { name, exact: true });
+      await expect(chevron, `N1 (${theme}): expected exactly one ${name} chevron on the home grid`).toHaveCount(1);
+      const box = await chevron.boundingBox();
+      expect(box, `N1 (${theme}): the ${name} chevron has no layout box`).not.toBeNull();
+      const { width, height } = box!;
+      expect(Math.round(width), `N1 (${theme}): the ${name} chevron is ${width}x${height}, not square`).toBe(Math.round(height));
+      expect(width, `N1 (${theme}): the ${name} chevron is ${width}x${height}, under 44 wide`).toBeGreaterThanOrEqual(44);
+      expect(height, `N1 (${theme}): the ${name} chevron is ${width}x${height}, under 44 tall`).toBeGreaterThanOrEqual(44);
+    }
     await advanceMonths(page, { year: now.getFullYear(), month: now.getMonth() }, target.steps);
     await expect(heading, `O4b (${theme}): the home full grid is not on ${wanted}`).toHaveText(wanted);
     expect(seedError, `O4b (${theme}): ${seedError}`).toBe('');
