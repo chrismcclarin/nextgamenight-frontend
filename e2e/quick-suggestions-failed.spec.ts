@@ -7,9 +7,12 @@ import { test, expect, type Page } from '@playwright/test';
 // app does not know to be true. The slot now shows the H4 line in the hint's own box. The jsdom
 // suite (`src/app/components/QuickSuggestions.test.tsx`, arms Q1-Q6) proves the content and the
 // structure; jsdom evaluates no layout, so THIS spec is where the geometry is proven at the
-// phone project's 375 x 667: the line sits inside the one fixed-height slot (its 44px floor, no
-// wrap growth), does not overflow its box, does not run past the viewport, and the slot holds no
-// live-region semantics (D-09b: the failed line is not announced).
+// phone project's 375 x 667: the line sits inside the one fixed-height slot, does not overflow its
+// box, does not run past the viewport, and the slot holds no live-region semantics (D-09b: the
+// failed line is not announced).
+//
+// 88.9 D13c (owner pick): the failed box also carries a Try again link right of the line (44px
+// tall), so the failed state's slot is 52px (box 48 + pb-1) while the empty and chip states keep 44.
 //
 // CI ONLY. The phone and journeys projects need the `.auth/user.json` login state, which exists
 // only in CI (C-14 in .planning/codebase/FE-TESTING-CONVENTIONS.md). It was not run locally.
@@ -40,7 +43,7 @@ const EMPTY_HINT = 'Add games to your collection to enable suggestions';
 
 const dialog = (page: Page) => page.getByRole('dialog');
 
-test('a failed suggestions load shows the H4 line inside the 44px slot (88.6.1-14, D-28)', async ({ page }) => {
+test('a failed suggestions load shows the H4 line and a Try again link inside the slot (88.6.1-14 D-28; 88.9 D13c)', async ({ page }) => {
   await page.route(SUGGESTIONS_REQUEST, async (route) => {
     await route.fulfill({
       status: 500,
@@ -68,15 +71,24 @@ test('a failed suggestions load shows the H4 line inside the 44px slot (88.6.1-1
   const slot = dialog(page).getByTestId('quick-suggestions-slot');
   await expect(slot).toHaveCount(1);
   const failedBox = slot.getByTestId('quick-suggestions-failed');
-  await expect(failedBox).toHaveText(H4_FAILED_LINE);
+  // 88.9 D13c: the box now holds the H4 <p> AND the Try again link, so the line is read from the <p>.
+  await expect(failedBox.locator('p')).toHaveText(H4_FAILED_LINE);
+  const retry = failedBox.getByRole('button', { name: 'Try again', exact: true });
+  await expect(retry).toBeVisible();
   await expect(slot.getByText(EMPTY_HINT)).toHaveCount(0);
   await expect(slot.locator('[role="alert"], [role="status"], [aria-live]')).toHaveCount(0);
 
-  // The slot's floor is min-h-11 (44px); a wrapped line would grow it.
+  // 88.9 D13c (owner pick, 88.9-PICKS-B3.json item D13): the failed box grows to hold the 44px link (40 -> 48), the slot with it; the empty and chip states keep 44.
+  // The slot is min-h-11 + pb-1: 48 (box) + 4 (pb-1) = 52; a wrapped line would grow it further.
   const slotBox = await slot.boundingBox();
   expect(slotBox, 'the quick-suggestions slot has no layout box').not.toBeNull();
-  expect(slotBox!.height).toBeGreaterThanOrEqual(44);
-  expect(slotBox!.height).toBeLessThanOrEqual(45);
+  expect(slotBox!.height).toBeGreaterThanOrEqual(52);
+  expect(slotBox!.height).toBeLessThanOrEqual(53);
+
+  // The link clears the 44px floor and sits inside the failed box and the viewport.
+  const retryBox = await retry.boundingBox();
+  expect(retryBox, 'the Try again link has no layout box').not.toBeNull();
+  expect(retryBox!.height).toBeGreaterThanOrEqual(44);
 
   const fitsItsBox = await failedBox
     .locator('p')
@@ -88,4 +100,6 @@ test('a failed suggestions load shows the H4 line inside the 44px slot (88.6.1-1
   const failedBoxRect = await failedBox.boundingBox();
   expect(failedBoxRect, 'the failed box has no layout box').not.toBeNull();
   expect(failedBoxRect!.x + failedBoxRect!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(retryBox!.x + retryBox!.width).toBeLessThanOrEqual(failedBoxRect!.x + failedBoxRect!.width);
+  expect(retryBox!.x + retryBox!.width).toBeLessThanOrEqual(viewport!.width);
 });
