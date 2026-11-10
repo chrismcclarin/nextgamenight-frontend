@@ -8,6 +8,7 @@ import { Heading } from '../../components/ui/Heading';
 import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
 import { selectUpcomingWithin7Days } from '../../lib/upcomingEvents';
 import { isGuestEvent } from '../../lib/eventClassification';
+import GuestPill, { GUEST_ROW_EDGE } from './GuestPill';
 
 // DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
 // passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
@@ -317,7 +318,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                     key={event.id}
                     type="button"
                     onClick={() => handleEventClick(event)}
-                    className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${guest ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
+                    className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${guest ? `${GUEST_ROW_EDGE} pl-3` : ''}`}
                   >
                     {/* DECISION Phase 88.6-28 (R2 / UI-SPEC §4.3): every span in this row STAYS at
                         Label 14 (`text-sm`), chosen OVER promoting `{gameName}` to Body 16 under
@@ -360,12 +361,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                          that has no height constraint (`min-h-11 md:min-h-0` is a FLOOR), so the
                          +2px grows the pill and, at worst, wraps it to the row's next line the way
                          a long game name already can. No fixed box is crossed. */
-                      <span
-                        className="inline-flex items-center px-1.5 py-0.5 ml-2 text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
-                        title="You joined this event as a guest (not a group member)"
-                      >
-                        Guest
-                      </span>
+                      <GuestPill />
                     )}
                   </button>
                 );

@@ -41,8 +41,9 @@ declare global {
  *      themes (UI-SPEC section 12 item 14). Both are render-and-geometry claims jsdom cannot
  *      make: a pill that must be VISIBLE inside a button that must STILL measure 44x44 with
  *      it, and a hero that must sit ABOVE the first list row.
- *   4. RE-POINTED — every "event row heading" locator. Plan 88.5-08 demotes the This-week and
- *      Later rows to `<h6>` titles under `<h5>` day headers (src/app/components/CalendarListView.js ("{thisWeekGroups.map((group) => (")),
+ *   4. RE-POINTED — every "event row heading" locator. Plan 88.5-08 demoted the This-week and
+ *      Later rows to `<h6>` titles under `<h5>` day headers (since 88.9-39 D6c only Later does;
+ *      the folded upcoming list is src/app/components/CalendarListView.js ("{upcomingGroups.map((group) => (")),
  *      so the old `level: 5` locator now resolves DAY HEADERS as well as row titles and would
  *      have measured a 14px date string in the readable-game-text case. Rows are located by
  *      STRUCTURE instead — a heading inside a row `role="button"` — which is level-agnostic

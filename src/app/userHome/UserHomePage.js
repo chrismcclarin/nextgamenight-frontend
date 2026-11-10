@@ -945,13 +945,14 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                             loading={upcomingShowsLoader}
                             busy={upcomingRefreshing}
                             variant="sheet"
-                            /* The id sets and the one count — see the OWNER RULING 2a marker
-                               above (AMENDED 88.6-27, which added the third set). The sheet
-                               partitions by membership only. */
+                            /* The id sets — see the OWNER RULING 2a marker above (AMENDED
+                               88.6-27, which added the third set). The sheet partitions by
+                               membership only; the twin count left the sheet with D6c
+                               (88.9-39). viewerDbUserId feeds the row's guest cue (D5a). */
                             happeningNowIds={happeningNowIds}
                             startedNotLiveIds={startedNotLiveIds}
                             thisWeekIds={thisWeekIds}
-                            upcomingCount={upcomingCount}
+                            viewerDbUserId={selfUuid ?? null}
                         />
                     </>
                 )}

@@ -1275,9 +1275,10 @@ describe('Phase 88.6-27 — W58 + W59: the sheet has ONE time boundary', () => {
   it('NO DUPLICATE: the midnight-crossing row appears exactly ONCE across the whole sheet', async () => {
     const { user, dialog } = await openAt(LATE_NIGHT_NOW, NIGHT_SET);
 
-    // (a) it is in the upcoming section, ahead of This week
-    const thisWeek = await within(dialog).findByRole('heading', { level: 4, name: /^This week\b/ });
-    expect(precedes(within(dialog).getByRole('button', { name: /Dune/ }), thisWeek)).toBe(true);
+    // (a) it is in the upcoming section, as its FIRST row. AMENDED Phase 88.9-39 (owner pick
+    // D6c): there is no This week subheader to precede any more.
+    await within(dialog).findByText('Dune');
+    expect(rowOrder(upcomingSection(dialog))[0]).toBe('Dune');
 
     // (b) EXPAND FIRST, and confirm it is open. Without this the assertion below is VACUOUS:
     // the collapsed region gates its children on `pastExpanded`, so it mounts no rows at all and
