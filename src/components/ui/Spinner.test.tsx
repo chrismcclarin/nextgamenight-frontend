@@ -6,15 +6,29 @@
 // aria-disabled (the gated colour pair is the dim) and is named '<label>, saving'
 // (or '<label>, <its own verb>' through busySuffix). busy never swallows the press:
 // each site's own refusal latch stays the refusal.
+//
+// R-C3b (plan 88.9-54, owner ruling 2026-11-10): the spinner is DELAYED and HELD — it appears
+// after SPINNER_DELAY_MS (200) of busy and stays SPINNER_MIN_MS (500) from its appearance;
+// aria-disabled and the heard suffix are immediate. Fake timers file-wide so every spinner read
+// can advance past the delay deterministically.
 import * as React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Modal } from '@/app/components/Modal';
 import { Button } from './Button';
+import { DelayedSpinner } from './DelayedSpinner';
 import { Spinner } from './Spinner';
+import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from './useDelayedSpinner';
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const HOUSE_TOKENS = [
   'inline-block',
@@ -108,5 +122,56 @@ describe('Spinner + Button busy (88.9-24, save-feedback rule 1)', () => {
     fireEvent.click(button);
     fireEvent.click(button);
     expect(onClick).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Button busy is delayed and held (88.9-54, R-C3b)', () => {
+  it('R-C3b (88.9): a busy Button is named and aria-disabled from the first ms but shows no spinner until 200 ms', () => {
+    const { container } = render(<Button busy>Save</Button>);
+    const button = screen.getByRole('button', { name: 'Save, saving' });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    const visible = Array.from(button.childNodes)
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent)
+      .join('');
+    expect(visible).toBe('Save');
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS - 1));
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    act(() => vi.advanceTimersByTime(1));
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Save, saving' })).toBe(button);
+  });
+
+  it('R-C3b (88.9): once shown the spinner stays 500 ms after busy drops while the control is live again', () => {
+    const { container, rerender } = render(<Button busy>Save</Button>);
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS));
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    rerender(<Button busy={false}>Save</Button>);
+    const button = screen.getByRole('button', { name: 'Save' });
+    expect(button.hasAttribute('aria-disabled')).toBe(false);
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(SPINNER_MIN_MS - 1));
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(1));
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Save' })).toBe(button);
+  });
+
+  it('R-C3b (88.9): DelayedSpinner renders nothing until the delay, the house Spinner after, and keeps it through the hold', () => {
+    const { container, rerender } = render(<DelayedSpinner busy className="ml-2" />);
+    expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS));
+    const spinners = container.querySelectorAll('[data-slot="spinner"]');
+    expect(spinners).toHaveLength(1);
+    expect(spinners[0].className.split(/\s+/)).toContain('ml-2');
+    expect(spinners[0].getAttribute('aria-hidden')).toBe('true');
+    act(() => vi.advanceTimersByTime(50));
+    rerender(<DelayedSpinner busy={false} className="ml-2" />); // 250 ms
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(350));
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1); // 600 ms
+    act(() => vi.advanceTimersByTime(100));
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0); // 700 ms
   });
 });
