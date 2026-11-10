@@ -882,16 +882,29 @@ export default function AvailabilityGrid({
               natively-disabled focused control ALSO blurs to <body> (the house split,
               `KebabMenu.js` DECISION Phase 88.6-16 D-12: the control being ACTED ON gets
               `aria-disabled`). Native `disabled={disabled}` STAYS, but only as the unavailable-week
-              MODE gate — the 88.6-25 rule of kind recorded on the paint-mode toggle above. LOOK
-              NOTE for /gsd-ui-review: Clear All is now visible on an empty grid at 375px, gated in
-              the ghost variant's muted ink. Restoring the conditional mount is a decision, not a
-              cleanup. */}
+              MODE gate — the 88.6-25 rule of kind recorded on the paint-mode toggle above.
+              LOOK NOTE AMENDED Phase 88.9-41 (owner pick O09a, 88.9-PICKS-B8B.json, 2026-11-07
+              4:37 PM Pacific): gated Clear All wears the house secondary GATED fill + ink (5.81
+              light / 4.88 dark on its own fill), chosen OVER the ghost variant's muted ink on an
+              unchanged card fill (8.68 dark, ink colour the only difference — register 46.3).
+              Restoring the conditional mount is a decision, not a cleanup.
+
+              DECISION Phase 88.9-41 O09a: ghost Button + two call-site aria-disabled utilities on
+              the --color-btn-secondary-gated-* tokens, over variant="secondary" (it repaints the
+              ENABLED button — warm-200 / purple-800 fill, warm-800 ink — which page 8b did not
+              render, P3) and over a new unlayered gated rule in globals.css (a fifth per-variant
+              rule for one call site). The globals.css rejection of ghost aria-disabled bg
+              utilities guards an unlayered rule that sets background on this element; none exists
+              today (.btn sets no background or color, .btn[aria-disabled] only the cursor) and the
+              O09a test pins the className. The edge stays border-line, as page 8b rendered. The
+              `color:` type hint on the text utility is what makes tailwind-merge read it as a text
+              COLOUR and drop the ghost's own gated ink, so ONE gated ink rule exists. */}
           <Button
             variant="ghost"
             onClick={handleClearAll}
             disabled={disabled}
             aria-disabled={value.length === 0 ? 'true' : undefined}
-            className="border border-line text-content-secondary bg-surface-card"
+            className="border border-line text-content-secondary bg-surface-card aria-disabled:bg-[var(--color-btn-secondary-gated-bg)] aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]"
           >
             Clear All
           </Button>

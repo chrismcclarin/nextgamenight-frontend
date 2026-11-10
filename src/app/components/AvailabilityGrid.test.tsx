@@ -378,6 +378,28 @@ describe('88.6-63 (review round 2 #23) — Clear All keeps focus; the summary an
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  // 88.9 O09a (owner pick, 88.9-PICKS-B8B.json): enabled vs gated Clear All must differ by more than ink colour; page 8b printed 5.81 light / 4.88 dark for the gated pair.
+  it('O09a (88.9): a gated Clear All wears the house secondary gated pair, the enabled one is unchanged', () => {
+    renderHarness(2);
+
+    const clear = screen.getByRole('button', { name: 'Clear All' });
+    expect(clear).toHaveAttribute('aria-disabled', 'true');
+    expect(clear).not.toBeDisabled();
+    // The gated pair: fill AND ink, as call-site utilities on the ghost Button (whole literals).
+    expect(clear).toHaveClass('aria-disabled:bg-[var(--color-btn-secondary-gated-bg)]');
+    expect(clear).toHaveClass('aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]');
+    // ONE gated ink rule: cn()'s merge drops the ghost default, so no cascade-order bet is made.
+    expect(clear).not.toHaveClass('aria-disabled:text-content-muted');
+    // The ENABLED look is byte-identical to the shipped one, and the variant is still ghost.
+    expect(clear).toHaveClass('border-line');
+    expect(clear).toHaveClass('text-content-secondary');
+    expect(clear).toHaveClass('bg-surface-card');
+    expect(clear).not.toHaveClass('btn-secondary');
+
+    fireEvent.pointerDown(cellsByLabel()[0]); // paint one slot
+    expect(screen.getByRole('button', { name: 'Clear All' })).not.toHaveAttribute('aria-disabled');
+  });
+
   it('the visible line is plain text; the ONE status region is the sr-only summary, empty at mount (rewritten by 88.6.1-39, D-45)', () => {
     renderHarness(2);
 
