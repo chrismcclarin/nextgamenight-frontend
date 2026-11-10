@@ -485,7 +485,8 @@ export default function ResponseDashboard({
      The banner's own default ("Something went wrong") is generic chrome on a surface whose
      whole subject is WHO HAS REPLIED, so the named string tells the reader which fetch failed
      without painting anything upstream. Changing this string is a §6.3 amendment, not an
-     executor's call — that half of the original rule is unchanged. */
+     executor's call — that half of the original rule is unchanged.
+     AMENDED Phase 88.9-48 (owner ruling BANNER-01 "short", 2026-11-07): this is that §6.3 amendment — the banner composes Couldn't load the respondents from thing, chosen OVER the ratified "We couldn't load the respondents." (its leading We and the one trailing period among the 29 full mounts, COPY-CENSUS K1). The named object stays; only the shape converged. */
   /* DECISION Phase 88.6.1-73 (AC-29 / RF1, owner ruling 2026-10-05) [D-47, D-51, Req 9]:
      CHOSEN: a failed refresh keeps the roster and plan 88.6.1-70's `RefreshFailedNotice`
      qualifies it (88.6.1-70 contract C1-C10); the full banner and the skeleton are FIRST-LOAD-
@@ -515,7 +516,7 @@ export default function ResponseDashboard({
           <div className="bg-surface-card rounded-card border border-line p-4">
             <FetchErrorBanner
               state={errorState}
-              title="We couldn't load the respondents."
+              thing="the respondents"
               reportContext="Availability poll — respondents fetch"
               focusTarget={responsesHeadingRef}
             />

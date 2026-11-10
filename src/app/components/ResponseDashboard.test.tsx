@@ -277,7 +277,7 @@ describe('ResponseDashboard — the §6.3 title on the respondents-fetch banner 
     api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
     render(<ResponseDashboard {...baseProps} />);
 
-    expect(await screen.findByText("We couldn't load the respondents.")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load the respondents")).toBeInTheDocument();
     // The banner's own ratified default must NOT also render — one heading, not two.
     expect(screen.queryByText('Something went wrong')).toBeNull();
     // …and the BODY copy is still code-derived, untouched by the title: a named heading must
@@ -323,7 +323,7 @@ describe('ResponseDashboard — a superseded failure is still REPORTED (review r
     expect(errorCalls()[0][1]).toBe(failure);
     // Logged, but the generation guard still drops the STATE write: no banner for a poll the
     // user has moved away from.
-    expect(screen.queryByText("We couldn't load the respondents.")).toBeNull();
+    expect(screen.queryByText("Couldn't load the respondents")).toBeNull();
     expect(screen.getByText('Second prompt member')).toBeInTheDocument();
   });
 
@@ -688,7 +688,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
   // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE), written once here (contract C7). It is
   // in the DOM twice while shown: the visible line and the polite region.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
-  const LOAD_TITLE = "We couldn't load the respondents.";
+  const LOAD_TITLE = "Couldn't load the respondents";
   const THREE = [
     { user_id: 'm1', username: 'Member One', has_responded: true, slot_count: 2 },
     // Pending and never reminded, not the viewer: an admin sees a Remind button on this row.
@@ -1139,7 +1139,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
 describe('ResponseDashboard — the first load names what is loading (88.6.1-86, close ruling P-14)', () => {
   // Copy row P14 (AC-33), written once here: three ASCII dots, byte for byte.
   const LOADING_RESPONSES = 'Loading responses...';
-  const LOAD_TITLE = "We couldn't load the respondents.";
+  const LOAD_TITLE = "Couldn't load the respondents";
   const THREE = [
     { user_id: 'm1', username: 'Member One', has_responded: true, slot_count: 2 },
     { user_id: 'm2', username: 'Member Two', has_responded: false, last_reminded_at: null },

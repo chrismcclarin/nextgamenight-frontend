@@ -19,10 +19,11 @@ import { hostGroundHalo } from '../../components/ui/hostGround';
 // owner 2026-10-05, WORDING BATCH 3 item J; manifest key E15, recorded as D-47), hoisted so each
 // ratified string lives in ONE source line for the AC-33 scan. E12, E13 and E15 ship with the
 // straight apostrophe (D-32 R8). E13 serves both pick lists. E14 is heard only: the pick's
-// accessible name while it saves. E15 is the load-failure banner's title.
+// accessible name while it saves. E15's object is the load-failure banner's thing; the banner
+// composes the title (BANNER-01).
 const VOTE_SAVE_FAILED_MESSAGE = "We couldn't save your vote. Please try again.";
 const WINNER_SAVE_FAILED_MESSAGE = "We couldn't set the winner. Please try again.";
-const BALLOT_LOAD_FAILED_TITLE = "Couldn't load the game vote";
+const BALLOT_LOAD_FAILED_THING = "the game vote";
 function savingPickLabel(gameName) {
   return `${gameName}, saving`;
 }
@@ -425,7 +426,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   }
 
   /* DECISION Phase 88.6.1-31 (E15 / Req 9): a failed load for the current event renders the
-     house full banner titled `BALLOT_LOAD_FAILED_TITLE` (copy row E15, owner ruling 2026-10-05),
+     house full banner named by its `thing`, `BALLOT_LOAD_FAILED_THING` (copy row E15, owner ruling 2026-10-05),
      with the register line the hook derives from the error's code and its own Try again, IN PLACE
      of the card, inside a `mt-4` wrapper (the card's own top gap; the same slot the first-load
      loader takes above).
@@ -462,13 +463,14 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
      session's vote failed, each Try again retries that vote, and N is small. REJECTED: (B) one
      list-level report — new words, and it loses the per-session retry; (C) the compact notice —
      its fixed text is not E15. LF-10 pins two regions for two failing instances.
-     Collapsing these into one report is a decision, not a cleanup. */
+     Collapsing these into one report is a decision, not a cleanup.
+     AMENDED Phase 88.9-48 (owner ruling BANNER-01 "short", 2026-11-07): the banner composes Couldn't load the game vote from the thing, chosen OVER the hoisted whole-sentence title (the same words, typed at the site). The reader sees no change. */
   if (showLoadFailure) {
     return (
       <div className="mt-4">
         <FetchErrorBanner
           state={loadErrorState}
-          title={BALLOT_LOAD_FAILED_TITLE}
+          thing={BALLOT_LOAD_FAILED_THING}
           reportContext="Game detail page — game vote fetch"
           focusTarget={gameVoteHeadingRef}
         />

@@ -311,7 +311,7 @@ test.describe('Response dashboard Remind (plan 88.6.1-11)', () => {
     for (const m of MEMBERS) {
       await expect(card.getByText(m.username, { exact: true })).toBeVisible();
     }
-    await expect(page.getByText("We couldn't load the respondents.")).toHaveCount(0);
+    await expect(page.getByText("Couldn't load the respondents")).toHaveCount(0);
 
     const retry = card.getByRole('button', { name: 'Retry', exact: true });
     // A missing control fails, never skips.

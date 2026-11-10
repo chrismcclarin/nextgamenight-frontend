@@ -129,7 +129,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   // C7 (88.9-24, save-feedback rule 1 + owner ruling Q6(b)): the in-flight word swap is retired; C7c is the Button default; createEvent keeps C7's ratified words as its suffix (", creating" / ", updating") and createGroup its own (", creating"), owner ruling Q6(b) "with its own verb".
   { id: 'C7c', text: ', saving', site: 'components/ui/Button.tsx', kind: 'chunk' },
   { id: 'P8', text: "Couldn't load your collection", site: 'app/userProfile/page.js', kind: 'chunk' },
-  { id: 'E15', text: "Couldn't load the game vote", site: 'app/components/BallotSection.js', kind: 'chunk' },
+  // DECISION Phase 88.9-48 (BANNER-01): E15 is pinned as a concat (the thing at BallotSection) beside row BN1 (the composed form where the banner defines it), and P-82 keys on the naming attribute, chosen OVER keeping E15 a whole-sentence chunk at the site, which no longer types the sentence. Re-inlining a title at a mount is a decision, not a cleanup.
+  { id: 'E15', text: "Couldn't load the game vote", site: 'app/components/BallotSection.js', kind: 'concat', parts: ['the game vote'], code: ['thing={BALLOT_LOAD_FAILED_THING}'] },
   { id: 'B1', text: 'Some personal controls are still unavailable.', site: 'components/ui/FetchErrorBanner.tsx', kind: 'chunk' },
   { id: 'RF1', text: "Couldn't refresh. Showing what loaded earlier.", site: 'components/ui/FetchErrorBanner.tsx', kind: 'chunk' },
   { id: 'F7', text: 'Found {name}.', site: 'app/friends/page.js', kind: 'fragments', fragments: ['Found ', '.'] },
@@ -190,6 +191,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   // Games to Bring re-entry ruling (owner 2026-10-21, deferred/phase-91.3.md; quick-261021-ffb)
   { id: 'GB1', text: 'Add games', site: 'app/components/BringSummary.js', kind: 'chunk' },
   { id: 'GB2', text: "No one has said what they're bringing yet.", site: 'app/components/BringSummary.js', kind: 'chunk' },
+  // Phase 88.9 round 2 BANNER-01 (owner ruling short, 2026-11-07): the composed load-failure title, defined once in the banner
+  { id: 'BN1', text: "Couldn't load {thing}", site: 'components/ui/FetchErrorBanner.tsx', kind: 'fragments', fragments: ["Couldn't load ", ''] },
 ];
 
 // The exact roster: a dropped or renamed row fails.
@@ -212,6 +215,8 @@ const EXPECTED_IDS = [
   'VO3',
   // Games to Bring re-entry ruling (owner 2026-10-21, deferred/phase-91.3.md; quick-261021-ffb)
   'GB1', 'GB2',
+  // Phase 88.9 round 2 BANNER-01 (owner ruling short, 2026-11-07): the composed load-failure title, defined once in the banner
+  'BN1',
 ];
 
 // Rows that ship no literal of their own.
@@ -413,11 +418,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (117 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (118 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(117);
+    expect(ids).toHaveLength(118);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });
@@ -430,53 +435,60 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     const tpl = RATIFIED_ROWS.find((r) => r.id === 'N9')!;
     expect(rowMatches(tpl, readSrc(tpl.site))).toBe(true);
     expect(rowMatches({ ...tpl, fragments: ['Declined invite to ', '!'] }, readSrc(tpl.site))).toBe(false);
+    // BANNER-01 (88.9-48): the composed form is matched at its definition, and a We-prefixed
+    // fragment (the shape the owner ruled out) is refused.
+    const composed = RATIFIED_ROWS.find((r) => r.id === 'BN1')!;
+    expect(rowMatches(composed, readSrc(composed.site))).toBe(true);
+    expect(rowMatches({ ...composed, fragments: ["We couldn't load ", ''] }, readSrc(composed.site))).toBe(false);
   });
 });
 
 // Close ruling P-82: each ratified Where-line must ride on the banner it names, not merely exist
 // somewhere in the file (a chunk row alone would pass with the words on the wrong banner).
+// attr is the whole attribute that names the banner: a hoisted title today, or (BANNER-01,
+// 88.9-48) the thing the banner composes its title from.
 const REPORT_CONTEXTS = [
-  { id: 'P82a', site: 'app/friends/page.js', title: 'FRIEND_REQUESTS_LOAD_FAILED_TITLE', context: 'friends page — friend requests fetch' },
-  { id: 'P82b', site: 'app/userProfile/page.js', title: 'COLLECTION_LOAD_FAILED_TITLE', context: 'userProfile — game collection fetch' },
-  { id: 'P82c', site: 'app/components/BallotSection.js', title: 'BALLOT_LOAD_FAILED_TITLE', context: 'Game detail page — game vote fetch' },
-  { id: 'P82d', site: 'app/groupHomePage/page.js', title: 'GROUP_LOAD_FAILED_TITLE', context: 'Group home page — group and members fetch' },
-  { id: 'P82e', site: 'app/groupHomePage/page.js', title: 'GROUP_EVENTS_LOAD_FAILED_TITLE', context: 'Group home page — events fetch' },
+  { id: 'P82a', site: 'app/friends/page.js', attr: 'title={FRIEND_REQUESTS_LOAD_FAILED_TITLE}', context: 'friends page — friend requests fetch' },
+  { id: 'P82b', site: 'app/userProfile/page.js', attr: 'title={COLLECTION_LOAD_FAILED_TITLE}', context: 'userProfile — game collection fetch' },
+  { id: 'P82c', site: 'app/components/BallotSection.js', attr: 'thing={BALLOT_LOAD_FAILED_THING}', context: 'Game detail page — game vote fetch' },
+  { id: 'P82d', site: 'app/groupHomePage/page.js', attr: 'title={GROUP_LOAD_FAILED_TITLE}', context: 'Group home page — group and members fetch' },
+  { id: 'P82e', site: 'app/groupHomePage/page.js', attr: 'title={GROUP_EVENTS_LOAD_FAILED_TITLE}', context: 'Group home page — events fetch' },
 ];
 
-// Every FetchErrorBanner opening tag in the comment-stripped source whose text holds the title.
-function bannerTagsTitled(src: string, title: string): string[] {
+// Every FetchErrorBanner opening tag in the comment-stripped source whose text holds the attribute.
+function bannerTagsWith(src: string, attr: string): string[] {
   const code = withoutComments(src);
   const tags: string[] = [];
   let at = code.indexOf('<FetchErrorBanner');
   while (at >= 0) {
     const tag = readOpeningTag(code, at);
-    if (tag !== null && tag.includes(`title={${title}}`)) tags.push(tag);
+    if (tag !== null && tag.includes(attr)) tags.push(tag);
     at = code.indexOf('<FetchErrorBanner', at + 1);
   }
   return tags;
 }
 
-// true when exactly one banner carries the title, and that one carries the Where-line.
-function contextPlaced(src: string, title: string, context: string): boolean {
-  const tags = bannerTagsTitled(src, title);
+// true when exactly one banner carries the attribute, and that one carries the Where-line.
+function contextPlaced(src: string, attr: string, context: string): boolean {
+  const tags = bannerTagsWith(src, attr);
   return tags.length === 1 && tags[0].includes(`reportContext="${context}"`);
 }
 
 describe('P-82: each ratified Where-line rides on the banner it names (close ruling P-82, 88.6.1-91)', () => {
-  it.each(REPORT_CONTEXTS)('$id: the banner titled $title carries its Where-line', (rc) => {
-    const tags = bannerTagsTitled(readSrc(rc.site), rc.title);
-    expect(tags, `${rc.site}: banners titled ${rc.title}`).toHaveLength(1);
+  it.each(REPORT_CONTEXTS)('$id: the banner named by $attr carries its Where-line', (rc) => {
+    const tags = bannerTagsWith(readSrc(rc.site), rc.attr);
+    expect(tags, `${rc.site}: banners named by ${rc.attr}`).toHaveLength(1);
     expect(tags[0]).toContain(`reportContext="${rc.context}"`);
   });
 
   it('anti-vacuity: the placement matcher refuses a Where-line one character off', () => {
     const rc = REPORT_CONTEXTS.find((r) => r.id === 'P82e')!;
     const src = readSrc(rc.site);
-    expect(contextPlaced(src, rc.title, rc.context)).toBe(true);
-    expect(contextPlaced(src, rc.title, rc.context.replace('events', 'eventz'))).toBe(false);
+    expect(contextPlaced(src, rc.attr, rc.context)).toBe(true);
+    expect(contextPlaced(src, rc.attr, rc.context.replace('events', 'eventz'))).toBe(false);
     const altered = src.replace(`reportContext="${rc.context}"`, `reportContext="${rc.context.replace('events', 'event')}"`);
     expect(altered).not.toBe(src);
-    expect(contextPlaced(altered, rc.title, rc.context)).toBe(false);
+    expect(contextPlaced(altered, rc.attr, rc.context)).toBe(false);
   });
 });
 
