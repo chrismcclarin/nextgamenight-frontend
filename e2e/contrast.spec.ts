@@ -2315,37 +2315,60 @@ async function assertAccentLabelRatio(page: Page, theme: 'light' | 'dark'): Prom
 }
 
 /**
- * Surface 11 — UI-SPEC §11 OI-7, the composited ring ground on the landing hero.
+ * Surface 11 — UI-SPEC §11 OI-7, the Google sign-in ring on the landing hero, both themes (88.9-33).
  *
  * ITS OWN SESSION, and that is not optional. src/app/components/LandingPage.js ("export default function LandingPage") renders ONLY when the user
- * is logged OUT: src/app/page.js ("return <LandingPage />;") gates the whole component behind `!user`, and every
- * other test in this file runs inside the logged-in `storageState` baked from
- * `.auth/user.json`. Overriding `storageState` to an empty one is the only way to reach it.
+ * is logged OUT: src/app/page.js ("return <LandingPage />;") gates the whole component behind a missing user, and every
+ * other test in this file runs inside the logged-in storageState baked by the setup project.
+ * Overriding storageState to an empty one is the only way to reach it.
  *
- * This is also the one Req 7 ground that cannot be computed from tokens: the button's own
- * background is `bg-white/20` over the hero's `bg-surface-nav`, so the ring's ground is a
- * COMPOSITE. `compositeGround` blends it; Gate A cannot, because no token holds that value.
+ * The composite ground is now DARK-ONLY. In dark the button's own background is a white/20 wash
+ * over the purple-950 hero, so the ring's ground is a COMPOSITE that no token holds; compositeGround
+ * blends it and Gate A cannot. In light (owner pick O01a) the hero is the card surface and the
+ * button sits on the secondary-button tokens, an opaque ground. The ring comes from the hero root's
+ * dark-only amber re-point in dark (owner pick B4a) and from the house purple-700 ring in light;
+ * the button no longer re-points its own ring. The light arm also reads the hero root's painted
+ * ground against the resolved card token, which is how this test proves O01a shipped.
  */
-test.describe('Req 11 Gate C — OI-7, the logged-out landing hero (LIGHT)', () => {
-  test.use({ colorScheme: 'light', storageState: { cookies: [], origins: [] } });
+test.describe('Req 11 Gate C — OI-7, the logged-out landing hero (both themes, 88.9-33)', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
 
-  test.beforeEach(async ({ page }) => {
-    await forceLightMode(page);
-  });
+  test('OI-7 (88.9-33 O01a + B4a): the Google sign-in ring clears 3:1 on its ground in both themes, and the light hero is the card surface', async ({ page }) => {
+    test.slow();
+    await inBothThemes(page, 'OI-7 landing hero Google sign-in (O01a + B4a)', async (theme) => {
+      await page.goto('/');
+      await assertTheme(page, theme);
 
-  test('the Google sign-in button ring clears 3:1 against its composited ground', async ({ page }) => {
-    await page.goto('/');
-    await assertTheme(page, 'light');
+      const google = page.getByRole('link', { name: 'Sign in with Google' });
+      await expect(
+        google,
+        'OI-7: the logged-out Google sign-in link is not on the page. If this fails, the storageState ' +
+          'override did not take and the session is still logged IN — LandingPage renders only when !user.'
+      ).toBeVisible({ timeout: 15_000 });
 
-    const google = page.getByRole('link', { name: 'Sign in with Google' });
-    await expect(
-      google,
-      'OI-7: the logged-out Google sign-in link is not on the page. If this fails, the storageState ' +
-        'override did not take and the session is still logged IN — LandingPage renders only when !user.'
-    ).toBeVisible({ timeout: 15_000 });
+      if (theme === 'light') {
+        // The hero root is the h1's second div ancestor (root, then the centred column); no test hook.
+        const heroRoot = page.getByRole('heading', { level: 1 }).locator('xpath=ancestor::div[2]');
+        const painted = await probeElement(heroRoot, ['background-color']);
+        const tokens = await probeElement(page.locator('html'), ['--color-bg-card']);
+        const card = tokens.computed['--color-bg-card'];
+        expect(card?.css ?? null, `OI-7 (light): --color-bg-card did not normalise (raw ${JSON.stringify(card?.raw)}) — a probe failure`).not.toBeNull();
+        const hero = painted.computed['background-color'];
+        expect
+          .soft(
+            hero?.css ?? null,
+            `OI-7 (light, O01a): the hero root paints ${hero?.raw} but the card surface is ${card?.css} — the hero is still the nav surface in light`
+          )
+          .toBe(card?.css ?? null);
+      }
 
-    const m = await focusRingMeasurement(page, google, 'OI-7 — Google sign-in ring on the hero (Req 7)');
-    expectRatio('OI-7 — Google sign-in ring on the hero (Req 7)', m, NON_TEXT);
+      const label =
+        theme === 'light'
+          ? 'OI-7 — Google sign-in ring, light (O01a secondary tokens, house ring)'
+          : 'OI-7 — Google sign-in ring, dark (hero-root amber scope, B4a)';
+      const m = await focusRingMeasurement(page, google, label);
+      expectRatio(label, m, NON_TEXT);
+    });
   });
 });
 
