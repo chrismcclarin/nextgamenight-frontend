@@ -1833,9 +1833,11 @@ describe('userProfile phone block (plan 88.6-17)', () => {
 
     fireEvent.click(save);
 
-    // Settle on the POSITIVE signal — the in-flight label landing on the SAME node —
-    // rather than on an absence, which is satisfied on the first tick.
-    await waitFor(() => expect(save).toHaveTextContent('Sending code...'));
+    // Settle on the POSITIVE signal — the busy name landing on the SAME node (rule 1, 88.9-46
+    // B31: the label is kept, the suffix is heard) — rather than on an absence, which is
+    // satisfied on the first tick.
+    await waitFor(() => expect(save).toHaveAccessibleName('Save & Verify, sending code'));
+    expect(save).toHaveTextContent(/^Save & Verify/);
     expect(save.isConnected).toBe(true);
     expect(document.activeElement).toBe(save);
     expect(save).toHaveAttribute('aria-disabled', 'true');
@@ -1843,6 +1845,73 @@ describe('userProfile phone block (plan 88.6-17)', () => {
 
     release({});
     await screen.findByRole('textbox', { name: 'Verification code' });
+  });
+
+  // Rule 1 (88.9-46 B31-B33, owner pick O16a + the Q3 ruling): each pressed control keeps its
+  // resting label, shows the one house spinner (data-slot spinner, plan 88.9-24), is named label
+  // plus its heard suffix, stays focused and refuses a second press through its own latch.
+  it('rule 1 (88.9): Save & Verify, Verify and Replay Tutorial keep their labels and show the spinner while busy (B31-B33)', async () => {
+    const { usersAPI } = await import('@/lib/api');
+
+    // B31 — Save & Verify, held.
+    let releaseSave: (value?: unknown) => void = () => {};
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { releaseSave = resolve; })
+    );
+    await reachEditing();
+    const save = screen.getByRole('button', { name: 'Save & Verify' });
+    save.focus();
+    fireEvent.click(save);
+    await waitFor(() => expect(save).toHaveAccessibleName('Save & Verify, sending code'));
+    expect(save).toHaveTextContent(/^Save & Verify/);
+    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).not.toBeDisabled();
+    expect(document.activeElement).toBe(save);
+    fireEvent.click(save);
+    expect(usersAPI.savePhone).toHaveBeenCalledTimes(1);
+    releaseSave({});
+    await screen.findByRole('textbox', { name: 'Verification code' });
+    cleanup();
+
+    // B32 — Verify, held (copy row P1's word is now the heard suffix).
+    let releaseVerify: (value?: unknown) => void = () => {};
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { releaseVerify = resolve; })
+    );
+    const verify = await reachArmedVerify();
+    verify.focus();
+    fireEvent.click(verify);
+    await waitFor(() => expect(verify).toHaveAccessibleName('Verify, verifying'));
+    expect(verify).toHaveTextContent(/^Verify/);
+    expect(verify.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(verify).toHaveAttribute('aria-disabled', 'true');
+    expect(verify).not.toBeDisabled();
+    expect(document.activeElement).toBe(verify);
+    fireEvent.click(verify);
+    expect(usersAPI.verifyPhone).toHaveBeenCalledTimes(1);
+    await act(async () => { releaseVerify({ verified: true }); });
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    cleanup();
+
+    // B33 — Replay Tutorial, held.
+    let releaseReset: (value?: unknown) => void = () => {};
+    (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { releaseReset = resolve; })
+    );
+    renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    replay.focus();
+    fireEvent.click(replay);
+    await waitFor(() => expect(replay).toHaveAccessibleName('Replay Tutorial, starting'));
+    expect(replay).toHaveTextContent(/^Replay Tutorial/);
+    expect(replay.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(replay).toHaveAttribute('aria-disabled', 'true');
+    expect(replay).not.toBeDisabled();
+    expect(document.activeElement).toBe(replay);
+    fireEvent.click(replay);
+    expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(1);
+    await act(async () => { releaseReset({ tutorial_version: 0 }); });
   });
 
   // The other half of the same pair. An `aria-disabled` control with no handler refusal is
@@ -2371,13 +2440,15 @@ describe('phone verification — wrong code shows error, never verifies (H1)', (
 // Plan 88.6.1-18 — the pressed Verify (W066 / WR-505, D-35) and focus after success (Req 5)
 // ===========================================================================
 // Rule of POSITION: while a check is in flight the pressed Verify is aria-disabled (never
-// natively disabled), reads copy row P1, and a synchronous ref latch refuses a second press.
+// natively disabled), keeps its label with copy row P1's word heard as the busy suffix (rule 1,
+// 88.9-46 B32), and a synchronous ref latch refuses a second press.
 // jsdom never blurs a disabled element (C-11), so the RED half of each in-flight pin is the
 // attributes and the request count; the focus lines are confirm-only here and proven in the
 // phone e2e spec (e2e/profile-pressed-controls.spec.ts).
 describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
   const WRONG_CODE_LINE = "That code didn't match. Check it and try again.";
-  const P1 = 'Verifying...';
+  // Rule 1 (88.9-46 B32): copy row P1's word is heard as the busy suffix; the label stays Verify.
+  const BUSY_VERIFY = 'Verify, verifying';
 
   // Each case sets its own verifyPhone implementation; restore the default afterwards so a
   // held or failing implementation never leaks into a later suite (clearAllMocks keeps impls).
@@ -2386,7 +2457,7 @@ describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
     (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
   });
 
-  it('V1: the pressed Verify reads Verifying..., is aria-disabled (not native) and stays mounted while the check runs', async () => {
+  it('V1: the pressed Verify keeps its label (rule 1), is aria-disabled (not native) and stays mounted while the check runs', async () => {
     const { usersAPI } = await import('@/lib/api');
     let release: (value?: unknown) => void = () => {};
     (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(
@@ -2398,7 +2469,8 @@ describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
     fireEvent.click(verify);
 
     // POSITIVE settle on the SAME node.
-    await waitFor(() => expect(verify).toHaveTextContent(P1));
+    await waitFor(() => expect(verify).toHaveAccessibleName(BUSY_VERIFY));
+    expect(verify).toHaveTextContent(/^Verify/);
     expect(verify).toHaveAttribute('aria-disabled', 'true');
     expect(verify).not.toBeDisabled();
     expect(verify.isConnected).toBe(true);
@@ -2427,11 +2499,11 @@ describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
     fireEvent.click(verify);
     fireEvent.click(verify);
 
-    await waitFor(() => expect(verify).toHaveTextContent(P1));
+    await waitFor(() => expect(verify).toHaveAccessibleName(BUSY_VERIFY));
     expect(usersAPI.verifyPhone).toHaveBeenCalledTimes(1);
     // Still in flight after the second and third press, until the FIRST check settles.
     expect(verify).toHaveAttribute('aria-disabled', 'true');
-    expect(verify).toHaveTextContent(P1);
+    expect(verify).toHaveAccessibleName(BUSY_VERIFY);
 
     await act(async () => { releaseFirst({ verified: true }); });
     // POSITIVE settle first, then the absence (CF-26).
@@ -2508,7 +2580,7 @@ describe('Replay Tutorial in flight (88.6.1-18: W016, D-35)', () => {
     (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockResolvedValue({});
   });
 
-  it('R1: the pressed Replay reads Starting..., is aria-disabled (not native), and three presses send ONE reset', async () => {
+  it('R1: the pressed Replay keeps its label (rule 1), is aria-disabled (not native), and three presses send ONE reset', async () => {
     const { usersAPI } = await import('@/lib/api');
     let release: (value?: unknown) => void = () => {};
     (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockImplementation(
@@ -2520,14 +2592,15 @@ describe('Replay Tutorial in flight (88.6.1-18: W016, D-35)', () => {
     replay.focus();
     fireEvent.click(replay);
 
-    await waitFor(() => expect(replay).toHaveTextContent('Starting...'));
+    await waitFor(() => expect(replay).toHaveAccessibleName('Replay Tutorial, starting'));
+    expect(replay).toHaveTextContent(/^Replay Tutorial/);
     expect(replay).toHaveAttribute('aria-disabled', 'true');
     expect(replay).not.toBeDisabled();
 
     fireEvent.click(replay);
     fireEvent.click(replay);
     expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(1);
-    expect(replay).toHaveTextContent('Starting...');
+    expect(replay).toHaveAccessibleName('Replay Tutorial, starting');
     expect(replay).toHaveAttribute('aria-disabled', 'true');
     // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element, C-11); the real-browser
     // proof is the phone e2e spec.
@@ -3945,7 +4018,7 @@ describe('BGG import in flight (88.6.1-60: D-35, Req 4, Req 5)', () => {
     (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
   });
 
-  it('I1: Import Collection keeps its node, reads Importing... under aria-disabled, and three presses neither reopen the dialog nor send a second import', async () => {
+  it('I1: Import Collection keeps its node and its label (rule 1) under aria-disabled, and three presses neither reopen the dialog nor send a second import', async () => {
     const { userGamesAPI } = await import('@/lib/api');
     const pending = deferred();
     (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
@@ -3962,7 +4035,8 @@ describe('BGG import in flight (88.6.1-60: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(importBtn).toHaveAttribute('aria-disabled', 'true'));
     expect(importBtn).not.toBeDisabled();
     expect(importBtn.isConnected).toBe(true);
-    expect(importBtn.textContent).toBe('Importing...');
+    expect(importBtn).toHaveAccessibleName('Import Collection, importing');
+    expect(importBtn).toHaveTextContent(/^Import Collection/);
 
     // The click handler commits inside act, so a reopened dialog would already be in the document.
     fireEvent.click(importBtn);
@@ -3972,7 +4046,7 @@ describe('BGG import in flight (88.6.1-60: D-35, Req 4, Req 5)', () => {
 
     expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(1);
     expect(importBtn).toHaveAttribute('aria-disabled', 'true');
-    expect(importBtn.textContent).toBe('Importing...');
+    expect(importBtn).toHaveAccessibleName('Import Collection, importing');
 
     await act(async () => { pending.resolve({ imported: 0 }); });
   });
@@ -4183,14 +4257,15 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
     await waitFor(() => expect(search).toHaveAttribute('aria-disabled', 'true'));
     expect(search).not.toBeDisabled();
     expect(search.isConnected).toBe(true);
-    expect(search.textContent).toBe('Searching...');
+    expect(search).toHaveAccessibleName('Search, searching');
+    expect(search).toHaveTextContent(/^Search/);
 
     fireEvent.click(search);
     fireEvent.click(search);
     fireEvent.keyPress(field, { key: 'Enter', code: 'Enter', charCode: 13 });
     expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(1);
     expect(search).toHaveAttribute('aria-disabled', 'true');
-    expect(search.textContent).toBe('Searching...');
+    expect(search).toHaveAccessibleName('Search, searching');
 
     await act(async () => { pending.resolve([]); });
   });
@@ -5325,8 +5400,9 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
   const AZUL_RESULT = { bgg_id: 230802, name: 'Azul', year_published: 2017 };
   const BRASS_RESULT = { bgg_id: 224517, name: 'Brass: Birmingham', year_published: 2018 };
   const AZUL_ROW = { id: 'game-azul', name: 'Azul', bgg_id: 230802, year_published: 2017, image_url: null };
-  // The pressed Add's name follows its visible label (P7), so a lookup matches both labels.
-  const ADD_NAME = /^(Add to Collection|Adding\.\.\.)$/;
+  // The pressed Add keeps its label and gains the heard suffix (rule 1, 88.9-46 B36; copy row
+  // P7's word is the suffix), so a lookup matches the idle name and the busy name.
+  const ADD_NAME = /^Add to Collection(, adding)?$/;
 
   function deferred<T = unknown>() {
     let resolve: (value: T) => void = () => {};
@@ -5359,7 +5435,72 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
   });
 
-  it('A1: a burst of presses sends one import and one add; the pressed Add reads Adding... and stays aria-disabled', async () => {
+  // Rule 1 (88.9-46 B34-B36): the three collection controls keep their labels, show the one house
+  // spinner, are named label plus the heard suffix, stay focused and refuse a second press.
+  it('rule 1 (88.9): Import Collection, Search and Add to Collection keep their labels and show the spinner while busy (B34-B36)', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+
+    // B34 — Import Collection, held behind its Continue dialog.
+    const importing = deferred<unknown>();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(importing.promise);
+    renderProfile();
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    fireEvent.click(importBtn);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(importBtn).toHaveAccessibleName('Import Collection, importing'));
+    expect(importBtn).toHaveTextContent(/^Import Collection/);
+    expect(importBtn.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(importBtn).toHaveAttribute('aria-disabled', 'true');
+    expect(importBtn).not.toBeDisabled();
+    fireEvent.click(importBtn);
+    expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(1);
+    await act(async () => { importing.resolve({ imported: 0 }); });
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+    cleanup();
+
+    // B35 — Search, held.
+    const searching = deferred<unknown>();
+    (gamesAPI.searchBGG as Mock).mockReturnValueOnce(searching.promise);
+    renderProfile();
+    await screen.findByRole('heading', { name: /^My Game Collection/ });
+    fireEvent.click(addFromBgg());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'azul' } });
+    const search = screen.getByRole('button', { name: 'Search' });
+    search.focus();
+    fireEvent.click(search);
+    await waitFor(() => expect(search).toHaveAccessibleName('Search, searching'));
+    expect(search).toHaveTextContent(/^Search/);
+    expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(search).toHaveAttribute('aria-disabled', 'true');
+    expect(search).not.toBeDisabled();
+    expect(document.activeElement).toBe(search);
+    fireEvent.click(search);
+    expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(1);
+    await act(async () => { searching.resolve([AZUL_RESULT]); });
+
+    // B36 — Add to Collection on the result row, held.
+    const imported = deferred<unknown>();
+    (gamesAPI.importFromBGG as Mock).mockReturnValueOnce(imported.promise);
+    const add = await screen.findByRole('button', { name: 'Add to Collection' });
+    add.focus();
+    fireEvent.click(add);
+    await waitFor(() => expect(add).toHaveAccessibleName('Add to Collection, adding'));
+    expect(add).toHaveTextContent(/^Add to Collection/);
+    expect(add.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(add).toHaveAttribute('aria-disabled', 'true');
+    expect(add).not.toBeDisabled();
+    expect(document.activeElement).toBe(add);
+    fireEvent.click(add);
+    expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(1);
+    await act(async () => { imported.resolve({ id: 'game-azul' }); });
+    await waitFor(() => expect(userGamesAPI.addOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-azul'));
+  });
+
+  it('A1: a burst of presses sends one import and one add; the pressed Add keeps its label (rule 1) and stays aria-disabled', async () => {
     const { userGamesAPI, gamesAPI } = await import('@/lib/api');
     const imported = deferred<unknown>();
     (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
@@ -5373,13 +5514,14 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(add).toHaveAttribute('aria-disabled', 'true'));
     expect(add).not.toBeDisabled();
     expect(add.isConnected).toBe(true);
-    expect(add.textContent).toBe('Adding...');
+    expect(add).toHaveAccessibleName('Add to Collection, adding');
+    expect(add).toHaveTextContent(/^Add to Collection/);
 
     fireEvent.click(add);
     fireEvent.click(add);
     expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(1);
     expect(add).toHaveAttribute('aria-disabled', 'true');
-    expect(add.textContent).toBe('Adding...');
+    expect(add).toHaveAccessibleName('Add to Collection, adding');
 
     await act(async () => { imported.resolve({ id: 'game-azul' }); });
     await waitFor(() => expect(userGamesAPI.addOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-azul'));
@@ -5485,7 +5627,7 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(2));
   });
 
-  it('A5: one focus instance serves Remove and Add, the latch exists, and P7 ships with three ASCII full stops', async () => {
+  it('A5: one focus instance serves Remove and Add, the latch exists, and P7 is heard as the busy suffix (rule 1)', async () => {
     const src = await pageSource();
     // CODE lines only: a comment that names the arm call is not a second call site.
     const code = src
@@ -5499,7 +5641,8 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: opts?.from ?? null })')).toBe(1);
     expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: pressed })')).toBe(1);
     expect(src).toContain('addGameInFlightRef');
-    expect(count(src, "const ADDING_TO_COLLECTION_LABEL = 'Adding...';")).toBe(1);
+    // Rule 1 (88.9-46 B36): copy row P7's word is the heard suffix, lower-cased, no trailing dots.
+    expect(count(src, "const ADDING_TO_COLLECTION_BUSY_SUFFIX = ', adding';")).toBe(1);
     expect(src).not.toContain('Adding…');
   });
 

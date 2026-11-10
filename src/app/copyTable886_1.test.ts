@@ -96,7 +96,6 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'G5', text: "Getting your group's plans...", site: 'app/groupPlanning/page.js', kind: 'chunk' },
   { id: 'G6', text: 'Some personal controls are unavailable.', site: 'components/ui/FetchErrorBanner.tsx', kind: 'chunk' },
   // Profile (P2 without a period, D-32 R7 — R7 is this row)
-  { id: 'P1', text: 'Verifying...', site: 'app/userProfile/page.js', kind: 'chunk' },
   { id: 'P2', text: 'We sent a code to {address}', site: 'app/components/EmailAddressSection.tsx', kind: 'fragments', fragments: ['We sent a code to ', ''] },
   // Feedback and Report Bug
   { id: 'F1', text: 'Screenshot attached: {file name}', site: 'app/components/FeedbackForm.js', kind: 'fragments', fragments: ['Screenshot attached: ', ''] },
@@ -129,7 +128,6 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'S1b', text: 'Sort order: descending', site: 'app/components/GroupGamesList.js', kind: 'chunk' },
   // C7 (88.9-24, save-feedback rule 1 + owner ruling Q6(b)): the in-flight word swap is retired; C7c is the Button default; createEvent keeps C7's ratified words as its suffix (", creating" / ", updating") and createGroup its own (", creating"), owner ruling Q6(b) "with its own verb".
   { id: 'C7c', text: ', saving', site: 'components/ui/Button.tsx', kind: 'chunk' },
-  { id: 'P7', text: 'Adding...', site: 'app/userProfile/page.js', kind: 'chunk' },
   { id: 'P8', text: "Couldn't load your collection", site: 'app/userProfile/page.js', kind: 'chunk' },
   { id: 'E15', text: "Couldn't load the game vote", site: 'app/components/BallotSection.js', kind: 'chunk' },
   { id: 'B1', text: 'Some personal controls are still unavailable.', site: 'components/ui/FetchErrorBanner.tsx', kind: 'chunk' },
@@ -199,7 +197,7 @@ const EXPECTED_IDS = [
   'H1', 'H2', 'H3', 'H4', 'H5', 'N1', 'N3', 'N4', 'N5', 'N6', 'T2', 'T3', 'T4',
   'A1', 'A2', 'A3', 'A4', 'C1', 'C2', 'E1', 'E2', 'E3', 'E4', 'E4b', 'E5',
   'E8', 'E9', 'E10', 'E11', 'E12', 'E13', 'E14', 'E15', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6',
-  'G7', 'G8', 'P1', 'P2', 'P7', 'P8', 'F1', 'F2', 'F7', 'L1a', 'L1b', 'L1c', 'L2', 'X1',
+  'G7', 'G8', 'P2', 'P8', 'F1', 'F2', 'F7', 'L1a', 'L1b', 'L1c', 'L2', 'X1',
   'X3', 'X3r', 'R1', 'R2', 'R3', 'R4', 'R5', 'R9', 'FR1', 'N7', 'N8a', 'N8b', 'N8c', 'N8d',
   'S1a', 'S1b', 'C7c', 'B1', 'RF1', 'Q1a', 'Q1b', 'NC-1', 'NC-2', 'NC-3', 'NC-4',
   // owner rulings 2026-10-13 to 2026-10-15
@@ -282,6 +280,11 @@ const RETIRED_LITERALS: Retired[] = [
   // ', loading'. Scoped to E6's two former BUTTON sites: FriendInvitePanel.js keeps its QR status
   // caption (a role=status region, not a button — outside rule 1), so tree scope would hold red.
   { text: 'Loading QR code...', scope: ['app/gameDetail/page.js', 'app/components/EventDayModal.js'] },
+  // P1 / P7 (88.9-46 rule 1, B32 / B36): the profile's Verify and Add to Collection keep their
+  // labels; the two ratified words are heard as ', verifying' / ', adding'. Tree-wide: no other
+  // source file typed either literal at this plan's start.
+  { text: 'Verifying...', scope: 'tree' },
+  { text: 'Adding...', scope: 'tree' },
   // CR5a / CR5b (88.9-45 rule 1): ConfirmDialog's pending text became the busy suffix; the two
   // swap words are retired tree-wide (heard as ', disconnecting' / ', promoting').
   { text: 'Disconnecting…', scope: 'tree' },
@@ -410,11 +413,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (119 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (117 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(119);
+    expect(ids).toHaveLength(117);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });
