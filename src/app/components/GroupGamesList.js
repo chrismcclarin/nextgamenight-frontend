@@ -12,7 +12,8 @@ import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/Fetch
 import { StatusRegion } from '../../components/ui/StatusRegion';
 
 // The section's heading, and the refresh notice's spoken section name (copy row P78b, close ruling P-78).
-const GROUP_GAMES_TITLE = 'Group Games';
+// DECISION Phase 88.9-31 (owner pick T1, 88.9-PICKS-B7B.json): Play history over the shipped section name; the section is play-session history (DECISION Phase 88-18 (E-25) agrees). The constant NAME is kept on purpose so its four uses and copy row P78b's code anchor stay byte-identical; renaming it is a decision, not a cleanup.
+const GROUP_GAMES_TITLE = 'Play history';
 
 const SORT_ASCENDING_LABEL = 'Sort order: ascending';
 const SORT_DESCENDING_LABEL = 'Sort order: descending';
@@ -52,7 +53,8 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                         string that identifies the card — clipping it hides the content the
                         card exists to show. The grid row grows instead, which is the cost the
                         default accepts. Re-adding `truncate` is a decision, not a cleanup. */}
-                    <Heading level={3} size="heading" className="text-content-primary mb-1">
+                    {/* DECISION Phase 88.9-31 D7a (owner pick D7a, 88.9-PICKS-B3.json, 2026-11-05): card titles take the body rung (16/700) under the 20/700 section heading, chosen OVER the shared heading rung (20/700 on both, no rank). */}
+                    <Heading level={3} size="body" className="text-content-primary mb-1">
                         {game.name}
                     </Heading>
                     <div className="text-sm text-content-secondary space-y-1">

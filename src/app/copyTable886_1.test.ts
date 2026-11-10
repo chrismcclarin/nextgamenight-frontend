@@ -162,7 +162,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'P78', text: "{section}: Couldn't refresh. Showing what loaded earlier.", site: 'components/ui/FetchErrorBanner.tsx', kind: 'concat', parts: ["Couldn't refresh. Showing what loaded earlier."], code: ['`${sectionName}: `'] },
   { id: 'P78c', text: "Members: Couldn't refresh. Showing what loaded earlier.", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ['Members'], code: ['sectionName={MEMBERS_SECTION_NAME}'] },
   { id: 'P78a', text: "Calendar: Couldn't refresh. Showing what loaded earlier.", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ['Calendar'], code: ['sectionName={CALENDAR_TITLE}'] },
-  { id: 'P78b', text: "Group Games: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/GroupGamesList.js', kind: 'concat', parts: ['Group Games'], code: ['sectionName={GROUP_GAMES_TITLE}'] },
+  // AMENDED Phase 88.9-31 (owner pick T1, 88.9-PICKS-B7B.json): the games section is Play history.
+  { id: 'P78b', text: "Play history: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/GroupGamesList.js', kind: 'concat', parts: ['Play history'], code: ['sectionName={GROUP_GAMES_TITLE}'] },
   { id: 'P80', text: 'Loading calendar...', site: 'app/components/CalendarLoadingCard.tsx', kind: 'chunk' },
   // close ruling P-82 (owner 2026-10-18, "ratify all 5"): the report form's Where-line on five banners (88.6.1-91)
   { id: 'P82a', text: 'friends page — friend requests fetch', site: 'app/friends/page.js', kind: 'chunk' },
@@ -279,6 +280,8 @@ const RETIRED_LITERALS: Retired[] = [
   { text: 'Updating...', scope: 'tree' },
   { text: 'Availability for ', scope: ['app/components/EventScheduler.tsx', 'app/components/EventHeatmapBackground.js'] },
   { text: 'Reset Token', scope: ['app/components/QRCodeModal.js'] },
+  // Phase 88.9-31 (owner pick T1): the games section's former name, retired where it lived.
+  { text: 'Group Games', scope: ['app/components/GroupGamesList.js'] },
   { text: 'Loading...', scope: LOADING_SITES, whole: true },
   { text: 'Loading…', scope: ['app/components/AvailabilityForm.js'], whole: true },
 ];

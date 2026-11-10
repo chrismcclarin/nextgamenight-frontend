@@ -26,6 +26,7 @@ import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRe
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { Icon } from '../../components/ui/Icon';
 import { logger, errCtx } from '../../lib/logger';
 
 /* DECISION Phase 88.6.1-54 (D-19, D-52, copy rows H1/H2, D-33 row 13): each group card's
@@ -686,6 +687,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  Pinned by `groupColourRendering.test.ts` test 32, EXACTLY once and on the tag that
                  carries `shadow-theme-sm`. Deleting this attribute reds that pin and Gate C.
                  Owner ruling 2026-09-21, decision (1): default stands. */
+              /* DECISION Phase 88.9-31 B2a (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04; census R047 B078
+                 R048): a tinted card declares --group-halo on its host and its three controls take the
+                 group-halo ring-offset key, chosen OVER the card halo on a tint (band against the tint,
+                 UI-SPEC R2-63) — the same one-variable idiom as the group page header. Each control spells
+                 one FULL literal per arm (the 88.9 halo fleet rule), never one arm's halo interpolated for
+                 both. Dropping the host pair empties the key to its card fallback, a decision, not a cleanup. */
               <div
                 key={group.id}
                 ref={(node) => {
@@ -693,7 +700,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   else cardNodesRef.current.delete(group.id);
                 }}
                 data-testid="group-card"
-                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
+                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
                 style={{
                   ...(tinted && {
@@ -787,7 +794,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                             handleGroupClick(group, e);
                           }
                         }}
-                        className="flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                        className={
+                          tinted
+                            ? 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                            : 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                        }
                       >
                         {/* DECISION Phase 88.6-21 (W42, D-04): this heading sits INSIDE the
                             `role="button"` block above, and that costs a real property rather than
@@ -1099,7 +1110,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
                       <Button
                         variant="primary"
-                        className="flex-1 shadow-theme-md enabled-hover:shadow-theme-lg"
+                        className={
+                          tinted
+                            ? 'flex-1 shadow-theme-md enabled-hover:shadow-theme-lg focus-visible:ring-offset-surface-group-halo'
+                            : 'flex-1 shadow-theme-md enabled-hover:shadow-theme-lg'
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onGroupSelect) {
@@ -1276,16 +1291,24 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                          `customizeGroupLabel` or its argument, or moving the name back to an
                          `aria-label`, reds both scans, and that is intended.
 
-                         Any of this is a decision, not a cleanup. */
+                         Any of this is a decision, not a cleanup.
+
+                         AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json): the glyph is the
+                         lucide Settings SVG, aria-hidden as required above, chosen OVER the emoji (it
+                         renders per-platform and is not stroke-controllable); the title stays the name. */
                       <button
-                        className="min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                        className={
+                          tinted
+                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);
                         }}
                         title={customizeGroupLabel(group.name)}
                       >
-                        <span aria-hidden="true">⚙️</span>
+                        <Icon name="Settings" size={20} />
                       </button>
                     )}
                   </div>
