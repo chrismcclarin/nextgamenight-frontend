@@ -242,6 +242,13 @@ const buttonVariants = cva(
          (The retired class is described rather than quoted: plan 06's
          acceptance gate greps this whole FILE for that literal, comments
          included, so writing it here would red a correct tree.)
+         AMENDED Phase 88.9-28 (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07): Phase 88.9
+         takes the square — a NEW size key iconSquare emits the unlayered btn-icon-square class
+         (padding 0, authored in globals.css after .btn) beside min-h-11 min-w-11, used by the
+         month-nav chevrons only, chosen OVER zeroing icon itself: the four shipped size icon
+         sites (FeedbackButton, FeedbackForm, PendingMemberBanner, BottomSheet close) keep their
+         52x44 lozenge, because the owner's N1 picture showed the calendar chevrons, not those
+         controls.
 
          (2) `min-h-11` LIVES ON THE cva BASE — chosen OVER widening the
          `@media (width < 48rem)` rule on the `.btn` class. D-36's reasoning is
@@ -262,6 +269,8 @@ const buttonVariants = cva(
         // D-02's "legitimate 44x44 home" for bare icon buttons, delivered once
         // here instead of invented per call site.
         icon: 'min-h-11 min-w-11',
+        // 88.9-28 N1: the month-nav square (44x44, padding 0 from the unlayered .btn-icon-square rule).
+        iconSquare: 'btn-icon-square min-h-11 min-w-11',
         // 88.6 D-09, the compact row-action rung. `btn-sm` ONLY: the compact
         // horizontal padding comes from the unlayered `.btn-sm` rule
         // (src/app/globals.css (".btn-sm {")), and every padding or font-size utility that

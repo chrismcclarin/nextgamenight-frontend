@@ -173,12 +173,13 @@ async function createEventControls(page: Page, theme: Theme): Promise<void> {
 async function reportBugAndGoToToday(page: Page, theme: Theme): Promise<void> {
   await openPage(page, GROUP_PAGE, theme);
 
-  // A stored calendar preference can reopen the list view; the month grid holds Go to Today.
+  // A stored calendar preference can reopen the list view; the month grid holds the Today pill.
   const viewToggle = page.getByRole('button', { name: /^(List|Month) View$/ });
   await expect(viewToggle, 'the group calendar rendered').toBeVisible({ timeout: 20_000 });
   if ((await viewToggle.textContent())?.trim() === 'Month View') await viewToggle.click();
-  const today = page.getByRole('button', { name: 'Go to Today', exact: true });
-  await expect(today, 'the month grid rendered Go to Today').toBeVisible();
+  // DECISION Phase 88.9-28 N1: the control is the Today pill; the A9a titles keep the ruled-at name, chosen OVER renaming titles that prior CI evidence cites.
+  const today = page.getByRole('button', { name: 'Today', exact: true });
+  await expect(today, 'the month grid rendered the Today pill').toBeVisible();
 
   const reportBug = page.getByRole('button', { name: 'Report bug or suggest feature', exact: true });
   await reportBug.scrollIntoViewIfNeeded();
@@ -186,10 +187,10 @@ async function reportBugAndGoToToday(page: Page, theme: Theme): Promise<void> {
 
   await expectTouchTarget(reportBug, `footer Report bug (A9a, ${theme})`, { axes: 'height' });
   await today.scrollIntoViewIfNeeded();
-  await expectTouchTarget(today, `month grid Go to Today (A9a, ${theme})`, { axes: 'height' });
+  await expectTouchTarget(today, `month grid Today pill (A9a, ${theme})`, { axes: 'height' });
 
   await expectOneLine(reportBug, `footer Report bug (${theme})`);
-  await expectOneLine(today, `month grid Go to Today (${theme})`);
+  await expectOneLine(today, `month grid Today pill (${theme})`);
 }
 
 test.describe('lane A tap floors at 375 — dark (88.9)', () => {

@@ -4,7 +4,7 @@
 // a regression that keeps the attribute strings but breaks the handler, drops the
 // RSVP suffix from the name, or leaks the keypress into the day cell reds here.
 import * as React from 'react';
-import { render, screen, cleanup, act, within } from '@testing-library/react';
+import { render, screen, cleanup, act, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CalendarMonthView from './CalendarMonthView';
@@ -317,5 +317,83 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
     const cell = cellOn(days, cells, 8, 10);
     expect(cell.classList.contains('bg-surface-page')).toBe(true);
     expect(cell.classList.contains('cursor-pointer')).toBe(false);
+  });
+});
+
+// 88.9-28 round-2 look pins: N1 (month nav), C3 (soft tiles), C8a (weekday 12/700), E1a (no
+// visible compact count), F7a (light image arm) and D5a/O18a (guest edge). Same pinned clock as
+// the A4b describe above: 1 September 2031, a Monday.
+describe('CalendarMonthView — round-2 look (88.9-28)', () => {
+  const PINNED_TODAY = new Date(2031, 8, 1, 12, 0, 0, 0);
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(PINNED_TODAY);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  type GridOpts = {
+    anchor?: Date;
+    variant: 'compact' | 'full';
+    events?: unknown[];
+    onNavigateMonth?: (delta: number) => void;
+    onGoToday?: () => void;
+  };
+  function renderGrid({ anchor = new Date(2031, 8, 1, 12, 0, 0, 0), variant, events = [], onNavigateMonth = vi.fn(), onGoToday = vi.fn() }: GridOpts) {
+    const days = getDaysInMonth(anchor);
+    const out = render(
+      <CalendarMonthView
+        days={days}
+        activeEvents={events}
+        currentDate={anchor}
+        variant={variant}
+        onDayClick={vi.fn()}
+        onEventClick={vi.fn()}
+        onNavigateMonth={onNavigateMonth}
+        onGoToday={onGoToday}
+        monthNames={MONTHS}
+        tzLegend={null}
+      />,
+    );
+    const grids = out.container.querySelectorAll('.grid.grid-cols-7');
+    return {
+      days,
+      weekdays: Array.from(grids[0].children) as HTMLElement[],
+      cells: Array.from(grids[1].children) as HTMLElement[],
+    };
+  }
+  const tokens = (el: Element) => el.className.split(/\s+/).filter(Boolean);
+
+  it('N1 (88.9): icon-only month nav with the accessible names Previous month / Next month, one-line title, Today pill', () => {
+    for (const variant of ['full', 'compact'] as const) {
+      const onNavigateMonth = vi.fn();
+      const onGoToday = vi.fn();
+      renderGrid({ variant, onNavigateMonth, onGoToday });
+      const prev = screen.getByRole('button', { name: 'Previous month' });
+      const next = screen.getByRole('button', { name: 'Next month' });
+      for (const [label, btn] of [['Previous month', prev], ['Next month', next]] as const) {
+        expect((btn.textContent ?? '').trim(), `${variant}: ${label} carries visible text`).toBe('');
+        for (const t of ['btn-icon-square', 'min-h-11', 'min-w-11']) {
+          expect(tokens(btn), `${variant}: ${label} lacks ${t}`).toContain(t);
+        }
+      }
+      fireEvent.click(prev);
+      expect(onNavigateMonth).toHaveBeenLastCalledWith(-1);
+      fireEvent.click(next);
+      expect(onNavigateMonth).toHaveBeenLastCalledWith(1);
+      const heading = screen.getByRole('heading', { level: 3, name: 'September 2031' });
+      for (const t of ['whitespace-nowrap', 'truncate', 'text-ellipsis']) {
+        expect(tokens(heading), `${variant}: the month title clips (${t})`).not.toContain(t);
+      }
+      expect(heading.className, `${variant}: the month title clips (line-clamp)`).not.toMatch(/line-clamp-/);
+      fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+      expect(onGoToday).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: 'Go to Today' }), `${variant}: the retired Go to Today name is still rendered`).toBeNull();
+      cleanup();
+    }
   });
 });

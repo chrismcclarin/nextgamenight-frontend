@@ -3092,6 +3092,16 @@ body {
   padding-right: 0;
 }
 
+/* DECISION Phase 88.9-28 N1: a square 44x44 icon button is an unlayered padding-0 class placed
+   after .btn, chosen OVER a padding utility (every @layer utilities rule loses to the unlayered
+   .btn) and OVER an inline style on the call site (the primitive owns its sizes) — moving it above
+   .btn silently restores the 16px side padding. Emitted only by the Button size key iconSquare
+   (src/components/ui/Button.tsx ("iconSquare: 'btn-icon-square")), the month-nav chevrons
+   (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07). */
+.btn-icon-square {
+  padding: 0;
+}
+
 /* DECISION Phase 87.8 DEC-3 — AMENDED BY PHASE 88-31: THE `.modal-overlay` RULES ARE GONE, AND
    THE 12px PHONE GUTTER THEY CARRIED NOW LIVES IN `src/app/components/Modal.tsx`.
 

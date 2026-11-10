@@ -14,6 +14,7 @@ import {
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { Icon } from '../../components/ui/Icon';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
@@ -194,16 +195,25 @@ export default function CalendarMonthView({
           `focusAndMotionTreatment.test.ts` only ever forbade VISIBLE bare
           `focus:` treatments — it never required a ring on every focusable.
           Task 2(B) of this plan adds that positive scan across the five
-          group-page render-tree files. Removing a ring here reds it. */}
+          group-page render-tree files. Removing a ring here reds it.
+          AMENDED Phase 88.9-28 (owner pick N1): the ring stays on all three controls; Go to Today is now the Today pill. */}
       <div className="flex justify-between items-center mb-4">
         {/* Phase 88.6-27: both `.btn btn-primary` nav controls take the primitive, and their
             per-site focus-ring strings retire with the migration — the ring lives ONCE in the
             primitive's cva base (A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
             is byte-unchanged and still true of what the user sees; only WHERE the ring is
             expressed moved. The "Go to Today" text link between them is NOT a `.btn` and KEEPS
-            its own string — it is not a member of the family that marker's ARM A covers. */}
-        <Button variant="primary" onClick={() => onNavigateMonth(-1)}>
-          &larr; Previous
+            its own string — it is not a member of the family that marker's ARM A covers.
+            AMENDED Phase 88.9-28 (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07): the two nav
+            controls are now secondary iconSquare Buttons (chevrons, names Previous month / Next
+            month), chosen OVER the two primary text Buttons; the text link is now the Today pill
+            and still keeps its own ring string. The chevron icon is decorative (Icon's default
+            aria-hidden): the accessible name is the button's own aria-label, a labelled focusable
+            leaf, which is what VoiceOver on iPhone reads. The title keeps Heading's base
+            wrap-anywhere and no nowrap, so it is one line whenever it fits and can still wrap at
+            enlarged text (WCAG 1.4.4). */}
+        <Button variant="secondary" size="iconSquare" aria-label="Previous month" onClick={() => onNavigateMonth(-1)}>
+          <Icon name="ChevronLeft" size={20} />
         </Button>
         <div className="text-center">
           <Heading level={3} size="heading" className="text-content-primary">
@@ -216,13 +226,13 @@ export default function CalendarMonthView({
           )}
           <button
             onClick={onGoToday}
-            className="text-sm text-content-link hover:text-content-link-hover mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11"
+            className="mt-1 inline-flex items-center justify-center min-h-11 px-4 rounded-full border border-line bg-surface-card text-sm font-bold text-content-primary hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
           >
-            Go to Today
+            Today
           </button>
         </div>
-        <Button variant="primary" onClick={() => onNavigateMonth(1)}>
-          Next &rarr;
+        <Button variant="secondary" size="iconSquare" aria-label="Next month" onClick={() => onNavigateMonth(1)}>
+          <Icon name="ChevronRight" size={20} />
         </Button>
       </div>
 
