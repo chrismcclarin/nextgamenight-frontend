@@ -115,6 +115,10 @@ function toggleOptionVote(ballot, optionId, voted) {
    1px `sr-only` box can never extend the page's scrollable overflow. */
 /**
  * @param {object} props
+ * @param {string} [props.eventId]
+ * @param {string} [props.eventDate]
+ * @param {string} [props.userRole]
+ * @param {string | null} [props.userRsvpStatus]
  * @param {import('../../components/ui/hostGround').HostGround} [props.hostGround='card'] the ground the HOST paints under the option cards; selects their focus halo
  */
 export default function BallotSection({ eventId, eventDate, userRole, userRsvpStatus, hostGround = 'card' }) {
