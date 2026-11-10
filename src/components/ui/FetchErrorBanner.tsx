@@ -43,6 +43,7 @@ import { cn } from '@/lib/cn';
 import { Banner } from './Banner';
 import { hostGroundHalo, type HostGround } from './hostGround';
 import { Icon } from './Icon';
+import { Spinner } from './Spinner';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { useFeedbackReport } from '@/app/components/FeedbackModalProvider';
 import { logger, errCtx } from '@/lib/logger';
@@ -360,7 +361,10 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
 interface NoticeRowProps {
   /** The ratified sentence the row shows (and the one polite region beside it carries). */
   text: string;
-  /** A retry is in flight: `Retrying…` and `aria-disabled`, never the native attribute. */
+  /**
+   * A retry is in flight: the label is kept with the house Spinner and a heard ", retrying"
+   * suffix (rule 1, 88.9-46), `aria-disabled`, never the native attribute.
+   */
   retrying: boolean;
   /** The shared press handler; it arms focus recovery from the pressed button. */
   handleRetry: (event: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>;
@@ -458,8 +462,17 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, host
           hostGroundHalo(hostGround)
         )}
       >
-        <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
-        {retrying ? 'Retrying…' : 'Retry'}
+        {/* DECISION Phase 88.9-46 (rule 1 B37/B38): both retry controls (this shared row's Retry and
+            the full branch's Try again) keep their label and swap the spinning RefreshCw icon for the
+            house Spinner while a retry is in flight, with the same sr-only suffix span Button renders
+            (", retrying") so the name reads "<label>, retrying" — chosen OVER the shipped label swap
+            to the in-flight word (it replaced the whole accessible name) and OVER keeping the
+            spinning icon as a second spinner look (rule 1: busy looks the same everywhere). The
+            polite region beside each branch is a status caption, not a button, and keeps its word.
+            Owner pick O16a extended by the Q3 ruling (88.9-RULINGS.md, 2026-11-08). */}
+        {retrying ? <Spinner /> : <Icon name="RefreshCw" size={14} />}
+        Retry
+        {retrying ? <span className="sr-only">, retrying</span> : null}
       </button>
     </div>
   );
@@ -588,7 +601,9 @@ export function FetchErrorBanner({
          not the node addition AT-4 measured as
          WebKit's announce path; and in the never-loaded case the visible row is gone, so it would
          speak a word the screen does not show;
-     (f) new words for the in-flight state (D-31): the button's `Retrying…` is the cue.
+     (f) new words for the in-flight state (D-31): the button's busy state is the cue — since
+         rule 1 (AMENDED Phase 88.9-46 B37/B38) its kept label with the house spinner and the
+         heard `, retrying` suffix, where it was the `Retrying…` label swap.
 
      UNKNOWN outcomes (a retry resolving no boolean `isError`, or rejecting — caught and reported
      at `handleRetry`) refill the region with the sentence already on screen, never B1. A retry
@@ -660,7 +675,9 @@ export function FetchErrorBanner({
      assertive region included, together with its text. Banner's assertive `StatusRegion` is
      therefore present and EMPTY before the failure, and the SAME node carries the title and the
      message after it. The buttons render in Banner's `actions` slot: inside the box, OUTSIDE the
-     atomic alert, so the `Try again` -> `Retrying…` flip is no longer a mutation inside it. A
+     atomic alert, so the button's in-flight flip (since rule 1, 88.9-46: the kept label gaining
+     the spinner and the sr-only suffix; before, the `Try again` -> `Retrying…` swap) is no longer
+     a mutation inside it. A
      failed retry is told: the polite region says the site's existing `title` once a retry's OWN
      result reports `isError: true` AND the committed state still shows the failure.
 
@@ -755,8 +772,10 @@ export function FetchErrorBanner({
           aria-disabled={retrying || undefined}
           className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
         >
-          <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
-          {retrying ? 'Retrying…' : 'Try again'}
+          {/* Same in-flight shape as the shared row's Retry — see the rule 1 B37/B38 marker there. */}
+          {retrying ? <Spinner /> : <Icon name="RefreshCw" size={14} />}
+          Try again
+          {retrying ? <span className="sr-only">, retrying</span> : null}
         </button>
       )}
       {/* DECISION Phase 88.6.1-69 (owner ruling 2026-10-05, Report this after a failed retry):
