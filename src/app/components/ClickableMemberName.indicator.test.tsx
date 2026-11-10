@@ -51,6 +51,7 @@ import path from 'node:path';
 import ClickableMemberName from './ClickableMemberName';
 import { FriendshipContext } from './FriendshipStatusProvider';
 import { Modal } from './Modal';
+import type { HostGround } from '../../components/ui/hostGround';
 
 type Status = 'none' | 'accepted' | 'pending_sent' | 'pending_received' | 'self' | 'unknown';
 
@@ -61,7 +62,7 @@ const sendRequest = vi.fn<(id: string) => Promise<unknown>>(async () => ({ ok: t
 
 /** Mirrors keyboardOperability.test.tsx's harness: the name renders INSIDE a role="button"
  *  card, which is the nesting the component's stopPropagation decision is about. */
-function renderName(status: Status, props?: { showInlineIndicator?: boolean; hostGround?: string }) {
+function renderName(status: Status, props?: { showInlineIndicator?: boolean; hostGround?: HostGround }) {
   const value = { getStatus: () => status, sendRequest };
   return render(
     <FriendshipContext.Provider value={value as never}>
@@ -822,7 +823,7 @@ describe('Phase 88.9-30 — F6a placement and the host-ground halo', () => {
     }
     utils.unmount();
 
-    renderName('none', { hostGround: 'nonsense' });
+    renderName('none', { hostGround: 'nonsense' as HostGround });
     for (const el of both()) expect(el, 'an unknown key: the card halo stands').toHaveClass(card);
   });
 });

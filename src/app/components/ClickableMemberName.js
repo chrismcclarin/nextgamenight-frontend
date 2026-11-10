@@ -18,6 +18,8 @@ import { FriendshipContext } from './FriendshipStatusProvider';
 import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+import { hostGroundHalo } from '../../components/ui/hostGround';
+import { cn } from '../../lib/cn';
 import { DIALOG_ROLE_SELECTOR } from '../../components/ui/focusPageFloor';
 import { logger, errCtx } from '@/lib/logger';
 
@@ -72,6 +74,8 @@ function firstRendered(candidates) {
  * @param {React.ReactNode} [props.children] - Optional custom render (defaults to username span)
  * @param {boolean} [props.showInlineIndicator=true] - Opt OUT of the inline md:hidden indicator
  *   sibling (see the DECISION Phase 88.5 marker below). Default `true` = today's behaviour.
+ * @param {import('../../components/ui/hostGround').HostGround} [props.hostGround='card'] - The ground
+ *   the HOST paints under this name; selects the focus halo of the name and the + button.
  */
 /* DECISION Phase 88.5 (D-15): `showInlineIndicator` is an OPT-OUT defaulting to `true`,
    chosen so that the member CHIPS introduced by this phase can suppress the inline
@@ -98,7 +102,7 @@ function firstRendered(candidates) {
    chip carries friend/pending in its RING (solid green / dashed amber) AND in its accessible
    name, and the two-tap popover — never gated by this prop — remains the add-friend path.
    Turning this into an opt-in, or defaulting it to `false`, is a decision, not a cleanup. */
-export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true }) {
+export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true, hostGround = 'card' }) {
   const { getStatus, sendRequest } = useContext(FriendshipContext);
   const [isOpen, setIsOpen] = useState(false);
   const [sent, setSent] = useState(false);
@@ -172,8 +176,14 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // `[D]` routed in `.planning/deferred/phase-88.6.md`; it needs a design answer, not a sweep.
     // Plan 88.6-34 swept this file's type, weight and `.btn` layers and left this config
     // byte-unchanged on purpose. Changing the placement or the offset is 88.9's decision.
-    placement: 'bottom-start',
-    middleware: [offset(6), flip(), shift({ padding: 8 })],
+    // AMENDED Phase 88.9-30 (owner pick F6a, 88.9-PICKS-B5.json, 2026-11-07): the popover opens ABOVE
+    // the name (top-start, offset 8 per UI-SPEC CR2-17; the pick page rendered 6), chosen OVER the
+    // shipped below-the-name placement at offset 6, which covered the next member's row so a fast
+    // second tap sent an unintended friend request. flip() and shift() stay: with no room above
+    // (viewport top, inside a dialog) it flips below. A tap-through guard is NOT added — the register
+    // makes it optional and SPEC P4 forbids new capability under the look label.
+    placement: 'top-start',
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   });
 
@@ -596,7 +606,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
       onFocus={armIndicatorRecovery}
       aria-disabled={sendingFrom === 'inline' ? 'true' : undefined}
       disabled={sendingFrom === 'popover'}
-      className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+      className={cn(
+        "md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card",
+        hostGroundHalo(hostGround),
+      )}
       aria-label={`Add ${username} as a friend`}
     >
       +
@@ -897,8 +910,15 @@ export default function ClickableMemberName({ userId, username, children, showIn
           role: 'button',
           tabIndex: 0,
           'aria-expanded': isOpen,
-          className:
+          // DECISION Phase 88.9-30 (R012 / R013, owner picks B3a + B1a): the name's and the + button's
+          // halo is the HOST's ground passed as hostGround, merged after the shipped card key by cn
+          // last-wins, chosen OVER a fixed card halo (the raw amber pending box read 1.04 light / 1.61
+          // dark against it) and OVER dropping the card key from the literal (cascadeOrder test 12
+          // judges each ring chunk and would red).
+          className: cn(
             'cursor-pointer hover:underline rounded-xs focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+            hostGroundHalo(hostGround),
+          ),
           onClick: (e) => {
             e.stopPropagation();
             // Hybrid touch laptop fallback — preserved verbatim. At ≥768px
@@ -947,6 +967,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
         // popover is kept within the dialog's box (the content clips with overflow-hidden, and
         // flip / shift keep it inside) instead of overlaying the page around the dialog;
         // placement and offset are unchanged, so the NOT SWEPT (Phase 88.9) note still holds.
+        // AMENDED Phase 88.9-30 (owner pick F6a, 88.9-PICKS-B5.json, 2026-11-07): placement and offset
+        // are now top-start / 8 (marker above useFloating); the dialog-clipping behaviour described
+        // here is unchanged.
         // The floating element keeps data-member-popover, so the Modal's Escape guard still
         // hands that Escape to the popover. Portalling back to the body inside a dialog is a
         // decision, not a cleanup.
