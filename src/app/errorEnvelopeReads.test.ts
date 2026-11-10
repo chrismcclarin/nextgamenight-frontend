@@ -171,7 +171,10 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // the component, amended `DECISION Phase 88.6-25` above the declaration (the useAppForm
     // refusal), and amended the pre-fill state comment directly above it. The receiver is
     // unchanged — still set only by the perform* callbacks, still { source, count, failed? }.
-    declaredAt: 108,
+    // RE-DERIVED by plan 88.9-45 (2026-11-10): 108 -> 107. Fifth move: plan 45 added the Spinner
+    // import (+1) and deleted the hoisted A5 constant with its blank line (-2) above the component
+    // (rule 1 — the pre-fill buttons keep their labels). The receiver is unchanged.
+    declaredAt: 107,
     declaration: 'const [prefillStatus, setPrefillStatus] = useState(',
     why:
       'Local pre-fill banner state shaped { source, count, failed? } — set only by this ' +

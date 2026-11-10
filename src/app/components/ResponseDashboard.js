@@ -9,6 +9,7 @@ import {
 } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
+import { Spinner } from '../../components/ui/Spinner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger } from '@/lib/logger';
@@ -731,7 +732,14 @@ function RemindButton({ userId, lastRemindedAt, isReminding, statusId, onRemind 
       aria-disabled={isReminding || undefined}
       className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:text-content-muted shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
     >
-      {isReminding ? 'Sending...' : 'Remind'}
+      {/* DECISION Phase 88.9-45 (rule 1, raw button): the Spinner primitive plus an sr-only ", sending" span are composed here by hand, chosen OVER converting this link-styled row control to Button (the unlayered .btn rules would repaint it) and OVER the Sending swap word. */}
+      Remind
+      {isReminding && (
+        <>
+          <Spinner className="ml-2" />
+          <span className="sr-only">, sending</span>
+        </>
+      )}
     </button>
   );
 }

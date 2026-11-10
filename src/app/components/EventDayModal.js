@@ -20,7 +20,6 @@ import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import QRCodeModal from './QRCodeModal';
-import { SHARE_GAME_QR_LOADING_LABEL } from './shareGameQrCopy';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { eventsAPI } from '../../lib/api';
 import { Button } from '../../components/ui/Button';
@@ -690,6 +689,8 @@ export default function EventDayModal({
                             variant="accent"
                             onClick={(e) => handleShowGameQR(e, event)}
                             aria-disabled={qrInFlight || undefined}
+                            busy={qrInFlight}
+                            busySuffix=", loading"
                             /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c),
                                2026-08-28): `btn-secondary` -> `btn-accent`. Owner: "The Share game
                                qr button still looks odd. Lets make it amber, like the create event
@@ -735,17 +736,19 @@ export default function EventDayModal({
                             className="mt-2 focus-visible:ring-offset-surface-group-halo"
                             title="Share Game QR"
                           >
-                            {/* Decorative: the visible "Share Game QR" label, or the in-flight label
-                                (copy row E6), already
-                                gives this button its accessible name, so the icon is hidden from AT
-                                rather than announced as a stray image before the label. House
-                                convention — the decorative status glyphs in `invite/game/[token]/page.js`
-                                (`aria-hidden="true" focusable="false"`) carry the same pair. */}
+                            {/* Decorative: the visible "Share Game QR" label (plus the sr-only busy
+                                suffix while the QR loads) already gives this button its accessible
+                                name, so the icon is hidden from AT rather than announced as a stray
+                                image before the label. House convention — the decorative status
+                                glyphs in `invite/game/[token]/page.js` (`aria-hidden="true"
+                                focusable="false"`) carry the same pair.
+                                DECISION Phase 88.9-45 (rule 1): Share Game QR keeps its label + spinner while the
+                                QR loads, chosen OVER the E6 swap word; gameDetail's twin converts in 88.9-46. */}
                             <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                             </svg>
-                            {qrInFlight ? SHARE_GAME_QR_LOADING_LABEL : 'Share Game QR'}
+                            Share Game QR
                           </Button>
                         )}
                       </div>

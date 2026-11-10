@@ -97,7 +97,11 @@ const NOT_PROVISIONED_MESSAGE =
    fuller sentence is wanted here is an owner question, routed with plan 88.6-30's
    checkpoint — not a guess taken at execution.
    AMENDED Phase 88.6.1-22 (W008): the button now reads the constant too — until this line it
-   carried its own literal, so the "cannot drift" claim was false. */
+   carried its own literal, so the "cannot drift" claim was false.
+   AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; register 53.24 Deleting half):
+   the danger action keeps its label + the house spinner while deleting; the constant is now the
+   progress region's string alone, so the W008 one-literal claim holds with one reader, chosen OVER
+   keeping the button swap (rule 1). */
 const DELETING_LABEL = 'Deleting…';
 
 /* DECISION Phase 88.6-30 (D1, round-3 verdict): the in-flight DELETE is BOUNDED by a
@@ -771,8 +775,10 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
               onClick={handleDelete}
               disabled={confirmInvalid}
               aria-disabled={deleting || undefined}
+              busy={deleting}
+              busySuffix=", deleting"
             >
-              {deleting ? DELETING_LABEL : 'Delete my account'}
+              Delete my account
             </Modal.Action>
           )}
         </Modal.Footer>

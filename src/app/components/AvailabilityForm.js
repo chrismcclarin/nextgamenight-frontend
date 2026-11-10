@@ -14,11 +14,10 @@ import { useAppForm } from '../../lib/useAppForm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Button } from '../../components/ui/Button';
+import { Spinner } from '../../components/ui/Spinner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
-
-const SAVED_PREFILL_LOADING_LABEL = 'Loading your availability…';
 
 /**
  * Zod schema with cross-field validation
@@ -115,12 +114,16 @@ export default function AvailabilityForm({
      mid-load) and the shared state flag as the refusal (stale until React commits, so a fast
      second press would start a second fetch). VISIBLE DELTA, disclosed: the pressed button no
      longer washes to half opacity while it loads — these are raw buttons with no gated colour
-     pair, so its in-flight cue is the ratified label (A5 `Loading your availability…`, or
+     pair, so its in-flight cue is the ratified label (copy row A5's loading sentence, or
      `Importing…`), SEEN on screen, and the button's accessible name (read when focus arrives or
      the user re-reads it); whether a screen reader speaks the in-flight rename by itself is NOT
      measured by this plan (plan 88.6.1-57's VoiceOver check measures it). Both buttons grow about
      2px to the 44px floor (`min-h-11`). Restoring the native attribute on the pressed button is a
-     decision, not a cleanup. */
+     decision, not a cleanup.
+     AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1, Q3 scope B):
+     the pressed pre-fill button keeps its label; the house spinner is the SEEN in-flight cue and the
+     sr-only suffix the heard one, chosen OVER the ratified A5 / Importing swap words (each replaced
+     the button's whole name with a bare progress word). */
   const prefillInFlightRef = useRef(false);
   // ONE timer clears the outcome line: a second pre-fill clears the first one's pending timer, so
   // the first can no longer wipe the second outcome early. Cleared on unmount too.
@@ -490,6 +493,10 @@ export default function AvailabilityForm({
         <StatusRegion politeness="polite" className="sr-only" data-testid="prefill-status" message={prefillStatusText} />
         <p className="text-sm font-bold text-content-primary">Start with:</p>
         <div className="flex flex-col sm:flex-row gap-2">
+          {/* DECISION Phase 88.9-45 (rule 1, raw buttons): the Spinner primitive and the same sr-only
+              suffix span Button renders are composed here by hand, chosen OVER converting these raw
+              buttons to Button (the unlayered .btn rules would repaint their shipped outline-card
+              classes). One spinner, one suffix shape. */}
           {gcalConnected && (
             <button
               type="button"
@@ -498,7 +505,13 @@ export default function AvailabilityForm({
               aria-disabled={prefillSource === 'gcal' ? 'true' : undefined}
               className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
             >
-              {prefillSource === 'gcal' ? 'Importing…' : 'Import from Google Calendar'}
+              Import from Google Calendar
+              {prefillSource === 'gcal' && (
+                <>
+                  <Spinner className="ml-2 align-middle" />
+                  <span className="sr-only">, importing</span>
+                </>
+              )}
             </button>
           )}
           <button
@@ -509,7 +522,13 @@ export default function AvailabilityForm({
             title={!hasSavedAvailability ? 'No saved availability for these dates' : undefined}
             className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
           >
-            {prefillSource === 'saved' ? SAVED_PREFILL_LOADING_LABEL : 'Use my saved availability'}
+            Use my saved availability
+            {prefillSource === 'saved' && (
+              <>
+                <Spinner className="ml-2 align-middle" />
+                <span className="sr-only">, loading</span>
+              </>
+            )}
           </button>
         </div>
         {!hasSavedAvailability && (
@@ -670,29 +689,18 @@ export default function AvailabilityForm({
             `useAppForm`'s `handleAppSubmit`, which refuses a second submit before react-hook-form
             runs — so a second click no longer enters `onSubmit`, and `isSubmitting` holds the
             `Submitting...` label and `aria-disabled` until the first submit settles.
-            `submitInFlightRef` stays as a second, local line. */}
+            `submitInFlightRef` stays as a second, local line.
+            AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07): isSubmitting now holds
+            the resting label + the house spinner + aria-disabled, chosen OVER the Submitting swap and the
+            white SVG arc (#164's "fine" was for the in-flight cue, which the house spinner keeps). */}
         <Button
           type="submit"
           aria-disabled={isSubmitting}
+          busy={isSubmitting}
+          busySuffix=", submitting"
           className="w-full"
         >
-          {isSubmitting ? (
-            <span className="flex items-center justify-center gap-2">
-              <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                {/* `opacity` as an SVG PRESENTATION ATTRIBUTE, not the Tailwind utility. Two
-                    reasons and the second is the load-bearing one: it is the correct spelling
-                    for an SVG arc, and it takes the last bare `opacity-<n>` utilities in
-                    `src/` out of `tokenContrast` test 53(b2)'s 400-character window after the
-                    `aria-disabled=` above. Re-introducing the utility spelling here would red
-                    that gate and silently re-block the conversion. */}
-                <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Submitting...
-            </span>
-          ) : (
-            isUpdate ? 'Update Availability' : 'Submit Availability'
-          )}
+          {isUpdate ? 'Update Availability' : 'Submit Availability'}
         </Button>
       </div>
     </form>
