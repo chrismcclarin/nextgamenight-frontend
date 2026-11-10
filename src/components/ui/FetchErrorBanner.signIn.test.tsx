@@ -118,15 +118,16 @@ describe('FetchErrorBanner — 88.9-26 title, halo and sign-in pins', () => {
     expect(onPage, 'hostGround page: the card halo is merged away').not.toContain('ring-offset-surface-card');
     utils.unmount();
 
-    expect(Object.keys(HOST_GROUND_HALO).sort(), 'exactly the four host grounds').toEqual([
-      'card',
-      'elevated',
-      'muted',
-      'page',
-    ]);
-    for (const [key, value] of Object.entries(HOST_GROUND_HALO)) {
-      expect(value, `${key}: one whole literal`).toBe(`focus-visible:ring-offset-surface-${key}`);
-    }
+    // AMENDED Phase 88.9-30 (owner picks B3a + B1a): the map grows from four keys to six (warning,
+    // the T box ground; group, the G host variable), each still one whole focus-visible literal.
+    expect(HOST_GROUND_HALO, 'exactly the six host grounds, each one whole literal').toEqual({
+      card: 'focus-visible:ring-offset-surface-card',
+      page: 'focus-visible:ring-offset-surface-page',
+      elevated: 'focus-visible:ring-offset-surface-elevated',
+      muted: 'focus-visible:ring-offset-surface-muted',
+      warning: 'focus-visible:ring-offset-status-warning-subtle',
+      group: 'focus-visible:ring-offset-surface-group-halo',
+    });
   });
 
   it('O22d (88.9): an unauthorized banner shows Sign in to /api/auth/login?returnTo=<this path>, 44px tall, in place of Try again, and no other code does', () => {
