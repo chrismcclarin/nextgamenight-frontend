@@ -823,6 +823,7 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
       'NOT PENDING WORK — this entry floors at 1 and its removal condition is a Phase 88.9 ruling ' +
       'on the header icon-chrome pair, not a sweep. The 36-vs-32 residual is routed at ' +
       '`.planning/deferred/phase-88.6.md` (`[look/consistency — OWNER DECISION REQUESTED]`). ' +
+      'AMENDED Phase 88.9-37 (owner pick O07a, chat 2026-11-07 6:18 PM Pacific): the Phase 88.9 ruling on the header icon-chrome pair is in — both 36x36 (the bell moved to 6px padding; this toggle unchanged), O07a chosen OVER O07b (both 44). It keeps this control bare, so this entry STAYS at 1 as the ruled state, not pending work; the overlay-colour finding is not ruled by it (handed to 88.9-51). ' +
       'Migrating this control is a decision, not a cleanup.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-11' },
   },

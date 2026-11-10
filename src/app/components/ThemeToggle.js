@@ -8,7 +8,12 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
 
   useEffect(() => setMounted(true), [])
 
-  if (!mounted) return <div className="w-8 h-8" />
+  // DECISION Phase 88.9-37 O07a (pre-mount box): the placeholder is 36x36, the size of the
+  // mounted icon button, chosen OVER the shipped 32x32 placeholder, which swapped for a 36x36
+  // button after hydration and shifted the desktop nav 4px on every load (arithmetic from the
+  // class strings, not measured). The row variant mounts inside the closed phone menu, so its
+  // placeholder size is not visible. Changing it is a decision, not a cleanup.
+  if (!mounted) return <div className="w-9 h-9" />
 
   const isDark = resolvedTheme === 'dark'
   const ariaLabel = `Switch to ${isDark ? 'light' : 'dark'} mode`
@@ -70,6 +75,14 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   // `btnCensus.test.tsx`'s palette roster, which is exact in both directions — deleting that
   // entry without changing this element reds, and changing this element without deleting it reds
   // too. Making this a `<Button>` is a decision, not a cleanup.
+  //
+  // AMENDED Phase 88.9-37 (owner pick O07a, chat 2026-11-07 6:18 PM Pacific): the bell sibling
+  // now pads 6px = 36x36, equal to this toggle (see
+  // src/app/components/NotificationBell.js ("DECISION Phase 88.9-37 O07a")); the 36-vs-32
+  // residual is CLOSED, O07a chosen OVER O07b (both 44). The stays-bare decision above stands
+  // and is stronger: migrating this control alone would now open a 0px match into a ~16px
+  // mismatch. The hover-overlay colour finding above is not ruled by O07a (sizes only) and is
+  // handed to plan 88.9-51.
   return (
     <button
       onClick={() => setTheme(isDark ? 'light' : 'dark')}

@@ -671,7 +671,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
           {countBadge}
         </button>
       ) : (
-        // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01.
+        // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01 except the O07a padding (marker below).
         <button
           ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
@@ -680,7 +680,14 @@ function NotificationBell({ user, variant = 'icon', label }) {
           // outline on the warm-800 header. It now carries the same treatment as the row
           // variant, and inherits the amber-400 `--ring` override scoped to the header
           // subtree at `Header.js`'s container. See the DECISION marker on the row label below.
-          className="relative text-white hover:text-amber-400 transition-colors p-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+          // DECISION Phase 88.9-37 O07a (owner ruling by chat, 2026-11-07 6:18 PM Pacific; page 8a,
+          // 88.9-PICKS-B8A.json item O07): this icon trigger pads 6px around the 24px bell = 36x36,
+          // the theme toggle's size beside it, chosen OVER O07b (both at 44 — bell 10px, toggle 12px —
+          // which grows the header row and pushes Profile away from the bell) and OVER the shipped 4px
+          // padding (32x32, a 4px mismatch between two adjacent icon controls). Desktop only: this
+          // trigger lives in the header list hidden below md; the phone row variant is untouched. The
+          // count badge stays positioned on the button corner. Changing it is a decision, not a cleanup.
+          className="relative text-white hover:text-amber-400 transition-colors p-1.5 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label="Notifications"
           aria-describedby={countDescriptionId}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
