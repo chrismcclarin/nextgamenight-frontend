@@ -118,7 +118,7 @@ import {
   assertRosterShape,
   type ExemptionRoster,
 } from '../test-utils/exemption';
-import { lineAt, sourceFiles, withoutComments } from '../test-utils/sourceScan';
+import { lineAt, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -3123,5 +3123,95 @@ describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx
       'an off-scale weight sitting on a heading must be rostered by the weight rule as well ' +
         'as by the heading rule',
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// K7 (88.9) / C3b: one tracking spelling for uppercase labels (UI-SPEC rows R2-13 / R2-20)
+// ---------------------------------------------------------------------------------------
+//
+// DECISION Phase 88.9-47 (K7 / owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): an uppercase
+// label that carries a letter-spacing utility carries exactly tracking-wider (0.05em). The
+// scan keys on a string chunk holding BOTH the uppercase class and any tracking utility,
+// chosen OVER the R2-13 census command keyed on text-xs, which misses the 14px Heading size
+// label sites (Later, the day heading, the FriendInvitePanel section headings). The tutorial
+// exemption is a counted roster entry by file name, chosen OVER a directory glob, so a new
+// tutorial site still has to be counted and the tutorial rewrite deletes the entry.
+//
+// The classifier reads ONE string chunk (stringChunks crosses newlines, recurses into
+// template interpolations and drops comments, so a marker that quotes the old spelling is
+// never a site). 'none' = not a letter-spaced uppercase label (no uppercase token, or no
+// tracking token); 'on' = exactly one tracking utility and it is tracking-wider; 'off' =
+// any other letter-spaced uppercase label (an old spelling, an arbitrary value, or two
+// tracking utilities at once).
+
+const K7_UPPERCASE_TOKEN = /(?:^|[\s:])uppercase(?=\s|$)/;
+const K7_TRACKING_TOKEN = /(?:^|[\s:])(tracking-[^\s'"\x60]+)/g;
+
+function k7Classify(text: string): 'off' | 'on' | 'none' {
+  if (!K7_UPPERCASE_TOKEN.test(text)) return 'none';
+  const tracking: string[] = [];
+  K7_TRACKING_TOKEN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = K7_TRACKING_TOKEN.exec(text)) !== null) tracking.push(m[1]);
+  if (tracking.length === 0) return 'none';
+  return tracking.length === 1 && tracking[0] === 'tracking-wider' ? 'on' : 'off';
+}
+
+// Exempt BY NAME, with an exact count. Kind 'owner', not 'decision': the K7 ruling of
+// 2026-11-07, not the file's own 88.6-35 weight marker, is the decision that exempts it.
+const K7_TRACKING_EXEMPTIONS: ExemptionRoster = {
+  'app/components/tutorial/simulated/CheckInDemo.js': {
+    sites: 2,
+    why:
+      'the two simulated tutorial eyebrows (Members set their own availability / Or send them ' +
+      'a check-in) keep the tutorial file\'s own 0.025em step; the UI-SPEC routes every tutorial ' +
+      'look item to the v2.1 tutorial phase, which deletes this entry when it converges them',
+    owner: {
+      kind: 'owner',
+      date: '2026-11-07',
+      ruling:
+        'K7 (orchestrator ruling on the COPY-CENSUS corrections, 2026-11-07): every UPPERCASE ' +
+        'label that carries a letter-spacing utility takes the ONE spelling tracking-wider; ' +
+        'tutorial files exempt by name (CheckInDemo.js keeps tracking-wide, its own keep their ' +
+        'own call; the UI-SPEC routes every tutorial look item to the v2.1 tutorial phase)',
+    },
+  },
+};
+
+describe('K7 (88.9) / C3b: one tracking spelling for uppercase labels', () => {
+  it('K7 (88.9): every uppercase letter-spaced label uses tracking-wider; tutorial files exempt by name', () => {
+    // Controls first, so a scan that has gone blind fails here and not only on the floor.
+    expect(k7Classify('text-xs uppercase tracking-wide'), 'the former majority step').toBe('off');
+    expect(k7Classify('uppercase tracking-[0.08em]'), 'the former hero step').toBe('off');
+    expect(k7Classify('uppercase tracking-wider tracking-wide'), 'two utilities at once').toBe('off');
+    expect(k7Classify('text-xs font-bold uppercase tracking-wider'), 'the C3b spelling').toBe('on');
+    expect(k7Classify('uppercase shadow-theme-sm'), 'uppercase with no tracking').toBe('none');
+    expect(k7Classify('w-32 text-center tracking-widest'), 'tracking with no uppercase').toBe('none');
+
+    // BUILD ONCE (AC-11, owner 2026-09-09): iterate the module-scope FILES, no second walk.
+    const measured: Record<string, number> = {};
+    const offSites: string[] = [];
+    let total = 0;
+    for (const f of FILES) {
+      for (const chunk of stringChunks(f.stripped)) {
+        const verdict = k7Classify(chunk.text);
+        if (verdict === 'none') continue;
+        total += 1;
+        if (verdict === 'off') {
+          measured[f.key] = (measured[f.key] ?? 0) + 1;
+          offSites.push(`${f.key}:${lineAt(f.stripped, chunk.offset)}`);
+        }
+      }
+    }
+
+    expect(assertRosterShape(K7_TRACKING_EXEMPTIONS)).toEqual([]);
+    expect(assertExactCounts(K7_TRACKING_EXEMPTIONS, measured), offSites.join('\n')).toEqual([]);
+    expect(
+      total,
+      'the census floor: letter-spaced uppercase chunks tree-wide, on OR off (30 measured at ' +
+        'plan 88.9-47, 2026-11-10: 28 on tracking-wider + the 2 exempt tutorial eyebrows). A total ' +
+        'under the floor means the scan has gone blind, not that the tree got tidier.',
+    ).toBeGreaterThanOrEqual(28);
   });
 });
