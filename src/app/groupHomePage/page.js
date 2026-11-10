@@ -32,6 +32,8 @@ import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRe
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
+import { ErrorFallback } from '../../components/ui/ErrorFallback';
 
 // The resolved outcome of one games load: the shape plan 88.6.1-21's banner reads
 // (`classifyRetryResult`) to announce a failed retry, and the shape plan 88.6.1-71 reuses for the
@@ -51,7 +53,7 @@ const MEMBERS_SECTION_NAME = 'Members';
 
 // A groups home page
 function GroupHomePage(){
-    const { user } = Auth();
+    const { user, error: authError, isLoading: authLoading } = Auth();
     const router = useRouter();
     // Phase 87.3-05 (PR-B): resolve the caller's own Users.id UUID via the
     // shared identity primitive. The membership/removal gate keys on the nested
@@ -654,6 +656,22 @@ function GroupHomePage(){
         error: pageLoadError,
         refetch: retryPageLoad,
     });
+    // DECISION Phase 88.9-40 (SESSION-01 / SESSION-03, K10): a signed-out visitor is sent to sign-in
+    // the moment useUser settles, chosen OVER the shipped paint gate that waited on fetches gated on
+    // user?.sub and so showed Loading group… forever; a 401 on the group's first load (the page-load
+    // state) does the same, and a return with the latch set gets the page-load banner with Sign in,
+    // never a second redirect. See src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling").
+    // A useUser() error shows ErrorFallback with Reload — never a redirect, never Loading group….
+    const signIn = useSignInRedirect({
+        authLoading,
+        signedOut: !user,
+        authError,
+        unauthorized: pageLoadErrorState.showError && pageLoadErrorState.code === 'unauthorized',
+        sessionProven: membershipChecked && groupLoadedFor === Router && !pageLoadErrorState.showError,
+    });
+    // The page-load gate reads the signed-out banner state when the guard declined for a visitor
+    // with no session, else the page-load state as before.
+    const pageGateState = signIn.signedOutErrorState.showError ? signIn.signedOutErrorState : pageLoadErrorState;
     /* DECISION Phase 88.6.1-71 (C12, focus when content leaves): CHOSEN — plan 88.6.1-70's shared
        guard, one per `retained` value. The members guard is the SECOND child of a fragment in
        every markup return of this component, so ONE instance survives the switch from the page
@@ -744,12 +762,39 @@ function GroupHomePage(){
     // AMENDED 88.6.1-89 (close ruling P-79): the gate reads the page-load state — the members load
     // OR the group record's load failing with nothing retained, members first — so one banner and
     // one Try again cover both (the marker on getGroup, REJECTED (a)).
-    if (pageLoadErrorState.showError) {
+    // 88.9-40 (SESSION-01 / SESSION-03): the redirect frame. The paint gate's own wrapper and copy,
+    // both guards as the 2nd and 3rd children (the 88.6.1-71 C12 position rule). It holds BOTH arms,
+    // because the paint gate below opens on a first-load 401 once membership has settled (its
+    // `!groupError` clause) and would paint the banner for a frame before the browser navigates.
+    if (signIn.holding) {
+        return (
+            <>
+                <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
+                    <p className="text-content-secondary">Loading group…</p>
+                </div>
+                {membersFocusGuard}
+                {groupFocusGuard}
+            </>
+        );
+    }
+    // 88.9-40: useUser() itself failed (offline, or /api/auth/me answered 5xx). Not signed out — the
+    // login route is as unreachable as the page — so Reload, never a redirect. The title is the
+    // page's banner title written as a literal (plan 88.9-49 renames the constant and counts its uses).
+    if (signIn.sessionError) {
+        return (
+            <>
+                <ErrorFallback title="Couldn't load this group" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />
+                {membersFocusGuard}
+                {groupFocusGuard}
+            </>
+        );
+    }
+    if (pageGateState.showError) {
         return (
             <>
                 <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
                     <div className="w-full max-w-xl">
-                        <FetchErrorBanner state={pageLoadErrorState} title={GROUP_LOAD_FAILED_TITLE} reportContext="Group home page — group and members fetch" />
+                        <FetchErrorBanner state={pageGateState} title={GROUP_LOAD_FAILED_TITLE} reportContext="Group home page — group and members fetch" />
                     </div>
                 </div>
                 {membersFocusGuard}

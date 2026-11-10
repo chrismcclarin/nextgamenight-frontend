@@ -52,6 +52,11 @@ const h = vi.hoisted(() => ({
   },
   // What the GroupSettings stub last rendered with (88.6.1-89: its `onUpdate` is a group refresh).
   groupSettingsProps: null as null | { onUpdate: () => void },
+  // 88.9-40 (SESSION-01 / SESSION-03): what the useUser mock returns; the default is the signed-in
+  // self, and the SESSION describe sets no user, an auth error, or a still-loading session.
+  authUser: { sub: 'auth0|self' } as { sub: string } | undefined,
+  authError: null as unknown,
+  authLoading: false,
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -71,7 +76,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
+  useUser: () => ({ user: h.authUser, error: h.authError, isLoading: h.authLoading }),
 }));
 
 // Stub the heavy children. Four of the stubs capture their props: createEvent and GroupGamesList for
@@ -148,6 +153,7 @@ import GroupHomePage from './page';
 import { groupsAPI, eventsAPI, listsAPI, ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 import { readOpeningTag, withoutComments } from '../../test-utils/sourceScan';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -167,13 +173,20 @@ beforeEach(() => {
   h.calendarProps = null;
   h.manageMembersProps = null;
   h.groupSettingsProps = null;
+  h.authUser = { sub: 'auth0|self' };
+  h.authError = null;
+  h.authLoading = false;
   (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(ROSTER);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
   (listsAPI.getGroupGames as Mock).mockResolvedValue([]);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // 88.9-40: the sign-in latch is per path + search in sessionStorage; no test inherits another's.
+  window.sessionStorage.clear();
+});
 
 /** A promise with its resolve and reject handed out, so a test decides when a request settles. */
 function deferred<T>() {
@@ -837,6 +850,10 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     try {
       await renderHeaderAt('owner', { inMain: true });
       expect(screen.getByText(/2 members/)).toBeInTheDocument();
+      // AMENDED Phase 88.9-40 (SESSION-01): a 401 refresh now redirects once (the shared guard), so this
+      // test sets the latch AFTER the page has loaded (a load that succeeds clears a latch set before
+      // it) and pins the DECLINED arm — the banner property it always held.
+      window.sessionStorage.setItem(signInLatchKey(window.location), '1');
       const err = new ApiError('Unauthorized', 'unauthorized', 401);
       (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
       await act(async () => {
@@ -1185,6 +1202,10 @@ describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-
     const link = screen.getByRole('link', { name: 'Plan Game Session' });
     act(() => link.focus());
     expect(document.activeElement).toBe(link);
+    // AMENDED Phase 88.9-40 (SESSION-01): a 401 refresh now redirects once (the shared guard), so this
+    // test sets the latch AFTER the page has loaded (a load that succeeds clears a latch set before
+    // it) and pins the DECLINED arm — the banner property it always held.
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new ApiError('Unauthorized', 'unauthorized', 401));
     await act(async () => {
       fireVisibility('visible');
@@ -1515,6 +1536,10 @@ describe("groupHomePage — the group record's own load (88.6.1-89, close ruling
     const manage = screen.getByRole('button', { name: 'Manage Members' });
     act(() => manage.focus());
     expect(document.activeElement).toBe(manage);
+    // AMENDED Phase 88.9-40 (SESSION-01): a 401 refresh now redirects once (the shared guard), so this
+    // test sets the latch AFTER the page has loaded (a load that succeeds clears a latch set before
+    // it) and pins the DECLINED arm — the banner property it always held.
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
 
     const err = new ApiError('x', 'unauthorized', 401);
     (groupsAPI.getGroup as Mock).mockRejectedValueOnce(err);
@@ -1682,5 +1707,115 @@ describe('groupHomePage — the calendar names its first load (88.6.1-89, close 
     });
     expect(h.calendarProps!.events).toEqual([EV_A, EV_B]);
     expect(screen.queryByText(CALENDAR_LOADING)).toBeNull();
+  });
+});
+
+// Phase 88.9-40 (SESSION-01 / SESSION-03, K10; owner ruling 2026-11-07, SPEC A8): a dead or rejected
+// session on the group page goes to sign-in ONCE, by a latched window.location.replace with this
+// group as returnTo (src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling")),
+// and a return with the latch set is the page-load banner with Sign in — never a second redirect,
+// never the "Loading group…" hang the shipped page sat on (its fetches waited on user?.sub). A
+// useUser() error is neither: it is the Reload fallback. The CI phone e2e
+// (e2e/event-link-signed-out.spec.ts, the SESSION-01/03 title) measures the same round trip in Chromium.
+describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', () => {
+  const G7 = "Couldn't load this group";
+  const GROUP_PATH = { pathname: '/groupHomePage', search: '?id=GROUP1' };
+  const originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+
+  // The gameDetail suite's stub (src/app/gameDetail/page.test.tsx ("function stubLocation(")): the hook
+  // reads pathname + search + hash and calls replace; the banner's Sign in link reads the same.
+  function stubLocation({ pathname, search }: { pathname: string; search: string }) {
+    const replace = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: {
+        origin: 'http://localhost',
+        protocol: 'http:',
+        host: 'localhost',
+        hostname: 'localhost',
+        port: '',
+        pathname,
+        search,
+        hash: '',
+        href: `http://localhost${pathname}${search}`,
+        replace,
+        assign: vi.fn(),
+      },
+    });
+    return replace;
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+  });
+
+  it('SESSION-01/03 (88.9): a signed-out visitor is sent to sign-in once with this group as returnTo, before any Loading group… hang; back with the latch set the page-load banner offers Sign in', async () => {
+    const replace = stubLocation(GROUP_PATH);
+    h.authUser = undefined;
+    renderInMain();
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1');
+    expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
+    // The redirect frame is the hold (the K10 hang was this same screen with replace never called).
+    expect(screen.getByText('Loading group…')).toBeInTheDocument();
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    cleanup();
+
+    // Back in the same tab without signing in: the latch is set, so the banner, with Sign in.
+    renderInMain();
+    await screen.findAllByText(G7);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      '/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1'
+    );
+    expect(screen.queryByText('Loading group…')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(pushSpy).not.toHaveBeenCalled();
+  });
+
+  it("SESSION-01 (88.9): a 401 on the group's first load redirects once; with the latch set it is the page-load banner, never a second redirect", async () => {
+    const replace = stubLocation(GROUP_PATH);
+    h.selfUuid = SELF_UUID;
+    h.isPending = false;
+    const err = new ApiError('Unauthorized', 'unauthorized', 401);
+    (groupsAPI.getGroup as Mock).mockRejectedValue(err);
+    renderInMain();
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1');
+    // The hold, not the page and not the banner, while the browser navigates.
+    expect(screen.getByText('Loading group…')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull();
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    cleanup();
+
+    // Back with the latch set: the page-load banner for the 401, Sign in in place of Try again.
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    renderInMain();
+    await screen.findAllByText(G7);
+    expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByText('Loading group…')).toBeNull();
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('SESSION-01 (88.9): a useUser error on the group page shows Reload, never a redirect or Loading group…', async () => {
+    const replace = stubLocation(GROUP_PATH);
+    h.authUser = undefined;
+    h.authError = Object.assign(new Error('me failed'), { status: 500 });
+    renderInMain();
+    expect(await screen.findByRole('button', { name: 'Reload page' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: G7 })).toBeInTheDocument();
+    expect(screen.queryByText('Loading group…')).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
+    expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
   });
 });
