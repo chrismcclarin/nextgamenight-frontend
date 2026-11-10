@@ -67,7 +67,8 @@ declare global {
  *   2. the sheet LEADS WITH THE HERO — the "Next game night" eyebrow precedes the first list
  *      row in the DOM and sits above it on screen — and both hero RSVP controls are visible
  *      and hit-testable
- *   3. the sheet's "This week" subheader carries a pill whose digits equal the button's count
+ *   3. the sheet renders NO "This week" subheader, pill or sr-only count (D6c, 88.9-39) — the
+ *      button alone carries the number; the next-7-day rows sit directly under Upcoming events
  *   4. 1-3 are asserted in BOTH themes (UI-SPEC section 12 item 14)
  *   5. the calendar sheet's rows show READABLE game text — 16px, unclipped
  *   6. tapping an event navigates AND leaves no sheet behind (the close-before-navigate
@@ -579,22 +580,20 @@ async function assertHeroLeadsTheSheet(page: Page, count: number): Promise<void>
     await locator.click({ trial: true, timeout: 5000 });
   }
 
-  // SPEC Req 2, the sheet twin: the "This week" subheader carries the SAME number as the
-  // button. One selector value feeds both (`selectUpcomingWithin7Days`), so a disagreement
-  // here means two definitions of "this week" have appeared.
-  // Prefix match, not anchored: the subheader's accessible name carries an sr-only
-  // count clause (", N upcoming this week" — ML15/ML0, 2026-09-01) whenever the pill
-  // renders, and this probe only runs when count >= 1, so `/^this week$/` could NEVER
-  // match here. Mirrors the jsdom suite's subSection() helper.
-  const thisWeek = calendarSheet(page).getByRole('heading', { name: /^this week\b/i });
-  await guardResolved(
-    thisWeek,
-    `the sheet's "This week" subheader — the button announces ${count} upcoming games this week, so the section those events belong to must render (locator, FIXTURE or partition failure; fixture owned by ${FIXTURE_OWNER})`,
-  );
+  // D6c (88.9-39, owner by chat 2026-11-06 "drop the this week and the pill"): the THIS WEEK
+  // subheader, its twin pill and the sr-only count clause LEFT the sheet; the next-7-day rows sit
+  // directly under Upcoming events. The Calendar button still announces the count (asserted by
+  // the caller), so the number now lives in exactly one place. `count` stays a parameter so the
+  // callers' one-render read is unchanged.
+  const sheet = calendarSheet(page);
   await expect(
-    thisWeek.getByText(String(count), { exact: true }),
-    `the "This week" subheader does not carry a "${count}" pill while the Calendar button announces ${count} — the twin pills are fed by ONE count from ONE selector call, so a mismatch means a second definition of "this week" has appeared somewhere between the button and the sheet.`,
-  ).toBeVisible();
+    sheet.getByRole('heading', { name: /^this week\b/i }),
+    `the sheet still renders a "This week" subheader while the button announces ${count} — D6c (88.9-39) removed the subheader and its pill`,
+  ).toHaveCount(0);
+  await expect(
+    sheet.getByText(/upcoming this week/i),
+    'the sheet still carries the sr-only ", N upcoming this week" clause — D6c (88.9-39) removed it with the subheader',
+  ).toHaveCount(0);
 }
 
 test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discovery, DARK (phone project)', () => {
@@ -615,7 +614,7 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
     await expect(calendarSheet(page)).toBeVisible();
   });
 
-  test('SPEC Req 3: the sheet leads with the NEXT GAME NIGHT hero and a counted This week subheader', async ({
+  test('SPEC Req 3: the sheet leads with the NEXT GAME NIGHT hero and no This week subheader (D6c)', async ({
     page,
   }) => {
     await installCalendarLabelRecorder(page);
@@ -934,7 +933,7 @@ test.describe('Phase 88.5 Req 2/3 — the counted button and the hero, LIGHT (ph
     await forceLightMode(page);
   });
 
-  test('SPEC Req 2/3 in LIGHT: the counted button, the NEXT GAME NIGHT hero and the This week pill', async ({
+  test('SPEC Req 2/3 in LIGHT: the counted button, the NEXT GAME NIGHT hero and no This week subheader (D6c)', async ({
     page,
   }) => {
     await installCalendarLabelRecorder(page);
