@@ -1523,3 +1523,21 @@ describe('Phase 88.9-CR d2 — the invite row reads the flat backend shape', () 
     expect(Array.from(row.querySelectorAll('p')).some((p) => p.textContent === '0')).toBe(false);
   });
 });
+
+// Phase 88.9-37 O07a (owner ruling by chat, 2026-11-07 6:18 PM Pacific): the desktop bell
+// trigger pads 6px around its 24px bell = 36x36, the theme toggle size beside it.
+// Site: src/app/components/NotificationBell.js ("DECISION Phase 88.9-37 O07a").
+// The 36 box is arithmetic in jsdom (padding token + icon size); it was measured at 1280 on
+// page 8a with the same 6px padding (bellBox 36x36, toggleBox 36x36, both themes).
+describe('O07a (88.9) — the desktop bell trigger matches the theme toggle', () => {
+  it('O07a bell 36: the desktop icon trigger pads p-1.5 around its 24px bell (6 + 24 + 6 = 36, the theme toggle size); the ring treatment is unchanged', () => {
+    renderBell();
+    const trigger = screen.getByRole('button', { name: 'Notifications' });
+    expect(trigger).toHaveClass('p-1.5');
+    expect(trigger).not.toHaveClass('p-1');
+    const bell = trigger.querySelector('svg');
+    expect(bell).not.toBeNull();
+    expect(bell).toHaveClass('w-6', 'h-6');
+    expect(trigger).toHaveClass('focus:outline-hidden', 'focus-visible:ring-inset');
+  });
+});
