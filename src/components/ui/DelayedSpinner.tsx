@@ -4,8 +4,8 @@
  * DelayedSpinner — the delayed, held house Spinner every busy host renders (plan 88.9-54,
  * owner ruling R-C3b).
  *
- * Mount it unconditionally beside the label with the host's own busy flag:
- * `<DelayedSpinner busy={saving} className="ml-2" />`. It renders null until the busy has
+ * Mount it unconditionally beside the label with the host's own busy flag (DelayedSpinner with
+ * `busy={saving}` and `className="ml-2"`). It renders null until the busy has
  * lasted SPINNER_DELAY_MS, then the house {@link Spinner}, and keeps it SPINNER_MIN_MS from
  * its appearance even after busy drops. The host keeps its own sr-only suffix on its busy
  * flag (the heard name is immediate) and never wraps this element in a busy guard — a guard
