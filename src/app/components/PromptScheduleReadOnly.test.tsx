@@ -45,7 +45,7 @@ type Mock = ReturnType<typeof vi.fn>;
 // findAllByText resolves at the first match, so a region that fills a moment later would read 1.
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // The full banner's title at this site (the component's own shipped title, unchanged).
-const FULL_TITLE = "We couldn't load your schedules";
+const FULL_TITLE = "Couldn't load your schedules";
 
 const THURSDAY = { id: 's1', template_name: 'Thursday check-in', is_active: true };
 const SUNDAY = { id: 's2', template_name: 'Sunday check-in', is_active: false };

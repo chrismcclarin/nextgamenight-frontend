@@ -182,7 +182,7 @@ test.describe('Recurring Check-ins and Start a check-in at 375px (88.6.1-30)', (
     await expect(retry).toBeVisible({ timeout: 10_000 });
     const noticeRow = retry.locator('..');
     await expect(noticeRow).toContainText(RF1);
-    await expect(page.getByText("We couldn't load your schedules")).toHaveCount(0);
+    await expect(page.getByText("Couldn't load your schedules")).toHaveCount(0);
     const scheduleHeading = page.getByRole('heading', { level: 3, name: SCHEDULE.template_name, exact: true });
     await expect(scheduleHeading).toBeVisible();
 

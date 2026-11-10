@@ -128,7 +128,7 @@ test.describe('Customize Group check-ins summary at 375px (88.6.2-22)', () => {
     const noticeRow = retry.locator('..');
     await expect(noticeRow, 'the notice row does not read the RF1 sentence').toContainText(RF1);
     await expect(
-      summary.getByText("We couldn't load your schedules"),
+      summary.getByText("Couldn't load your schedules"),
       'the first-load failure banner showed although the schedule had loaded',
     ).toHaveCount(0);
     await expect(heading, 'the heading lost its count after the failed refresh').toBeVisible();

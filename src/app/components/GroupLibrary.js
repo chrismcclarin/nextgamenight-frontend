@@ -177,7 +177,7 @@ export default function GroupLibrary({ groupId }) {
       <div className="mt-4">
         <FetchErrorBanner
           state={libraryErrorState}
-          title="We couldn't load this library"
+          thing="this library"
           reportContext="Group library (group home page)"
         />
       </div>
