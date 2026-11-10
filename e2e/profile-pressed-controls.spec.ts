@@ -1171,7 +1171,7 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
 
     // The retry's read, held: the banner stays through it (the error is kept, C2), no loader.
     const second = await holdUntilReleased(page, 'GET', OWNED_GAMES_PATH);
-    await collection.getByRole('button', { name: /^(Try again|Retrying…)$/ }).click();
+    await collection.getByRole('button', { name: /^Try again( ?, retrying)?$/ }).click();
     await second.arrived;
     await expect(banner).toBeVisible();
     await expect(collection.getByText('Loading your collection...')).toHaveCount(0);
@@ -1240,7 +1240,7 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await refresh.release({ error: 'boom' }, 500);
 
     const collection = collectionCard(page);
-    const retry = collection.getByRole('button', { name: /^(Retry|Retrying…)$/ });
+    const retry = collection.getByRole('button', { name: /^Retry( ?, retrying)?$/ });
     await expect(retry).toBeVisible({ timeout: 15_000 });
     await expect(collection.getByText(RF1)).toHaveCount(2);
     await expect(collection.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);

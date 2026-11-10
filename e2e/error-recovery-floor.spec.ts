@@ -16,7 +16,8 @@ import { expectTouchTarget } from './support/touchTarget';
 //   - D-47 / copy row B1: a failed compact retry is told — the visible line AND the same polite
 //     region read "Some personal controls are still unavailable.", and a second failure re-speaks.
 //   - AC-9's in-flight half, where the banner stays mounted: the pressed retry keeps focus, carries
-//     aria-disabled="true" (never the native attribute), reads `Retrying…`, and a second press is
+//     aria-disabled="true" (never the native attribute), keeps its label beside the house spinner
+//     and is named with the `, retrying` suffix (rule 1, 88.9-46), and a second press is
 //     refused.
 //
 // WHAT IT DOES NOT MEASURE, and why:
@@ -116,7 +117,8 @@ test.describe('error recovery controls on a phone (88.6.1-21: AC-10, Req 5, Req 
 
     await page.goto('/userProfile');
 
-    const retry = page.getByRole('button', { name: /^(Try again|Retrying…)$/ });
+    // Idle "Try again" and busy "Try again, retrying" (rule 1, 88.9-46 B38) through one locator.
+    const retry = page.getByRole('button', { name: /^Try again( ?, retrying)?$/ });
     // A missing banner is a failure, never a skip.
     await expect(retry).toHaveCount(1, { timeout: 15_000 });
     const report = page.getByRole('button', { name: 'Report this' });
@@ -169,7 +171,7 @@ test.describe('error recovery controls on a phone (88.6.1-21: AC-10, Req 5, Req 
     await page.goto('/');
 
     // At 375px the visible compact notice is GroupList's (the desktop column copy is hidden).
-    const retry = page.getByRole('button', { name: /^(Retry|Retrying…)$/ });
+    const retry = page.getByRole('button', { name: /^Retry( ?, retrying)?$/ });
     await expect(retry).toHaveCount(1, { timeout: 15_000 });
     await expectTouchTarget(retry, 'compact Retry');
     await expectKeyboardRingOnly(page, retry, 'compact Retry');
@@ -282,18 +284,21 @@ test.describe('error recovery controls on a phone (88.6.1-21: AC-10, Req 5, Req 
     if (!region) return;
 
     mode = 'hold';
-    const retry = page.getByRole('button', { name: /^(Retry|Retrying…)$/ });
+    const retry = page.getByRole('button', { name: /^Retry( ?, retrying)?$/ });
     await retry.focus();
     await page.keyboard.press('Enter');
     await expect(retry).toHaveAttribute('aria-disabled', 'true');
     await expect(retry).not.toHaveAttribute('disabled');
     await expect(retry).toBeFocused();
-    await expect(retry).toHaveText('Retrying…');
+    // Rule 1 (88.9-46 B37): the label is kept beside the house spinner; the name adds the suffix.
+    await expect(retry).toHaveText(/^Retry/);
+    await expect(retry).toHaveAccessibleName(/^Retry ?, retrying$/);
+    await expect(retry.locator('[data-slot="spinner"]')).toHaveCount(1);
     expect(await region.evaluate((n) => n.textContent), 'the region is quiet in flight').toBe('');
 
     // A second press while the read is held is refused: still in flight, still focused.
     await page.keyboard.press('Enter');
-    await expect(retry).toHaveText('Retrying…');
+    await expect(retry).toHaveAccessibleName(/^Retry ?, retrying$/);
     await expect(retry).toBeFocused();
 
     release();
