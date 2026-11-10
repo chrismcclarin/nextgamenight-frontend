@@ -181,6 +181,9 @@ export default function CalendarMonthView({
   monthNames,
   tzLegend,
   viewerDbUserId = /** @type {string | null | undefined} */ (null),
+  // 88.9-39 N1 (R2-45): the Month | List switch EventCalendar passes in; seated beside the Today pill.
+  // The JSDoc cast types the prop (a bare null default narrows it to null for TS consumers, 88.9-28 precedent).
+  viewSwitch = /** @type {import('react').ReactNode} */ (null),
 }) {
   return (
     <>
@@ -236,12 +239,16 @@ export default function CalendarMonthView({
               Times shown in {tzLegend}
             </p>
           )}
-          <button
-            onClick={onGoToday}
-            className="mt-1 inline-flex items-center justify-center min-h-11 px-4 rounded-full border border-line bg-surface-card text-sm font-bold text-content-primary hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
-          >
-            Today
-          </button>
+          {/* 88.9-39 N1: Today and the Month | List switch share one wrapping row (flex-wrap guards 375). */}
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              onClick={onGoToday}
+              className="mt-1 inline-flex items-center justify-center min-h-11 px-4 rounded-full border border-line bg-surface-card text-sm font-bold text-content-primary hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+            >
+              Today
+            </button>
+            {viewSwitch}
+          </div>
         </div>
         <Button variant="secondary" size="iconSquare" aria-label="Next month" onClick={() => onNavigateMonth(1)}>
           <Icon name="ChevronRight" size={20} />

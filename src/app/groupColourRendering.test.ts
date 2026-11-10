@@ -357,7 +357,8 @@ const RING_SCAN_FILES: { file: string; count: number }[] = [
  * adding a name to this set removes real coverage and must be paid for by a matching
  * assertion against that primitive's base class.
  */
-const RING_BEARING_PRIMITIVES = new Set(['Button', 'SelectControl', 'KebabMenu']);
+// ADDED 88.9-39: its segments carry the house ring, src/components/ui/SegmentedToggle.tsx ("focus-visible:ring-offset-surface-card'")
+const RING_BEARING_PRIMITIVES = new Set(['Button', 'SelectControl', 'KebabMenu', 'SegmentedToggle']);
 
 /**
  * The three groupHomePage header controls — Manage Members, Plan Game Session, Add New Game Event.
@@ -382,6 +383,7 @@ const PRIMITIVE_RING_SOURCE: Record<string, string> = {
   Button: 'components/ui/Button.tsx',
   SelectControl: 'components/ui/Input.tsx',
   KebabMenu: 'app/components/KebabMenu.js',
+  SegmentedToggle: 'components/ui/SegmentedToggle.tsx',
 };
 
 /** The mutual-exclusion ternary, as it must appear in a className expression. */

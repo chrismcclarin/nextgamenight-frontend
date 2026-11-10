@@ -509,6 +509,11 @@
   --color-btn-secondary: var(--color-btn-secondary-bg);
   --color-btn-secondary-hover: var(--secondary-hover);
   --color-btn-secondary-text: var(--secondary-foreground);
+  /* 88.9-39 MED-78 (R-P3b): the pressed segment of the Month | List switch. The key names differ
+     from the runtime properties (toggle-pressed-*), so none self-references (the 87.7 rule above). */
+  --color-toggle-on: var(--color-toggle-pressed-bg);
+  --color-toggle-on-text: var(--color-toggle-pressed-text);
+  --color-toggle-on-hover: var(--color-toggle-pressed-hover);
 
   /* status */
   /* Phase 88.3 (OI-4): these three now read the per-theme `--color-status-{x}-border` runtime
@@ -1544,6 +1549,11 @@
   --color-btn-primary-bg: var(--purple-600);
   --color-btn-primary-hover: var(--purple-700);
   --color-btn-primary-text: #ffffff;
+  /* 88.9-39 MED-78 (R-P3b): the pressed Month | List segment, light = the btn-primary values by
+     reference (no light pixel moves). The dark arm is its own; marker in `.dark`. */
+  --color-toggle-pressed-bg: var(--color-btn-primary-bg);
+  --color-toggle-pressed-text: var(--color-btn-primary-text);
+  --color-toggle-pressed-hover: var(--color-btn-primary-hover);
   /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c), 2026-08-28): the accent
      BUTTON vocabulary, minted so the Create-Event amber has a name instead of only a literal.
      Owner: "The Share game qr button still looks odd. Lets make it amber, like the create event
@@ -2049,6 +2059,15 @@
      Collapsing this back onto purple-500 is a decision, not a cleanup — it re-opens an AA failure. */
   --color-btn-primary-hover: var(--purple-550);
   --color-btn-primary-text: #ffffff;
+  /* DECISION Phase 88.9-39 MED-78 (88.9-RULINGS.md R-P3b, 2026-11-08): the pressed Month | List
+     segment has its own dark arm — purple-400 fill, warm-900 ink, purple-300 hover: 4.02:1 against
+     the unpressed purple-800 segment, 4.93:1 against the purple-900 card, ink 6.40:1 — chosen OVER
+     reusing the dark primary-button fill (purple-600: 1.99:1 against the unpressed segment, 2.45:1
+     against the card, under WCAG 1.4.11's 3:1 for the only pressed cue). Light points at the
+     btn-primary values and does not move. Changing this is a decision, not a cleanup. */
+  --color-toggle-pressed-bg: var(--purple-400);
+  --color-toggle-pressed-text: var(--warm-900);
+  --color-toggle-pressed-hover: var(--purple-300);
   /* Phase 88.3-18: BYTE-IDENTICAL to the light arm, deliberately. The Create-Event button this
      matches carries one inline amber in both themes, so the accent CTA is theme-invariant by
      design; Gate A asserts the cross-theme equality so a future "dark needs its own amber" edit

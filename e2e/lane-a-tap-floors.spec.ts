@@ -174,9 +174,10 @@ async function reportBugAndGoToToday(page: Page, theme: Theme): Promise<void> {
   await openPage(page, GROUP_PAGE, theme);
 
   // A stored calendar preference can reopen the list view; the month grid holds the Today pill.
-  const viewToggle = page.getByRole('button', { name: /^(List|Month) View$/ });
-  await expect(viewToggle, 'the group calendar rendered').toBeVisible({ timeout: 20_000 });
-  if ((await viewToggle.textContent())?.trim() === 'Month View') await viewToggle.click();
+  // 88.9-39 N1: the view control is the Month segment of the Month | List group (aria-pressed).
+  const monthSegment = page.getByRole('group', { name: 'Calendar view' }).getByRole('button', { name: 'Month', exact: true });
+  await expect(monthSegment, 'the group calendar rendered').toBeVisible({ timeout: 20_000 });
+  if ((await monthSegment.getAttribute('aria-pressed')) === 'false') await monthSegment.click();
   // DECISION Phase 88.9-28 N1: the control is the Today pill; the A9a titles keep the ruled-at name, chosen OVER renaming titles that prior CI evidence cites.
   const today = page.getByRole('button', { name: 'Today', exact: true });
   await expect(today, 'the month grid rendered the Today pill').toBeVisible();

@@ -1539,10 +1539,11 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       await page.keyboard.press('Escape');
 
       // The month view may be persisted OFF: src/app/components/EventCalendar.js ("return prefs?.viewMode || 'month';") defaults `viewMode` to
-      // 'month' but hydrates a saved 'list' from prefs. The toggle at src/app/components/EventCalendar.js ("{viewMode === 'month' ? 'List View' : 'Month View'}") is labelled by the
-      // view it switches TO, so a visible "Month View" button means we are currently in list view.
-      const toMonth = page.getByRole('button', { name: 'Month View' });
-      if (await toMonth.count()) await toMonth.first().click();
+      // 'month' but hydrates a saved 'list' from prefs. The switch at src/app/components/EventCalendar.js ("const viewSwitch = showListView ?") is a
+      // Month | List group whose segments carry aria-pressed (88.9-39 N1), so a Month segment with
+      // aria-pressed "false" means we are currently in list view.
+      const toMonth = page.getByRole('group', { name: 'Calendar view' }).getByRole('button', { name: 'Month', exact: true });
+      if ((await toMonth.count()) && (await toMonth.first().getAttribute('aria-pressed')) === 'false') await toMonth.first().click();
 
       // Locate the CELLS grid, not the day-name header row. `CalendarMonthView.js` renders the
       // day-name header as its own `.grid.grid-cols-7.gap-1.mb-4` with exactly 7 children, and the

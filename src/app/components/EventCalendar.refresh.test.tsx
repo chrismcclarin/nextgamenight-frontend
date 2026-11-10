@@ -411,7 +411,7 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     const ref = React.createRef<HTMLElement>();
     await loadThenRefresh(server500(), { headingRef: ref });
     await waitForRf1();
-    const toggle = within(screen.getByRole('group', { name: 'Calendar view' })).getByRole('button', { name: 'List', exact: true });
+    const toggle = within(screen.getByRole('group', { name: 'Calendar view' })).getByRole('button', { name: 'List' });
     act(() => toggle.focus());
     expect(document.activeElement).toBe(toggle);
     const e403 = new ApiError('Access denied', 'forbidden', 403);
@@ -499,7 +499,8 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     render(<Host events={[]} />);
     expect(await screen.findByTestId('month-view')).toBeInTheDocument();
     const group = () => screen.getByRole('group', { name: 'Calendar view' });
-    const segment = (name: 'Month' | 'List') => within(group()).getByRole('button', { name, exact: true });
+    // A string `name` on a role query is already a whole-string match (so 'List' never matches 'List View').
+    const segment = (name: 'Month' | 'List') => within(group()).getByRole('button', { name });
 
     expect(within(group()).getAllByRole('button')).toHaveLength(2);
     expect(segment('Month')).toHaveAttribute('aria-pressed', 'true');

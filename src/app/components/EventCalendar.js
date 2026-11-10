@@ -14,7 +14,8 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
-import { Button } from '../../components/ui/Button';
+import { SegmentedToggle } from '../../components/ui/SegmentedToggle';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { Heading } from '../../components/ui/Heading';
 import { CalendarLoadingCard } from './CalendarLoadingCard';
 import { logger, errCtx } from '../../lib/logger';
@@ -29,6 +30,12 @@ import { logger, errCtx } from '../../lib/logger';
 // events and mounts its own named notice, so it stays byte-identical with no prop to thread.
 // Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
 const CALENDAR_SECTION_NAME = 'Calendar';
+
+// 88.9-39 N1: the two segments of the Month | List switch (owner pick N1, votes-b7a v3).
+const VIEW_OPTIONS = [
+  { value: 'month', label: 'Month' },
+  { value: 'list', label: 'List' },
+];
 
 /* DECISION Phase 88.6.1-73 (headingRef) [orchestrator request 2026-10-05, for plan 88.6.1-71]:
    CHOSEN — a NAMED optional object-ref prop, `headingRef` (`React.RefObject<HTMLElement | null>`),
@@ -415,6 +422,64 @@ export default function EventCalendar({
   // suspenders for any future surface that might disable list view.
   const effectiveViewMode = !showListView && viewMode === 'list' ? 'month' : viewMode;
 
+  // Hooks before the first early return (rules of hooks); the handler reads effectiveViewMode.
+  const viewSwitchRef = useRef(null);
+  const viewSwitchRecovery = useFocusRecovery({ fallback: calendarHeadingRef });
+  /* DECISION Phase 88.9-39 N1 focus: the switch sits in two different parents (the month nav row;
+     above the list), so a press unmounts the pressed segment; useFocusRecovery moves focus to the
+     new group's pressed segment, chosen OVER one stable parent for the switch (that is N2's own row
+     above the chevrons, which the owner did not pick) and OVER a file-local isFocusLost effect
+     (useFocusRecovery REJECTED (b); this file's C12 REJECTED (c)). Changing this is a decision, not
+     a cleanup. */
+  const handleViewChange = (next, event) => {
+    if (next === effectiveViewMode) return;
+    const settle = viewSwitchRecovery.arm({
+      from: event.currentTarget,
+      preferred: () => viewSwitchRef.current?.querySelector('[aria-pressed="true"]'),
+    });
+    setViewMode(next);
+    settle();
+  };
+  /* DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
+      the List/Month toggle gains the project focus ring. This is the
+      control the owner named twice in the phone UAT — test 4 ("List view
+      on the calendar doesn't read as a button to me") and test 8c(i) —
+      and plan 88.3-16 Task 1(C) measured its RESTING treatment
+      verify-only (it inherits `.btn-secondary`'s plan-14 fill + border:
+      warm-200 fill 1.31:1 on the white card, warm-300 edge 1.22:1 on the
+      fill), leaving its FOCUS state the one half nothing had touched.
+      `.btn` defines no `focus-visible` style and there is no global one,
+      so until now this painted the browser default. `ring-*` compiles to
+      `box-shadow` and therefore survives the unlayered
+      `.btn { border: none }`; a `focus-visible:border-*` would not.
+      Pinned by the five-file scan in `groupColourRendering.test.ts`.
+      AMENDED Phase 88.9-39 (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07 1:38 PM Pacific): the one
+      toggling List View / Month View Button is now the Month | List SegmentedToggle, passed into the
+      month nav row and rendered above the list view, chosen OVER the single secondary Button that
+      relabelled itself by the view it switched TO; the ring stays — each segment carries the house
+      focus-visible ring. */
+  /* Phase 88.6-27: `btn btn-secondary` -> the primitive's secondary variant. TWO
+      classes go and neither is a loss. `text-sm` was DEAD — `.btn` declares
+      `font-size` unlayered (src/app/globals.css ("UNLAYERED with every other declaration it has today")) — and the per-site focus-ring string
+      is retired because the ring now lives ONCE in the primitive's cva base
+      (src/components/ui/Button.tsx ("focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"), A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
+      is byte-unchanged and still true: this control has a project focus ring, it just
+      no longer states it itself. `cascadeOrder.test.ts` asserts exactly one of the two
+      mechanisms exists, so keeping both would red.
+      AMENDED Phase 88.9-39 (owner pick N1): the Button this note describes is gone; the segments are
+      raw buttons that state the house ring string themselves (no .btn, so no cva base);
+      groupColourRendering lists SegmentedToggle as a ring-bearing primitive. */
+  const viewSwitch = showListView ? (
+    <SegmentedToggle
+      label="Calendar view"
+      className="mt-1"
+      options={VIEW_OPTIONS}
+      value={effectiveViewMode}
+      onChange={handleViewChange}
+      groupRef={viewSwitchRef}
+    />
+  ) : null;
+
   // CAL-06 (post-pivot): list view shows past + future events with same styling,
   // anchored at the next upcoming event. We pass the FULL chronologically-sorted
   // events array — the list view component handles past-event windowing
@@ -530,40 +595,12 @@ export default function EventCalendar({
   return (
     <>
     <div className="card p-3 md:p-6">
-      <div className="flex justify-between items-center mb-6">
-        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary">{title}</Heading>
-        {showListView && (
-          <div className="flex gap-2">
-            {/* DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
-                the List/Month toggle gains the project focus ring. This is the
-                control the owner named twice in the phone UAT — test 4 ("List view
-                on the calendar doesn't read as a button to me") and test 8c(i) —
-                and plan 88.3-16 Task 1(C) measured its RESTING treatment
-                verify-only (it inherits `.btn-secondary`'s plan-14 fill + border:
-                warm-200 fill 1.31:1 on the white card, warm-300 edge 1.22:1 on the
-                fill), leaving its FOCUS state the one half nothing had touched.
-                `.btn` defines no `focus-visible` style and there is no global one,
-                so until now this painted the browser default. `ring-*` compiles to
-                `box-shadow` and therefore survives the unlayered
-                `.btn { border: none }`; a `focus-visible:border-*` would not.
-                Pinned by the five-file scan in `groupColourRendering.test.ts`. */}
-            {/* Phase 88.6-27: `btn btn-secondary` -> the primitive's secondary variant. TWO
-                classes go and neither is a loss. `text-sm` was DEAD — `.btn` declares
-                `font-size` unlayered (src/app/globals.css ("UNLAYERED with every other declaration it has today")) — and the per-site focus-ring string
-                is retired because the ring now lives ONCE in the primitive's cva base
-                (src/components/ui/Button.tsx ("focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"), A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
-                is byte-unchanged and still true: this control has a project focus ring, it just
-                no longer states it itself. `cascadeOrder.test.ts` asserts exactly one of the two
-                mechanisms exists, so keeping both would red. */}
-            <Button
-              variant="secondary"
-              onClick={() => setViewMode(viewMode === 'month' ? 'list' : 'month')}
-            >
-              {viewMode === 'month' ? 'List View' : 'Month View'}
-            </Button>
-          </div>
-        )}
-      </div>
+      {/* DECISION Phase 88.9-39 CS-01: the loaded calendar's heading is sr-only, chosen OVER removing
+          it — it stays the calendarHeadingRef focus target and the region's name (WCAG 2.4.6 /
+          1.3.1); the error-branch headings stay visible; shown while it holds keyboard focus
+          (focus-visible:not-sr-only, the gameDetail idiom), chosen OVER an invisible focus target
+          after a retry. Changing this is a decision, not a cleanup. */}
+      <Heading ref={calendarHeadingRef} level={2} size="heading" className="sr-only focus-visible:not-sr-only">{title}</Heading>
 
       {/* RF1 (88.6.1-70 contract C6): mounted unconditionally in the branch that renders the
           retained calendar, above the view. The mode gate is not a `showError` gate: the mode
@@ -584,15 +621,20 @@ export default function EventCalendar({
           monthNames={monthNames}
           tzLegend={tzLegend}
           viewerDbUserId={selfUuid}
+          viewSwitch={viewSwitch}
         />
       ) : (
-        <CalendarListView
-          events={chronologicalEvents}
-          onEventClick={handleEventClick}
-          timezone={timezone}
-          loading={loading && !retained}
-          variant={variant}
-        />
+        <>
+          {/* 88.9-39 N1: the switch above the list, so the List view always has a way back. */}
+          {viewSwitch && <div className="flex justify-center mb-4">{viewSwitch}</div>}
+          <CalendarListView
+            events={chronologicalEvents}
+            onEventClick={handleEventClick}
+            timezone={timezone}
+            loading={loading && !retained}
+            variant={variant}
+          />
+        </>
       )}
 
       {selectedDay && (
