@@ -577,6 +577,7 @@ export default function EventCalendar({
           showEmptyDayHint={!!onEmptyDayClick}
           monthNames={monthNames}
           tzLegend={tzLegend}
+          viewerDbUserId={selfUuid}
         />
       ) : (
         <CalendarListView

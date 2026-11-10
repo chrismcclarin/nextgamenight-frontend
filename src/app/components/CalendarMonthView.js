@@ -12,6 +12,7 @@ import {
   SUBTEXT_MUTED_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { isGuestEvent } from '../../lib/eventClassification';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { Icon } from '../../components/ui/Icon';
@@ -164,6 +165,8 @@ const tileTextTreatment = (tileGround, hasBgImage, arm) => {
  *     event-detail navigation, or EventDayModal. Inner event-tile
  *     clicks still call `onEventClick(event)` and stopPropagation.
  *   - `+N more` is a non-button label; the cell click handles the modal.
+ *   - `viewerDbUserId` (88.9-28 D5a): the caller's own Users.id UUID, used only to derive the
+ *     guest cue on the FULL tile (isGuestEvent); never rendered or logged.
  */
 export default function CalendarMonthView({
   days,
@@ -177,6 +180,7 @@ export default function CalendarMonthView({
   showEmptyDayHint = false,
   monthNames,
   tzLegend,
+  viewerDbUserId = /** @type {string | null | undefined} */ (null),
 }) {
   return (
     <>
@@ -1030,6 +1034,9 @@ export default function CalendarMonthView({
                         }
 
                         // Full variant (user-home)
+                        // 88.9-28 D5a: ONE guest read feeds both the border arm and the
+                        // accessible name below, never two calls.
+                        const guest = isGuestEvent(event, viewerDbUserId);
                         return (
                           /* DECISION Phase 88.3 (R3-C, owner ruling 2026-08-25):
                              this tile is keyboard-operable, matching the shipped
@@ -1048,7 +1055,7 @@ export default function CalendarMonthView({
                             }}
                             role="button"
                             tabIndex={0}
-                            aria-label={tileLabel}
+                            aria-label={guest ? `${tileLabel}, Guest` : tileLabel}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
@@ -1061,7 +1068,20 @@ export default function CalendarMonthView({
                                the game-name span below, which declares its own weight, and the
                                emoji fallback, where weight is meaningless. `text-xs` STAYS —
                                dense-grid cell, Caption 12 (§4.2). */
-                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''}`}
+                            /* DECISION Phase 88.9-28 D5a/O18a (owner pick D5a, votes-b3b v4; O18a re-picked by Q1,
+                               88.9-RULINGS.md round 2): a 1px dashed amber-700 #b45309 edge in light (4.0478 on the
+                               C3 tile #ebe6e0) and amber-500 #f59e0b at 70% in dark, chosen OVER the picked amber-600
+                               (2.5680 on the C3 tile, under the 3:1 non-text floor — the edge is the ONLY visual guest
+                               cue on the grid) and OVER a 2px amber-600 edge; full tile only, the phone cue is the
+                               sheet row; the guest state is also in the tile's accessible name (', Guest' — the shipped
+                               Guest pill's word, chosen OVER minting a phrase; owner-confirmed 2026-11-08, R-W2).
+                               DECISION Phase 88.9-28 D5a/O18a (border mechanism): the tile's border moved from the
+                               inline style into one class arm, chosen OVER leaving it inline and adding classes (the
+                               inline key wins and the edge never paints) and OVER omitting the inline key only for
+                               guests (one property, two mechanisms); the rgba values are kept byte-equal, not
+                               re-tokenised — that would be a look change. Literal class strings only: Tailwind v4
+                               emits nothing for an interpolated class. */
+                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''} ${guest ? 'border border-dashed border-amber-700 dark:border-amber-500/70' : isPastDate ? 'border border-[rgba(0,0,0,0.1)]' : 'border border-[rgba(0,0,0,0.2)]'}`}
                             style={{
                               ...(tinted && {
                                 '--group-ground': ground,
@@ -1134,7 +1154,6 @@ export default function CalendarMonthView({
                               backgroundPosition: 'center',
                               position: 'relative',
                               zIndex: 1,
-                              border: `1px solid ${isPastDate ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)'}`,
                             }}
                             title={tileLabel}
                           >

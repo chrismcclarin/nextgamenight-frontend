@@ -343,10 +343,11 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     anchor?: Date;
     variant: 'compact' | 'full';
     events?: unknown[];
+    viewerDbUserId?: string;
     onNavigateMonth?: (delta: number) => void;
     onGoToday?: () => void;
   };
-  function renderGrid({ anchor = new Date(2031, 8, 1, 12, 0, 0, 0), variant, events = [], onNavigateMonth = vi.fn(), onGoToday = vi.fn() }: GridOpts) {
+  function renderGrid({ anchor = new Date(2031, 8, 1, 12, 0, 0, 0), variant, events = [], viewerDbUserId, onNavigateMonth = vi.fn(), onGoToday = vi.fn() }: GridOpts) {
     const days = getDaysInMonth(anchor);
     const out = render(
       <CalendarMonthView
@@ -360,6 +361,7 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
         onGoToday={onGoToday}
         monthNames={MONTHS}
         tzLegend={null}
+        viewerDbUserId={viewerDbUserId}
       />,
     );
     const grids = out.container.querySelectorAll('.grid.grid-cols-7');
@@ -473,5 +475,46 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     expect(tile.style.getPropertyValue('--t-stroke-l'), 'light arm stroke').toBe('none');
     expect(tile.style.getPropertyValue('--t-shadow'), 'dark arm shadow').toBe('2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)');
     expect(tile.style.getPropertyValue('--t-stroke'), 'dark arm stroke').toBe('0.5px rgba(0, 0, 0, 0.9)');
+  });
+
+  it("D5a/O18a (88.9): a guest event's full tile carries the dashed amber edge, a member event's does not", () => {
+    // A synthetic viewer id (T-88.9-76): compared only, never rendered.
+    const VIEWER = '00000000-0000-4000-8000-000000000028';
+    const guestEvent = {
+      id: 'evt-guest',
+      start_date: '2031-09-20T19:00:00',
+      Game: { name: 'Azul' },
+      Group: { name: 'Guest Crew', background_color: null },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: true }],
+    };
+    const memberEvent = {
+      id: 'evt-member',
+      start_date: '2031-09-22T19:00:00',
+      Game: { name: 'Wingspan' },
+      Group: { name: 'Home Crew', background_color: null },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: false }],
+    };
+    renderGrid({ variant: 'full', events: [guestEvent, memberEvent], viewerDbUserId: VIEWER });
+    const guest = screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' });
+    for (const t of ['border-dashed', 'border-amber-700', 'dark:border-amber-500/70']) {
+      expect(tokens(guest), `the guest tile lacks ${t}`).toContain(t);
+    }
+    const member = screen.getByRole('button', { name: 'Wingspan - Home Crew' });
+    expect(tokens(member), 'a member tile is dashed').not.toContain('border-dashed');
+    cleanup();
+
+    // The compact tile gets neither the edge nor the word: its cue is the sheet row (88.9-39).
+    renderGrid({ variant: 'compact', events: [guestEvent], viewerDbUserId: VIEWER });
+    const compactTile = screen.getByRole('button', { name: 'Azul - Guest Crew' });
+    expect(tokens(compactTile), 'the compact guest tile is dashed').not.toContain('border-dashed');
+    cleanup();
+
+    // No viewer id: nothing is dashed and nothing says Guest.
+    renderGrid({ variant: 'full', events: [guestEvent, memberEvent] });
+    for (const name of ['Azul - Guest Crew', 'Wingspan - Home Crew']) {
+      expect(tokens(screen.getByRole('button', { name })), `${name} is dashed with no viewer id`).not.toContain('border-dashed');
+    }
   });
 });
