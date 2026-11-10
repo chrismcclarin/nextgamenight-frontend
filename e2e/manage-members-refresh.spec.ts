@@ -448,7 +448,12 @@ test.describe('Phase 88.6.1-50 — a pressed Transfer ownership keeps focus at 3
     // A missing request is a failure, never a skip.
     await expect.poll(() => hold.count('POST', TRANSFER_PATH), { timeout: 15_000 }).toBe(1);
 
-    const pressed = transferDialog.getByRole('button', { name: /^Transferring/ });
+    // AMENDED Phase 88.9-45 (rule 1): the pressed confirm keeps "Transfer ownership" with the house
+    // spinner and is named "Transfer ownership, transferring" (Chromium may insert a space before
+    // the sr-only comma) — the Transferring swap word is retired.
+    const pressed = transferDialog.getByRole('button', { name: /^Transfer ownership ?, transferring$/ });
+    await expect(pressed).toHaveText(/^Transfer ownership/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(pressed).toBeFocused();
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
