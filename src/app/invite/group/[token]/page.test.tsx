@@ -293,13 +293,15 @@ describe('invite/group/[token] — R8 page announcement, L1 and the preview fail
 
     render(<GroupInvitePage />);
 
-    await screen.findByRole('heading', { name: 'Unable to join group' });
+    // 88.9 K11(c) (Q6(a), owner ruling 2026-11-08): a PREVIEW failure heads the card and the region
+    // with the load wording; the JOIN failure (G4) keeps "Unable to join group".
+    await screen.findByRole('heading', { name: "Couldn't load this invite" });
     expect(
       screen.getByText("We couldn't reach the server. Check your connection and try again.")
     ).toBeInTheDocument();
     expect(screen.queryByText('This invite link is no longer valid.')).toBeNull();
     expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe(
-      "Unable to join group We couldn't reach the server. Check your connection and try again."
+      "Couldn't load this invite We couldn't reach the server. Check your connection and try again."
     );
   });
 
@@ -310,7 +312,8 @@ describe('invite/group/[token] — R8 page announcement, L1 and the preview fail
 
     render(<GroupInvitePage />);
 
-    await screen.findByRole('heading', { name: 'Unable to join group' });
+    // 88.9 K11(c): the 404 is a preview failure too — the load headline, the invalid-link line.
+    await screen.findByRole('heading', { name: "Couldn't load this invite" });
     expect(screen.getByText('This invite link is no longer valid.')).toBeInTheDocument();
   });
 });

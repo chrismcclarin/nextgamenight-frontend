@@ -125,7 +125,9 @@ test.describe('invite landing pages at phone width (88.6.1-19)', () => {
 
     hold.release();
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Unable to join group' })).toBeVisible();
+    // 88.9 K11(c) (Q6(a), owner ruling 2026-11-08 9:07 AM Pacific): a preview failure is a load
+    // failure — the load wording, not the join wording.
+    await expect(page.getByRole('heading', { level: 1, name: "Couldn't load this invite" })).toBeVisible();
     await expect(page.getByText('This invite link is no longer valid.', { exact: true })).toHaveCount(0);
     await expect(
       page.getByText('Something went wrong on our end. Please try again shortly.', { exact: true }),
