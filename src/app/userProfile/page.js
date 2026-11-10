@@ -139,12 +139,12 @@ const DEFAULT_PREFERENCES = {
     event_updated: { email: true, sms: false },
     event_cancelled: { email: true, sms: false },
 };
-// Copy row P1 (88.6.1 D-30, ratified 2026-10-04): the pressed Verify's in-flight label.
-const VERIFY_CODE_IN_FLIGHT_LABEL = 'Verifying...';
+// Copy row P1 (88.6.1 D-30, ratified 2026-10-04; AMENDED Phase 88.9-46 rule 1 B32: the word is heard as the busy suffix, the label stays Verify): the pressed Verify's busy-name suffix.
+const VERIFY_CODE_BUSY_SUFFIX = ', verifying';
 // Copy row P8 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; straight apostrophe): the collection's failed-first-load title.
 const COLLECTION_LOAD_FAILED_TITLE = "Couldn't load your collection";
-// Copy row P7 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; three ASCII full stops): the pressed Add to Collection's in-flight label.
-const ADDING_TO_COLLECTION_LABEL = 'Adding...';
+// Copy row P7 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; AMENDED Phase 88.9-46 rule 1 B36: the word is heard as the busy suffix, lower-cased with no trailing dots, the label stays Add to Collection): the pressed Add to Collection's busy-name suffix.
+const ADDING_TO_COLLECTION_BUSY_SUFFIX = ', adding';
 // E4a (88.9-32, owner pick 2026-11-06): the ONE pressed arm both theme toggles read. A full literal so
 // Tailwind v4 emits every class. See the DECISION Phase 88.6-17 (D-11, outcome (a)) marker at the toggles.
 const THEME_TOGGLE_PRESSED = 'border-line-accent bg-surface-muted enabled-hover:bg-surface-muted text-content-accent';
@@ -2778,8 +2778,9 @@ function Profile(){
                                                     message={phoneValidation.error}
                                                 />
                                             </div>
-                                            {/* The in-flight cue is the LABEL SWAP plus the muted input
-                                                ground, stated rather than inherited: the retired
+                                            {/* The in-flight cue is rule 1's kept label with the house
+                                                spinner (Phase 88.9-46 B31, Button busy) plus the muted
+                                                input ground, stated rather than inherited: the retired
                                                 `'saving'` branch carried an unconditional
                                                 `opacity-50 cursor-not-allowed`, and `.btn:disabled`'s
                                                 own opacity wash keys on the NATIVE attribute this
@@ -2788,14 +2789,28 @@ function Profile(){
                                                 deliberately not used as the replacement. The
                                                 not-allowed cursor still arrives, from
                                                 `.btn[aria-disabled='true']` in globals.css. */}
+                                            {/* DECISION Phase 88.9-46 (rule 1 B31-B36): the six in-flight profile
+                                                buttons (Save & Verify, Verify, Replay Tutorial, Import Collection,
+                                                Search, Add to Collection) keep their resting label with the house
+                                                spinner and a heard suffix that re-uses each site's shipped — for
+                                                P1 / P7 owner-ratified — in-flight word (", sending code" /
+                                                ", verifying" / ", starting" / ", importing" / ", searching" /
+                                                ", adding"), chosen OVER the shipped six label swaps (a swap
+                                                replaced the whole accessible name and changed the control's
+                                                width under the finger) and OVER minting new suffix words (Q6(b)).
+                                                Owner pick O16a extended by the Q3 ruling (88.9-RULINGS.md,
+                                                2026-11-08). Each site's own latch stays the refusal; the native
+                                                validity gates (rule of KIND) are unchanged. */}
                                             <Button
                                                 variant="primary"
                                                 onClick={handleSaveAndVerify}
                                                 disabled={!phoneValidation.valid}
                                                 aria-disabled={phoneState === 'saving' ? 'true' : undefined}
                                                 className="whitespace-nowrap"
+                                                busy={phoneState === 'saving'}
+                                                busySuffix=", sending code"
                                             >
-                                                {phoneState === 'saving' ? 'Sending code...' : 'Save & Verify'}
+                                                Save & Verify
                                             </Button>
                                         </div>
                                     )}
@@ -2830,7 +2845,9 @@ function Profile(){
                                                     rule of POSITION (`DECISION Phase 88.6-22`,
                                                     src/app/components/FriendInvitePanel.js ("the rule of KIND + the rule of POSITION")): this is the control the user
                                                     just pressed, so it keeps focus and a second press is
-                                                    refused. Its label while checking is copy row P1.
+                                                    refused. Its label while checking stays Verify; copy row
+                                                    P1's word is heard as the busy suffix (AMENDED Phase
+                                                    88.9-46 rule 1 B32, owner pick O16a + Q3).
                                                     REJECTED: (a) native `disabled` while checking — it
                                                     drops focus to <body> in a real browser; (b) folding
                                                     the precondition into `aria-disabled` — Save & Verify
@@ -2839,8 +2856,9 @@ function Profile(){
                                                     from that field (no form, no key handler on it), so it
                                                     is not the activated control.
                                                     Disclosed visible delta: while checking, Verify now
-                                                    shows the P1 label on the gated primary colour pair;
-                                                    before, nothing changed on screen. No call-site
+                                                    shows the house spinner beside its kept label on the
+                                                    gated primary colour pair (rule 1, 88.9-46); before,
+                                                    nothing changed on screen. No call-site
                                                     opacity or cursor class: both come from the
                                                     `aria-disabled` rules in globals.css. Dropping either
                                                     half of the pair is a decision, not a cleanup. */}
@@ -2850,8 +2868,10 @@ function Profile(){
                                                     disabled={verificationCode.length !== 6}
                                                     aria-disabled={checkingCode ? 'true' : undefined}
                                                     className="whitespace-nowrap"
+                                                    busy={checkingCode}
+                                                    busySuffix={VERIFY_CODE_BUSY_SUFFIX}
                                                 >
-                                                    {checkingCode ? VERIFY_CODE_IN_FLIGHT_LABEL : 'Verify'}
+                                                    Verify
                                                 </Button>
                                                 {/* DECISION Phase 88.6-17 (D-8): the cooldown gate is
                                                     `aria-disabled`, with the native `disabled` attribute
@@ -4001,15 +4021,18 @@ function Profile(){
                         Disclosed visible delta: while resetting, Replay shows the DR-C gated primary
                         colour pair instead of the 50% native-disabled wash, and keeps that pair
                         while the tour is open (under the tour's scrim) — the same disclosure
-                        src/app/components/FriendInvitePanel.js ("VISIBLE DELTA, disclosed rather than discovered") makes. The in-flight label is existing text, not
-                        new copy (D-31 not triggered). Restoring the native attribute or dropping
-                        the latch is a decision, not a cleanup. */}
+                        src/app/components/FriendInvitePanel.js ("VISIBLE DELTA, disclosed rather than discovered") makes. The in-flight cue is the kept label
+                        with the house spinner (rule 1, 88.9-46 B33; the heard suffix re-uses the
+                        retired word, so D-31 is not triggered). Restoring the native attribute or
+                        dropping the latch is a decision, not a cleanup. */}
                     <Button
                         variant="primary"
                         onClick={handleReplayTutorial}
                         aria-disabled={replayingTutorial || showTutorial ? 'true' : undefined}
+                        busy={replayingTutorial}
+                        busySuffix=", starting"
                     >
-                        {replayingTutorial ? 'Starting...' : 'Replay Tutorial'}
+                        Replay Tutorial
                     </Button>
                 </div>
 
@@ -4097,8 +4120,10 @@ function Profile(){
                                 disabled={!bggUsername.trim()}
                                 aria-disabled={importingCollection ? 'true' : undefined}
                                 className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+                                busy={importingCollection}
+                                busySuffix=", importing"
                             >
-                                {importingCollection ? 'Importing...' : 'Import Collection'}
+                                Import Collection
                             </Button>
                         </div>
                         {/* DECISION Phase 88.6.1-60 (Req 8 / D-22, BGG import outcome): the outcome box IS a
@@ -4179,7 +4204,8 @@ function Profile(){
                                     browser); (b) disabling the field while searching (typing is legitimate;
                                     only a second request is not); (c) a latest-request-wins counter (a second
                                     mechanism on a control the house rule already latches, and the button
-                                    already says Searching...). Disclosed visible delta: while searching, the
+                                    is already busy — label kept, house spinner beside it, rule 1 88.9-46
+                                    B35). Disclosed visible delta: while searching, the
                                     gated primary pair instead of the 50% wash. Dropping either half of the
                                     pair is a decision, not a cleanup. */}
                                 <Button
@@ -4188,8 +4214,10 @@ function Profile(){
                                     disabled={!bggSearchQuery.trim()}
                                     aria-disabled={bggSearching ? 'true' : undefined}
                                     className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+                                    busy={bggSearching}
+                                    busySuffix=", searching"
                                 >
-                                    {bggSearching ? 'Searching...' : 'Search'}
+                                    Search
                                 </Button>
                             </div>
                             
@@ -4215,10 +4243,11 @@ function Profile(){
                                                     on a control nobody pressed).
                                                     WHY: there was no in-flight guard at all; a double tap sent
                                                     two imports and two adds and toasted twice.
-                                                    LABEL: `Adding...` while in flight (copy row P7,
-                                                    owner-ratified 2026-10-05); the name follows the visible
-                                                    label. Swept: no unit test or e2e spec looked this button up
-                                                    by name before this plan.
+                                                    LABEL: kept while in flight; copy row P7's word (owner-ratified
+                                                    2026-10-05) is heard as the ", adding" suffix beside the house
+                                                    spinner (AMENDED Phase 88.9-46 rule 1 B36), so the name is the
+                                                    label plus the suffix. Swept: no unit test or e2e spec looked
+                                                    this button up by name before this plan.
                                                     REJECTED: (a) native `disabled` on the pressed button (it
                                                     drops focus in a real browser); (b) a per-game latch letting
                                                     two different adds race (the panel closes on the first
@@ -4234,8 +4263,10 @@ function Profile(){
                                                     disabled={isAlreadyOwned || (addingBggId !== null && !isAddingThis)}
                                                     aria-disabled={isAddingThis ? 'true' : undefined}
                                                     className="whitespace-nowrap shrink-0"
+                                                    busy={isAddingThis}
+                                                    busySuffix={ADDING_TO_COLLECTION_BUSY_SUFFIX}
                                                 >
-                                                    {isAlreadyOwned ? 'Already Owned' : isAddingThis ? ADDING_TO_COLLECTION_LABEL : 'Add to Collection'}
+                                                    {isAlreadyOwned ? 'Already Owned' : 'Add to Collection'}
                                                 </Button>
                                             </div>
                                         );

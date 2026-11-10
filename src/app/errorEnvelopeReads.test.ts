@@ -207,6 +207,7 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // RE-DERIVED by plan 88.9-24 (Task 3, 2026-11-09): 244 -> 248. Not on its own: the useInlineReceipt and announceStatus import lines and the useInlineReceipt hook call with its comment line landed above it. Kept as a line number.
     // AMENDED Phase 88.9-32 (E4a): RE-DERIVED 248 -> 251. Not on its own: the hoisted THEME_TOGGLE_PRESSED constant with its two comment lines (owner pick E4a) landed above it. Kept as a line number.
     // RE-DERIVED by plan 88.9-40 (Task 3, 2026-11-10): 251 -> 266. The SESSION-01 hook call and the useSignInRedirect import landed above it. Kept as a line number.
+    // RE-CHECKED by plan 88.9-46 (Task 2, 2026-11-10): 266 holds. The P1 / P7 constants named in the two notes above were renamed in place (VERIFY_CODE_BUSY_SUFFIX / ADDING_TO_COLLECTION_BUSY_SUFFIX, rule 1), one line for one line; nothing above the pin moved.
     declaredAt: 266,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
