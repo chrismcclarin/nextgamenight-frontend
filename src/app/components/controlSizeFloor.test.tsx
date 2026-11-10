@@ -813,6 +813,15 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-h', 'h'],
       label: "the Month | List switch's segments, height (88.9 N1)",
     },
+    // 88.9 D13c (owner pick, 88.9-PICKS-B3.json item D13, 2026-11-06): the suggestions slot's Try again link, a raw button floored in the inline literal (min-h-11).
+    quickSuggestionsRetryHeight: {
+      anchor: 'onClick={onRetry}',
+      expectedFile: 'app/components/QuickSuggestions.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the suggestions slot's Try again link, height (88.9 D13c)",
+    },
   };
 
   /** Every element in `src/` whose opening tag carries `anchor`. One pass over SOURCES. */

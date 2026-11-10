@@ -364,7 +364,8 @@ describe('QuickSuggestions — a REAL failure reports, and the slot says so (D-2
     await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
     const box = failedBox();
     expect(box).not.toBeNull();
-    expect(box!.textContent).toBe(H4_FAILED_LINE);
+    // 88.9 D13c: the box also holds the Try again link now, so the H4 line is read from its <p>.
+    expect(box!.querySelector('p')!.textContent).toBe(H4_FAILED_LINE);
     expect(emptyBox()).toBeNull();
     expect(screen.queryByText(EMPTY_HINT)).toBeNull();
     expect(slot().querySelectorAll('[role="alert"], [role="status"], [aria-live]')).toHaveLength(0);
@@ -474,6 +475,89 @@ describe('QuickSuggestions — a REAL failure reports, and the slot says so (D-2
     }
 
     expect(log.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('D13c (88.9): Try again re-runs the fetch', async () => {
+    // 88.9 D13c (owner pick, 88.9-PICKS-B3.json item D13, 2026-11-06): the failed box carries a
+    // Try again link right of the H4 line. Pressing it bumps retryKey and re-runs the fetch in
+    // place: the line and the link stay until the retry settles, the report latch still files
+    // nothing new for the same key, and the slot stays free of live regions. A PRESSED retry that
+    // fails again is announced ONCE through a press-only polite region OUTSIDE the slot (the H4
+    // sentence); automatic dep-change re-fires never write it. When a retry succeeds under focus,
+    // focus moves to the slot's first control (the first chip).
+    const sameParams = () => api.getGroupSuggestions.mock.calls.map((c) => JSON.stringify(c));
+    api.getGroupSuggestions.mockRejectedValue(failure());
+    const { rerender } = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+
+    const box = failedBox() as HTMLElement;
+    expect(box).not.toBeNull();
+    expect(box.querySelector('p')!.textContent).toBe(H4_FAILED_LINE);
+    expect(screen.queryByRole('button', { name: 'Try again' }), 'the Try again link renders').not.toBeNull();
+    const retry = () => screen.getByRole('button', { name: 'Try again' });
+    expect(box.contains(retry())).toBe(true);
+    for (const cls of ['text-xs', 'font-bold', 'text-content-accent', 'underline', 'min-h-11']) {
+      expect(retry().classList.contains(cls), `Try again carries ${cls}`).toBe(true);
+    }
+    // The press-only region sits OUTSIDE the slot, polite, and starts empty.
+    const region = screen.getByRole('status');
+    expect(slot().contains(region)).toBe(false);
+    expect(region.textContent).toBe('');
+
+    // (1) An automatic re-fire that rejects, with NO press: silent.
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={90} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(api.getGroupSuggestions).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(region.textContent).toBe('');
+    // The latch files one report per distinct key: a second key, a second report; it stays there.
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(2));
+
+    // (2) A PRESSED retry that rejects again: same params, no new report, line + link stay,
+    //     announced once.
+    fireEvent.click(retry());
+    await runDebounce();
+    await waitFor(() => expect(api.getGroupSuggestions).toHaveBeenCalledTimes(3));
+    expect(sameParams()[2]).toBe(sameParams()[1]);
+    await waitFor(() => expect(region.textContent).toBe(H4_FAILED_LINE));
+    expect(log.error).toHaveBeenCalledTimes(2);
+    expect(failedBox()).toBe(box);
+    expect(box.querySelector('p')!.textContent).toBe(H4_FAILED_LINE);
+    expect(box.contains(retry())).toBe(true);
+    expect(slot().querySelectorAll('[role="alert"], [role="status"], [aria-live]')).toHaveLength(0);
+
+    // (3) A press superseded by a dep change before its fetch runs: the press clears the region
+    //     and the superseding (automatic) run's failure does not re-fill it.
+    fireEvent.click(retry());
+    expect(region.textContent).toBe('');
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={60} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(api.getGroupSuggestions).toHaveBeenCalledTimes(4));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(region.textContent).toBe('');
+
+    // (4) A pressed retry that RESOLVES, with the link focused: chips render and the first chip
+    //     takes focus (the link it replaced had it).
+    api.getGroupSuggestions.mockResolvedValue({ suggestions: GAMES });
+    retry().focus();
+    expect(document.activeElement).toBe(retry());
+    fireEvent.click(retry());
+    await runDebounce();
+    await waitFor(() => expect(screen.getByText('Catan')).toBeInTheDocument());
+    expect(failedBox()).toBeNull();
+    const firstChip = slot().querySelector('button') as HTMLElement;
+    expect(firstChip.textContent).toContain('Catan');
+    expect(document.activeElement).toBe(firstChip);
   });
 });
 

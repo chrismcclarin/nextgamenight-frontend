@@ -442,6 +442,63 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     });
   });
 
+  it('D12b (88.9): a failed save shows the visible line above the footer', async () => {
+    // 88.9 D12b (owner pick, 88.9-PICKS-B3.json item D12, 2026-11-05): the assertive region's
+    // sentence is ALSO painted as a visible, NON-live <p> between the body and the footer — no
+    // role, no aria-live, not sr-only — so a sighted person sees that the save failed and the modal
+    // stayed open. The sr-only regions stay the single announcement (one failure, one alert).
+    const user = userEvent.setup();
+    const held = deferred<Record<string, never>>();
+    // An implementation, not a once-queue: `vi.clearAllMocks` keeps an unconsumed once value, so a
+    // red run of this test would otherwise hand the held promise to the next test (the QS idiom).
+    let puts = 0;
+    api.updateMyBrings.mockImplementation(() => {
+      puts += 1;
+      return puts === 1 ? Promise.reject(new Error(SENTINEL)) : held.promise;
+    });
+    const onClose = vi.fn();
+    render(<Host initiallyOpen onClose={onClose} closeFlipsOpen={false} />);
+    await settleOnRows();
+
+    // The line a sighted person sees: the sentence outside every live region.
+    const visibleLines = () =>
+      screen
+        .queryAllByText(RATIFIED_UNKNOWN_COPY)
+        .filter(
+          (node) =>
+            !node.hasAttribute('role') &&
+            node.closest('[aria-live]') === null &&
+            !node.className.includes('sr-only')
+        );
+    expect(visibleLines()).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(assertiveRegion()).toHaveTextContent(RATIFIED_UNKNOWN_COPY));
+    const lines = visibleLines();
+    expect(lines).toHaveLength(1);
+    const line = lines[0];
+    expect(line.tagName).toBe('P');
+    expect(line.textContent).toBe(RATIFIED_UNKNOWN_COPY);
+    expect(line.className).toContain('text-content-status-error');
+    expect(line).not.toHaveAttribute('role');
+    expect(line).not.toHaveAttribute('aria-live');
+    // Above the footer: the Save button FOLLOWS the line in document order.
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(line.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Still exactly one announcement.
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('dialog').textContent).not.toContain(SENTINEL);
+
+    // A second press clears the line while its PUT is in flight (the clear-then-set idiom) ...
+    await user.click(save);
+    expect(visibleLines()).toHaveLength(0);
+    // ... and when that PUT resolves the dialog closes.
+    await act(async () => {
+      held.resolve({});
+    });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
   it('9. a successful save calls onSave then closes through the local handleClose (regions cleared)', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
