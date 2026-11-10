@@ -453,3 +453,79 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     expect(classes).not.toContain('max-h-[90dvh]');
   });
 });
+
+// 88.9-39 (owner picks F3b for W56, F2c for W57, B2a for R014 / B025): the round-2 day-modal rulings.
+describe('EventDayModal — round-2 look (88.9-39)', () => {
+  beforeEach(() => {
+    h.getEventInviteToken.mockReset();
+    h.getEventInviteToken.mockResolvedValue({ invite_url: 'https://example.test/i/abc' });
+  });
+  afterEach(cleanup);
+
+  function renderEvents(events: unknown[]) {
+    render(<EventDayModal selectedDay={{ date: future, events }} onClose={vi.fn()} onEventClick={vi.fn()} />);
+  }
+  const classesOf = (el: Element) => el.className.split(/\s+/).filter(Boolean);
+
+  it('F3b (88.9): 8px between the tag and the picture, and no picture slot when the night has none', () => {
+    const withPicture = { ...upcomingEvent, id: 'evt-pic', Game: { name: 'Catan', image_url: 'https://example.test/catan.jpg' } };
+    renderEvents([withPicture]);
+    // The container holding the tag column and the picture is the justify-between flex row.
+    const container = screen.getByText('Upcoming').closest('.justify-between') as HTMLElement;
+    expect(container, 'the tag column and the picture share one justify-between row').not.toBeNull();
+    expect(classesOf(container), '8px between the tag column and the picture').toContain('gap-2');
+    expect(document.querySelectorAll('.w-16.h-16'), 'one picture for a night with one').toHaveLength(1);
+    cleanup();
+
+    // The existing fixture has no image_url: NO slot, not a default glyph (R2E4 empty).
+    renderEvents([upcomingEvent]);
+    expect(document.querySelectorAll('.w-16.h-16'), 'no picture slot for a night with no picture').toHaveLength(0);
+  });
+
+  it('W57 (88.9): a cancelled or completed night is tagged Cancelled / Completed, never Upcoming', () => {
+    const cancelled = { ...upcomingEvent, id: 'evt-cancelled', status: 'cancelled', Game: { name: 'Azul' } };
+    const completed = { ...upcomingEvent, id: 'evt-completed', status: 'completed', Game: { name: 'Codenames' } };
+    renderEvents([cancelled, completed]);
+    for (const label of ['Cancelled', 'Completed'] as const) {
+      const tag = screen.getByText(label);
+      expect(classesOf(tag), `${label}: the muted fill`).toContain('bg-surface-muted');
+      expect(classesOf(tag), `${label}: the secondary ink`).toContain('text-content-secondary');
+    }
+    expect(screen.queryByText('Upcoming')).toBeNull();
+    // MED-80: the tag DESCRIBES the row (aria-describedby), adding to the computed name, never replacing it.
+    expect(screen.getByRole('button', { name: /Azul.*Tuesday Crew/ })).toHaveAccessibleDescription('Cancelled');
+    expect(screen.getByRole('button', { name: /Codenames.*Tuesday Crew/ })).toHaveAccessibleDescription('Completed');
+    cleanup();
+
+    // A scheduled night keeps the shipped Upcoming tag on the success pair (W31 honoured).
+    renderEvents([upcomingEvent]);
+    const upcoming = screen.getByText('Upcoming');
+    expect(classesOf(upcoming)).toContain('bg-status-success-subtle');
+    expect(classesOf(upcoming)).toContain('text-content-status-success');
+    expect(screen.queryByText(/^(Cancelled|Completed)$/)).toBeNull();
+    expect(screen.getByRole('button', { name: rowName })).toHaveAccessibleDescription('Upcoming');
+  });
+
+  it('B2a (88.9): on a tinted night the row and Share Game QR take the group-ground halo', () => {
+    const tinted = { ...upcomingEvent, id: 'evt-tinted', Group: { name: 'Tuesday Crew', background_color: '#722f37' } };
+    renderEvents([tinted]);
+    const row = screen.getByRole('button', { name: rowName });
+    const card = row.closest('.rounded-lg') as HTMLElement;
+    expect(card, 'the row sits inside the event card').not.toBeNull();
+    expect(card.style.getPropertyValue('--group-ground'), 'the fixture is tinted').toBe('#722f37');
+    expect(classesOf(card)).toContain('[--group-halo:var(--group-ground-light)]');
+    expect(classesOf(card)).toContain('dark:[--group-halo:var(--group-ground)]');
+    expect(classesOf(row)).toContain('focus-visible:ring-offset-surface-group-halo');
+    expect(classesOf(row)).not.toContain('focus-visible:ring-offset-surface-card');
+    const share = screen.getByRole('button', { name: 'Share Game QR' });
+    expect(classesOf(share)).toContain('focus-visible:ring-offset-surface-group-halo');
+    expect(classesOf(share), 'no dark: utility on the Button').not.toContain('dark:focus-visible:ring-offset-surface-group-halo');
+    cleanup();
+
+    // The untinted arm: the key's fallback (the card ground) — no --group-halo set on the card.
+    renderEvents([upcomingEvent]);
+    const plainCard = screen.getByRole('button', { name: rowName }).closest('.rounded-lg') as HTMLElement;
+    expect(plainCard.className).not.toContain('--group-halo');
+    expect(plainCard.style.getPropertyValue('--group-ground')).toBe('');
+  });
+});

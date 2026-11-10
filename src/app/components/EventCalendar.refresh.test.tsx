@@ -41,7 +41,9 @@ vi.mock('@/lib/api', async (importOriginal) => {
 const authUser = vi.hoisted(() => ({ user: { sub: 'auth0|self' }, isLoading: false }));
 vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => authUser }));
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+// 88.9-39 W59: ONE hoisted push, so a test can read WHERE the default event click routed.
+const nav = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: nav.push }) }));
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'America/New_York', setTimezone: vi.fn() }),
@@ -50,14 +52,29 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // The month view renders one <li> per event id, so a test can read WHICH events are on screen.
 // 88.9-39 N1: it also renders the `viewSwitch` slot EventCalendar passes into the nav row, so the
 // Month | List switch is reachable in month mode exactly as the real nav row mounts it.
+// 88.9-39 W59: and one `open <id>` button per event OUTSIDE the list (the <li> text stays the bare
+// id for monthIds), so a test can press an event the way a tile press reaches onEventClick.
 vi.mock('@/app/components/CalendarMonthView', () => ({
-  default: ({ activeEvents, viewSwitch }: { activeEvents: { id: string }[]; viewSwitch?: React.ReactNode }) => (
+  default: ({
+    activeEvents,
+    viewSwitch,
+    onEventClick,
+  }: {
+    activeEvents: { id: string }[];
+    viewSwitch?: React.ReactNode;
+    onEventClick?: (event: { id: string }) => void;
+  }) => (
     <div>
       <ul data-testid="month-view">
         {activeEvents.map((e) => (
           <li key={e.id}>{e.id}</li>
         ))}
       </ul>
+      {activeEvents.map((e) => (
+        <button key={e.id} type="button" onClick={() => onEventClick?.(e)}>
+          {`open ${e.id}`}
+        </button>
+      ))}
       {viewSwitch}
     </div>
   ),
@@ -553,5 +570,37 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(document.activeElement).toBe(calendarH2()));
     expect(monthIds()).toEqual(['e2']);
+  });
+
+  it('W59 (88.9): a live event with a game, started an hour ago, routes to gameDetail?event_id=', async () => {
+    // Owner by chat 2026-11-07 3:15 AM Pacific ("W59 event."): a night in progress opens the EVENT
+    // page, not the game view. The ended night (started 10h ago, 2h long) still opens the game.
+    const user = userEvent.setup();
+    const now = Date.now();
+    const live = {
+      id: 'e-live',
+      group_id: 'g1',
+      game_id: 'game-1',
+      status: 'scheduled',
+      start_date: new Date(now - 60 * 60 * 1000).toISOString(),
+      duration_minutes: 180,
+    };
+    const ended = {
+      id: 'e-ended',
+      group_id: 'g1',
+      game_id: 'game-2',
+      status: 'scheduled',
+      start_date: new Date(now - 10 * 60 * 60 * 1000).toISOString(),
+      duration_minutes: 120,
+    };
+    render(<Host events={[live, ended]} />);
+    expect(await screen.findByTestId('month-view')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'open e-live' }));
+    expect(nav.push).toHaveBeenLastCalledWith('/gameDetail?event_id=e-live&group_id=g1');
+
+    await user.click(screen.getByRole('button', { name: 'open e-ended' }));
+    expect(nav.push).toHaveBeenLastCalledWith('/gameDetail?game_id=game-2&group_id=g1');
+    expect(nav.push).toHaveBeenCalledTimes(2);
   });
 });
