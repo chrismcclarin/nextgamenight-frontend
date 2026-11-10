@@ -679,21 +679,25 @@ describe('ConfirmDialog — dialog tier', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): an optional `pendingLabel`
-  // replaces the confirm's visible text while pending — the label swap the page controls use —
-  // so a screen reader on the focused confirm hears that the commit is running. Default-off.
-  it('with pendingLabel, the pending confirm shows the pending text and stays focusable (CR-5 / A-75)', () => {
-    renderConfirmDialog({ pending: true, pendingLabel: 'Deleting\u2026', confirmDisabled: () => true });
-    const confirmButton = screen.getByRole('button', { name: 'Deleting\u2026' });
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19) re-shaped by rule 1 (88.9-45): an
+  // optional busySuffix is the sr-only words appended to the confirm's NAME while pending — the
+  // visible text keeps confirmLabel and the house spinner joins it — so a screen reader on the
+  // focused confirm still hears that the commit is running. Default-off.
+  it('rule 1 (88.9): the pending confirm keeps confirmLabel + spinner and is named "<confirmLabel><busySuffix>" (CR-5 / A-75 re-shaped)', () => {
+    renderConfirmDialog({ pending: true, busySuffix: ', deleting', confirmDisabled: () => true });
+    const confirmButton = screen.getByRole('button', { name: 'Delete, deleting' });
+    expect(confirmButton).toHaveTextContent('Delete');
+    expect(confirmButton.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(confirmButton).toHaveAttribute('aria-disabled', 'true');
     expect(confirmButton).not.toHaveAttribute('disabled');
     expect(confirmButton).toHaveClass('btn-danger');
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
-  it('pendingLabel is inert while not pending, and no pendingLabel keeps the verb while pending (CR-5 / A-75)', () => {
-    const { rerender, onCancel, onConfirm } = renderConfirmDialog({ pendingLabel: 'Deleting\u2026' });
+  it('rule 1 (88.9): busySuffix is inert while not pending, and no busySuffix keeps the verb with no spinner while pending (default-off)', () => {
+    const { rerender, onCancel, onConfirm } = renderConfirmDialog({ busySuffix: ', deleting' });
     expect(screen.getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
     rerender(
       <ConfirmDialog
         tier="dialog"
@@ -707,6 +711,7 @@ describe('ConfirmDialog — dialog tier', () => {
       />
     );
     expect(screen.getByRole('button', { name: 'Delete' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
   });
 
   it('passes an axe audit on the OPEN dialog', async () => {
@@ -945,17 +950,17 @@ describe('ConfirmDialog — typed tier', () => {
 // ConfirmDialog — so the in-flight refusal is exercised end to end, not by a stub.
 function PendingDialogHarness({
   onConfirm,
-  pendingLabel,
+  busySuffix,
 }: {
   onConfirm: UseConfirmActionConfig['onConfirm'];
-  pendingLabel?: string;
+  busySuffix?: string;
 }) {
   const confirm = useConfirmAction({
     tier: 'dialog',
     title: 'Delete this session?',
     body: 'The play record, scores and who was there are deleted for everyone.',
     confirmLabel: 'Delete',
-    pendingLabel,
+    busySuffix,
     onConfirm,
   });
   return (
@@ -1023,7 +1028,7 @@ describe('ConfirmDialog — a pending commit through the real hook (AC-9, R123 /
   });
 });
 
-describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', () => {
+describe('ConfirmDialog — busySuffix through the real hook (CR-5 / A-75, rule 1 88.9-45)', () => {
   // F9b (88.9-23): as above, the press is made after the CONFIRM_DELAY_MS gate.
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -1033,12 +1038,12 @@ describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', (
     vi.useRealTimers();
   });
 
-  it('the pressed confirm swaps to the pending text in place, keeps focus, and returns to the verb on a failed commit', async () => {
+  it('rule 1 (88.9): the pressed confirm keeps its verb + spinner in place, named "Delete, deleting", keeps focus, and returns to the bare verb on a failed commit', async () => {
     const gate = deferred();
     const onConfirm = vi.fn(() => gate.promise.then(() => {
       throw new Error('commit failed');
     }));
-    render(<PendingDialogHarness onConfirm={onConfirm} pendingLabel={'Deleting\u2026'} />);
+    render(<PendingDialogHarness onConfirm={onConfirm} busySuffix=", deleting" />);
 
     fireEvent.click(screen.getByTestId('open'));
     act(() => {
@@ -1051,8 +1056,10 @@ describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', (
       fireEvent.click(confirmButton);
     });
 
-    const pendingConfirm = screen.getByRole('button', { name: 'Deleting\u2026' });
+    const pendingConfirm = screen.getByRole('button', { name: 'Delete, deleting' });
     expect(pendingConfirm).toBe(confirmButton);
+    expect(pendingConfirm).toHaveTextContent('Delete');
+    expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(pendingConfirm);
 
@@ -1063,6 +1070,7 @@ describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', (
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled')
     );
+    expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

@@ -183,8 +183,6 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'CR3a', text: 'Refreshing responses…', site: 'app/components/ResponseDashboard.js', kind: 'chunk' },
   { id: 'CR3b', text: 'Responses refreshed.', site: 'app/components/ResponseDashboard.js', kind: 'chunk' },
   { id: 'CR4', text: "You're no longer a member of that group.", site: 'app/userHome/UserHomePage.js', kind: 'chunk' },
-  { id: 'CR5a', text: 'Disconnecting…', site: 'app/userProfile/page.js', kind: 'chunk' },
-  { id: 'CR5b', text: 'Promoting…', site: 'app/components/ManageMembers.js', kind: 'chunk' },
   { id: 'P78d', text: "Calendar: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/EventCalendar.js', kind: 'concat', parts: ['Calendar'], code: ['sectionName={CALENDAR_SECTION_NAME}'] },
   { id: 'P78e', text: "Groups: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/grouplist.js', kind: 'concat', parts: ['Groups'], code: ['sectionName={GROUPS_SECTION_NAME}'] },
   { id: 'P78f', text: "Upcoming game nights: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/UpcomingEventsCard.js', kind: 'concat', parts: ['Upcoming game nights'], code: ['sectionName={UPCOMING_SECTION_NAME}'] },
@@ -211,7 +209,7 @@ const EXPECTED_IDS = [
   'P14', 'P77a', 'P77b', 'P78', 'P78c', 'P78a', 'P78b', 'P80',
   'P82a', 'P82b', 'P82c', 'P82d', 'P82e',
   // code-review rulings 2026-10-19 ("ratify all")
-  'CR1a', 'CR1b', 'CR2a', 'CR2b', 'CR3a', 'CR3b', 'CR4', 'CR5a', 'CR5b',
+  'CR1a', 'CR1b', 'CR2a', 'CR2b', 'CR3a', 'CR3b', 'CR4',
   'P78d', 'P78e', 'P78f', 'P78g', 'P78h',
   // VoiceOver Part 2 walk ruling (owner 2026-10-20, Findings row VO-P2-3; quick-261020-tz3): the spoken range says 'to'
   'VO3',
@@ -280,6 +278,10 @@ const RETIRED_LITERALS: Retired[] = [
   // N2 (88.9-45 rule 1): the bell's Accept keeps its label; heard as ', accepting'. Scoped to the
   // bell: friends/page.js keeps its own swap word until 88.9-46 (B24) widens this to 'tree'.
   { text: 'Accepting...', scope: ['app/components/NotificationBell.js'] },
+  // CR5a / CR5b (88.9-45 rule 1): ConfirmDialog's pending text became the busy suffix; the two
+  // swap words are retired tree-wide (heard as ', disconnecting' / ', promoting').
+  { text: 'Disconnecting…', scope: 'tree' },
+  { text: 'Promoting…', scope: 'tree' },
   { text: 'Availability for ', scope: ['app/components/EventScheduler.tsx', 'app/components/EventHeatmapBackground.js'] },
   { text: 'Reset Token', scope: ['app/components/QRCodeModal.js'] },
   // Phase 88.9-31 (owner pick T1): the games section's former name, retired where it lived.
@@ -404,11 +406,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (122 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (120 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(122);
+    expect(ids).toHaveLength(120);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });

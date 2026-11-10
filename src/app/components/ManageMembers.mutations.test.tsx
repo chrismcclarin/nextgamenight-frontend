@@ -395,9 +395,10 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     expect(after.value).toBe('member');
   });
 
-  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): while the grant is in flight
-  // the pressed confirm reads "Promoting…" (ConfirmDialog's pendingLabel) and stays focusable.
-  it('promote: the pending confirm reads the ratified pending label until the grant settles (CR-5)', async () => {
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19), re-shaped by rule 1 (88.9-45):
+  // while the grant is in flight the pressed confirm keeps "Make admin" with the house spinner,
+  // is named "Make admin, promoting" (ConfirmDialog's busySuffix) and stays focusable.
+  it('promote: rule 1 (88.9): the pending Make admin keeps its label + spinner, named "Make admin, promoting" (CR-5)', async () => {
     let settle!: () => void;
     (groupsAPI.updateUserRole as Mock).mockImplementationOnce(
       () => new Promise<void>((resolve) => { settle = resolve; })
@@ -411,7 +412,9 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     });
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Make admin' }));
-    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Promoting\u2026' });
+    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Make admin, promoting' });
+    expect(pendingConfirm).toHaveTextContent('Make admin');
+    expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
     expect(within(dialog).queryByRole('button', { name: 'Make admin' })).not.toBeInTheDocument();
 
@@ -686,7 +689,7 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
 
   const RATIFIED_UNKNOWN_LEAVE = 'Something went wrong. Refresh the page to try again.';
 
-  it('LV1: two presses send one leave; the pressed Confirm Leave stays aria-disabled and focusable until it settles, then is released (W016 rows 14-15)', async () => {
+  it('LV1 rule 1 (88.9): Confirm Leave keeps its label + spinner while busy; two presses send one leave; the pressed Confirm Leave stays aria-disabled and focusable until it settles, then is released (W016 rows 14-15)', async () => {
     const held = deferred<unknown>();
     (groupsAPI.leaveGroup as Mock).mockReturnValueOnce(held.promise);
     const dialog = await openLeaveConfirm();
@@ -697,7 +700,9 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
     fireEvent.click(confirm);
 
     // RED halves are the attributes and the request count (C-11); focus is CONFIRM-ONLY in jsdom.
-    expect(confirm).toHaveTextContent('Leaving…');
+    expect(confirm).toHaveTextContent('Confirm Leave');
+    expect(confirm).toHaveAccessibleName('Confirm Leave, leaving');
+    expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(confirm).toHaveAttribute('aria-disabled', 'true');
     expect(confirm).not.toHaveAttribute('disabled');
     expect(confirm).toHaveClass('btn-danger');
@@ -743,7 +748,8 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
     fireEvent.click(confirm);
     // During the second request the handler has cleared the message: same node, empty, hidden.
     await waitFor(() => expect(groupsAPI.leaveGroup as Mock).toHaveBeenCalledTimes(2));
-    // Mid-flight the confirm reads "Leaving…", so the region is read by its captured id here.
+    // Mid-flight the confirm is named "Confirm Leave, leaving" (rule 1, 88.9-45), so the region
+    // is read by its captured id here.
     expect(dialog.querySelector(`#${CSS.escape(region.id)}`)).toBe(region);
     expect(region.textContent).toBe('');
     expect(region).toHaveClass('sr-only');
@@ -1466,7 +1472,7 @@ describe('ManageMembers 88.6.1-50 — the pressed Transfer ownership stays focus
     return { dialog, confirm };
   }
 
-  it('TR1: two presses send one transfer; the pressed confirm stays aria-disabled and focusable until it settles (R4 idempotency + concurrency)', async () => {
+  it('TR1 rule 1 (88.9): Transfer ownership keeps its label + spinner while busy; two presses send one transfer; the pressed confirm stays aria-disabled and focusable until it settles (R4 idempotency + concurrency)', async () => {
     const held = deferred<unknown>();
     (groupsAPI.transferOwnership as Mock).mockReturnValue(held.promise);
     renderManageMembers();
@@ -1480,7 +1486,9 @@ describe('ManageMembers 88.6.1-50 — the pressed Transfer ownership stays focus
     expect(confirm).toHaveAttribute('aria-disabled', 'true');
     expect(confirm).not.toHaveAttribute('disabled');
     expect(confirm).toHaveClass('btn-primary');
-    expect(confirm).toHaveTextContent('Transferring…');
+    expect(confirm).toHaveTextContent('Transfer ownership');
+    expect(confirm).toHaveAccessibleName('Transfer ownership, transferring');
+    expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     // The sibling Cancel nobody pressed keeps its native gate (rule of POSITION).
     const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
     expect(cancel).toBeDisabled();
@@ -1549,7 +1557,7 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     expect(screen.queryByRole('button', { name: /QR link/ })).toBeNull();
   });
 
-  it('RS1: while a reset runs the opener reads "Resetting…", aria-disabled and still focusable, then rests again', async () => {
+  it('RS1 rule 1 (88.9): Reset invite link keeps its label + spinner while busy, aria-disabled and still focusable, then rests again', async () => {
     const held = deferred<unknown>();
     (groupsAPI.resetInviteToken as Mock).mockReturnValueOnce(held.promise);
     await openMembersModal();
@@ -1559,7 +1567,9 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
 
     // RED half is the attribute (C-11); the focus claim (the dialog's close restore can land
     // on it) is CONFIRM-ONLY in jsdom.
-    const opener = (await screen.findByText('Resetting…')).closest('button') as HTMLElement;
+    const opener = await screen.findByRole('button', { name: 'Reset invite link, resetting' });
+    expect(opener).toHaveTextContent('Reset invite link');
+    expect(opener.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(opener).toHaveAttribute('aria-disabled', 'true');
     expect(opener).not.toHaveAttribute('disabled');
 

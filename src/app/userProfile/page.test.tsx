@@ -727,9 +727,10 @@ describe('userProfile destructive gates (Req 11)', () => {
     );
   });
 
-  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): while the disconnect is in
-  // flight the pressed confirm reads "Disconnecting…" (ConfirmDialog's pendingLabel).
-  it('the pending disconnect confirm reads the ratified pending label until it settles (CR-5)', async () => {
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19), re-shaped by rule 1 (88.9-45):
+  // while the disconnect is in flight the pressed confirm keeps "Disconnect" with the house
+  // spinner and is named "Disconnect, disconnecting" (ConfirmDialog's busySuffix).
+  it('rule 1 (88.9): the pending disconnect confirm keeps its label + spinner until it settles (CR-5)', async () => {
     const { googleCalendarAPI } = await import('@/lib/api');
     (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       connected: true,
@@ -745,7 +746,9 @@ describe('userProfile destructive gates (Req 11)', () => {
 
     passGate();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
-    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Disconnecting\u2026' });
+    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Disconnect, disconnecting' });
+    expect(pendingConfirm).toHaveTextContent('Disconnect');
+    expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
     expect(within(dialog).queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
 
