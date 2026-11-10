@@ -102,6 +102,15 @@ const PAST_PAGE_SIZE = 30;
 // month-view card height.
 const CONTAINER_HEIGHT_COMPACT = 480;
 const CONTAINER_HEIGHT_FULL = 600;
+/* DECISION Phase 88.9-39 (88.9-25 hand-off 4, after CS-05): the two constants above stay as an
+   UPPER BOUND — the six-row month — chosen OVER sizing the list to the rendered grid. Since CS-05
+   (whole weeks: 28, 35 or 42 cells) the month card is 84px (compact) / 104px (full) shorter in a
+   five-week month, so Month <-> List changes the card height there; that is ACCEPTED as an
+   owner-visible consequence (glance row, 88.9-51). REJECTED: a list height derived from the grid's
+   row count — the list card would then change height month to month on its own, and editing the
+   desktop constants is what the 88.1 marker below rejects (look-only phase, P4). The comment above
+   is history: "match" now means "match the TALLEST month". Changing this is a decision, not a
+   cleanup. */
 
 /* DECISION Phase 88.1 (plan 10, SPEC Req 11b / UI-SPEC S4): the phone bottom-sheet rendering
    is an ADDITIVE `variant` arm ('sheet'), chosen OVER editing the two height constants above
@@ -111,6 +120,8 @@ const CONTAINER_HEIGHT_FULL = 600;
    includes ">=768px pixel-unchanged". The two constants exist to match CalendarMonthView's
    natural rendered height for the same variant (see the comment above them), so the OUTER card
    heights agree when the user toggles month/list — changing either one reflows the desktop card.
+   (AMENDED Phase 88.9-39: since CS-05 they match the six-row month only — the upper bound; the
+   DECISION above the 88.1 block records the five-week-month consequence as accepted.)
    Likewise the game name's `hidden sm:block` gate is the DESKTOP responsive-stripping ladder
    documented in the header block; lifting it globally would put the name back at 375px on every
    other host of this component too.
