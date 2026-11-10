@@ -2,7 +2,7 @@
 // keeps what loaded, under the RF1 refresh notice, at 375px.
 //
 // What this proves that jsdom cannot: a real browser at phone width laying the notice row out
-// BETWEEN the 'Group Games' heading and the sort toolbar (cards kept), and ABOVE the empty state
+// BETWEEN the 'Play history' heading and the sort toolbar (cards kept), and ABOVE the empty state
 // (a list that loaded empty, owner ruling Y / D-50), with a Retry that is on screen, at least
 // 44x44, and no sideways scroll. The logic halves are pinned RED-then-GREEN in jsdom
 // (GroupGamesList.emptyState.test.tsx: GG-1, GG-4, GG-6); this spec runs in CI only.
@@ -141,11 +141,11 @@ test.describe('group games failed refresh — phone', () => {
     await expect(card).toBeVisible();
     await expect(page.getByText(GAMES_TITLE, { exact: true })).toHaveCount(0);
 
-    const heading = page.getByRole('heading', { level: 2, name: 'Group Games', exact: true });
+    const heading = page.getByRole('heading', { level: 2, name: 'Play history', exact: true });
     const rowBox = await row.boundingBox();
     const headingBox = await heading.boundingBox();
     const sortBox = await page.getByText('Sort by:', { exact: true }).boundingBox();
-    expect(rowBox!.y, 'STOP (owner mockup): the notice is not below the Group Games heading').toBeGreaterThanOrEqual(
+    expect(rowBox!.y, 'STOP (owner mockup): the notice is not below the Play history heading').toBeGreaterThanOrEqual(
       headingBox!.y + headingBox!.height,
     );
     expect(rowBox!.y + rowBox!.height, 'STOP (owner mockup): the notice is not above Sort by').toBeLessThanOrEqual(
