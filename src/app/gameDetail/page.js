@@ -3030,6 +3030,8 @@ export default function GameDetailPage() {
                     {!repliesLoadState.showError && (
                         <BallotSection
                             key={ballotRefreshKey}
+                            /* DECISION Phase 88.9-35 (B1a): the single-event view mounts RSVP and the ballot on the PAGE ground, so this host passes page; the list mounts sit inside event cards and keep the card default — passing page there is a decision, not a cleanup. */
+                            hostGround="page"
                             eventId={singleEvent.id}
                             eventDate={singleEvent.start_date}
                             userRole={userRole}
