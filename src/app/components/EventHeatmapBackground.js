@@ -431,15 +431,17 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
       </div>
 
       {/* Legend strip */}
+      {/* DECISION Phase 88.9-42 O08b: legend swatches on the heatmap-legend tokens and the words on
+          text-content-secondary; the grid cells keep ReadCell's ramp (the pick changed the legend only). */}
       <div className="flex items-center justify-center gap-1 mt-2">
-        <span className="text-xs text-content-muted">Less</span>
+        <span className="text-xs text-content-secondary">Less</span>
         <div className="w-3 h-3 bg-surface-elevated rounded-xs" />
-        <div className="w-3 h-3 bg-green-100 rounded-xs" />
-        <div className="w-3 h-3 bg-green-200 rounded-xs" />
-        <div className="w-3 h-3 bg-green-300 rounded-xs" />
-        <div className="w-3 h-3 bg-green-400 rounded-xs" />
-        <div className="w-3 h-3 bg-green-500 rounded-xs" />
-        <span className="text-xs text-content-muted">More available</span>
+        <div className="w-3 h-3 bg-surface-heatmap-legend-1 rounded-xs" />
+        <div className="w-3 h-3 bg-surface-heatmap-legend-2 rounded-xs" />
+        <div className="w-3 h-3 bg-surface-heatmap-legend-3 rounded-xs" />
+        <div className="w-3 h-3 bg-surface-heatmap-legend-4 rounded-xs" />
+        <div className="w-3 h-3 bg-surface-heatmap-legend-5 rounded-xs" />
+        <span className="text-xs text-content-secondary">More available</span>
         {/* Plan 72-02: dropped the "(hover for names)" hint — interaction is no
             longer hover-only (touch + keyboard now reach the tooltip via the
             shared HeatmapTooltip primitive). Keeping the legend clean instead

@@ -21,6 +21,7 @@ import { BottomSheet } from '../../components/ui/BottomSheet';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { eventsAPI } from '../../lib/api';
+import { eventDetailHref } from '../../lib/eventDetailHref';
 import { logger, errCtx } from '../../lib/logger';
 // The ONE definition of "upcoming" (88.1-05, extended 88.5): the count the button
 // shows and the rows the sheet lists come from this selector, so they cannot disagree.
@@ -551,27 +552,24 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
     /* Req 11b event tap. The CLOSE ORDERING IS THE POINT and is not incidental style:
        `setCalendarSheetOpen(false)` runs on the line BEFORE `router.push`, copying
-       `EventCalendar.js:241-243` (`setSelectedDay(null)` then `onEmptyDayClick(dateStr)`).
+       EventCalendar's day-modal arm, src/app/components/EventCalendar.js ("onClose={() => setSelectedDay(null)}")
+       (`setSelectedDay(null)` then the navigation).
 
-       Chosen OVER the navigate-then-close order that its own sibling handler eleven lines up
-       (`EventCalendar.js:233-236`) ships. Navigating first leaves an open Radix dialog — overlay,
+       Chosen OVER the navigate-then-close order that its own sibling handler,
+       src/app/components/EventCalendar.js ("const defaultEventClick = (event) => {"),
+       ships. Navigating first leaves an open Radix dialog — overlay,
        focus trap and all — mounted across the route transition, so the destination page renders
        behind a scrim the person has to dismiss before they can use it. Reversing these two lines
-       is a decision, not a tidy-up. (That the two shipped calendar handlers disagree with each
-       other is a real divergence; resolving it is NOT this phase's job and is recorded in this
-       plan's SUMMARY instead of being fixed here.)
+       is a decision, not a tidy-up.
 
-       The destination logic mirrors `EventCalendar.js:94-101` so a tap from the phone sheet and a
-       tap from the desktop calendar land on the same screen: a FUTURE event (or one with no game)
-       opens by event id, a past event with a game opens by game id. */
+       AMENDED Phase 88.9-42 (W59, owner by chat 2026-11-07 3:15 AM Pacific 'W59 event.'): the two
+       calendar handlers no longer diverge — both route through
+       src/lib/eventDetailHref.ts ("export function eventDetailHref"), so a live night opens the
+       event page from the sheet and the calendar alike, chosen OVER this arm's own start-time test
+       (a live night with a game opened the game view). */
     const handleCalendarSheetEventClick = (event) => {
         setCalendarSheetOpen(false);
-        const isFutureEvent = event?.start_date && new Date(event.start_date) >= new Date();
-        if (isFutureEvent || !event?.game_id) {
-            router.push(`/gameDetail?event_id=${event?.id}&group_id=${event?.group_id}`);
-        } else {
-            router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
-        }
+        router.push(eventDetailHref(event, Date.now()));
     };
 
     const handleGroupSelect = (group) => {
@@ -614,8 +612,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
            survives the removal: Tailwind emits `padding-bottom` utilities AFTER the `md:p-6`
            shorthand, so a zeroed desktop override wins the cascade and silently drops desktop
            bottom padding from 1.5rem to 0, with no gate to catch it (padding-budget.spec.ts is
-           phone-only). */
-        <div className="user-home-container p-4 md:p-6 md:pb-6">
+           phone-only).
+           DECISION Phase 88.9-42 NAV-01 (owner by chat 2026-11-07 1:08 PM Pacific, '(a)'): the home body caps at max-w-7xl mx-auto so it shares the header's edge, chosen OVER the full-bleed body; md:pb-6 stays (comment above). */
+        <div className="user-home-container max-w-7xl mx-auto w-full p-4 md:p-6 md:pb-6">
             {/* Plan 88.6.1-62 (88.6.1-70 contract C12): ONE guard for the ONE `retained`, first in the
                 container and outside every arm a withdrawal swaps; it renders nothing. Its target
                 follows the sheet — see the DECISION Phase 88.6.1-62 marker above. */}
@@ -726,7 +725,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     </Button>
                 </div>
 
-                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_400px] md:relative">
+                {/* DECISION Phase 88.9-42 F4b (owner pick, 2026-11-07 1:08 AM Pacific): 460px (+15%), chosen OVER the shipped 400 and the rendered 440 / 500; phone untouched. */}
+                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_460px] md:relative">
                     <div className="md:absolute md:inset-0">
                     <GroupList
                         onGroupSelect={handleGroupSelect}
@@ -873,8 +873,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 ref={calendarSheetRef}
                 open={calendarSheetOpen}
                 onClose={() => setCalendarSheetOpen(false)}
-                /* Matches the button label so the tap has an obvious destination. */
+                /* Matches the button label so the tap has an obvious destination. Display rung per
+                   R2-26 (owner pick D6c + chat 2026-11-06). */
                 title="Calendar"
+                titleSize="display"
                 height="full"
                 /* The list view manages its own scroll region; the sheet body only
                    needs to hand it the full height to flex into. */

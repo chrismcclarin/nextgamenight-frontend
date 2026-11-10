@@ -444,6 +444,12 @@
   --color-content-link: var(--color-text-link);
   --color-content-link-hover: var(--color-text-link-hover);
   --color-content-heatmap-count: var(--color-text-heatmap-count);
+  /* Plan 88.9-42 (O08b): the five heatmap legend swatch surfaces; values at the runtime tokens. */
+  --color-surface-heatmap-legend-1: var(--color-heatmap-legend-1);
+  --color-surface-heatmap-legend-2: var(--color-heatmap-legend-2);
+  --color-surface-heatmap-legend-3: var(--color-heatmap-legend-3);
+  --color-surface-heatmap-legend-4: var(--color-heatmap-legend-4);
+  --color-surface-heatmap-legend-5: var(--color-heatmap-legend-5);
   /* Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §9.4): the amber-as-TEXT keys. Named `--color-content-*`
      and NOT `--color-accent-text` on purpose — see the DECISION marker at the runtime declarations
      in `:root` below. Because the key name differs from the runtime property name, neither needs a
@@ -1191,6 +1197,12 @@
      fills, which do not change with the theme, so its ink must not either. Re-pointing this at the
      text-primary token is a decision, not a cleanup. */
   --color-text-heatmap-count: var(--warm-900);
+  /* DECISION Phase 88.9-42 O08b (owner pick, chat 2026-11-07 6:18 PM Pacific): the legend ramp is --color-status-success-border mixed into the card at 20 / 35 / 50 / 70 / 90 percent, stored as literal hexes per theme (tokenContrast cannot resolve color-mix), chosen OVER the raw green-100..500 palette with no dark fork and OVER the dark-only fork O08a. Light: #166534 into #ffffff. */
+  --color-heatmap-legend-1: #d0e0d6;
+  --color-heatmap-legend-2: #adc9b8;
+  --color-heatmap-legend-3: #8bb29a;
+  --color-heatmap-legend-4: #5c9371;
+  --color-heatmap-legend-5: #2d7448;
 
   /* Accent (interactive elements) */
   /* DECISION Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §5.6.2, §9.2): `--color-accent-text` is RENAMED
@@ -1959,6 +1971,12 @@
   /* Phase 88.9-08 (M1b): byte-equal to the light declaration, deliberately; the DECISION marker and
      its measured ratios sit at the light --color-text-heatmap-count above. */
   --color-text-heatmap-count: var(--warm-900);
+  /* DECISION Phase 88.9-42 O08b (owner pick, chat 2026-11-07 6:18 PM Pacific): the legend ramp is --color-status-success-border mixed into the card at 20 / 35 / 50 / 70 / 90 percent, stored as literal hexes per theme (tokenContrast cannot resolve color-mix), chosen OVER the raw green-100..500 palette with no dark fork and OVER the dark-only fork O08a. Dark: #22c55e into #232d3e (the purple-900 card). */
+  --color-heatmap-legend-1: #234b44;
+  --color-heatmap-legend-2: #236249;
+  --color-heatmap-legend-3: #23794e;
+  --color-heatmap-legend-4: #229754;
+  --color-heatmap-legend-5: #22b65b;
 
   /* DECISION Phase 88.9-22 F4b (owner pick F4b, 88.9-PICKS-B8A.json, page 8a, O-11): every dark
      accent role — accent, accent-text, accent-text-strong, border-accent and the count pill — sits
