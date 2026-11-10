@@ -155,7 +155,9 @@ test.describe('Group settings — pressed controls keep focus and send one write
     await expect(page.getByRole('dialog', { name: DELETE_DIALOG })).toHaveCount(0);
 
     // DIAGNOSTIC (orchestrator, wave 5 gate, 2026-10-16): CI run 38972642726 found no button named
-    // "Deleting..." here although the gate keeps `pending` true and the jsdom pin PC7 passes. Measured
+    // "Deleting..." here although the gate keeps `pending` true and the jsdom pin PC7 passes. (Since
+    // rule 1, 88.9-45, the opener keeps "Delete Group" with the house spinner and is named
+    // "Delete Group, deleting" — the measured case below reads that name.) Measured
     // WITHOUT the accessibility tree so the locator cannot hide what it measures (plan 37's Test D shape).
     // The dump rides ONLY as the message of the focus assertion below (88.6.1 code review A-03
     // removed an always-true soft assertion that carried the same text and could never fail).
@@ -182,8 +184,10 @@ test.describe('Group settings — pressed controls keep focus and send one write
       }));
       return { buttons, dialogs, active: describe(document.activeElement), activeText: (document.activeElement?.textContent ?? '').trim().slice(0, 40) };
     });
-    const opener = page.getByRole('button', { name: 'Deleting...', exact: true });
+    const opener = page.getByRole('button', { name: /^Delete Group ?, deleting$/ });
     await expect(opener, `measured after Cancel: ${JSON.stringify(measured)}`).toBeFocused();
+    await expect(opener).toHaveText(/^Delete Group/);
+    await expect(opener.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(opener).toHaveAttribute('aria-disabled', 'true');
     await expect(opener).not.toHaveAttribute('disabled');
 
