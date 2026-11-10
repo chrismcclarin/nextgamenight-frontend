@@ -90,6 +90,9 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
   const [politeAnnouncement, setPoliteAnnouncement] = useState('');
   const [assertiveAnnouncement, setAssertiveAnnouncement] = useState('');
   const [loadError, setLoadError] = useState('');
+  // 88.9-43 D12b: the VISIBLE half of a failed save — the sentence the assertive region gets,
+  // painted once between the body and the footer. See the D12b marker above the footer.
+  const [saveFailureLine, setSaveFailureLine] = useState('');
   /* Dismissal generation for the SAVE path (the load path has the effect's `cancelled` flag).
      `handleSave` is a handler, not an effect, so nothing cancels its continuation when the
      person presses Esc mid-save: a rejection landing after `handleClose` cleared the regions
@@ -240,6 +243,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
     setPoliteAnnouncement('');
     setAssertiveAnnouncement('');
     setLoadError('');
+    setSaveFailureLine('');
     onClose();
   };
 
@@ -268,6 +272,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
     // Cleared at the START so a second identical failure is a real change (the
     // `NextGameNightCard` / `RsvpSection` clear-then-set idiom, UI-SPEC §6.3).
     setAssertiveAnnouncement('');
+    setSaveFailureLine('');
     setSaving(true);
     try {
       await eventBringsAPI.updateMyBrings(eventId, Array.from(selectedGameIds));
@@ -289,10 +294,16 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
          person can see. UI-SPEC §6.2 routes a modal-submit failure to `toast.error`, which is
          visible AND announces through Sonner — but that would be a SECOND live region for one
          failure beside the assertive region plan 44 pins, and §6.2 forbids two. The visible
-         half is a named residual in `88.6-44-SUMMARY.md`, owner plan 46 / UI review. */
+         half is a named residual in `88.6-44-SUMMARY.md`, owner plan 46 / UI review.
+         AMENDED Phase 88.9-43 (owner pick D12b, 88.9-PICKS-B3.json, 2026-11-05): the visible
+         half ships — see the D12b marker above the footer — chosen OVER the shipped
+         sr-only-only announcement (nothing on screen). The sentence is computed ONCE and handed
+         to both the assertive region and the visible line, so the two can never diverge. */
       logger.info('BringGamePicker: failed to save', errCtx(err));
       if (generation !== dismissGenerationRef.current) return;
-      setAssertiveAnnouncement(getFetchErrorMessage(err));
+      const failureLine = getFetchErrorMessage(err);
+      setAssertiveAnnouncement(failureLine);
+      setSaveFailureLine(failureLine);
     } finally {
       saveInFlightRef.current = false;
       setSaving(false);
@@ -536,6 +547,18 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
           )}
         </div>
       </Modal.Body>
+
+      {/* DECISION Phase 88.9-43 D12b (owner pick, 88.9-PICKS-B3.json item D12, 2026-11-05 5:25 PM Pacific):
+          a visible, NON-live status-error line between the body and the footer carries the
+          assertive region's sentence, chosen OVER D12a (a Sonner toast.error: a second live region
+          for one failure) and OVER painting assertiveAnnouncement itself (that state also carries
+          the load and identity failures the list box already shows, so the sentence would render
+          twice). The sr-only regions stay the single announcement. Making this line live is a
+          decision, not a cleanup. Ink: #991b1b on the card #ffffff 8.31 light, #fca5a5 on #232d3e
+          7.30 dark (wcag.ts formula, both over 4.50). */}
+      {saveFailureLine ? (
+        <p className="text-sm text-content-status-error px-4 pt-3">{saveFailureLine}</p>
+      ) : null}
 
       {/* Footer */}
       <Modal.Footer className="justify-between">
