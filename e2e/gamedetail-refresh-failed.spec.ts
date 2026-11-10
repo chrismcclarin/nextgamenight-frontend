@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 import { holdRequests, settleAnimations } from './support/inFlight';
 import { scrubbedFetch } from './support/scrubbedFetch';
+import { E2E_GAME, E2E_GAME_NAME, E2E_GAME_PATH, routeFakeGameSuccess } from './support/fakeGame';
 
 // Plan 88.6.1-74 — contract C8 (d) of plan 88.6.1-70 for the event / game page at 375px: a failed
 // REFRESH over content already on screen keeps the content and shows the shared RF1 notice
@@ -273,42 +274,17 @@ test('event page: a failed background refresh keeps the event and shows the noti
   await expect(page.locator(':focus')).toHaveText('Game Night');
 });
 
-// No game fixture exists in CI, so the game arm serves a CUSTOM game for a fixed fake id (the
-// custom branch renders the name and no image) and an empty review list; the group's events and
-// roster are real, on the real E2E_GROUP_ID.
-const E2E_FAKE_GAME_ID = '0e2e0000-0000-4000-8000-000000000074';
-const E2E_GAME_PATH = `/gameDetail?game_id=${E2E_FAKE_GAME_ID}&group_id=${E2E_GROUP_ID}`;
-const GAME_GET_PATH = new RegExp(`^/api/games/${E2E_FAKE_GAME_ID}$`);
-const REVIEWS_PREFIX = `/api/game-reviews/game/${E2E_FAKE_GAME_ID}/`;
-const E2E_GAME_NAME = 'E2E Custom Game';
-const E2E_GAME = {
-  id: E2E_FAKE_GAME_ID,
-  name: E2E_GAME_NAME,
-  is_custom: true,
-  bgg_id: null,
-  theme: null,
-  image_url: null,
-  min_players: 2,
-  max_players: 4,
-  playing_time: 45,
-};
+// No game fixture exists in CI, so the game arm serves the shared CUSTOM fake game and an empty
+// review list (e2e/support/fakeGame.ts ("export async function routeFakeGameSuccess(")); the group's
+// events and roster are real, on the real E2E_GROUP_ID.
 
 /** Routes the fake game and its reviews; `failNext()` answers the next game GET 500 once. */
 async function routeFakeGame(page: Page) {
   let failNext = false;
   let issued = 0;
   let answered = 0;
-  await page.route('**/api/game-reviews/**', async (route) => {
-    const request = route.request();
-    if (request.method() === 'GET' && new URL(request.url()).pathname.startsWith(REVIEWS_PREFIX)) {
-      await route.fulfill({ json: [] });
-      return;
-    }
-    await route.fallback();
-  });
-  await page.route('**/api/games/**', async (route) => {
-    const request = route.request();
-    if (request.method() === 'GET' && GAME_GET_PATH.test(new URL(request.url()).pathname)) {
+  await routeFakeGameSuccess(page, {
+    onGameGet: async (route) => {
       issued += 1;
       if (failNext) {
         failNext = false;
@@ -317,9 +293,8 @@ async function routeFakeGame(page: Page) {
         await route.fulfill({ json: E2E_GAME });
       }
       answered += 1;
-      return;
-    }
-    await route.fallback();
+      return true;
+    },
   });
   return {
     failNext: () => {

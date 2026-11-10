@@ -9,6 +9,7 @@ import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './suppo
 // A local copy would be the duplication this project's tenet forbids; `support/contrast.ts` is not
 // a spec file, so importing it adds no collected suite.
 import { focusByKeyboard } from './support/contrast';
+import { routeFakeGameSuccess } from './support/fakeGame';
 // 88.6.1 code review WR-03: the shared write hold for the R4 toggle arms (see the note above them).
 import { expectNoApiWrites, holdWrites } from './support/inFlight';
 import { expectTouchTarget } from './support/touchTarget';
@@ -2460,38 +2461,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
   // DECISION Phase 88.9-21 O15b: a route-served custom game, chosen over a seeded game — the seed has none in CI and the review is never submitted.
   test('R4 (88.9 O15b): each review star is 48 x 48 and each half-star radio 24 x 48 at 375px', async ({ page }) => {
-    // The fake custom-game idiom of e2e/gamedetail-refresh-failed.spec.ts ("No game fixture exists in CI, so the game arm serves a CUSTOM game").
+    // The shared fake custom game of e2e/support/fakeGame.ts ("export async function routeFakeGameSuccess("), under this test's own id.
     const gameId = '0e2e0000-0000-4000-8000-000000000921';
-    const gamePath = new RegExp(`^/api/games/${gameId}$`);
-    const reviewsPrefix = `/api/game-reviews/game/${gameId}/`;
-    await page.route('**/api/game-reviews/**', async (route) => {
-      const request = route.request();
-      if (request.method() === 'GET' && new URL(request.url()).pathname.startsWith(reviewsPrefix)) {
-        await route.fulfill({ json: [] });
-        return;
-      }
-      await route.fallback();
-    });
-    await page.route('**/api/games/**', async (route) => {
-      const request = route.request();
-      if (request.method() === 'GET' && gamePath.test(new URL(request.url()).pathname)) {
-        await route.fulfill({
-          json: {
-            id: gameId,
-            name: 'E2E Star Game',
-            is_custom: true,
-            bgg_id: null,
-            theme: null,
-            image_url: null,
-            min_players: 2,
-            max_players: 4,
-            playing_time: 45,
-          },
-        });
-        return;
-      }
-      await route.fallback();
-    });
+    await routeFakeGameSuccess(page, { id: gameId });
 
     try {
       await page.goto(`/gameDetail?game_id=${gameId}&group_id=${E2E_GROUP_ID}`);
