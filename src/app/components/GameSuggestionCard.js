@@ -121,11 +121,22 @@ export default function GameSuggestionCard({ game, onClick }) {
           /* DECISION Phase 88.6-33 (§4.5 EMPHASIS): `font-normal` over 700 on the group-rating
              annotation. §4.5's pill/chip row routes chip INK at 600 to 700 because a fill/ink
              pairing needs the weight — that row does NOT apply here: this element has no fill,
-             it is an inline annotation, and it already carries `text-yellow-600`, the only
-             yellow on the card. The colour is doing the work, which is precisely §4.5's
-             emphasis condition. */
-          <span id={ratingId} className="inline-flex items-center gap-1 text-xs text-yellow-600 font-normal w-fit">
-            <span className="text-yellow-500">&#9733;</span>
+             it is an inline annotation, and it already carries the rating ink,
+             `text-yellow-800 dark:text-yellow-500` (AMENDED Phase 88.9-44, D15b-rating,
+             2026-11-08: was `text-yellow-600`, which also left the star its own yellow-500), the
+             only yellow-family ink on the card; the star inherits it. The colour is doing the
+             work, which is precisely §4.5's emphasis condition.
+
+             DECISION Phase 88.9-44 D15b-rating (owner ruling 88.9-RULINGS.md R-P2, 2026-11-08):
+             the rating span takes text-yellow-800 dark:text-yellow-500 and the star inherits it
+             (6.85 / 4.84 light at rest / through the 85% Browse Games refresh dim, 7.22 / 5.63
+             dark). Chosen OVER keeping text-yellow-600 (2.94 light at rest, 3.80 dark through
+             85%; the star's own yellow-500 read 1.92 light at rest), and OVER dark:text-yellow-400
+             (more headroom, 6.94 at 85%, shown to the owner and not taken: yellow-500 is the
+             nearest passing step on the same hue). In light this ink is the same value as the
+             status-warning ink. Changing this is a decision, not a cleanup. */
+          <span id={ratingId} className="inline-flex items-center gap-1 text-xs text-yellow-800 dark:text-yellow-500 font-normal w-fit">
+            <span>&#9733;</span>
             {Number(game.avg_group_rating).toFixed(1)}
             {game.review_count != null && (
               <span className="text-content-muted">({game.review_count})</span>

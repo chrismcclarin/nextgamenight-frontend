@@ -542,8 +542,10 @@ export default function BrowseMoreModal({
               appears and clears without moving the dialog.
               REJECTED, each with its reason: the slot in the scrolling body (it scrolls out of
               view when the user has scrolled down the grid — exactly when they change a sort);
-              dimming old rows (a look option, Phase 88.9 per
-              D-09); a spinner (no house spinner primitive, SPEC amendment row 3); aria-busy on a
+              dimming old rows (a look option, Phase 88.9 per D-09 —
+              AMENDED Phase 88.9-44 (owner pick D15b, 88.9-PICKS-B3.json, 2026-11-05): no longer
+              rejected; built below, chosen OVER full-strength rows under the busy line); a
+              spinner (no house spinner primitive, SPEC amendment row 3); aria-busy on a
               live region (RESEARCH A3 — it sits on the results wrapper only); reserving two
               lines for a wrapped failure line (20px more permanent blank space on a 667px phone;
               at 375px a refresh FAILURE may grow the toolbar by one line, while the busy
@@ -582,10 +584,28 @@ export default function BrowseMoreModal({
           </div>
         </div>
 
+        {/* DECISION Phase 88.9-44 D15b (owner pick, 88.9-PICKS-B3.json, 2026-11-05): during a
+            refresh over previous cards every direct child of the results wrapper below dims to
+            85% (Q7, 88.9-RULINGS.md, and its ADDENDUM of 2026-11-08 / R-P2), keyed on the same
+            refreshing value as the E8 busy line AND a non-empty settled result, so the dim and
+            the line appear and clear together over cards. Chosen OVER dimming an empty result
+            too (the filters-yield-none Reset filters label would read 4.07 light through 85%,
+            and there are no previous rows to mark as stale), OVER 70% (the picked picture,
+            rejected because the cards' muted meta line reads 3.29 light / 3.72 dark through it,
+            under 4.5, while the cards stay clickable; 85% reads 4.58 / 4.80), OVER 50% (D15a,
+            rejected by the owner: too faint for rows a person may still be reading; the light
+            title would read 3.39), OVER a globals.css rule keyed on the wrapper's test id (paint
+            coupled to a test hook), and OVER keying the dim on aria-busy alone (it is also true
+            on the FIRST load, where there are no previous rows and the first-load caption would
+            drop from 6.58 / 6.00 to 3.29 / 3.72). Measured through the 85% dim: the muted meta
+            line 4.58 light / 4.80 dark (Q7, 88.9-RULINGS.md, round 2); the rating number and
+            star 4.84 light / 5.63 dark with the ink GameSuggestionCard.js carries since 88.9-44
+            (Q7 ADDENDUM). Two whole class literals (Tailwind v4 emits nothing for an
+            interpolated class). Changing this is a decision, not a cleanup. */}
         <div
           data-testid="browse-more-results"
           aria-busy={loading || undefined}
-          className="p-4"
+          className={refreshing && !isEmpty ? 'p-4 [&>*]:opacity-85' : 'p-4'}
         >
           {bodyError ? (
             <p
