@@ -2163,13 +2163,15 @@ describe('friends — one treatment per page: Friends and Sent keep their rows u
     (friendshipsAPI.getFriends as Mock).mockReturnValueOnce(held.promise);
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(rf1Line()).not.toBeNull();
-    expect(screen.getByRole('button', { name: /Retrying/ })).toHaveAttribute('aria-disabled', 'true');
+    // AMENDED Phase 88.9-46 (RF-F3): the notice's Retry is FetchErrorBanner's — rule 1 keeps its label and
+    // names it 'Retry, retrying' while busy (the bare /Retrying/ stem matched the retired swap word).
+    expect(screen.getByRole('button', { name: /^Retry, retrying$/ })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('Dana')).toBeInTheDocument();
 
     await act(async () => {
       held.resolve([FRIENDSHIP]);
     });
-    await waitFor(() => expect(screen.queryByRole('button', { name: /Retrying/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Retry, retrying$/ })).toBeNull());
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
