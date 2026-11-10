@@ -6,6 +6,7 @@ import { suggestionsAPI } from '../../lib/api';
 import GameSuggestionCard from './GameSuggestionCard';
 import { Modal } from './Modal';
 import { Button } from '../../components/ui/Button';
+import { SegmentedToggle } from '../../components/ui/SegmentedToggle';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 
@@ -46,6 +47,13 @@ const TIER_RANGES = {
 
 // Copy row E8 (D-09, hoisted per D-30): the refresh line, with the single ellipsis glyph.
 const UPDATING_SUGGESTIONS = 'Updating suggestions…';
+
+// 88.9-44 (O12a): the sort-direction segments — glyphs byte-identical to the 88.6-32 pair, each
+// named by its own ariaLabel. Frozen: onChange can only emit these two literal values.
+const SORT_DIRECTION_OPTIONS = Object.freeze([
+  Object.freeze({ value: 'asc', label: '↑', ariaLabel: 'Ascending' }),
+  Object.freeze({ value: 'desc', label: '↓', ariaLabel: 'Descending' }),
+]);
 
 function mergeTierRange(tiers) {
   if (tiers.size === 0) return null; // no filter
@@ -345,6 +353,16 @@ export default function BrowseMoreModal({
                 its `focus-visible:ring-inset` form, NEVER `ring-offset-2`: an
                 offset ring on a 32x32 square in a tight toolbar paints outside the
                 control and collides with its twin and the number box between them.
+                AMENDED Phase 88.9-44 (owner pick B7a, 88.9-PICKS-B1.json, 2026-11-04): the ring
+                moved to the house OFFSET form, ring-offset-2 with the CARD ground as its halo
+                (the ring-offset-surface-card key, the surface this toolbar paints), chosen OVER
+                the inset form (6.88 light / 6.75 dark against the button's own fill; the offset
+                ring reads 7.79 / 8.30 against its halo, band 1.00). The ring now reaches 4px
+                past each 32px square into the row gap; the owner accepted that overlap with the
+                picture in front of him, so the collision argument above is overruled, not
+                forgotten. The halo is the card key, chosen OVER the surface-elevated key the
+                round-2 build contract names: elevated is a lighter step in dark (#2f3b50 on
+                #232d3e, 1.23) and would paint a visible stripe between the ring and the button.
                 REJECTED: leaving both on the UA outline — it satisfies 2.4.7, so
                 there is no AA violation, but it strands the phase's only two
                 un-standardised controls for the cost of one utility in a commit
@@ -365,6 +383,8 @@ export default function BrowseMoreModal({
                 gated colour pair — a disclosed visible delta, the same shape as every other
                 gated secondary button. No extra opacity utility is added (a double dim). The
                 32x32 exemption and the inset ring above are unchanged (88.6-32 D-10, AC-10).
+                AMENDED Phase 88.9-44 (owner pick B7a): the ring is now the offset form; the
+                exemption is still unchanged.
                 Changing any of this is a decision, not a cleanup. */}
             <div className="flex items-center gap-1" title="Player count">
               <button
@@ -374,7 +394,7 @@ export default function BrowseMoreModal({
                   setPlayerCount((p) => Math.max(1, (p || 1) - 1));
                 }}
                 aria-disabled={decrementDisabled || undefined}
-                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                 aria-label="Decrease player count"
               >
                 −
@@ -411,10 +431,11 @@ export default function BrowseMoreModal({
               <button
                 type="button"
                 onClick={() => setPlayerCount((p) => (p || 0) + 1)}
-                /* btn-compact, the D-10 permanent exemption and the AC-10 inset ring: see the
-                   markers on the decrement twin above. This pair migrates and stays together —
-                   one standardised beside one un-standardised is the defect. */
-                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                /* btn-compact, the D-10 permanent exemption and the AC-10 ring (the offset form
+                   since 88.9-44, B7a): see the markers on the decrement twin above. This pair
+                   migrates and stays together — one standardised beside one un-standardised is
+                   the defect. */
+                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                 aria-label="Increase player count"
               >
                 +
@@ -493,25 +514,21 @@ export default function BrowseMoreModal({
                   butt-joint a segmented control needs is what the shared corner bought). A real
                   segmented rung would require layering `.btn` first and is a Phase 88.9 look
                   decision, not a cleanup. Same computed-variant reasoning as the tier row
-                  above. */}
-              <div className="flex gap-1" role="group" aria-label="Sort direction">
-                <Button
-                  variant={sortDirection === 'asc' ? 'primary' : 'secondary'}
-                  onClick={() => setSortDirection('asc')}
-                  aria-pressed={sortDirection === 'asc'}
-                  aria-label="Ascending"
-                >
-                  ↑
-                </Button>
-                <Button
-                  variant={sortDirection === 'desc' ? 'primary' : 'secondary'}
-                  onClick={() => setSortDirection('desc')}
-                  aria-pressed={sortDirection === 'desc'}
-                  aria-label="Descending"
-                >
-                  ↓
-                </Button>
-              </div>
+                  above.
+                  AMENDED Phase 88.9-44 (owner pick O12a, 88.9-PICKS-B8B.json, 2026-11-07): the
+                  real segmented rung this marker routed to 88.9 is built — the pair is the
+                  shared SegmentedToggle joined pill (raw non-.btn segments, so the joined radii
+                  paint; the N1 idiom of src/components/ui/SegmentedToggle.tsx ("DECISION Phase 88.9-39 N1")),
+                  chosen OVER the two separate pill Buttons on a gap-1 gutter shipped here. Each
+                  segment keeps its glyph and takes its name, Ascending or Descending, from its
+                  own aria-label (a labelled focusable leaf, which iOS VoiceOver reads). Changing
+                  this is a decision, not a cleanup. */}
+              <SegmentedToggle
+                label="Sort direction"
+                options={SORT_DIRECTION_OPTIONS}
+                value={sortDirection}
+                onChange={setSortDirection}
+              />
             </div>
           </div>
 

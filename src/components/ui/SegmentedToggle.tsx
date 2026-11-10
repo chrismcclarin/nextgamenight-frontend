@@ -7,8 +7,9 @@
  * holding one raw `<button type="button">` per option with `aria-pressed` on the current value.
  *
  * - Every segment is at least 44x44 (`min-h-11 min-w-11`, stated inline so controlSizeFloor's tag
- *   scan reads it) and carries the house focus ring on the card halo. No ground prop yet: both
- *   calendar mounts sit on the card. Plan 88.9-44 adds one if the Browse More host needs it.
+ *   scan reads it) and carries the house focus ring on the card halo. No ground prop: both
+ *   calendar mounts sit on the card, and plan 88.9-44 measured the Browse More toolbar as bg-card
+ *   too (so the sort pair needs none either).
  * - Whole class literals only (Tailwind v4 emits nothing for an interpolated class): the position
  *   and state strings come from two typed lookups, never from template interpolation.
  * - `groupRef` is a plain prop rather than `forwardRef`, which would drop the generic `V` under
@@ -18,9 +19,11 @@ import * as React from 'react';
 
 import { cn } from '@/lib/cn';
 
+/* DECISION Phase 88.9-44 O12a: an optional per-option ariaLabel set on the segment button itself, chosen OVER visible words in the segment (the Browse More sort pair keeps its arrow glyphs) and OVER an aria-hidden glyph plus an sr-only span inside it (two elements for one name, where aria-label on the focusable button replaces the glyph in one attribute; the iPhone measurement of 2026-10-20 covered standalone sr-only spans and container aria-labels, not an sr-only span inside a button). Unset, the segment's own text is its name, as the Month | List switch uses it. Changing this is a decision, not a cleanup. */
 export interface SegmentedToggleOption<V extends string> {
   value: V;
   label: string;
+  ariaLabel?: string;
 }
 
 export interface SegmentedToggleProps<V extends string> {
@@ -73,6 +76,7 @@ export function SegmentedToggle<V extends string>({
             key={option.value}
             type="button"
             aria-pressed={pressed}
+            aria-label={option.ariaLabel}
             onClick={(event) => onChange(option.value, event)}
             className={cn(
               'relative inline-flex items-center justify-center min-h-11 min-w-11 px-4 text-sm font-bold border border-line focus:outline-hidden focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
