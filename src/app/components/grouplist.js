@@ -81,7 +81,18 @@ const GROUPS_SECTION_NAME = 'Groups';
 const LOAD_OK = Object.freeze({ isError: false });
 const LOAD_FAILED = Object.freeze({ isError: true });
 
-const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
+const GroupList = ({
+  onGroupSelect,
+  onCreateGroup,
+  user,
+  onGroupSettingsUpdated,
+  refreshTrigger,
+  // Plan 88.9-42 (O22d / SESSION-02): optional. `onGroupsUnauthorized` reports a BOOLEAN — "the
+  // groups load ended with code unauthorized" — up to the home page, which owns the ONE
+  // page-level session banner; `sessionBannerShown` comes back down while that banner shows.
+  onGroupsUnauthorized,
+  sessionBannerShown = false,
+}) => {
   const router = useRouter();
   const { user: authUser } = Auth();
   const { timezone } = useTimezone();
@@ -320,6 +331,17 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   const groupsRetained = useRetainedContent(groupsLoadedFor === selfUuid, groupsErrorState);
   // The full groups banner holds the list's place only while nothing is retained (contract C6).
   const groupsBannerShown = groupsErrorState.showError && !groupsRetained;
+  /* DECISION Phase 88.9-42 O22d: GroupList reports a BOOLEAN, chosen OVER passing its error-state
+     object (useFetchErrorState returns a new literal each render,
+     src/components/ui/useFetchErrorState.ts ("return { showError, message, code, retry, retryFailed };")
+     — storing it in parent state is one deps edit from a render loop, and the snapshot goes
+     stale). The cleanup lowers the parent's flag on unmount. */
+  const groupsUnauthorized = groupsErrorState.showError && groupsErrorState.code === 'unauthorized';
+  useEffect(() => {
+    if (!onGroupsUnauthorized) return undefined;
+    onGroupsUnauthorized(groupsUnauthorized);
+    return () => onGroupsUnauthorized(false);
+  }, [groupsUnauthorized, onGroupsUnauthorized]);
 
   const handleGroupClick = (group, e) => {
     // Navigate to group page instead of opening modal
@@ -360,9 +382,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             </Button>
           )}
         </div>
-        <div className="py-8 px-4">
-          <FetchErrorBanner state={selfIdentityErrorState} compact />
-        </div>
+        {/* Plan 88.9-42 (SESSION-02): while the home page's session banner shows, this shell keeps
+            its header row and the compact notice yields — one sentence for a dead session. */}
+        {!sessionBannerShown && (
+          <div className="py-8 px-4">
+            <FetchErrorBanner state={selfIdentityErrorState} compact />
+          </div>
+        )}
       </div>
     );
   }
@@ -460,14 +486,17 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary
             that put the full banner in place of retained cards (see DECISION Phase 88.6.1-41
             (D-37, Req 9) above). The banner holds the list's place only while nothing loaded. */}
-        {groupsBannerShown && (
+        {/* DECISION Phase 88.9-42 O22d / SESSION-02: while the home page's session banner shows, this
+            list renders neither its banner nor its empty state, chosen OVER hiding the banner alone
+            (the EmptyState would then claim no groups after a failure — the DECISION Phase 88-18 bug). */}
+        {groupsBannerShown && !sessionBannerShown && (
           <FetchErrorBanner
             state={groupsErrorState}
             title="We couldn't load your groups"
             reportContext="Your groups list (home page)"
           />
         )}
-        {!groupsBannerShown && groups.length === 0 && (
+        {!groupsBannerShown && !sessionBannerShown && groups.length === 0 && (
           /* DECISION Phase 88-18 (Req 6): this EmptyState's CTA is rendered IN ADDITION to the
              identical header button above, not instead of it — the opposite call to
              OpenPollsList/PromptScheduleManager, which suppress theirs. The difference is where

@@ -71,18 +71,17 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // way the real GroupList does — a boolean through `onGroupsUnauthorized`, from an effect.
 vi.mock('@/app/components/grouplist', async () => {
   const ReactModule = await import('react');
-  return {
-    default: (props: Record<string, unknown>) => {
-      gl.lastProps = props;
-      const report = props.onGroupsUnauthorized as ((value: boolean) => void) | undefined;
-      ReactModule.useEffect(() => {
-        if (!report) return undefined;
-        report(gl.unauthorized);
-        return () => report(false);
-      }, [report]);
-      return <div>group list</div>;
-    },
-  };
+  function GroupListStub(props: Record<string, unknown>) {
+    gl.lastProps = props;
+    const report = props.onGroupsUnauthorized as ((value: boolean) => void) | undefined;
+    ReactModule.useEffect(() => {
+      if (!report) return undefined;
+      report(gl.unauthorized);
+      return () => report(false);
+    }, [report]);
+    return <div>group list</div>;
+  }
+  return { default: GroupListStub };
 });
 vi.mock('@/app/components/EventCalendar', () => ({ default: () => <div>calendar</div> }));
 vi.mock('@/app/components/FriendInvitePanel', () => ({ default: () => null }));
@@ -236,7 +235,8 @@ describe('A-66 / WR-10 — a Retry of the upcoming list never hangs while identi
     fetchErrorSources.refetches.length = 0;
     renderHome();
 
-    // The upcoming source is the page's LAST useFetchErrorState call in a render (identity first).
+    // The upcoming source is the page's LAST useFetchErrorState call in a render (identity first,
+    // then plan 88.9-42's groups-session adapter, then upcoming — the page keeps upcoming last).
     const retryUpcoming = fetchErrorSources.refetches[fetchErrorSources.refetches.length - 1];
     expect(typeof retryUpcoming).toBe('function');
     let settled: unknown = 'pending';

@@ -20,7 +20,7 @@ import NextGameNightCard from '../components/NextGameNightCard';
 import { BottomSheet } from '../../components/ui/BottomSheet';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
-import { eventsAPI } from '../../lib/api';
+import { ApiError, eventsAPI } from '../../lib/api';
 import { eventDetailHref } from '../../lib/eventDetailHref';
 import { logger, errCtx } from '../../lib/logger';
 // The ONE definition of "upcoming" (88.1-05, extended 88.5): the count the button
@@ -47,6 +47,13 @@ import {
 } from '../../components/ui/FetchErrorBanner';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+
+// Plan 88.9-42 (O22d): the group list's 401 arrives as a boolean, so the page builds the error the
+// shared hook reads the code from, ONCE at module level (a fresh object per render would make the
+// hook's retryFailed rule see a "new error" every commit); its retry resolves nothing — a 401
+// cannot be retried, the banner's action is Sign in (plan 88.9-40's resolveNothing pattern).
+const GROUPS_SESSION_ERROR = new ApiError('Not signed in', 'unauthorized', 401);
+const resolveNothing = () => Promise.resolve(undefined);
 
 // Plan 88.6.1-62: ONE stable empty list, handed to the card and the sheet list while nothing has
 // loaded for the current identity (every consumer filters into a new array before sorting).
@@ -81,6 +88,16 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
     // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
     const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
+    // Plan 88.9-42 (O22d): the group list reports a 401 as a boolean (see its DECISION Phase
+    // 88.9-42 O22d marker); this adapter turns it into a fetch-error state the page banner can
+    // read. It sits BEFORE the upcoming source on purpose: the identity suite reads the page's
+    // LAST useFetchErrorState refetch as the upcoming adapter.
+    const [groupsUnauthorized, setGroupsUnauthorized] = useState(false);
+    const groupsSessionState = useFetchErrorState({
+        isError: groupsUnauthorized,
+        error: GROUPS_SESSION_ERROR,
+        refetch: resolveNothing,
+    });
     const [selectedGroup, setSelectedGroup] = useState(null);
     const [invitePanelOpen, setInvitePanelOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
@@ -287,6 +304,16 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         error: upcomingError,
         refetch: retryUpcoming,
     });
+    // Plan 88.9-42 (O22d + SESSION-02): the ONE page-level session banner's state — identity
+    // first, then upcoming, then the group list's report; null while no load ended with 401.
+    const pageSessionState =
+        selfIdentityErrorState.showError && selfIdentityErrorState.code === 'unauthorized'
+            ? selfIdentityErrorState
+            : upcomingErrorState.showError && upcomingErrorState.code === 'unauthorized'
+                ? upcomingErrorState
+                : groupsSessionState.showError
+                    ? groupsSessionState
+                    : null;
 
     /* DECISION Phase 88-33 Task 1 (M2, walk 2026-08-13 test 9): an UNRESOLVED identity counts as
        an in-flight upcoming-events load, chosen OVER passing the raw `upcomingLoading` (the
@@ -675,6 +702,18 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     </button>
                 )}
             </div>
+            {/* DECISION Phase 88.9-42 O22d (owner pick page 9 v3, 88.9-PICKS-B9.json) + SESSION-02: ONE
+                page-level banner for a 401 on identity, upcoming events or groups, at every width (the
+                column is hidden below md, DECISION Phase 88.6-27 (W72)), chosen OVER the in-column
+                banners (a phone showed nothing) and OVER passing a masked state to the card (it would
+                claim the calendar is clear after a failure). The sheet keeps its own arms: it is a
+                dialog over this banner. FetchErrorBanner takes no className by its own decision, so
+                the spacing lives on this wrapper. */}
+            {pageSessionState && (
+                <div className="mb-4">
+                    <FetchErrorBanner state={pageSessionState} thing="this page" />
+                </div>
+            )}
             <div className="flex flex-col md:flex-row gap-4 md:gap-6">
                 {/* Req 11b (UI-SPEC S4): the phone-only entry point to the calendar, above the
                     group list. It lives HERE and not inside `grouplist.js`, because desktop
@@ -734,6 +773,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         user={user}
                         onGroupSettingsUpdated={handleGroupSettingsUpdated}
                         refreshTrigger={groupListRefreshKey}
+                        onGroupsUnauthorized={setGroupsUnauthorized}
+                        sessionBannerShown={Boolean(pageSessionState)}
                     />
                     </div>
                 </div>
@@ -767,8 +808,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     <EventCalendar refreshKey={refreshKey} />
                     {/* ML-17: the upcoming-events fetch gates on selfUuid, so on
                         TERMINAL identity failure it never fires — degrade with the
-                        compact banner instead of the misleading empty state. */}
-                    {selfIdentityErrorState.showError ? (
+                        compact banner instead of the misleading empty state.
+                        Plan 88.9-42 (O22d / SESSION-02): while the page-level session banner shows,
+                        this column renders neither the compact notice nor the card. */}
+                    {pageSessionState ? null : selfIdentityErrorState.showError ? (
                         <FetchErrorBanner state={selfIdentityErrorState} compact />
                     ) : (
                         /* DECISION Phase 88-18 (Req 6, UI-SPEC 9.2): NO `action` is passed, so this
