@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { useDismissal } from '@/components/ui/useDismissal';
+import { hostGroundHalo } from '@/components/ui/hostGround';
+import { cn } from '@/lib/cn';
 
 /**
  * KebabMenu — reusable ⋮ trigger + dropdown overlay.
@@ -67,11 +69,13 @@ const REVERT_ANNOUNCEMENT = 'Confirmation cancelled.';
  * @param {KebabMenuItem[]} [props.items] - Action items. An EMPTY array renders no trigger.
  * @param {string} [props.confirmLabel] - Default label for armed twoTap items.
  *                                        Each item can override via item.confirmLabel.
+ * @param {import('@/components/ui/hostGround').HostGround} [props.hostGround='card'] - The ground the HOST paints under the trigger; selects its focus halo.
  */
 export default function KebabMenu({
   ariaLabel = 'Actions',
   items = [],
   confirmLabel = 'Tap again to confirm',
+  hostGround = 'card',
 }) {
   const [open, setOpen] = useState(false);
   const [armedIndex, setArmedIndex] = useState(null);
@@ -437,7 +441,18 @@ export default function KebabMenu({
         type="button"
         ref={triggerRef}
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+        /* DECISION Phase 88.9-35 R033 (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04): the trigger's
+           halo is the HOST's ground passed as a typed hostGround key
+           (src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO")), default card — every
+           live phone host is a card — merged
+           after the shipped literal with cn so the literal keeps its card key, chosen OVER round 1's
+           fixed card halo on every host. The tinted group-page host left with F5b; the groupPlanning
+           desktop arm (card on a phone, page from md) cannot be named by one key and is plan
+           88.9-50's. Changing this is a decision, not a cleanup. */
+        className={cn(
+          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+          hostGroundHalo(hostGround)
+        )}
         aria-expanded={open}
         /* DECISION Phase 88.6-16 (D-12): `aria-controls` is the HONEST replacement
            for the removed popup relationship — it says only what is true (this
