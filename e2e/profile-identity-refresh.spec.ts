@@ -1,4 +1,4 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Request } from '@playwright/test';
 
 /* Phase 88.6.1 plan 79 (AC-29 / D-51, RF1 / D-47; 88.6.1-70 contract C8 d) — the Profile header
    after a failed identity refresh, at 375px (`phone` project only), driven through the REAL
@@ -12,6 +12,12 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
    - Test 2 (a 401, an access answer): the page keeps its one level-1 heading above the full banner;
      its Sign in link is at least 44 x 44 and inside the viewport width; nothing scrolls sideways.
      AMENDED Phase 88.9-26 (O22d): a 401 banner offers Sign in in place of Try again.
+     AMENDED Phase 88.9-40 (SESSION-01, SPEC A8): a 401 on the identity read now sends the person to
+     sign-in ONCE (the shared guard, src/lib/hooks/useSignInRedirect.ts), so test 2 drives the round
+     trip in one tab: one sign-in request with /userProfile as returnTo, then the return visit after
+     the session lapsed — the page-level banner with Sign in (at least 44 x 44, inside the viewport,
+     nothing sideways) and no second request. The withdrawn header-card screen is pinned by the
+     unit suite (userProfile K4 / K8, latch set) and is no longer what a refresh 401 shows.
    A failed layout assertion is a STOP for the owner's mockup (88.6.1-70 contract C8 d), never an
    ad-hoc restyle.
 
@@ -168,25 +174,48 @@ test.describe('Profile identity refresh (88.6.1-79)', () => {
 
   // AMENDED Phase 88.9-26 (O22d): the 401 banner's control is a Sign in link in place of Try again,
   // so the 44 x 44 fit and the heading-above check move onto it, and Try again must be absent.
-  test('an access answer on the identity refresh keeps the page heading above the banner (88.6.1-79)', async ({ page }) => {
+  // AMENDED Phase 88.9-40 (SESSION-01, SPEC A8): a 401 on the identity read now redirects once
+  // (src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling")). The
+  // page's healthy first load had proved the session (the latch was clear), so the refresh 401 is
+  // exactly one sign-in request with /userProfile as returnTo, reaching Universal Login (CI on 584045a
+  // showed exactly that: "navigated to /u/login" where this test waited for the banner). The return
+  // visit is driven with the session LAPSED (cookies cleared): useUser answers no user, the latch is
+  // set, so the guard declines and the page renders its signed-out banner with Sign in — the Sign in
+  // control this test measured before, now on the return visit — with no second sign-in request (the
+  // MC-6 latch survives the Auth0 round trip, as e2e/event-link-signed-out.spec.ts measures for the
+  // event and group pages). A return with a LIVE cookie whose identity read still 401s shows the
+  // no-row fallback (compact Retry notices, no Sign in) — recorded as a hand-off by plan 88.9-40.
+  test('an access answer on the identity refresh signs in once, and the return visit offers Sign in at phone width (88.6.1-79, SESSION-01)', async ({ page }) => {
+    const loginRequests: string[] = [];
+    page.on('request', (req: Request) => {
+      if (new URL(req.url()).pathname === '/api/auth/login') loginRequests.push(req.url());
+    });
     const routes = await armIdentityRefresh(page, 401);
     await startEmailChange(page, routes);
 
-    const h1 = page.getByRole('heading', { level: 1 });
-    const headerCard = page.locator('.card').filter({ has: h1 });
-    const signIn = headerCard.getByRole('link', { name: 'Sign in', exact: true });
+    // The refresh 401: one latched replace to sign-in, the return address built from the location.
+    await page.waitForURL(/\/u\/login|auth0\.com/, { timeout: 15_000 }).catch(() => {
+      throw new Error(`Never reached Auth0 Universal Login — browser is at: ${page.url()}`);
+    });
+    expect(loginRequests, 'exactly one sign-in request').toHaveLength(1);
+    expect(new URL(loginRequests[0]).searchParams.get('returnTo'), 'the return address is the profile').toBe(
+      '/userProfile'
+    );
+
+    // Back in the SAME tab without signing in, the session having lapsed: the latch is set, so the
+    // declined arm — the page's signed-out banner with Sign in — and no second request.
+    await page.context().clearCookies();
+    await page.goto('/userProfile');
+    const signIn = page.getByRole('link', { name: 'Sign in', exact: true }).first();
     await expect(signIn).toBeVisible({ timeout: 15_000 });
     await expect(signIn).toHaveAttribute('href', /^\/api\/auth\/login\?returnTo=%2FuserProfile/);
-    await expect(headerCard.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0);
+    await expect(page.getByText("We couldn't load your profile")).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0);
     await expect(page.getByText(RF1, { exact: true })).toHaveCount(0);
-    await expect(h1).toHaveCount(1);
-    await expect(h1).toBeVisible();
+    await expect(page.getByText('Loading your profile...')).toBeHidden();
+    expect(loginRequests, 'no second sign-in request after the round trip').toHaveLength(1);
 
     await expectFitsPhone(page, signIn);
-    const headingBox = await h1.boundingBox();
-    const signInBox = await signIn.boundingBox();
-    expect(headingBox && signInBox, 'both the heading and Sign in have layout boxes').toBeTruthy();
-    expect(headingBox!.y).toBeLessThan(signInBox!.y);
     await expectNoSidewaysScroll(page);
 
     expect(routes.aborted(), 'no unexpected write was attempted').toBe(0);
