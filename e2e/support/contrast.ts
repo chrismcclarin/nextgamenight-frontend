@@ -431,8 +431,8 @@ export function groundResolutionOf(probe: ElementProbe): GroundResolution {
  *
  * WHY IT COMPOSITES rather than returning the first painting rung. `resolveGroundColor`
  * above stops at the first rung with a non-zero alpha, which is the right answer for the
- * common case and the WRONG one for a translucent wash — the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") button's
- * `bg-white/20` over the hero is exactly that, and it is UI-SPEC §11 OI-7, "the one value
+ * common case and the WRONG one for a translucent wash — the src/app/components/LandingPage.js ("dark:bg-white/20 dark:hover:bg-white/30") button's
+ * `bg-white/20` over the dark hero is exactly that, and it is UI-SPEC §11 OI-7, "the one value
  * not computable from tokens". A ratio computed against `rgba(255,255,255,0.2)` would be a
  * ratio against a colour nobody painted. So the walk continues to the first FULLY opaque
  * rung and blends the translucent rungs back down onto it, outermost first, with the same

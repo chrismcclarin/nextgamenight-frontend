@@ -10,7 +10,7 @@ export default function LandingPage() {
     <div className="min-h-screen flex flex-col">
 
       {/* Hero */}
-      <div className="bg-surface-nav py-24 px-4">
+      <div className="bg-surface-hero py-24 px-4 dark:[--ring:var(--amber-400)]">
         <div className="max-w-4xl mx-auto text-center">
           <div className="flex justify-center mb-8">
             <DieLogo size={80} />
@@ -32,8 +32,10 @@ export default function LandingPage() {
               file's 2 raw heading sites under the same owner provenance.
 
               Applying the general rule here is a decision, not a cleanup — it takes a look
-              call away from the phase that owns it. */}
-          <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight text-white">
+              call away from the phase that owns it.
+              RULED Phase 88.9-33 (O01a, 88.9-PICKS-B8A.json, 2026-11-07): W55 keeps this rider as
+              sized here; only the light ink moves onto the content tokens (dark unchanged). */}
+          <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight text-content-primary dark:text-white">
             Your next game night<br className="hidden sm:block" /> starts here.
           </h1>
           {/* DECISION Phase 88.6-35 (UI-SPEC §4.3 row 1): this hero lede stays at `text-xl`
@@ -48,11 +50,20 @@ export default function LandingPage() {
               legal rung, debatable role, inside recorded owner tuning → routed, not decided.
               Routed to Phase 88.9 W55 and recorded in `.planning/deferred/phase-88.6.md`.
 
-              Growing or shrinking this is a decision, not a cleanup. */}
-          <p className="text-xl text-white/70 mb-10 max-w-2xl mx-auto">
+              Growing or shrinking this is a decision, not a cleanup.
+              RULED Phase 88.9-33 (O01a, 88.9-PICKS-B8A.json, 2026-11-07): W55 keeps this rider as
+              sized here; only the light ink moves onto the content tokens (dark unchanged). */}
+          <p className="text-xl text-content-secondary dark:text-white/70 mb-10 max-w-2xl mx-auto">
             Find the night your whole group is free. In one glance.
           </p>
 
+          {/* DECISION Phase 88.9-33 L1b (owner pick L1b, 88.9-PICKS-B9.json, 2026-11-07): both hero
+              CTAs are full width below 640px and up to 320px each from 640px (sm:w-80; below 688px
+              they share the row equally because 2 x 320 + the 16px gap does not fit the px-4 hero),
+              and BOTH carry min-h-11 at every width, chosen OVER matching the primitive's natural
+              desktop height by hand-copying the .btn line-height into the Google anchor (an inherited
+              value copied by hand drifts silently) — so the pair is equal and 44px tall at every
+              width. Changing one CTA's size without the other is a decision, not a cleanup. */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             {/* DECISION Phase 88.6-35 (UI-SPEC §3.2 asChild row / §3.4 rules 1-3, D-14b):
                 this is the file's ONE `.btn` element — MEASURED, `grep -n '\bbtn\b'` returns
@@ -96,11 +107,19 @@ export default function LandingPage() {
                 .planning/deferred/phase-88.9.md "Halo exception B045", written by plan 88.9-16):
                 extend the DECISION Phase 88.3 (Req 7) amber ring scope to this site so the halo can equal the
                 nav surface in both themes, or settle the cascade and ship the dark twin. Adding a
-                call-site halo here is a decision, not a cleanup. */}
+                call-site halo here is a decision, not a cleanup.
+                AMENDED Phase 88.9-33 (owner pick B4a, 88.9-PICKS-B1.json, votes-b1 v9, 2026-11-04,
+                composed with O01a, 88.9-PICKS-B8A.json, 2026-11-07): Get Started now takes ONE
+                call-site halo, the surface-hero key, which is the card in light (the O01a hero IS the
+                card: purple-700 ring 7.79 against halo and outside, band 1.00) and the nav in dark
+                (amber from the hero root: 10.13, band 1.00), chosen OVER the primitive default card
+                halo shipped here (dark band 1.22 against the nav ground) and over B4a as drawn, amber
+                in both themes, which reads 1.67 on the white light hero. One per-theme key, not a dark
+                twin on the Button. Removing it is a decision, not a cleanup. */}
             <Button
               asChild
               variant="primary"
-              className="shadow-theme-lg enabled-hover:shadow-theme-lg w-full sm:w-auto"
+              className="shadow-theme-lg enabled-hover:shadow-theme-lg w-full sm:w-80 min-h-11 focus-visible:ring-offset-surface-hero"
             >
               <a href="/api/auth/login">
                 Get Started
@@ -133,7 +152,13 @@ export default function LandingPage() {
                 would also impose `.btn` geometry, elevation and variant fill over two explicit
                 "this is a decision, not a cleanup" markers.
 
-                Sweeping this element is a decision, not a cleanup. */}
+                Sweeping this element is a decision, not a cleanup.
+                AMENDED Phase 88.9-33 (owner pick L1b, 88.9-PICKS-B9.json, 2026-11-07): W55 ruled this
+                button's size — the Button primitive's type and padding rung (14px, 600, 8px x 16px,
+                the .btn rule's values) as live utilities, chosen OVER the shipped 18px text with 32px x
+                16px padding that made it the larger of the pair (L10) and over L1a (both at this
+                button's size). It is still not a .btn element and still not migrated to Button: its
+                dark white/20 composite needs utilities an unlayered .btn-secondary rule would beat. */}
             {/* DECISION Phase 88.3 (Req 7 / UI-SPEC §11 OI-7): this ONE element re-points
                 `--ring` to amber-400 for itself, chosen OVER letting Req 7's global light
                 ring (`purple-700`) apply here.
@@ -159,10 +184,18 @@ export default function LandingPage() {
                 amber and would inherit it silently. This element is the one with the
                 composited ground, so this element is where the override belongs.
 
-                Widening or removing this is a decision, not a cleanup. */}
+                Widening or removing this is a decision, not a cleanup.
+                AMENDED Phase 88.9-33 (owner picks O01a, 88.9-PICKS-B8A.json, 2026-11-07, and B4a,
+                88.9-PICKS-B1.json, 2026-11-04): the per-element re-point is REMOVED. In light the hero
+                is the card and this button sits on the secondary-button tokens, where the house
+                purple-700 inset ring clears 3:1 and amber would not (1.67 on white); in dark the hero
+                ROOT carries the amber re-point for its subtree, so this button still wears amber on
+                its white/20 composite. The ALSO REJECTED hero-container scope above is reversed for
+                dark only: its reason, Get Started inheriting the amber silently, is now the wanted
+                dark behaviour (B4a). Gate C's OI-7 test measures both themes. */}
             <a
               href="/api/auth/login?connection=google-oauth2"
-              className="bg-white/20 hover:bg-white/30 active:opacity-75 border border-white/30 text-white px-8 py-4 rounded-btn text-lg font-semibold transition-all w-full sm:w-auto text-center flex items-center justify-center gap-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [--ring:var(--amber-400)]"
+              className="bg-btn-secondary hover:bg-btn-secondary-hover text-btn-secondary-text border border-line-control dark:bg-white/20 dark:hover:bg-white/30 dark:border-white/30 dark:text-white active:opacity-75 px-4 py-2 rounded-btn text-sm font-semibold transition-all w-full sm:w-80 min-h-11 text-center inline-flex items-center justify-center gap-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
             >
               {/* DECISION Phase 88-22 (Req 2): the four fills below stay RAW,
                   chosen OVER converting them to semantic tokens with the rest of
@@ -209,7 +242,9 @@ export default function LandingPage() {
               `typeScaleTouchedSurfaces.test.ts`, SPEC AC-3), under the same 2026-09-08 W55
               owner ruling. The rung scanner still does not count it, correctly: 30 is a rung.
 
-              Resizing this is a decision, not a cleanup. */}
+              Resizing this is a decision, not a cleanup.
+              RULED Phase 88.9-33 (O01a, 88.9-PICKS-B8A.json, 2026-11-07): W55 keeps this rider as
+              sized here; only the hero above it changes. */}
           <h2 className="text-3xl font-bold text-center text-content-primary mb-12">
             Everything your group needs
           </h2>

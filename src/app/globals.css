@@ -416,6 +416,14 @@
   --color-surface-hover: var(--color-bg-hover);
   --color-surface-sunken: var(--color-bg-sunken);
   --color-surface-nav: var(--color-bg-nav);
+  /* DECISION Phase 88.9-33 (O01a + B4a): --color-bg-hero is the landing hero's ground — the card
+     surface in light (owner pick O01a, 88.9-PICKS-B8A.json, 2026-11-07), the nav surface in dark —
+     and surface-hero is ONE key for both the hero fill and Get Started's focus halo, chosen OVER a
+     dark-prefixed halo twin on the Button (UI-SPEC shared halo constraint 2: the dark-on-Button
+     cascade is unsettled; cascadeOrder test 12 rule d) and over reusing the surface-group-halo host
+     variable (a key named for group colour on a page with no group). Either arm is a W55 look
+     decision, not a cleanup. */
+  --color-surface-hero: var(--color-bg-hero);
   --color-surface-nav-hover: var(--color-bg-nav-hover);
   --color-surface-header: var(--color-bg-header);
   --color-surface-header-hover: var(--color-bg-header-hover);
@@ -1088,6 +1096,7 @@
 
   /* Brand / Navigation */
   --color-bg-nav: var(--purple-900);
+  --color-bg-hero: var(--color-bg-card);
   --color-bg-nav-hover: var(--purple-800);
 
   /* Text */
@@ -1928,6 +1937,7 @@
   --color-bg-today-tint: #513902;
 
   --color-bg-nav: var(--purple-950);
+  --color-bg-hero: var(--color-bg-nav);
   --color-bg-nav-hover: var(--purple-900);
 
   --color-text-primary: var(--warm-50);

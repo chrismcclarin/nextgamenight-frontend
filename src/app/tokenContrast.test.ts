@@ -39,7 +39,7 @@
  * ------------------------
  * That the app RENDERS these values. It claims the token layer DECLARES them. Gate B
  * (plans 06-11) covers the call sites and Gate C (plan 12) measures the rendered pixels.
- * `88.3-UI-SPEC.md` §5.11 row 50 (the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") ground over the hero) is
+ * `88.3-UI-SPEC.md` §5.11 row 50 (the src/app/components/LandingPage.js ("dark:bg-white/20 dark:hover:bg-white/30") ground over the hero) is
  * not computable from tokens at all and stays open until plan 12 measures it (OI-7).
  */
 import fs from 'node:fs';
@@ -287,7 +287,7 @@ function resolveShadow(theme: Theme, prop: string): string {
  * A translucent token composited over an opaque ground, so a scrim can be measured.
  *
  * These are the ONLY composited rows Gate A can compute, and `88.3-UI-SPEC.md` §5.11 marks
- * them. The `groupHomePage` 15% black dim (§5.10.3) and the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") ground
+ * them. The `groupHomePage` 15% black dim (§5.10.3) and the src/app/components/LandingPage.js ("dark:bg-white/20 dark:hover:bg-white/30") ground
  * over the hero (row 50, OI-7) are NOT computable here — the first needs a group colour
  * from the database (plan 11), the second needs an in-browser measurement (plan 12).
  */
