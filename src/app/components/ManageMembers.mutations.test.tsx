@@ -1902,3 +1902,40 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
     expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(callsAtClose);
   });
 });
+
+// Phase 88.9-30 pin (round 2): owner pick B3a (88.9-PICKS-B1.json, votes-b1 v9, 2026-11-04) and
+// research open question 11 — the pending and invite boxes ride the status-warning family.
+describe('Phase 88.9-30 — T boxes on the status-warning family', () => {
+  it('T (88.9): boxes on status-warning tokens — pending and invite boxes, pills and the Approve / Reject halo', async () => {
+    (invitesAPI.getGroupPendingInvites as Mock).mockResolvedValue([
+      { id: 'inv-1', invited_email: 'pending-invite@example.test' },
+    ]);
+    renderManageMembers();
+    const email = await screen.findByText('pending-invite@example.test');
+    const approve = await screen.findByRole('button', { name: 'Approve' });
+    const reject = screen.getByRole('button', { name: 'Reject' });
+
+    const pendingBox = approve.closest('div.rounded-lg') as HTMLElement;
+    expect(pendingBox).toHaveClass('bg-status-warning-subtle', 'border-status-warning');
+    expect(pendingBox.className).not.toContain('amber');
+    expect(screen.getByText('Pend').closest('p')).toHaveClass('text-content-status-warning');
+    for (const button of [approve, reject]) {
+      expect(button).toHaveClass('focus-visible:ring-offset-status-warning-subtle');
+    }
+
+    const inviteBox = email.closest('div.rounded-lg') as HTMLElement;
+    expect(inviteBox).toHaveClass('bg-status-warning-subtle', 'border-status-warning');
+    expect(email.closest('p')).toHaveClass('text-content-status-warning');
+
+    const countPill = (heading: string) =>
+      screen.getByRole('heading', { name: heading }).parentElement!.querySelector('span') as HTMLElement;
+    const pills = [countPill('Pending Members'), countPill('Pending Invites'), ...screen.getAllByText('Pending')];
+    expect(pills).toHaveLength(4);
+    for (const pill of pills) {
+      expect(pill).toHaveClass('text-content-status-warning', 'bg-status-warning-subtle');
+    }
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.querySelectorAll('[class*="amber-"]'), 'no raw amber class left in the dialog').toHaveLength(0);
+  });
+});
