@@ -763,15 +763,17 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
   /* Phase 88-30 (DEF-88-28-02): the two controls plan 88-28 RESIZED are the two whose
      new size was never measured. Both are located by their shipped accessible names —
-     "Toggle menu" (Header.js) and "Group actions" (the `ariaLabel` groupHomePage passes
-     to KebabMenu) — so the selector policy above holds and a rename fails loudly rather
-     than silently measuring nothing.
+     "Toggle menu" (Header.js) and, since 88.9-31, the group page gear named exactly
+     "Group settings" plus the Manage Members member-row kebab named "Member actions for "
+     followed by the member's name (the shared KebabMenu) — so the selector policy above
+     holds and a rename fails loudly rather than silently measuring nothing.
+     Re-pointed Phase 88.9-31: the group page no longer mounts a KebabMenu (F5b).
 
      The hamburger is `md:hidden`, so this assertion is only meaningful in the phone
      project; the file-level skip already guarantees that. The kebab renders at every
      breakpoint (its own marker says so) but its floor is a phone-tenet requirement, so it
      is asserted here rather than in `journeys`. */
-  test('R4: hamburger and KebabMenu trigger measure >= 44x44 at 375px (88-28 geometry, measured not derived)', async ({ page }) => {
+  test('R4: hamburger, the group page Group settings gear and a KebabMenu item row measure >= 44x44 at 375px (88-28 geometry, measured not derived)', async ({ page }) => {
     await page.goto('/');
     await assertDarkTheme(page);
 
@@ -782,14 +784,20 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await guardResolved(hamburger, 'the Header hamburger (md:hidden — phone only)');
     await assertMin44(hamburger, 'Header hamburger');
 
-    // The kebab is gated on `userRole && userRole !== 'pending'`; the fixture user owns
-    // the seeded group, so it MUST render — a missing kebab is a fixture/locator failure,
-    // never a silent skip.
+    // The gear is gated on owner or admin; the fixture user owns the seeded group, so it
+    // MUST render — a missing gear is a fixture/locator failure, never a silent skip.
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertDarkTheme(page);
-    const kebab = page.getByRole('button', { name: 'Group actions' });
-    await guardResolved(kebab, 'the groupHomePage KebabMenu trigger (owner/member only)');
-    await assertMin44(kebab, 'KebabMenu trigger');
+    const gear = page.getByRole('button', { name: 'Group settings', exact: true });
+    await guardResolved(gear, 'the groupHomePage Group settings gear (owner/admin only)');
+    await assertMin44(gear, 'Group settings gear');
+
+    // A KebabMenu the app still mounts: the Manage Members member-row kebab (phone only, it
+    // sits inside md:hidden). The seeded group has three other members, so the owner sees at
+    // least one row trigger; a missing one is a seed fact for the BE seed task, never a skip.
+    await page.getByRole('button', { name: 'Manage Members' }).click();
+    const kebab = page.getByRole('button', { name: /^Member actions for / }).first();
+    await guardResolved(kebab, 'the first Manage Members member-row KebabMenu trigger');
 
     // 88-CODE-REVIEW MED#13: the ITEMS behind the trigger — the destructive row
     // actions D-40 routed through this menu — carried the census's ~36px FAIL
@@ -2358,12 +2366,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
   });
 
   test('R4 (88.6.1-48, AC-19 / D-44): the group games Filter is a disclosure and measures >= 44x44 at 375px', async ({ page }) => {
-    // The Overview tab is the default and mounts the Group Games list.
+    // The Overview tab is the default and mounts the Play history list.
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
     const filter = page.getByRole('button', { name: /^Filter( \(\d+\))?$/ });
-    await guardResolved(filter, 'the Group Games "Filter" toggle');
-    await assertMin44(filter, '"Filter" (Group Games, 375px)');
+    await guardResolved(filter, 'the Play history "Filter" toggle');
+    await assertMin44(filter, '"Filter" (Play history, 375px)');
     await expect(filter).toHaveAttribute('aria-expanded', 'false');
     await expect(filter).not.toHaveAttribute('aria-controls');
 
@@ -2390,8 +2398,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
     const sort = page.getByRole('button', { name: /^Sort order: (ascending|descending)$/ });
-    await guardResolved(sort, 'the Group Games sort-direction toggle');
-    await assertMin44(sort, 'the sort arrow (Group Games, 375px)');
+    await guardResolved(sort, 'the Play history sort-direction toggle');
+    await assertMin44(sort, 'the sort arrow (Play history, 375px)');
     await expect(sort).toHaveAccessibleName('Sort order: ascending');
     await expect(sort).toHaveAttribute('title', 'Ascending (click to reverse)');
 

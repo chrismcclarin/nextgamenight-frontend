@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { E2E_GROUP_ID, openGroupSettings, openGroupSettingsFromKebab } from './support/groupSettings';
+import { E2E_GROUP_ID, openGroupSettings, openGroupSettingsFromGear } from './support/groupSettings';
 import {
   expectNoApiWrites,
   holdRequests,
@@ -27,7 +27,7 @@ import { expectTouchTarget } from './support/touchTarget';
 //
 // DECISION Phase 88.6.2-22 (stale-reopen): the page clock moves past
 // src/lib/queryClient.ts ("staleTime: 30_000, // D-13"), then a reopen without navigation
-// (openGroupSettingsFromKebab) remounts the summary on stale cached data, so it refetches.
+// (openGroupSettingsFromGear) remounts the summary on stale cached data, so it refetches.
 // Chosen over three alternatives: a real 31 s wait (past the 30 s default test timeout); a
 // reload, which drops the query cache so the retained state never forms; and exposing the query
 // client to the page, a production change (R11). The open dialog alone never refetches: the
@@ -104,7 +104,7 @@ test.describe('Customize Group check-ins summary at 375px (88.6.2-22)', () => {
       match: (url) => url.pathname === SETTINGS_PATH,
     });
 
-    await openGroupSettingsFromKebab(page);
+    await openGroupSettingsFromGear(page);
     await expect
       .poll(() => refetch.count(), {
         message:
