@@ -52,6 +52,8 @@ export interface MemberChipProps {
   separated?: boolean;
   /** When set, renders the `+N` overflow variant instead of initials. */
   overflow?: number;
+  /** The member's user id; selects the D1b fill — never initials. Id-less members take the neutral fill. */
+  colorKey?: string | null;
   className?: string;
 }
 
@@ -85,6 +87,45 @@ const CHIP_BASE =
   'inline-flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full text-xs font-bold';
 
 /*
+ * DECISION Phase 88.9-30 D1b (owner pick D1b, 88.9-PICKS-B3.json, votes-b3 v12, 2026-11-05): a
+ * chip's fill is one of eight LITERAL bg-chip-N classes picked by an FNV-1a hash of the member's
+ * user id modulo 8, chosen OVER hashing the initials or the label (two people with the same
+ * initials would always share a colour, and a rename would recolour a person) and OVER an
+ * interpolated class name (Tailwind v4 emits nothing for it). chipFillIndex lives here beside
+ * MemberChip, chosen OVER a new src/lib module, because both consumers (this stack, ManageMembers)
+ * already import MemberChip. An id-less member (W63) takes the neutral fill, never a hash of its
+ * label. On a tinted card that fallback reads 1.11–1.12 light / 1.00–1.37 dark against the tint
+ * (the D-11 number), with the initials at 6.96 and the hairline 1.24–1.62. It is chosen OVER a
+ * constant chip fill (it would claim a real member's colour) and is reachable only off the real
+ * data path: the group roster projection always carries id (backend PUBLIC_USER_ATTRS). White ink
+ * on the eight fills computes 5.02 to 7.10, theme-identical. Changing the hash or the order
+ * recolours every member — a decision, not a cleanup.
+ */
+export const CHIP_FILLS = [
+  'bg-chip-1',
+  'bg-chip-2',
+  'bg-chip-3',
+  'bg-chip-4',
+  'bg-chip-5',
+  'bg-chip-6',
+  'bg-chip-7',
+  'bg-chip-8',
+] as const;
+
+/** FNV-1a 32-bit over the id's UTF-16 code units, modulo the eight D1b fills. */
+export function chipFillIndex(userId: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < userId.length; i += 1) {
+    h ^= userId.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h % CHIP_FILLS.length;
+}
+
+/** The D1b fills' ink: white clears 5.02 or better on all eight, in both themes. */
+const HASHED_INK = 'text-white';
+
+/*
  * DECISION Phase 88.5 (D-11, UI-SPEC 6.5.4): on a TINTED or photo card the chip swaps to a
  * white wash with a neutral hairline and the card's OWN ink, chosen OVER keeping the neutral
  * arm everywhere. WHY, measured: the neutral fill reads 1.11:1 against the blue preset tint —
@@ -107,8 +148,13 @@ const CHIP_BASE =
  * semantic tokens, so `tintTreatment.test.ts`'s `parseAlphaToken(token, semantic)` detector
  * does not fire on them. Verified 2026-09-01 against the 68 `--color-*` keys in the
  * `@theme inline` block: neither `white` nor `black` is among them.
+ *
+ * AMENDED Phase 88.9-30 (owner pick D1b, 88.9-PICKS-B3.json, 2026-11-05): the saturated D1b fills
+ * replace the white wash on EVERY arm, chosen OVER the wash (its dark-mode initials read 1.07); the
+ * hairline survives as TINTED_HAIRLINE and still separates on a tinted card; TINTED_INK stays for
+ * the visible text carriers.
  */
-const TINTED_FILL = 'bg-white/85 ring-1 ring-black/25';
+const TINTED_HAIRLINE = 'ring-1 ring-black/25';
 /*
  * The card's ink chain — SELF-RESOLVING on every card arm, which is why the visible
  * member-name text and "Show less" below use it UNCONDITIONALLY (UI re-audit BLOCKER,
@@ -125,6 +171,9 @@ const TINTED_INK =
   '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--group-ink,var(--t-color))]';
 
 const NEUTRAL_FILL = 'bg-surface-muted';
+
+/** The `+N` chip's pair (owner pick D2b — marker in MemberChip): the Owner badge's accent pair. */
+const OVERFLOW_PAIR = 'bg-surface-accent-subtle text-content-accent';
 
 /*
  * DECISION Phase 88.5 (D-12, D-12b, UI-SPEC 6.5.5): the status cue is an `outline`, chosen
@@ -143,9 +192,15 @@ const NEUTRAL_FILL = 'bg-surface-muted';
  *
  * Both cues are written ONCE as constants rather than per-status map entries, so the file
  * carries exactly one instance of each utility and the phase's greps can count them.
+ *
+ * AMENDED Phase 88.9-30 (D1b cue, owner pick R-P1, 88.9-RULINGS.md, 2026-11-08): on the D1b fills
+ * the cue read 1.00–1.42 light / 2.20–3.31 dark against the fill; a 2px inner band in surface-card
+ * (inset-ring, not ring-inset, which would rewrite --tw-ring-shadow) now sits between fill and cue:
+ * 7.13 / 6.85 light, 6.08 / 6.45 dark; outline and dash unchanged.
  */
-const FRIEND_CUE = 'outline-2 -outline-offset-2 outline-status-success';
-const PENDING_CUE = 'outline-2 outline-dashed -outline-offset-2 outline-status-warning';
+const FRIEND_CUE = 'outline-2 -outline-offset-2 outline-status-success inset-ring-4 inset-ring-surface-card';
+const PENDING_CUE =
+  'outline-2 outline-dashed -outline-offset-2 outline-status-warning inset-ring-4 inset-ring-surface-card';
 
 function ringCue(status: MemberStatus): string {
   if (status === 'accepted') return FRIEND_CUE;
@@ -168,9 +223,11 @@ export function MemberChip({
   tinted = false,
   separated = false,
   overflow,
+  colorKey,
   className,
 }: MemberChipProps) {
   const isOverflow = typeof overflow === 'number';
+  const fillIndex = typeof colorKey === 'string' && colorKey.length > 0 ? chipFillIndex(colorKey) : null;
 
   /*
    * DECISION Phase 88.5 (UI-SPEC 6.5.1 vs 6.5.4): the cut-out separation ring is NEUTRAL-ARM
@@ -178,8 +235,12 @@ export function MemberChip({
    * card's own ground so the overlap reads as a cut-out; on a TINTED card the ground is the
    * group colour, so that same ring would draw a stray white outline around every chip. The
    * tinted arm's hairline already does the separating. Dropping this gate is a decision.
+   *
+   * AMENDED Phase 88.9-30 (owner pick D3c, 88.9-PICKS-B3.json, 2026-11-05): the cut-out ring is
+   * ring-chip-rim (purple-800 light / purple-950 dark), chosen OVER the card-ground cut-out (it
+   * drew a white ring in light on the D1b fills); still neutral-arm only.
    */
-  const separation = separated && !tinted ? 'ring-2 ring-surface-card' : '';
+  const separation = separated && !tinted ? 'ring-2 ring-chip-rim' : '';
 
   /*
    * DECISION Phase 88.6-28 (D-15/D-16, UI-SPEC §5.6 "ink on the muted ground"): the `+N`
@@ -202,19 +263,23 @@ export function MemberChip({
    * opening tag — which is limitation 2 of that gate's `inkGroundPairs` walk. The gate could not
    * SEE this pairing, so it never rostered it. Fixing it therefore moves no roster count. That
    * blind spot is real and is recorded in `88.6-28-SUMMARY.md` rather than papered over.
+   *
+   * AMENDED Phase 88.9-30 (owner pick D2b, 88.9-PICKS-B3.json, 2026-11-06): the fork re-opens by
+   * owner ruling — +N wears the Owner badge's accent pair (6.37 light / 7.51 dark), chosen OVER
+   * sharing the initials' ink; its heard text stays a count (K11(a)).
    */
   const neutralInk = 'text-content-secondary';
+  const fill = isOverflow
+    ? OVERFLOW_PAIR
+    : fillIndex !== null
+      ? `${CHIP_FILLS[fillIndex]} ${HASHED_INK}`
+      : `${NEUTRAL_FILL} ${neutralInk}`;
+  const hairline = tinted ? TINTED_HAIRLINE : '';
 
   return (
     <span
       aria-hidden="true"
-      className={cn(
-        CHIP_BASE,
-        tinted ? `${TINTED_FILL} ${TINTED_INK}` : `${NEUTRAL_FILL} ${neutralInk}`,
-        separation,
-        ringCue(status),
-        className
-      )}
+      className={cn(CHIP_BASE, fill, hairline, separation, ringCue(status), className)}
     >
       {isOverflow ? `+${overflow}` : initialsOf(label)}
     </span>
@@ -266,6 +331,9 @@ const HIT_EXTENSION = "relative after:absolute after:-inset-1.5 after:content-['
  * first, and the gate red-flagged both controls even though the runtime class list was correct.
  * DRYing these two strings back into a constant is therefore a decision that silently disarms a
  * repo-wide accessibility gate, not a cleanup. Every shipped site inlines it for the same reason.
+ *
+ * AMENDED Phase 88.9-30 (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04): both rings' halo key is
+ * now surface-group-halo (R034 / R035), each string still written out in full here.
  */
 
 // Terminal fallback mirrors UserChip's FALLBACK_LABEL idiom: a member row with
@@ -497,7 +565,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
            */
           className={cn(
             'inline-flex min-h-11 min-w-11 cursor-pointer items-center rounded-full pr-1',
-            'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+            'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
           )}
           onClick={(e) => activate(e, true)}
           onKeyDown={(e) => activateOnKey(e, true)}
@@ -508,6 +576,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
               label={memberLabel(m)}
               status={getStatus(m.id)}
               tinted={tinted}
+              colorKey={m.id}
               separated
               className={i === 0 ? undefined : '-ml-2'}
             />
@@ -572,7 +641,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                     key={m.id ?? `inert-${i}`}
                     className="relative inline-flex items-center justify-center gap-1.5"
                   >
-                    <MemberChip label={label} status={status} tinted={tinted} />
+                    <MemberChip label={label} status={status} tinted={tinted} colorKey={m.id} />
                     {/* Visible name (owner-directed UAT amendment 2026-09-01): identity is
                         text, same carrier as the interactive chips below. */}
                     <span className={cn('text-xs', TINTED_INK)}>{label}</span>
@@ -602,6 +671,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                   userId={m.id as string}
                   username={label}
                   showInlineIndicator={false}
+                  hostGround="group"
                 >
                   {/*
                     DECISION Phase 88.5 (owner-directed UAT amendment, 2026-09-01): the
@@ -617,7 +687,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                     cleanup.
                   */}
                   <span className={cn(HIT_EXTENSION, 'inline-flex items-center justify-center gap-1.5')}>
-                    <MemberChip label={label} status={status} tinted={tinted} />
+                    <MemberChip label={label} status={status} tinted={tinted} colorKey={m.id} />
                     <span className={cn('text-xs', TINTED_INK)}>{label}</span>
                     <span className="sr-only">{statusSuffix(status)}</span>
                   </span>
@@ -649,7 +719,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                 HIT_EXTENSION,
                 'inline-flex min-h-11 cursor-pointer items-center rounded-xs px-1',
                 cn('text-xs', TINTED_INK),
-                'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
               )}
               onClick={(e) => activate(e, false)}
               onKeyDown={(e) => activateOnKey(e, false)}
