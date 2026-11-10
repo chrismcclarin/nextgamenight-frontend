@@ -15,12 +15,15 @@
 //   5  a proven session clears this path's latch, so a later dead session redirects once more.
 //   6  a useUser error is not signed out: no replace, no hold, sessionError true.
 //   7  resetDecision returns to idle without touching the latch, so a reset never rebuilds the loop.
+//   8  the hold survives a sync re-render between the latch write and the 'redirecting' commit (the
+//      CI race of 2026-11-10: groupHomePage painted the banner for a frame; fix(88.9-40)).
 //
 // The real @/lib/signIn is imported (never mocked): pin 1's fourth mount is the regression pin on
 // the builder itself. The logger is mocked in the src/app/Header.test.tsx shape so pins 1 and 4 can
 // read warn calls.
 
-import { act, renderHook } from '@testing-library/react';
+import { createElement, useSyncExternalStore } from 'react';
+import { act, render, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { logger } from '@/lib/logger';
 import { signInLatchKey, useSignInRedirect } from './useSignInRedirect';
@@ -235,5 +238,73 @@ describe('useSignInRedirect (88.9-40, SESSION-01)', () => {
     expect(result.current.decision).toBe('declined');
     expect(replace).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem(key)).toBe('1');
+  });
+});
+
+// 8 — the race CI reproduced on 51cfae4 (quality red on runs 42792174654 / 42792183100): requestSignIn
+// writes the latch and the ref synchronously, then queues setDecision('redirecting') at the default
+// lane. A SyncLane re-render in that window (the group page sits on a useSyncExternalStore store that
+// TanStack notifies on a zero-delay macrotask) rendered with decision still 'idle' and the latch SET,
+// so a hold computed from the latch alone dropped, and the page-load banner painted for a frame —
+// exactly the flash the hold exists to prevent. The harness forces that SyncLane render outside act:
+// the store drives `unauthorized` (tick 1 arms the hook, its effect runs synchronously after the
+// sync commit), then tick 2 re-renders at SyncLane before the default-lane update has flushed.
+describe('useSignInRedirect — the hold survives a sync re-render before the redirecting commit (fix 88.9-40)', () => {
+  it('SESSION-01 (88.9): a sync re-render between the latch write and the redirecting commit still holds', async () => {
+    const replace = stubLocation({ pathname: '/groupHomePage', search: '?id=7' });
+    let tick = 0;
+    const listeners = new Set<() => void>();
+    const store = {
+      subscribe: (l: () => void) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+      getSnapshot: () => tick,
+      set: (n: number) => {
+        tick = n;
+        listeners.forEach((l) => l());
+      },
+    };
+    const frames: Array<{ tick: number; decision: string; holding: boolean }> = [];
+    function Harness() {
+      const t = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+      const r = useSignInRedirect({ authLoading: false, unauthorized: t >= 1 });
+      frames.push({ tick: t, decision: r.decision, holding: r.holding });
+      return null;
+    }
+    render(createElement(Harness));
+    expect(frames.at(-1)).toEqual({ tick: 0, decision: 'idle', holding: false });
+
+    const g = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const savedActEnv = g.IS_REACT_ACT_ENVIRONMENT;
+    g.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      // tick 1: arm. The SyncLane render holds (latch clear); its passive effect runs at the end of
+      // the sync commit, writes the latch, calls replace and QUEUES 'redirecting' at the default lane.
+      store.set(1);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(replace).toHaveBeenCalledTimes(1);
+      expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+      const armedFrame = frames.find((f) => f.tick === 1);
+      expect(armedFrame).toEqual({ tick: 1, decision: 'idle', holding: true });
+
+      // tick 2: a SyncLane re-render inside the window — the default-lane update is not yet
+      // committed, so decision still reads 'idle' and the latch is already set.
+      store.set(2);
+      await Promise.resolve();
+      await Promise.resolve();
+      const raceFrame = frames.find((f) => f.tick === 2);
+      expect(raceFrame, 'the sync re-render happened').toBeDefined();
+      expect(raceFrame!.holding, 'the hold must survive the frame before the redirecting commit').toBe(true);
+
+      // the default lane flushes on a macrotask: the committed state catches up.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(frames.at(-1)!.decision).toBe('redirecting');
+      expect(frames.at(-1)!.holding).toBe(true);
+      expect(replace).toHaveBeenCalledTimes(1);
+    } finally {
+      g.IS_REACT_ACT_ENVIRONMENT = savedActEnv;
+    }
   });
 });

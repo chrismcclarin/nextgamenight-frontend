@@ -190,12 +190,26 @@ export function useSignInRedirect(options: UseSignInRedirectOptions): SignInRedi
   // commits 'declined' (C12: a hold frame there unmounted a focused control and dropped focus to
   // body; userProfile K8 pins it). Reading the latch at render is a side-effect-free read.
   const armed = !authLoading && (signedOutArm || unauthorizedArm);
+  // DECISION Phase 88.9-40 (fix, CI race 2026-11-10 on 51cfae4): the hold also reads decisionRef at
+  // render. requestSignIn writes the latch and the ref synchronously and QUEUES setDecision at the
+  // default lane; a SyncLane re-render in that window (a useSyncExternalStore store the page sits on,
+  // notified by TanStack on a zero-delay macrotask) renders with the state still 'idle' and the latch
+  // already set, so a hold computed from the latch alone dropped and the page-load banner painted for a
+  // frame — the flash the hold exists to prevent. Reading the ref during render is chosen OVER
+  // flushSync in the passive effect (React warns when flushSync runs inside a commit-context passive
+  // flush) and OVER a layout effect for the decision (the latch write must stay with the replace).
+  // The ref is written only in callbacks and effects, and this repo's eslint (eslint-config-next 14.2,
+  // ESLint 8) carries no refs-in-render rule. C12 is kept: ref idle + latch set, or ref 'declined',
+  // raises no hold.
+  const redirectPending = decisionRef.current === 'redirecting';
   const willDecline =
     armed &&
     decision === 'idle' &&
+    !redirectPending &&
     typeof window !== 'undefined' &&
     readLatch(signInLatchKey(window.location)) !== 'clear';
-  const holding = decision === 'redirecting' || (decision === 'idle' && armed && !willDecline);
+  const holding =
+    decision === 'redirecting' || redirectPending || (decision === 'idle' && armed && !willDecline);
 
   const signedOutErrorState = useFetchErrorState({
     isError: decision === 'declined' && signedOutArm,
