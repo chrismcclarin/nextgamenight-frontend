@@ -29,13 +29,15 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // Phase 88.6-27 (W16): the two channels the QR failure now uses. Spied rather than stubbed
 // away, because WHICH channel carries what is the assertion.
 const toastSpies = vi.hoisted(() => ({ error: vi.fn() }));
-const loggerSpies = vi.hoisted(() => ({ info: vi.fn() }));
+// AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-2 = b): warn is spied beside info — the
+// token failure now files a warning event, and info is asserted unused.
+const loggerSpies = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: toastSpies.error } }));
 vi.mock('@/lib/logger', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/logger')>();
   // `errCtx` is the REAL one: the ctx shape assertion below is about what the call site
   // passes, and stubbing the helper would assert the stub instead.
-  return { ...actual, logger: { ...actual.logger, info: loggerSpies.info } };
+  return { ...actual, logger: { ...actual.logger, info: loggerSpies.info, warn: loggerSpies.warn } };
 });
 
 // 88.6.1-47: the stub still renders nothing (every older test is unchanged by it), but it now
@@ -132,6 +134,7 @@ describe('EventDayModal — W16: the QR failure speaks, and stops speaking after
     h.getEventInviteToken.mockReset();
     toastSpies.error.mockClear();
     loggerSpies.info.mockClear();
+    loggerSpies.warn.mockClear();
   });
   afterEach(cleanup);
 
@@ -152,12 +155,13 @@ describe('EventDayModal — W16: the QR failure speaks, and stops speaking after
     expect(typeof message).toBe('string');
     expect((message as string).length).toBeGreaterThan(0);
 
-    // The developer half: `logger.info` (a breadcrumb — the level the owner amended AC-2 to on
-    // 2026-09-13), with the error's NAME and MESSAGE in the ctx object and the raw `Error`
-    // never passed. `checkJs: false` means typecheck cannot catch that mistake in a `.js`
-    // file, which is why it is asserted here.
-    expect(loggerSpies.info).toHaveBeenCalledTimes(1);
-    const [msg, ctx] = loggerSpies.info.mock.calls[0];
+    // The developer half: `logger.warn` (a Sentry warning event — owner ruling F1 / O-05,
+    // F1-2 = b, 2026-11-07, superseding the 2026-09-13 info breadcrumb), with the error's NAME
+    // and MESSAGE in the ctx object and the raw `Error` never passed. `checkJs: false` means
+    // typecheck cannot catch that mistake in a `.js` file, which is why it is asserted here.
+    expect(loggerSpies.warn).toHaveBeenCalledTimes(1);
+    expect(loggerSpies.info).not.toHaveBeenCalled();
+    const [msg, ctx] = loggerSpies.warn.mock.calls[0];
     expect(msg).toBe('Failed to get game invite token');
     expect(ctx).toEqual({ name: 'Error', message: 'boom' });
     expect(ctx).not.toBeInstanceOf(Error);
@@ -192,10 +196,11 @@ describe('EventDayModal — W16: the QR failure speaks, and stops speaking after
     });
 
     expect(toastSpies.error).not.toHaveBeenCalled();
-    // ...and the developer log STILL fires: a breadcrumb is not context, so it is deliberately
-    // outside the guard. Asserting it is what stops a future "fix" from moving the whole catch
-    // inside the ref check and silently losing the report.
-    expect(loggerSpies.info).toHaveBeenCalledTimes(1);
+    // ...and the developer log STILL fires: a developer log is not context, so it is
+    // deliberately outside the guard. Asserting it is what stops a future "fix" from moving the
+    // whole catch inside the ref check and silently losing the report.
+    expect(loggerSpies.warn).toHaveBeenCalledTimes(1);
+    expect(loggerSpies.info).not.toHaveBeenCalled();
   });
 });
 
@@ -305,6 +310,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     h.getEventInviteToken.mockReset();
     toastSpies.error.mockClear();
     loggerSpies.info.mockClear();
+    loggerSpies.warn.mockClear();
     qrProps.current = null;
     pending = {};
     h.getEventInviteToken.mockImplementation(
@@ -425,8 +431,9 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
 
     // POSITIVE signal first (P-6): the developer log fires for every failure, newest or not, so
     // it proves the superseded rejection has settled before anything is read as absent.
-    await waitFor(() => expect(loggerSpies.info).toHaveBeenCalledTimes(1));
-    expect(loggerSpies.info.mock.calls[0][1]).toEqual({ name: 'Error', message: 'superseded' });
+    await waitFor(() => expect(loggerSpies.warn).toHaveBeenCalledTimes(1));
+    expect(loggerSpies.info).not.toHaveBeenCalled();
+    expect(loggerSpies.warn.mock.calls[0][1]).toEqual({ name: 'Error', message: 'superseded' });
     expect(share2).toHaveAccessibleName(LOADING);
     expect(share2).toHaveAttribute('aria-disabled', 'true');
     expect(toastSpies.error).not.toHaveBeenCalled();

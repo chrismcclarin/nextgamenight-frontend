@@ -125,14 +125,20 @@ export default function EventDayModal({
       /* AC-2, at the level the owner amended it to on 2026-09-13: `logger.info`, REPLACING the
          raw `console.error` rather than sitting beside it — the module's contract is that call
          sites use `logger.*` instead of raw `console.*`. STATE THE COST HONESTLY: `logger.info`
-         is `Sentry.addBreadcrumb` (`logger.ts`, `Sentry.addBreadcrumb({ message: msg, level: 'info'`), so this failure reaches Sentry only
+         is `Sentry.addBreadcrumb`
+         (src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg, level: 'info', data: ctx });")), so this failure reaches Sentry only
          ATTACHED TO a later event in the same session; it does not become independently visible
          to an operator. Whether these paths deserve a Sentry EVENT is routed to the owner, not
          decided here. `errCtx(err)` and never the raw `Error`: `logger.info(msg, ctx)`'s second
          parameter is a plain object, and `checkJs: false` hides that mistake in a `.js` file.
          The message is the literal; the ctx carries the error's name and message and nothing
-         else (T-84-01). Fires regardless of mount state — a developer log is not context. */
-      logger.info('Failed to get game invite token', errCtx(err));
+         else (T-84-01). Fires regardless of mount state — a developer log is not context.
+         AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-2 = b, chat 2026-11-07 6:35 PM
+         Pacific — a D-03 dialog-only item; 88.9-UI-SPEC.md (d) Resolutions of (c)): the owner
+         question this comment routed is answered — the level moved to logger.warn, an event of
+         its own, chosen OVER the logger.info breadcrumb of 2026-09-13 (D2). The cost paragraph
+         above records that earlier level. ctx unchanged; the toast arm above is unchanged. */
+      logger.warn('Failed to get game invite token', errCtx(err));
     } finally {
       // Only the newest request re-enables: a superseded request's finally changes nothing, so
       // it can never clear the row pressed since.
