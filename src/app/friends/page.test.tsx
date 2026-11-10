@@ -24,6 +24,7 @@
 import * as React from 'react';
 import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 
 const SELF_UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const FRIEND_UUID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
@@ -1404,7 +1405,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     // B21: the SAME node, now busy.
     expect(search).toHaveAccessibleName('Search, searching');
     expect(search).toHaveTextContent(/^Search/);
-    expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(search).toHaveAttribute('aria-disabled', 'true');
     expect(search).not.toHaveAttribute('disabled');
     // The status line below the form is a caption, not a button (census B note): it keeps its word.
@@ -1418,7 +1419,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
       heldSearch.resolve(RILEY_HIT);
     });
     expect(search).not.toHaveAttribute('aria-disabled');
-    expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await waitFor(() => expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
 
     // B22: the hit's Send Request, held.
     const send = await screen.findByRole('button', { name: 'Send Request' });
@@ -1427,7 +1428,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(send);
     expect(send).toHaveAccessibleName('Send Request, sending');
     expect(send).toHaveTextContent(/^Send Request/);
-    expect(send.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(send.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(send).toHaveAttribute('aria-disabled', 'true');
     expect(send).not.toHaveAttribute('disabled');
     fireEvent.click(send);
@@ -1473,7 +1474,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(samAccept);
     expect(samAccept).toHaveAccessibleName('Accept, accepting');
     expect(samAccept).toHaveTextContent(/^Accept/);
-    expect(samAccept.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(samAccept.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(samAccept).toHaveAttribute('aria-disabled', 'true');
     expect(samAccept).not.toHaveAttribute('disabled');
     expect(sam.getByRole('button', { name: 'Decline' })).toHaveAttribute('disabled');
@@ -1488,7 +1489,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     // R-W4 (owner, 2026-11-08): ', declining' — the same word the bell's Declines took in 88.9-45.
     expect(rileyDecline).toHaveAccessibleName('Decline, declining');
     expect(rileyDecline).toHaveTextContent(/^Decline/);
-    expect(rileyDecline.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(rileyDecline.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(rileyDecline).toHaveAttribute('aria-disabled', 'true');
     expect(rileyDecline).not.toHaveAttribute('disabled');
     expect(riley.getByRole('button', { name: 'Accept' })).toHaveAttribute('disabled');

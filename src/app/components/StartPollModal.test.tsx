@@ -7,6 +7,7 @@
 import * as React from 'react';
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 import { axe } from 'vitest-axe';
 
 // `importOriginal` spread — NOT a bare `{ apiFetch }` object.
@@ -223,7 +224,7 @@ describe('StartPollModal — one submit per press, R1 on a blocked or code-less 
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
-  it('S5 rule 1 (88.9): two submits while the first is pending send ONE request; Start poll keeps its label + spinner, stays focusable with aria-disabled, Cancel is natively gated (D-35)', () => {
+  it('S5 rule 1 (88.9): two submits while the first is pending send ONE request; Start poll keeps its label + spinner, stays focusable with aria-disabled, Cancel is natively gated (D-35)', async () => { // AMENDED Phase 88.9-54 (R-C3b): async for the appear wait
     const pending = deferred();
     (apiFetch as Mock).mockReturnValueOnce(pending.promise);
     render(<StartPollModal {...baseProps} />);
@@ -236,7 +237,7 @@ describe('StartPollModal — one submit per press, R1 on a blocked or code-less 
     const submitButton = footerSubmit();
     expect(submitButton).toHaveTextContent('Start poll');
     expect(submitButton).toHaveAccessibleName('Start poll, starting');
-    expect(submitButton.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(submitButton.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(submitButton).toHaveAttribute('aria-disabled', 'true');
     expect(submitButton).not.toHaveAttribute('disabled');
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveAttribute('disabled');
@@ -281,14 +282,14 @@ describe('StartPollModal — one submit per press, R1 on a blocked or code-less 
 
     expect(footerSubmit()).toHaveTextContent('Start poll');
     expect(footerSubmit()).toHaveAccessibleName('Start poll, starting');
-    expect(footerSubmit().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(footerSubmit().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(footerSubmit()).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => {
       pending.resolve({ prompt: { id: 'p1' } });
     });
     expect(footerSubmit()).toHaveAccessibleName('Start poll');
-    expect(footerSubmit().querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await waitFor(() => expect(footerSubmit().querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
     expect(footerSubmit()).not.toHaveAttribute('aria-disabled');
   });
 

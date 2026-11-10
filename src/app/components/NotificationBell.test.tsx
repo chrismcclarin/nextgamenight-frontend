@@ -14,6 +14,7 @@ import * as React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
@@ -690,7 +691,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     // spinner sits beside it, the busy suffix is heard (rule 1, 88.9-45).
     expect(acceptA).toHaveAccessibleName('Accept, accepting');
     expect(acceptA).toHaveTextContent(/^Accept/);
-    expect(acceptA.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(acceptA.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(acceptA).not.toHaveAttribute('aria-label');
     expect(acceptA).toHaveAttribute('aria-disabled', 'true');
     expect(acceptA).not.toHaveAttribute('disabled');
@@ -903,7 +904,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
 
     expect(declineA).toHaveTextContent(/^Decline/);
     expect(declineA).toHaveAccessibleName('Decline, declining');
-    expect(declineA.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(declineA.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(declineA).toHaveAttribute('aria-disabled', 'true');
     expect(declineA).not.toHaveAttribute('disabled');
     const acceptA = within(rowA).getByRole('button', { name: 'Accept invite to Alpha Crew' });
@@ -919,7 +920,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     });
     expect(declineA).not.toHaveAttribute('aria-disabled');
     expect(declineA).toHaveAccessibleName('Decline invite to Alpha Crew');
-    expect(declineA.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await waitFor(() => expect(declineA.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
     expect(acceptA).toBeEnabled();
   });
 
@@ -938,7 +939,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     await user.click(accept);
     expect(accept).toHaveAccessibleName('Accept, accepting');
     expect(accept).toHaveTextContent(/^Accept/);
-    expect(accept.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(accept.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(accept).not.toHaveAttribute('aria-label');
     expect(accept).toHaveAttribute('aria-disabled', 'true');
     expect(accept).not.toHaveAttribute('disabled');
@@ -956,7 +957,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     await user.click(decline);
     expect(decline).toHaveTextContent(/^Decline/);
     expect(decline).toHaveAccessibleName('Decline, declining');
-    expect(decline.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(decline.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(decline).toHaveAttribute('aria-disabled', 'true');
     expect(decline).not.toHaveAttribute('disabled');
     expect(accept).toBeDisabled();

@@ -21,6 +21,7 @@ import * as React from 'react';
 import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 import { axe } from 'vitest-axe';
 import { logger } from '@/lib/logger';
 
@@ -599,7 +600,7 @@ describe('FriendInvitePanel — gated controls stay in the focus order (88.6-22)
     // the label stays, the house spinner joins it, the suffix is heard.
     const inFlight = screen.getByRole('button', { name: 'Send, sending' });
     expect(inFlight).toHaveTextContent('Send');
-    expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(inFlight).toBeInTheDocument();
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight).not.toHaveAttribute('disabled');
@@ -640,7 +641,7 @@ describe('FriendInvitePanel — gated controls stay in the focus order (88.6-22)
 
     const inFlight = screen.getByRole('button', { name: 'Add Friend, sending' });
     expect(inFlight).toHaveTextContent('Add Friend');
-    expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight).not.toHaveAttribute('disabled');
     expect(document.activeElement).toBe(inFlight);
@@ -1222,7 +1223,7 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     // border-b-2 div is gone), the suffix is heard.
     await waitFor(() => expect(button).toHaveAccessibleName('Invite 2 Friends, sending'));
     expect(button).toHaveTextContent(/^Invite 2 Friends/);
-    expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(button.querySelectorAll('.animate-spin')).toHaveLength(1);
     expect(button).toHaveAttribute('aria-disabled', 'true');
 
@@ -1233,7 +1234,7 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     expect(invitesAPI.sendFriendInvite).toHaveBeenCalledTimes(1);
 
     release({});
-    await waitFor(() => expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0));
+    await waitFor(() => expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
   });
 
   it('B1: an all-failed batch whose first failure has no code says R2 from the alert region (D-32 R2)', async () => {

@@ -64,6 +64,7 @@ describe('Spinner + Button busy (88.9-24, save-feedback rule 1)', () => {
       .join('');
     expect(visible).toBe('Save');
     expect(button.getAttribute('aria-disabled')).toBe('true');
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     expect(button.hasAttribute('disabled')).toBe(false);
   });
@@ -100,6 +101,7 @@ describe('Spinner + Button busy (88.9-24, save-feedback rule 1)', () => {
     );
     const link = screen.getByRole('link', { name: 'Go' });
     expect(link.getAttribute('aria-disabled')).toBe('true');
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS + 1)); // AMENDED Phase 88.9-54 (R-C3b): read after the appear window
     expect(container.querySelector('[data-slot="spinner"]')).toBeNull();
     expect(link.textContent).toBe('Go');
   });
@@ -108,6 +110,7 @@ describe('Spinner + Button busy (88.9-24, save-feedback rule 1)', () => {
     const { container } = render(<Modal.Action busy>Save Changes</Modal.Action>);
     const button = screen.getByRole('button', { name: 'Save Changes, saving' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
   });
 

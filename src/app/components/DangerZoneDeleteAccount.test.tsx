@@ -900,7 +900,7 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
     // polite progress region still shows the in-flight line.
     expect(action).toHaveAccessibleName('Delete my account, deleting');
     expect(action).toHaveTextContent('Delete my account');
-    expect(action.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(action.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(action).toHaveAttribute('aria-disabled', 'true');
     expect(progressRegion()).toHaveTextContent('Deleting…');
   });

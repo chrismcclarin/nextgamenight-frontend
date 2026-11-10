@@ -204,7 +204,7 @@ describe('FeedbackButton — the pressed Submit (88.6.1-33, D-35, Req 4 and 5)',
     // Rule 1 (88.9-45): the label stays, the house spinner joins it, the suffix is heard.
     const busy = within(dialog).getByRole('button', { name: 'Submit, submitting' });
     expect(busy).toHaveTextContent('Submit');
-    expect(busy.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(busy.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(busy).toHaveAttribute('aria-disabled', 'true');
     expect(busy).not.toHaveAttribute('disabled');
 

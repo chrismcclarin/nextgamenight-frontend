@@ -390,7 +390,7 @@ describe('createGroup in-flight guard (UAT row 447)', () => {
     const creating = screen.getByRole('button', { name: 'Create Group, creating' });
     expect(creating).toBe(submit);
     expect(creating.firstChild?.textContent).toBe('Create Group');
-    expect(creating.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(creating.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(creating).not.toHaveAttribute('disabled');
     expect(creating).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('status')).toHaveTextContent('Creating group...');

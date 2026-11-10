@@ -29,6 +29,7 @@ import { axe } from 'vitest-axe';
 
 import { ConfirmDialog, isDismissableTier } from './ConfirmDialog';
 import { CONFIRM_DELAY_MS } from './confirmDelay';
+import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from './useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the delay / hold budgets
 import {
   useConfirmAction,
   TWO_TAP_WINDOW_MS,
@@ -683,18 +684,19 @@ describe('ConfirmDialog — dialog tier', () => {
   // optional busySuffix is the sr-only words appended to the confirm's NAME while pending — the
   // visible text keeps confirmLabel and the house spinner joins it — so a screen reader on the
   // focused confirm still hears that the commit is running. Default-off.
-  it('rule 1 (88.9): the pending confirm keeps confirmLabel + spinner and is named "<confirmLabel><busySuffix>" (CR-5 / A-75 re-shaped)', () => {
+  it('rule 1 (88.9): the pending confirm keeps confirmLabel + spinner and is named "<confirmLabel><busySuffix>" (CR-5 / A-75 re-shaped)', async () => {
     renderConfirmDialog({ pending: true, busySuffix: ', deleting', confirmDisabled: () => true });
     const confirmButton = screen.getByRole('button', { name: 'Delete, deleting' });
     expect(confirmButton).toHaveTextContent('Delete');
-    expect(confirmButton.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(confirmButton.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0); // AMENDED Phase 88.9-54 (R-C3b): nothing at 0 ms
+    await waitFor(() => expect(confirmButton.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(confirmButton).toHaveAttribute('aria-disabled', 'true');
     expect(confirmButton).not.toHaveAttribute('disabled');
     expect(confirmButton).toHaveClass('btn-danger');
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
-  it('rule 1 (88.9): busySuffix is inert while not pending, and no busySuffix keeps the verb with no spinner while pending (default-off)', () => {
+  it('rule 1 (88.9): busySuffix is inert while not pending, and no busySuffix keeps the verb with no spinner while pending (default-off)', async () => {
     const { rerender, onCancel, onConfirm } = renderConfirmDialog({ busySuffix: ', deleting' });
     expect(screen.getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled');
     expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
@@ -711,6 +713,7 @@ describe('ConfirmDialog — dialog tier', () => {
       />
     );
     expect(screen.getByRole('button', { name: 'Delete' })).toHaveAttribute('aria-disabled', 'true');
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, SPINNER_DELAY_MS + 300))); // AMENDED Phase 88.9-54 (R-C3b): read after the appear window (real timers, no pressed sibling to wait on)
     expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
   });
 
@@ -1059,7 +1062,7 @@ describe('ConfirmDialog — busySuffix through the real hook (CR-5 / A-75, rule 
     const pendingConfirm = screen.getByRole('button', { name: 'Delete, deleting' });
     expect(pendingConfirm).toBe(confirmButton);
     expect(pendingConfirm).toHaveTextContent('Delete');
-    expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(pendingConfirm);
 
@@ -1070,7 +1073,7 @@ describe('ConfirmDialog — busySuffix through the real hook (CR-5 / A-75, rule 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled')
     );
-    expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

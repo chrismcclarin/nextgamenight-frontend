@@ -993,7 +993,7 @@ describe('FeedbackForm — Phase 88.6.1-34 task 3 (D-35, Req 5, F2, R8 idempoten
     expect(pressed).not.toHaveAttribute('disabled');
     expect(pressed).toHaveTextContent('Submit');
     expect(pressed).toHaveAccessibleName('Submit, submitting');
-    expect(pressed.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(pressed.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     // CONFIRM-ONLY in jsdom (C-11: jsdom never blurs a disabled element); the phone spec's
     // Test C proves the focus half in a real browser. The two attribute lines above are the red half.
     expect(document.activeElement).toBe(pressed);

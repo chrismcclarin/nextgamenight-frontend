@@ -344,7 +344,7 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     // Rule 1 (88.9-24): the label stays; copy row C7's word lives on as the suffix (Q6(b)).
     expect(submitButton()).toHaveAccessibleName('Create Event, creating');
     expect(submitButton().firstChild?.textContent).toBe('Create Event');
-    expect(submitButton().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(submitButton().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
 
     fireEvent.submit(form);
     await new Promise((r) => setTimeout(r, 30));
@@ -419,7 +419,7 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     await waitFor(() => expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(1));
     expect(submitButton()).toHaveAccessibleName('Update Event, updating');
     expect(submitButton().firstChild?.textContent).toBe('Update Event');
-    expect(submitButton().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(submitButton().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
     expect(submitButton()).not.toHaveAttribute('disabled');
 

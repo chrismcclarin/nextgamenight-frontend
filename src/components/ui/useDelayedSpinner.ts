@@ -4,7 +4,7 @@
  * useDelayedSpinner — the one home of the busy Spinner's appear delay and minimum hold
  * (plan 88.9-54, owner ruling R-C3b).
  *
- * `useDelayedSpinner(busy)` returns whether the spinner should be in the tree right now:
+ * The hook returns whether the spinner should be in the tree right now:
  * false for the first SPINNER_DELAY_MS of a busy, true from then on, and still true for
  * SPINNER_MIN_MS after its first appearance even when busy has already dropped. The only
  * consumer is {@link DelayedSpinner}; hosts mount that element, they do not call this hook.

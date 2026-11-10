@@ -324,7 +324,7 @@ describe('88.6-63 (review round 2 #25) — the submit is aria-disabled + latched
     expect(promptSettingsAPI.createSchedule).toHaveBeenCalledTimes(1);
     expect(submit).toHaveAccessibleName('Create Schedule, saving');
     expect(submit.firstChild?.textContent).toBe('Create Schedule');
-    expect(submit.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(submit.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(submit).toHaveAttribute('aria-disabled', 'true');
     expect(submit).not.toHaveAttribute('disabled');
 

@@ -414,7 +414,7 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Make admin' }));
     const pendingConfirm = await within(dialog).findByRole('button', { name: 'Make admin, promoting' });
     expect(pendingConfirm).toHaveTextContent('Make admin');
-    expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
     expect(within(dialog).queryByRole('button', { name: 'Make admin' })).not.toBeInTheDocument();
 
@@ -702,7 +702,7 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
     // RED halves are the attributes and the request count (C-11); focus is CONFIRM-ONLY in jsdom.
     expect(confirm).toHaveTextContent('Confirm Leave');
     expect(confirm).toHaveAccessibleName('Confirm Leave, leaving');
-    expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(confirm).toHaveAttribute('aria-disabled', 'true');
     expect(confirm).not.toHaveAttribute('disabled');
     expect(confirm).toHaveClass('btn-danger');
@@ -1488,7 +1488,7 @@ describe('ManageMembers 88.6.1-50 — the pressed Transfer ownership stays focus
     expect(confirm).toHaveClass('btn-primary');
     expect(confirm).toHaveTextContent('Transfer ownership');
     expect(confirm).toHaveAccessibleName('Transfer ownership, transferring');
-    expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     // The sibling Cancel nobody pressed keeps its native gate (rule of POSITION).
     const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
     expect(cancel).toBeDisabled();
@@ -1573,7 +1573,7 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     // kept label as the button's own text, one house spinner, the sr-only ", resetting" suffix.
     const opener = (await screen.findByText('Reset invite link', { selector: 'button' })) as HTMLElement;
     await waitFor(() => expect(opener).toHaveAttribute('aria-disabled', 'true'));
-    expect(opener.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(opener.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(opener.querySelector('.sr-only')).toHaveTextContent(', resetting');
     expect(opener).not.toHaveAttribute('disabled');
 

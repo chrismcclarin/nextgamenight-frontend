@@ -6,6 +6,7 @@
 // painted grid with no undo, and their gate moved off `window.confirm` onto the
 // shared dialog tier. The gate was previously untested at this level.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
@@ -675,7 +676,7 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     // Rule 1 (88.9-45): the label stays, the house spinner joins it and the sr-only suffix is heard.
     expect(cta).toHaveAccessibleName('Submit Availability, submitting');
     expect(cta).toHaveTextContent('Submit Availability');
-    expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
 
     await user.click(cta);
     await new Promise((r) => setTimeout(r, 50));
@@ -692,7 +693,7 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
 
     release();
     await waitFor(() => expect(cta).toHaveAccessibleName('Submit Availability'));
-    expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await waitFor(() => expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
   });
 });
 

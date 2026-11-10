@@ -658,7 +658,7 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     // Rule 1 (88.9-24): the visible label stays, the house spinner shows, the name gains ', saving'.
     expect(save.firstChild?.textContent).toBe('Save');
     expect(save).toHaveAccessibleName('Save, saving');
-    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(save).toHaveAttribute('aria-disabled', 'true');
     expect(save).not.toHaveAttribute('disabled');
     // CONFIRM-ONLY in jsdom (see above): focus is still on the pressed control.
@@ -676,7 +676,7 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     expect(api.updateMyBrings).toHaveBeenCalledTimes(1);
     expect(save.firstChild?.textContent).toBe('Save');
     expect(save).toHaveAccessibleName('Save, saving');
-    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
   });
 
   it('S3. once the pending PUT REJECTS the gate lifts, and a fresh press sends a second PUT (Edge R4 concurrency)', async () => {

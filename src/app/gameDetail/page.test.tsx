@@ -37,6 +37,7 @@ import * as React from 'react';
 import { render, screen, within, cleanup, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 
 const SELF_UUID = '11111111-1111-4111-8111-111111111111';
@@ -1625,7 +1626,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     await user.click(invite);
     expect(invite).toHaveAccessibleName('Invite to group, sending');
     expect(invite).toHaveTextContent(/^Invite to group/);
-    expect(invite.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(invite.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(invite).toHaveAttribute('aria-disabled', 'true');
     expect(invite.hasAttribute('disabled')).toBe(false);
     await user.click(invite);
@@ -1636,14 +1637,14 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     });
     const retry = await screen.findByRole('button', { name: 'Retry' });
     expect(retry).toBe(invite);
-    expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await waitFor(() => expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
 
     // Pressed from the error state: Retry is the label under the user's finger, so Retry stays.
     const retry$ = deferredInvite();
     await user.click(retry);
     expect(retry).toHaveAccessibleName('Retry, sending');
     expect(retry).toHaveTextContent(/^Retry/);
-    expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(2);
     await act(async () => {
@@ -1662,7 +1663,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(1);
     expect(share).toHaveAccessibleName('Share Game QR, loading');
     expect(share).toHaveTextContent(/^Share Game QR/);
-    expect(share.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(share.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(share).toHaveAttribute('aria-disabled', 'true');
     expect(share.hasAttribute('disabled')).toBe(false);
 
@@ -1671,7 +1672,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     });
     const idle = await screen.findByRole('button', { name: 'Share Game QR' });
     expect(idle).toBe(share);
-    expect(idle.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await waitFor(() => expect(idle.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
   });
 });
 

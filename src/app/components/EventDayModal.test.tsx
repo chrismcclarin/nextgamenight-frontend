@@ -346,7 +346,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     const loading = screen.getByRole('button', { name: BUSY });
     expect(loading).toBe(share);
     expect(loading).toHaveTextContent('Share Game QR');
-    expect(loading.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(loading.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(loading).toHaveAttribute('aria-disabled', 'true');
     expect(loading.hasAttribute('disabled')).toBe(false);
     // Confirm-only in jsdom (see the describe comment).

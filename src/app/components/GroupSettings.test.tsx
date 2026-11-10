@@ -1096,7 +1096,7 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
 
     expect(await screen.findByRole('button', { name: 'Save Changes, saving' })).toBe(save);
     expect(save.firstChild?.textContent).toBe('Save Changes');
-    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(save).toHaveAttribute('aria-disabled', 'true');
     expect(save).not.toHaveAttribute('disabled');
     expect(save).toHaveClass('btn-primary');
@@ -1157,7 +1157,7 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
 
     expect(await screen.findByRole('button', { name: 'Confirm Leave, leaving' })).toBe(confirm);
     expect(confirm).toHaveTextContent('Confirm Leave');
-    expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(confirm).toHaveAttribute('aria-disabled', 'true');
     expect(confirm).not.toHaveAttribute('disabled');
     expect(confirm).toHaveClass('btn-danger');
@@ -1235,7 +1235,7 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     // the background is hidden from the role tree while the dialog is open
     expect(await screen.findByRole('button', { name: 'Delete Group, deleting', hidden: true })).toBe(opener);
     expect(opener).toHaveTextContent('Delete Group');
-    expect(opener.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(opener.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(opener).toHaveAttribute('aria-disabled', 'true');
     expect(opener).not.toHaveAttribute('disabled');
 

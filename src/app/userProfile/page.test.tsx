@@ -748,7 +748,7 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
     const pendingConfirm = await within(dialog).findByRole('button', { name: 'Disconnect, disconnecting' });
     expect(pendingConfirm).toHaveTextContent('Disconnect');
-    expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
     expect(within(dialog).queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
 
@@ -1864,7 +1864,7 @@ describe('userProfile phone block (plan 88.6-17)', () => {
     fireEvent.click(save);
     await waitFor(() => expect(save).toHaveAccessibleName('Save & Verify, sending code'));
     expect(save).toHaveTextContent(/^Save & Verify/);
-    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(save).toHaveAttribute('aria-disabled', 'true');
     expect(save).not.toBeDisabled();
     expect(document.activeElement).toBe(save);
@@ -1884,7 +1884,7 @@ describe('userProfile phone block (plan 88.6-17)', () => {
     fireEvent.click(verify);
     await waitFor(() => expect(verify).toHaveAccessibleName('Verify, verifying'));
     expect(verify).toHaveTextContent(/^Verify/);
-    expect(verify.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(verify.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(verify).toHaveAttribute('aria-disabled', 'true');
     expect(verify).not.toBeDisabled();
     expect(document.activeElement).toBe(verify);
@@ -1905,7 +1905,7 @@ describe('userProfile phone block (plan 88.6-17)', () => {
     fireEvent.click(replay);
     await waitFor(() => expect(replay).toHaveAccessibleName('Replay Tutorial, starting'));
     expect(replay).toHaveTextContent(/^Replay Tutorial/);
-    expect(replay.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(replay.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(replay).toHaveAttribute('aria-disabled', 'true');
     expect(replay).not.toBeDisabled();
     expect(document.activeElement).toBe(replay);
@@ -3253,7 +3253,7 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     expect(save.isConnected).toBe(true);
     expect(save.firstChild?.textContent).toBe('Save Schedule');
     expect(save).toHaveAccessibleName('Save Schedule, saving');
-    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
 
     fireEvent.click(save);
     fireEvent.click(save);
@@ -3282,7 +3282,7 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     expect(save.isConnected).toBe(true);
     expect(save.firstChild?.textContent).toBe('Save Override');
     expect(save).toHaveAccessibleName('Save Override, saving');
-    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
 
     fireEvent.click(save);
     fireEvent.click(save);
@@ -3914,7 +3914,7 @@ describe('username Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     expect(save).not.toBeDisabled();
     expect(save.firstChild?.textContent).toBe('Save');
     expect(save).toHaveAccessibleName('Save, saving');
-    expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(cancel).toBeDisabled();
 
     fireEvent.click(save);
@@ -5453,7 +5453,7 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(importBtn).toHaveAccessibleName('Import Collection, importing'));
     expect(importBtn).toHaveTextContent(/^Import Collection/);
-    expect(importBtn.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(importBtn.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(importBtn).toHaveAttribute('aria-disabled', 'true');
     expect(importBtn).not.toBeDisabled();
     fireEvent.click(importBtn);
@@ -5474,7 +5474,7 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     fireEvent.click(search);
     await waitFor(() => expect(search).toHaveAccessibleName('Search, searching'));
     expect(search).toHaveTextContent(/^Search/);
-    expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(search).toHaveAttribute('aria-disabled', 'true');
     expect(search).not.toBeDisabled();
     expect(document.activeElement).toBe(search);
@@ -5490,7 +5490,7 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     fireEvent.click(add);
     await waitFor(() => expect(add).toHaveAccessibleName('Add to Collection, adding'));
     expect(add).toHaveTextContent(/^Add to Collection/);
-    expect(add.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(add.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(add).toHaveAttribute('aria-disabled', 'true');
     expect(add).not.toBeDisabled();
     expect(document.activeElement).toBe(add);
