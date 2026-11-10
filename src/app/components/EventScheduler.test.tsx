@@ -299,9 +299,14 @@ describe('EventScheduler — controlled selectedSlot renders the summary panel',
   });
 
   it('shows the drag-to-select prompt instead when nothing is selected', () => {
+    // AMENDED Phase 88.9-41 (S1a): the prompt is now the desktop range caption above the grid
+    // (jsdom's default matchMedia answers false, so this is the desktop arm); it is visible
+    // (no `invisible` class) while nothing is selected.
     render(<EventScheduler initialDate={WEEK_N} />);
     expect(screen.queryByText('Selected Time:')).not.toBeInTheDocument();
-    expect(screen.getByText(/select a time slot for your event/i)).toBeInTheDocument();
+    const caption = screen.getByText(/pick a time range/i);
+    expect(caption).toBeInTheDocument();
+    expect(caption).not.toHaveClass('invisible');
   });
 });
 
