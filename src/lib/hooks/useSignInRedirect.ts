@@ -184,10 +184,18 @@ export function useSignInRedirect(options: UseSignInRedirectOptions): SignInRedi
   }, [authLoading, signedOut, unauthorizedArm, sessionProven, markSessionProven]);
 
   // The page shows its own loading hold, so no error screen paints for a frame before navigation
-  // (gameDetail's RESEARCH P-5 rule).
-  const holding =
-    decision === 'redirecting' ||
-    (decision === 'idle' && !authLoading && (signedOutArm || unauthorizedArm));
+  // (gameDetail's RESEARCH P-5 rule). The hold is for a redirect that is ABOUT to happen: when the
+  // latch is already set (or unreadable) the decision will be 'declined', so there is no hold —
+  // the page keeps its content, and the focus inside it, for the one render before the effect
+  // commits 'declined' (C12: a hold frame there unmounted a focused control and dropped focus to
+  // body; userProfile K8 pins it). Reading the latch at render is a side-effect-free read.
+  const armed = !authLoading && (signedOutArm || unauthorizedArm);
+  const willDecline =
+    armed &&
+    decision === 'idle' &&
+    typeof window !== 'undefined' &&
+    readLatch(signInLatchKey(window.location)) !== 'clear';
+  const holding = decision === 'redirecting' || (decision === 'idle' && armed && !willDecline);
 
   const signedOutErrorState = useFetchErrorState({
     isError: decision === 'declined' && signedOutArm,

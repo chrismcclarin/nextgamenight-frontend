@@ -100,7 +100,8 @@ const h = vi.hoisted(() => ({
     name: 'Self',
     email: 'self@example.com',
     picture: null,
-  } as Record<string, unknown>,
+    // 88.9-40 (SESSION-01): `undefined` is the signed-out shape; every reader tolerates it.
+  } as Record<string, unknown> | undefined,
   /**
    * Auth0 session error. Plan 88-19 needs a NON-null value to reach the page's
    * error branch, which no earlier suite exercised — that branch used to render
@@ -124,7 +125,7 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
     query: { isError: Boolean(h.selfError), error: h.selfError, isPending: !h.self && !h.selfError, refetch: h.refetchSelf },
     isPending: !h.self && !h.selfError,
     // Plan 88.6.1-79 (D-r3-10): the identity query's cache key, the same shape the real hook builds.
-    queryKey: ['users', 'self', h.authUser.sub],
+    queryKey: ['users', 'self', h.authUser?.sub],
   }),
 }));
 
@@ -255,6 +256,7 @@ import { logger } from '@/lib/logger';
 import { auditFormControls } from '../../test-utils/formControlAudit';
 import { ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 import { availabilityKeys } from '@/lib/queryKeys/availabilityKeys';
 import { QueryClientContext, hashKey } from '@tanstack/react-query';
 import { UNAVAILABLE_COPY } from '@/app/components/EmailAddressSection';
@@ -340,6 +342,7 @@ beforeEach(() => {
   h.patternsEntry = {};
   h.authError = null;
   h.showTutorial = false;
+  window.sessionStorage.clear();
 });
 
 afterEach(cleanup);
@@ -5629,6 +5632,11 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
   });
 
   async function withdrawnCase(err: ApiError) {
+    // AMENDED Phase 88.9-40 (K4, SESSION-01): a 401 over the kept row now redirects once (the shared
+    // guard); only a read made on THIS visit clears the latch (isFetchedAfterMount), which this
+    // harness's identity query never reports, so a latch set before render holds and the 401 case
+    // pins the DECLINED arm — the withdrawal it always held.
+    if (err.code === 'unauthorized') window.sessionStorage.setItem(signInLatchKey(window.location), '1');
     const view = await healthy();
     // Positive signal: the collection list renders live over the healthy row.
     await screen.findByRole('button', { name: 'Remove Catan' });
@@ -5721,6 +5729,8 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
       new ApiError('Forbidden', 'forbidden', 403),
       new ApiError('Unauthorized', 'unauthorized', 401),
     ]) {
+      // AMENDED Phase 88.9-40 (K8): the 401 arm pins the declined withdrawal (see withdrawnCase).
+      window.sessionStorage.setItem(signInLatchKey(window.location), '1');
       const view = await healthy(mainContainer());
       h.selfError = new ApiError('Server error', 'internal', 500);
       await commit(view.rerender);
@@ -5792,11 +5802,11 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const fakeClient = {
       getQueryCache: () => ({
         find: (filters: { queryKey?: unknown }) =>
-          JSON.stringify(filters?.queryKey) === JSON.stringify(['users', 'self', h.authUser.sub])
+          JSON.stringify(filters?.queryKey) === JSON.stringify(['users', 'self', h.authUser?.sub])
             ? selfEntry
             : undefined,
         // P5 A-79: useRetainedContent looks its query up by hash (`get`), so the fake answers both.
-        get: (hash: string) => (hash === hashKey(['users', 'self', h.authUser.sub]) ? selfEntry : undefined),
+        get: (hash: string) => (hash === hashKey(['users', 'self', h.authUser?.sub]) ? selfEntry : undefined),
       }),
     };
     const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -5824,5 +5834,81 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     h.selfError = null;
     await commit(second.rerender);
     expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+  });
+});
+
+// Phase 88.9-40 (SESSION-01, owner ruling 2026-11-07, SPEC A8): a signed-out profile visit goes to
+// sign-in and back here (the shared guard,
+// src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling"))) instead
+// of the shipped blank page; a return with the latch set is the profile banner with Sign in; a
+// useUser() error with no user still reaches the DECISION Phase 88-19 fallback — that test, not the
+// marker count, is the evidence 88-19 is honoured in behaviour.
+describe('userProfile sign-in guard (88.9-40: SESSION-01)', () => {
+  const REAL_LOCATION = window.location;
+  let savedUser: typeof h.authUser;
+
+  function stubLocation(pathname = '/userProfile') {
+    const replace = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: {
+        origin: 'http://localhost',
+        protocol: 'http:',
+        host: 'localhost',
+        hostname: 'localhost',
+        port: '',
+        pathname,
+        search: '',
+        hash: '',
+        href: `http://localhost${pathname}`,
+        replace,
+        assign: vi.fn(),
+      },
+    });
+    return replace;
+  }
+
+  beforeEach(() => {
+    savedUser = h.authUser;
+  });
+  afterEach(() => {
+    h.authUser = savedUser;
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+  });
+
+  it('SESSION-01 (88.9): a signed-out profile visit is sent to sign-in once, never a blank page; back with the latch set it shows the profile banner with Sign in', async () => {
+    const replace = stubLocation();
+    h.authUser = undefined;
+    render(<Profile />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2FuserProfile');
+    // The redirect frame is the loading line, never a blank page.
+    expect(screen.getByText('Loading your profile...')).toBeInTheDocument();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    cleanup();
+
+    // Back in the same tab without signing in: the profile banner with Sign in, no redirect.
+    render(<Profile />);
+    expect(await screen.findByText("We couldn't load your profile")).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      '/api/auth/login?returnTo=%2FuserProfile'
+    );
+    expect(screen.queryByText('Loading your profile...')).toBeNull();
+    expect(document.body.textContent).not.toBe('');
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('SESSION-01 (88.9): a useUser error with no user shows the 88-19 fallback, never a redirect', async () => {
+    const replace = stubLocation();
+    h.authUser = undefined;
+    h.authError = Object.assign(new Error('me failed'), { status: 500 });
+    render(<Profile />);
+    expect(await screen.findByText("We couldn't load your profile")).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reload page' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
   });
 });

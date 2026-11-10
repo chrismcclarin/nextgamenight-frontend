@@ -6,6 +6,8 @@ import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
+import { buildSignInUrl } from '@/lib/signIn';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import {
     FetchErrorBanner,
@@ -31,6 +33,7 @@ import { queryCacheOnError } from '../../lib/queryClient';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
@@ -77,7 +80,7 @@ function neighbourControl(row, isRowInFlight) {
 }
 
 function FriendsPage() {
-    const { user, isLoading: authLoading } = useUser();
+    const { user, error: authError, isLoading: authLoading } = useUser();
 
     // D-09 (Pitfall 5 / D-07 window rule): the friends page GATES on identity.
     // Incoming-vs-outgoing request classification, the admin-group derive, and
@@ -417,6 +420,21 @@ function FriendsPage() {
         isError: Boolean(sentError),
         error: sentError,
         refetch: retrySent,
+    });
+    // DECISION Phase 88.9-40 (SESSION-01): a signed-out visitor goes straight to sign-in and back here,
+    // chosen OVER the prompt as the first screen (one more tap, and its bare login link returned the
+    // person to the home page, not here); the prompt remains for a return with the latch set, its Log
+    // In link now carrying returnTo. A 401 on identity or the friends / sent lists redirects once too
+    // (SPEC A8). A useUser() error shows Reload, not the log-in prompt. See
+    // src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling").
+    const signIn = useSignInRedirect({
+        authLoading,
+        signedOut: !user,
+        authError,
+        unauthorized: [selfIdentityErrorState, friendsErrorState, sentErrorState].some(
+            (s) => s.showError && s.code === 'unauthorized'
+        ),
+        sessionProven: friendsLoaded,
     });
 
     // The Requests tab over the shared provider (88.6.1-70 contract C5): the refetch is plan
@@ -856,8 +874,9 @@ function FriendsPage() {
         return { type: 'send', label: 'Send Request' };
     };
 
-    // Loading / not logged in
-    if (authLoading) {
+    // Loading / not logged in. 88.9-40: the same hold is the redirect frame (signIn.holding), so no
+    // prompt or banner paints for a frame before the browser navigates.
+    if (authLoading || signIn.holding) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
                 <div role="status" aria-label="Signing you in" className="flex items-center gap-2 text-content-secondary">
@@ -868,6 +887,14 @@ function FriendsPage() {
         );
     }
 
+    // 88.9-40 (SESSION-01): useUser() itself failed (offline, or /api/auth/me answered 5xx) — Reload,
+    // never the prompt and never a redirect. The title is this page's banner title; the body is
+    // userProfile's 88-19 sentence (no new copy).
+    if (signIn.sessionError) {
+        return <ErrorFallback title="Couldn't load your friends" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />;
+    }
+
+    // Reached only on the DECLINED arm (back from sign-in with the latch set, or storage failed).
     if (!user) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
@@ -885,7 +912,7 @@ function FriendsPage() {
                         unlayered `.btn` (its padding and `display: inline-flex`, both in the block marked at
                         src/app/globals.css ("UNLAYERED with every other declaration it has today"); re-pointed 88.6.1-40). */}
                     <Button asChild variant="primary" size="default" className="focus-visible:ring-offset-surface-page">
-                        <a href="/api/auth/login">Log In</a>
+                        <a href={buildSignInUrl()}>Log In</a>
                     </Button>
                 </div>
             </div>

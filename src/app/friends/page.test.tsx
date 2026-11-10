@@ -63,10 +63,12 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 // import, before a plain module-level const would be initialised.
 const auth = vi.hoisted(() => ({
   user: { sub: 'auth0|self', name: 'Self', email: 'self@example.com' },
+  // 88.9-40 (SESSION-01): what useUser reports when /api/auth/me itself fails.
+  error: null as unknown,
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: auth.user, isLoading: false }),
+  useUser: () => ({ user: auth.user, error: auth.error, isLoading: false }),
 }));
 
 // Received requests live in the shared provider (POLL-02), not in page state.
@@ -155,6 +157,7 @@ import { ApiError, friendshipsAPI, groupsAPI, invitesAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { queryCacheOnError } from '@/lib/queryClient';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 
 // F9b (88.9-23): the two-tap gate refuses the second tap for CONFIRM_DELAY_MS after arming.
@@ -222,6 +225,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
   h.identityError = false;
+  auth.error = null;
+  window.sessionStorage.clear();
   // `clearAllMocks` clears CALLS, not IMPLEMENTATIONS, so a rejection set by one arm
   // would leak into every later one in file order. Restore the defaults explicitly.
   providerCtx.receivedRequests = [];
@@ -254,6 +259,35 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// 88.9-40 (SESSION-01): the gameDetail suite's location stub (src/app/gameDetail/page.test.tsx ("function stubLocation(")),
+// pinned to /friends: the guard reads pathname + search + hash and calls replace; the prompt's Log In
+// href and the latch key read the same location. Each caller restores REAL_LOCATION itself.
+const REAL_LOCATION = window.location;
+function stubLocation(pathname = '/friends') {
+  const replace = vi.fn();
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: {
+      origin: 'http://localhost',
+      protocol: 'http:',
+      host: 'localhost',
+      hostname: 'localhost',
+      port: '',
+      pathname,
+      search: '',
+      hash: '',
+      href: `http://localhost${pathname}`,
+      replace,
+      assign: vi.fn(),
+    },
+  });
+  return replace;
+}
+function restoreLocation() {
+  Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+}
+
 describe('friends render harness', () => {
   it('renders the page shell and the add-friend search once identity resolves', async () => {
     renderFriends();
@@ -281,13 +315,19 @@ describe('friends render harness', () => {
            `<Link>`, this role query is what notices.
          - the EXACT href: a client-router navigation to Auth0's handoff route is a behaviour
            change, not a cleanup (UI-SPEC §3.2's asChild row says so in terms).
-       `auth.user` is restored in the `finally` so no later test inherits a signed-out page. */
+       `auth.user` is restored in the `finally` so no later test inherits a signed-out page.
+       AMENDED Phase 88.9-40 (SESSION-01): the prompt is now the DECLINED arm (a signed-out visitor is
+       redirected first), so the latch is set after the location stub, and the href carries returnTo
+       (buildSignInUrl, src/lib/signIn.ts) — still a hard-navigation `<a>`, which is 88.6-19's rule. */
     const saved = auth.user;
     auth.user = null as unknown as typeof auth.user;
+    const replace = stubLocation('/friends');
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
     try {
       render(<FriendsPage />);
       const login = await screen.findByRole('link', { name: 'Log In' });
-      expect(login).toHaveAttribute('href', '/api/auth/login');
+      expect(login).toHaveAttribute('href', '/api/auth/login?returnTo=%2Ffriends');
+      expect(replace).not.toHaveBeenCalled();
       expect(login.tagName).toBe('A');
       // The primitive's own classes reached the slotted child (the `Slot` contract).
       expect(login.className).toContain('btn');
@@ -296,6 +336,7 @@ describe('friends render harness', () => {
       expect(login).not.toHaveAttribute('type');
     } finally {
       auth.user = saved;
+      restoreLocation();
     }
   });
 
@@ -1925,6 +1966,11 @@ async function friendsRefreshFails(err: unknown, friends: Array<Record<string, u
   const utils = renderFriends({ friends });
   if (friends.length > 0) await screen.findByText('Dana');
   else await screen.findByRole('heading', { name: 'No friends yet' });
+  // AMENDED Phase 88.9-40 (RF-F6 / RF-S2, SESSION-01): a 401 refresh now redirects once (the shared
+  // guard), and a load that succeeds clears a latch set before it, so for a 401 answer the latch is
+  // set HERE — after the load, before the refresh — and the test pins the DECLINED arm: the banner
+  // with the register line it always held.
+  if (err instanceof ApiError && err.code === 'unauthorized') window.sessionStorage.setItem(signInLatchKey(window.location), '1');
   // After the mount's own call, so the mount does not consume it.
   (friendshipsAPI.getFriends as Mock).mockRejectedValueOnce(err);
   // Relative counts: an arm that runs this twice (after a cleanup) keeps the earlier calls.
@@ -1945,6 +1991,8 @@ async function sentRefreshFails(err: unknown, sent: Array<Record<string, unknown
   if (sent.length > 0) await screen.findByText('Alex');
   else await screen.findByText('No sent friend requests.');
   const send = await searchTo(RILEY_HIT, 'riley@example.com');
+  // AMENDED Phase 88.9-40 (RF-S2): the same seam as friendsRefreshFails — a 401 answer pins the declined arm.
+  if (err instanceof ApiError && err.code === 'unauthorized') window.sessionStorage.setItem(signInLatchKey(window.location), '1');
   (friendshipsAPI.getSentRequests as Mock).mockRejectedValueOnce(err);
   const calls = (friendshipsAPI.getSentRequests as Mock).mock.calls.length;
   fireEvent.click(send);
@@ -2303,5 +2351,55 @@ describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)'
     } finally {
       observer.disconnect();
     }
+  });
+});
+
+// Phase 88.9-40 (SESSION-01, owner ruling 2026-11-07, SPEC A8): a signed-out friends visit goes
+// straight to sign-in and back here (the shared guard,
+// src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling"))); the
+// prompt remains for a return with the latch set, its Log In link now carrying returnTo; a
+// useUser() error is the Reload fallback, not the prompt.
+describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
+  let savedUser: typeof auth.user;
+  beforeEach(() => {
+    savedUser = auth.user;
+  });
+  afterEach(() => {
+    auth.user = savedUser;
+    auth.error = null;
+    restoreLocation();
+  });
+
+  it("SESSION-01 (88.9): a signed-out friends visit is sent to sign-in once with /friends as returnTo; back with the latch set the prompt's Log In link carries returnTo", async () => {
+    const replace = stubLocation('/friends');
+    auth.user = null as unknown as typeof auth.user;
+    render(<FriendsPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2Ffriends');
+    // The redirect frame is the auth hold, never the prompt.
+    expect(screen.getByRole('status', { name: 'Signing you in' })).toBeInTheDocument();
+    expect(screen.queryByText('Please log in to view your friends.')).toBeNull();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    cleanup();
+
+    // Back in the same tab without signing in: the prompt, its link carrying returnTo, no redirect.
+    render(<FriendsPage />);
+    const login = await screen.findByRole('link', { name: 'Log In' });
+    expect(login).toHaveAttribute('href', '/api/auth/login?returnTo=%2Ffriends');
+    expect(screen.getByText('Please log in to view your friends.')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Signing you in' })).toBeNull();
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('SESSION-01 (88.9): a useUser error on friends shows Reload, not the log-in prompt, and never redirects', async () => {
+    const replace = stubLocation('/friends');
+    auth.user = null as unknown as typeof auth.user;
+    auth.error = Object.assign(new Error('me failed'), { status: 500 });
+    render(<FriendsPage />);
+    expect(await screen.findByRole('button', { name: 'Reload page' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: "Couldn't load your friends" })).toBeInTheDocument();
+    expect(screen.queryByText('Please log in to view your friends.')).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
   });
 });

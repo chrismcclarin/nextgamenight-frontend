@@ -48,6 +48,7 @@ import { useInlineReceipt } from '../../components/ui/useInlineReceipt';
 import { announceStatus } from '@/components/ui/announcer';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
@@ -167,6 +168,20 @@ function Profile(){
     // early-return, so the flags never clear and both zones spin forever. Derive the shared
     // error state here (kept RAW on purpose: DECISION Phase 88.6.1-79, identity kept row) and render the compact degrade banner in those two zones.
     const selfIdentityErrorState = useFetchErrorState(selfQuery);
+    // DECISION Phase 88.9-40 (SESSION-01): a signed-out visitor goes to sign-in and back here, chosen
+    // OVER the shipped blank page (the user && render drew nothing); a return with the latch set gets
+    // the profile banner with Sign in; a 401 on the self read redirects once (SPEC A8). The useUser
+    // error branch below (the Phase 88-19 DECISION on it) is unchanged and still reached: the hook's authError
+    // option keeps a useUser error out of holding (hook test 6; page test 'SESSION-01 (88.9): a useUser
+    // error with no user shows the 88-19 fallback, never a redirect'). Only a read made on THIS visit
+    // proves the session (isFetchedAfterMount), so a cached row can never clear the latch.
+    const signIn = useSignInRedirect({
+        authLoading: isLoading,
+        signedOut: !user,
+        authError: error,
+        unauthorized: selfIdentityErrorState.showError && selfIdentityErrorState.code === 'unauthorized',
+        sessionProven: selfQuery.isSuccess && selfQuery.isFetchedAfterMount,
+    });
     const [ownedGames, setOwnedGames] = useState([]);
     const [loadingGames, setLoadingGames] = useState(true);
     const [bggSearchQuery, setBggSearchQuery] = useState('');
@@ -2234,7 +2249,9 @@ function Profile(){
     // §6.3: loading copy NAMES the thing. Worded identically to this route's own
     // `loading.tsx` fallback so the boundary and the component do not greet the
     // same person with two different sentences on one navigation.
-    if (isLoading) return <div className="flex items-center justify-center min-h-screen">Loading your profile...</div>;
+    // 88.9-40: the same line is the redirect frame (signIn.holding), so no blank page or banner paints
+    // for a frame before the browser navigates.
+    if (isLoading || signIn.holding) return <div className="flex items-center justify-center min-h-screen">Loading your profile...</div>;
 
     /* DECISION Phase 88-19 (Req 7 / T-88-19-02): the session-error branch renders
        the shared `ErrorFallback` — chosen OVER hand-writing a designed sentence
@@ -2266,6 +2283,17 @@ function Profile(){
                 title="We couldn't load your profile"
                 body="Your session didn't come back. Reload the page, and sign in again if it keeps happening."
             />
+        );
+    }
+
+    // 88.9-40 (SESSION-01): the DECLINED signed-out return (back from sign-in with the latch set, or
+    // storage failed) — the profile banner with Sign in, in place of the blank page `user &&` drew.
+    // The title literal is the one this file already uses; plans 88.9-48 / 49 convert it to `thing=`.
+    if (!user) {
+        return (
+            <div className="p-3 md:p-6 max-w-4xl mx-auto">
+                <FetchErrorBanner state={signIn.signedOutErrorState} title="We couldn't load your profile" reportContext="Profile page — signed out" />
+            </div>
         );
     }
 
