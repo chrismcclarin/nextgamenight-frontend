@@ -13,8 +13,9 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 //      sideways scroll, the notice above the list); a keyboard Retry that succeeds lands on the
 //      heading again. A failed layout assertion here is a STOP for the owner's mockup (plan 70
 //      C8 d) — report the measured numbers, never restyle the notice from this spec.
-//   E3 (D-35, D-24, Req 8): the pressed `Start poll` keeps focus while it works, reads
-//      `Starting...` with aria-disabled and no native disabling attribute, is at least 44px tall,
+//   E3 (D-35, D-24, Req 8; rule 1, 88.9-45): the pressed `Start poll` keeps focus while it works,
+//      keeps its label with the house spinner (named "Start poll, starting") with aria-disabled
+//      and no native disabling attribute, is at least 44px tall,
 //      and a proxy CSRF 403 then announces copy row R1 in the dialog's one alert.
 //
 // IT NEVER WRITES TO THE BACKEND. The settings GET, the schedule DELETE and the check-in POST are
@@ -242,11 +243,14 @@ test.describe('Recurring Check-ins and Start a check-in at 375px (88.6.1-30)', (
     const dialog = page.getByRole('dialog', { name: 'Start a check-in' });
     await expect(dialog).toBeVisible();
 
-    // Matched by role and either label, because the label itself changes while it works.
-    const submit = dialog.getByRole('button', { name: /^(Start poll|Starting\.\.\.)$/ });
+    // Matched by role and either name: the label stays while it works, and the busy suffix joins
+    // the name (rule 1, 88.9-45; Chromium may insert a space before the sr-only comma).
+    const submit = dialog.getByRole('button', { name: /^Start poll( ?, starting)?$/ });
     await activate(page, submit);
 
-    await expect(submit).toHaveText('Starting...');
+    await expect(submit).toHaveText(/^Start poll/);
+    await expect(submit).toHaveAccessibleName(/^Start poll ?, starting$/);
+    await expect(submit.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(submit).toBeFocused();
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await expect(submit).not.toHaveAttribute('disabled');

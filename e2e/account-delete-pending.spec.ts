@@ -71,8 +71,12 @@ test.describe('Account deletion — the pressed danger action stays focusable at
     // A missing control or request is a failure, never a skip.
     await expect.poll(heldDeletes, { timeout: 15_000 }).toBe(1);
 
-    const pressed = dialog.getByRole('button', { name: 'Deleting…', exact: true });
+    // Rule 1 (88.9-45): the label stays; Chromium may insert a space before the sr-only suffix
+    // (e2e/form-submit-in-flight.spec.ts ("the label is a flex item and the sr-only suffix its own out-of-flow")).
+    const pressed = dialog.getByRole('button', { name: /^Delete my account ?, deleting$/ });
     await expect(pressed).toBeAttached();
+    await expect(pressed).toHaveText(/^Delete my account/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
 

@@ -208,7 +208,10 @@ test.describe('Response dashboard Remind (plan 88.6.1-11)', () => {
     await expect(pressed).toBeFocused();
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
-    await expect(pressed).toHaveText('Sending...');
+    // Rule 1 (88.9-45): the label stays, the house spinner joins it, the suffix is heard.
+    await expect(pressed).toHaveText(/^Remind/);
+    await expect(pressed).toHaveAccessibleName(/^Remind ?, sending$/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
 
     // The per-row latch refuses a second press. An ABSENCE check: a second POST, if one were sent,
     // would not have reached the route yet, so give it a bounded window first (the
