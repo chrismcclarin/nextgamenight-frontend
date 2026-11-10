@@ -2132,7 +2132,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // own outcome LEAD was right: EMPHASIS, utility DELETED, the colour token doing the work. It is
   // §4.5's own named precedent shape — a link-styled button already carrying
   // `text-content-link underline`, exactly like the primitive's three link-buttons, the compact
-  // src/components/ui/FetchErrorBanner.tsx ("{retrying ? 'Retrying…' : 'Retry'}") and the full
+  // src/components/ui/FetchErrorBanner.tsx ("aria-describedby={textId}") and the full
   // branch's Try again and Report this beside it — so the weight
   // was a third redundant signal beside the colour and the underline. Its `text-sm` STAYS and is
   // LIVE (a bare `<button>`, not a `.btn`, so the size utility is not dead), and its `min-h-11`
@@ -2251,7 +2251,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     jump on top would be an unsanctioned visible delta with no V-row.
   //   - the group-transfer link's `font-semibold`: the same case as the primitive's own
   //     link-buttons, the compact
-  //     src/components/ui/FetchErrorBanner.tsx ("{retrying ? 'Retrying…' : 'Retry'}") and the
+  //     src/components/ui/FetchErrorBanner.tsx ("aria-describedby={textId}") and the
   //     full branch's Try again and Report this — `text-content-link` does the work.
   //   - the confirm field's `<label>`: stays Label 14, weight only.
   //   - the FIFTH was deleted one commit earlier, by task 2's in-place conversion of the

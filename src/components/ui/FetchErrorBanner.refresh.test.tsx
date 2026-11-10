@@ -193,7 +193,7 @@ describe('RefreshFailedNotice — tracer (plan 88.6.1-70, RF1 / D-47)', () => {
         pending[0].resolve({ isError: false });
       });
       await waitFor(() => expect(document.activeElement).toBe(heading));
-      expect(screen.queryByRole('button', { name: /^(Retry|Retrying…)$/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Retry(, retrying)?$/ })).toBeNull();
       expect(politeRegionIn(slot())).toBe(region);
       expect(region?.textContent).toBe('');
 
@@ -385,7 +385,61 @@ function QueryHarness({ refetchRef }: QueryHarnessProps) {
 }
 
 describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
-  it('RN-4. two activations in one tick issue ONE retry; Retry stays focusable, aria-disabled, Retrying…, no flash', async () => {
+  // Rule 1 (88.9-46 B37 / B38, owner pick O16a + the Q3 ruling): both retry controls keep their
+  // label, swap the RefreshCw icon for the house Spinner (data-slot spinner, plan 88.9-24) while a
+  // retry is in flight, and are named label plus the heard ', retrying' suffix. The compact
+  // notice's polite region stays quiet in flight (RN-4); the full banner's polite region keeps its
+  // own Retrying… caption (a status region, not a button — the census B note).
+  it('rule 1 (88.9): Retry and Try again keep their labels and show the house spinner while a retry is in flight (B37, B38)', async () => {
+    const { retry, pending } = pressableRetry();
+    render(<NoticeHost retry={retry} />);
+    const compact = screen.getByRole('button', { name: 'Retry' });
+    expect(compact.querySelector('svg'), 'the RefreshCw icon shows at rest').not.toBeNull();
+    expect(compact.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+
+    act(() => {
+      compact.click();
+      compact.click();
+    });
+    expect(retry, 'one refetch for a double activation').toHaveBeenCalledTimes(1);
+    expect(compact).toHaveAccessibleName('Retry, retrying');
+    expect(compact).toHaveTextContent(/^Retry/);
+    expect(compact.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(compact.querySelector('svg'), 'the icon yields to the house spinner while busy').toBeNull();
+    expect(compact).toHaveAttribute('aria-disabled', 'true');
+    expect(compact).not.toHaveAttribute('disabled');
+    expect(politeRegionIn(slot())?.textContent, 'the compact region is quiet in flight (RN-4)').toBe('');
+    await act(async () => {
+      pending[0].resolve(undefined);
+    });
+    cleanup();
+
+    const held = deferred();
+    const fullRetry = vi.fn(() => held.promise);
+    const state: FetchErrorState = { showError: true, message: 'boom', code: 'unknown', retry: fullRetry };
+    const { container } = render(<FetchErrorBanner state={state} />);
+    const tryAgain = screen.getByRole('button', { name: 'Try again' });
+    expect(tryAgain.querySelector('svg'), 'the RefreshCw icon shows at rest').not.toBeNull();
+
+    act(() => {
+      tryAgain.click();
+      tryAgain.click();
+    });
+    expect(fullRetry, 'one refetch for a double activation').toHaveBeenCalledTimes(1);
+    expect(tryAgain).toHaveAccessibleName('Try again, retrying');
+    expect(tryAgain).toHaveTextContent(/^Try again/);
+    expect(tryAgain.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(tryAgain.querySelector('svg'), 'the icon yields to the house spinner while busy').toBeNull();
+    expect(tryAgain).toHaveAttribute('aria-disabled', 'true');
+    expect(tryAgain).not.toHaveAttribute('disabled');
+    // The full banner's polite region is a status caption, not a button: it keeps its word.
+    expect(container.querySelector('[role="status"][aria-live="polite"]')?.textContent).toBe('Retrying…');
+    await act(async () => {
+      held.resolve(undefined);
+    });
+  });
+
+  it('RN-4. two activations in one tick issue ONE retry; Retry stays focusable, aria-disabled, keeps its label with the spinner (rule 1), no flash', async () => {
     const user = userEvent.setup();
     const { retry, pending } = pressableRetry();
     render(<NoticeHost retry={retry} />);
@@ -401,7 +455,9 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     expect(retry, 'two presses in one tick issue exactly ONE retry').toHaveBeenCalledTimes(1);
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button, 'never the native gate').not.toHaveAttribute('disabled');
-    expect(button).toHaveTextContent('Retrying…');
+    // rule 1 (88.9-46 B37): the label is kept; the busy name adds the heard suffix.
+    expect(button).toHaveAccessibleName('Retry, retrying');
+    expect(button).toHaveTextContent(/^Retry/);
     // CONFIRM-ONLY in jsdom (C-11: jsdom never blurs a disabled element); the RED half is the
     // attributes and the call count above.
     expect(document.activeElement).toBe(button);
@@ -560,7 +616,7 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
         await sleep(0);
       });
       expect(button.isConnected, 'the row is still mounted while the refetch is held').toBe(true);
-      expect(button).toHaveTextContent('Retrying…');
+      expect(button).toHaveAccessibleName('Retry, retrying');
       expect(document.activeElement).toBe(button);
 
       await act(async () => {
@@ -579,7 +635,7 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
         ok.resolve(['Ann', 'Bo']);
       });
       await waitFor(() => expect(document.activeElement).toBe(heading));
-      expect(screen.queryByRole('button', { name: /^(Retry|Retrying…)$/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Retry(, retrying)?$/ })).toBeNull();
       expect(screen.getByText('Bo')).toBeInTheDocument();
     } finally {
       unmount();

@@ -293,7 +293,7 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
-  it('EC-RF-4. Retry answers only when its fetch settles: Retrying… holds and the region stays quiet while held (C4, Edge R5 ordering)', async () => {
+  it('EC-RF-4. Retry answers only when its fetch settles: the busy Retry holds (rule 1) and the region stays quiet while held (C4, Edge R5 ordering)', async () => {
     const user = userEvent.setup();
     await loadThenRefresh(server500());
     await waitForRf1();
@@ -306,7 +306,7 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     await act(async () => {
       await sleep(150);
     });
-    expect(retry).toHaveTextContent('Retrying…');
+    expect(retry).toHaveAccessibleName('Retry, retrying');
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(retry);
     expect(region.textContent, 'the region stays quiet while the fetch is out').toBe('');
@@ -481,7 +481,7 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     });
     // The Retry's run and two tab returns: ONE more request.
     expect(eventsMock()).toHaveBeenCalledTimes(callsBefore + 1);
-    expect(retry).toHaveTextContent('Retrying…');
+    expect(retry).toHaveAccessibleName('Retry, retrying');
 
     await act(async () => {
       held.reject(server500());

@@ -1547,7 +1547,8 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     const user = userEvent.setup();
     renderHome();
     expect(await within(card()).findByText(CARD_LOAD_TITLE)).toBeInTheDocument();
-    // Captured BEFORE the press and never re-queried by name: in flight it reads `Retrying…`.
+    // Captured BEFORE the press and never re-queried by name: in flight its name gains the
+    // `, retrying` suffix (rule 1, 88.9-46 B38; the label stays Try again).
     const tryAgain = within(card()).getByRole('button', { name: 'Try again' });
     act(() => tryAgain.focus());
 

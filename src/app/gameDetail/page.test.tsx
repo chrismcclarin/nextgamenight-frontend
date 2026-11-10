@@ -3834,7 +3834,7 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     await reachEventRf1();
     const held = deferred(eventsAPI.getEvent as Mock);
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    const button = await screen.findByRole('button', { name: 'Retrying…' });
+    const button = await screen.findByRole('button', { name: 'Retry, retrying' });
     expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).not.toHaveAttribute('disabled');
@@ -4125,7 +4125,7 @@ describe('gameDetail retained-content notice, game view — RF1 (88.6.1-74)', ()
     await reachGameRf1();
     const held = deferred(gamesAPI.getGame as Mock);
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    const button = await screen.findByRole('button', { name: 'Retrying…' });
+    const button = await screen.findByRole('button', { name: 'Retry, retrying' });
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(button);
     expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();

@@ -1666,7 +1666,7 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
     expect(dialog.contains(rf1Region())).toBe(true);
   });
 
-  it('RF-2. Retry holds Retrying… while the GET is held, then lands focus on the dialog title (C8 c, C2, C4; Req 5)', async () => {
+  it('RF-2. Retry stays busy (rule 1) while the GET is held, then lands focus on the dialog title (C8 c, C2, C4; Req 5)', async () => {
     await loadRoster();
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
     triggerRefresh();
@@ -1681,7 +1681,8 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
 
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(retry).not.toHaveAttribute('disabled');
-    expect(retry).toHaveTextContent('Retrying…');
+    // The RF1 notice's Retry is FetchErrorBanner's (rule 1, 88.9-46 B37): label kept, suffix heard.
+    expect(retry).toHaveAccessibleName('Retry, retrying');
     expect(document.activeElement).toBe(retry);
     expect(rf1Line()).toBeTruthy();
     expect(screen.getByText('(You)')).toBeInTheDocument();

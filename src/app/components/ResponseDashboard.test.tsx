@@ -817,7 +817,8 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     await act(async () => {
       await sleep(150);
     });
-    expect(retry).toHaveTextContent('Retrying…');
+    // The notice's Retry is FetchErrorBanner's (rule 1, 88.9-46 B37): label kept, suffix heard.
+    expect(retry).toHaveAccessibleName('Retry, retrying');
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(retry);
     expect(region.textContent, 'the region stays quiet while the joined run is out').toBe('');
