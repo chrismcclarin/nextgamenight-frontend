@@ -1637,13 +1637,19 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     expect(within(dialog).queryByText(SHEET_LOAD_TITLE)).toBeNull();
   });
 
-  it('S8 (C8 e, C10 401): a refresh answered 401 withdraws the rows behind the full banner and its register line', async () => {
+  // AMENDED Phase 88.9-42 (O22d / SESSION-02): a 401 is a dead session, and the home page now says
+  // so ONCE in its page-level banner (Couldn't load this page, Sign in) in place of the card's own
+  // full banner; the card renders nothing beneath it. A 403 keeps the card's banner (S9).
+  it('S8 (C8 e, C10 401): a refresh answered 401 withdraws the rows and the page-level session banner takes the card\'s place', async () => {
     const err = new ApiError('Unauthorized', 'unauthorized', 401);
     await loadPairThenFail(err);
 
-    expect(await within(card()).findByText(getFetchErrorMessage(err))).toBeInTheDocument();
-    expect(within(card()).getByText(CARD_LOAD_TITLE)).toBeInTheDocument();
-    expect(within(card()).queryByRole('button', { name: /Catan/ })).toBeNull();
+    expect(await screen.findByText("Couldn't load this page")).toBeInTheDocument();
+    expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Upcoming Events', hidden: true })).toBeNull();
+    expect(screen.queryByText(CARD_LOAD_TITLE)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Catan/ })).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
@@ -1671,11 +1677,11 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     expect(within(card()).queryByText(CARD_LOAD_TITLE)).toBeNull();
   });
 
-  it('S11 (C8 f1, C12 a): an access answer to an unpressed re-attempt withdraws the focused row — focus lands on the card heading, or the sheet title while the sheet is open', async () => {
-    for (const err of [
-      new ApiError('Forbidden', 'forbidden', 403),
-      new ApiError('Unauthorized', 'unauthorized', 401),
-    ]) {
+  it('S11 (C8 f1, C12 a): an access answer to an unpressed re-attempt withdraws the focused row — focus lands on the card heading, or the sheet title while the sheet is open, or the page floor on a 401', async () => {
+    // AMENDED Phase 88.9-42 (O22d / SESSION-02): the 401 arm left this loop — on a 401 the card
+    // itself is withdrawn behind the page-level session banner, so the guard's card-heading target
+    // is gone and plan 70's floor rule lands focus on `main` (D-07). Its block follows the loop.
+    for (const err of [new ApiError('Forbidden', 'forbidden', 403)]) {
       await freshTree();
       const { fn } = await loadPairThenFail(err500());
       await waitForRf1(card);
@@ -1690,6 +1696,25 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
       expect(within(card()).getByText(CARD_LOAD_TITLE)).toBeInTheDocument();
       await waitFor(() => expect(document.activeElement).toBe(cardHeading()));
       expect(document.activeElement).not.toBe(document.body);
+    }
+
+    // AMENDED Phase 88.9-42 (O22d / SESSION-02): the 401 arm — the card goes, the page banner
+    // comes, focus lands on the page floor (`main`), never <body>.
+    {
+      await freshTree();
+      const main = document.body.appendChild(document.createElement('main'));
+      const { fn } = await loadPairThenFail(err500());
+      await waitForRf1(card);
+      act(() => within(card()).getByRole('button', { name: /Catan/ }).focus());
+      fn.mockRejectedValueOnce(new ApiError('Unauthorized', 'unauthorized', 401));
+
+      await act(async () => fireVisibility('visible'));
+
+      expect(await screen.findByText("Couldn't load this page")).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Upcoming Events', hidden: true })).toBeNull();
+      await waitFor(() => expect(document.activeElement).toBe(main));
+      expect(document.activeElement).not.toBe(document.body);
+      main.remove();
     }
 
     // The guard ALONE (plan 62's own teeth, found at execution): focus reaches the row only AFTER
