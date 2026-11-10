@@ -644,7 +644,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
             <div
                 className={
                     removedNoticeShown
-                        ? "mb-4 px-4 py-3 rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-100 flex items-center justify-between gap-3"
+                        ? "mb-4 px-4 py-3 rounded-card bg-status-warning-subtle border border-status-warning text-content-status-warning flex items-center justify-between gap-3"
                         : undefined
                 }
             >
@@ -656,16 +656,20 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     and OVER the shipped 16px-tall text button. The negative margins are load-bearing. */}
                 {/* DECISION Phase 88.9-CR m6: the focus treatment is the amber-box Dismiss idiom of
                     src/app/userProfile/page.js ("AMENDED Phase 88.9-32 (owner pick B3a")
-                    (census R065; that twin moved to the B3a warning family in plan 88.9-32 — this halo still reads
-                    the amber-50 / page pair until X2 moves it, plan 88.9-42), chosen OVER the browser default outline that plan 88.9-10 left on this
+                    (census R065; that twin moved to the B3a warning family in plan 88.9-32), chosen OVER the browser default outline that plan 88.9-10 left on this
                     48px box. The dark halo is the page colour because the box is a translucent amber over
                     the page, the same approximation R065 records. Round 2's X2 token ruling (register row
                     "X2 — The removed-member notice box is raw palette") moves this halo together with R065's. rounded-btn as on R065, so the
-                    ring's corners match the twin (88.9-CR scoped check). */}
+                    ring's corners match the twin (88.9-CR scoped check).
+                    AMENDED Phase 88.9-42 (owner pick B3a, 88.9-PICKS-B1.json, 2026-11-04 8:01 PM Pacific): the box is
+                    now the opaque status-warning family and this halo is the ONE box key,
+                    focus-visible:ring-offset-status-warning-subtle (ring vs halo 6.65 light / 6.37 dark, band 1.00),
+                    chosen OVER the amber-50 light / page-colour dark pair over a 20% translucent box. It matches
+                    the R065 twin again. Changing it back is a decision, not a cleanup. */}
                 {removedNoticeShown && (
                     <button
                         onClick={dismissRemovedNotice}
-                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 rounded-btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
+                        className="text-content-status-warning hover:text-content-primary hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 rounded-btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
                         aria-label="Dismiss"
                     >
                         Dismiss

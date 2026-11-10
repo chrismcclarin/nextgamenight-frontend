@@ -232,13 +232,16 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
             {slot.availableCount} of {totalMembers} available{names ? ` — ${names}` : ''}
           </div>
         )}
+        {/* Plan 88.9-42 (K8): the two conflict lines take the warning ink on the tooltip's
+            bg-surface-elevated ground — measured 6.85 light (#854d0e on #ffffff) / 5.25 dark
+            (#f59e0b on #2f3b50), both over the 4.50 floor — instead of raw amber-700. */}
         {userHasConflict && (
-          <div className="text-amber-700 mt-1">
+          <div className="text-content-status-warning mt-1">
             You have a Google Calendar conflict at this time
           </div>
         )}
         {otherConflicts.map(c => (
-          <div key={c.user_id} className="text-amber-700 text-xs mt-1">
+          <div key={c.user_id} className="text-content-status-warning text-xs mt-1">
             {c.username}: said yes, calendar shows busy
           </div>
         ))}
@@ -467,8 +470,10 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
       )}
 
       {/* gcal conflict warning */}
+      {/* DECISION Phase 88.9-42 K8: the conflict box wears the B3a status-warning family in both themes,
+          chosen OVER the light-only raw amber box with no dark twin (copy census K8). */}
       {conflictNames.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-sm text-xs text-amber-700 px-2 py-1 mt-2">
+        <div className="bg-status-warning-subtle border border-status-warning rounded-sm text-xs text-content-status-warning px-2 py-1 mt-2">
           Heads up: {conflictNames.join(' and ')} may have Google Calendar conflicts
         </div>
       )}
