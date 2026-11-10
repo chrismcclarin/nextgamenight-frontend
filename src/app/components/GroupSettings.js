@@ -1530,15 +1530,20 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                       >
                         Cancel
                       </Button>
+                      {/* DECISION Phase 88.9-45 (rule 1): Confirm Leave and the Delete Group opener keep their
+                          labels with the house spinner while busy (named "Confirm Leave, leaving" /
+                          "Delete Group, deleting"), chosen OVER the retired Leaving / Deleting swap words. */}
                       <Button
                         type="button"
                         variant="danger"
                         size="default"
                         aria-disabled={leaving || undefined}
+                        busy={leaving}
+                        busySuffix=", leaving"
                         aria-describedby={leaveErrorId}
                         onClick={handleLeaveGroup}
                       >
-                        {leaving ? 'Leaving…' : 'Confirm Leave'}
+                        Confirm Leave
                       </Button>
                     </div>
                   </div>
@@ -1647,8 +1652,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
               className="w-full sm:w-auto"
               onClick={() => deleteGate.trigger()}
               aria-disabled={deleteGate.pending || undefined}
+              busy={deleteGate.pending}
+              busySuffix=", deleting"
             >
-              {deleteGate.pending ? 'Deleting...' : 'Delete Group'}
+              Delete Group
             </Button>
           </div>
         )}

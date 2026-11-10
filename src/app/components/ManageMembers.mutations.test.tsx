@@ -1567,10 +1567,14 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
 
     // RED half is the attribute (C-11); the focus claim (the dialog's close restore can land
     // on it) is CONFIRM-ONLY in jsdom.
-    const opener = await screen.findByRole('button', { name: 'Reset invite link, resetting' });
-    expect(opener).toHaveTextContent('Reset invite link');
+    // The reset confirm stays open while the reset runs, and Radix's hideOthers marks the opener
+    // ITSELF aria-hidden (data-aria-hidden), so no role query can read its name (it computes to
+    // "" for a hidden node; measured 2026-11-10). The pin reads the parts rule 1 composes: the
+    // kept label as the button's own text, one house spinner, the sr-only ", resetting" suffix.
+    const opener = (await screen.findByText('Reset invite link', { selector: 'button' })) as HTMLElement;
+    await waitFor(() => expect(opener).toHaveAttribute('aria-disabled', 'true'));
     expect(opener.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
-    expect(opener).toHaveAttribute('aria-disabled', 'true');
+    expect(opener.querySelector('.sr-only')).toHaveTextContent(', resetting');
     expect(opener).not.toHaveAttribute('disabled');
 
     await act(async () => {

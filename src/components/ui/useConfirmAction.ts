@@ -79,11 +79,12 @@ export interface UseConfirmActionConfig {
   /** The verb alone: "Remove", "Delete", "Disconnect". Never "OK"/"Yes". */
   confirmLabel: string;
   /**
-   * `dialog`/`typed` only, optional: the confirm's text while the commit is pending
-   * ("Disconnecting…"). Passed through `dialogProps`; see ConfirmDialog's `pendingLabel`.
-   * Ignored by `two-tap`. (88.6.1 code review CR-5 / A-75)
+   * `dialog`/`typed` only, optional: the sr-only words appended to the confirm's name while the
+   * commit is pending (", disconnecting") — rule 1 (88.9-45); the visible text keeps `confirmLabel`
+   * and the house spinner joins it. Passed through `dialogProps`; see ConfirmDialog's `busySuffix`.
+   * Ignored by `two-tap`. (88.6.1 code review CR-5 / A-75, re-shaped; default-off)
    */
-  pendingLabel?: string;
+  busySuffix?: string;
   /** Cancel copy. @default 'Cancel' */
   cancelLabel?: string;
   /** `typed` tier only: the phrase that must be entered EXACTLY. */
@@ -140,7 +141,7 @@ export interface ConfirmDialogState {
   title: string;
   body?: React.ReactNode;
   confirmLabel: string;
-  pendingLabel?: string;
+  busySuffix?: string;
   cancelLabel: string;
   expectedPhrase?: string;
   /**
@@ -246,7 +247,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     title,
     body,
     confirmLabel,
-    pendingLabel,
+    busySuffix,
     cancelLabel = 'Cancel',
     expectedPhrase,
     armedLabel = DEFAULT_ARMED_LABEL,
@@ -518,7 +519,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       title,
       body,
       confirmLabel,
-      pendingLabel,
+      busySuffix,
       cancelLabel,
       expectedPhrase,
       confirmDelay: tier === 'dialog',
@@ -533,7 +534,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       title,
       body,
       confirmLabel,
-      pendingLabel,
+      busySuffix,
       cancelLabel,
       expectedPhrase,
       cancel,

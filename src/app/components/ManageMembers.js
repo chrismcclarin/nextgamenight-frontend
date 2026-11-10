@@ -26,9 +26,12 @@ import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 // Copy row G1 (Phase 88.6.1 D-30, owner-ratified 2026-10-04): the opener says what its dialog title and its receipt say.
 const RESET_INVITE_LINK_LABEL = 'Reset invite link';
 
-// 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): the Make admin confirm's text
-// while the grant is in flight (ConfirmDialog's pendingLabel).
-const PROMOTE_ADMIN_PENDING_LABEL = 'Promoting…';
+// DECISION Phase 88.9-45 (rule 1): the Make admin confirm, Reset invite link, Transfer ownership and
+// Confirm Leave keep their labels with the house spinner while busy, named "<label>, <verb>" through
+// Button's busy / busySuffix — chosen OVER the retired swap words (the Promoting swap that the 88.6.1
+// code review CR-5 / A-75 ratified 2026-10-19 as ConfirmDialog's pending text, and the Resetting,
+// Transferring and Leaving swaps). This suffix is the Make admin gate's busySuffix.
+const PROMOTE_ADMIN_BUSY_SUFFIX = ', promoting';
 
 // The outcome plan 21's `classifyRetryResult` reads from a retry's own result (plan 55's names and shape).
 const LOAD_OK = Object.freeze({ isError: false });
@@ -380,7 +383,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         title: `Make ${promoteTarget?.name || 'this member'} an admin?`,
         body: 'Admins can edit events, manage members, and approve or remove people.',
         confirmLabel: 'Make admin',
-        pendingLabel: PROMOTE_ADMIN_PENDING_LABEL,
+        busySuffix: PROMOTE_ADMIN_BUSY_SUFFIX,
         onConfirm: async (target_user_id) => {
             const ok = await performRoleChange(target_user_id, 'admin');
             // Rejecting keeps the gate open (useConfirmAction's contract) so the
@@ -707,10 +710,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     resetInviteGate.trigger();
                                 }}
                                 aria-disabled={resettingInvite || undefined}
+                                busy={resettingInvite}
+                                busySuffix=", resetting"
                                 className="text-content-status-error"
                                 title="Invalidate the current invite link and generate a new one"
                             >
-                                {resettingInvite ? 'Resetting…' : RESET_INVITE_LINK_LABEL}
+                                {RESET_INVITE_LINK_LABEL}
                             </Button>
                         )}
                         {/* Save-feedback rule 3 (88.9-24): the Invite link reset caption. Mounted empty (and
@@ -1199,8 +1204,10 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             setTransferring(false);
                         }
                     }}
+                    busy={transferring}
+                    busySuffix=", transferring"
                 >
-                    {transferring ? 'Transferring…' : 'Transfer ownership'}
+                    Transfer ownership
                 </Modal.Action>
             </Modal.Footer>
         </Modal>
@@ -1279,10 +1286,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 <Modal.Action
                     variant="danger"
                     aria-disabled={leaving || undefined}
+                    busy={leaving}
+                    busySuffix=", leaving"
                     aria-describedby={leaveErrorId}
                     onClick={handleLeaveGroupConfirmed}
                 >
-                    {leaving ? 'Leaving…' : 'Confirm Leave'}
+                    Confirm Leave
                 </Modal.Action>
             </Modal.Footer>
         </Modal>
