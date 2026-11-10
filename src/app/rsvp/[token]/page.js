@@ -156,6 +156,14 @@ export default function RsvpPage() {
   const [responseData, setResponseData] = useState(null);
   const [errorInfo, setErrorInfo] = useState(null);
 
+  /* DECISION Phase 88.9-43 O06c: the event link carries event_id alone, chosen OVER appending the
+     SUCCESS body's group_id — one href for both states (the 403 bodies carry none) on the route
+     plan 88.6.1-25 verified; encodeURIComponent keeps the e parameter from injecting query keys
+     (T-88.9-G47). Rendered on SUCCESS and EXPIRED_LINK only (the owner pick, 88.9-PICKS-B8B.json,
+     2026-11-07 4:37 PM Pacific); ACCOUNT_NOT_FOUND has no account to open the event with. */
+  const linkEventId = searchParams.get('e');
+  const eventHref = linkEventId ? `/gameDetail?event_id=${encodeURIComponent(linkEventId)}` : null;
+
   /* AC-13 (owner ruling 2026-09-09, option 1): the per-effect-run cancellation flag, copied
      from the shipped idiom at `invite/game/[token]/page.js` (its `let cancelled = false`
      before the async body, an early return ahead of every post-resolve state write, and a
@@ -474,6 +482,15 @@ export default function RsvpPage() {
 
             {/* Divider and links */}
             <div className="border-t border-line pt-4">
+              {/* O06c (88.9-43): the way to the event this page confirms — a centred row above the
+                  close-this-tab line, primary. */}
+              {eventHref && (
+                <div className="flex justify-center mb-3">
+                  <Button asChild variant="primary" size="default">
+                    <a href={eventHref}>Go to the event</a>
+                  </Button>
+                </div>
+              )}
               {/* §4.3: a one-line descriptor, stays at 14 — the same string plan 88.6-23 kept at
                   14 on the sibling availability-form confirmation. */}
               <p className="text-sm text-content-muted mb-2">
@@ -533,7 +550,13 @@ export default function RsvpPage() {
     // "Go to Home" (the ERROR branch's own string) rather than a NEW label such as "Open the
     // event" — the ruling ratified the two headline/detail pairs and nothing else (P1). Minting
     // an event-link label is an owner copy decision, not a cleanup.
+    // AMENDED Phase 88.9-43 (owner pick O06c, 88.9-PICKS-B8B.json, 2026-11-07 4:37 PM Pacific):
+    // EXPIRED_LINK now leads with a primary Go to the event link (the event_id-only route
+    // 88.6.1-25 verified) and Go to Home steps to secondary, chosen OVER the shipped Go to Home
+    // alone; ACCOUNT_NOT_FOUND keeps Go to Home alone (no account to open the event with; the pick
+    // rendered EXPIRED_LINK and SUCCESS only). The label "Go to the event" is ratified round-2 copy.
     const copy = LINK_STATE_COPY[pageState];
+    const leadsToEvent = pageState === PAGE_STATES.EXPIRED_LINK && eventHref;
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
@@ -549,11 +572,24 @@ export default function RsvpPage() {
           <p className="text-content-secondary mb-6">
             {copy.detail}
           </p>
-          <Button asChild variant="primary" size="default">
-            <a href="/">
-              Go to Home
-            </a>
-          </Button>
+          {leadsToEvent ? (
+            <div className="flex flex-col items-center">
+              <Button asChild variant="primary" size="default">
+                <a href={eventHref}>Go to the event</a>
+              </Button>
+              <Button asChild variant="secondary" size="default" className="mt-3">
+                <a href="/">
+                  Go to Home
+                </a>
+              </Button>
+            </div>
+          ) : (
+            <Button asChild variant="primary" size="default">
+              <a href="/">
+                Go to Home
+              </a>
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -615,7 +651,8 @@ export default function RsvpPage() {
      that rule excludes every branch here. Adding a focus move is a decision, not a cleanup.
 
      [AMENDED Phase 88.6.1-36 (W053 / IN-405): "THIS page has no control at all on any branch"
-     was false — the settled branches render a link ("Go to Group", "Go to Home"). What holds is
+     was false — the settled branches render a link ("Go to Group", "Go to Home", and since
+     88.9-43 "Go to the event"). What holds is
      that no branch removes a control the user was operating, because the submit runs on mount,
      so the availability-form rule still excludes every branch, both UNCONFIRMED states
      included.] */

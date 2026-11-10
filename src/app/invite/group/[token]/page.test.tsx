@@ -320,7 +320,7 @@ describe('invite/group/[token] — R8 page announcement, L1 and the preview fail
 // failed join. Region assertions use `toContain` on the register sentence because Task 3 of the
 // same plan changes the preview-failure headline (K11(c)).
 describe('invite/group/[token] — D14a Try again on the preview failure (plan 88.9-43)', () => {
-  const serverError = () => new ApiError('HTTP error! status: 500', 'server_error', 500, { error: 'boom' });
+  const serverError = () => new ApiError('HTTP error! status: 500', 'unknown', 500, { error: 'boom' });
   const notFound = () => new ApiError('HTTP error! status: 404', 'not_found', 404, { error: 'Invalid invite link' });
   const REGISTER_LINE = getFetchErrorMessage(serverError());
   const tryAgain = () => screen.queryByRole('button', { name: 'Try again' });
