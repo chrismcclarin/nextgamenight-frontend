@@ -3112,6 +3112,20 @@ body {
   padding: 0;
 }
 
+/* DECISION Phase 88.9-36 G2a (owner pick G2a, 88.9-PICKS-B6.json item G2, 2026-11-07 3:07 AM Pacific):
+   the attached disclosure's square bottom corners, as an unlayered modifier after `.btn` chosen OVER
+   a rounded-b utility at the call site (dead: `.btn` declares border-radius unlayered) and OVER an
+   important-flagged utility (none in src; it defeats cn() last-wins). Phone only (below 40rem,
+   Tailwind's sm), where the toggle spans the card — see
+   src/app/gameDetail/page.js ("DECISION Phase 88.9-36 G2a"). Layering it, or moving it above
+   `.btn`, re-breaks it with no build error. src/app/cascadeOrder.test.ts pins it (test 8). */
+@media (width < 40rem) {
+  .btn-fuse-bottom {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+}
+
 /* DECISION Phase 87.8 DEC-3 — AMENDED BY PHASE 88-31: THE `.modal-overlay` RULES ARE GONE, AND
    THE 12px PHONE GUTTER THEY CARRIED NOW LIVES IN `src/app/components/Modal.tsx`.
 

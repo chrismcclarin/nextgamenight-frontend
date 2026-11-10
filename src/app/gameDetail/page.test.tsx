@@ -744,6 +744,53 @@ describe('gameDetail sessions header (D-39)', () => {
     expect(toggle).not.toHaveAttribute('aria-pressed');
     expect(toggle).toHaveAccessibleName('Show Filters & Sort');
   });
+
+  // 88.9-36 G2a (owner pick G2a, 88.9-PICKS-B6.json item G2, register W54): while the panel is
+  // open the toggle carries btn-fuse-bottom (square bottom corners below 640px, globals.css), the
+  // header row drops its bottom margin below 640px, and the panel drops its top edge and top radius
+  // below 640px — the toggle reads as the panel's header. Closed, nothing changes. jsdom applies
+  // no media query, so this pins the classes; the computed shape is the G2a e2e.
+  it('G2a (88.9): toggle and panel fuse, panel id kept', async () => {
+    const user = userEvent.setup();
+    renderGameDetail();
+    const header = await sessionsHeader();
+    const toggle = within(header).getByRole('button', { name: 'Show Filters & Sort' });
+
+    expect(toggle.classList.contains('btn-fuse-bottom')).toBe(false);
+    expect(header.classList.contains('mb-4')).toBe(true);
+    expect(header.classList.contains('mb-0')).toBe(false);
+
+    await user.click(toggle);
+    const open = within(header).getByRole('button', { name: 'Hide Filters' });
+    expect(open).toBe(toggle);
+    expect(open.classList.contains('btn-fuse-bottom')).toBe(true);
+    expect(header.classList.contains('mb-0')).toBe(true);
+    expect(header.classList.contains('sm:mb-4')).toBe(true);
+    expect(open).toHaveAttribute('aria-expanded', 'true');
+    expect(open).toHaveAttribute('aria-controls', 'game-sessions-filters');
+    const panel = document.getElementById('game-sessions-filters') as HTMLElement;
+    expect(panel).not.toBeNull();
+    for (const cls of [
+      'rounded-t-none',
+      'border-t-0',
+      'rounded-b-lg',
+      'sm:rounded-t-lg',
+      'sm:border-t',
+      'border',
+      'border-line',
+      'bg-surface-page',
+      'p-4',
+      'mb-6',
+    ]) {
+      expect(panel.classList.contains(cls), `panel class ${cls}`).toBe(true);
+    }
+    expect(panel.classList.contains('rounded-lg')).toBe(false);
+
+    await user.click(open);
+    expect(toggle.classList.contains('btn-fuse-bottom')).toBe(false);
+    expect(header.classList.contains('mb-4')).toBe(true);
+    expect(header.classList.contains('mb-0')).toBe(false);
+  });
 });
 
 // D-40 / F-6c / F-6d. jsdom applies no media queries, so BOTH breakpoint

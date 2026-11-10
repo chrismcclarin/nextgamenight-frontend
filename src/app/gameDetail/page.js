@@ -3825,7 +3825,9 @@ export default function GameDetailPage() {
                     converged it, so both headers are now 20/700 — the marker there records the
                     reopening. This marker's OWN subject (the conditional count and the stacking)
                     is untouched by that ruling and still stands. */}
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                <div className={showFilters
+                    ? "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-0 sm:mb-4"
+                    : "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4"}>
                     <Heading ref={sessionsHeadingRef} level={2} size="heading" className="w-full text-content-primary">
                         {/* Post-split (Task 7 step 1b): counts key on the HISTORY partition —
                             keying on raw `events` would show "3 of 5" with no filter active
@@ -3847,13 +3849,24 @@ export default function GameDetailPage() {
                         always and toggling `hidden` (KebabMenu's recorded rejected alternative: it
                         changes what the card contains while closed). The visible label swap stays:
                         those are existing words (D-31). Size unchanged (`min-h-11` from the cva
-                        base, D-21's delta here is 0). */}
+                        base, D-21's delta here is 0).
+
+                        DECISION Phase 88.9-36 G2a (owner pick G2a, 88.9-PICKS-B6.json item G2): below
+                        640px, while the panel is open, the toggle sheds its bottom corners
+                        (src/app/globals.css (".btn-fuse-bottom {")), this row drops its 16px bottom
+                        margin and the panel drops its top edge and top radius, so the toggle reads as
+                        the panel's header — chosen OVER the house bottom sheet G2b (my read) and
+                        chips G2c. From 640px the shipped detached shape stays, chosen OVER fusing at
+                        every width: there the toggle is auto-width at the row's right end, so a panel
+                        without its top edge would stand open beside it (the pick was rendered at 375
+                        only; the owner confirms the wide shape at the 88.9-51 glance). Closed, nothing
+                        changes. */}
                     <Button
                         variant="secondary"
                         onClick={() => setShowFilters(!showFilters)}
                         aria-expanded={showFilters}
                         {...(showFilters ? { 'aria-controls': SESSION_FILTERS_PANEL_ID } : {})}
-                        className="w-full sm:w-auto"
+                        className={showFilters ? "w-full sm:w-auto btn-fuse-bottom" : "w-full sm:w-auto"}
                     >
                         {showFilters ? (
                             <>
@@ -3871,7 +3884,7 @@ export default function GameDetailPage() {
                 
                 {/* Filters and Sorting */}
                 {showFilters && (
-                <div id={SESSION_FILTERS_PANEL_ID} className="mb-6 p-4 bg-surface-page rounded-lg border border-line">
+                <div id={SESSION_FILTERS_PANEL_ID} className="mb-6 p-4 bg-surface-page rounded-b-lg rounded-t-none sm:rounded-t-lg border border-line border-t-0 sm:border-t">
                     <div className="flex justify-between items-center mb-3">
                         {/* DECISION Phase 88-24 (Req 2 / UI-SPEC §4.1): 16/700, NOT the
                             20/700 Heading role — chosen OVER the literal reading of Task 3's
