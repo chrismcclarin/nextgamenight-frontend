@@ -23,7 +23,7 @@ import EventCalendar from '../components/EventCalendar';
 import { CalendarLoadingCard } from '../components/CalendarLoadingCard';
 import PendingMemberBanner from '../components/PendingMemberBanner';
 import GroupLibrary from '../components/GroupLibrary';
-import KebabMenu from '../components/KebabMenu';
+import { Icon } from '../../components/ui/Icon';
 import GroupSettings from '../components/GroupSettings';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
@@ -973,7 +973,7 @@ function GroupHomePage(){
         // (the C12 DECISION block at `membersFocusGuard`); the page's markup is not re-indented.
         // The group focus guard is its THIRD child, in every return (88.6.1-89).
         <>
-        <div className="p-4 md:p-6">
+        <div className="p-4 md:p-6 max-w-7xl mx-auto">
             {/* Breadcrumbs.
                 DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
                 the Home link gains the project focus ring, the same string the tab
@@ -1000,7 +1000,10 @@ function GroupHomePage(){
                     so 400 + a colour token is exactly what it becomes, with no delta to look at.
                   - the CURRENT PAGE span KEEPS its weight (600 -> 700 under D-03) AND GAINS
                     `aria-current="page"` (T-88.6-138), matching plans 17 and 18's three
-                    breadcrumbs so the five behave alike. Without the attribute, "you are here" is
+                    breadcrumbs on aria-current. AMENDED Phase 88.9-31 (owner pick C4a,
+                    88.9-PICKS-B2.json): the five crumbs did NOT match on weight (the Profile crumb
+                    shipped at 400); C4a puts all five at 700, the Profile crumb moved in plan
+                    88.9-32. Without the attribute, "you are here" is
                     carried by WEIGHT alone — nothing a screen reader exposes — and R2 #171 is the
                     rule that a weight may not be the sole carrier of information. The weight stays
                     because it is also the sighted cue; the attribute is an addition, not a swap. */}
@@ -1063,7 +1066,7 @@ function GroupHomePage(){
                     // light mode. The inline `style` background this replaces hid
                     // that, because an inline style beats any class.
                     tinted
-                        ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]'
+                        ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]'
                         : 'bg-surface-elevated',
                 )}
                 style={{
@@ -1294,15 +1297,37 @@ function GroupHomePage(){
                         (owner ruling 2026-10-03, TIDY). The wrapper stays, because dropping it too
                         would lean on KebabMenu's zero-items rule, which this marker refuses to treat
                         as a gate. REJECTED: leaving the dead arm in place (the 88.6 review's "none
-                        needed") — it read as a half-finished refactor. */}
+                        needed") — it read as a half-finished refactor.
+
+                        AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json, 2026-11-07 1:08 AM
+                        Pacific): the swappable trigger is now the gear button below, chosen OVER the
+                        one-item kebab; the wrapper and everything this block says about it stand. */}
+                    {/* DECISION Phase 88.9-31 F5b (owner pick F5b, 88.9-PICKS-B5.json): a raw bordered
+                        button gear (lucide Settings 20px, aria-label Group settings, 44x44,
+                        bg-surface-elevated fill and border-line-control edge) chosen OVER the one-item
+                        KebabMenu (a menu for one action) and OVER Button variant secondary size icon (on a
+                        .btn the border utility and the elevated fill both lose to the unlayered .btn and
+                        .btn-secondary rules, Pitfall 2); the home cog is the same raw-button idiom, so both
+                        gears are one look. The canEditGroup wrapper stays the gate, per the leaked-action
+                        rule in src/app/gameDetail/page.js ("gate not written into the array is a LEAKED action").
+                        Changing either is a decision, not a cleanup. */}
                     {canEditGroup && (
                         <div className="shrink-0 relative z-20">
-                            <KebabMenu
-                                ariaLabel="Group actions"
-                                items={[
-                                    { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
-                                ]}
-                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowGroupSettings(true)}
+                                aria-label="Group settings"
+                                // One FULL literal per arm (the 88.9 halo fleet rule cascadeOrder test 12 reads):
+                                // the tinted arm's halo is the host's --group-halo, the untinted arm's the elevated
+                                // header it sits on.
+                                className={
+                                    tinted
+                                        ? 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                                        : 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated'
+                                }
+                            >
+                                <Icon name="Settings" size={20} />
+                            </button>
                         </div>
                     )}
                 </div>
@@ -1402,7 +1427,7 @@ function GroupHomePage(){
                     this is a corrected premise and not an open defect.
 
                     Any of this is a decision, not a cleanup. */}
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full shrink-0 items-stretch sm:items-center md:justify-end">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full shrink-0 items-stretch sm:items-center sm:justify-end">
                     {userRole && userRole !== 'pending' && (
                         /* DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27):
                            the LIGHT arm of this control now carries an 80% WHITE WASH plus a 1px
@@ -1547,7 +1572,12 @@ function GroupHomePage(){
                                 // group-colour halo — the ground is a runtime user hex with no token, and the
                                 // card halo clears 3:1 against the ring in both themes (census, halo-approximate).
                                 // Adding the elevated halo to the tinted arm too is a decision, not a cleanup.
-                                (tinted ? '' : ' focus-visible:ring-offset-surface-elevated') +
+                                // AMENDED Phase 88.9-31 (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04): the tinted
+                                // arm now takes the group halo (the host's --group-halo is the light tint in light,
+                                // the stored ground in dark, through the @theme key surface-group-halo), chosen OVER
+                                // the Button default card halo (band against the tint, UI-SPEC R2-66); the untinted
+                                // elevated arm is unchanged.
+                                (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
                                 // The 10% white wash moves from an inline `style` to
                                 // `dark:bg-white/10`, because an inline declaration cannot
                                 // be forked by a `dark:` class. On a light ground it was
@@ -1613,7 +1643,7 @@ function GroupHomePage(){
                         className={
                             'shadow-theme-lg enabled-hover:shadow-theme-lg ' +
                             'whitespace-nowrap text-center' +
-                            (tinted ? '' : ' focus-visible:ring-offset-surface-elevated') +
+                            (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
                             (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                         }
                     >
@@ -1669,7 +1699,7 @@ function GroupHomePage(){
                             className={
                                 'whitespace-nowrap ' +
                                 'shadow-theme-lg enabled-hover:shadow-theme-lg' +
-                                (tinted ? '' : ' focus-visible:ring-offset-surface-elevated') +
+                                (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
                                 (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                             }
                         >
@@ -1731,14 +1761,18 @@ function GroupHomePage(){
                 strip, which is a look change (P6). AMENDED Phase 88.9-10 (owner picks A7a + O3a):
                 the 44px floor arrives by min-h-11 min-w-11 on these buttons; migrating them onto
                 Button stays REJECTED. They wear no `.btn` today and no census counts
-                them. */}
+                them. AMENDED Phase 88.9-31 (owner pick T1, 88.9-PICKS-B7B.json, 2026-11-07): the
+                active tab's radius moves to its two top corners (rounded-t-btn) so its flat bottom
+                fuses with the strip line, chosen OVER the shipped four-corner 8px pill; the Button /
+                Tabs migration and the ARIA tabs pattern stay REJECTED; the five-tab row is Phase
+                88.9.1's. */}
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
                     aria-current={activeTab === 'home' ? 'true' : undefined}
                     className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
                         activeTab === 'home'
-                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
+                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-t-btn'
                             : 'text-content-secondary hover:text-content-primary'
                     }`}
                 >
@@ -1749,7 +1783,7 @@ function GroupHomePage(){
                     aria-current={activeTab === 'library' ? 'true' : undefined}
                     className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
                         activeTab === 'library'
-                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
+                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-t-btn'
                             : 'text-content-secondary hover:text-content-primary'
                     }`}
                 >
@@ -1777,7 +1811,13 @@ function GroupHomePage(){
                     EventCalendar.js (this page's suite stubs that whole module, so the page could
                     not render the real card under test); the card alone without the section
                     heading (the section would vanish from the outline while it loads).
-                    Changing any of these is a decision, not a cleanup. */}
+                    Changing any of these is a decision, not a cleanup.
+                    AMENDED Phase 88.9-31 (owner pick N1 / CS-01, 88.9-PICKS-B7A.json, 2026-11-07 12:35 PM
+                    Pacific; narrowed by owner ruling R-W5, 88.9-RULINGS.md, 2026-11-08): the first-load
+                    arm's Calendar heading is sr-only, chosen OVER a visible heading; it stays the focus
+                    target and the outline entry, shown while it holds keyboard focus, so the REJECTED
+                    card-alone case stays rejected. The events-failure arm's heading stays VISIBLE over
+                    its banner, chosen OVER sr-only, matching EventCalendar's own error-branch headings. */}
                 {eventsErrorState.showError && !eventsRetained ? (
                     <div>
                         <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-4">
@@ -1792,7 +1832,7 @@ function GroupHomePage(){
                     </div>
                 ) : eventsLoadedFor !== Router ? (
                     <div>
-                        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-4">
+                        <Heading ref={calendarHeadingRef} level={2} size="heading" className="sr-only focus-visible:not-sr-only">
                             {CALENDAR_TITLE}
                         </Heading>
                         <CalendarLoadingCard />
@@ -1829,7 +1869,7 @@ function GroupHomePage(){
                 {/* After the slot, never before it: see DECISION Phase 88.6.1-71 (C12, focus when content leaves). */}
                 <RetainedContentFocusGuard retained={eventsRetained} focusTarget={calendarHeadingRef} />
 
-                {/* Group Games Section */}
+                {/* Play history section (GroupGamesList) */}
                 <GroupGamesList
                     games={gamesList}
                     groupId={Router}

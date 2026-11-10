@@ -35,9 +35,10 @@ import { expectTouchTarget } from './support/touchTarget';
  * fixture group. Do NOT "extend" it to exercise the delete: that gate is layout
  * out-of-scope here.
  *
- * ENTRY PATH (the way a user reaches it): groupHomePage title-row kebab
- * ("Group actions", CONTEXT D-LEAVE-01 — src/app/groupHomePage/page.js ("{ label: 'Group settings', onClick: () => setShowGroupSettings(true) }")) →
- * the "Group settings" item → the Customize Group modal. The Danger Zone renders
+ * ENTRY PATH (the way a user reaches it): the groupHomePage title-row gear
+ * named "Group settings" (CONTEXT D-LEAVE-01; re-pointed Phase 88.9-31, owner pick
+ * F5b — src/app/groupHomePage/page.js ("onClick={() => setShowGroupSettings(true)}")) →
+ * the Customize Group modal. The Danger Zone renders
  * only for the group OWNER; the CI login identity (Alice) owns the seeded group
  * that scripts/e2e-fixtures.js emits as E2E_GROUP_ID, so it must render here —
  * the vacuity guards assert that instead of silently passing.

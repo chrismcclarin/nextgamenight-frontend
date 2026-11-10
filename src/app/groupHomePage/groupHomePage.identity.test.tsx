@@ -126,24 +126,6 @@ vi.mock('@/app/components/EventCalendar', () => ({
 }));
 vi.mock('@/app/components/PendingMemberBanner', () => ({ default: () => null }));
 vi.mock('@/app/components/GroupLibrary', () => ({ default: () => null }));
-// 88.6-21 task 2: rendered rather than nulled. The kebab GATING is the thing under test, and a
-// `() => null` stub makes "the trigger is absent" true for every role — the vacuous shape. This
-// stub reproduces only the contract the gating turns on: KM-21's zero-items-renders-no-trigger
-// rule (`keyboardOperability.test.tsx`), plus a button per item.
-vi.mock('@/app/components/KebabMenu', () => ({
-  default: ({ ariaLabel, items }: { ariaLabel: string; items: { label: string; onClick?: () => void }[] }) =>
-    items.length === 0 ? null : (
-      <div>
-        <button type="button" aria-label={ariaLabel} />
-        {items.map((i) => (
-          // 88.6.1-89: the item's own onClick, so a test can open Group settings through it.
-          <button type="button" key={i.label} onClick={i.onClick}>
-            {i.label}
-          </button>
-        ))}
-      </div>
-    ),
-}));
 vi.mock('@/app/components/GroupSettings', () => ({
   default: (props: NonNullable<typeof h.groupSettingsProps>) => {
     h.groupSettingsProps = props;
@@ -409,19 +391,22 @@ describe('groupHomePage header CTAs on the Button primitive (88.6-21 D-09 / UI-S
 });
 
 describe('groupHomePage group-settings entry is owner/admin (88.6-21 D-31, owner 2026-08-27)', () => {
-  it('an OWNER sees the kebab trigger and the "Group settings" item', async () => {
+  // AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json): the entry is the header gear named
+  // Group settings, no longer a one-item kebab, so the role tests read the gear and the absence of
+  // any Group actions menu. The gate under test is unchanged: the owner/admin wrapper.
+  it('an OWNER sees the Group settings gear and no Group actions menu', async () => {
     await renderHeaderAt('owner');
-    expect(await screen.findByRole('button', { name: 'Group actions' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Group settings' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Group settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
   });
 
-  it('an ADMIN sees it too', async () => {
+  it('an ADMIN sees the gear too, and no menu', async () => {
     await renderHeaderAt('admin');
-    expect(await screen.findByRole('button', { name: 'Group actions' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Group settings' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Group settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
   });
 
-  it('a plain MEMBER sees NEITHER the wrapper nor the item — and still reaches Manage Members', async () => {
+  it('a plain MEMBER sees NEITHER the gear nor a menu — and still reaches Manage Members', async () => {
     await renderHeaderAt('member');
 
     // The POSITIVE half first, so the two absences below are not absence-by-nothing-rendered:
@@ -431,6 +416,110 @@ describe('groupHomePage group-settings entry is owner/admin (88.6-21 D-31, owner
 
     expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Group settings' })).toBeNull();
+  });
+});
+
+// Phase 88.9-31 — the round-2 look rows on this page (owner picks T1, F5b, B2a, GH-01 / NAV-01 /
+// CS-01; 88.9-PICKS-B7B.json, B5, B1, B7A). Token pins: jsdom paints nothing, so each test reads the
+// class tokens the picked variant ships and the ones it must not.
+describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV-01 / CS-01)', () => {
+  const GROUP_HALO = 'focus-visible:ring-offset-surface-group-halo';
+  const ELEVATED_HALO = 'focus-visible:ring-offset-surface-elevated';
+  const tokens = (el: Element) => el.className.toString().split(/\s+/);
+  /** The identity header host: the h1's nearest ancestor carrying the host's own rounded-lg + overflow-visible pair. */
+  const headerHost = (): HTMLElement => {
+    let el: HTMLElement | null = screen.getByRole('heading', { level: 1 });
+    while (el && !(el.classList.contains('rounded-lg') && el.classList.contains('overflow-visible'))) {
+      el = el.parentElement;
+    }
+    expect(el, 'the header host was not found above the h1').not.toBeNull();
+    return el!;
+  };
+  const headerControls = () => [
+    screen.getByRole('button', { name: 'Manage Members' }),
+    screen.getByRole('link', { name: 'Plan Game Session' }),
+    screen.getByRole('button', { name: 'Add New Game Event' }),
+    screen.getByRole('button', { name: 'Group settings' }),
+  ];
+
+  it('T1 (88.9): the active group tab is rounded on top only and has no bottom radius', async () => {
+    await renderHeaderAt('owner');
+    const overview = screen.getByRole('button', { name: 'Overview' });
+    const library = screen.getByRole('button', { name: 'Library' });
+    const expectActive = (el: HTMLElement) => {
+      expect(el).toHaveClass('rounded-t-btn', 'border-b-2', 'border-btn-primary');
+      expect(tokens(el), 'the active tab kept a four-corner radius').not.toContain('rounded-btn');
+      expect(tokens(el).filter((t) => /^rounded-b/.test(t)), 'the active tab has a bottom radius').toEqual([]);
+    };
+    const expectInactive = (el: HTMLElement) => {
+      for (const t of ['rounded-t-btn', 'rounded-btn', 'border-b-2', 'border-btn-primary']) {
+        expect(tokens(el), `the inactive tab carries ${t}`).not.toContain(t);
+      }
+    };
+    expectActive(overview);
+    expectInactive(library);
+    await userEvent.setup().click(library);
+    expectActive(library);
+    expectInactive(overview);
+  });
+
+  it('F5b (88.9): a 44px Group settings gear with the lucide SVG replaces the one-item kebab', async () => {
+    await renderHeaderAt('owner');
+    expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
+    const gears = screen.getAllByRole('button', { name: 'Group settings' });
+    expect(gears).toHaveLength(1);
+    const gear = gears[0];
+    expect(gear).toHaveClass('min-h-11', 'min-w-11', 'border', 'border-line-control', 'bg-surface-elevated');
+    expect(gear.querySelector('svg[aria-hidden="true"]'), 'the gear has no hidden svg glyph').not.toBeNull();
+    expect(gear.textContent ?? '', 'the gear carries a text glyph').not.toMatch(/[⋮⚙]/);
+    expect(h.groupSettingsProps).toBeNull();
+    await userEvent.setup().click(gear);
+    await waitFor(() => expect(h.groupSettingsProps).not.toBeNull());
+  });
+
+  it('G halo (88.9): on a tinted header the four header controls take the group halo; untinted keep the elevated halo', async () => {
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group', background_color: '#722f37' });
+    await renderHeaderAt('owner');
+    const host = headerHost();
+    // Anti-vacuity: this is the tinted arm, not the themed surface.
+    expect(host).toHaveClass('bg-[var(--group-ground-light)]');
+    expect(host).toHaveClass('[--group-halo:var(--group-ground-light)]', 'dark:[--group-halo:var(--group-ground)]');
+    for (const el of headerControls()) {
+      expect(el).toHaveClass(GROUP_HALO);
+      expect(el).not.toHaveClass(ELEVATED_HALO);
+    }
+
+    cleanup();
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
+    await renderHeaderAt('owner');
+    const plain = headerHost();
+    expect(plain).toHaveClass('bg-surface-elevated');
+    expect(plain.className).not.toContain('--group-halo');
+    for (const el of headerControls()) {
+      expect(el).toHaveClass(ELEVATED_HALO);
+      expect(el).not.toHaveClass(GROUP_HALO);
+    }
+  });
+
+  it('GH-01 seam (88.9): the CTA row right-aligns from sm, the body is capped at max-w-7xl, the first-load Calendar heading is sr-only and the failure-arm one visible', async () => {
+    const held = deferred<unknown>();
+    (eventsAPI.getGroupEvents as Mock).mockReturnValueOnce(held.promise);
+    await renderHeaderAt('owner');
+    const row = screen.getByRole('button', { name: 'Manage Members' }).parentElement!;
+    expect(tokens(row)).toContain('sm:justify-end');
+    expect(tokens(row).filter((t) => /^md:justify-/.test(t)), 'an md-prefixed justify token is left').toEqual([]);
+    expect(screen.getByRole('heading', { level: 1 }).closest('.max-w-7xl.mx-auto'), 'the body is not capped').not.toBeNull();
+    const loading = screen.getByRole('heading', { level: 2, name: 'Calendar' });
+    expect(loading).toHaveClass('sr-only', 'focus-visible:not-sr-only');
+
+    // R-W5 (88.9-RULINGS.md, 2026-11-08): the events-failure arm's heading stays VISIBLE over its banner.
+    cleanup();
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(new ApiError('Request failed', 'internal', 500));
+    await renderHeaderAt('owner');
+    await screen.findAllByText("Couldn't load this group's events");
+    const failed = screen.getByRole('heading', { level: 2, name: 'Calendar' });
+    expect(tokens(failed), 'the failure-arm Calendar heading went sr-only').not.toContain('sr-only');
+    expect(failed).toHaveClass('text-content-primary');
   });
 });
 
@@ -596,24 +685,27 @@ describe('groupHomePage games refresh keeps the page (88.6.1-55: Req 9, D-09a / 
 // kebab asks the owner/admin question ONCE: the wrapper. The role variable's name is read from the
 // page's own declaration rather than spelled here, so no suite names it (AC-35: it occurs in no
 // file but the page). The three role tests above stay the behaviour pins.
+// AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json): the kebab became the Group settings
+// gear, so KB-1 reads the gear's opening tag inside the same wrapper; the page mounts no KebabMenu.
 describe('groupHomePage kebab — one role check (88.6.1-55: W051 / AC-35)', () => {
-  it('KB-1. the KebabMenu items are an array literal with no role check, inside the one owner/admin wrapper', () => {
+  it('KB-1. the Group settings gear sits inside the one owner/admin wrapper with no inner role check', () => {
     const src = withoutComments(fs.readFileSync(path.join(__dirname, 'page.js'), 'utf8'));
     const decl = /const\s+([A-Za-z_$][\w$]*)\s*=\s*userRole === 'owner' \|\| userRole === 'admin';/.exec(src);
     expect(decl).not.toBeNull();
     const roleVar = decl![1];
 
-    const opens = [...src.matchAll(/<KebabMenu(?=[\s>/])/g)];
-    expect(opens).toHaveLength(1);
-    const tag = readOpeningTag(src, opens[0].index ?? 0);
+    expect([...src.matchAll(/<KebabMenu(?=[\s>/])/g)], 'the page still mounts a KebabMenu').toHaveLength(0);
+    const named = src.indexOf('aria-label="Group settings"');
+    expect(named, 'no element is named Group settings').toBeGreaterThan(-1);
+    expect(src.indexOf('aria-label="Group settings"', named + 1), 'two elements are named Group settings').toBe(-1);
+    const tag = readOpeningTag(src, src.lastIndexOf('<button', named));
     expect(tag).not.toBeNull();
-    expect(tag!).toContain('ariaLabel="Group actions"');
-    expect(tag!).toMatch(/items=\{\s*\[/);
+    expect(tag!).toContain('aria-label="Group settings"');
     expect(tag!).not.toContain(roleVar);
 
-    // The wrapper still encloses the trigger's div: the role variable, then the div, then the menu.
+    // The wrapper still encloses the gear's div: the role variable, then the div, then the gear.
     expect(src).toMatch(
-      new RegExp(`\\{\\s*${roleVar}\\s*&&\\s*\\(\\s*<div className="shrink-0 relative z-20">\\s*<KebabMenu\\b`),
+      new RegExp(`\\{\\s*${roleVar}\\s*&&\\s*\\(\\s*<div className="shrink-0 relative z-20">\\s*<button\\b`),
     );
   });
 });
@@ -1348,7 +1440,7 @@ describe("groupHomePage — the group record's own load (88.6.1-89, close ruling
     h.selfUuid = SELF_UUID;
     h.isPending = false;
   };
-  /** Open Group settings through the kebab's item, so the GroupSettings stub records its props. */
+  /** Open Group settings through the gear, so the GroupSettings stub records its props. */
   const openSettings = async () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Group settings' }));
