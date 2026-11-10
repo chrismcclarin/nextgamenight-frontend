@@ -51,7 +51,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '@/lib/cn';
 
-import { Spinner } from './Spinner';
+import { DelayedSpinner } from './DelayedSpinner';
 
 /* DECISION Phase 88-02 (D-01/D-02): Button COMPOSES the legacy `.btn` class rather than
    re-emitting its properties as Tailwind utilities. Chosen OVER a pure-utility base
@@ -292,6 +292,9 @@ export interface ButtonProps
    * In flight (save-feedback rule 1): sets `aria-disabled`, keeps the label and adds the
    * house Spinner plus an sr-only suffix. Never swallows the press — the site's own latch
    * is the refusal. Ignored for rendering under `asChild` (only `aria-disabled` is set).
+   * The Spinner is delayed and held (R-C3b, 88.9-54): it appears after 200 ms of busy and
+   * stays 500 ms from its appearance; the refusal and the suffix are immediate. Passing
+   * `busy` (true or false) mounts the delayed element; leaving it undefined mounts nothing.
    */
   busy?: boolean;
   /**
@@ -309,13 +312,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       asChild = false,
       className,
       type = 'button',
-      busy = false,
+      busy: busyProp,
       busySuffix = ', saving',
       children,
       ...props
     },
     ref
   ) => {
+    const busy = busyProp ?? false;
+    // Only a caller that passes busy (true OR false) mounts the delayed Spinner element, so
+    // the resting majority of Buttons pays no hook subscription; a false after a true keeps
+    // the element mounted, which is what lets the hold outlive the busy.
+    const tracksBusy = busyProp !== undefined;
     const Comp = asChild ? Slot : 'button';
 
     /* DECISION Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1):
@@ -329,7 +337,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
        stays the refusal (src/app/components/ScheduleForm.js ("The refusal is the latch, not the")),
        chosen over a central click guard that would preventDefault a submit and double up with the
        latches. Not applied under asChild (Slot takes one child). Changing any of this is a decision,
-       not a cleanup. */
+       not a cleanup.
+       AMENDED Phase 88.9-54 (owner ruling R-C3b, 88.9-RULINGS.md, 2026-11-10): the Spinner now renders through DelayedSpinner (useDelayedSpinner: 200 ms appear delay, 500 ms minimum hold — the numbers and their measured basis live on that hook's marker), mounted only when a caller passes busy (41 of 207 Button mounts at 35d5348), so a resting Button pays nothing; aria-disabled and the sr-only suffix stay immediate so the refusal and the heard name never wait. The Spinner is MOUNTED on show, chosen OVER a reserved invisible slot (a sub-200 ms write would twitch the control's width by the spinner's 16 px plus the btn gap, the very jump rule 1 ends). ConfirmDialog's confirm and Modal.Action inherit this through Button; asChild is still untouched (no Spinner there). Every raw-host Spinner site outside Button takes the same element in plan 88.9-56. */
     return (
       <Comp
         ref={ref}
@@ -339,14 +348,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
         {...(busy ? { 'aria-disabled': true } : {})}
       >
-        {busy && !asChild ? (
+        {asChild ? (
+          children
+        ) : (
           <>
             {children}
-            <Spinner />
-            <span className="sr-only">{busySuffix}</span>
+            {tracksBusy ? <DelayedSpinner busy={busy} /> : null}
+            {busy ? <span className="sr-only">{busySuffix}</span> : null}
           </>
-        ) : (
-          children
         )}
       </Comp>
     );
