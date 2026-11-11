@@ -2341,7 +2341,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
     expect(inFlight).toBe(cancel);
     expect(inFlight).toHaveTextContent(/^Cancel event/);
-    expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(inFlight);
   });
@@ -2375,7 +2375,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     // reopening". Rule 1 (88.9-46 B27): the label is kept beside the spinner.
     const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
     expect(inFlight).toHaveTextContent(/^Cancel event/);
-    expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight.hasAttribute('disabled')).toBe(false);
   });
@@ -2403,7 +2403,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     // Rule 1 (88.9-46 B28): Leave event keeps its label with the spinner, named ', leaving'.
     const inFlight = within(list).getByRole('button', { name: 'Leave event, leaving' });
     expect(inFlight).toHaveTextContent(/^Leave event/);
-    expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight.hasAttribute('disabled')).toBe(false);
   });

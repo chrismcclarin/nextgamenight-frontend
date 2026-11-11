@@ -821,7 +821,7 @@ describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its 
     fireEvent.click(saved);
     await waitFor(() => expect(saved).toHaveAccessibleName(SAVED_BUSY));
     expect(saved).toHaveTextContent(SAVED);
-    expect(saved.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(saved.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(saved).toHaveAttribute('aria-disabled', 'true');
     expect(saved).not.toHaveAttribute('disabled');
     expect(saved).toHaveClass('min-h-11');
@@ -837,6 +837,8 @@ describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its 
     await waitFor(() => expect(saved).toHaveAccessibleName(SAVED));
     expect(saved).not.toHaveAttribute('aria-disabled');
     expect(gcal).toBeEnabled();
+    expect(saved.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    await waitFor(() => expect(saved.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
   });
 
   it('P2 rule 1 (88.9): Import from Google Calendar keeps its label + spinner while busy; Saved stays natively disabled', async () => {
@@ -848,7 +850,7 @@ describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its 
     fireEvent.click(gcal);
     await waitFor(() => expect(gcal).toHaveAccessibleName(GCAL_BUSY));
     expect(gcal).toHaveTextContent(GCAL);
-    expect(gcal.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(gcal.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(gcal).toHaveAttribute('aria-disabled', 'true');
     expect(gcal).not.toHaveAttribute('disabled');
     expect(gcal).toHaveClass('min-h-11');

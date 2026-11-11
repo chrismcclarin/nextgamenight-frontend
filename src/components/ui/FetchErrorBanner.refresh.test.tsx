@@ -15,6 +15,7 @@
 import * as React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the appear budget
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -395,7 +396,8 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     render(<NoticeHost retry={retry} />);
     const compact = screen.getByRole('button', { name: 'Retry' });
     expect(compact.querySelector('svg'), 'the RefreshCw icon shows at rest').not.toBeNull();
-    expect(compact.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, SPINNER_DELAY_MS + 300))); // AMENDED Phase 88.9-56 (R-C3b reach): read after the appear window
+    expect(compact.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0); // AMENDED Phase 88.9-56 (R-C3b reach): read after the appear window
 
     act(() => {
       compact.click();
@@ -404,7 +406,8 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     expect(retry, 'one refetch for a double activation').toHaveBeenCalledTimes(1);
     expect(compact).toHaveAccessibleName('Retry, retrying');
     expect(compact).toHaveTextContent(/^Retry/);
-    expect(compact.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(compact.querySelector('svg'), 'the slot keeps its icon until the spinner shows').not.toBeNull(); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
+    await waitFor(() => expect(compact.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(compact.querySelector('svg'), 'the icon yields to the house spinner while busy').toBeNull();
     expect(compact).toHaveAttribute('aria-disabled', 'true');
     expect(compact).not.toHaveAttribute('disabled');
@@ -417,7 +420,7 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     const held = deferred();
     const fullRetry = vi.fn(() => held.promise);
     const state: FetchErrorState = { showError: true, message: 'boom', code: 'unknown', retry: fullRetry };
-    const { container } = render(<FetchErrorBanner state={state} />);
+    const { container, rerender } = render(<FetchErrorBanner state={state} />);
     const tryAgain = screen.getByRole('button', { name: 'Try again' });
     expect(tryAgain.querySelector('svg'), 'the RefreshCw icon shows at rest').not.toBeNull();
 
@@ -428,7 +431,7 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     expect(fullRetry, 'one refetch for a double activation').toHaveBeenCalledTimes(1);
     expect(tryAgain).toHaveAccessibleName('Try again, retrying');
     expect(tryAgain).toHaveTextContent(/^Try again/);
-    expect(tryAgain.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(tryAgain.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(tryAgain.querySelector('svg'), 'the icon yields to the house spinner while busy').toBeNull();
     expect(tryAgain).toHaveAttribute('aria-disabled', 'true');
     expect(tryAgain).not.toHaveAttribute('disabled');
@@ -437,6 +440,10 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     await act(async () => {
       held.resolve(undefined);
     });
+    // A successful retry clears the error: Try again leaves, and its spinner with it (no hold read).
+    rerender(<FetchErrorBanner state={{ ...state, showError: false }} />);
+    expect(screen.queryByRole('button', { name: /^Try again/ })).toBeNull(); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
+    expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
   });
 
   it('RN-4. two activations in one tick issue ONE retry; Retry stays focusable, aria-disabled, keeps its label with the spinner (rule 1), no flash', async () => {

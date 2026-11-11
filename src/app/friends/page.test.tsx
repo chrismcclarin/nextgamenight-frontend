@@ -855,7 +855,7 @@ const adminGroup = (id: string, name: string) => ({
 
 const statusRegion = () => document.getElementById('friends-batch-status');
 const errorRegion = () => document.getElementById('friends-batch-error');
-const inviteButton = () => screen.getByRole('button', { name: /Invite to Group$/ });
+const inviteButton = () => screen.getByRole('button', { name: /^Invite to Group( ?, sending)?$/ }); // AMENDED Phase 88.9-56 (R-C3b reach): Button busy names it Invite to Group, sending
 
 // Renders with the given admin groups, selects `select`, and returns once that group's member
 // load has settled: the members call was made (positive), one macrotask has flushed, and the
@@ -1453,7 +1453,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(remove);
     expect(remove).toHaveAccessibleName('Remove Dana, removing');
     expect(remove).toHaveTextContent(/^Remove/);
-    expect(remove.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(remove.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(remove).toHaveAttribute('aria-disabled', 'true');
     expect(remove).not.toHaveAttribute('disabled');
     fireEvent.click(remove);
@@ -1461,6 +1461,8 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     await act(async () => {
       heldRemove.resolve({});
     });
+    // The row leaves with the friend, and the spinner with it (no hold read).
+    await waitFor(() => expect(remove).not.toBeInTheDocument()); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
     vi.useRealTimers();
     cleanup();
 
@@ -2401,6 +2403,15 @@ describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)'
     fireEvent.click(sam);
     fireEvent.click(inviteButton());
     await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(1));
+    // R-C3b reach (88.9-56): Invite to Group is on Button busy now — the heard suffix, the label
+    // kept, the house spinner after the appear delay, and no hand-rolled spinning div.
+    const sending = inviteButton();
+    expect(sending).toHaveAccessibleName('Invite to Group, sending'); // AMENDED Phase 88.9-56 (R-C3b reach): the busy name
+    const visible = sending.cloneNode(true) as HTMLElement;
+    visible.querySelectorAll('.sr-only').forEach((node) => node.remove());
+    expect(visible.textContent).toBe('Invite to Group'); // AMENDED Phase 88.9-56 (R-C3b reach): the label is kept
+    await waitFor(() => expect(sending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
+    expect(sending.querySelectorAll('div.animate-spin')).toHaveLength(0); // AMENDED Phase 88.9-56 (R-C3b reach): no hand-rolled glyph
     // A friend ticked while the batch is in flight.
     fireEvent.click(lee);
 

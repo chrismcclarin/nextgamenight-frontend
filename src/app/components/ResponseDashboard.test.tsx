@@ -18,6 +18,7 @@
 // exactly one reader). The ratified copy is asserted as a literal string instead.
 import * as React from 'react';
 import { render, screen, cleanup, waitFor, act, fireEvent, within } from '@testing-library/react';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the hold budget
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -494,7 +495,7 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     expect(button).not.toHaveAttribute('disabled');
     expect(button).toHaveAccessibleName('Remind, sending');
     expect(button).toHaveTextContent(/^Remind/);
-    expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     fireEvent.click(button);
     fireEvent.click(button);
     expect(api.sendReminder).toHaveBeenCalledTimes(1);
@@ -502,6 +503,9 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     expect(document.activeElement).toBe(button);
 
     await act(async () => { d.resolve({}); });
+    // A sent reminder replaces the button with its Reminded line: the spinner leaves with it.
+    expect(await within(rowOf('Member A')).findByText(/^Reminded \d+m ago$/)).toBeInTheDocument(); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
+    expect(button).not.toBeInTheDocument(); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
   });
 
   it('per row rule 1 (88.9): two rows in flight each keep "Remind, sending" and aria-disabled, and settling one does not flip the other', async () => {
@@ -519,7 +523,7 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await user.click(remindIn('Member B'));
     for (const name of ['Member A', 'Member B']) {
       expect(remindIn(name)).toHaveAccessibleName('Remind, sending');
-      expect(remindIn(name).querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+      await waitFor(() => expect(remindIn(name).querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
       expect(remindIn(name)).toHaveAttribute('aria-disabled', 'true');
     }
     expect(api.sendReminder).toHaveBeenCalledWith('prompt-1', 'uA');
@@ -847,13 +851,15 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     for (const name of THREE_NAMES) expect(screen.getByText(name)).toBeInTheDocument();
     expect(document.activeElement).toBe(button);
     const icon = button.querySelector('svg') as SVGElement;
-    expect(icon).toHaveClass('animate-spin');
+    await waitFor(() => expect(icon).toHaveClass('animate-spin')); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(screen.getByRole('list')).toHaveAttribute('aria-busy', 'true');
 
     await act(async () => {
       held.resolve(THREE);
     });
-    await waitFor(() => expect(icon).not.toHaveClass('animate-spin'));
+    expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy');
+    expect(icon).toHaveClass('animate-spin'); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    await waitFor(() => expect(icon).not.toHaveClass('animate-spin'), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
     expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy');
     expect(document.activeElement).toBe(button);
   });

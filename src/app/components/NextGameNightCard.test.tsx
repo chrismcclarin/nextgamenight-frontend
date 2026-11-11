@@ -61,6 +61,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within, act } from '@testing-library/react';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the hold budget
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
@@ -426,7 +427,7 @@ describe('NextGameNightCard — inline RSVP (SPEC Req 4 / D-07, D-08)', () => {
         .map((n) => n.textContent ?? '')
         .join('');
     expect(visibleText(pressed), 'the label stays while saving').toBe(restingLabel);
-    expect(pressed.querySelectorAll('[data-slot="spinner"]'), 'one house Spinner').toHaveLength(1);
+    await waitFor(() => expect(pressed.querySelectorAll('[data-slot="spinner"]'), 'one house Spinner').toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(pressed).toHaveAccessibleName(/^I'm in ?, saving$/);
 
     await act(async () => {
@@ -434,7 +435,8 @@ describe('NextGameNightCard — inline RSVP (SPEC Req 4 / D-07, D-08)', () => {
       await write.promise;
     });
     expect(visibleText(yesButton())).toBe(restingLabel);
-    expect(yesButton().querySelector('[data-slot="spinner"]')).toBeNull();
+    expect(yesButton().querySelectorAll('[data-slot="spinner"]'), 'the hero stays mounted, so the spinner keeps its hold').toHaveLength(1); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    await waitFor(() => expect(yesButton().querySelector('[data-slot="spinner"]')).toBeNull(), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
   });
 
   it('surfaces a failed write in an assertive region AND reports it, leaving both buttons usable', async () => {

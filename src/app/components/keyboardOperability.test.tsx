@@ -980,7 +980,7 @@ describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () =
     }
   });
 
-  it('KM-18 (iii). a flagged item stays open AND re-renders from the parent\'s NEW props', () => {
+  it('KM-18 (iii). a flagged item stays open AND re-renders from the parent\'s NEW props', async () => {
     // Asserting "the menu did not close" is not enough: the point of the flag is that the
     // in-flight state (rule 1, 88.9-46: the kept label with the house spinner and the heard
     // suffix) becomes VISIBLE on the item the user just activated, which only happens if the
@@ -999,7 +999,7 @@ describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () =
     rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={items(true)} />);
     const busy = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
     expect(busy).toHaveTextContent(/^Cancel event/);
-    expect(busy.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(busy.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
   });
 
   it('KM-19. a menu left open by the flag is still dismissible by Escape and by an outside focusout', () => {
@@ -1062,7 +1062,7 @@ describe('KebabMenu ariaDisabled — the flag that makes keepOpen\'s focus promi
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it('KM-20 (ii). focus stays on the SAME item node across the parent\'s in-flight busy flip', () => {
+  it('KM-20 (ii). focus stays on the SAME item node across the parent\'s in-flight busy flip', async () => {
     const onCancel = vi.fn();
     const { rerender } = render(
       <KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems(false, onCancel)} />,
@@ -1088,7 +1088,7 @@ describe('KebabMenu ariaDisabled — the flag that makes keepOpen\'s focus promi
     expect(document.activeElement, 'the SAME node, not a remounted twin').toBe(item);
     expect(item).toHaveAccessibleName(IN_FLIGHT_NAME);
     expect(item).toHaveTextContent(/^Cancel event/);
-    expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
   });
 
   it('KM-20 (iii). Escape from that state closes the menu and restores focus to the trigger', () => {

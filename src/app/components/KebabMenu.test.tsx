@@ -25,12 +25,13 @@
  *     component's own shipped class strings. Read a red here against a red there.
  */
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, within, act } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
+import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the appear and hold budgets
 import KebabMenu from './KebabMenu';
 
 afterEach(() => {
@@ -331,9 +332,9 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
 // span Button renders, so it is NAMED label plus suffix. busy never refuses on its own — the
 // caller's `ariaDisabled` stays the gate (the 88.6-16 D-12 split).
 describe('KebabMenu busy item (rule 1, 88.9-46)', () => {
-  it('rule 1 (88.9): a busy item keeps its label, shows the spinner and is named label plus suffix', () => {
+  it('rule 1 (88.9): a busy item keeps its label, shows the spinner and is named label plus suffix', async () => {
     const onClick = vi.fn();
-    render(
+    const { rerender } = render(
       <KebabMenu
         ariaLabel="Event actions"
         items={[
@@ -344,11 +345,23 @@ describe('KebabMenu busy item (rule 1, 88.9-46)', () => {
     const { list } = openMenu('Event actions');
     const item = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
     expect(item).toHaveTextContent(/^Cancel event/);
-    expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    await waitFor(() => expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(item).toHaveAttribute('aria-disabled', 'true');
     expect(item).not.toHaveAttribute('disabled');
     fireEvent.click(item);
     expect(onClick).not.toHaveBeenCalled();
+    // The item stays mounted when busy drops, so its spinner keeps the hold, then leaves.
+    rerender(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[
+          { label: 'Cancel event', danger: true, ariaDisabled: true, busy: false, busySuffix: ', cancelling', onClick },
+        ]}
+      />
+    );
+    expect(item).toHaveAccessibleName('Cancel event');
+    expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    await waitFor(() => expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
     cleanup();
 
     // At rest the same item carries neither the spinner nor the suffix (anti-vacuity for the
@@ -360,7 +373,8 @@ describe('KebabMenu busy item (rule 1, 88.9-46)', () => {
       />
     );
     const resting = within(openMenu('Event actions').list).getByRole('button', { name: 'Cancel event' });
-    expect(resting.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, SPINNER_DELAY_MS + 300))); // AMENDED Phase 88.9-56 (R-C3b reach): read after the appear window
+    expect(resting.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0); // AMENDED Phase 88.9-56 (R-C3b reach): read after the appear window
     expect(resting.textContent).toBe('Cancel event');
     fireEvent.click(resting);
     expect(onClick).toHaveBeenCalledTimes(1);
