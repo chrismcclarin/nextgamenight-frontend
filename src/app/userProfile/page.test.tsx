@@ -6123,3 +6123,51 @@ describe('userProfile sign-in guard (88.9-40: SESSION-01)', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 });
+
+// R-C8 (88.9-55, owner pick A, 2026-11-10): on a fresh load an enabled Import Collection received a
+// press while the identity read was still pending, toasted the still-loading sentence and opened no
+// dialog (three CI flakes). The opener is now natively disabled while that read is PENDING only; a
+// FAILED read keeps it enabled with the unchanged toast branch.
+describe('Import Collection opener waits for identity (88.9-55: R-C8)', () => {
+  const STILL_LOADING = 'Still loading your account — please try again in a moment.';
+
+  it('R-C8 (88.9-55): Import Collection is natively disabled while the identity read is pending, enabled once it lands, and on a failed read stays enabled with the toast', async () => {
+    const { toast } = await import('sonner');
+    const toastError = toast.error as unknown as ReturnType<typeof vi.fn>;
+
+    // Pending arm: no row, no error (the harness reports isPending).
+    const view = render(<Profile />);
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const pendingBtn = screen.getByRole('button', { name: 'Import Collection' });
+    expect(pendingBtn).toBeDisabled();
+    fireEvent.click(pendingBtn);
+    expect(toastError).not.toHaveBeenCalledWith(STILL_LOADING);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // The identity read lands: the same control enables and a press opens the dialog.
+    h.self = harnessSelfRow();
+    view.rerender(<Profile />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Import Collection' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    expect(await screen.findByRole('dialog', { name: 'Import your BGG collection?' })).toBeInTheDocument();
+    expect(toastError).not.toHaveBeenCalledWith(STILL_LOADING);
+    view.unmount();
+
+    // Failed arm: errored, not pending, no row. The control stays enabled and keeps the toast.
+    h.self = undefined;
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const failedBtn = screen.getByRole('button', { name: 'Import Collection' });
+    expect(failedBtn).toBeEnabled();
+    fireEvent.click(failedBtn);
+    expect(toastError).toHaveBeenCalledWith(STILL_LOADING);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
