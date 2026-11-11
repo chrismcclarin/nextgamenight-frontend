@@ -171,7 +171,10 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // the component, amended `DECISION Phase 88.6-25` above the declaration (the useAppForm
     // refusal), and amended the pre-fill state comment directly above it. The receiver is
     // unchanged — still set only by the perform* callbacks, still { source, count, failed? }.
-    declaredAt: 108,
+    // RE-DERIVED by plan 88.9-45 (2026-11-10): 108 -> 107. Fifth move: plan 45 added the Spinner
+    // import (+1) and deleted the hoisted A5 constant with its blank line (-2) above the component
+    // (rule 1 — the pre-fill buttons keep their labels). The receiver is unchanged.
+    declaredAt: 107,
     declaration: 'const [prefillStatus, setPrefillStatus] = useState(',
     why:
       'Local pre-fill banner state shaped { source, count, failed? } — set only by this ' +
@@ -201,7 +204,11 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // RE-DERIVED by plan 88.6.1-63 (task 3): 239 -> 240, pushed down by one import line (selfIdentityFailedWithNoRow).
     // RE-DERIVED 2026-10-19 (code review CR-5 / A-75, commit 9883474): 240 -> 244. A hoisted copy constant with
     // its DECISION comment (`DISCONNECT_CALENDAR_PENDING_LABEL`, copy row CR5a) landed above it. Kept as a line number.
-    declaredAt: 244,
+    // RE-DERIVED by plan 88.9-24 (Task 3, 2026-11-09): 244 -> 248. Not on its own: the useInlineReceipt and announceStatus import lines and the useInlineReceipt hook call with its comment line landed above it. Kept as a line number.
+    // AMENDED Phase 88.9-32 (E4a): RE-DERIVED 248 -> 251. Not on its own: the hoisted THEME_TOGGLE_PRESSED constant with its two comment lines (owner pick E4a) landed above it. Kept as a line number.
+    // RE-DERIVED by plan 88.9-40 (Task 3, 2026-11-10): 251 -> 266. The SESSION-01 hook call and the useSignInRedirect import landed above it. Kept as a line number.
+    // RE-CHECKED by plan 88.9-46 (Task 2, 2026-11-10): 266 holds. The P1 / P7 constants named in the two notes above were renamed in place (VERIFY_CODE_BUSY_SUFFIX / ADDING_TO_COLLECTION_BUSY_SUFFIX, rule 1), one line for one line; nothing above the pin moved.
+    declaredAt: 266,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +
@@ -224,7 +231,8 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // its marker, and the swap-announcement state above the role state). Kept as a line number.
     // RE-DERIVED by the pi6 scoped-check fix SC-1 (2026-10-26): 138 -> 141, the loadingPollId
     // state and its two comment lines above the role state.
-    declaredAt: 141,
+    // RE-DERIVED by plan 88.9-40 (Task 2, 2026-11-10): 141 -> 143. The SESSION-01 ErrorFallback and useSignInRedirect imports landed above it. Kept as a line number.
+    declaredAt: 143,
     declaration: 'const [roleRecord, setRoleRecord] = useState(',
     why:
       'Local role-read state { groupId, role, error } written only by the page\'s own ' +

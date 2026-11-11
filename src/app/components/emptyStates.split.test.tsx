@@ -149,7 +149,7 @@ describe('UpcomingEventsCard empty vs failed (§9.2 / T-88-18-01)', () => {
       />
     );
     expect(
-      screen.getByText("We couldn't load your upcoming events")
+      screen.getByText("Couldn't load your upcoming events")
     ).toBeInTheDocument();
     // the whole point: a failure is never dressed up as "you have nothing planned"
     expect(
@@ -190,7 +190,7 @@ describe('GroupLibrary empty vs failed (§9.2 / T-88-18-01)', () => {
     render(<GroupLibrary {...anyProps({ groupId: 'g1' })} />);
 
     expect(
-      await screen.findByText("We couldn't load this library")
+      await screen.findByText("Couldn't load this library")
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'This library is empty' })
@@ -248,7 +248,7 @@ describe('OpenPollsList empty vs failed (§9.2 / T-88-18-01)', () => {
     render(withQueryClient(<OpenPollsList {...anyProps(props)} />));
 
     expect(
-      await screen.findByText("We couldn't load the check-ins")
+      await screen.findByText("Couldn't load the check-ins")
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(
@@ -293,7 +293,7 @@ describe('PromptScheduleReadOnly error vs empty vs soft-failed drift (88.6-15 / 
     render(withQueryClient(<PromptScheduleReadOnly {...anyProps(props)} />));
 
     expect(
-      await screen.findByText("We couldn't load your schedules")
+      await screen.findByText("Couldn't load your schedules")
     ).toBeInTheDocument();
     expect(screen.queryByText('No schedules configured.')).toBeNull();
   });
@@ -331,7 +331,7 @@ describe('PromptScheduleReadOnly error vs empty vs soft-failed drift (88.6-15 / 
     expect(
       screen.getByRole('heading', { name: 'Recurring Check-ins (0)' })
     ).toBeInTheDocument();
-    expect(screen.queryByText("We couldn't load your schedules")).toBeNull();
+    expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
   });
 
   it('SOFT-FAILS a schema drift to the empty shape, not to the error surface', async () => {
@@ -344,7 +344,7 @@ describe('PromptScheduleReadOnly error vs empty vs soft-failed drift (88.6-15 / 
     expect(
       await screen.findByText('No schedules configured.')
     ).toBeInTheDocument();
-    expect(screen.queryByText("We couldn't load your schedules")).toBeNull();
+    expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
   });
 
   it('shows NO empty copy while the initial fetch is pending (UI-SPEC 9.3 E4 backstop)', async () => {
@@ -356,7 +356,7 @@ describe('PromptScheduleReadOnly error vs empty vs soft-failed drift (88.6-15 / 
     expect(await screen.findByText('Loading schedules...')).toBeInTheDocument();
     // The empty copy must not FLASH before the first response lands.
     expect(screen.queryByText('No schedules configured.')).toBeNull();
-    expect(screen.queryByText("We couldn't load your schedules")).toBeNull();
+    expect(screen.queryByText("Couldn't load your schedules")).toBeNull();
   });
 });
 
@@ -398,7 +398,7 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
     // reads "Loading...", and never observes the settled error state at all. OpenPollsList's
     // banner is the failure's one real surface, so waiting on it proves the query has landed.
     expect(
-      await screen.findByText("We couldn't load the check-ins")
+      await screen.findByText("Couldn't load the check-ins")
     ).toBeInTheDocument();
 
     expect(screen.queryByText('No open polls')).toBeNull();
@@ -434,7 +434,7 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
       expect(screen.getAllByText(RF1)).toHaveLength(1);
       expect(screen.getByText(SPOKEN)).toBeInTheDocument();
     });
-    expect(screen.queryByText("We couldn't load the check-ins")).toBeNull();
+    expect(screen.queryByText("Couldn't load the check-ins")).toBeNull();
     // TanStack retains `data` across a refetch error, so a number the user can still trust
     // must not be replaced with nothing.
     expect(screen.getByText('2 open polls')).toBeInTheDocument();
@@ -458,7 +458,7 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
       expect(screen.getAllByText(RF1)).toHaveLength(1);
       expect(screen.getByText(SPOKEN)).toBeInTheDocument();
     });
-    expect(screen.queryByText("We couldn't load the check-ins")).toBeNull();
+    expect(screen.queryByText("Couldn't load the check-ins")).toBeNull();
     expect(screen.getByText('No open polls')).toBeInTheDocument();
   });
 
@@ -490,7 +490,7 @@ describe('PromptScheduleSection badge omits on error and mints no second region 
     expect(screen.getAllByRole('button', { name: /try again/i })).toHaveLength(1);
     // Section itself contributes nothing: the one region is the nested Manager's, on the SAME
     // promptKeys.settings key under the SAME admin gate.
-    expect(screen.getByText("We couldn't load your schedules")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load your schedules")).toBeInTheDocument();
   });
 
   it('(d) a schema drift on open-polls soft-fails to the empty shape, so the zero badge is legitimate', async () => {

@@ -21,8 +21,10 @@ import {
   type Measurement,
 } from './support/contrast';
 import { switchToManualEntry } from './support/createEvent';
-import { holdWrites } from './support/inFlight';
+import { holdWrites, settleAnimations } from './support/inFlight';
+import { injectViewerYesRsvp } from './support/viewerRsvp';
 import { scrubbedFetch } from './support/scrubbedFetch';
+import { advanceMonths, monthWithTrailingDays } from './support/calendarGrid';
 import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
 // Phase 88.3.1-W. The PALETTE, imported rather than transcribed — the AMENDMENT W tests below
 // pin the preset-only group's rendered ground to the `blue` preset's own stored values, and
@@ -631,16 +633,13 @@ function expectInk(label: string, r: InkRead, floor: number, assertOpacity: bool
 
 /** A4b: adjacent-month day numbers, an adjacent-month tile and its '+N more' label on the group compact grid. */
 async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  // Since CS-05 the grid is whole weeks (28, 35 or 42 cells) and a month ending on a Saturday has
+  // no trailing day, so the read happens in the first month from now whose grid ends with at least
+  // 4 next-month days, its geometry taken from the app's own getDaysInMonth:
+  // e2e/support/calendarGrid.ts ("export function monthWithTrailingDays")
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const nextYear = month === 11 ? year + 1 : year;
-  const nextMonth = month === 11 ? 0 : month + 1;
-  // The grid is always 42 cells: the leading days of the previous month, this month, then the
-  // trailing days of the next month (getDaysInMonth). Same arithmetic, so the handler knows them.
-  const leading = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const trailing = 42 - leading - daysInMonth;
+  const target = monthWithTrailingDays(now, 4);
+  const { nextYear, nextMonth, trailing } = target;
   let syntheticDay = 0;
 
   await page.route((url) => /\/events\/group\/[^/]+$/.test(url.pathname), async (route) => {
@@ -659,9 +658,10 @@ async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<vo
       const d = new Date(e.start_date);
       if (d.getFullYear() === nextYear && d.getMonth() === nextMonth) occupied.add(d.getDate());
     }
-    // DATE-PROOF: the CI seed puts the E2E group's events at +3 and +4 days, so real events
-    // occupy at most 2 distinct days among next-month days 1-4, and the 42-cell grid always has
-    // at least 5 trailing days — so at least 3 empty trailing days always exist. The synthetic
+    // DATE-PROOF: the target month has at least 4 trailing days. The CI seed puts the E2E group's
+    // events at +3 and +4 days, so they occupy at most 2 of them (none when the target is a later
+    // month) — so at least 2 empty trailing days always exist: one for the synthetic events, one
+    // for the EMPTY-cell read. The synthetic
     // day is the FIRST trailing day the real response leaves empty (never trailing day 1
     // unconditionally, which the seed lands on during the last four days of every month), and
     // a second empty trailing day is always left for the EMPTY-cell read.
@@ -689,9 +689,10 @@ async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<vo
   try {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertTheme(page, theme);
-    const heading = page.getByRole('heading', { name: `${MONTH_NAMES[month]} ${year}`, exact: true }).first();
-    await expect(heading, `A4b (${theme}): the compact grid heading is not the month the route handler built against`).toBeVisible({ timeout: 15_000 });
-    const next = MONTH_NAMES[nextMonth];
+    const heading = page.getByRole('heading', { name: `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`, exact: true }).first();
+    await expect(heading, `A4b (${theme}): the compact grid did not open on the current month`).toBeVisible({ timeout: 15_000 });
+    await advanceMonths(page, { year: now.getFullYear(), month: now.getMonth() }, target.steps);
+    const next = MONTH_NAMES[target.nextMonth];
     expect(syntheticDay, `A4b (${theme}): the route handler never answered the group events GET`).toBeGreaterThan(0);
 
     const populated = page.getByRole('button', { name: `${next} ${syntheticDay}, 3 games. Open this day.`, exact: true });
@@ -854,6 +855,333 @@ async function timezoneRowCue(page: Page, theme: 'light' | 'dark'): Promise<void
   } finally {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   }
+}
+
+// =========================================================================================
+// Phase 88.9-20 — round-2 Gate C pins, RED first (SPEC R4 / A7).
+// =========================================================================================
+// The round-2 pins live in the two describes at the END of this file: the eight halo host
+// families the UI-SPEC round-2 shared halo constraint (5) names (the round-2 research counts
+// eight, not seven), the D12b failed-save line, the O20c error toast and the SPEC A7 #207
+// image-arm title outline. Each one reads BOTH themes inside one test (inBothThemes below).
+// They are red by design until the round-2 build plans land each ruling; the owed RED set and
+// its CI run id are recorded in the 88.9-20 SUMMARY.
+//
+// The network rules every round-2 test keeps, and why:
+//   - holdWrites is registered BEFORE the first navigation, so every write stays in the browser;
+//   - a write a pin must see FAIL is answered 500 by a route registered AFTER that hold (the
+//     tz-answer reason, this file ("the timezone PATCH is ANSWERED here, never left to the hold")):
+//     Playwright runs the newest matching route first, and a held write is released when
+//     interception is disabled;
+//   - no round-2 test disables route interception, for that same reason;
+//   - every patched read passes through scrubbedFetch (this file ("(DECISION Phase 88.6.2-20")).
+// Failure messages print colours and ratios only, never a fixture value.
+
+type Theme = 'light' | 'dark';
+
+// DECISION Phase 88.9-20 (both-themes-per-test): one test reads both themes, dark arm by an
+// explicit init script and light arm by emulateMedia plus forceLightMode, chosen OVER a light twin
+// and a dark twin per pin — the outline counts one test per pin (FLOOR 30 -> 41), and a signed-out
+// context has no baked theme for the DARK describe's storageState path. The DARK describe keeps its
+// no-init-script path untouched. The dark writer is disposed before the light arm registers
+// forceLightMode, chosen OVER stacking two theme init scripts on one page — Playwright documents
+// their evaluation order as not defined (playwright-core types, addInitScript NOTE).
+async function inBothThemes(page: Page, label: string, run: (theme: Theme) => Promise<void>): Promise<void> {
+  await test.step(`${label} — dark`, async () => {
+    const darkWriter = await page.addInitScript(() => window.localStorage.setItem('theme', 'dark'));
+    try {
+      await run('dark');
+    } finally {
+      await darkWriter.dispose();
+    }
+  });
+  await test.step(`${label} — light`, async () => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await forceLightMode(page);
+    await run('light');
+  });
+}
+
+/**
+ * The round-2 offset-ring read: the ring clears 3:1 against its halo AND the halo is the surface
+ * under the control (<= HALO_EQUAL), so the ring's contrast against what lies outside it equals
+ * its contrast against the halo. Throws (a valid red) when the control wears a UA outline
+ * (focusRingMeasurement: empty ring colour) or a non-offset ring (haloGroundRatio).
+ */
+async function offsetRingBand(page: Page, target: Locator, label: string): Promise<void> {
+  const m = await focusRingMeasurement(page, target, label);
+  expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+  const h = await haloGroundRatio(m, target);
+  expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+}
+
+/** The fleet ring read (R2-38 B6a): a NO-offset ring drawn just outside the control, 3:1 on the ground. */
+async function outsideRing(page: Page, target: Locator, label: string): Promise<void> {
+  const m = await focusRingMeasurement(page, target, label);
+  expect(
+    m.ringGroundKind,
+    `${label}: the ring is '${m.ringGroundKind}' (ring ${m.fg} on ${m.ground}); the fleet ring (R2-38, B6a) is a ` +
+      'no-offset ring drawn just outside the control, so it must read as an outside ring.'
+  ).toBe('outside');
+  expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+}
+
+/**
+ * O-19 (88.9-50): the accent ring's two reads, after proving the theme switch landed (a no-op
+ * switch must red, never re-measure the other theme): the ring against its halo, and the ring
+ * against the ground just outside the halo band. Both >= NON_TEXT on the unrounded value.
+ */
+async function accentRingReads(page: Page, target: Locator, label: string, theme: Theme): Promise<void> {
+  const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+  expect(isDark, `${label}: the html element's dark class is ${isDark}, expected ${theme === 'dark'} — the theme switch did not land`).toBe(theme === 'dark');
+  const m = await focusRingMeasurement(page, target, label);
+  const h = await haloGroundRatio(m, target);
+  const outside = contrastRatio(m.fg, h.behind);
+  if (outside === null) throw new Error(`${label}: could not compute the ring ${m.fg} against the ground ${h.behind}`);
+  // eslint-disable-next-line no-console -- the measured ratios are recorded from the CI log
+  console.log(
+    `${label}: ring ${m.fg} vs halo ${m.ground} ${m.ratio.toFixed(2)}:1 (${m.ratio}); ring vs ground outside ${h.behind} ` +
+      `${outside.toFixed(2)}:1 (${outside}); halo vs ground ${h.ratio.toFixed(3)}:1`
+  );
+  expect.soft(m.ratio, describeRatio(`${label} — ring vs halo`, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+  expect.soft(
+    outside,
+    `${label}: the ring ${m.fg} on the ground outside the halo ${h.behind} is ${outside.toFixed(2)}:1, floor ${NON_TEXT}:1`
+  ).toBeGreaterThanOrEqual(NON_TEXT);
+}
+
+const COLOURED_GROUP_MISSING =
+  'the coloured group is not in the home list response — the E2E_COLOURED_GROUP_ID fixture is missing; never delete this guard';
+
+/** Matches the home group-list read; an arm awaits it before reading the captured name. */
+function isGroupListRead(r: { url(): string; request(): { method(): string } }): boolean {
+  return r.request().method() === 'GET' && /\/groups\/user\/[^/]+$/.test(new URL(r.url()).pathname);
+}
+
+/**
+ * ONE route over the group list read and the group detail read. Every object in either body whose
+ * id is E2E_COLOURED_GROUP_ID has its name captured and, when opts.imageUrl is set, its
+ * background_image_url replaced. The UI reads group.id and group.background_image_url, not the
+ * zod GroupSchema's names (src/app/components/grouplist.js ("const bgImage = group.background_image_url;")).
+ * name() is read only after the caller awaited the list read (the
+ * e2e/home-group-list-refresh.spec.ts ("const listReadAnswered = page.waitForResponse(") idiom),
+ * so its throw means only a response that genuinely lacks the group.
+ */
+async function patchColouredGroup(page: Page, opts: { imageUrl?: string }): Promise<{ name: () => string }> {
+  let captured: string | null = null;
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    const record = node as Record<string, unknown>;
+    if (record.id === E2E_COLOURED_GROUP_ID) {
+      if (typeof record.name === 'string') captured = record.name;
+      if (opts.imageUrl) record.background_image_url = opts.imageUrl;
+    }
+    for (const value of Object.values(record)) walk(value);
+  };
+  await page.route(
+    (url) => /\/groups\/user\/[^/]+$/.test(url.pathname) || /\/groups\/[^/]+$/.test(url.pathname),
+    async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      const response = await scrubbedFetch(route);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        await route.fulfill({ response });
+        return;
+      }
+      walk(body);
+      await route.fulfill({ response, json: body });
+    }
+  );
+  return {
+    name: () => {
+      if (captured === null) throw new Error(COLOURED_GROUP_MISSING);
+      return captured;
+    },
+  };
+}
+
+/** The coloured group's home card, anchored by the captured name (the fixtureCard idiom above). */
+function colouredCard(page: Page, name: string): Locator {
+  return page.getByTestId('group-card').filter({ has: page.getByRole('heading', { name, exact: true }) });
+}
+
+const PENDING_CLONE_ID = '00000000-0000-4000-8000-0000000020a1';
+
+/**
+ * The members read with ONE pending row appended: a clone of the first real member with a fake id
+ * and the pending role, so the Members dialog renders its pending box
+ * (src/app/components/ManageMembers.js ("const active = members.filter((m) => m.UserGroup?.role !== 'pending');")).
+ */
+async function patchPendingMember(page: Page, groupId: string): Promise<void> {
+  await page.route(
+    (url) => /\/groups\/[^/]+\/users$/.test(url.pathname) && url.pathname.includes(`/groups/${groupId}/`),
+    async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      const response = await scrubbedFetch(route);
+      const rows: unknown = await response.json();
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error('R2-72: the members read answered no rows — the pending clone needs one real row to copy');
+      }
+      const first = rows[0] as Record<string, unknown> & { UserGroup?: Record<string, unknown> };
+      const clone = {
+        ...first,
+        id: PENDING_CLONE_ID,
+        user_id: PENDING_CLONE_ID,
+        username: 'E2E R2 Pending',
+        UserGroup: { ...(first.UserGroup ?? {}), role: 'pending' },
+      };
+      await route.fulfill({ response, json: [...rows, clone] });
+    }
+  );
+}
+
+// The open ballot the game-page pin is served (the ballot-pick-in-flight TIE_BALLOT shape, opened).
+const R2_BALLOT_OPTIONS = [
+  { id: '00000000-0000-4000-8000-0000000020b1', game_id: '00000000-0000-4000-8000-0000000020c1', game_name: 'E2E R2 Vote Alpha', user_voted: false },
+  { id: '00000000-0000-4000-8000-0000000020b2', game_id: '00000000-0000-4000-8000-0000000020c2', game_name: 'E2E R2 Vote Beta', user_voted: false },
+];
+const R2_OPEN_BALLOT = {
+  ballot_status: 'open',
+  rsvp_deadline: null,
+  options: R2_BALLOT_OPTIONS,
+  winner: null,
+  needs_tie_break: false,
+  needs_fallback_pick: false,
+  tied_options: null,
+};
+const isBallotRead = (url: URL): boolean => /^\/api\/ballot\/[^/]+$/.test(url.pathname);
+
+// The QR dialog's events route (e2e/share-game-qr-pending.spec.ts shape): the event GET is patched
+// to carry one custom participant (the Participants card that holds Share Game QR renders only with
+// one), and the invite-token read is answered at once with a fake URL, never reaching the backend.
+const R2_QR_INVITE_URL = 'https://e2e-r2-qr.invalid/invite';
+const R2_CUSTOM_PARTICIPANT = { user_id: null, username: 'E2E participant', is_guest: true, is_custom: true };
+const EVENT_GET_PATH = /^\/api\/events\/[^/]+$/;
+
+async function patchQrEventRoutes(page: Page): Promise<void> {
+  await page.route('**/api/events/**', async (route) => {
+    const request = route.request();
+    const { pathname } = new URL(request.url());
+    if (pathname.endsWith('/invite-token')) {
+      const origin = request.headers()['origin'];
+      await route.fulfill({
+        status: 200,
+        json: { invite_url: R2_QR_INVITE_URL },
+        headers: origin ? { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' } : {},
+      });
+      return;
+    }
+    if (request.method() === 'GET' && EVENT_GET_PATH.test(pathname)) {
+      const response = await scrubbedFetch(route);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        await route.fulfill({ response });
+        return;
+      }
+      if (body && typeof body === 'object' && !Array.isArray(body)) {
+        const event = body as { EventParticipations?: unknown };
+        if (!Array.isArray(event.EventParticipations) || event.EventParticipations.length === 0) {
+          event.EventParticipations = [R2_CUSTOM_PARTICIPANT];
+        }
+      }
+      await route.fulfill({ response, json: body });
+      return;
+    }
+    await route.fallback();
+  });
+}
+
+// The Browse Games suggestions answer and open path (e2e/browse-games-modal.spec.ts shape), as
+// spec-local constants: two synthetic games, no thumbnail.
+const R2_BROWSE_GAMES = [
+  { id: '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d', name: 'E2E Browse Alpha', thumbnail_url: null, min_players: 2, max_players: 5, playing_time: 45, weight: 1.9, owners: [] as string[], avg_group_rating: null, review_count: 0 },
+  { id: '8b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e', name: 'E2E Browse Beta', thumbnail_url: null, min_players: 1, max_players: 4, playing_time: 30, weight: 2.6, owners: [] as string[], avg_group_rating: null, review_count: 0 },
+];
+function answerSuggestions(url: URL): unknown {
+  if (url.pathname.startsWith('/api/suggestions/group/')) return { suggestions: R2_BROWSE_GAMES };
+  return undefined;
+}
+
+async function openBrowseGames(page: Page): Promise<Locator> {
+  await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+  await page.getByRole('button', { name: /add new game event/i }).click();
+  await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible({ timeout: 15_000 });
+  const browseMore = page.getByTestId('quick-suggestions-slot').getByRole('button', { name: 'Browse more' });
+  await expect(
+    browseMore,
+    'R2-30: "Browse more" never rendered — it shows once the suggestions read (answered in the browser) returns chips, and that read fires only when the fixture group has a member'
+  ).toBeVisible({ timeout: 15_000 });
+  await browseMore.click();
+  const browse = page.getByRole('dialog', { name: 'Browse games' });
+  await expect(browse, 'R2-30: the Browse games dialog did not open').toBeVisible();
+  await expect(browse.getByRole('button', { name: R2_BROWSE_GAMES[0].name })).toBeVisible();
+  await settleAnimations(browse);
+  return browse;
+}
+
+// The Games to Bring answers (e2e/games-to-bring-picker-phone.spec.ts shape): one owned game, no
+// brings yet, so the Bringing section shows its Add games control and the picker lists one row.
+const R2_OWNED_GAME = { id: 'e2e-bring-game-1', name: 'E2E Bring Game' };
+function answerBringReads(url: URL): unknown {
+  if (url.pathname.startsWith('/api/user-games/user/')) return [R2_OWNED_GAME];
+  if (url.pathname.startsWith('/api/event-brings/event/')) return [];
+  return undefined;
+}
+
+// SPEC A7 #207: a failing https image on the coloured group. The host is RFC 2606 .invalid and the
+// request is route-fulfilled 404, so the image fails exactly as the #207 walk group's does and no
+// remote host is ever reached.
+const R2_FAILED_IMAGE_URL = 'https://e2e-r2-207.invalid/failed-photo.png';
+
+/**
+ * The image-arm title outline (O02d1 / O21b), read on one title element.
+ *
+ * The ground read takes the BETTER of the outline colour and the fill against the ground, per
+ * theme. WCAG 1.4.3 Note 5 ("A narrow border around the letter would be used as the letter") reads
+ * a narrow outline as part of the glyph, and UI-SPEC (d) O-02 says one of the two colours clears
+ * the ground on every fill; on the blue fixture's dark ground a black outline reads 1.40 while the
+ * white fill reads 15.03, so an outline-only read could never pass. The fill must still separate
+ * from its own outline (>= 4.5). The width, paint-order and no-shadow checks are what keep this
+ * pin RED on today's 0.5px stroke with a heavy shadow.
+ */
+async function titleOutline(el: Locator, label: string): Promise<void> {
+  await expect(el, `${label}: the title is not visible`).toBeVisible({ timeout: 15_000 });
+  const p = await probeElement(el, ['color', '-webkit-text-stroke-color', '-webkit-text-stroke-width', 'paint-order', 'text-shadow']);
+  const widthRaw = p.computed['-webkit-text-stroke-width']?.raw ?? '';
+  expect
+    .soft(Number.parseFloat(widthRaw), `${label}: -webkit-text-stroke-width is ${JSON.stringify(widthRaw)}; the image-arm outline is at least 1.5px`)
+    .toBeGreaterThanOrEqual(1.5);
+  const paintOrder = (p.computed['paint-order']?.raw ?? '').trim();
+  expect.soft(paintOrder, `${label}: paint-order is ${JSON.stringify(paintOrder)}; the outline is drawn first, under the fill`).toMatch(/^stroke\b/);
+  const shadow = (p.computed['text-shadow']?.raw ?? '').trim();
+  expect.soft(shadow, `${label}: text-shadow is ${JSON.stringify(shadow)}; the outline replaces the shadow`).toBe('none');
+  const outline = await ratioAgainstGround(el, `${label} — outline colour`, '-webkit-text-stroke-color');
+  const fill = await ratioAgainstGround(el, `${label} — fill`, 'color');
+  const better = Math.max(outline.ratio, fill.ratio);
+  expect
+    .soft(
+      better,
+      `${label}: the better of outline ${outline.fg} (${outline.ratio.toFixed(3)}:1) and fill ${fill.fg} (${fill.ratio.toFixed(3)}:1) on the ground ${fill.ground} is ${better.toFixed(3)}:1, floor ${AA_TEXT}:1`
+    )
+    .toBeGreaterThanOrEqual(AA_TEXT);
+  const fillVsOutline = contrastRatio(fill.fg, outline.fg) ?? 0;
+  expect
+    .soft(fillVsOutline, `${label}: fill ${fill.fg} vs outline ${outline.fg} measured ${fillVsOutline.toFixed(3)}:1, floor ${AA_TEXT}:1`)
+    .toBeGreaterThanOrEqual(AA_TEXT);
 }
 
 test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
@@ -1094,9 +1422,12 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     });
 
     await test.step('surface 5 — Req 1: a nested block is distinct from its parent card', async () => {
-      // The scheduler's "no slot selected yet" prompt (src/app/components/EventScheduler.tsx ("Tap and hold on a day to pick a time"))
-      // is a `bg-surface-page` block INSIDE the modal's `bg-card` body. It renders
-      // unconditionally until a slot is picked, which is the state this test is in.
+      // The scheduler's Selected Time panel (src/app/components/EventScheduler.tsx ("{SELECTED_TIME_LABEL}</p>"))
+      // is a `bg-surface-sunken` block INSIDE the modal's `bg-card` body. It mounts once a slot
+      // is committed, so this step commits ONE slot first with a plain mouse click on a gridcell:
+      // a mouse press engages the paint gesture at once and commits on release
+      // (src/app/components/heatmap/usePaintGesture.ts ("Mouse (and synthetic test events with no pointerType) engage immediately")).
+      // 88.9-41 S1a removed the boxed prompt this step used to read; the panel is the same requirement (a sunken block inside the card) and computes 2.35 light / 4.23 dark.
       //
       // DEVIATION FROM THE PLAN, recorded rather than silently substituted: the plan names
       // `ManageMembers.js:410` or `userProfile/page.js:1839`. VERIFIED 2026-08-26 — the
@@ -1104,10 +1435,13 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // second is gated on `userData?.sms_enabled`, a DB-only admin entitlement the fixture
       // does not set. Both would be zero-element locators. This block is the same
       // requirement (a sunken/recessed block inside a card) at a site that actually renders. DECISION Phase 88.6.2-31 (ruling-B-e2e): line number kept as quoted text over an anchor — both numbers are the plan's own words, which this DEVIATION note quotes to refuse them.
-      const nested = page
-        .locator('p')
-        .filter({ hasText: /Tap and hold on a day to pick a time\.|Click and drag on the calendar/ });
-      await expect(nested).toBeVisible({ timeout: 15_000 });
+      const grid = page.getByRole('grid', { name: 'Group availability by day and time' });
+      await grid.getByRole('gridcell').nth(1).click();
+      const nested = page.locator('p').filter({ hasText: 'Selected Time:' });
+      await expect(
+        nested,
+        'Req 1: the Selected Time panel did not mount within 15 s of a mouse click on a gridcell — the one-slot commit did not happen. This is a LOCATOR failure, not a contrast failure.'
+      ).toBeVisible({ timeout: 15_000 });
       const nestedProbe = await probeElement(nested, []);
       const nestedGround = compositeGround(nestedProbe);
 
@@ -1235,14 +1569,16 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       await page.keyboard.press('Escape');
 
       // The month view may be persisted OFF: src/app/components/EventCalendar.js ("return prefs?.viewMode || 'month';") defaults `viewMode` to
-      // 'month' but hydrates a saved 'list' from prefs. The toggle at src/app/components/EventCalendar.js ("{viewMode === 'month' ? 'List View' : 'Month View'}") is labelled by the
-      // view it switches TO, so a visible "Month View" button means we are currently in list view.
-      const toMonth = page.getByRole('button', { name: 'Month View' });
-      if (await toMonth.count()) await toMonth.first().click();
+      // 'month' but hydrates a saved 'list' from prefs. The switch at src/app/components/EventCalendar.js ("const viewSwitch = showListView ?") is a
+      // Month | List group whose segments carry aria-pressed (88.9-39 N1), so a Month segment with
+      // aria-pressed "false" means we are currently in list view.
+      const toMonth = page.getByRole('group', { name: 'Calendar view' }).getByRole('button', { name: 'Month', exact: true });
+      if ((await toMonth.count()) && (await toMonth.first().getAttribute('aria-pressed')) === 'false') await toMonth.first().click();
 
       // Locate the CELLS grid, not the day-name header row. `CalendarMonthView.js` renders the
       // day-name header as its own `.grid.grid-cols-7.gap-1.mb-4` with exactly 7 children, and the
-      // cells grid with ~35-42. Scoped by child count so the two cannot be confused.
+      // cells grid with 28, 35 or 42 (CS-05). Scoped by child count so the two cannot be confused;
+      // the floor stays 28 because a four-week February (2026, 2037, 2043) has exactly 28.
       const grids = page.locator('.grid.grid-cols-7');
       const gridCount = await grids.count();
       let cellsGrid: Locator | null = null;
@@ -1291,8 +1627,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       expect(
         matches,
         `ruling 1c: expected EXACTLY ONE \`[aria-current="date"]\` inside the month cells grid ` +
-          `(today's day number), found ${matches}. 0 means today is not in the rendered 42-cell ` +
-          `window or the attribute moved; >1 means the locator caught a sibling surface. Either ` +
+          `(today's day number), found ${matches}. 0 means today is not in the rendered month ` +
+          `grid or the attribute moved; >1 means the locator caught a sibling surface. Either ` +
           `way this is a LOCATOR failure, not a contrast failure — do not relax it into a ` +
           `contrast pass.`
       ).toBe(1);
@@ -1585,6 +1921,32 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
       probe.computed['box-shadow'].raw,
       'home card (Req 3, dark) — `--shadow-sm` paints nothing in BOTH themes (src/app/globals.css ("DECISION Phase 88.3 (Req 3 / UI-SPEC") light, src/app/globals.css ("AMENDED Phase 88.6-05 (N1): the DARK half") dark)'
     );
+
+    // Owner add-on ruling (2026-11-08, 88.9-RULINGS.md Q2 ADD-ON; UI-SPEC R2-02 amended): on the
+    // tinted no-image home card in DARK mode the Last Game row and its date take the title's ink
+    // (the --t-color pole) instead of the preset's dark inks, so the card reads in one treatment in
+    // dark as it already does in light. The coloured group carries no image here (W50 arm).
+    await test.step("Q2 add-on (88.9-27): the coloured card's Last Game row and date take the title's ink and clear 4.5", async () => {
+      const coloured = await patchColouredGroup(page, {});
+      const listRead = page.waitForResponse(isGroupListRead);
+      await page.goto('/');
+      await listRead;
+      await assertTheme(page, 'dark');
+      const name = coloured.name();
+      const colouredHome = colouredCard(page, name);
+      const title = colouredHome.getByRole('heading', { name, exact: true });
+      await expect(title, 'Q2 add-on: the coloured card title is not visible').toBeVisible({ timeout: 15_000 });
+      const label = colouredHome.getByText('Last Game:', { exact: true });
+      const row = label.locator('xpath=ancestor::div[1]');
+      const date = row.locator(':scope > span').last();
+      const titleInk = (await probeElement(title, ['color'])).computed['color']?.css ?? null;
+      const rowInk = (await probeElement(row, ['color'])).computed['color']?.css ?? null;
+      const dateInk = (await probeElement(date, ['color'])).computed['color']?.css ?? null;
+      expect.soft(rowInk, `Q2 add-on: the Last Game row ink ${rowInk} is not the title ink ${titleInk} in dark`).toBe(titleInk);
+      expect.soft(dateInk, `Q2 add-on: the Last Game date ink ${dateInk} is not the title ink ${titleInk} in dark`).toBe(titleInk);
+      expectRatio('Q2 add-on: Last Game row on the coloured card (dark)', await ratioAgainstGround(row, 'Q2 add-on: Last Game row (dark)'), AA_TEXT);
+      expectRatio('Q2 add-on: Last Game date on the coloured card (dark)', await ratioAgainstGround(date, 'Q2 add-on: Last Game date (dark)'), AA_TEXT);
+    });
   });
 
   test('create-event scheduler: the today number and the nested block hold in dark', async ({ page }) => {
@@ -1596,10 +1958,16 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     const m = await ratioAgainstGround(todayCell.getByTestId('strip-day-number'), 'today number on the today tint (Req 5, dark)');
     expectRatio('today number on the today tint (Req 5, dark)', m, AA_TEXT);
 
-    const nested = page
-        .locator('p')
-        .filter({ hasText: /Tap and hold on a day to pick a time\.|Click and drag on the calendar/ });
-    await expect(nested).toBeVisible({ timeout: 15_000 });
+    // The nested block is the Selected Time panel (src/app/components/EventScheduler.tsx ("{SELECTED_TIME_LABEL}</p>")),
+    // mounted by a one-slot mouse-click commit, as in the light test's step 'surface 5' above
+    // (88.9-41 S1a removed the boxed prompt this read used to target).
+    const grid = page.getByRole('grid', { name: 'Group availability by day and time' });
+    await grid.getByRole('gridcell').nth(1).click();
+    const nested = page.locator('p').filter({ hasText: 'Selected Time:' });
+    await expect(
+      nested,
+      'Req 1 (dark): the Selected Time panel did not mount within 15 s of a mouse click on a gridcell — the one-slot commit did not happen. This is a LOCATOR failure, not a contrast failure.'
+    ).toBeVisible({ timeout: 15_000 });
     const nestedProbe = await probeElement(nested, []);
     const nestedGround = compositeGround(nestedProbe);
     const cardProbe = await probeElement(page.getByRole('heading', { name: /create event/i }), []);
@@ -1984,36 +2352,358 @@ async function assertAccentLabelRatio(page: Page, theme: 'light' | 'dark'): Prom
 }
 
 /**
- * Surface 11 — UI-SPEC §11 OI-7, the composited ring ground on the landing hero.
+ * Surface 11 — UI-SPEC §11 OI-7, the Google sign-in ring on the landing hero, both themes (88.9-33).
  *
  * ITS OWN SESSION, and that is not optional. src/app/components/LandingPage.js ("export default function LandingPage") renders ONLY when the user
- * is logged OUT: src/app/page.js ("return <LandingPage />;") gates the whole component behind `!user`, and every
- * other test in this file runs inside the logged-in `storageState` baked from
- * `.auth/user.json`. Overriding `storageState` to an empty one is the only way to reach it.
+ * is logged OUT: src/app/page.js ("return <LandingPage />;") gates the whole component behind a missing user, and every
+ * other test in this file runs inside the logged-in storageState baked by the setup project.
+ * Overriding storageState to an empty one is the only way to reach it.
  *
- * This is also the one Req 7 ground that cannot be computed from tokens: the button's own
- * background is `bg-white/20` over the hero's `bg-surface-nav`, so the ring's ground is a
- * COMPOSITE. `compositeGround` blends it; Gate A cannot, because no token holds that value.
+ * The composite ground is now DARK-ONLY. In dark the button's own background is a white/20 wash
+ * over the purple-950 hero, so the ring's ground is a COMPOSITE that no token holds; compositeGround
+ * blends it and Gate A cannot. In light (owner pick O01a) the hero is the card surface and the
+ * button sits on the secondary-button tokens, an opaque ground. The ring comes from the hero root's
+ * dark-only amber re-point in dark (owner pick B4a) and from the house purple-700 ring in light;
+ * the button no longer re-points its own ring. The light arm also reads the hero root's painted
+ * ground against the resolved card token, which is how this test proves O01a shipped.
  */
-test.describe('Req 11 Gate C — OI-7, the logged-out landing hero (LIGHT)', () => {
-  test.use({ colorScheme: 'light', storageState: { cookies: [], origins: [] } });
+test.describe('Req 11 Gate C — OI-7, the logged-out landing hero (both themes, 88.9-33)', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
 
-  test.beforeEach(async ({ page }) => {
-    await forceLightMode(page);
+  test('OI-7 (88.9-33 O01a + B4a): the Google sign-in ring clears 3:1 on its ground in both themes, and the light hero is the card surface', async ({ page }) => {
+    test.slow();
+    await inBothThemes(page, 'OI-7 landing hero Google sign-in (O01a + B4a)', async (theme) => {
+      await page.goto('/');
+      await assertTheme(page, theme);
+
+      const google = page.getByRole('link', { name: 'Sign in with Google' });
+      await expect(
+        google,
+        'OI-7: the logged-out Google sign-in link is not on the page. If this fails, the storageState ' +
+          'override did not take and the session is still logged IN — LandingPage renders only when !user.'
+      ).toBeVisible({ timeout: 15_000 });
+
+      if (theme === 'light') {
+        // The hero root is the h1's second div ancestor (root, then the centred column); no test hook.
+        const heroRoot = page.getByRole('heading', { level: 1 }).locator('xpath=ancestor::div[2]');
+        const painted = await probeElement(heroRoot, ['background-color']);
+        const tokens = await probeElement(page.locator('html'), ['--color-bg-card']);
+        const card = tokens.computed['--color-bg-card'];
+        expect(card?.css ?? null, `OI-7 (light): --color-bg-card did not normalise (raw ${JSON.stringify(card?.raw)}) — a probe failure`).not.toBeNull();
+        const hero = painted.computed['background-color'];
+        expect
+          .soft(
+            hero?.css ?? null,
+            `OI-7 (light, O01a): the hero root paints ${hero?.raw} but the card surface is ${card?.css} — the hero is still the nav surface in light`
+          )
+          .toBe(card?.css ?? null);
+      }
+
+      const label =
+        theme === 'light'
+          ? 'OI-7 — Google sign-in ring, light (O01a secondary tokens, house ring)'
+          : 'OI-7 — Google sign-in ring, dark (hero-root amber scope, B4a)';
+      const m = await focusRingMeasurement(page, google, label);
+      expectRatio(label, m, NON_TEXT);
+    });
+  });
+});
+
+// =========================================================================================
+// Phase 88.9-20 — the round-2 pins (see the section header above the LIGHT describe). Each test
+// reads both themes; each RED reason and its greening plan is in the 88.9-20 SUMMARY.
+// =========================================================================================
+test.describe('Req 11 Gate C — round 2 pins (88.9 R2), both themes per test', () => {
+  test('halo (88.9 R2): game page ballot vote toggle and Save note ring band ≥ 3:1, light + dark', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, { answerGet: (url) => (isBallotRead(url) ? R2_OPEN_BALLOT : undefined) });
+    await injectViewerYesRsvp(page);
+    await inBothThemes(page, 'game page H (R2-54 vote toggle, R2-62 Save note, page ground)', async (theme) => {
+      await page.goto(E2E_EVENT_DETAIL_PATH);
+      await assertTheme(page, theme);
+      const vote = page.getByRole('button', { name: R2_BALLOT_OPTIONS[0].game_name, exact: true });
+      await expect(
+        vote,
+        `R2-54 (${theme}): the open-ballot answer did not render the vote branch — read BallotSection's render conditions (an open ballot, and a viewer RSVP of yes or maybe)`
+      ).toBeVisible({ timeout: 15_000 });
+      await offsetRingBand(page, vote, `game page ballot vote toggle ring (R2-54, B1a host ground, ${theme})`);
+      const saveNote = page.getByRole('button', { name: 'Save note', exact: true });
+      await expect(saveNote, `R2-62 (${theme}): the RSVP Save note control is not visible`).toBeVisible({ timeout: 15_000 });
+      await offsetRingBand(page, saveNote, `RSVP Save note ring (R2-62, B1a host ground, ${theme})`);
+    });
   });
 
-  test('the Google sign-in button ring clears 3:1 against its composited ground', async ({ page }) => {
-    await page.goto('/');
-    await assertTheme(page, 'light');
+  test('halo (88.9 R2): Members pending box Approve ring band ≥ 3:1, light + dark', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    await patchPendingMember(page, E2E_GROUP_ID);
+    await inBothThemes(page, 'Members pending box T (R2-72)', async (theme) => {
+      await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+      await assertTheme(page, theme);
+      const opener = page.getByRole('button', { name: 'Manage Members' });
+      await expect(opener, `R2-72 (${theme}): the Manage Members control is not visible`).toBeVisible({ timeout: 15_000 });
+      await opener.click();
+      const dialog = page.getByRole('dialog', { name: 'Members' });
+      await expect(dialog, `R2-72 (${theme}): the Members dialog did not open`).toBeVisible({ timeout: 15_000 });
+      const approve = dialog.getByRole('button', { name: 'Approve', exact: true });
+      await expect(
+        approve,
+        `R2-72 (${theme}): Approve renders only for an admin viewer with a pending row — the CI user is not an admin of E2E_GROUP_ID or the pending clone did not land`
+      ).toBeVisible({ timeout: 15_000 });
+      // Focus INSIDE the dialog first (round-1 L-5, the bellAcceptRing move above).
+      await approve.focus();
+      await offsetRingBand(page, approve, `Members pending box Approve ring (R2-72, B3a warning box, ${theme})`);
+    });
+  });
 
-    const google = page.getByRole('link', { name: 'Sign in with Google' });
-    await expect(
-      google,
-      'OI-7: the logged-out Google sign-in link is not on the page. If this fails, the storageState ' +
-        'override did not take and the session is still logged IN — LandingPage renders only when !user.'
-    ).toBeVisible({ timeout: 15_000 });
+  test('halo (88.9 R2): home card Invite Member on the coloured group ring band ≥ 3:1, light + dark', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    const coloured = await patchColouredGroup(page, {});
+    await inBothThemes(page, 'home card G (R2-64)', async (theme) => {
+      const listRead = page.waitForResponse(isGroupListRead);
+      await page.goto('/');
+      await listRead;
+      await assertTheme(page, theme);
+      const card = colouredCard(page, coloured.name());
+      await expect(card, `R2-64 (${theme}): the coloured group's home card is not visible`).toBeVisible({ timeout: 15_000 });
+      const invite = card.getByRole('button', { name: /^Invite member to / });
+      await expect(invite, `R2-64 (${theme}): the coloured card's Invite Member control is not visible`).toBeVisible();
+      await offsetRingBand(page, invite, `home card Invite Member ring on the coloured card (R2-64, B2a card ground, ${theme})`);
+    });
+  });
 
-    const m = await focusRingMeasurement(page, google, 'OI-7 — Google sign-in ring on the hero (Req 7)');
-    expectRatio('OI-7 — Google sign-in ring on the hero (Req 7)', m, NON_TEXT);
+  test('halo (88.9 R2): group header Manage Members on the coloured group ring band ≥ 3:1, light + dark', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    await inBothThemes(page, 'group header G (R2-66)', async (theme) => {
+      await page.goto(`/groupHomePage?id=${E2E_COLOURED_GROUP_ID}`);
+      await assertTheme(page, theme);
+      const manage = page.getByRole('button', { name: 'Manage Members' });
+      await expect(manage, `R2-66 (${theme}): the coloured header's Manage Members control is not visible`).toBeVisible({ timeout: 15_000 });
+      await offsetRingBand(page, manage, `group header Manage Members ring on the coloured header (R2-66, B2a header ground, ${theme})`);
+    });
+  });
+
+  test('halo (88.9 R2): footer About and Report bug ring band ≥ 3:1, light + dark', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    await inBothThemes(page, 'footer page (R2-48)', async (theme) => {
+      await page.goto('/');
+      await assertTheme(page, theme);
+      const footer = page.getByRole('contentinfo');
+      const about = footer.getByRole('link', { name: 'About', exact: true });
+      await expect(about, `R2-48 (${theme}): the footer About link is not visible`).toBeVisible({ timeout: 15_000 });
+      await offsetRingBand(page, about, `footer About link ring on the page ground (R2-48, B5a, ${theme})`);
+      const report = footer.getByRole('button', { name: 'Report bug or suggest feature' });
+      await expect(report, `R2-48 (${theme}): the footer Report bug control is not visible`).toBeVisible();
+      await offsetRingBand(page, report, `footer Report bug ring on the page ground (R2-48, B5a, ${theme})`);
+    });
+  });
+
+  test('halo (88.9 R2): QR dialog corner close ring band ≥ 3:1, light + dark', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    await patchQrEventRoutes(page);
+    await inBothThemes(page, 'QR dialog corner close (R2-38)', async (theme) => {
+      await page.goto(E2E_EVENT_DETAIL_PATH);
+      await assertTheme(page, theme);
+      const share = page.getByRole('button', { name: 'Share Game QR' });
+      await expect(
+        share,
+        `R2-38 (${theme}): Share Game QR never rendered — it needs the Participants card (the events route patches one custom participant) and a group-member viewer`
+      ).toBeVisible({ timeout: 15_000 });
+      await share.click();
+      const dialog = page.getByRole('dialog', { name: 'Game Night Invite QR' });
+      await expect(dialog, `R2-38 (${theme}): the QR dialog did not open`).toBeVisible({ timeout: 15_000 });
+      const close = dialog.locator('button[aria-label="Close"]');
+      await expect(close, `R2-38 (${theme}): the QR dialog's corner close is not visible`).toBeVisible();
+      await close.focus();
+      await outsideRing(page, close, `QR dialog corner close fleet ring on the dialog ground (R2-38, B6a, ${theme})`);
+    });
+  });
+
+  test('halo (88.9 R2): Browse Games steppers ring band ≥ 3:1, light + dark', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, { answerGet: answerSuggestions });
+    await inBothThemes(page, 'Browse Games steppers (R2-30)', async (theme) => {
+      const browse = await openBrowseGames(page);
+      await assertTheme(page, theme);
+      const increase = browse.getByRole('button', { name: 'Increase player count' });
+      await expect(increase, `R2-30 (${theme}): the Increase player count stepper is not visible`).toBeVisible();
+      await increase.focus();
+      await offsetRingBand(page, increase, `Browse Games stepper ring on the elevated ground (R2-30, B7a, ${theme})`);
+    });
+  });
+  test('D12b (88.9): failed-save line ink ≥ 4.5', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, { answerGet: answerBringReads });
+    await injectViewerYesRsvp(page);
+    // The forced failure, registered AFTER the hold so it sees the PUT first (the tz-answer
+    // ordering above). The PUT is a full replace of the viewer's brings; it never lands.
+    await page.route(
+      (url) => url.pathname.endsWith('/my-brings'),
+      async (route) => {
+        if (route.request().method() !== 'PUT') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({ status: 500, json: { error: 'E2E forced save failure' } });
+      }
+    );
+    await inBothThemes(page, 'D12b failed-save line (R2-16)', async (theme) => {
+      await page.goto(E2E_EVENT_DETAIL_PATH);
+      await assertTheme(page, theme);
+      const heading = page.getByRole('heading', { name: 'Bringing', exact: true });
+      await expect(heading, `D12b (${theme}): the Bringing section never rendered — its brings read is answered [] in the browser`).toBeVisible({ timeout: 15_000 });
+      const control = heading.locator('xpath=..').getByRole('button', { name: 'Add games', exact: true });
+      await expect(control, `D12b (${theme}): no Add games control — it shows only for a viewer whose RSVP reads yes with no brings`).toBeVisible();
+      await control.tap();
+      const dialog = page.getByRole('dialog', { name: 'Games to Bring', exact: true });
+      await expect(dialog, `D12b (${theme}): Add games did not open Games to Bring`).toBeVisible({ timeout: 10_000 });
+      const row = dialog.getByRole('checkbox', { name: R2_OWNED_GAME.name, exact: true });
+      await expect(row, `D12b (${theme}): the owned game row never rendered`).toBeVisible({ timeout: 10_000 });
+      await row.tap();
+      await expect(row, `D12b (${theme}): a tap on the game row did not check it`).toHaveAttribute('aria-checked', 'true');
+      await dialog.getByRole('button', { name: 'Save', exact: true }).tap();
+      const alert = dialog.getByRole('alert');
+      await expect(alert, `D12b (${theme}): the failed save never reached the assertive region`).toHaveText(/\S/, { timeout: 15_000 });
+      const sentence = ((await alert.textContent()) ?? '').trim();
+      const line = dialog
+        .getByText(sentence, { exact: true })
+        .and(dialog.locator(':not([role]):not([aria-live]):not(.sr-only)'))
+        .first();
+      await expect(line, 'D12b: no visible failure line carries the announced sentence (R2-16 — the sr-only region alone is what shipped)').toBeVisible();
+      const box = await line.boundingBox();
+      expect.soft(box?.width ?? 0, `D12b (${theme}): the failure line box is ${box?.width}px wide — not larger than 1x1`).toBeGreaterThan(1);
+      expect.soft(box?.height ?? 0, `D12b (${theme}): the failure line box is ${box?.height}px tall — not larger than 1x1`).toBeGreaterThan(1);
+      const label = `D12b failed-save line ink on its composited ground (R2-16, ${theme})`;
+      const m = await ratioAgainstGround(line, label);
+      expect.soft(m.ratio, describeRatio(label, AA_TEXT, m)).toBeGreaterThanOrEqual(AA_TEXT);
+      await page.keyboard.press('Escape');
+      await expect(dialog, `D12b (${theme}): Escape did not close Games to Bring before the next arm`).toBeHidden();
+    });
+  });
+
+  test('O20c (88.9): error toast ≥ 4.5 both themes', async ({ page }) => {
+    test.slow();
+    // DECISION Phase 88.9-20 (O20c OS-light arm): the OS is emulated LIGHT in both arms, chosen OVER
+    // matching the OS to each theme — Sonner's theme=system follows the OS, so the app-dark/OS-light
+    // arm is the mismatch the round-2 research measured and the one an app-theme fix must close.
+    await page.emulateMedia({ colorScheme: 'light' });
+    await holdWrites(page, {});
+    // The timezone write, answered 500 by a route registered AFTER the hold (the tz-answer reason
+    // above): it never lands, and the provider's catch raises the error toast.
+    await page.route(
+      (url) => /\/users\/[^/]+\/timezone$/.test(url.pathname),
+      async (route) => {
+        const method = route.request().method();
+        if (method === 'GET' || method === 'HEAD') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({ status: 500, json: { error: 'E2E forced timezone failure' } });
+      }
+    );
+    await inBothThemes(page, 'O20c error toast (O-20)', async (theme) => {
+      await page.goto('/userProfile');
+      await assertTheme(page, theme);
+      const field = page.getByRole('combobox', { name: 'Timezone' });
+      await expect(field, `O20c (${theme}): the Timezone field is not visible`).toBeVisible({ timeout: 15_000 });
+      const list = page.getByRole('listbox', { name: 'Timezones' });
+      const active = list.locator('[role="option"][aria-selected="true"]');
+      // The timezoneRowCue fixed-zone selection: constants only, never page text.
+      await field.click();
+      await field.fill('Los Angeles');
+      await expect(list.getByRole('option'), `O20c (${theme}): the fixed query did not filter to one option`).toHaveCount(1);
+      await field.press('ArrowDown');
+      await expect(active, `O20c (${theme}): ArrowDown did not activate the filtered option`).toHaveCount(1);
+      await field.press('Enter');
+      const toast = page.locator('[data-sonner-toast][data-type="error"]').filter({ hasText: 'Failed to save your timezone' });
+      await expect(toast, `O20c (${theme}): the failed timezone save raised no error toast`).toBeVisible({ timeout: 15_000 });
+      const title = toast.locator('[data-title]');
+      const label = `O20c error toast title ink (${theme}, OS light)`;
+      const m = await ratioAgainstGround(title, label);
+      expect.soft(m.ratio, describeRatio(label, AA_TEXT, m)).toBeGreaterThanOrEqual(AA_TEXT);
+      const painted = await probeElement(toast, ['background-color', 'color']);
+      const tokens = await probeElement(page.locator('html'), ['--color-status-error-subtle', '--color-status-error-text']);
+      const subtle = tokens.computed['--color-status-error-subtle'];
+      const ink = tokens.computed['--color-status-error-text'];
+      expect(subtle?.css ?? null, `O20c (${theme}): --color-status-error-subtle did not normalise (raw ${JSON.stringify(subtle?.raw)}) — a probe failure`).not.toBeNull();
+      expect(ink?.css ?? null, `O20c (${theme}): --color-status-error-text did not normalise (raw ${JSON.stringify(ink?.raw)}) — a probe failure`).not.toBeNull();
+      const message = `the error toast does not paint the app's status-error tokens in ${theme}`;
+      expect
+        .soft(painted.computed['background-color']?.css ?? null, `O20c: ${message} (background ${painted.computed['background-color']?.raw} vs --color-status-error-subtle ${subtle?.css})`)
+        .toBe(subtle?.css ?? null);
+      expect
+        .soft(painted.computed['color']?.css ?? null, `O20c: ${message} (color ${painted.computed['color']?.raw} vs --color-status-error-text ${ink?.css})`)
+        .toBe(ink?.css ?? null);
+    });
+  });
+
+  test('A7 #207 (88.9): image-arm title outline ≥ 4.5 on header and card', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    const coloured = await patchColouredGroup(page, { imageUrl: R2_FAILED_IMAGE_URL });
+    await page.route('https://e2e-r2-207.invalid/**', async (route) => {
+      await route.fulfill({ status: 404, body: '' });
+    });
+    await inBothThemes(page, 'A7 #207 image-arm title outline (O02d1 / O21b)', async (theme) => {
+      await page.goto(`/groupHomePage?id=${E2E_COLOURED_GROUP_ID}`);
+      await assertTheme(page, theme);
+      await titleOutline(page.getByRole('heading', { level: 1 }), `A7 #207 group header title (${theme})`);
+
+      const listRead = page.waitForResponse(isGroupListRead);
+      await page.goto('/');
+      await listRead;
+      await assertTheme(page, theme);
+      const name = coloured.name();
+      await titleOutline(colouredCard(page, name).getByRole('heading', { name, exact: true }), `A7 #207 home card title (${theme})`);
+    });
+  });
+
+  // O-19 (88.9-50): the accent Share Game QR ring was never measured; this is its Gate C read on
+  // the event view at 375, both themes. Ring vs halo, then ring vs the ground outside the halo,
+  // each >= 3.00 on the unrounded value; a read under 3:1 is an owner floor pick, never a lowered
+  // assertion. The ratios are printed for the record; messages carry colours and ratios only.
+  test('O-19 (88.9): accent ring on gameDetail CTA ≥ 3:1', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    await patchQrEventRoutes(page);
+    await inBothThemes(page, 'O-19 gameDetail Share Game QR ring', async (theme) => {
+      await page.goto(E2E_EVENT_DETAIL_PATH);
+      await assertTheme(page, theme);
+      const share = page.getByRole('button', { name: 'Share Game QR', exact: true });
+      await expect(
+        share,
+        `O-19 (${theme}): Share Game QR never rendered — it needs the Participants card (the events route patches one custom participant) and a group-member viewer`
+      ).toBeVisible({ timeout: 15_000 });
+      await accentRingReads(page, share, `O-19 gameDetail Share Game QR ring on the card (${theme})`, theme);
+    });
+  });
+});
+
+test.describe('Req 11 Gate C — round 2, the logged-out landing hero (88.9 R2)', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test('halo (88.9 R2): landing hero Get Started ring band ≥ 3:1, light + dark', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    await inBothThemes(page, 'landing hero (R2-71)', async (theme) => {
+      await page.goto('/');
+      await assertTheme(page, theme);
+      const getStarted = page.getByRole('link', { name: 'Get Started', exact: true });
+      await expect(
+        getStarted,
+        `R2-71 (${theme}): Get Started is not on the page — the storageState override did not take and the session is still logged IN (LandingPage renders only when signed out)`
+      ).toBeVisible({ timeout: 15_000 });
+      await offsetRingBand(
+        page,
+        getStarted,
+        theme === 'light'
+          ? 'landing hero Get Started ring (R2-71, light: card halo + purple-700 ring per O01a / B4a)'
+          : 'landing hero Get Started ring (R2-71, dark: nav halo + amber ring per B4a)'
+      );
+    });
   });
 });

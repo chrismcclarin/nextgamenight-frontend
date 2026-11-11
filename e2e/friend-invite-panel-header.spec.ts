@@ -80,3 +80,66 @@ test('R7-M5: the Invite Members header row is 12px/8px at phone and 24px/12px at
   await page.keyboard.press('Escape');
   await expect(dialog, 'the dialog closes on Escape').toBeHidden();
 });
+
+// Phase 88.9-29 (owner picks C6a, E8b and O13a; UI-SPEC R2-15, R2-75, O-13). jsdom computes no
+// line height, alignment or padding, so the rendered half of those rulings lives here, at 375
+// (phone) and desktop (journeys). It inherits this file's capture-off test.use above; its
+// messages carry numbers only. The letter-spacing arm reads 0 from Task 1 onward (the
+// DialogTitle base dropped its tracking there); the others are red until the panel is edited.
+test('C6a + E8b + O13a (88.9): the invite title takes a 25px line, the close centres on the title block, body sections are 16px at phone and 20px at desktop', async ({ page, isMobile }) => {
+  await page.goto('/');
+
+  const invite = page.getByRole('button', { name: /invite member to/i }).first();
+  await expect(invite, 'at least 1 invite button renders for the fixture group').toBeVisible({ timeout: 15_000 });
+  await invite.click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog, 'the invite dialog opens').toBeVisible();
+  await settleAnimations(dialog);
+
+  const title = dialog.getByRole('heading', { level: 2 }).first();
+  await expect(title, 'the dialog title renders').toBeVisible();
+  const column = title.locator('xpath=..');
+  const row = title.locator('xpath=../..');
+
+  // C6a: 20/700 on a 25px line (leading-tight), no tracking.
+  const type = await title.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { lineHeight: parseFloat(cs.lineHeight), letterSpacing: cs.letterSpacing };
+  });
+  expect.soft(type.lineHeight, 'title line-height px (expected 25)').toBe(25);
+  expect.soft(['normal', '0px'], 'title letter-spacing is normal or 0px').toContain(type.letterSpacing);
+
+  // E8b: the header row centres the close on the whole title block, and the close is one
+  // 20 x 20 stroked svg.
+  const alignItems = await row.evaluate((el) => getComputedStyle(el).alignItems);
+  expect.soft(alignItems === 'center', 'header row align-items is center').toBe(true);
+  const close = dialog.getByRole('button', { name: 'Close' }).first();
+  const closeBox = await close.boundingBox();
+  const columnBox = await column.boundingBox();
+  expect(closeBox, 'close button box measured').not.toBeNull();
+  expect(columnBox, 'title column box measured').not.toBeNull();
+  const closeMid = closeBox!.y + closeBox!.height / 2;
+  const columnMid = columnBox!.y + columnBox!.height / 2;
+  expect.soft(Math.abs(closeMid - columnMid), 'close vs title column vertical centre offset px (max 0.5)').toBeLessThanOrEqual(0.5);
+  const icon = close.locator('svg');
+  await expect.soft(icon, 'the close holds 1 svg').toHaveCount(1);
+  if ((await icon.count()) === 1) {
+    const iconBox = await icon.boundingBox();
+    expect(iconBox, 'close icon box measured').not.toBeNull();
+    expect.soft(Math.abs(iconBox!.width - 20), 'close icon width px off 20 (max 0.5)').toBeLessThanOrEqual(0.5);
+    expect.soft(Math.abs(iconBox!.height - 20), 'close icon height px off 20 (max 0.5)').toBeLessThanOrEqual(0.5);
+  }
+
+  // O13a: the first body section is p-4 at phone and p-5 from md.
+  const section = dialog.getByRole('heading', { level: 3, name: 'Your Friends' }).locator('xpath=..');
+  const pad = await section.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].map((v) => parseFloat(v));
+  });
+  const expected = isMobile ? 16 : 20;
+  expect.soft(pad, `first body section padding px top right bottom left (expected ${expected} each)`).toEqual([expected, expected, expected, expected]);
+
+  await page.keyboard.press('Escape');
+  await expect(dialog, 'the dialog closes on Escape').toBeHidden();
+});

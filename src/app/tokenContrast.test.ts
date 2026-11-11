@@ -39,7 +39,7 @@
  * ------------------------
  * That the app RENDERS these values. It claims the token layer DECLARES them. Gate B
  * (plans 06-11) covers the call sites and Gate C (plan 12) measures the rendered pixels.
- * `88.3-UI-SPEC.md` §5.11 row 50 (the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") ground over the hero) is
+ * `88.3-UI-SPEC.md` §5.11 row 50 (the src/app/components/LandingPage.js ("dark:bg-white/20 dark:hover:bg-white/30") ground over the hero) is
  * not computable from tokens at all and stays open until plan 12 measures it (OI-7).
  */
 import fs from 'node:fs';
@@ -287,7 +287,7 @@ function resolveShadow(theme: Theme, prop: string): string {
  * A translucent token composited over an opaque ground, so a scrim can be measured.
  *
  * These are the ONLY composited rows Gate A can compute, and `88.3-UI-SPEC.md` §5.11 marks
- * them. The `groupHomePage` 15% black dim (§5.10.3) and the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") ground
+ * them. The `groupHomePage` 15% black dim (§5.10.3) and the src/app/components/LandingPage.js ("dark:bg-white/20 dark:hover:bg-white/30") ground
  * over the hero (row 50, OI-7) are NOT computable here — the first needs a group colour
  * from the database (plan 11), the second needs an in-browser measurement (plan 12).
  */
@@ -334,7 +334,7 @@ function lStarOf(hex: string, what: string): number {
  *
  * Assertions here compare against FLOORS, never against a hex, so a future re-tint that
  * still clears its floor does not churn this file (e2e/tailwind-v4-styles.spec.ts ("every assertion pins WHICH PROPERTY is")).
- * The three deliberate exceptions are marked at their sites.
+ * The ten deliberate exceptions are marked at their sites.
  */
 function expectRatio(theme: Theme, ink: string, ground: string, floor: number, req: string): number {
   const inkHex = resolve(theme, ink);
@@ -465,7 +465,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // ruling 1c took warm-200 for the PAGE, so leaving it would make this row's `!= page`
     // assertion AND its L* ordering both false, and would be a real render defect at
     // src/app/components/GroupLibrary.js ("bg-surface-page rounded-card animate-pulse") (card-hover skeleton bars inside a bg-surface-page parent) and
-    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :") (today's cell would be byte-identical to an empty one).
+    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border border-line-accent' :") (today's cell would be byte-identical to an empty one).
     // The rejected alternative warm-300 measures accent-text 4.4440 on it, an AA failure.
     expect(
       lStarOf(cardHover, 'card-hover'),
@@ -738,6 +738,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // RESTING colour would have made hover LESS readable than rest.
     // AMENDED 88.3-18 (ruling 1c): light amber-900 now reads 9.0722 on the card (unchanged) and
     // 6.9489 on the new warm-200 page (was 8.0072). Both clear with room.
+    // AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark --color-accent-hover is amber-300 now (light stays amber-400), so the dark hover reads ABOVE rest, not equal to it.
     for (const theme of ['light', 'dark'] as const) {
       expectRatio(theme, '--color-accent-text-hover', '--color-bg-card', 4.5, 'Req 4 / §5.11 rows 17-18');
       expectRatio(theme, '--color-accent-text-hover', '--color-bg-page', 4.5, 'Req 4 / §5.11 rows 17-18');
@@ -1211,7 +1212,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // future re-tint inside the feasible window (t ∈ [0.60, 0.92]) does not churn this row — but a
     // collapse back onto either neighbour does red it. warm-200 IS the page (byte-equality, a real
     // render defect at src/app/components/GroupLibrary.js ("bg-surface-page rounded-card animate-pulse") and
-    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :")); warm-300 drops
+    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border border-line-accent' :")); warm-300 drops
     // accent-text to 4.4440 and reds test 14's row 13.
     const mint = resolve('light', '--warm-250');
     expect(mint, '88.3-18 ruling 1c — `--warm-250` must be declared in the palette').toMatch(/^#[0-9a-f]{6}$/i);
@@ -1255,7 +1256,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     //
     // NOTE Phase 88.5 (owner ruling 2026-08-31) — a deliberate dark FORK now exists in
     // `components/UpcomingCountPill.tsx` and DOES NOT CONTRADICT this equality. The pill forks at
-    // its USE SITE (`dark:[background-color:var(--amber-500)]` + `dark:[color:var(--warm-900)]`),
+    // its USE SITE (`dark:[background-color:var(--amber-400)]` + `dark:[color:var(--warm-900)]`),
     // reading a different token family in dark rather than re-pointing this one; that is why it
     // could not be spelled `.btn-accent`. This row therefore stays green and stays the guard on
     // the accent CTA family. Tests 51-52 below own the pill's own floors and its fork.
@@ -1397,7 +1398,15 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       if (legacy) {
         expect(slice, `88.3-18 — the Share Game QR button in ${rel} still wears the legacy \`btn btn-accent\` string, so it must carry the house focus-visible ring string, like the Create-Event button it copies`).toContain('focus-visible:ring-focus-ring');
       } else {
-        expect(slice, `88.3-18 / A-2 — the Share Game QR button in ${rel} is now a \`<Button>\`, so it must NOT carry a per-site \`focus-visible:ring\` string; the ring lives once in \`Button.tsx\`'s cva base and a second copy paints nothing extra but re-splits the decision`).not.toContain('focus-visible:ring');
+        // AMENDED Phase 88.9-39 (owner pick B2a, R014 / B025): the per-site HALO override
+        // `focus-visible:ring-offset-surface-group-halo` on EventDayModal's Share Game QR is the
+        // 88.9-05 sanctioned call-site form (Button.tsx's A-2 amendment: a call site on another
+        // ground overrides the halo through cn() with the same focus-visible: prefix), not a second
+        // ring string. The negative now reads the RING STRING PROPER — `ring-2`, `ring-focus-ring`,
+        // `ring-offset-2` — and leaves a `focus-visible:ring-offset-<surface>` colour alone, so the
+        // A-2 decision (one ring, in the primitive) is still pinned and the halo decision is not.
+        const ringProper = slice.match(/focus-visible:ring-(?!offset-[a-z])[\w-]+/g) ?? [];
+        expect(ringProper, `88.3-18 / A-2 — the Share Game QR button in ${rel} is now a \`<Button>\`, so it must NOT carry a per-site focus-visible ring string (width, ring colour or offset width); the ring lives once in \`Button.tsx\`'s cva base and a second copy paints nothing extra but re-splits the decision. Found: ${ringProper.join(' ') || '(none)'}`).toEqual([]);
       }
 
       expect(slice, `88.3-18 — the Share Game QR button's decorative icon in ${rel} must be hidden from AT; the visible label already names the control`).toContain('aria-hidden="true"');
@@ -1594,15 +1603,16 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // ratio. Recorded because the sentence used to say "semibold" and a stale one here would
     // read as a pin on something this file cannot see.
     expectRatio('light', '--color-btn-accent-text', '--color-btn-accent-bg', 4.5, '88.5 Req 2 / LIGHT arm — white on amber-700 (5.0216)');
-    expectRatio('dark', '--warm-900', '--amber-500', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-500 (8.3660). White here is 2.1477, an AA failure: the ink MUST fork with the fill');
+    // AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): the dark rows measure the amber-400 fill the pill now paints (were amber-500: 8.3660 / 5.2506 / 6.4483).
+    expectRatio('dark', '--warm-900', '--amber-400', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-400 (10.7630, F4b). White here is 1.6694, an AA failure: the ink MUST fork with the fill');
 
     // Fill vs ground, use site 1 — the home Calendar button (3.0, WCAG 1.4.11 non-text).
     expectRatio('light', '--color-btn-accent-bg', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / LIGHT pill on the Calendar button fill (4.4321)');
-    expectRatio('dark', '--amber-500', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / DARK pill on the Calendar button fill (5.2506). amber-700 here is 2.2456 — this is the number the fork exists to fix');
+    expectRatio('dark', '--amber-400', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / DARK pill on the Calendar button fill (6.7549, F4b). amber-700 here is 2.2456 — this is the number the fork exists to fix');
 
     // Fill vs ground, use site 2 — the sheet's "This week" subheader on `bg-surface-card`.
     expectRatio('light', '--color-btn-accent-bg', '--color-bg-card', 3.0, '88.5 Req 2 / LIGHT twin pill on the sheet card (5.0216)');
-    expectRatio('dark', '--amber-500', '--color-bg-card', 3.0, '88.5 Req 2 / DARK twin pill on the sheet card (6.4483). amber-700 here is 2.7578');
+    expectRatio('dark', '--amber-400', '--color-bg-card', 3.0, '88.5 Req 2 / DARK twin pill on the sheet card (8.2958, F4b). amber-700 here is 2.7578');
   });
 
   it('52. 88.5 — the pill\'s two theme arms are DIFFERENT ON PURPOSE (a theme-equal pill is a regression)', () => {
@@ -1615,18 +1625,18 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     //
     // Asserted in the DARK block, because that is the theme where the `dark:` variant wins and
     // therefore the theme where the two spellings must disagree.
-    const darkForkFill = resolve('dark', '--amber-500');
+    const darkForkFill = resolve('dark', '--amber-400');
     const lightArmFill = resolve('dark', '--color-btn-accent-bg');
     expect(
       darkForkFill,
-      `88.5 (owner ruling 2026-08-31) — the pill's DARK fill --amber-500 (${darkForkFill}) must NOT be byte-equal to the light arm's --color-btn-accent-bg (${lightArmFill}). A theme-equal pill is a REGRESSION, not a simplification: amber-700 measures 2.2456:1 on the dark button fill and 2.7578:1 on the dark sheet, under SPEC Req 2's 3:1 acceptance — which the owner KEPT rather than relax. Re-unifying the arms is a decision, not a cleanup`,
+      `88.5 (owner ruling 2026-08-31) — the pill's DARK fill --amber-400 (${darkForkFill}) must NOT be byte-equal to the light arm's --color-btn-accent-bg (${lightArmFill}). A theme-equal pill is a REGRESSION, not a simplification: amber-700 measures 2.2456:1 on the dark button fill and 2.7578:1 on the dark sheet, under SPEC Req 2's 3:1 acceptance — which the owner KEPT rather than relax. Re-unifying the arms is a decision, not a cleanup`,
     ).not.toBe(lightArmFill);
 
     const darkForkInk = resolve('dark', '--warm-900');
     const lightArmInk = resolve('dark', '--color-btn-accent-text');
     expect(
       darkForkInk,
-      `88.5 (owner ruling 2026-08-31) — the pill's DARK ink --warm-900 (${darkForkInk}) must NOT be byte-equal to the light arm's --color-btn-accent-text (${lightArmInk}). The ink forks WITH the fill by necessity: white on amber-500 is 2.1477:1, an AA failure`,
+      `88.5 (owner ruling 2026-08-31) — the pill's DARK ink --warm-900 (${darkForkInk}) must NOT be byte-equal to the light arm's --color-btn-accent-text (${lightArmInk}). The ink forks WITH the fill by necessity: white on amber-400 is 1.6694:1, an AA failure`,
     ).not.toBe(lightArmInk);
 
     // Anti-vacuity: all four resolve to real hexes, so the two inequalities above cannot be
@@ -1932,6 +1942,199 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(failures, `88.9 A5a — ${failures.join(' | ')}`).toEqual([]);
     expect(measured, '88.9 A5a — anti-vacuity: expected 4 measured pairs (2 sites x 2 themes)').toBe(4);
+  });
+
+  it('56. E7a (88.9): dark error box ground #450a0a, ink ≥ 4.5', () => {
+    // Deliberate hex exception (the fourth): SPEC R4 token pin — the shipped dark resting error ground IS the owner pick E7a (88.9-PICKS-B4.json, 2026-11-06), red-950; the shipped wine ground measured 6.41:1 under the same ink and read pink (UAT3-J1).
+    const darkGround = resolve('dark', '--color-status-error-subtle');
+    expect(
+      darkGround,
+      `88.9 E7a — dark --color-status-error-subtle resolves ${darkGround}; the owner pick E7a (88.9-PICKS-B4.json) is red-950 #450a0a`,
+    ).toBe('#450a0a');
+    expectRatio('dark', '--color-status-error-text', '--color-status-error-subtle', 4.5, '88.9 E7a');
+    const lightGround = resolve('light', '--color-status-error-subtle');
+    expect(
+      lightGround,
+      `88.9 E7a — light --color-status-error-subtle resolves ${lightGround}; E7a is a dark-only pick, the light ground must not move from #fadede`,
+    ).toBe('#fadede');
+  });
+
+  it('57. O23b (88.9): dark error-chip hover #5c1d1d', () => {
+    // Deliberate hex exception (the fifth): SPEC R4 token pin — the hover twin of E7a IS the owner pick O23b (88.9-PICKS-B8B.json, 2026-11-07); the shipped wine hover measured 5.76:1.
+    const darkHover = resolve('dark', '--color-status-error-subtle-hover');
+    expect(
+      darkHover,
+      `88.9 O23b — dark --color-status-error-subtle-hover resolves ${darkHover}; the owner pick O23b (88.9-PICKS-B8B.json) is #5c1d1d`,
+    ).toBe('#5c1d1d');
+    expectRatio('dark', '--color-status-error-text', '--color-status-error-subtle-hover', 4.5, '88.9 O23b');
+    const darkResting = resolve('dark', '--color-status-error-subtle');
+    expect(
+      darkHover,
+      `88.9 O23b — the dark error hover (${darkHover}) must stay distinct from the dark resting ground (${darkResting}), or hover paints no change`,
+    ).not.toBe(darkResting);
+  });
+  it('58. C3 (88.9): the plain, today and next-month day-number inks clear 4.5:1 on their tile grounds in both themes', () => {
+    // Deliberate hex exception (the sixth): SPEC R4 token pin — the tiles ARE owner pick C3 (88.9-PICKS-B7A.json); tile vs card 1.24 light / 1.12 dark is a fill, not a control boundary, so no 3:1 row.
+    // The tile is 55% and the past tile 28% of the muted fill over the card, written as literal hexes per theme. The blend check below holds that derivation, so a hand-nudged hex reds here.
+    const PICK = { light: { tile: '#ebe6e0', past: '#f5f2ef' }, dark: { tile: '#2a3548', past: '#263143' } } as const;
+    for (const theme of ['light', 'dark'] as const) {
+      const tile = resolve(theme, '--color-bg-tile');
+      const past = resolve(theme, '--color-bg-tile-past');
+      expect(tile, `88.9 C3 — [${theme}] --color-bg-tile resolves ${tile}; the owner pick C3 is ${PICK[theme].tile}`).toBe(PICK[theme].tile);
+      expect(past, `88.9 C3 — [${theme}] --color-bg-tile-past resolves ${past}; the owner pick C3 is ${PICK[theme].past}`).toBe(PICK[theme].past);
+      const muted = resolve(theme, '--color-bg-muted');
+      const card = resolve(theme, '--color-bg-card');
+      expect(blend(muted, 0.55, card), `88.9 C3 — [${theme}] the tile must be 55% of the muted fill (${muted}) over the card (${card})`).toBe(tile);
+      expect(blend(muted, 0.28, card), `88.9 C3 — [${theme}] the past tile must be 28% of the muted fill (${muted}) over the card (${card})`).toBe(past);
+      expectRatio(theme, '--color-text-primary', '--color-bg-tile', 4.5, '88.9 C3 plain day number');
+      expectRatio(theme, '--color-text-primary', '--color-bg-tile-past', 4.5, '88.9 C3 past day number');
+      expectRatio(theme, '--color-text-muted', '--color-bg-tile-past', 4.5, '88.9 C3 past muted ink');
+      expectRatio(theme, '--color-accent-text', '--color-bg-muted', 4.5, '88.9 C3 today');
+      expectRatio(theme, '--color-text-muted', '--color-bg-page', 4.5, '88.9 C3 next month');
+    }
+    const themeBlock = blockOf('theme');
+    expect(declIn(themeBlock, '--color-surface-tile'), '88.9 C3 — the @theme inline key --color-surface-tile must read var(--color-bg-tile)').toBe('var(--color-bg-tile)');
+    expect(declIn(themeBlock, '--color-surface-tile-past'), '88.9 C3 — the @theme inline key --color-surface-tile-past must read var(--color-bg-tile-past)').toBe('var(--color-bg-tile-past)');
+  });
+
+  it('59. D1b (88.9): white clears 4.5:1 on each of the eight chip fills in both themes', () => {
+    // Deliberate hex exception (the seventh): SPEC R4 token pin — the eight fills ARE owner pick D1b (votes-b3 v12), theme-identical, in this order. The minimum is green-700 (research 5.0156).
+    const D1B = ['#b91c1c', '#c2410c', '#b45309', '#15803d', '#0f766e', '#0369a1', '#6d28d9', '#be185d'] as const;
+    const themeBlock = blockOf('theme');
+    let min = Infinity;
+    D1B.forEach((hex, i) => {
+      const n = i + 1;
+      for (const theme of ['light', 'dark'] as const) {
+        const fill = resolve(theme, `--color-member-chip-${n}`);
+        expect(fill, `88.9 D1b — [${theme}] --color-member-chip-${n} resolves ${fill}; the owner pick D1b slot ${n} is ${hex}`).toBe(hex);
+        const value = ratioHex('#ffffff', fill, `88.9 D1b white on chip ${n}`);
+        min = Math.min(min, value);
+        expect(value, `88.9 D1b — [${theme}] white on --color-member-chip-${n} (${fill}) measures ${value.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(declIn(themeBlock, `--color-chip-${n}`), `88.9 D1b — the @theme inline key --color-chip-${n} must read var(--color-member-chip-${n})`).toBe(`var(--color-member-chip-${n})`);
+    });
+    expect(min, `88.9 D1b — the weakest white-on-fill pair (green-700) measures ${min.toFixed(4)}:1`).toBeGreaterThanOrEqual(5.0);
+  });
+
+  it('60. D3c (88.9): the chip rim is purple-800 light and purple-950 dark, a separation edge with no floor', () => {
+    // Deliberate hex exception (the eighth): SPEC R4 token pin — the rim IS owner pick D3c (votes-b3a v2). It is a separation edge between stacked chips, not text or a control boundary, so it carries no floor (light rim vs card 11.28).
+    const light = resolve('light', '--color-member-chip-rim');
+    const dark = resolve('dark', '--color-member-chip-rim');
+    expect(light, `88.9 D3c — light --color-member-chip-rim resolves ${light}; the owner pick D3c is purple-800 #2f3b50`).toBe('#2f3b50');
+    expect(dark, `88.9 D3c — dark --color-member-chip-rim resolves ${dark}; the owner pick D3c is purple-950 #161d29`).toBe('#161d29');
+    expect(declIn(blockOf('theme'), '--color-chip-rim'), '88.9 D3c — the @theme inline key --color-chip-rim must read var(--color-member-chip-rim)').toBe('var(--color-member-chip-rim)');
+  });
+
+  it('61. R2-36 + B2a (88.9): the overlay and group-halo surface keys are declared in @theme inline', () => {
+    // Deliberate hex exception (the ninth): the scrim is pinned VERBATIM (rgba, not flattened) because the key below only points at it; its alpha is the dialog's dim in each theme.
+    // The group-halo key falls back to the card: an unset --group-halo would otherwise invalidate the ring shadow and the focus ring would vanish.
+    const themeBlock = blockOf('theme');
+    expect(declIn(themeBlock, '--color-surface-overlay'), '88.9 R2-36 C2a — the @theme inline key --color-surface-overlay must read var(--color-bg-overlay) (CR2-14)').toBe('var(--color-bg-overlay)');
+    expect(declIn(themeBlock, '--color-surface-group-halo'), '88.9 B2a — the @theme inline key --color-surface-group-halo must read the host --group-halo with a card fallback').toBe('var(--group-halo, var(--color-bg-card))');
+    expect(resolve('light', '--color-bg-overlay'), '88.9 R2-36 — the light scrim').toBe('rgba(0, 0, 0, 0.5)');
+    expect(resolve('dark', '--color-bg-overlay'), '88.9 R2-36 — the dark scrim').toBe('rgba(0, 0, 0, 0.7)');
+  });
+
+  it('62. O20c (88.9): the Sonner error override exists once, unlayered, and reads the status-error family', () => {
+    // Sonner's theme rule is 0,2,0 and Sonner injects its sheet at runtime, unlayered, so a rule inside any @layer loses to it whatever its specificity. Ours is 0,3,0 and sits at brace depth 0.
+    // Comments are masked before counting, so the DECISION marker that names this selector in prose does not count.
+    const hits = [...MASKED.matchAll(/:root \[data-sonner-toaster\]\[data-sonner-theme\][ \t]*\{/g)];
+    expect(hits.length, `88.9 O20c — expected exactly ONE Sonner error override rule in globals.css (comments stripped), found ${hits.length}`).toBe(1);
+    const before = MASKED.slice(0, hits[0].index);
+    const depth = (before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length;
+    expect(depth, `88.9 O20c — the Sonner override is nested at brace depth ${depth}; it MUST be unlayered (depth 0)`).toBe(0);
+    const body = RAW.slice(hits[0].index, RAW.indexOf('}', hits[0].index));
+    for (const decl of [
+      '--error-bg: var(--color-status-error-subtle);',
+      '--error-border: var(--color-status-error-border);',
+      '--error-text: var(--color-status-error-text);',
+    ]) {
+      expect(body, `88.9 O20c — the Sonner override must declare ${decl}`).toContain(decl);
+    }
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-status-error-text', '--color-status-error-subtle', 4.5, '88.9 O20c toast ink');
+    }
+  });
+  it('63. F4b (88.9): every dark accent role is amber-400 and the dark hovers step to amber-300', () => {
+    // Deliberate hex exception (the tenth): SPEC R4 token pin — owner pick F4b (88.9-PICKS-B8A.json); the dark ring is also amber-400, so it reads 1.00 against an accent fill and the offset halo carries it.
+    for (const prop of ['--color-accent', '--color-accent-text', '--color-accent-text-strong', '--color-border-accent']) {
+      const value = resolve('dark', prop);
+      expect(value, `88.9 F4b — dark ${prop} resolves ${value}; the owner pick F4b puts every dark accent role on amber-400 #fbbf24`).toBe('#fbbf24');
+    }
+    for (const prop of ['--color-accent-hover', '--color-accent-text-hover']) {
+      const value = resolve('dark', prop);
+      expect(value, `88.9 F4b — dark ${prop} resolves ${value}; the dark hover steps to amber-300 #fcd34d`).toBe('#fcd34d');
+    }
+    expect(resolve('dark', '--color-accent-hover'), '88.9 F4b — the dark accent hover must differ from the resting accent, or hover paints no change').not.toBe(resolve('dark', '--color-accent'));
+    expect(resolve('dark', '--color-accent-text-hover'), '88.9 F4b — the dark accent-text hover must differ from the resting accent-text').not.toBe(resolve('dark', '--color-accent-text'));
+    for (const ground of ['--color-bg-card', '--color-bg-page', '--color-bg-elevated']) {
+      expectRatio('dark', '--color-accent-text', ground, 4.5, '88.9 F4b dark accent ink');
+    }
+    for (const ground of ['--color-bg-card', '--color-bg-page']) {
+      expectRatio('dark', '--color-accent-text-hover', ground, 4.5, '88.9 F4b dark accent hover ink');
+    }
+    expectRatio('dark', '--color-on-accent', '--color-accent', 4.5, '88.9 F4b on-accent ink on the dark accent fill');
+    // The light theme does not move: every light accent role is pinned at its shipped value.
+    const LIGHT = {
+      '--color-accent': '#f59e0b',
+      '--color-accent-hover': '#fbbf24',
+      '--color-accent-text': '#92400e',
+      '--color-accent-text-hover': '#78350f',
+      '--color-accent-text-strong': '#78350f',
+      '--color-border-accent': '#d97706',
+    } as const;
+    for (const [prop, hex] of Object.entries(LIGHT)) {
+      const value = resolve('light', prop);
+      expect(value, `88.9 F4b — light ${prop} resolves ${value}; F4b is dark only, the light value must stay ${hex}`).toBe(hex);
+    }
+  });
+
+  it('64. E4a (88.9): the pressed theme-toggle border clears 3:1 on the card and its accent ink 4.5:1 on the muted fill in both themes', () => {
+    // CONFIRM-ONLY (88.9-22): green on ccec7cc by design — it holds the pair 88.9-32's E4a toggles consume.
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-border-accent', '--color-bg-card', 3.0, '88.9 E4a pressed-toggle border');
+      expectRatio(theme, '--color-accent-text', '--color-bg-muted', 4.5, '88.9 E4a pressed-toggle ink');
+    }
+  });
+
+  it('65. E6a (88.9): muted label ink clears 4.5:1 on the card in both themes', () => {
+    // CONFIRM-ONLY (88.9-22): green on ccec7cc by design — it holds the pair 88.9-34's ScheduleList labels consume.
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-text-muted', '--color-bg-card', 4.5, '88.9 E6a muted label ink');
+    }
+  });
+
+  it('66. D1b cue (88.9): the friend and pending outline clear 3:1 against their inner neighbour, both themes', () => {
+    // CONFIRM-ONLY (88.9-30): green on ccec7cc by design — it holds the inner-band pair the D1b status cue now sits on (owner pick R-P1); the RED-first proof is MemberChipStack test 7.
+    // inset-ring-surface-card resolves to --color-bg-card (globals.css surface-card key); the
+    // outline-status-success / -warning theme keys resolve to the two border roles read here
+    // (the theme-inline bridge sits outside this parser's four blocks).
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-status-success-border', '--color-bg-card', 3.0, '88.9 D1b friend cue vs inner band');
+      expectRatio(theme, '--color-status-warning-border', '--color-bg-card', 3.0, '88.9 D1b pending cue vs inner band');
+    }
+  });
+
+  it('67. 88.9 N1 / MED-78 — the Month | List pressed segment clears 3:1 against the unpressed segment and the card, and its ink clears 4.5:1, in BOTH themes', () => {
+    // 88.9-39 (88.9-RULINGS.md R-P3b, 2026-11-08, option A): the pressed segment paints the
+    // toggle-on pair. Light points at the btn-primary values (5.00 vs the unpressed warm-100
+    // segment, 5.66 vs the card, ink 5.66); dark has its own arm, purple-400 fill / warm-900 ink
+    // (4.02 vs the unpressed purple-800 segment, 4.93 vs the purple-900 card, ink 6.40), replacing
+    // the 1.99 / 2.45 the dark primary fill measured. WCAG 1.4.11: the fill is the only pressed cue.
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-toggle-pressed-bg', '--color-btn-secondary-bg', 3.0, '88.9 N1 / MED-78 pressed segment vs unpressed segment');
+      expectRatio(theme, '--color-toggle-pressed-bg', '--color-bg-card', 3.0, '88.9 N1 / MED-78 pressed segment vs card');
+      expectRatio(theme, '--color-toggle-pressed-text', '--color-toggle-pressed-bg', 4.5, '88.9 N1 / MED-78 pressed ink');
+      measured += 3;
+    }
+    expect(measured, 'anti-vacuity: 3 pairs x 2 themes').toBe(6);
+    // The utilities bg-toggle-on / text-toggle-on-text / hover:bg-toggle-on-hover exist only through
+    // the @theme inline keys, so the keys are part of the requirement (the test-14 idiom).
+    const theme = blockOf('theme');
+    expect(declIn(theme, '--color-toggle-on'), '@theme inline must expose --color-toggle-on').toBe('var(--color-toggle-pressed-bg)');
+    expect(declIn(theme, '--color-toggle-on-text'), '@theme inline must expose --color-toggle-on-text').toBe('var(--color-toggle-pressed-text)');
+    expect(declIn(theme, '--color-toggle-on-hover'), '@theme inline must expose --color-toggle-on-hover').toBe('var(--color-toggle-pressed-hover)');
   });
 });
 

@@ -38,11 +38,17 @@
 import * as React from 'react';
 import { QueryClientContext, hashKey, type QueryKey } from '@tanstack/react-query';
 
+import { cn } from '@/lib/cn';
+
 import { Banner } from './Banner';
+import { hostGroundHalo, type HostGround } from './hostGround';
 import { Icon } from './Icon';
+import { Spinner } from './Spinner';
+import { useDelayedSpinner } from './useDelayedSpinner';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { useFeedbackReport } from '@/app/components/FeedbackModalProvider';
 import { logger, errCtx } from '@/lib/logger';
+import { buildSignInUrl } from '@/lib/signIn';
 import { RETRY_OUTCOME_WINDOW_MS, type FetchErrorCode, type FetchErrorState } from './useFetchErrorState';
 import { useFocusRecovery } from './useFocusRecovery';
 import { DIALOG_ROLE_SELECTOR, focusElement, focusPageFloor, isFocusLost, isOpenDialog } from './focusPageFloor';
@@ -50,8 +56,14 @@ import { DIALOG_ROLE_SELECTOR, focusElement, focusPageFloor, isFocusLost, isOpen
 export interface FetchErrorBannerProps {
   /** Derived state from {@link useFetchErrorState}. */
   state: FetchErrorState;
-  /** Bold heading above the message. */
+  /** Bold heading above the message. Wins over `thing` when both are passed. */
   title?: string;
+  /* DECISION Phase 88.9-26 (BANNER-01, owner ruling short, 2026-11-07): the title composes Couldn't
+     load {thing} (no We, no period, straight apostrophe), chosen OVER a required prop (13 compact
+     mounts take no title, 2 mounts use the default) and OVER removing title (it stays the escape
+     hatch and wins when passed); with neither, Something went wrong stays. */
+  /** What failed to load, in the reader's words (`your groups`): the title becomes `Couldn't load {thing}`. */
+  thing?: string;
   /** Subject prefilled into the bug-report form. */
   reportSubject?: string;
   /** Human context (surface/action) folded into the report description. */
@@ -80,6 +92,11 @@ export interface FetchErrorBannerProps {
    * behaviour).
    */
   focusTarget?: React.RefObject<HTMLElement | null>;
+  /**
+   * The ground the compact notice's HOST paints under its `Retry` (R073), resolved to a literal
+   * halo by `hostGroundHalo`; absent, `card`. Read by the compact branch only.
+   */
+  hostGround?: HostGround;
 }
 
 /**
@@ -140,6 +157,11 @@ type RetryEpisodeOptions = {
   quietOnMount: boolean;
   /** The host's section heading: plan 04's `fallback`, where focus goes when a control leaves. */
   focusTarget?: React.RefObject<HTMLElement | null>;
+  /**
+   * Plan 04's `preferred` for a PRESSED retry only (O22d): where focus goes when the pressed control
+   * leaves, tried before `focusTarget`. Only `FetchErrorBanner` passes it (its Sign in link).
+   */
+  preferredAfterPress?: () => HTMLElement | null | undefined;
 };
 
 /* DECISION Phase 88.6.1-70 (one mechanism): plan 21's retry machinery lives in this ONE
@@ -151,7 +173,7 @@ type RetryEpisodeOptions = {
    copies of a latch, a dwell and an outcome rule drift apart (tenet: one mechanism). Changing
    this is a decision, not a cleanup. */
 function useRetryEpisode(options: RetryEpisodeOptions) {
-  const { state, failureShown, dwellOnPress, quietOnMount, focusTarget } = options;
+  const { state, failureShown, dwellOnPress, quietOnMount, focusTarget, preferredAfterPress } = options;
   const [retrying, setRetrying] = React.useState(false);
   // A retry in THIS failure episode is KNOWN to have failed (its own result said so and the
   // committed state agreed).
@@ -256,11 +278,13 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
      the host target or the floor, never `<body>`; a user who moved to another live control has
      already disarmed it. REJECTED: an arm tied to the tab-return effect (it lives in
      `useFetchErrorState`, which owns no target), and extending plan 04 with a press-free arm (its
-     published arm plus settle already express a watch). */
+     published arm plus settle already express a watch).
+     AMENDED Phase 88.9-26 (O22d): the unauthorized branch's Sign in link arms the same watch on
+     focus, and a pressed retry that turns 401 prefers it (plan 04's `preferred`). */
   const handleRetry = async (event: React.MouseEvent<HTMLButtonElement>) => {
     if (retryInFlightRef.current) return;
     retryInFlightRef.current = true;
-    const settle = retryRecovery.arm({ from: event.currentTarget });
+    const settle = retryRecovery.arm({ from: event.currentTarget, preferred: preferredAfterPress });
     if (outcomeTimerRef.current !== null) {
       clearTimeout(outcomeTimerRef.current);
       outcomeTimerRef.current = null;
@@ -338,7 +362,10 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
 interface NoticeRowProps {
   /** The ratified sentence the row shows (and the one polite region beside it carries). */
   text: string;
-  /** A retry is in flight: `Retrying…` and `aria-disabled`, never the native attribute. */
+  /**
+   * A retry is in flight: the label is kept with the house Spinner and a heard ", retrying"
+   * suffix (rule 1, 88.9-46), `aria-disabled`, never the native attribute.
+   */
   retrying: boolean;
   /** The shared press handler; it arms focus recovery from the pressed button. */
   handleRetry: (event: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>;
@@ -348,6 +375,8 @@ interface NoticeRowProps {
    *  `Retry`'s description and a swipe through the page carry it; absent, the line is `text` alone.
    *  Only `RefreshFailedNotice` passes it (its `sectionName`, close ruling P-78). */
   spokenPrefix?: string;
+  /** The host's ground under the `Retry`, for its halo (R073); absent, `card`. */
+  hostGround?: HostGround;
 }
 
 /* DECISION Phase 88.6.1-70 (one row): ONE row element for the small notices — the compact
@@ -365,8 +394,21 @@ interface NoticeRowProps {
    row through `cn` — the row's class strings stay byte-identical (the description tie above is a
    deliberate addition, not a style change), so a consumer's spacing lives on the RF1 wrapper
    instead. The prop is named `handleRetry` ON PURPOSE: the floor suite anchors on the button's
-   handler attribute. Changing this is a decision, not a cleanup. */
-function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: NoticeRowProps) {
+   handler attribute. Changing this is a decision, not a cleanup.
+   AMENDED Phase 88.9-26 (owner pick B1a, 88.9-PICKS-B1.json, 2026-11-04): the Retry's halo key now
+   comes from the host through hostGround (default card, byte-identical output); every other class
+   token is unchanged. (b) stands: the host passes a typed key resolved from a literal map, never a
+   class string, and the default card token stays inside the literal with the host's key merged
+   after it (the last one wins). */
+// R-C3b reach (88.9-56): both retry controls' icon slot. The slot must stay filled, so the RefreshCw
+// icon stays until the delayed spinner shows (200 ms) and the spinner then keeps 500 ms; one small
+// component so no hook call sits in the banner's body below its compact early return.
+function RetrySlot({ retrying }: { retrying: boolean }) {
+  const shown = useDelayedSpinner(retrying);
+  return shown ? <Spinner /> : <Icon name="RefreshCw" size={14} />;
+}
+
+function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, hostGround }: NoticeRowProps) {
   const textId = React.useId();
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm text-content-secondary">
@@ -424,10 +466,26 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
         onFocus={watchFocus}
         aria-disabled={retrying || undefined}
         aria-describedby={textId}
-        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+        className={cn(
+          'inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+          hostGroundHalo(hostGround)
+        )}
       >
-        <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
-        {retrying ? 'Retrying…' : 'Retry'}
+        {/* DECISION Phase 88.9-46 (rule 1 B37/B38): both retry controls (this shared row's Retry and
+            the full branch's Try again) keep their label and swap the spinning RefreshCw icon for the
+            house Spinner while a retry is in flight, with the same sr-only suffix span Button renders
+            (", retrying") so the name reads "<label>, retrying" — chosen OVER the shipped label swap
+            to the in-flight word (it replaced the whole accessible name) and OVER keeping the
+            spinning icon as a second spinner look (rule 1: busy looks the same everywhere). The
+            polite region beside each branch is a status caption, not a button, and keeps its word.
+            Owner pick O16a extended by the Q3 ruling (88.9-RULINGS.md, 2026-11-08).
+            AMENDED Phase 88.9-56 (R-C3b reach): the slot is driven by the delayed-spinner hook inside
+            RetrySlot — the RefreshCw icon stays until the spinner shows, so a fast retry never changes the
+            slot; a successful retry unmounts the banner (the hold ends with the host), a failed one keeps
+            it, so the spinner finishes its hold. */}
+        <RetrySlot retrying={retrying} />
+        Retry
+        {retrying ? <span className="sr-only">, retrying</span> : null}
       </button>
     </div>
   );
@@ -435,16 +493,19 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
 
 export function FetchErrorBanner({
   state,
-  title = 'Something went wrong',
+  title,
+  thing,
   reportSubject,
   reportContext,
   compact = false,
   focusTarget,
+  hostGround,
 }: FetchErrorBannerProps) {
   // Never the feedback context: its value changes on every feedback-button open / close and route
   // change, and this banner would re-render on each (review #150). Null outside the host.
   const openReport = useFeedbackReport();
   const tryAgainRef = React.useRef<HTMLButtonElement>(null);
+  const signInRef = React.useRef<HTMLAnchorElement>(null);
   const {
     retrying,
     retryOutcome,
@@ -460,6 +521,8 @@ export function FetchErrorBanner({
     dwellOnPress: compact,
     quietOnMount: false,
     focusTarget,
+    // O22d: a pressed Try again whose retry answers 401 is replaced by Sign in; land there.
+    preferredAfterPress: () => signInRef.current,
   });
 
   /* DECISION Phase 88.6-36 (T-88.6-102, W38 class): the compact branch's announcement is a
@@ -551,7 +614,9 @@ export function FetchErrorBanner({
          not the node addition AT-4 measured as
          WebKit's announce path; and in the never-loaded case the visible row is gone, so it would
          speak a word the screen does not show;
-     (f) new words for the in-flight state (D-31): the button's `Retrying…` is the cue.
+     (f) new words for the in-flight state (D-31): the button's busy state is the cue — since
+         rule 1 (AMENDED Phase 88.9-46 B37/B38) its kept label with the house spinner and the
+         heard `, retrying` suffix, where it was the `Retrying…` label swap.
 
      UNKNOWN outcomes (a retry resolving no boolean `isError`, or rejecting — caught and reported
      at `handleRetry`) refill the region with the sentence already on screen, never B1. A retry
@@ -574,8 +639,8 @@ export function FetchErrorBanner({
      Routed to Phase 92 (planning:.planning/deferred/phase-92.md ("## [correctness] A background refetch of a never-loaded query")).
 
      HONESTY: the six caller-gated compact sites (measured 2026-10-15) — src/app/userHome/UserHomePage.js ("TERMINAL identity failure it never fires — degrade with the") and src/app/userHome/UserHomePage.js (") : upcomingErrorState.showError && !upcomingRetained ? ("),
-     src/app/userProfile/page.js ("// check never ran; show the degrade notice, not a") and src/app/userProfile/page.js ("// fetch never ran; surface the degrade notice instead of"), src/app/friends/page.js ("<FetchErrorBanner state={groupsErrorState} compact />"),
-     src/app/components/grouplist.js ("<FetchErrorBanner state={selfIdentityErrorState} compact />"), each the compact banner beside its anchor, the grouplist one inside the
+     src/app/userProfile/page.js ("// check never ran; show the degrade notice, not a") and src/app/userProfile/page.js ("// fetch never ran; surface the degrade notice instead of"), src/app/friends/page.js ("{groupsErrorState.showError && ("),
+     src/app/components/grouplist.js ("if (selfIdentityErrorState.showError) {"), each the compact banner beside its anchor, the grouplist one inside the
      early return at src/app/components/grouplist.js ("if (selfIdentityErrorState.showError) {") — destroy this component at the press for a never-loaded identity query
      (friends: its one is the groups query, whose retry clears the error first) and re-create it on failure, so they get neither
      B1 nor an announcement. Owned by Phase 92 (planning:.planning/deferred/phase-92.md ("### Six caller-gated")). */
@@ -590,12 +655,20 @@ export function FetchErrorBanner({
           {regionQuiet ? '' : state.showError ? noticeText : ''}
         </StatusRegion>
         {state.showError ? (
-          <NoticeRow text={noticeText} retrying={retrying} handleRetry={handleRetry} watchFocus={watchFocus} />
+          <NoticeRow
+            text={noticeText}
+            retrying={retrying}
+            handleRetry={handleRetry}
+            watchFocus={watchFocus}
+            hostGround={hostGround}
+          />
         ) : null}
       </>
     );
   }
 
+  // BANNER-01: a passed title wins; else Couldn't load {thing}; else the shipped default.
+  const resolvedTitle = title ?? (thing ? `Couldn't load ${thing}` : 'Something went wrong');
   const subject = reportSubject ?? `Couldn't load: ${state.message}`;
   const description =
     `An error occurred (code: ${state.code}).\n\n` +
@@ -607,7 +680,7 @@ export function FetchErrorBanner({
   const handleReportPress = (event: React.MouseEvent<HTMLButtonElement>) => {
     openReport?.({ subject, description, invoker: event.currentTarget, fallback: focusTarget });
   };
-  const watchReportFocus = () => watchFocusPreferring(() => tryAgainRef.current);
+  const watchReportFocus = () => watchFocusPreferring(() => tryAgainRef.current ?? signInRef.current);
 
   /* DECISION Phase 88.6.1-21 (AC-11 / D-42): the full branch keeps its Banner MOUNTED in both
      states, inside a wrapper that is `sr-only` while `state.showError` is false — chosen over the
@@ -615,7 +688,9 @@ export function FetchErrorBanner({
      assertive region included, together with its text. Banner's assertive `StatusRegion` is
      therefore present and EMPTY before the failure, and the SAME node carries the title and the
      message after it. The buttons render in Banner's `actions` slot: inside the box, OUTSIDE the
-     atomic alert, so the `Try again` -> `Retrying…` flip is no longer a mutation inside it. A
+     atomic alert, so the button's in-flight flip (since rule 1, 88.9-46: the kept label gaining
+     the spinner and the sr-only suffix; before, the `Try again` -> `Retrying…` swap) is no longer
+     a mutation inside it. A
      failed retry is told: the polite region says the site's existing `title` once a retry's OWN
      result reports `isError: true` AND the committed state still shows the failure.
 
@@ -656,10 +731,12 @@ export function FetchErrorBanner({
      settle (stale by one macrotask, node_modules:@tanstack/query-core/build/modern/notifyManager.js ("var defaultScheduler = systemSetTimeoutZero;")). */
   const politeTitle =
     retryOutcome === 'none' && retryFailedAgain && state.showError && !assertiveChangedRef.current;
-  const politeText = retrying ? 'Retrying…' : politeTitle ? title : '';
+  const politeText = retrying ? 'Retrying…' : politeTitle ? resolvedTitle : '';
 
   // The full branch's controls, rendered in Banner's `actions` slot (outside the live region).
   // Hoisted so the Banner's own opening tag carries no handler of its own.
+  // O22d: a 401 cannot be retried, so its full banner offers Sign in instead of Try again.
+  const sessionDead = state.code === 'unauthorized';
   const actionRow = state.showError ? (
     <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
       {/* DECISION Phase 88.6-36 (D-03 / UI-SPEC §4.5): the three link-buttons in this file
@@ -677,18 +754,43 @@ export function FetchErrorBanner({
           compact Retry above is NOT inside Banner, so it carries the CARD halo of its host majority
           (halo-approximate, recorded for plan 88.9-16). Rejected: one shared string for all three
           (the card halo would paint a card band on the elevated Banner). The three strings differ
-          on purpose; making them byte-identical again is a decision, not a cleanup. */}
-      <button
-        ref={tryAgainRef}
-        type="button"
-        onClick={handleRetry}
-        onFocus={watchFocus}
-        aria-disabled={retrying || undefined}
-        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
-      >
-        <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
-        {retrying ? 'Retrying…' : 'Try again'}
-      </button>
+          on purpose; making them byte-identical again is a decision, not a cleanup.
+          AMENDED Phase 88.9-26 (owner pick B1a, 88.9-PICKS-B1.json, 2026-11-04): the compact
+          Retry's halo is its HOST's ground through src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO"),
+          default card, chosen OVER round 1's fixed card halo of the host majority (a 1.31 / 1.22
+          band on the 48 page paths). Try again, Report this and Sign in stay elevated. */}
+      {/* DECISION Phase 88.9-26 (O22d, owner pick page 9, 88.9-PICKS-B9.json): for code unauthorized
+          the full banner's action is a Sign in link IN PLACE OF Try again (a 401 cannot be
+          retried), chosen OVER F8a's Sign in BESIDE Try again (88.9-PICKS-B5.json, superseded in
+          form) and applied to EVERY full unauthorized banner, not only the page-level one (one
+          rule, one branch). 44x44 at every width (min-h-11 min-w-11, no desktop reset), chosen OVER
+          Try again's md:min-h-0 because it is the screen's only remedy. The compact notice keeps
+          its Retry: a Sign in there was not asked for, and SESSION-02 has the home page yield it
+          to the page-level banner (plan 88.9-42). */}
+      {sessionDead ? (
+        <a
+          ref={signInRef}
+          href={buildSignInUrl()}
+          onFocus={watchFocus}
+          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
+        >
+          Sign in
+        </a>
+      ) : (
+        <button
+          ref={tryAgainRef}
+          type="button"
+          onClick={handleRetry}
+          onFocus={watchFocus}
+          aria-disabled={retrying || undefined}
+          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
+        >
+          {/* Same in-flight shape as the shared row's Retry — see the rule 1 B37/B38 marker there. */}
+          <RetrySlot retrying={retrying} />
+          Try again
+          {retrying ? <span className="sr-only">, retrying</span> : null}
+        </button>
+      )}
       {/* DECISION Phase 88.6.1-69 (owner ruling 2026-10-05, Report this after a failed retry):
           option C of the owner's three (375px mockup
           https://claude.ai/artifact/So2zG4F5qpHWzRaibS2V4N) — `Try again` always; `Report this`
@@ -709,7 +811,10 @@ export function FetchErrorBanner({
           (`FeedbackModalProvider`'s `openReport`, read through its own report context) and is
           not rendered without one (no host, no dead link). Its focus watch (plan 70's C12 b)
           stays and now prefers the adjacent `Try again` (plan 04's `preferred`, review #235), so
-          a link withdrawn beside a live `Try again` lands there, never a heading a screen away. */}
+          a link withdrawn beside a live `Try again` lands there, never a heading a screen away.
+          AMENDED Phase 88.9-26 (O22d): for code unauthorized the always-present control is Sign in,
+          not Try again; this link keeps its own condition, and its watch prefers whichever of the
+          two is present. */}
       {state.retryFailed && openReport ? (
         <button
           type="button"
@@ -726,9 +831,14 @@ export function FetchErrorBanner({
 
   return (
     <div className={state.showError ? undefined : 'sr-only'}>
+      {/* DECISION Phase 88.9-26 (AMBER vs RED): a LOAD failure is this amber component (tone
+          warning, the status-warning stripe) and stays its own component, chosen OVER folding it
+          into the red status-error family that follows an ACTION (a save, a send, a validation).
+          The two converge in wording only: Couldn't load {thing} here, Couldn't {verb} {thing} on
+          red titles. Moving this banner to tone error is a decision, not a cleanup. */}
       <Banner
         tone="warning"
-        title={state.showError ? title : undefined}
+        title={state.showError ? resolvedTitle : undefined}
         actions={actionRow}
       >
         {state.showError ? <p>{state.message}</p> : null}

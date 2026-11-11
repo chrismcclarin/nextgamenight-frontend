@@ -20,7 +20,8 @@ import NextGameNightCard from '../components/NextGameNightCard';
 import { BottomSheet } from '../../components/ui/BottomSheet';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
-import { eventsAPI } from '../../lib/api';
+import { ApiError, eventsAPI } from '../../lib/api';
+import { eventDetailHref } from '../../lib/eventDetailHref';
 import { logger, errCtx } from '../../lib/logger';
 // The ONE definition of "upcoming" (88.1-05, extended 88.5): the count the button
 // shows and the rows the sheet lists come from this selector, so they cannot disagree.
@@ -46,6 +47,13 @@ import {
 } from '../../components/ui/FetchErrorBanner';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+
+// Plan 88.9-42 (O22d): the group list's 401 arrives as a boolean, so the page builds the error the
+// shared hook reads the code from, ONCE at module level (a fresh object per render would make the
+// hook's retryFailed rule see a "new error" every commit); its retry resolves nothing — a 401
+// cannot be retried, the banner's action is Sign in (plan 88.9-40's resolveNothing pattern).
+const GROUPS_SESSION_ERROR = new ApiError('Not signed in', 'unauthorized', 401);
+const resolveNothing = () => Promise.resolve(undefined);
 
 // Plan 88.6.1-62: ONE stable empty list, handed to the card and the sheet list while nothing has
 // loaded for the current identity (every consumer filters into a new array before sorting).
@@ -80,6 +88,16 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
     // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
     const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
+    // Plan 88.9-42 (O22d): the group list reports a 401 as a boolean (see its DECISION Phase
+    // 88.9-42 O22d marker); this adapter turns it into a fetch-error state the page banner can
+    // read. It sits BEFORE the upcoming source on purpose: the identity suite reads the page's
+    // LAST useFetchErrorState refetch as the upcoming adapter.
+    const [groupsUnauthorized, setGroupsUnauthorized] = useState(false);
+    const groupsSessionState = useFetchErrorState({
+        isError: groupsUnauthorized,
+        error: GROUPS_SESSION_ERROR,
+        refetch: resolveNothing,
+    });
     const [selectedGroup, setSelectedGroup] = useState(null);
     const [invitePanelOpen, setInvitePanelOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
@@ -97,7 +115,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        fires at all; both are needed and they are checked in that order at the render site.
        Phase 88.6-27 (W17/A8) landed the TELEMETRY half this marker's first sentence refers to:
        the `console.error` it describes is now `logger.info` + `errCtx`, while the user-facing
-       error state below — which is what THIS decision is about — is byte-unchanged. */
+       error state below — which is what THIS decision is about — is byte-unchanged.
+       AMENDED Phase 88.9-38 (F1-1 = b, 2026-11-07): now logger.warn + errCtx; the user-facing
+       error state is still byte-unchanged. */
     const [upcomingError, setUpcomingError] = useState(null);
     const [upcomingRetryKey, setUpcomingRetryKey] = useState(0);
     // Req 11b: the phone calendar sheet's open state, owned here for the same
@@ -200,7 +220,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                false` hides that mistake in a `.js` file).
 
                STATE THE COST, because the obvious reading of "it now reaches Sentry" is too
-               strong: `logger.info` is `Sentry.addBreadcrumb` (`logger.ts:34-36`), so this
+               strong: `logger.info` is `Sentry.addBreadcrumb`
+               (src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg, level: 'info', data: ctx });")), so this
                failure surfaces only ATTACHED TO some later event filed in the same session. It
                does not become independently visible to an operator. Whether these paths deserve
                a Sentry EVENT is routed to the owner in `.planning/deferred/phase-88.6.md`, not
@@ -216,8 +237,19 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                survives the level amendment for a SECOND reason — Sentry's breadcrumb buffer is
                finite (`DEFAULT_BREADCRUMBS = 100`, nothing sets `maxBreadcrumbs`), so an
                unlatched render-body `logger.info` would evict every other breadcrumb in the
-               session. */
-            logger.info('[UserHomePage] The upcoming-events request did not complete:', errCtx(err));
+               session.
+
+               AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-1 = b, chat 2026-11-07 6:35 PM
+               Pacific — a D-03 dialog-only item, no picks page; 88.9-UI-SPEC.md (d) Resolutions
+               of (c)): the level moved to logger.warn —
+               src/lib/logger.ts ("Sentry.captureMessage(msg, { level: 'warning', extra: ctx });"), an event of its own —
+               chosen OVER the logger.info breadcrumb of the 2026-09-13 ruling (D2), which reached
+               Sentry only attached to a later event. The paragraphs above that state the
+               breadcrumb cost and the REJECTED arms are the record of that earlier level. The ctx
+               (errCtx) is unchanged. Stale-session 401s share the count — owner-accepted; a 401
+               guard was offered and not ruled. Phase 89 rewires this request; the level travels
+               with whichever catch survives. */
+            logger.warn('[UserHomePage] The upcoming-events request did not complete:', errCtx(err));
             if (cancelled) return;
             // Keep the ERROR object: useFetchErrorState reads `ApiError.code` off
             // it to pick the right user-facing copy.
@@ -272,6 +304,16 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         error: upcomingError,
         refetch: retryUpcoming,
     });
+    // Plan 88.9-42 (O22d + SESSION-02): the ONE page-level session banner's state — identity
+    // first, then upcoming, then the group list's report; null while no load ended with 401.
+    const pageSessionState =
+        selfIdentityErrorState.showError && selfIdentityErrorState.code === 'unauthorized'
+            ? selfIdentityErrorState
+            : upcomingErrorState.showError && upcomingErrorState.code === 'unauthorized'
+                ? upcomingErrorState
+                : groupsSessionState.showError
+                    ? groupsSessionState
+                    : null;
 
     /* DECISION Phase 88-33 Task 1 (M2, walk 2026-08-13 test 9): an UNRESOLVED identity counts as
        an in-flight upcoming-events load, chosen OVER passing the raw `upcomingLoading` (the
@@ -537,27 +579,24 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
     /* Req 11b event tap. The CLOSE ORDERING IS THE POINT and is not incidental style:
        `setCalendarSheetOpen(false)` runs on the line BEFORE `router.push`, copying
-       `EventCalendar.js:241-243` (`setSelectedDay(null)` then `onEmptyDayClick(dateStr)`).
+       EventCalendar's day-modal arm, src/app/components/EventCalendar.js ("onClose={() => setSelectedDay(null)}")
+       (`setSelectedDay(null)` then the navigation).
 
-       Chosen OVER the navigate-then-close order that its own sibling handler eleven lines up
-       (`EventCalendar.js:233-236`) ships. Navigating first leaves an open Radix dialog — overlay,
+       Chosen OVER the navigate-then-close order that its own sibling handler,
+       src/app/components/EventCalendar.js ("const defaultEventClick = (event) => {"),
+       ships. Navigating first leaves an open Radix dialog — overlay,
        focus trap and all — mounted across the route transition, so the destination page renders
        behind a scrim the person has to dismiss before they can use it. Reversing these two lines
-       is a decision, not a tidy-up. (That the two shipped calendar handlers disagree with each
-       other is a real divergence; resolving it is NOT this phase's job and is recorded in this
-       plan's SUMMARY instead of being fixed here.)
+       is a decision, not a tidy-up.
 
-       The destination logic mirrors `EventCalendar.js:94-101` so a tap from the phone sheet and a
-       tap from the desktop calendar land on the same screen: a FUTURE event (or one with no game)
-       opens by event id, a past event with a game opens by game id. */
+       AMENDED Phase 88.9-42 (W59, owner by chat 2026-11-07 3:15 AM Pacific 'W59 event.'): the two
+       calendar handlers no longer diverge — both route through
+       src/lib/eventDetailHref.ts ("export function eventDetailHref"), so a live night opens the
+       event page from the sheet and the calendar alike, chosen OVER this arm's own start-time test
+       (a live night with a game opened the game view). */
     const handleCalendarSheetEventClick = (event) => {
         setCalendarSheetOpen(false);
-        const isFutureEvent = event?.start_date && new Date(event.start_date) >= new Date();
-        if (isFutureEvent || !event?.game_id) {
-            router.push(`/gameDetail?event_id=${event?.id}&group_id=${event?.group_id}`);
-        } else {
-            router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
-        }
+        router.push(eventDetailHref(event, Date.now()));
     };
 
     const handleGroupSelect = (group) => {
@@ -600,8 +639,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
            survives the removal: Tailwind emits `padding-bottom` utilities AFTER the `md:p-6`
            shorthand, so a zeroed desktop override wins the cascade and silently drops desktop
            bottom padding from 1.5rem to 0, with no gate to catch it (padding-budget.spec.ts is
-           phone-only). */
-        <div className="user-home-container p-4 md:p-6 md:pb-6">
+           phone-only).
+           DECISION Phase 88.9-42 NAV-01 (owner by chat 2026-11-07 1:08 PM Pacific, '(a)'): the home body caps at max-w-7xl mx-auto so it shares the header's edge, chosen OVER the full-bleed body; md:pb-6 stays (comment above). */
+        <div className="user-home-container max-w-7xl mx-auto w-full p-4 md:p-6 md:pb-6">
             {/* Plan 88.6.1-62 (88.6.1-70 contract C12): ONE guard for the ONE `retained`, first in the
                 container and outside every arm a withdrawal swaps; it renders nothing. Its target
                 follows the sheet — see the DECISION Phase 88.6.1-62 marker above. */}
@@ -630,7 +670,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
             <div
                 className={
                     removedNoticeShown
-                        ? "mb-4 px-4 py-3 rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-100 flex items-center justify-between gap-3"
+                        ? "mb-4 px-4 py-3 rounded-card bg-status-warning-subtle border border-status-warning text-content-status-warning flex items-center justify-between gap-3"
                         : undefined
                 }
             >
@@ -641,22 +681,39 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     box with negative margins so the 66px notice does not grow, chosen OVER the 44 box (A8a)
                     and OVER the shipped 16px-tall text button. The negative margins are load-bearing. */}
                 {/* DECISION Phase 88.9-CR m6: the focus treatment is the amber-box Dismiss idiom of
-                    src/app/userProfile/page.js ("focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page")
-                    (census R065), chosen OVER the browser default outline that plan 88.9-10 left on this
+                    src/app/userProfile/page.js ("AMENDED Phase 88.9-32 (owner pick B3a")
+                    (census R065; that twin moved to the B3a warning family in plan 88.9-32), chosen OVER the browser default outline that plan 88.9-10 left on this
                     48px box. The dark halo is the page colour because the box is a translucent amber over
                     the page, the same approximation R065 records. Round 2's X2 token ruling (register row
                     "X2 — The removed-member notice box is raw palette") moves this halo together with R065's. rounded-btn as on R065, so the
-                    ring's corners match the twin (88.9-CR scoped check). */}
+                    ring's corners match the twin (88.9-CR scoped check).
+                    AMENDED Phase 88.9-42 (owner pick B3a, 88.9-PICKS-B1.json, 2026-11-04 8:01 PM Pacific): the box is
+                    now the opaque status-warning family and this halo is the ONE box key,
+                    focus-visible:ring-offset-status-warning-subtle (ring vs halo 6.65 light / 6.37 dark, band 1.00),
+                    chosen OVER the amber-50 light / page-colour dark pair over a 20% translucent box. It matches
+                    the R065 twin again. Changing it back is a decision, not a cleanup. */}
                 {removedNoticeShown && (
                     <button
                         onClick={dismissRemovedNotice}
-                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 rounded-btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
+                        className="text-content-status-warning hover:text-content-primary hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 rounded-btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
                         aria-label="Dismiss"
                     >
                         Dismiss
                     </button>
                 )}
             </div>
+            {/* DECISION Phase 88.9-42 O22d (owner pick page 9 v3, 88.9-PICKS-B9.json) + SESSION-02: ONE
+                page-level banner for a 401 on identity, upcoming events or groups, at every width (the
+                column is hidden below md, DECISION Phase 88.6-27 (W72)), chosen OVER the in-column
+                banners (a phone showed nothing) and OVER passing a masked state to the card (it would
+                claim the calendar is clear after a failure). The sheet keeps its own arms: it is a
+                dialog over this banner. FetchErrorBanner takes no className by its own decision, so
+                the spacing lives on this wrapper. */}
+            {pageSessionState && (
+                <div className="mb-4">
+                    <FetchErrorBanner state={pageSessionState} thing="this page" />
+                </div>
+            )}
             <div className="flex flex-col md:flex-row gap-4 md:gap-6">
                 {/* Req 11b (UI-SPEC S4): the phone-only entry point to the calendar, above the
                     group list. It lives HERE and not inside `grouplist.js`, because desktop
@@ -707,7 +764,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     </Button>
                 </div>
 
-                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_400px] md:relative">
+                {/* DECISION Phase 88.9-42 F4b (owner pick, 2026-11-07 1:08 AM Pacific): 460px (+15%), chosen OVER the shipped 400 and the rendered 440 / 500; phone untouched. */}
+                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_460px] md:relative">
                     <div className="md:absolute md:inset-0">
                     <GroupList
                         onGroupSelect={handleGroupSelect}
@@ -715,6 +773,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         user={user}
                         onGroupSettingsUpdated={handleGroupSettingsUpdated}
                         refreshTrigger={groupListRefreshKey}
+                        onGroupsUnauthorized={setGroupsUnauthorized}
+                        sessionBannerShown={Boolean(pageSessionState)}
                     />
                     </div>
                 </div>
@@ -748,9 +808,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     <EventCalendar refreshKey={refreshKey} />
                     {/* ML-17: the upcoming-events fetch gates on selfUuid, so on
                         TERMINAL identity failure it never fires — degrade with the
-                        compact banner instead of the misleading empty state. */}
-                    {selfIdentityErrorState.showError ? (
-                        <FetchErrorBanner state={selfIdentityErrorState} compact />
+                        compact banner instead of the misleading empty state.
+                        Plan 88.9-42 (O22d / SESSION-02): while the page-level session banner shows,
+                        this column renders neither the compact notice nor the card. */}
+                    {pageSessionState ? null : selfIdentityErrorState.showError ? (
+                        <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
                     ) : (
                         /* DECISION Phase 88-18 (Req 6, UI-SPEC 9.2): NO `action` is passed, so this
                            card's empty state ships without the contract row's "Plan Game Session"
@@ -854,8 +916,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 ref={calendarSheetRef}
                 open={calendarSheetOpen}
                 onClose={() => setCalendarSheetOpen(false)}
-                /* Matches the button label so the tap has an obvious destination. */
+                /* Matches the button label so the tap has an obvious destination. Display rung per
+                   R2-26 (owner pick D6c + chat 2026-11-06). */
                 title="Calendar"
+                titleSize="display"
                 height="full"
                 /* The list view manages its own scroll region; the sheet body only
                    needs to hand it the full height to flex into. */
@@ -866,7 +930,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 ) : upcomingErrorState.showError && !upcomingRetained ? (
                     <FetchErrorBanner
                         state={upcomingErrorState}
-                        title="We couldn't load your calendar"
+                        thing="your calendar"
                         reportContext="Calendar sheet (home page, phone)"
                     />
                 ) : (
@@ -930,13 +994,14 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                             loading={upcomingShowsLoader}
                             busy={upcomingRefreshing}
                             variant="sheet"
-                            /* The id sets and the one count — see the OWNER RULING 2a marker
-                               above (AMENDED 88.6-27, which added the third set). The sheet
-                               partitions by membership only. */
+                            /* The id sets — see the OWNER RULING 2a marker above (AMENDED
+                               88.6-27, which added the third set). The sheet partitions by
+                               membership only; the twin count left the sheet with D6c
+                               (88.9-39). viewerDbUserId feeds the row's guest cue (D5a). */
                             happeningNowIds={happeningNowIds}
                             startedNotLiveIds={startedNotLiveIds}
                             thisWeekIds={thisWeekIds}
-                            upcomingCount={upcomingCount}
+                            viewerDbUserId={selfUuid ?? null}
                         />
                     </>
                 )}

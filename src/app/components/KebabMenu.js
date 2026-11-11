@@ -3,8 +3,17 @@
 import { useState, useEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 
+import {
+  CONFIRM_DELAY_MS,
+  CONFIRM_LIVE_MS,
+  countdownLabel,
+  useConfirmCountdown,
+} from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { DelayedSpinner } from '@/components/ui/DelayedSpinner';
 import { useDismissal } from '@/components/ui/useDismissal';
+import { hostGroundHalo } from '@/components/ui/hostGround';
+import { cn } from '@/lib/cn';
 
 /**
  * KebabMenu — reusable ⋮ trigger + dropdown overlay.
@@ -18,6 +27,10 @@ import { useDismissal } from '@/components/ui/useDismissal';
  *     3s revert timer arms, item highlights red.
  *   - Second tap on same item within 3s: invokes item.onClick + closes menu.
  *   - Timeout or another item tap reverts the armed state.
+ *   AMENDED Phase 88.9-23 (owner pick F9b, 88.9-PICKS-B5.json, 2026-11-07): the first tap reads
+ *   Tap again (3)…(1) and the second tap is refused for CONFIRM_DELAY_MS, then live for
+ *   CONFIRM_LIVE_MS (6 s armed), chosen OVER the shipped immediately-live 3 s window; a keepOpen
+ *   twoTap item stays open after its commit.
  *
  * Dismissal (outside mousedown, container Escape, the non-null relatedTarget
  * `focusout` rule, and the guarded focus restore to the trigger) is owned by the
@@ -47,8 +60,13 @@ const REVERT_ANNOUNCEMENT = 'Confirmation cancelled.';
  * @property {boolean} [ariaDisabled] - `aria-disabled` + a handler refusal, never the native
  *   attribute. For the control being ACTED ON, whose label must stay readable and which must
  *   stay in the focus order.
- * @property {boolean} [keepOpen] - Suppress the close on the SINGLE-TAP path only. Inert on a
- *   twoTap item.
+ * @property {boolean} [busy] - In flight (rule 1, 88.9-46): the label is KEPT, the house Spinner
+ *   renders beside it and `busySuffix` is appended sr-only, so the item is named label plus
+ *   suffix. Never a refusal on its own — pass `ariaDisabled` beside it for the gate.
+ * @property {string} [busySuffix] - The sr-only words appended to the name while `busy`
+ *   (", cancelling", ", leaving", ...).
+ * @property {boolean} [keepOpen] - Suppress the close after activation — on the single-tap path
+ *   and on the twoTap commit.
  */
 
 /**
@@ -57,11 +75,13 @@ const REVERT_ANNOUNCEMENT = 'Confirmation cancelled.';
  * @param {KebabMenuItem[]} [props.items] - Action items. An EMPTY array renders no trigger.
  * @param {string} [props.confirmLabel] - Default label for armed twoTap items.
  *                                        Each item can override via item.confirmLabel.
+ * @param {import('@/components/ui/hostGround').HostGround} [props.hostGround='card'] - The ground the HOST paints under the trigger; selects its focus halo.
  */
 export default function KebabMenu({
   ariaLabel = 'Actions',
   items = [],
   confirmLabel = 'Tap again to confirm',
+  hostGround = 'card',
 }) {
   const [open, setOpen] = useState(false);
   const [armedIndex, setArmedIndex] = useState(null);
@@ -70,6 +90,22 @@ export default function KebabMenu({
   const triggerRef = useRef(null);
   const armedTimerRef = useRef(null);
   const listId = useId();
+
+  // F9b (88.9-23): the armed item's gate. The NC-1 arm text waits in a ref and is written at
+  // the live edge (see the AMENDED line on the announcement marker below); the index mirror
+  // lets the live-edge callback check the item is still armed.
+  const pendingAnnouncementRef = useRef('');
+  const armedIndexRef = useRef(null);
+  useEffect(() => {
+    armedIndexRef.current = armedIndex;
+  }, [armedIndex]);
+  const {
+    secondsLeft,
+    live: armedLive,
+    isLive,
+  } = useConfirmCountdown(armedIndex, () => {
+    if (armedIndexRef.current !== null) setAnnouncement(pendingAnnouncementRef.current);
+  });
 
   // PROP-TIME gate, never an on-arm mount: a live region created at the moment
   // of the announcement announces nothing, which is the whole reason for the
@@ -230,7 +266,7 @@ export default function KebabMenu({
     if (item.ariaDisabled) return;
 
     if (item.twoTap) {
-      // First tap on this item: arm the 3s revert timer.
+      // First tap on this item: arm the revert timer (gated + live window, F9b).
       if (armedIndex !== index) {
         if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
         setArmedIndex(index);
@@ -256,22 +292,31 @@ export default function KebabMenu({
            the row's subject so the message could match the hook's two-part shape —
            another field on a six-site shared component's items API, which every
            shipped call site would have to author correctly, for a re-announcement
-           the per-instance region already guarantees. */
-        setAnnouncement(`Press again to confirm: ${item.label}`);
+           the per-instance region already guarantees.
+           AMENDED Phase 88.9-23 (F9b): written at the live edge, not at arm — content rule
+           above unchanged. */
+        pendingAnnouncementRef.current = `Press again to confirm: ${item.label}`;
+        setAnnouncement('');
         armedTimerRef.current = setTimeout(() => {
           setArmedIndex(null);
           armedTimerRef.current = null;
           setAnnouncement(REVERT_ANNOUNCEMENT);
-        }, 3000);
+        }, CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
         return;
       }
-      // Second tap within 3s — clear timer + commit.
+      // Second tap while the gate still runs — refused (F9b): stay armed, announcement
+      // unchanged. Read from the countdown's ref, keyed by this item's index.
+      if (!isLive(index)) return;
+      // Second tap inside the live window — clear timer + commit.
       clearTimeout(armedTimerRef.current);
       armedTimerRef.current = null;
       setArmedIndex(null);
       // NOT the revert copy: a commit is not a cancellation.
       setAnnouncement('');
       item.onClick();
+      // F9b: a keepOpen twoTap item stays open, mounted and focused after its commit — the
+      // same promise the single-tap keep-open path makes (see that marker below).
+      if (item.keepOpen) return;
       setOpen(false);
       restoreFocusToTrigger();
       return;
@@ -300,7 +345,12 @@ export default function KebabMenu({
        without it. A keep-open activation closes nothing and unmounts nothing, so
        there is no focus to restore and none is stolen — focus stays on the item.
        That is true ONLY because an activated item's busy gate is `ariaDisabled` and
-       never the native disabled attribute (see the item button below). */
+       never the native disabled attribute (see the item button below).
+       AMENDED Phase 88.9-23 (owner pick F9b, 88.9-PICKS-B5.json, 2026-11-07): keepOpen is now
+       also honoured on the twoTap commit, for gameDetail's Cancel event / Leave event, chosen
+       OVER the single-tap-only flag (which would have closed the menu and hidden Cancelling…,
+       D24 c). The Delete sentence above still stands: the session Delete stays on the dialog
+       tier. */
     if (item.keepOpen) return;
 
     setOpen(false);
@@ -397,7 +447,19 @@ export default function KebabMenu({
         type="button"
         ref={triggerRef}
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+        /* DECISION Phase 88.9-35 R033 (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04): the trigger's
+           halo is the HOST's ground passed as a typed hostGround key
+           (src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO")), default card — every
+           live phone host is a card — merged
+           after the shipped literal with cn so the literal keeps its card key, chosen OVER round 1's
+           fixed card halo on every host. The tinted group-page host left with F5b; the groupPlanning
+           desktop arm (card on a phone, page from md) cannot be named by one key and is plan
+           88.9-50's. Changing this is a decision, not a cleanup.
+           AMENDED Phase 88.9-50 (plan review 2026-11-08): the groupPlanning desktop arm named above was a census false positive — OpenPollCard's li paints bg-surface-card at every width (src/app/components/OpenPollsList.js ("const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex items-start';")), so every live host is a card and the default key is right; no md companion on this trigger, chosen OVER one (it would paint a page-coloured gap on a card row from 768px, band 1.31 / 1.22). */
+        className={cn(
+          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+          hostGroundHalo(hostGround)
+        )}
         aria-expanded={open}
         /* DECISION Phase 88.6-16 (D-12): `aria-controls` is the HONEST replacement
            for the removed popup relationship — it says only what is true (this
@@ -443,7 +505,13 @@ export default function KebabMenu({
         >
           {items.map((item, index) => {
             const isArmed = item.twoTap && armedIndex === index;
-            const label = isArmed ? (item.confirmLabel || confirmLabel) : item.label;
+            // F9b: an armed item counts down while gated, then reads its armed label.
+            const isGated = isArmed && !armedLive;
+            const label = isArmed
+              ? isGated
+                ? countdownLabel('Tap again', secondsLeft)
+                : item.confirmLabel || confirmLabel
+              : item.label;
             const danger = item.danger || isArmed;
             return (
               /* DECISION Phase 88.6-16 (D-12/D24): the mapped root is keyed on
@@ -511,19 +579,40 @@ export default function KebabMenu({
                      here, but it deletes the busy affordance that ships today and
                      leaves no programmatic busy state for assistive tech, making a
                      destructive item look fully live while a request is in flight. */
-                  {...(item.ariaDisabled ? { 'aria-disabled': true } : {})}
+                  /* F9b (88.9-23): an armed item inside its gate renders aria-disabled the same
+                     way; the refusal is the isLive check in handleItemClick. */
+                  {...(item.ariaDisabled || isGated ? { 'aria-disabled': true } : {})}
                   /* 88-CODE-REVIEW MED#13: min-h-11 — the 87.8-08 census FAIL row (~36px)
                      these items still carried after D-40 made this menu the SOLE phone
                      path to destructive row actions. The trigger was floored by 88-28;
                      the items behind it were not. The dropdown is an absolute overlay,
                      so taller rows reflow nothing outside it. */
-                  className={`w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                  /* DECISION Phase 88.9-23 O-17: the gated (aria-disabled) item changes INK
+                     (text-content-muted) over an opacity wash — src/app/tokenContrast.test.ts ("no aria-disabled rule uses opacity")
+                     forbids the dim, and the wash this item carried was that test's blind spot (a
+                     variant-prefixed utility). It also restyles the in-flight Cancelling… / Leaving…
+                     items. Owner confirm from one picture (88.9-23 task 3). */
+                  className={`w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                     danger
                       ? `text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}`
                       : 'text-content-primary hover:bg-surface-hover'
                   }`}
                 >
                   {label}
+                  {/* DECISION Phase 88.9-46 (rule 1 kebab busy): a busy item keeps its label and
+                       shows the house spinner plus a heard suffix (the same sr-only span Button
+                       renders), chosen OVER the caller swapping the label string (the shipped
+                       gameDetail pattern — the in-flight word replaced the whole name) and OVER a
+                       native disabled item (the 88.6-18 D3 marker: a focused natively-disabled item
+                       blurs to body). The item is a block w-full button, not flex, so the spinner
+                       carries its own ml-2 (the raw-button composition of 88.9-45). busy is not a
+                       refusal: `item.ariaDisabled` stays the gate.
+                       AMENDED Phase 88.9-56 (R-C3b reach): the spinner is the delayed, held element, mounted
+                       beside the label outside the busy ternary (an element, not a hook, so it works inside
+                       items.map); the ternary keeps only the heard suffix. An item that navigates on success
+                       keeps busy until the page unmounts. */}
+                  <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />
+                  {item.busy ? <span className="sr-only">{item.busySuffix}</span> : null}
                 </button>
               </li>
             );

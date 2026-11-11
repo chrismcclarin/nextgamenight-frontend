@@ -9,6 +9,8 @@ import {
 } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
+import { useDelayedSpinner } from '../../components/ui/useDelayedSpinner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger } from '@/lib/logger';
@@ -37,6 +39,13 @@ const RESPONSES_REFRESHED_COPY = 'Responses refreshed.';
  * @param {boolean} blindVotingEnabled - Whether blind voting is enabled for this prompt
  * @param {boolean} pollClosed - Whether the poll has closed (deadline passed)
  */
+// R-C3b reach (88.9-56): the pressed Refresh's spinning icon on the delayed, held schedule — one
+// tiny component so the hook runs here and the dashboard itself calls no new hook.
+function RefreshSpinIcon({ refreshing }) {
+  const spin = useDelayedSpinner(refreshing);
+  return <RefreshIcon className={spin ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />;
+}
+
 export default function ResponseDashboard({
   promptId,
   isAdmin = false,
@@ -56,6 +65,9 @@ export default function ResponseDashboard({
   const [error, setError] = useState(null);
   // Review #237 (Phase 88.6.1-73): true while a PRESSED 'Refresh' is out; drives the word-free
   // busy cue (the icon's spin and the list's aria-busy). Only the press sets it.
+  // AMENDED Phase 88.9-56 (R-C3b reach): the word-free busy cue is now the delayed-spinner hook inside
+  // RefreshSpinIcon keying the icon class (the spin appears after 200 ms and keeps 500 ms); the list's
+  // aria-busy and the polite status stay keyed on refreshing, immediate.
   const [refreshing, setRefreshing] = useState(false);
   // CR-3 / A-42: the spoken line of a PRESSED Refresh (the marker at the region in the render).
   const [refreshStatus, setRefreshStatus] = useState('');
@@ -484,7 +496,8 @@ export default function ResponseDashboard({
      The banner's own default ("Something went wrong") is generic chrome on a surface whose
      whole subject is WHO HAS REPLIED, so the named string tells the reader which fetch failed
      without painting anything upstream. Changing this string is a §6.3 amendment, not an
-     executor's call — that half of the original rule is unchanged. */
+     executor's call — that half of the original rule is unchanged.
+     AMENDED Phase 88.9-48 (owner ruling BANNER-01 "short", 2026-11-07): this is that §6.3 amendment — the banner composes Couldn't load the respondents from thing, chosen OVER the ratified "We couldn't load the respondents." (its leading We and the one trailing period among the 29 full mounts, COPY-CENSUS K1). The named object stays; only the shape converged. */
   /* DECISION Phase 88.6.1-73 (AC-29 / RF1, owner ruling 2026-10-05) [D-47, D-51, Req 9]:
      CHOSEN: a failed refresh keeps the roster and plan 88.6.1-70's `RefreshFailedNotice`
      qualifies it (88.6.1-70 contract C1-C10); the full banner and the skeleton are FIRST-LOAD-
@@ -514,7 +527,7 @@ export default function ResponseDashboard({
           <div className="bg-surface-card rounded-card border border-line p-4">
             <FetchErrorBanner
               state={errorState}
-              title="We couldn't load the respondents."
+              thing="the respondents"
               reportContext="Availability poll — respondents fetch"
               focusTarget={responsesHeadingRef}
             />
@@ -648,7 +661,7 @@ export default function ResponseDashboard({
         onClick={handleRefresh}
         className="mt-1 -mb-3 min-h-11 text-sm text-content-muted hover:text-content-secondary active:opacity-75 inline-flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
       >
-        <RefreshIcon className={refreshing ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />
+        <RefreshSpinIcon refreshing={refreshing} />
         Refresh
       </button>
       {/* DECISION Phase 88.6.1 code review CR-3 / A-42 (owner ratified 2026-10-19, WCAG 4.1.3):
@@ -690,7 +703,8 @@ export default function ResponseDashboard({
    test pins (`e2e/response-dashboard-remind.spec.ts`, test 3). Changing the margin, the padding
    or the gap is a decision, not a cleanup.
    The in-flight wash is the aria-disabled opacity variant at the same 0.5 as before (house
-   raw-button precedent at src/app/components/KebabMenu.js ("the items behind it were not")). */
+   raw-button precedent at src/app/components/KebabMenu.js ("the items behind it were not")).
+   AMENDED Phase 88.9-23 (O-17): the in-flight look is muted ink, not an opacity wash, with the kebab items. */
 
 /** The Remind button's id, derived from its row's status id in ONE place (Req 5 guard). */
 function remindButtonIdFor(statusId) {
@@ -728,9 +742,12 @@ function RemindButton({ userId, lastRemindedAt, isReminding, statusId, onRemind 
       id={remindButtonIdFor(statusId)}
       onClick={() => onRemind(userId)}
       aria-disabled={isReminding || undefined}
-      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:text-content-muted shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
     >
-      {isReminding ? 'Sending...' : 'Remind'}
+      {/* DECISION Phase 88.9-45 (rule 1, raw button): the Spinner primitive plus an sr-only ", sending" span are composed here by hand, chosen OVER converting this link-styled row control to Button (the unlayered .btn rules would repaint it) and OVER the Sending swap word. AMENDED Phase 88.9-56 (R-C3b reach): the spinner is the delayed, held element beside the label, outside the busy guard; a sent reminder replaces this button with its Reminded line (the hold ends with the host), a failed one keeps the button, so the spinner finishes its hold. */}
+      Remind
+      <DelayedSpinner busy={isReminding} className="ml-2" />
+      {isReminding && <span className="sr-only">, sending</span>}
     </button>
   );
 }

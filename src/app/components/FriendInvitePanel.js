@@ -10,6 +10,7 @@ import { Modal } from './Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { Icon } from '@/components/ui/Icon';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
@@ -17,6 +18,7 @@ import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { logger, errCtx } from '@/lib/logger';
 import {
     isAlreadyInvitedOrMember,
+    isPermanentInviteRefusal,
     ALL_ALREADY_INVITED_MESSAGE,
     invitedWithAlreadyMessage,
     allFailedBatchLine,
@@ -47,6 +49,12 @@ const COPY_FAILED_MESSAGE = "Couldn't copy the link. Press and hold the link to 
 // header. Deliberately a plain comment, NOT a JSDoc `@param` block — under
 // checkJs a partial @param list becomes the component's whole props type and
 // every other prop then fails to typecheck at the call sites.
+// Rule 1 (88.9-45, B08): the bulk invite's resting label, written once; the pressed label is read
+// from it at the press (the pressed-label ref beside the in-flight latch) so a mid-send tick cannot change the text.
+function bulkInviteLabel(count) {
+    return count > 0 ? `Invite ${count} Friend${count !== 1 ? 's' : ''}` : 'Select friends to invite';
+}
+
 function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = 'default' }) {
     const { user } = useUser();
     // FE-18 cutover: exclude-self keys on the resolved Users.id UUID (async).
@@ -139,8 +147,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
        ink/ground pair no gate measures in dark mode — a look decision for Phase 88.9). The Send
        button's Sending... label and gated colour pair carry the in-flight state. The friend
        checkbox stays the rule-of-KIND example: a state gate on a control nobody pressed. The
-       paragraphs above are kept as history. */
+       paragraphs above are kept as history.
+       AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07): the Send button keeps
+       its label; the house spinner, the sr-only suffix and the gated colour pair carry the in-flight
+       state, chosen OVER the Sending swap (rule 1). */
     const bulkInviteInFlightRef = useRef(false);
+    const bulkInviteLabelRef = useRef('');
     const emailInviteInFlightRef = useRef(false);
     const addFriendInFlightRef = useRef(false);
 
@@ -243,6 +255,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         if (bulkInviteInFlightRef.current) return;
         if (!group?.id || selectedFriends.size === 0) return;
         bulkInviteInFlightRef.current = true;
+        bulkInviteLabelRef.current = bulkInviteLabel(selectedFriends.size);
         setInviting(true);
         setInviteResult(null);
 
@@ -264,29 +277,44 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         // line. The friends page twin already ships the same sentence. Where the outcome is
         // shown and heard is recorded at the result regions in the bulk block.
         let firstFailure = null;
+        // R-C1 (88.9-56): the ids whose outcome is FINAL, removed from the selection after the batch.
+        const finalIds = new Set();
 
         try {
             for (const friendUserId of selectedFriends) {
                 // Skip anyone already in the group; otherwise invite by user_id.
                 // The friend's email is resolved server-side (83-06 PII default-deny).
-                if (groupMemberIds.includes(friendUserId)) continue;
+                // A friend already in at the press leaves the selection with no request (final).
+                if (groupMemberIds.includes(friendUserId)) {
+                    finalIds.add(friendUserId);
+                    continue;
+                }
                 try {
                     await invitesAPI.sendFriendInvite(group.id, friendUserId);
                     successCount++;
+                    finalIds.add(friendUserId);
                 } catch (err) {
                     // The terminal-409 rule and its contract (Wave-12 review MED #9) live in ./friendBatchInviteOutcome (88.6.1-72).
                     if (isAlreadyInvitedOrMember(err)) {
                         alreadyCount++;
+                        finalIds.add(friendUserId);
                     } else {
                         failCount++;
                         if (!firstFailure) firstFailure = err;
                         logger.info('Error sending friend invite:', errCtx(err));
+                        // A permanent refusal is final; a transient failure stays ticked for the retry.
+                        if (isPermanentInviteRefusal(err)) finalIds.add(friendUserId);
                     }
                 }
             }
 
             setInviteResult({ successCount, failCount, alreadyCount, firstFailure });
-            setSelectedFriends(new Set());
+            // DECISION Phase 88.9-56 (R-C1): final-outcome clear over clearing the whole selection and over a sent-only clear — see the B08 marker at the bulk invite button.
+            setSelectedFriends((prev) => {
+                const next = new Set(prev);
+                for (const id of finalIds) next.delete(id);
+                return next;
+            });
 
             if (successCount > 0 && onMemberAdded) {
                 onMemberAdded();
@@ -596,8 +624,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
     const body = (
         <>
                     {/* Friends section */}
-                    <div className="p-5">
-                        <Heading level={3} size="label" className="text-content-muted uppercase tracking-wide mb-3">
+                    <div className="p-4 md:p-5">
+                        <Heading level={3} size="label" className="text-content-muted uppercase tracking-wider mb-3">
                             Your Friends
                         </Heading>
 
@@ -677,22 +705,27 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                         {/* Bulk invite button */}
                         {selectableCount > 0 && (
                             <div className="mt-4">
+                                {/* DECISION Phase 88.9-45 (rule 1 B08): while sending, the button shows the label the user
+                                    pressed, chosen OVER the live selection count — the checkboxes stay live mid-send, so a
+                                    toggle would change the text under the finger while the request still covers the
+                                    pressed selection.
+                                    AMENDED Phase 88.9-56 (owner ruling R-C1 + orchestrator merits ruling, 2026-11-10): after the batch lands only the ids
+                                    with a FINAL outcome leave the selection — sent, already a member or invited, skipped because already a member, or
+                                    permanently refused (forbidden / not_found / validation); a transient failure (network, internal, rate_limited,
+                                    unknown) stays ticked for the retry; chosen OVER the shipped whole-selection clear (it unticked a friend ticked
+                                    mid-send who was never invited) and OVER a sent-only clear (a permanently refused id left ticked re-fails on every
+                                    press) — the live checkboxes this marker keeps now mean what they show. */}
                                 <Button
                                     variant="primary"
                                     size="default"
                                     onClick={handleBulkInvite}
                                     aria-disabled={selectedFriends.size === 0 || inviting ? 'true' : undefined}
                                     aria-busy={inviting || undefined}
+                                    busy={inviting}
+                                    busySuffix=", sending"
                                     className="w-full focus-visible:ring-offset-surface-page"
                                 >
-                                    {inviting && (
-                                        <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                                    )}
-                                    {inviting
-                                        ? 'Sending...'
-                                        : selectedFriends.size > 0
-                                            ? `Invite ${selectedFriends.size} Friend${selectedFriends.size !== 1 ? 's' : ''}`
-                                            : 'Select friends to invite'}
+                                    {inviting ? bulkInviteLabelRef.current : bulkInviteLabel(selectedFriends.size)}
                                 </Button>
 
                                 {/* DECISION Phase 88-27 (D-32 buckets A/B): only the first branch
@@ -755,16 +788,18 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                         <div className="flex items-center gap-3">
                             <div className="flex-1 border-t border-line" />
                             {/* UI-SPEC §4.5 Eyebrow role (D-03): Caption 12 / 700 / uppercase /
-                                tracking. `font-bold` ADDED; `tracking-wide` is the spelling the
-                                nearest shipped eyebrow uses (src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)"), `uppercase tracking-wide`). See the
+                                tracking. `font-bold` ADDED; the tracking spelling is `tracking-wider`
+                                per K7 (plan 88.9-47, owner pick C3b) — the ONE spelling every uppercase
+                                letter-spaced label takes, the nearest shipped eyebrow included
+                                (src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)")). See the
                                 DECISION marker on the second eyebrow below. */}
-                            <span className="text-xs font-bold text-content-muted uppercase tracking-wide">or</span>
+                            <span className="text-xs font-bold text-content-muted uppercase tracking-wider">or</span>
                             <div className="flex-1 border-t border-line" />
                         </div>
                     </div>
 
                     {/* Email invite section */}
-                    <div className="p-5">
+                    <div className="p-4 md:p-5">
                         {/* `id` CARRIED THROUGH THE MIGRATION (WCAG 4.1.2): the `<Input>` below is
                             `aria-labelledby="invite-by-email-heading"`, so this heading is that
                             field's ONLY accessible name. Dropping the `id` here leaves an input
@@ -777,7 +812,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             level={3}
                             size="label"
                             id="invite-by-email-heading"
-                            className="text-content-muted uppercase tracking-wide mb-3"
+                            className="text-content-muted uppercase tracking-wider mb-3"
                         >
                             Invite by Email
                         </Heading>
@@ -833,10 +868,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                 size="default"
                                 type="submit"
                                 aria-disabled={emailLoading || !email.trim() ? 'true' : undefined}
+                                busy={emailLoading}
+                                busySuffix=", sending"
                                 aria-describedby={sendError ? 'invite-email-send-error' : undefined}
                                 className="shrink-0 focus-visible:ring-offset-surface-page"
                             >
-                                {emailLoading ? 'Sending...' : 'Send'}
+                                Send
                             </Button>
                         </form>
                         {/* DECISION Phase 88.6-22 (R2 #177): this is a real FIELD error on the
@@ -920,10 +957,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     size="default"
                                     onClick={handleAddFriend}
                                     aria-disabled={addingFriend ? 'true' : undefined}
+                                    busy={addingFriend}
+                                    busySuffix=", sending"
                                     aria-describedby={friendRequestError ? 'invite-friend-request-error' : undefined}
                                     className="shrink-0 focus-visible:ring-offset-surface-sunken"
                                 >
-                                    {addingFriend ? 'Sending...' : 'Add Friend'}
+                                    Add Friend
                                 </Button>
                             </div>
                         )}
@@ -978,15 +1017,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                         not heading tags, and P4 forbids inventing a level. There is
                                         deliberately no `eyebrow` variant on the primitive
                                         (src/components/ui/Heading.tsx ("That would mint a fifth type role")) — uppercase, tracking and colour ride on
-                                        `className`. */}
-                                    <span className="text-xs font-bold text-content-muted uppercase tracking-wide">or</span>
+                                        `className`.
+
+                                        AMENDED Phase 88.9-47 (owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): both or eyebrows and the three section labels move to tracking-wider (0.05em), chosen OVER the 0.025em step this marker matched; the tracking-match sentence above is superseded. */}
+                                    <span className="text-xs font-bold text-content-muted uppercase tracking-wider">or</span>
                                     <div className="flex-1 border-t border-line" />
                                 </div>
                             </div>
 
                             {/* QR Code section */}
-                            <div className="p-5">
-                                <Heading level={3} size="label" className="text-content-muted uppercase tracking-wide mb-3">
+                            <div className="p-4 md:p-5">
+                                <Heading level={3} size="label" className="text-content-muted uppercase tracking-wider mb-3">
                                     Share QR Code
                                 </Heading>
                                 {tokenLoading ? (
@@ -1138,8 +1179,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                 and its bottom border, except two things kept on purpose for the
                 two-line title stack beside the 44px close: items-start (the close
                 stays on the first line instead of centring on two) and gap-3 (the
-                Modal header carries no gap). The title is still the DialogTitle so
-                Radix keeps auto-wiring `aria-labelledby`.
+                Modal header carries no gap). AMENDED Phase 88.9-29 (owner pick E8b,
+                88.9-PICKS-B4.json, 2026-11-06): items-center now —
+                DECISION Phase 88.9-29 E8b: the close centres on the whole title block,
+                chosen OVER the title-line offset (E8a, the close on the first line), so
+                the X sits 11px below the title line, the same as every Modal header.
+                gap-3 stays. The title is still the DialogTitle so Radix keeps
+                auto-wiring `aria-labelledby`.
 
                 DECISION Phase 88.6.1-27 (R7-M5): this header shipped with fixed
                 padding — 24px on each side and 20px top and bottom at every width —
@@ -1150,7 +1196,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                 keeping the fixed padding with a recorded deviation. Measured in
                 e2e/friend-invite-panel-header.spec.ts at both widths. Changing this
                 is a decision, not a cleanup. */}
-            <div className="flex items-start justify-between gap-3 border-b border-border px-3 py-2 md:px-6 md:py-3">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 md:px-6 md:py-3">
                 {/* UAT3-D2 (owner device check 2026-09-30) + code review round 6: the user-supplied group
                     name lands in this column on EVERY entry point — in the title after creation
                     ("<name> is live — who's in?"), in the lead-in otherwise ("to <name>"). A 40-character
@@ -1159,7 +1205,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                     lead-in (a sibling) overflowing, which is what round 6 caught. Pinned for both paths in
                     FriendInvitePanel.test.tsx. */}
                 <div className="min-w-0 wrap-break-word">
-                    <DialogTitle className="text-xl font-bold text-content-primary">
+                    <DialogTitle className="text-content-primary">
                         {headerTitle}
                     </DialogTitle>
                     {headerLeadIn && (
@@ -1170,13 +1216,16 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                     ModalHeader DialogClose — this is the one freeform copy of that idiom. */}
                 <DialogClose
                     aria-label="Close"
-                    className="inline-flex min-h-11 min-w-11 items-center justify-center shrink-0 text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center shrink-0 text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                    &times;
+                    <Icon name="X" size={20} strokeWidth={2} />
                 </DialogClose>
             </div>
 
-            {/* p-0: every body section below carries its own `p-5`. */}
+            {/* p-0: every body section below carries its own p-4 md:p-5 —
+                DECISION Phase 88.9-29 O13a: 16px at phone, 20px from md, chosen OVER a fixed
+                20px at every width (owner pick O13a, 88.9-PICKS-B8B.json, 2026-11-07): the
+                section content widens 309 to 317px at 375. */}
             <Modal.Body className="p-0 md:p-0">{body}</Modal.Body>
 
             <Modal.Footer>

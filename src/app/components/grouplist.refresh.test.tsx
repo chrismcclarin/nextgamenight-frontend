@@ -69,7 +69,7 @@ const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // so its polite region and the Retry's description say "Groups: " first and the visible line
 // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
 const SPOKEN = "Groups: Couldn't refresh. Showing what loaded earlier.";
-const LOAD_TITLE = "We couldn't load your groups";
+const LOAD_TITLE = "Couldn't load your groups";
 
 const ALPHA = { id: 'g-alpha', name: 'Alpha Crew', Users: [], Events: [] };
 const BETA = { id: 'g-beta', name: 'Beta Crew', Users: [], Events: [] };
@@ -152,7 +152,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     expect(follows(line, card), 'the line precedes the card').toBe(true);
   });
 
-  it('RF-2. Retry holds Retrying… until its GET settles, then lands focus on "Your Groups" (C8 c, C2, C4, Req 5)', async () => {
+  it('RF-2. Retry stays busy (rule 1) until its GET settles, then lands focus on "Your Groups" (C8 c, C2, C4, Req 5)', async () => {
     const { card } = await loadCardsThenFail(ERR_500);
     await waitForRf1();
     const region = rf1Region() as Element;
@@ -165,7 +165,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     await waitFor(() => expect(h.getUserGroups).toHaveBeenCalledTimes(3));
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(retry).not.toHaveAttribute('disabled');
-    expect(retry).toHaveTextContent('Retrying…');
+    expect(retry).toHaveAccessibleName('Retry, retrying');
     expect(document.activeElement).toBe(retry);
     expect(rf1Line(), 'the visible RF1 line stays while the GET is held').toBeDefined();
     expect(cardOf(titleBlock('Alpha Crew'))).toBe(card);

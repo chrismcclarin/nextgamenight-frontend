@@ -276,7 +276,14 @@ describe('W49 rendered — groupHomePage header scrim pair', () => {
 
     // The negative half…
     expect(cases.invalid, 'the inline 0.4 photo dim still paints on an invalid URL').not.toContain(PHOTO_DIM_04);
-    expect(cases.valid, 'the inline 0.4 photo dim is gone from the VALID case — that is a regression').toContain(PHOTO_DIM_04);
+    // AMENDED Phase 88.9-27 (owner ruling O21b / pick O02d1): the VALID case paints NO 0.4 dim
+    // either; it carries the O02d1 paint-order pair instead (white + 1.5px outline painted first),
+    // and the invalid case carries neither (it still behaves as no image).
+    expect(cases.valid, 'the inline 0.4 photo dim still paints on a VALID image (O21b ruled no photo dim)').not.toContain(PHOTO_DIM_04);
+    expect(cases.valid, 'the VALID case lost the O02d1 paint-order pair').toContain('--t-paint: stroke fill');
+    // The inline DECLARATION form: the className utilities name the property too.
+    expect(cases.invalid, 'the O02d1 paint-order pair leaked onto an invalid URL').not.toContain('--t-paint: ');
+    expect(cases.invalid, 'the O02d1 paint-order pair leaked onto an invalid URL').not.toContain('--t-paint-l: ');
 
     // …and the half that ARRIVES, which only a dark-mode reading can see.
     expect(
@@ -286,5 +293,32 @@ describe('W49 rendered — groupHomePage header scrim pair', () => {
         'the header loses its dark-mode dim entirely.',
     ).toContain(DARK_DIM_CLASS);
     expect(cases.valid, 'the `dark:` 0.15 class leaked onto the real-image case (1)').not.toContain(DARK_DIM_CLASS);
+  });
+
+  // Owner ruling 88.9-RULINGS.md R-P4 (2026-11-08, MED-66 option A): with the photo dim gone,
+  // the translucent 10% white wash under Manage Members leaves white ink at 1.00:1 over a white
+  // photo. On a VALID image the control takes the opaque elevated surface in dark instead; the
+  // owner-ruled wash stays byte for byte on every no-image header, and an invalid URL behaves
+  // as no image.
+  it('R-P4 (88.9-27): on a VALID image Manage Members takes the opaque elevated ground in dark, not the 10% wash; no image keeps the wash', async () => {
+    const manageMembersClass = async (image: string | null) => {
+      await renderHeader(image);
+      const cls = screen.getByRole('button', { name: 'Manage Members' }).getAttribute('class') ?? '';
+      cleanup();
+      return cls;
+    };
+    const valid = await manageMembersClass(VALID_URL);
+    expect(valid, 'Manage Members on a photo lost the opaque elevated dark ground').toContain('dark:bg-surface-elevated');
+    for (const wash of ['dark:bg-white/10', 'dark:text-white', 'dark:backdrop-blur-xs']) {
+      expect(valid, `Manage Members on a photo still carries ${wash}`).not.toContain(wash);
+    }
+
+    const none = await manageMembersClass(null);
+    expect(none, 'the owner-ruled no-image wash is gone').toContain('dark:bg-white/10');
+    expect(none, 'the owner-ruled no-image blur is gone').toContain('dark:backdrop-blur-xs');
+    expect(none, 'the elevated photo ground leaked onto a no-image header').not.toContain('dark:bg-surface-elevated');
+
+    const invalid = await manageMembersClass(INVALID_URL);
+    expect(invalid, 'an invalid URL does not style Manage Members as no image').toBe(none);
   });
 });

@@ -18,6 +18,7 @@
 // exactly one reader). The ratified copy is asserted as a literal string instead.
 import * as React from 'react';
 import { render, screen, cleanup, waitFor, act, fireEvent, within } from '@testing-library/react';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the hold budget
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -277,7 +278,7 @@ describe('ResponseDashboard — the §6.3 title on the respondents-fetch banner 
     api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
     render(<ResponseDashboard {...baseProps} />);
 
-    expect(await screen.findByText("We couldn't load the respondents.")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load the respondents")).toBeInTheDocument();
     // The banner's own ratified default must NOT also render — one heading, not two.
     expect(screen.queryByText('Something went wrong')).toBeNull();
     // …and the BODY copy is still code-derived, untouched by the title: a named heading must
@@ -323,7 +324,7 @@ describe('ResponseDashboard — a superseded failure is still REPORTED (review r
     expect(errorCalls()[0][1]).toBe(failure);
     // Logged, but the generation guard still drops the STATE write: no banner for a poll the
     // user has moved away from.
-    expect(screen.queryByText("We couldn't load the respondents.")).toBeNull();
+    expect(screen.queryByText("Couldn't load the respondents")).toBeNull();
     expect(screen.getByText('Second prompt member')).toBeInTheDocument();
   });
 
@@ -480,7 +481,7 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     return { promise, resolve, reject };
   }
 
-  it('AC-12: the pressed Remind carries aria-disabled (never native disabled), reads "Sending...", and a second press sends nothing', async () => {
+  it('AC-12 rule 1 (88.9): Remind keeps its label + spinner while busy; the pressed Remind carries aria-disabled (never native disabled), and a second press sends nothing', async () => {
     api.getRespondents.mockResolvedValue([memberA]);
     const d = deferred();
     api.sendReminder.mockImplementationOnce(() => d.promise);
@@ -492,7 +493,9 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await user.click(button);
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).not.toHaveAttribute('disabled');
-    expect(button).toHaveTextContent(/^Sending\.\.\.$/);
+    expect(button).toHaveAccessibleName('Remind, sending');
+    expect(button).toHaveTextContent(/^Remind/);
+    await waitFor(() => expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     fireEvent.click(button);
     fireEvent.click(button);
     expect(api.sendReminder).toHaveBeenCalledTimes(1);
@@ -500,9 +503,12 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     expect(document.activeElement).toBe(button);
 
     await act(async () => { d.resolve({}); });
+    // A sent reminder replaces the button with its Reminded line: the spinner leaves with it.
+    expect(await within(rowOf('Member A')).findByText(/^Reminded \d+m ago$/)).toBeInTheDocument(); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
+    expect(button).not.toBeInTheDocument(); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
   });
 
-  it('per row: two rows in flight each keep "Sending..." and aria-disabled, and settling one does not flip the other', async () => {
+  it('per row rule 1 (88.9): two rows in flight each keep "Remind, sending" and aria-disabled, and settling one does not flip the other', async () => {
     api.getRespondents.mockResolvedValue([memberA, memberB]);
     const dA = deferred();
     const dB = deferred();
@@ -516,7 +522,8 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await user.click(remindIn('Member A'));
     await user.click(remindIn('Member B'));
     for (const name of ['Member A', 'Member B']) {
-      expect(remindIn(name)).toHaveTextContent(/^Sending\.\.\.$/);
+      expect(remindIn(name)).toHaveAccessibleName('Remind, sending');
+      await waitFor(() => expect(remindIn(name).querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
       expect(remindIn(name)).toHaveAttribute('aria-disabled', 'true');
     }
     expect(api.sendReminder).toHaveBeenCalledWith('prompt-1', 'uA');
@@ -525,7 +532,7 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await act(async () => { dA.resolve({}); });
     // POSITIVE signal: A settled into its "Reminded ..." text; B is still in flight.
     expect(await within(rowOf('Member A')).findByText(/^Reminded \d+m ago$/)).toBeInTheDocument();
-    expect(remindIn('Member B')).toHaveTextContent(/^Sending\.\.\.$/);
+    expect(remindIn('Member B')).toHaveAccessibleName('Remind, sending');
     expect(remindIn('Member B')).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => { dB.resolve({}); });
@@ -625,7 +632,8 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await screen.findByText('Member A');
 
     const tokens = remindIn('Member A').className.split(/\s+/);
-    for (const token of ['min-h-11', '-my-2', 'inline-flex', 'items-center', 'aria-disabled:opacity-50']) {
+    // AMENDED Phase 88.9-23 (O-17): the in-flight token is muted ink, not the opacity wash.
+    for (const token of ['min-h-11', '-my-2', 'inline-flex', 'items-center', 'aria-disabled:text-content-muted']) {
       expect(tokens).toContain(token);
     }
     expect(tokens).not.toContain('disabled:opacity-50');
@@ -684,7 +692,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
   // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE), written once here (contract C7). It is
   // in the DOM twice while shown: the visible line and the polite region.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
-  const LOAD_TITLE = "We couldn't load the respondents.";
+  const LOAD_TITLE = "Couldn't load the respondents";
   const THREE = [
     { user_id: 'm1', username: 'Member One', has_responded: true, slot_count: 2 },
     // Pending and never reminded, not the viewer: an admin sees a Remind button on this row.
@@ -813,7 +821,8 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     await act(async () => {
       await sleep(150);
     });
-    expect(retry).toHaveTextContent('Retrying…');
+    // The notice's Retry is FetchErrorBanner's (rule 1, 88.9-46 B37): label kept, suffix heard.
+    expect(retry).toHaveAccessibleName('Retry, retrying');
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(retry);
     expect(region.textContent, 'the region stays quiet while the joined run is out').toBe('');
@@ -842,13 +851,15 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     for (const name of THREE_NAMES) expect(screen.getByText(name)).toBeInTheDocument();
     expect(document.activeElement).toBe(button);
     const icon = button.querySelector('svg') as SVGElement;
-    expect(icon).toHaveClass('animate-spin');
+    await waitFor(() => expect(icon).toHaveClass('animate-spin')); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(screen.getByRole('list')).toHaveAttribute('aria-busy', 'true');
 
     await act(async () => {
       held.resolve(THREE);
     });
-    await waitFor(() => expect(icon).not.toHaveClass('animate-spin'));
+    expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy');
+    expect(icon).toHaveClass('animate-spin'); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    await waitFor(() => expect(icon).not.toHaveClass('animate-spin'), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
     expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy');
     expect(document.activeElement).toBe(button);
   });
@@ -1134,7 +1145,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
 describe('ResponseDashboard — the first load names what is loading (88.6.1-86, close ruling P-14)', () => {
   // Copy row P14 (AC-33), written once here: three ASCII dots, byte for byte.
   const LOADING_RESPONSES = 'Loading responses...';
-  const LOAD_TITLE = "We couldn't load the respondents.";
+  const LOAD_TITLE = "Couldn't load the respondents";
   const THREE = [
     { user_id: 'm1', username: 'Member One', has_responded: true, slot_count: 2 },
     { user_id: 'm2', username: 'Member Two', has_responded: false, last_reminded_at: null },

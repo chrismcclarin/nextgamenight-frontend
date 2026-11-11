@@ -151,6 +151,9 @@ const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
           `.dark` block with their siblings' values copied verbatim (`--color-bg-accent-subtle-strong:
           #3a3320`, `--color-accent-text-strong: var(--amber-500)`), so this swap is a light-only
           change.
+          AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark is no longer
+          unchanged — the dark accent-text pair moved from the 500 step to amber-400 with every dark
+          accent role; the light-only swap described above still holds for light.
 
           DISCLOSURE, and it is the honest limit of a one-step change: the circle's own EDGE against
           a white card improves only from **1.11:1 to 1.25:1**. amber-200 is inherently pale and one

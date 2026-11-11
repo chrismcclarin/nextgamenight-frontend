@@ -21,6 +21,7 @@ import * as React from 'react';
 import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 import { axe } from 'vitest-axe';
 import { logger } from '@/lib/logger';
 
@@ -595,8 +596,11 @@ describe('FriendInvitePanel — gated controls stay in the focus order (88.6-22)
     await user.click(send);
 
     // In flight: the pressed control is STILL in the document and STILL focused —
-    // the whole point of `aria-disabled` over the native attribute (DR-C).
-    const inFlight = screen.getByRole('button', { name: 'Sending...' });
+    // the whole point of `aria-disabled` over the native attribute (DR-C). Rule 1 (88.9-45):
+    // the label stays, the house spinner joins it, the suffix is heard.
+    const inFlight = screen.getByRole('button', { name: 'Send, sending' });
+    expect(inFlight).toHaveTextContent('Send');
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(inFlight).toBeInTheDocument();
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight).not.toHaveAttribute('disabled');
@@ -635,7 +639,9 @@ describe('FriendInvitePanel — gated controls stay in the focus order (88.6-22)
     const add = await screen.findByRole('button', { name: 'Add Friend' });
     await user.click(add);
 
-    const inFlight = screen.getByRole('button', { name: 'Sending...' });
+    const inFlight = screen.getByRole('button', { name: 'Add Friend, sending' });
+    expect(inFlight).toHaveTextContent('Add Friend');
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight).not.toHaveAttribute('disabled');
     expect(document.activeElement).toBe(inFlight);
@@ -705,7 +711,7 @@ describe('FriendInvitePanel — pressed controls, focus and the copy timer (88.6
 
     const field = emailField();
     await user.type(field, 'newcomer@example.test{Enter}');
-    await screen.findByRole('button', { name: 'Sending...' });
+    await screen.findByRole('button', { name: 'Send, sending' });
 
     expect(field).toHaveAttribute('readonly');
     expect(field).toHaveAttribute('aria-disabled', 'true');
@@ -713,13 +719,13 @@ describe('FriendInvitePanel — pressed controls, focus and the copy timer (88.6
     // CONFIRM-ONLY in jsdom (C-11): jsdom never blurs a disabled element, so the RED half of
     // this arm is the attribute above, not this focus line.
     expect(document.activeElement).toBe(field);
-    expect(screen.getByRole('button', { name: 'Sending...' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Send, sending' })).toHaveAttribute('aria-disabled', 'true');
 
     await user.keyboard('{Enter}');
     expect(invitesAPI.sendInvite).toHaveBeenCalledTimes(1);
     expect(field).toHaveAttribute('readonly');
     expect(field).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByRole('button', { name: 'Sending...' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Send, sending' })).toHaveAttribute('aria-disabled', 'true');
 
     release({});
     await screen.findByRole('button', { name: 'Send' });
@@ -1191,10 +1197,90 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
   const NETWORK_LINE = "We couldn't reach the server. Check your connection and try again.";
   const OTHER_UUID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
   const OTHER_FRIENDSHIP = { id: 'fr-3', friend: { id: OTHER_UUID, username: 'Eli' } };
+  const THIRD_UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+  const THIRD_FRIENDSHIP = { id: 'fr-4', friend: { id: THIRD_UUID, username: 'Fay' } };
 
   async function inviteSelected() {
     fireEvent.click(screen.getByRole('button', { name: /^Invite \d+ Friends?$/ }));
   }
+
+  it('B08 rule 1 (88.9): the bulk invite keeps the pressed label + spinner while sending; a mid-send tick changes neither', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    let release: (value: unknown) => void = () => {};
+    (invitesAPI.sendFriendInvite as Mock)
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
+      .mockImplementationOnce(() => Promise.resolve({}));
+    renderPanel({ friends: [FRIENDSHIP, OTHER_FRIENDSHIP, THIRD_FRIENDSHIP] });
+    await screen.findByText('Fay');
+    const boxes = screen.getAllByRole('checkbox');
+    expect(boxes).toHaveLength(3);
+    fireEvent.click(boxes[0]);
+    fireEvent.click(boxes[1]);
+    const button = screen.getByRole('button', { name: 'Invite 2 Friends' });
+    fireEvent.click(button);
+
+    // Rule 1 (88.9-45): the pressed label stays, ONE house spinner joins it (the white
+    // border-b-2 div is gone), the suffix is heard.
+    await waitFor(() => expect(button).toHaveAccessibleName('Invite 2 Friends, sending'));
+    expect(button).toHaveTextContent(/^Invite 2 Friends/);
+    await waitFor(() => expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(button.querySelectorAll('.animate-spin')).toHaveLength(1);
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+
+    // The checkboxes stay live mid-send: a third tick must not change the text under the finger.
+    fireEvent.click(boxes[2]);
+    expect(button).toHaveAccessibleName('Invite 2 Friends, sending');
+    expect(button).toHaveTextContent(/^Invite 2 Friends/);
+    expect(invitesAPI.sendFriendInvite).toHaveBeenCalledTimes(1);
+
+    release({});
+    await waitFor(() => expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
+  });
+
+  // R-C1 (88.9-56, owner ruling 2026-11-10 + the orchestrator's final-outcome merits ruling): only
+  // the ids whose outcome is FINAL leave the selection. The skipped already-member arm stays in
+  // code but is not pinned here: a member's box is checked and disabled, and the members load
+  // that fills the member list also clears the selection, so no UI path ticks one.
+  it('R-C1 (88.9): after a batch only the ids with a final outcome leave the selection — sent, already a member, permanently refused — a transient failure and a mid-send tick stay for the next press', async () => {
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    const FOURTH_UUID = 'abababab-abab-4bab-8bab-abababababab';
+    const FOURTH_FRIENDSHIP = { id: 'fr-5', friend: { id: FOURTH_UUID, username: 'Gus' } };
+    let release: (value: unknown) => void = () => {};
+    (invitesAPI.sendFriendInvite as Mock)
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500))
+      .mockRejectedValueOnce(new ApiError('Forbidden', 'forbidden', 403));
+    renderPanel({ friends: [FRIENDSHIP, OTHER_FRIENDSHIP, THIRD_FRIENDSHIP, FOURTH_FRIENDSHIP] });
+    await screen.findByText('Gus');
+    const [a, b, c, d] = screen.getAllByRole('checkbox');
+    fireEvent.click(a);
+    fireEvent.click(c);
+    fireEvent.click(d);
+    fireEvent.click(screen.getByRole('button', { name: 'Invite 3 Friends' }));
+    await waitFor(() => expect(invitesAPI.sendFriendInvite).toHaveBeenCalledTimes(1));
+    // A friend ticked while the batch is in flight.
+    fireEvent.click(b);
+
+    await act(async () => {
+      release({});
+    });
+    await waitFor(() => expect(invitesAPI.sendFriendInvite).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(a).not.toBeChecked()); // sent
+    expect(d).not.toBeChecked(); // permanently refused (forbidden)
+    expect(c).toBeChecked(); // transient (internal): kept for the retry
+    expect(b).toBeChecked(); // ticked mid-send, never sent
+    expect((invitesAPI.sendFriendInvite as Mock).mock.calls.map((call) => call[1])).toEqual([
+      FRIEND_UUID,
+      THIRD_UUID,
+      FOURTH_UUID,
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Invite 2 Friends' }));
+    await waitFor(() => expect(invitesAPI.sendFriendInvite).toHaveBeenCalledTimes(5));
+    expect((invitesAPI.sendFriendInvite as Mock).mock.calls.slice(3).map((call) => call[1]).sort()).toEqual(
+      [OTHER_UUID, THIRD_UUID].sort()
+    );
+  });
 
   it('B1: an all-failed batch whose first failure has no code says R2 from the alert region (D-32 R2)', async () => {
     const { invitesAPI } = await import('@/lib/api');
@@ -1326,15 +1412,46 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     }
   });
 
-  it('H: the header row is on the Modal header phone-first scale (R7-M5), keeping items-start and gap-3', async () => {
+  // AMENDED Phase 88.9-29 (owner pick E8b, 88.9-PICKS-B4.json, 2026-11-06): renamed from
+  // 'H: the header row is on the Modal header phone-first scale (R7-M5), keeping items-start and
+  // gap-3'. The close now centres on the whole title block (items-center) like every Modal
+  // header; the R7-M5 padding scale and gap-3 reads are unchanged.
+  it('H: the header row is on the Modal header phone-first scale (R7-M5), centring the close (E8b) with gap-3', async () => {
     renderPanel();
     const column = (await screen.findByRole('heading', { name: 'Invite Members' })).closest('div');
     const tokens = column?.parentElement?.className.split(/\s+/) ?? [];
-    for (const cls of ['px-3', 'py-2', 'md:px-6', 'md:py-3', 'items-start', 'gap-3']) {
+    for (const cls of ['px-3', 'py-2', 'md:px-6', 'md:py-3', 'items-center', 'gap-3']) {
       expect(tokens).toContain(cls);
     }
+    expect(tokens).not.toContain('items-start');
     expect(tokens).not.toContain('px-6');
     expect(tokens).not.toContain('py-5');
+  });
+
+  // Phase 88.9-29 (owner picks E8b and O13a): the invite panel's freeform close is the same
+  // stroked 20px icon as every dialog close, and its body sections are phone-first padded.
+  it('E8b (88.9): the invite panel close is the stroked SVG, label Close, 44 box', async () => {
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite Members' });
+    const close = screen.getByRole('button', { name: 'Close' });
+    const svgs = close.querySelectorAll('svg');
+    expect(svgs).toHaveLength(1);
+    expect(svgs[0].getAttribute('width')).toBe('20');
+    expect(svgs[0].getAttribute('aria-hidden')).toBe('true');
+    expect((close.textContent ?? '').trim()).toBe('');
+    const tokens = close.className.split(/\s+/);
+    expect(tokens).toContain('min-h-11');
+    expect(tokens).toContain('min-w-11');
+    expect(tokens).not.toContain('text-2xl');
+  });
+
+  it('O13a (88.9): invite panel body sections are p-4 at phone and p-5 from md', async () => {
+    renderPanel();
+    const heading = await screen.findByRole('heading', { level: 3, name: 'Your Friends' });
+    const tokens = heading.parentElement?.className.split(/\s+/) ?? [];
+    expect(tokens).toContain('p-4');
+    expect(tokens).toContain('md:p-5');
+    expect(tokens).not.toContain('p-5');
   });
 });
 

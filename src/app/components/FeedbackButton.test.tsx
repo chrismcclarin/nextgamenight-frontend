@@ -194,19 +194,22 @@ describe('FeedbackButton — the pressed Submit (88.6.1-33, D-35, Req 4 and 5)',
   const LONG_ENOUGH = 'A message that is long enough.';
   const THANKS = 'Thanks! Your feedback has been submitted.';
 
-  it('G1a (R4 concurrency): while the send is pending, Submit reads Submitting..., is aria-disabled and NOT natively disabled, and stays so after a second press; it is released when the first send settles', async () => {
+  it('G1a rule 1 (88.9): Submit keeps its label + spinner while busy (R4 concurrency), is aria-disabled and NOT natively disabled, and stays so after a second press; it is released when the first send settles', async () => {
     const held = deferred<unknown>();
     writer().mockImplementationOnce(() => held.promise);
     const { user, dialog } = await openDialog();
     await user.type(textareaIn(dialog), LONG_ENOUGH);
     await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
 
-    const busy = within(dialog).getByRole('button', { name: 'Submitting...' });
+    // Rule 1 (88.9-45): the label stays, the house spinner joins it, the suffix is heard.
+    const busy = within(dialog).getByRole('button', { name: 'Submit, submitting' });
+    expect(busy).toHaveTextContent('Submit');
+    await waitFor(() => expect(busy.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(busy).toHaveAttribute('aria-disabled', 'true');
     expect(busy).not.toHaveAttribute('disabled');
 
     await user.click(busy);
-    const stillBusy = within(dialog).getByRole('button', { name: 'Submitting...' });
+    const stillBusy = within(dialog).getByRole('button', { name: 'Submit, submitting' });
     expect(stillBusy).toHaveAttribute('aria-disabled', 'true');
     expect(stillBusy).not.toHaveAttribute('disabled');
 
@@ -231,7 +234,7 @@ describe('FeedbackButton — the pressed Submit (88.6.1-33, D-35, Req 4 and 5)',
     const form = dialog.querySelector('form');
     expect(form).not.toBeNull();
     fireEvent.submit(form as HTMLFormElement);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Submitting...' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Submit, submitting' }));
     expect(writer()).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -259,7 +262,7 @@ describe('FeedbackButton — the pressed Submit (88.6.1-33, D-35, Req 4 and 5)',
     await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
 
     // Ordering: nothing moves before the outcome.
-    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Submitting...' }));
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Submit, submitting' }));
 
     await act(async () => {
       held.resolve({ success: true });
@@ -374,12 +377,12 @@ describe('FeedbackButton — the success timer and late outcomes (88.6.1-33, W01
       let dialog = await open();
       await user.type(textareaIn(dialog), FIRST);
       await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
-      expect(within(dialog).getByRole('button', { name: 'Submitting...' })).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: 'Submit, submitting' })).toBeInTheDocument();
 
       await closeWithEscape();
       dialog = await open();
       // The old send is still held: the re-opened dialog must not claim to be sending it.
-      expect(within(dialog).queryByRole('button', { name: 'Submitting...' })).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: 'Submit, submitting' })).toBeNull();
       const submit = within(dialog).getByRole('button', { name: 'Submit' });
       expect(submit).not.toHaveAttribute('aria-disabled');
 
@@ -419,7 +422,7 @@ describe('FeedbackButton — the success timer and late outcomes (88.6.1-33, W01
 
       expect(writer()).toHaveBeenCalledTimes(2);
       expect((writer().mock.calls[1][0] as { text: string }).text).toBe(SECOND);
-      expect(within(dialog).getByRole('button', { name: 'Submitting...' })).toHaveAttribute(
+      expect(within(dialog).getByRole('button', { name: 'Submit, submitting' })).toHaveAttribute(
         'aria-disabled',
         'true'
       );
@@ -429,7 +432,7 @@ describe('FeedbackButton — the success timer and late outcomes (88.6.1-33, W01
         first.resolve({ success: true });
       });
       await act(async () => {});
-      expect(within(dialog).getByRole('button', { name: 'Submitting...' })).toHaveAttribute(
+      expect(within(dialog).getByRole('button', { name: 'Submit, submitting' })).toHaveAttribute(
         'aria-disabled',
         'true'
       );

@@ -101,22 +101,53 @@ describe('BrowseMoreModal (migrated onto <Modal size="lg">)', () => {
 
   // Plan 88.6-32 (D-10 / AC-10). The two 32x32 player-count steppers are the phase's ONLY
   // permanent `.btn` exemption: they stay raw `.btn btn-compact` rather than becoming
-  // `<Button>`, and under plan 05's ARM A they carry the house focus ring in its INSET form
-  // (never `ring-offset-2` — an offset ring on a 32px square in a tight toolbar paints into
-  // its twin). Pinned so a later "consistency" sweep cannot migrate them or swap the ring form
-  // without reading the markers at the site.
-  it('leaves both player-count steppers on `.btn-compact` with an INSET focus ring', async () => {
+  // `<Button>`. Plan 88.9-44 (owner pick B7a, 88.9-PICKS-B1.json, 2026-11-04) moved their focus
+  // ring from plan 05's ARM A INSET form to the house OFFSET form on the CARD halo
+  // (ring-offset-2 + ring-offset-surface-card: the toolbar paints bg-card, so the halo is the
+  // ground under the ring); the owner accepted the 4px reach into the row gap with the picture in
+  // front of him. Pinned so a later "consistency" sweep cannot migrate them or swap the ring form
+  // back without reading the markers at the site.
+  it('leaves both player-count steppers on `.btn-compact` with the house OFFSET focus ring on the card halo (88.9 B7a)', async () => {
     render(<BrowseMoreModal {...baseProps} />);
     await screen.findByRole('dialog');
     for (const name of [/decrease player count/i, /increase player count/i]) {
       const stepper = screen.getByRole('button', { name });
       expect(stepper).toHaveClass('btn-compact');
-      expect(stepper).toHaveClass('focus-visible:ring-inset');
-      expect(stepper.className).not.toMatch(/focus-visible:ring-offset-/);
+      expect(stepper).toHaveClass('focus-visible:ring-offset-2');
+      expect(stepper).toHaveClass('focus-visible:ring-offset-surface-card');
+      expect(stepper.className).not.toMatch(/ring-inset/);
       // The exemption is about SIZE — 32x32, above WCAG 2.5.8's 24px floor.
       expect(stepper).toHaveClass('w-8');
       expect(stepper).toHaveClass('h-8');
     }
+  });
+
+  // Plan 88.9-44 (owner pick O12a, 88.9-PICKS-B8B.json, 2026-11-07): the sort direction is the
+  // shared SegmentedToggle joined pill — raw non-.btn segments (so the joined radii paint), each
+  // named Ascending / Descending by its own aria-label and showing its arrow glyph — in place of
+  // the two separate pill Buttons on a gap-1 gutter that 88.6-32 shipped.
+  it('O12a (88.9): the sort direction is one joined pill — two aria-pressed segments named Ascending and Descending, raw buttons with the joined radii', async () => {
+    const user = userEvent.setup();
+    await renderSettled([CATAN, AZUL]);
+    const group = screen.getByRole('group', { name: 'Sort direction' });
+    expect(group).not.toHaveClass('gap-1');
+    const segments = within(group).getAllByRole('button');
+    expect(segments).toHaveLength(2);
+    const ascending = within(group).getByRole('button', { name: 'Ascending' });
+    const descending = within(group).getByRole('button', { name: 'Descending' });
+    expect(descending).toHaveAttribute('aria-pressed', 'true');
+    expect(ascending).toHaveAttribute('aria-pressed', 'false');
+    for (const segment of [ascending, descending]) {
+      expect(segment).not.toHaveClass('btn');
+    }
+    expect(ascending).toHaveClass('rounded-l-full');
+    expect(descending).toHaveClass('rounded-r-full');
+    expect(descending).toHaveClass('-ml-px');
+    expect(ascending.textContent).toBe('↑');
+    expect(descending.textContent).toBe('↓');
+    await user.click(ascending);
+    expect(ascending).toHaveAttribute('aria-pressed', 'true');
+    expect(descending).toHaveAttribute('aria-pressed', 'false');
   });
 });
 
@@ -455,6 +486,63 @@ describe('BrowseMoreModal refresh keeps the list (88.6.1-32, D-09, D-41, AC-27, 
     await waitFor(() => expect(slotRegions().polite.textContent).toBe(UPDATING));
     expect(screen.queryByText(FIRST_LOAD_LINE)).toBeNull();
   });
+
+  // Plan 88.9-44 (owner pick D15b, 88.9-PICKS-B3.json, 2026-11-05; Q7 85% and its ADDENDUM / R-P2,
+  // 88.9-RULINGS.md): the previous results dim during a refresh, keyed on the same value as the
+  // E8 busy line AND a non-empty settled result — never on the first load (no previous rows; the
+  // first-load caption would drop under 4.5), never over an empty result (its Reset filters
+  // label would read 4.07 light through the dim). The class is the whole Tailwind literal.
+  it('D15b (88.9): the results dim class rides the aria-busy list only during a refresh over previous cards — never on the first load, never over an empty result', async () => {
+    const user = userEvent.setup();
+    const DIM = '[&>*]:opacity-85';
+    const increase = () => screen.getByRole('button', { name: 'Increase player count' });
+
+    // First load: busy, never dimmed.
+    const d1 = holdNext();
+    render(<BrowseMoreModal {...baseProps} />);
+    expect(await screen.findByText(FIRST_LOAD_LINE)).toBeInTheDocument();
+    const results = screen.getByTestId('browse-more-results');
+    expect(results).toHaveAttribute('aria-busy', 'true');
+    expect(results).not.toHaveClass(DIM);
+    await act(async () => {
+      d1.resolve({ suggestions: [CATAN, AZUL] });
+    });
+    expect(await screen.findByRole('button', { name: 'Catan' })).toBeInTheDocument();
+    expect(results).not.toHaveAttribute('aria-busy');
+    expect(results).not.toHaveClass(DIM);
+
+    // Refresh over previous cards: positive signal first (busy), then the dim rides it.
+    const d2 = holdNext();
+    await user.click(increase());
+    await waitFor(() => expect(results).toHaveAttribute('aria-busy', 'true'));
+    expect(results).toHaveClass(DIM);
+    await act(async () => {
+      d2.resolve({ suggestions: [CATAN, CARCASSONNE] });
+    });
+    expect(await screen.findByRole('button', { name: 'Carcassonne' })).toBeInTheDocument();
+    expect(results).not.toHaveAttribute('aria-busy');
+    expect(results).not.toHaveClass(DIM);
+
+    // Empty-state arm (R-P2): settle on the filters-yield-none variant, then refresh over it.
+    const d3 = holdNext();
+    await user.click(increase());
+    await waitFor(() => expect(results).toHaveAttribute('aria-busy', 'true'));
+    await act(async () => {
+      d3.resolve({ suggestions: [] });
+    });
+    expect(await screen.findByText(FILTERS_EMPTY)).toBeInTheDocument();
+    expect(results).not.toHaveAttribute('aria-busy');
+    const d4 = holdNext();
+    await user.click(increase());
+    await waitFor(() => expect(results).toHaveAttribute('aria-busy', 'true'));
+    expect(results).not.toHaveClass(DIM);
+    expect(screen.getByText(FILTERS_EMPTY)).toBeInTheDocument();
+    await act(async () => {
+      d4.resolve({ suggestions: [] });
+    });
+    await waitFor(() => expect(results).not.toHaveAttribute('aria-busy'));
+    expect(results).not.toHaveClass(DIM);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -507,7 +595,7 @@ describe('BrowseMoreModal decrement at 1 and the capture latch (88.6.1-32, AC-13
     expect(dec).not.toHaveAttribute('disabled');
     expect(dec.className).not.toMatch(/(^|\s)disabled:/);
     expect(dec).toHaveClass('btn-compact');
-    expect(dec).toHaveClass('focus-visible:ring-inset');
+    expect(dec).toHaveClass('focus-visible:ring-offset-2');
     expect(dec).toHaveClass('w-8');
     expect(dec).toHaveClass('h-8');
   });

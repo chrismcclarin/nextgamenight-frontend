@@ -62,7 +62,6 @@
 import * as React from 'react';
 import * as Sentry from '@sentry/nextjs';
 import { useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 
 import { FormField } from './form/FormField';
 import { Banner } from '@/components/ui/Banner';
@@ -71,6 +70,7 @@ import { Heading } from '@/components/ui/Heading';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { useInlineReceipt } from '@/components/ui/useInlineReceipt';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import type { FetchErrorMessageOptions } from '@/components/ui/useFetchErrorState';
 import { ApiError, usersAPI } from '@/lib/api';
@@ -602,7 +602,16 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
      double what already announces — an error-tone Banner is an assertive live region
      of its own, and the toaster is a permanently mounted polite region — so the
      refused-mail copy and the discard receipt are no longer announce()d here. One
-     rule: each message is announced exactly once, by whichever surface owns it. Chosen OVER making `Banner` itself always-mounted,
+     rule: each message is announced exactly once, by whichever surface owns it.
+     AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rules
+     3/4): the three outcome receipts (changed / discarded / reverted) left the toaster for an
+     inline success caption beside Change (visible text only) and are spoken once through this
+     section's always-mounted lane (announce()), which owns them now that no toast does — so each
+     is still announced exactly once; chosen OVER a second polite region in the section (inside the
+     idle/verified block it would mount with its text and say nothing; outside it, it would break
+     the one-lane rule above); chosen OVER keeping three toasts (rule 4: a toast only for an
+     outcome the person cannot see — this section stays on screen). DR-C is untouched: no control
+     gains native disabled. Chosen OVER making `Banner` itself always-mounted,
      which would paint an empty coloured box, and OVER changing the `Banner`
      primitive to take a `live={false}` prop — Banner has consumers well outside
      this phase and that is a shared-surface change this finding does not justify. */
@@ -621,6 +630,8 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
      between the two equal strings and both are heard. Still no timer, so the rejected
      clear-then-set timer stays rejected for the reason above. */
   const announce = setAnnouncement;
+  // Save-feedback rule 3 (88.9-24): the outcome caption beside Change (see the AMENDED line above).
+  const { receipt, showReceipt, clearReceipt } = useInlineReceipt();
   /* Failures of Resend / Discard / Revert used to be written into `codeError`,
      which `FormField` turns into `aria-invalid="true"` on the code input — marking
      a field the user has not mistyped, and often has not touched (code review #35).
@@ -1075,7 +1086,8 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
     setSentLine(null);
     setResendPromoted(false);
     setNotice(null);
-    toast.success(CHANGED_RECEIPT);
+    showReceipt(CHANGED_RECEIPT);
+    announce(CHANGED_RECEIPT);
     setFocusTarget('change');
   };
 
@@ -1109,6 +1121,8 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
       setRevertError(ACTION_BUSY_ERROR);
       return;
     }
+    clearReceipt();
+    announce('');
     setEmailInput('');
     setEmailError(null);
     setEditActionError(null);
@@ -1726,6 +1740,8 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
       return;
     }
     setActionError(null);
+    clearReceipt();
+    announce('');
     setBusy('discard');
     try {
       const body = await usersAPI.cancelEmailChange(selfId);
@@ -1742,7 +1758,9 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
       setResendPromoted(false);
       setNotice(null);
       setState('idle');
-      toast.success(DISCARDED_RECEIPT); // the toaster is a polite live region (#38)
+      // The section's lane speaks it now that no toast does (the AMENDED Phase 88.9-24 line above).
+      showReceipt(DISCARDED_RECEIPT);
+      announce(DISCARDED_RECEIPT);
       setFocusTarget('change');
     } catch (error) {
       setActionError(messageFor(error));
@@ -1761,6 +1779,8 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
       return;
     }
     setRevertError(null);
+    clearReceipt();
+    announce('');
     setBusy('revert');
     try {
       const body = await usersAPI.revertEmailToSignIn(selfId);
@@ -1773,7 +1793,8 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
       if (body.outcome === 'reverted') {
         setState('idle');
         setNotice(null);
-        toast.success(REVERTED_RECEIPT);
+        showReceipt(REVERTED_RECEIPT);
+        announce(REVERTED_RECEIPT);
         /* THIS CONTROL DELETES ITSELF ON SUCCESS, WHICH IS WHY THE FOCUS MOVE
            IS EXPLICIT. The affordance renders only while
            `self.revert_available === true`; the backend answers a successful
@@ -1977,7 +1998,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
       {/* THE SECTION'S ONE LIVE REGION — mounted for the whole life of the section,
           empty until something happens, so every message is a CHANGE and therefore
           announced. Visually hidden because each message also has a visible home
-          (the sent-code line, the Banner, a toast); this exists so the visible one
+          (the sent-code line, the Banner, the receipt caption beside Change); this exists so the visible one
           does not have to be conditionally mounted to be heard. See the
           `announce()` docblock above for why the conditional mounts could not
           announce on their own. */}
@@ -2038,6 +2059,13 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
             >
               {LABEL_REVERT}
             </Button>
+          )}
+          {/* Save-feedback rule 3 (88.9-24): visible text only, NOT a live region — the lane above
+              speaks it (the AMENDED Phase 88.9-24 line at the announce() docblock). */}
+          {receipt && (
+            <p data-testid="email-receipt" className="text-xs text-content-status-success">
+              {receipt}
+            </p>
           )}
         </div>
       )}

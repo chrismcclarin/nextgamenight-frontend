@@ -384,8 +384,10 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
           type="submit"
           form="start-poll-form"
           aria-disabled={submitting || undefined}
+          busy={submitting}
+          busySuffix=", starting"
         >
-          {submitting ? 'Starting...' : 'Start poll'}
+          Start poll
         </Modal.Action>
       </Modal.Footer>
     </Modal>

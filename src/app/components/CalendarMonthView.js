@@ -12,10 +12,11 @@ import {
   SUBTEXT_MUTED_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { isGuestEvent } from '../../lib/eventClassification';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { Icon } from '../../components/ui/Icon';
 import SafeImage from './SafeImage';
-import RsvpCount from './RsvpCount';
 
 const isPast = (date) => {
   if (!date) return false;
@@ -103,6 +104,12 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * REJECTED: keeping the deferral to 88.6 — the repair is one literal, and the
  * hoist is precisely what changed its blast radius. Gate B test 7 now asserts
  * that no identifier is ever assigned to `WebkitTextStroke` in these files.
+ * AMENDED Phase 88.9-28 (owner pick F7a, 88.9-PICKS-B5.json, 2026-11-06): the LIGHT
+ * arm of an image tile drops the shadow and the stroke (title 6.46 light, page 5),
+ * chosen OVER the shipped dark ink + 0.5px black stroke + 2px/4px black shadow that
+ * read as an ink stain; the dark arm is byte-identical. The arm is a third ARGUMENT
+ * ('dark' | 'light') from the two call sites, so this helper stays module-level and
+ * argument-driven and the image flag still comes only from safeBgImageStyle.
  *
  * The flag is passed as `false` for the COMPACT variant at the call site
  * (`tileHasBgImage`), because that tile deliberately paints no background image —
@@ -123,8 +130,11 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * `const X = safeBgImageStyle(…)` derivation scan. The cheap boolean already
  * exists at the call site.
  */
-const tileTextTreatment = (tileGround, hasBgImage) => {
+const tileTextTreatment = (tileGround, hasBgImage, arm) => {
   if (hasBgImage) {
+    // F7a (88.9-28): the LIGHT arm of an image tile carries no shadow and no stroke
+    // (themedTextStyleVars maps the missing keys to none); the DARK arm is unchanged.
+    if (arm === 'light') return {};
     return {
       textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
       WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
@@ -147,7 +157,7 @@ const tileTextTreatment = (tileGround, hasBgImage) => {
  * Monthly grid renderer.
  *
  * Phase 64-02 (CAL-01 / CAL-04 / CAL-05):
- *   - `days` is now {date: Date, isCurrentMonth: boolean}[] (42 cells).
+ *   - `days` is now {date: Date, isCurrentMonth: boolean}[] — whole weeks, 28, 35 or 42 cells (CS-05, 88.9-25).
  *   - Adjacent-month cells sit on the page ground with their day number muted; nothing in the cell is dimmed (AMENDED Phase 88.9-07, owner picks A4b + O4b; tile dim dropped at the plan review, 2.39 / 2.88 through .6)
  *     but their events use the same tile styling as current-month cells.
  *   - Whole-cell click invokes `onDayClick(date, dayEvents)` — the parent
@@ -155,6 +165,8 @@ const tileTextTreatment = (tileGround, hasBgImage) => {
  *     event-detail navigation, or EventDayModal. Inner event-tile
  *     clicks still call `onEventClick(event)` and stopPropagation.
  *   - `+N more` is a non-button label; the cell click handles the modal.
+ *   - `viewerDbUserId` (88.9-28 D5a): the caller's own Users.id UUID, used only to derive the
+ *     guest cue on the FULL tile (isGuestEvent); never rendered or logged.
  */
 export default function CalendarMonthView({
   days,
@@ -168,6 +180,10 @@ export default function CalendarMonthView({
   showEmptyDayHint = false,
   monthNames,
   tzLegend,
+  viewerDbUserId = /** @type {string | null | undefined} */ (null),
+  // 88.9-39 N1 (R2-45): the Month | List switch EventCalendar passes in; seated beside the Today pill.
+  // The JSDoc cast types the prop (a bare null default narrows it to null for TS consumers, 88.9-28 precedent).
+  viewSwitch = /** @type {import('react').ReactNode} */ (null),
 }) {
   return (
     <>
@@ -194,16 +210,25 @@ export default function CalendarMonthView({
           `focusAndMotionTreatment.test.ts` only ever forbade VISIBLE bare
           `focus:` treatments — it never required a ring on every focusable.
           Task 2(B) of this plan adds that positive scan across the five
-          group-page render-tree files. Removing a ring here reds it. */}
+          group-page render-tree files. Removing a ring here reds it.
+          AMENDED Phase 88.9-28 (owner pick N1): the ring stays on all three controls; Go to Today is now the Today pill. */}
       <div className="flex justify-between items-center mb-4">
         {/* Phase 88.6-27: both `.btn btn-primary` nav controls take the primitive, and their
             per-site focus-ring strings retire with the migration — the ring lives ONCE in the
             primitive's cva base (A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
             is byte-unchanged and still true of what the user sees; only WHERE the ring is
             expressed moved. The "Go to Today" text link between them is NOT a `.btn` and KEEPS
-            its own string — it is not a member of the family that marker's ARM A covers. */}
-        <Button variant="primary" onClick={() => onNavigateMonth(-1)}>
-          &larr; Previous
+            its own string — it is not a member of the family that marker's ARM A covers.
+            AMENDED Phase 88.9-28 (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07): the two nav
+            controls are now secondary iconSquare Buttons (chevrons, names Previous month / Next
+            month), chosen OVER the two primary text Buttons; the text link is now the Today pill
+            and still keeps its own ring string. The chevron icon is decorative (Icon's default
+            aria-hidden): the accessible name is the button's own aria-label, a labelled focusable
+            leaf, which is what VoiceOver on iPhone reads. The title keeps Heading's base
+            wrap-anywhere and no nowrap, so it is one line whenever it fits and can still wrap at
+            enlarged text (WCAG 1.4.4). */}
+        <Button variant="secondary" size="iconSquare" aria-label="Previous month" onClick={() => onNavigateMonth(-1)}>
+          <Icon name="ChevronLeft" size={20} />
         </Button>
         <div className="text-center">
           <Heading level={3} size="heading" className="text-content-primary">
@@ -214,15 +239,19 @@ export default function CalendarMonthView({
               Times shown in {tzLegend}
             </p>
           )}
-          <button
-            onClick={onGoToday}
-            className="text-sm text-content-link hover:text-content-link-hover mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11"
-          >
-            Go to Today
-          </button>
+          {/* 88.9-39 N1: Today and the Month | List switch share one wrapping row (flex-wrap guards 375). */}
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              onClick={onGoToday}
+              className="mt-1 inline-flex items-center justify-center min-h-11 px-4 rounded-full border border-line bg-surface-card text-sm font-bold text-content-primary hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+            >
+              Today
+            </button>
+            {viewSwitch}
+          </div>
         </div>
-        <Button variant="primary" onClick={() => onNavigateMonth(1)}>
-          Next &rarr;
+        <Button variant="secondary" size="iconSquare" aria-label="Next month" onClick={() => onNavigateMonth(1)}>
+          <Icon name="ChevronRight" size={20} />
         </Button>
       </div>
 
@@ -238,10 +267,12 @@ export default function CalendarMonthView({
           case D-03 addresses. Nothing in this plan's text asks for a size reduction here
           either. Folding this row to 12 is therefore a DECISION for /gsd-ui-review or Phase
           88.9, not a cleanup — and it is disclosed as an open question in
-          `88.6-27-SUMMARY.md` rather than taken silently. */}
+          `88.6-27-SUMMARY.md` rather than taken silently.
+          AMENDED Phase 88.9-28 (owner pick C8a, votes-b2 v11, 2026-11-06): folded to 12/700 — ruled,
+          chosen OVER the held 14/700; the compact grid at 375 moves with it (one element). */}
       <div className="grid grid-cols-7 gap-1 mb-4">
         {dayNames.map(day => (
-          <div key={day} className="text-center font-bold text-content-secondary py-2 text-sm">
+          <div key={day} className="text-center font-bold text-content-secondary py-2 text-xs">
             {day}
           </div>
         ))}
@@ -321,20 +352,30 @@ export default function CalendarMonthView({
                  not that pattern; FLATTENING the chain would be. This is a decision, not a
                  cleanup.
 
-                 AMENDED Phase 88.9-07: the adjacent-month page ground is a ternary ARM after the
-                 today and full-variant past arms, honouring this fence; no painting token is
+                 AMENDED Phase 88.9-07, re-amended Phase 88.9-28 (C3): the adjacent-month page
+                 ground is a ternary ARM straight after the today arm, with the full-variant past
+                 case as a sub-arm inside it, honouring this fence; no painting token is
                  stacked beside the chain.
 
-                 AMENDED Phase 88.9-07 (#204): cursor-pointer joins group as a non-painting token allowed outside the arms, and only for the today and full-variant past cases (clickable cells whose arm carries no pointer); bg-*, border-*, hover:* and transition-colors stay in their arms, fenced as above. */
+                 AMENDED Phase 88.9-07 (#204): cursor-pointer joins group as a non-painting token allowed outside the arms, and only for the today and full-variant past cases (clickable cells whose arm carries no pointer); bg-*, border-*, hover:* and transition-colors stay in their arms, fenced as above.
+
+                 AMENDED Phase 88.9-28: the arms stay mutually exclusive; the static run carries no
+                 border token; each arm carries its own 1px width AND its own colour
+                 (border-transparent, or the today frame's border-line-accent), chosen OVER a static
+                 width with arm colours (a colourless width chunk; borderExplicitness test 1) and OVER
+                 a PAIRED_ELSEWHERE exemption (a file-wide hole). The width in every arm keeps every
+                 cell's box identical, so today's amber frame causes no 1px shift. */
               /* DECISION Phase 88.9-07 (owner picks A4b + O4b, 88.9-PICKS-A.json / 88.9-PICKS-O.json,
                  2026-10-31): adjacent-month cells take the page ground plus the muted day number
                  (5.04 light / 7.32 dark) as the not-this-month cue, chosen OVER the whole-cell
                  opacity-60 (2.69 / 3.13, under 4.5) and OVER A4a / A4c; one arm on every variant
-                 (O4b: the full-grid per-variant arm was offered and declined). The arm sits after
-                 the full-variant past arm, chosen OVER placing it straight after the today arm: a
-                 past adjacent cell on the full grid keeps the past treatment (page ground, no hover
-                 ground) exactly like a same-month past cell, where the earlier slot would have given
-                 leading-overflow past days with events a hover ground no same-month past cell has.
+                 (O4b: the full-grid per-variant arm was offered and declined). The arm sits straight
+                 after the today arm and carries a full-variant past sub-arm (AMENDED Phase 88.9-28,
+                 owner pick C3: it sat after the full-variant past arm until C3 gave that arm the
+                 tile-past ground, which would have tiled past adjacent cells): a past adjacent cell on
+                 the full grid keeps the no-hover past behaviour on the page ground, chosen OVER a flat
+                 adjacency arm with no past fork, which would give leading-overflow past days with
+                 events a hover ground no same-month past cell has.
                  The dim is removed from the whole cell, tiles included, chosen OVER dimming only the
                  events container — through a .6 ancestor the untinted compact tile text reads 2.39
                  light / 2.88 dark (wcag.ts, 2026-10-31) and light clears 4.5 only at >= 0.98
@@ -346,17 +387,25 @@ export default function CalendarMonthView({
                  cell dim gone, the hover/focus + reveal on adjacent cells is 0.40, the same as
                  current-month cells (it was 0.24 through the old cell dim, 0.40 x 0.60); disclosed
                  to the owner through the plan 88.9-16 UAT. Changing this is a decision, not a
-                 cleanup. */
+                 cleanup.
+                 AMENDED Phase 88.9-28 (owner pick C3, 88.9-PICKS-B7A.json, 2026-11-07): this month's
+                 cells are soft tiles (bg-surface-tile, past bg-surface-tile-past) with radius 6px and
+                 no outline; adjacent cells — leading and trailing — stay untiled on the page ground
+                 (the A4b reading), chosen OVER the shipped 1px line outline on a card-white cell. */
               /* #204 (register, routed to the plan that next touches this file, 88.9-07): the today and full-variant past arms precede the clickable arm, so a clickable today or past cell never got the pointer; added here, no look change. */
-              className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+              className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} rounded-md p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
                 cellClickable && (isCurrentDay || (variant === 'full' && isPastDate)) ? 'cursor-pointer ' : ''
               }${
-                !date ? 'bg-surface-page' :
-                isCurrentDay ? 'bg-surface-muted border-line-accent' :
-                variant === 'full' && isPastDate ? 'bg-surface-page' :
-                isAdjacent ? (cellClickable ? 'bg-surface-page hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' : 'bg-surface-page') :
-                cellClickable ? 'bg-surface-card hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' :
-                'bg-surface-card'
+                !date ? 'bg-surface-page border border-transparent' :
+                isCurrentDay ? 'bg-surface-muted border border-line-accent' :
+                isAdjacent ? (
+                  variant === 'full' && isPastDate ? 'bg-surface-page border border-transparent' :
+                  cellClickable ? 'bg-surface-page border border-transparent hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' :
+                  'bg-surface-page border border-transparent'
+                ) :
+                variant === 'full' && isPastDate ? 'bg-surface-tile-past border border-transparent' :
+                cellClickable ? 'bg-surface-tile border border-transparent hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' :
+                'bg-surface-tile border border-transparent'
               }`}
             >
               {date && (
@@ -366,7 +415,7 @@ export default function CalendarMonthView({
                      four ways for exactly the hierarchy the weight was carrying — accent for
                      today, muted for an adjacent-month or past date, primary otherwise — and
                      today's cell additionally has its own ground and accent border. Promoting to
-                     700 instead would bold all 42 day numbers in the grid and flatten that fork
+                     700 instead would bold every day number in the grid and flatten that fork
                      rather than support it. */}
                   {/* DECISION Phase 88.6-40 (W39, SPEC R5 / AC-5): THE DAY'S KEYBOARD TARGET IS
                       THIS ELEMENT, not the cell that wraps it.
@@ -450,8 +499,8 @@ export default function CalendarMonthView({
                        NEITHER HALF IS GATED ON `isCurrentMonth`, and that is FORBIDDEN rather
                        than merely unchosen. `isCurrentDay` is computed from the date ALONE, the
                        cell's ground ternary awards the today treatment BEFORE the adjacent branch
-                       is reached (isAdjacent selects the page-ground arm, which comes AFTER the today and full-variant past arms — 88.9 A4b), and `getDaysInMonth`
-                       returns 42 cells including adjacent-month days — so a grid whose OVERFLOW
+                       is reached (isAdjacent selects the page-ground arm, which comes straight AFTER the today arm and holds the full-variant past case inside it — 88.9 A4b, reordered by 88.9-28 C3), and `getDaysInMonth`
+                       returns whole weeks (28, 35 or 42 cells; AMENDED Phase 88.9-25 CS-05 — the count only, the per-grid invariant below is unchanged) including any adjacent-month days — so a grid whose OVERFLOW
                        contains today ALREADY renders that overflow cell tinted as today. The
                        invariant is therefore per rendered GRID, not per month: exactly ONE
                        `aria-current="date"` per grid, INSIDE the tinted cell. The tint must not
@@ -729,7 +778,7 @@ export default function CalendarMonthView({
                          */
                         const tileTextVars = themedTextStyleVars(
                           {
-                            ...tileTextTreatment(ground, tileHasBgImage),
+                            ...tileTextTreatment(ground, tileHasBgImage, 'dark'),
                             color: isPastDate
                               ? (tinted
                                   ? (isDarkBackground(ground) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
@@ -737,7 +786,7 @@ export default function CalendarMonthView({
                               : getEventTileTextColor(ground),
                           },
                           {
-                            ...tileTextTreatment(tinted, tileHasBgImage),
+                            ...tileTextTreatment(tinted, tileHasBgImage, 'light'),
                             color: isPastDate
                               ? (tinted
                                   ? (isDarkBackground(tinted) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
@@ -754,13 +803,13 @@ export default function CalendarMonthView({
                           // The accessible name must carry the RSVP counts. On a
                           // `role="button"` element `aria-label` REPLACES the name
                           // computed from the subtree, so the full tile's
-                          // `aria-label={tileLabel}` copied verbatim would SILENCE
-                          // the `<RsvpCount variant="compact">` child below ("3Y 1M
-                          // 2N") for every screen-reader user — on the group page,
-                          // the surface the owner tests on a phone. Built tile-
-                          // locally from the same `rs` the tile already renders, so
-                          // the shared `RsvpCount` (and its CalendarListView.js call
-                          // site) stays byte-identical.
+                          // `aria-label={tileLabel}` copied verbatim would have
+                          // SILENCED the compact RsvpCount chip that used to render
+                          // below ("3Y 1M 2N") for every screen-reader user — on the
+                          // group page, the surface the owner tests on a phone. Built
+                          // tile-locally from the same `rs`. Since 88.9-28 E1a the
+                          // chip is gone and this label is the ONLY place the count
+                          // lives on the compact tile: it stays heard, never seen.
                           const rsvpLabel = hasRsvps && isFutureEvent
                             ? `, ${rs.yes || 0} going, ${rs.maybe || 0} maybe, ${rs.no || 0} can't`
                             : '';
@@ -863,6 +912,13 @@ export default function CalendarMonthView({
                                "the DAY CELL (min-h 80px) is the touch surface" — is unchanged and
                                is exactly the WCAG 2.2 "Equivalent" precondition the day-number
                                target's own marker leans on.
+
+                               AMENDED Phase 88.9-28 (owner pick E1a, 88.9-PICKS-B4.json, 2026-11-06):
+                               the compact tile no longer renders the RSVP count chip (it never
+                               fitted the 375 cell); the count stays in the tile's accessible name,
+                               chosen OVER also dropping the spoken count, which the owner was not
+                               shown. The title is now this wrapper's only child; the colour fork
+                               stays on the wrapper.
 
                                Any of this is a decision, not a cleanup. */
                             <div
@@ -980,53 +1036,14 @@ export default function CalendarMonthView({
                               }}
                             >
                               <div className="truncate">{event.Game?.name || 'Game Night'}</div>
-                              {hasRsvps && isFutureEvent && (
-                                <RsvpCount
-                                  rsvpSummary={rs}
-                                  variant="compact"
-                                  inheritColor={!!tinted}
-                                  /* D-01: `text-[10px]` folds UP to the 12px floor. An arbitrary
-                                     value is off the rung set by definition, and 10px is below
-                                     the app's floor. `text-xs` is the Caption rung and a
-                                     per-cell RSVP counter is on §4.2's closed role list.
-
-                                     V-7 MEASURED, and it found something — reported here rather
-                                     than fixed, because the finding is PRE-EXISTING and its
-                                     element is plan 40's. Chromium, 375x812, two identical
-                                     settled reads over a stylesheet compiled from the live
-                                     `globals.css`, markup dumped from a real jsdom render of
-                                     this component in its COMPACT variant:
-
-                                       realistic `3Y 1M 2N`: content 50px BEFORE the fold and
-                                       58px after, in a 28px box.
-                                       worst case `12Y 12M 12N`: 67px -> 78px, same 28px box.
-
-                                     So this row has NEVER fitted its cell at phone width — the
-                                     three spans are a `flex gap-1` with no wrap, no truncation
-                                     and no `overflow-hidden` on either the tile or the day cell,
-                                     so they bleed to the right over the neighbouring cell. The
-                                     fold WIDENS an existing bleed by ~8px; it does not create
-                                     one, and reverting to 10px would not close it.
-
-                                     NO VERTICAL REFLOW: the tile grows 34.5px -> 37px inside an
-                                     80px `min-h` cell, and the grid measures 500px tall before
-                                     AND after. That is the reflow half of V-7, and it passes.
-
-                                     NOT FIXED HERE, and not left as a comment beside itself:
-                                     every candidate remedy (truncating the counts, clipping the
-                                     tile, dropping to two counts) is a LOOK change on the day
-                                     cell with no ruling behind it, and the day cell is plan 40's
-                                     element (W39/W41). Routed with the full table to
-                                     `.planning/deferred/phase-88.6.md` and recorded in
-                                     `.planning/WINDOWS.md`. */
-                                  className="text-xs leading-tight mt-0.5"
-                                />
-                              )}
                             </div>
                           );
                         }
 
                         // Full variant (user-home)
+                        // 88.9-28 D5a: ONE guest read feeds both the border arm and the
+                        // accessible name below, never two calls.
+                        const guest = isGuestEvent(event, viewerDbUserId);
                         return (
                           /* DECISION Phase 88.3 (R3-C, owner ruling 2026-08-25):
                              this tile is keyboard-operable, matching the shipped
@@ -1045,7 +1062,7 @@ export default function CalendarMonthView({
                             }}
                             role="button"
                             tabIndex={0}
-                            aria-label={tileLabel}
+                            aria-label={guest ? `${tileLabel}, Guest` : tileLabel}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
@@ -1058,7 +1075,20 @@ export default function CalendarMonthView({
                                the game-name span below, which declares its own weight, and the
                                emoji fallback, where weight is meaningless. `text-xs` STAYS —
                                dense-grid cell, Caption 12 (§4.2). */
-                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''}`}
+                            /* DECISION Phase 88.9-28 D5a/O18a (owner pick D5a, votes-b3b v4; O18a re-picked by Q1,
+                               88.9-RULINGS.md round 2): a 1px dashed amber-700 #b45309 edge in light (4.0478 on the
+                               C3 tile #ebe6e0) and amber-500 #f59e0b at 70% in dark, chosen OVER the picked amber-600
+                               (2.5680 on the C3 tile, under the 3:1 non-text floor — the edge is the ONLY visual guest
+                               cue on the grid) and OVER a 2px amber-600 edge; full tile only, the phone cue is the
+                               sheet row; the guest state is also in the tile's accessible name (', Guest' — the shipped
+                               Guest pill's word, chosen OVER minting a phrase; owner-confirmed 2026-11-08, R-W2).
+                               DECISION Phase 88.9-28 D5a/O18a (border mechanism): the tile's border moved from the
+                               inline style into one class arm, chosen OVER leaving it inline and adding classes (the
+                               inline key wins and the edge never paints) and OVER omitting the inline key only for
+                               guests (one property, two mechanisms); the rgba values are kept byte-equal, not
+                               re-tokenised — that would be a look change. Literal class strings only: Tailwind v4
+                               emits nothing for an interpolated class. */
+                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''} ${guest ? 'border border-dashed border-amber-700 dark:border-amber-500/70' : isPastDate ? 'border border-[rgba(0,0,0,0.1)]' : 'border border-[rgba(0,0,0,0.2)]'}`}
                             style={{
                               ...(tinted && {
                                 '--group-ground': ground,
@@ -1131,7 +1161,6 @@ export default function CalendarMonthView({
                               backgroundPosition: 'center',
                               position: 'relative',
                               zIndex: 1,
-                              border: `1px solid ${isPastDate ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)'}`,
                             }}
                             title={tileLabel}
                           >

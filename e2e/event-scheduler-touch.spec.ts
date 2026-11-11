@@ -742,6 +742,13 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     const formChildrenAtOpen = await probeFormChildHeights(page);
 
     await settleSchedulerGeometry(page);
+    // AMENDED Phase 88.9-41 (S1a): the range caption now sits ABOVE the strip-and-grid block
+    // (20px line + the root's 16px gap = 36px at 375). With the modal body unscrolled the
+    // clipped band fell from 188px (3 whole cells) to 152px (2), under this case's floor of
+    // 3. So the case first does what a real user does before a range drag — scrolls the
+    // modal body until the column is in view — via case 5's own helper, then re-reads the
+    // geometry. The floor is untouched (fix the GEOMETRY, never the number).
+    await revealGridBottomEdge(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
 
@@ -1173,6 +1180,10 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
   test('(8) the grid top does not move across the QuickSuggestions settle inside one live gesture', async ({ page }, testInfo) => {
     await openVisualScheduler(page);
     await settleSchedulerGeometry(page);
+    // AMENDED Phase 88.9-41 (S1a): same as case (3) — the caption above the grid leaves only
+    // 2 whole cells in the unscrolled clipped band at 375; reveal the column first (the user's
+    // own action), then measure. The stability assertion below is unchanged.
+    await revealGridBottomEdge(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);

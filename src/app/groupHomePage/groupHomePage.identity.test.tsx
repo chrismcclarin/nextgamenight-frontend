@@ -52,6 +52,11 @@ const h = vi.hoisted(() => ({
   },
   // What the GroupSettings stub last rendered with (88.6.1-89: its `onUpdate` is a group refresh).
   groupSettingsProps: null as null | { onUpdate: () => void },
+  // 88.9-40 (SESSION-01 / SESSION-03): what the useUser mock returns; the default is the signed-in
+  // self, and the SESSION describe sets no user, an auth error, or a still-loading session.
+  authUser: { sub: 'auth0|self' } as { sub: string } | undefined,
+  authError: null as unknown,
+  authLoading: false,
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -71,7 +76,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
+  useUser: () => ({ user: h.authUser, error: h.authError, isLoading: h.authLoading }),
 }));
 
 // Stub the heavy children. Four of the stubs capture their props: createEvent and GroupGamesList for
@@ -126,24 +131,6 @@ vi.mock('@/app/components/EventCalendar', () => ({
 }));
 vi.mock('@/app/components/PendingMemberBanner', () => ({ default: () => null }));
 vi.mock('@/app/components/GroupLibrary', () => ({ default: () => null }));
-// 88.6-21 task 2: rendered rather than nulled. The kebab GATING is the thing under test, and a
-// `() => null` stub makes "the trigger is absent" true for every role — the vacuous shape. This
-// stub reproduces only the contract the gating turns on: KM-21's zero-items-renders-no-trigger
-// rule (`keyboardOperability.test.tsx`), plus a button per item.
-vi.mock('@/app/components/KebabMenu', () => ({
-  default: ({ ariaLabel, items }: { ariaLabel: string; items: { label: string; onClick?: () => void }[] }) =>
-    items.length === 0 ? null : (
-      <div>
-        <button type="button" aria-label={ariaLabel} />
-        {items.map((i) => (
-          // 88.6.1-89: the item's own onClick, so a test can open Group settings through it.
-          <button type="button" key={i.label} onClick={i.onClick}>
-            {i.label}
-          </button>
-        ))}
-      </div>
-    ),
-}));
 vi.mock('@/app/components/GroupSettings', () => ({
   default: (props: NonNullable<typeof h.groupSettingsProps>) => {
     h.groupSettingsProps = props;
@@ -166,6 +153,7 @@ import GroupHomePage from './page';
 import { groupsAPI, eventsAPI, listsAPI, ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 import { readOpeningTag, withoutComments } from '../../test-utils/sourceScan';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -185,13 +173,20 @@ beforeEach(() => {
   h.calendarProps = null;
   h.manageMembersProps = null;
   h.groupSettingsProps = null;
+  h.authUser = { sub: 'auth0|self' };
+  h.authError = null;
+  h.authLoading = false;
   (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(ROSTER);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
   (listsAPI.getGroupGames as Mock).mockResolvedValue([]);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // 88.9-40: the sign-in latch is per path + search in sessionStorage; no test inherits another's.
+  window.sessionStorage.clear();
+});
 
 /** A promise with its resolve and reject handed out, so a test decides when a request settles. */
 function deferred<T>() {
@@ -409,19 +404,22 @@ describe('groupHomePage header CTAs on the Button primitive (88.6-21 D-09 / UI-S
 });
 
 describe('groupHomePage group-settings entry is owner/admin (88.6-21 D-31, owner 2026-08-27)', () => {
-  it('an OWNER sees the kebab trigger and the "Group settings" item', async () => {
+  // AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json): the entry is the header gear named
+  // Group settings, no longer a one-item kebab, so the role tests read the gear and the absence of
+  // any Group actions menu. The gate under test is unchanged: the owner/admin wrapper.
+  it('an OWNER sees the Group settings gear and no Group actions menu', async () => {
     await renderHeaderAt('owner');
-    expect(await screen.findByRole('button', { name: 'Group actions' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Group settings' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Group settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
   });
 
-  it('an ADMIN sees it too', async () => {
+  it('an ADMIN sees the gear too, and no menu', async () => {
     await renderHeaderAt('admin');
-    expect(await screen.findByRole('button', { name: 'Group actions' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Group settings' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Group settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
   });
 
-  it('a plain MEMBER sees NEITHER the wrapper nor the item — and still reaches Manage Members', async () => {
+  it('a plain MEMBER sees NEITHER the gear nor a menu — and still reaches Manage Members', async () => {
     await renderHeaderAt('member');
 
     // The POSITIVE half first, so the two absences below are not absence-by-nothing-rendered:
@@ -431,6 +429,110 @@ describe('groupHomePage group-settings entry is owner/admin (88.6-21 D-31, owner
 
     expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Group settings' })).toBeNull();
+  });
+});
+
+// Phase 88.9-31 — the round-2 look rows on this page (owner picks T1, F5b, B2a, GH-01 / NAV-01 /
+// CS-01; 88.9-PICKS-B7B.json, B5, B1, B7A). Token pins: jsdom paints nothing, so each test reads the
+// class tokens the picked variant ships and the ones it must not.
+describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV-01 / CS-01)', () => {
+  const GROUP_HALO = 'focus-visible:ring-offset-surface-group-halo';
+  const ELEVATED_HALO = 'focus-visible:ring-offset-surface-elevated';
+  const tokens = (el: Element) => el.className.toString().split(/\s+/);
+  /** The identity header host: the h1's nearest ancestor carrying the host's own rounded-lg + overflow-visible pair. */
+  const headerHost = (): HTMLElement => {
+    let el: HTMLElement | null = screen.getByRole('heading', { level: 1 });
+    while (el && !(el.classList.contains('rounded-lg') && el.classList.contains('overflow-visible'))) {
+      el = el.parentElement;
+    }
+    expect(el, 'the header host was not found above the h1').not.toBeNull();
+    return el!;
+  };
+  const headerControls = () => [
+    screen.getByRole('button', { name: 'Manage Members' }),
+    screen.getByRole('link', { name: 'Plan Game Session' }),
+    screen.getByRole('button', { name: 'Add New Game Event' }),
+    screen.getByRole('button', { name: 'Group settings' }),
+  ];
+
+  it('T1 (88.9): the active group tab is rounded on top only and has no bottom radius', async () => {
+    await renderHeaderAt('owner');
+    const overview = screen.getByRole('button', { name: 'Overview' });
+    const library = screen.getByRole('button', { name: 'Library' });
+    const expectActive = (el: HTMLElement) => {
+      expect(el).toHaveClass('rounded-t-btn', 'border-b-2', 'border-btn-primary');
+      expect(tokens(el), 'the active tab kept a four-corner radius').not.toContain('rounded-btn');
+      expect(tokens(el).filter((t) => /^rounded-b/.test(t)), 'the active tab has a bottom radius').toEqual([]);
+    };
+    const expectInactive = (el: HTMLElement) => {
+      for (const t of ['rounded-t-btn', 'rounded-btn', 'border-b-2', 'border-btn-primary']) {
+        expect(tokens(el), `the inactive tab carries ${t}`).not.toContain(t);
+      }
+    };
+    expectActive(overview);
+    expectInactive(library);
+    await userEvent.setup().click(library);
+    expectActive(library);
+    expectInactive(overview);
+  });
+
+  it('F5b (88.9): a 44px Group settings gear with the lucide SVG replaces the one-item kebab', async () => {
+    await renderHeaderAt('owner');
+    expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
+    const gears = screen.getAllByRole('button', { name: 'Group settings' });
+    expect(gears).toHaveLength(1);
+    const gear = gears[0];
+    expect(gear).toHaveClass('min-h-11', 'min-w-11', 'border', 'border-line-control', 'bg-surface-elevated');
+    expect(gear.querySelector('svg[aria-hidden="true"]'), 'the gear has no hidden svg glyph').not.toBeNull();
+    expect(gear.textContent ?? '', 'the gear carries a text glyph').not.toMatch(/[⋮⚙]/);
+    expect(h.groupSettingsProps).toBeNull();
+    await userEvent.setup().click(gear);
+    await waitFor(() => expect(h.groupSettingsProps).not.toBeNull());
+  });
+
+  it('G halo (88.9): on a tinted header the four header controls take the group halo; untinted keep the elevated halo', async () => {
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group', background_color: '#722f37' });
+    await renderHeaderAt('owner');
+    const host = headerHost();
+    // Anti-vacuity: this is the tinted arm, not the themed surface.
+    expect(host).toHaveClass('bg-[var(--group-ground-light)]');
+    expect(host).toHaveClass('[--group-halo:var(--group-ground-light)]', 'dark:[--group-halo:var(--group-ground)]');
+    for (const el of headerControls()) {
+      expect(el).toHaveClass(GROUP_HALO);
+      expect(el).not.toHaveClass(ELEVATED_HALO);
+    }
+
+    cleanup();
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
+    await renderHeaderAt('owner');
+    const plain = headerHost();
+    expect(plain).toHaveClass('bg-surface-elevated');
+    expect(plain.className).not.toContain('--group-halo');
+    for (const el of headerControls()) {
+      expect(el).toHaveClass(ELEVATED_HALO);
+      expect(el).not.toHaveClass(GROUP_HALO);
+    }
+  });
+
+  it('GH-01 seam (88.9): the CTA row right-aligns from sm, the body is capped at max-w-7xl, the first-load Calendar heading is sr-only and the failure-arm one visible', async () => {
+    const held = deferred<unknown>();
+    (eventsAPI.getGroupEvents as Mock).mockReturnValueOnce(held.promise);
+    await renderHeaderAt('owner');
+    const row = screen.getByRole('button', { name: 'Manage Members' }).parentElement!;
+    expect(tokens(row)).toContain('sm:justify-end');
+    expect(tokens(row).filter((t) => /^md:justify-/.test(t)), 'an md-prefixed justify token is left').toEqual([]);
+    expect(screen.getByRole('heading', { level: 1 }).closest('.max-w-7xl.mx-auto'), 'the body is not capped').not.toBeNull();
+    const loading = screen.getByRole('heading', { level: 2, name: 'Calendar' });
+    expect(loading).toHaveClass('sr-only', 'focus-visible:not-sr-only');
+
+    // R-W5 (88.9-RULINGS.md, 2026-11-08): the events-failure arm's heading stays VISIBLE over its banner.
+    cleanup();
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(new ApiError('Request failed', 'internal', 500));
+    await renderHeaderAt('owner');
+    await screen.findAllByText("Couldn't load this group's events");
+    const failed = screen.getByRole('heading', { level: 2, name: 'Calendar' });
+    expect(tokens(failed), 'the failure-arm Calendar heading went sr-only').not.toContain('sr-only');
+    expect(failed).toHaveClass('text-content-primary');
   });
 });
 
@@ -596,24 +698,27 @@ describe('groupHomePage games refresh keeps the page (88.6.1-55: Req 9, D-09a / 
 // kebab asks the owner/admin question ONCE: the wrapper. The role variable's name is read from the
 // page's own declaration rather than spelled here, so no suite names it (AC-35: it occurs in no
 // file but the page). The three role tests above stay the behaviour pins.
+// AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json): the kebab became the Group settings
+// gear, so KB-1 reads the gear's opening tag inside the same wrapper; the page mounts no KebabMenu.
 describe('groupHomePage kebab — one role check (88.6.1-55: W051 / AC-35)', () => {
-  it('KB-1. the KebabMenu items are an array literal with no role check, inside the one owner/admin wrapper', () => {
+  it('KB-1. the Group settings gear sits inside the one owner/admin wrapper with no inner role check', () => {
     const src = withoutComments(fs.readFileSync(path.join(__dirname, 'page.js'), 'utf8'));
     const decl = /const\s+([A-Za-z_$][\w$]*)\s*=\s*userRole === 'owner' \|\| userRole === 'admin';/.exec(src);
     expect(decl).not.toBeNull();
     const roleVar = decl![1];
 
-    const opens = [...src.matchAll(/<KebabMenu(?=[\s>/])/g)];
-    expect(opens).toHaveLength(1);
-    const tag = readOpeningTag(src, opens[0].index ?? 0);
+    expect([...src.matchAll(/<KebabMenu(?=[\s>/])/g)], 'the page still mounts a KebabMenu').toHaveLength(0);
+    const named = src.indexOf('aria-label="Group settings"');
+    expect(named, 'no element is named Group settings').toBeGreaterThan(-1);
+    expect(src.indexOf('aria-label="Group settings"', named + 1), 'two elements are named Group settings').toBe(-1);
+    const tag = readOpeningTag(src, src.lastIndexOf('<button', named));
     expect(tag).not.toBeNull();
-    expect(tag!).toContain('ariaLabel="Group actions"');
-    expect(tag!).toMatch(/items=\{\s*\[/);
+    expect(tag!).toContain('aria-label="Group settings"');
     expect(tag!).not.toContain(roleVar);
 
-    // The wrapper still encloses the trigger's div: the role variable, then the div, then the menu.
+    // The wrapper still encloses the gear's div: the role variable, then the div, then the gear.
     expect(src).toMatch(
-      new RegExp(`\\{\\s*${roleVar}\\s*&&\\s*\\(\\s*<div className="shrink-0 relative z-20">\\s*<KebabMenu\\b`),
+      new RegExp(`\\{\\s*${roleVar}\\s*&&\\s*\\(\\s*<div className="shrink-0 relative z-20">\\s*<button\\b`),
     );
   });
 });
@@ -737,34 +842,59 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     infoSpy.mockRestore();
   });
 
+  // AMENDED Phase 88.9-26 (O22d): a 401 banner shows Sign in in place of Try again, so this test
+  // now pins the Sign in link and no Try again, and drives the recovery by tab returns (the real
+  // trigger while the banner replaces the page) instead of Try again presses.
   it('MB-7. a 401 members refresh replaces the loaded page with the group banner until a load succeeds (C10)', async () => {
-    await renderHeaderAt('owner', { inMain: true });
-    expect(screen.getByText(/2 members/)).toBeInTheDocument();
-    const err = new ApiError('Unauthorized', 'unauthorized', 401);
-    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
-    await act(async () => {
-      await h.manageMembersProps!.onMembersUpdated();
-    });
-    await screen.findAllByText(G7);
-    expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/2 members/)).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
-    expect(pushSpy).not.toHaveBeenCalled();
-    expect(screen.queryAllByText(RF1)).toHaveLength(0);
+    window.history.pushState({}, '', '/groupHomePage?id=GROUP1');
+    try {
+      await renderHeaderAt('owner', { inMain: true });
+      expect(screen.getByText(/2 members/)).toBeInTheDocument();
+      // AMENDED Phase 88.9-40 (SESSION-01): a 401 refresh now redirects once (the shared guard), so this
+      // test sets the latch AFTER the page has loaded (a load that succeeds clears a latch set before
+      // it) and pins the DECLINED arm — the banner property it always held.
+      window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+      const err = new ApiError('Unauthorized', 'unauthorized', 401);
+      (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
+      await act(async () => {
+        await h.manageMembersProps!.onMembersUpdated();
+      });
+      await screen.findAllByText(G7);
+      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+        'href',
+        '/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1'
+      );
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.queryByText(/2 members/)).toBeNull();
+      expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
+      expect(pushSpy).not.toHaveBeenCalled();
+      expect(screen.queryAllByText(RF1)).toHaveLength(0);
 
-    const user = userEvent.setup();
-    const callsBefore = membersCalls();
-    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(internal());
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(membersCalls()).toBe(callsBefore + 1));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument());
-    expect(screen.getAllByText(G7).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/2 members/)).toBeNull();
+      // A tab return whose load fails keeps the banner (C10); that failure is not a 401, so the
+      // banner's control is Try again again.
+      const callsBefore = membersCalls();
+      (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(internal());
+      await act(async () => {
+        fireVisibility('visible');
+      });
+      await waitFor(() => expect(membersCalls()).toBe(callsBefore + 1));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument());
+      expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
+      expect(screen.getAllByText(G7).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/2 members/)).toBeNull();
 
-    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('link', { name: 'Plan Game Session' });
-    expect(screen.getByText(/2 members/)).toBeInTheDocument();
+      // A second tab return whose load succeeds brings the page back.
+      (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
+      await act(async () => {
+        fireVisibility('visible');
+      });
+      await screen.findByRole('link', { name: 'Plan Game Session' });
+      expect(screen.getByText(/2 members/)).toBeInTheDocument();
+      expect(membersCalls()).toBe(callsBefore + 2);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
   });
 
   // A-57 (88.6.1 code review): each slot's error and the membership check belong to the group they
@@ -1072,6 +1202,10 @@ describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-
     const link = screen.getByRole('link', { name: 'Plan Game Session' });
     act(() => link.focus());
     expect(document.activeElement).toBe(link);
+    // AMENDED Phase 88.9-40 (SESSION-01): a 401 refresh now redirects once (the shared guard), so this
+    // test sets the latch AFTER the page has loaded (a load that succeeds clears a latch set before
+    // it) and pins the DECLINED arm — the banner property it always held.
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new ApiError('Unauthorized', 'unauthorized', 401));
     await act(async () => {
       fireVisibility('visible');
@@ -1327,7 +1461,7 @@ describe("groupHomePage — the group record's own load (88.6.1-89, close ruling
     h.selfUuid = SELF_UUID;
     h.isPending = false;
   };
-  /** Open Group settings through the kebab's item, so the GroupSettings stub records its props. */
+  /** Open Group settings through the gear, so the GroupSettings stub records its props. */
   const openSettings = async () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Group settings' }));
@@ -1402,6 +1536,10 @@ describe("groupHomePage — the group record's own load (88.6.1-89, close ruling
     const manage = screen.getByRole('button', { name: 'Manage Members' });
     act(() => manage.focus());
     expect(document.activeElement).toBe(manage);
+    // AMENDED Phase 88.9-40 (SESSION-01): a 401 refresh now redirects once (the shared guard), so this
+    // test sets the latch AFTER the page has loaded (a load that succeeds clears a latch set before
+    // it) and pins the DECLINED arm — the banner property it always held.
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
 
     const err = new ApiError('x', 'unauthorized', 401);
     (groupsAPI.getGroup as Mock).mockRejectedValueOnce(err);
@@ -1569,5 +1707,115 @@ describe('groupHomePage — the calendar names its first load (88.6.1-89, close 
     });
     expect(h.calendarProps!.events).toEqual([EV_A, EV_B]);
     expect(screen.queryByText(CALENDAR_LOADING)).toBeNull();
+  });
+});
+
+// Phase 88.9-40 (SESSION-01 / SESSION-03, K10; owner ruling 2026-11-07, SPEC A8): a dead or rejected
+// session on the group page goes to sign-in ONCE, by a latched window.location.replace with this
+// group as returnTo (src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling")),
+// and a return with the latch set is the page-load banner with Sign in — never a second redirect,
+// never the "Loading group…" hang the shipped page sat on (its fetches waited on user?.sub). A
+// useUser() error is neither: it is the Reload fallback. The CI phone e2e
+// (e2e/event-link-signed-out.spec.ts, the SESSION-01/03 title) measures the same round trip in Chromium.
+describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', () => {
+  const G7 = "Couldn't load this group";
+  const GROUP_PATH = { pathname: '/groupHomePage', search: '?id=GROUP1' };
+  const originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+
+  // The gameDetail suite's stub (src/app/gameDetail/page.test.tsx ("function stubLocation(")): the hook
+  // reads pathname + search + hash and calls replace; the banner's Sign in link reads the same.
+  function stubLocation({ pathname, search }: { pathname: string; search: string }) {
+    const replace = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: {
+        origin: 'http://localhost',
+        protocol: 'http:',
+        host: 'localhost',
+        hostname: 'localhost',
+        port: '',
+        pathname,
+        search,
+        hash: '',
+        href: `http://localhost${pathname}${search}`,
+        replace,
+        assign: vi.fn(),
+      },
+    });
+    return replace;
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+  });
+
+  it('SESSION-01/03 (88.9): a signed-out visitor is sent to sign-in once with this group as returnTo, before any Loading group… hang; back with the latch set the page-load banner offers Sign in', async () => {
+    const replace = stubLocation(GROUP_PATH);
+    h.authUser = undefined;
+    renderInMain();
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1');
+    expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
+    // The redirect frame is the hold (the K10 hang was this same screen with replace never called).
+    expect(screen.getByText('Loading group…')).toBeInTheDocument();
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    cleanup();
+
+    // Back in the same tab without signing in: the latch is set, so the banner, with Sign in.
+    renderInMain();
+    await screen.findAllByText(G7);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      '/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1'
+    );
+    expect(screen.queryByText('Loading group…')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(pushSpy).not.toHaveBeenCalled();
+  });
+
+  it("SESSION-01 (88.9): a 401 on the group's first load redirects once; with the latch set it is the page-load banner, never a second redirect", async () => {
+    const replace = stubLocation(GROUP_PATH);
+    h.selfUuid = SELF_UUID;
+    h.isPending = false;
+    const err = new ApiError('Unauthorized', 'unauthorized', 401);
+    (groupsAPI.getGroup as Mock).mockRejectedValue(err);
+    renderInMain();
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1');
+    // The hold, not the page and not the banner, while the browser navigates.
+    expect(screen.getByText('Loading group…')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull();
+    expect(screen.queryAllByText(G7)).toHaveLength(0);
+    cleanup();
+
+    // Back with the latch set: the page-load banner for the 401, Sign in in place of Try again.
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    renderInMain();
+    await screen.findAllByText(G7);
+    expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByText('Loading group…')).toBeNull();
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('SESSION-01 (88.9): a useUser error on the group page shows Reload, never a redirect or Loading group…', async () => {
+    const replace = stubLocation(GROUP_PATH);
+    h.authUser = undefined;
+    h.authError = Object.assign(new Error('me failed'), { status: 500 });
+    renderInMain();
+    expect(await screen.findByRole('button', { name: 'Reload page' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: G7 })).toBeInTheDocument();
+    expect(screen.queryByText('Loading group…')).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
+    expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
   });
 });

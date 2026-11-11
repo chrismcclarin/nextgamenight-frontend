@@ -273,7 +273,7 @@ export default function OpenPollsList({
       ) : pollsErrorState.showError && !pollsRetained ? (
         <FetchErrorBanner
           state={pollsErrorState}
-          title="We couldn't load the check-ins"
+          thing="the check-ins"
           reportContext="Open availability check-ins list (group page)"
         />
       ) : (
@@ -465,7 +465,7 @@ const CARD_BODY_STATIC_CLASS = 'min-w-0 flex-1 p-3';
 const CARD_KEBAB_CELL_CLASS = 'shrink-0 py-3 pr-3';
 const CARD_KEBAB_CELL_SELECTED_CLASS = 'shrink-0 py-[11px] pr-[11px]';
 const VIEWING_TAG = 'Viewing';
-const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wide text-content-link mb-0.5';
+const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wider text-content-link mb-0.5';
 
 /**
  * OpenPollCard — single prompt row in the unified list.
@@ -589,6 +589,7 @@ function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSel
 
       {prompt.can_close === true && (
         <div className={selected ? CARD_KEBAB_CELL_SELECTED_CLASS : CARD_KEBAB_CELL_CLASS}>
+          {/* DECISION Phase 88.9-50 R033: the check-in kebab keeps the default card halo at every width — its nearest painting ancestor is this card's li, not the groupPlanning section — chosen OVER this file's md page arm (the two Start a check-in Buttons sit in the section, outside any li). Changing this is a decision, not a cleanup. */}
           <KebabMenu
             ariaLabel="Check-in actions"
             items={[

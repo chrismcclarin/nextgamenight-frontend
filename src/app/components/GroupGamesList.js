@@ -12,7 +12,8 @@ import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/Fetch
 import { StatusRegion } from '../../components/ui/StatusRegion';
 
 // The section's heading, and the refresh notice's spoken section name (copy row P78b, close ruling P-78).
-const GROUP_GAMES_TITLE = 'Group Games';
+// DECISION Phase 88.9-31 (owner pick T1, 88.9-PICKS-B7B.json): Play history over the shipped section name; the section is play-session history (DECISION Phase 88-18 (E-25) agrees). The constant NAME is kept on purpose so its four uses and copy row P78b's code anchor stay byte-identical; renaming it is a decision, not a cleanup.
+const GROUP_GAMES_TITLE = 'Play history';
 
 const SORT_ASCENDING_LABEL = 'Sort order: ascending';
 const SORT_DESCENDING_LABEL = 'Sort order: descending';
@@ -52,7 +53,8 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                         string that identifies the card — clipping it hides the content the
                         card exists to show. The grid row grows instead, which is the cost the
                         default accepts. Re-adding `truncate` is a decision, not a cleanup. */}
-                    <Heading level={3} size="heading" className="text-content-primary mb-1">
+                    {/* DECISION Phase 88.9-31 D7a (owner pick D7a, 88.9-PICKS-B3.json, 2026-11-05): card titles take the body rung (16/700) under the 20/700 section heading, chosen OVER the shared heading rung (20/700 on both, no rank). */}
+                    <Heading level={3} size="body" className="text-content-primary mb-1">
                         {game.name}
                     </Heading>
                     <div className="text-sm text-content-secondary space-y-1">
@@ -62,9 +64,15 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                         <p>
                             Last played: {formatDate(game.last_played, timezone)}
                         </p>
+                        {/* DECISION Phase 88.9-56 (owner ruling R-C5, 2026-11-10; the DEC-2 / R-P2 ink of plan 88.9-44): the rating
+                            ink is yellow-800 in light and yellow-500 in dark — written here in prose, never as the class pair, so
+                            the miniPicks count of the class literal stays exact (6.85 light / 7.22 dark on the card, 88.9-RULINGS.md
+                            Q7 ADDENDUM), chosen OVER the shipped raw yellow (2.94 light at rest on the same ground, plan 44's
+                            measurement) and OVER waiting for a consistency phase (Phase 91 is a backend phase). The rating here is a
+                            number, read as it is, so it takes no label. Changing the pair is a decision, not a cleanup. */}
                         {game.avg_rating && (
                             <p>
-                                Rating: <span className="text-yellow-600">{formatRating(game.avg_rating)}</span>
+                                Rating: <span className="text-yellow-800 dark:text-yellow-500">{formatRating(game.avg_rating)}</span>
                                 {game.review_count > 0 && (
                                     <span className="text-content-muted"> ({game.review_count} {game.review_count === 1 ? 'review' : 'reviews'})</span>
                                 )}
@@ -337,9 +345,10 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
         return (
             <div className="mt-8">
                 <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mb-4">{GROUP_GAMES_TITLE}</Heading>
+                {/* DECISION Phase 88.9-49 (BANNER-01, F04): thing keeps the shipped noun this group's games, chosen OVER renaming it after the section's Play history heading (R2-47 renamed the heading only; no copy row rules the banner noun). Owner glance at 88.9-51; renaming it is a copy decision, not a cleanup. */}
                 <FetchErrorBanner
                     state={errorState}
-                    title="We couldn't load this group's games"
+                    thing="this group's games"
                     reportContext="Group games list (group home page)"
                     focusTarget={gamesFocusRef}
                 />
@@ -572,7 +581,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                                     700 because 600 is a prohibition outside the `Button` label (§4.2). It
                                     stays a `<div>`: an eyebrow is not a heading, and making it one would
                                     put a level into an outline that deliberately has none here. */}
-                                <div className={`text-xs font-bold text-content-secondary uppercase tracking-wide border-b border-line pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
+                                <div className={`text-xs font-bold text-content-secondary uppercase tracking-wider border-b border-line pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
                                     {group.theme}
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

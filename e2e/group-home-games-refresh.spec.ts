@@ -5,7 +5,7 @@
 // re-render and the house banner's real in-flight label, pressing "Try again" on the group's games
 // banner keeps the whole page on screen while the retry is in flight. Before this plan every games
 // refresh set the page-wide loader, so the page was replaced by "Loading games..." (and the
-// banner, its "Retrying…" label and the focused button went with it) until the request returned.
+// banner, its busy Try again and the focused button went with it) until the request returned.
 // The red half is GR-2 in src/app/groupHomePage/groupHomePage.identity.test.tsx (jsdom); GR-1,
 // GR-3 and GR-4 there cover the event-created refresh, a group switch and newest-wins.
 //
@@ -29,7 +29,7 @@ import { holdWrites } from './support/inFlight';
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 
 // GroupGamesList's banner title (existing copy, read only).
-const GAMES_TITLE = "We couldn't load this group's games";
+const GAMES_TITLE = "Couldn't load this group's games";
 
 // The browser calls the same-origin BFF: `GET /api/lists/games/<group id>/<self uuid>?…`
 // (src/lib/api.ts, getGroupGames).
@@ -98,9 +98,13 @@ test.describe('group home games refresh — phone', () => {
     await page.getByRole('button', { name: 'Try again', exact: true }).click();
     await arrived;
 
-    // The retry GET is in flight and held. POSITIVE first: the banner is still mounted, showing
-    // its in-flight label (before this plan the page blanked and the banner was gone).
-    await expect(page.getByRole('button', { name: 'Retrying…', exact: true })).toBeVisible();
+    // The retry GET is in flight and held. POSITIVE first: the banner is still mounted, its Try
+    // again busy — label kept, house spinner, named "Try again, retrying" (rule 1, 88.9-46 B38;
+    // before 88.6.1-56 the page blanked and the banner was gone).
+    const busy = page.getByRole('button', { name: /^Try again ?, retrying$/ });
+    await expect(busy).toBeVisible();
+    await expect(busy).toHaveText(/^Try again/);
+    await expect(busy.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(planLink).toBeVisible();
     await expect(page.getByText('Loading games...', { exact: true })).toHaveCount(0);
     expect(

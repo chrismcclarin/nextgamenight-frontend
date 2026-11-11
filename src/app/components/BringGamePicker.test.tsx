@@ -442,6 +442,63 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     });
   });
 
+  it('D12b (88.9): a failed save shows the visible line above the footer', async () => {
+    // 88.9 D12b (owner pick, 88.9-PICKS-B3.json item D12, 2026-11-05): the assertive region's
+    // sentence is ALSO painted as a visible, NON-live <p> between the body and the footer — no
+    // role, no aria-live, not sr-only — so a sighted person sees that the save failed and the modal
+    // stayed open. The sr-only regions stay the single announcement (one failure, one alert).
+    const user = userEvent.setup();
+    const held = deferred<Record<string, never>>();
+    // An implementation, not a once-queue: `vi.clearAllMocks` keeps an unconsumed once value, so a
+    // red run of this test would otherwise hand the held promise to the next test (the QS idiom).
+    let puts = 0;
+    api.updateMyBrings.mockImplementation(() => {
+      puts += 1;
+      return puts === 1 ? Promise.reject(new Error(SENTINEL)) : held.promise;
+    });
+    const onClose = vi.fn();
+    render(<Host initiallyOpen onClose={onClose} closeFlipsOpen={false} />);
+    await settleOnRows();
+
+    // The line a sighted person sees: the sentence outside every live region.
+    const visibleLines = () =>
+      screen
+        .queryAllByText(RATIFIED_UNKNOWN_COPY)
+        .filter(
+          (node) =>
+            !node.hasAttribute('role') &&
+            node.closest('[aria-live]') === null &&
+            !node.className.includes('sr-only')
+        );
+    expect(visibleLines()).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(assertiveRegion()).toHaveTextContent(RATIFIED_UNKNOWN_COPY));
+    const lines = visibleLines();
+    expect(lines).toHaveLength(1);
+    const line = lines[0];
+    expect(line.tagName).toBe('P');
+    expect(line.textContent).toBe(RATIFIED_UNKNOWN_COPY);
+    expect(line.className).toContain('text-content-status-error');
+    expect(line).not.toHaveAttribute('role');
+    expect(line).not.toHaveAttribute('aria-live');
+    // Above the footer: the Save button FOLLOWS the line in document order.
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(line.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Still exactly one announcement.
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('dialog').textContent).not.toContain(SENTINEL);
+
+    // A second press clears the line while its PUT is in flight (the clear-then-set idiom) ...
+    await user.click(save);
+    expect(visibleLines()).toHaveLength(0);
+    // ... and when that PUT resolves the dialog closes.
+    await act(async () => {
+      held.resolve({});
+    });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
   it('9. a successful save calls onSave then closes through the local handleClose (regions cleared)', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
@@ -590,7 +647,7 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
   // POSITION, `DECISION Phase 88.6-22` in FriendInvitePanel.js). The RED half is the attributes
   // and the request count (C-11): jsdom never blurs a disabled element
   // (`ScheduleForm.test.tsx`, its CONFIRM-ONLY note), so the focus claim is confirm-only here.
-  it('S1. while a save is IN FLIGHT the pressed Save is aria-disabled, NOT natively disabled, and reads Saving... (D-35)', async () => {
+  it('S1 rule 1 (88.9): Save keeps its label and shows the spinner while saving; the pressed Save is aria-disabled, NOT natively disabled (D-35)', async () => {
     api.updateMyBrings.mockReturnValue(new Promise(() => {}));
     render(<Host initiallyOpen />);
     await settleOnRows();
@@ -598,14 +655,17 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     save.focus();
 
     fireEvent.click(save);
-    expect(save).toHaveTextContent('Saving...');
+    // Rule 1 (88.9-24): the visible label stays, the house spinner shows, the name gains ', saving'.
+    expect(save.firstChild?.textContent).toBe('Save');
+    expect(save).toHaveAccessibleName('Save, saving');
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(save).toHaveAttribute('aria-disabled', 'true');
     expect(save).not.toHaveAttribute('disabled');
     // CONFIRM-ONLY in jsdom (see above): focus is still on the pressed control.
     expect(document.activeElement).toBe(save);
   });
 
-  it('S2. two synchronous presses while the first PUT is pending send exactly ONE PUT (Edge R4 idempotency)', async () => {
+  it('S2. two synchronous presses while the first PUT is pending send exactly ONE PUT (Edge R4 idempotency); Save keeps its label (rule 1, 88.9)', async () => {
     api.updateMyBrings.mockReturnValue(new Promise(() => {}));
     render(<Host initiallyOpen />);
     await settleOnRows();
@@ -614,7 +674,9 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     fireEvent.click(save);
     fireEvent.click(save);
     expect(api.updateMyBrings).toHaveBeenCalledTimes(1);
-    expect(save).toHaveTextContent('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save');
+    expect(save).toHaveAccessibleName('Save, saving');
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
   });
 
   it('S3. once the pending PUT REJECTS the gate lifts, and a fresh press sends a second PUT (Edge R4 concurrency)', async () => {
@@ -822,5 +884,23 @@ describe('BringGamePicker — the dynamic-viewport cap (88.6.1-56, W023 class)',
     expect(cls).toContain('max-h-[80dvh]');
     expect(cls).not.toContain('max-h-[80' + 'vh]');
     expect(cls).not.toContain('max-h-[90dvh]');
+  });
+});
+
+// Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json): the selected box's
+// tick reads the on-accent ink. Fixed white measured 1.67 on dark amber-400 and 2.15 on light
+// amber-500, both under the 3:1 a state glyph needs (WCAG 1.4.11).
+describe('BringGamePicker — the selected tick ink (88.9 F4b)', () => {
+  it('selected checkbox glyph takes the on-accent ink (88.9 F4b)', async () => {
+    const user = userEvent.setup();
+    render(<Host initiallyOpen />);
+    const catan = await settleOnRows();
+    await user.click(catan);
+    expect(catan).toHaveAttribute('aria-checked', 'true');
+    const tick = catan.querySelector('path[d="M5 13l4 4L19 7"]')?.closest('svg');
+    expect(tick, 'the selected row renders its tick glyph').toBeTruthy();
+    const cls = tick?.getAttribute('class') ?? '';
+    expect(cls).toContain('text-on-accent');
+    expect(cls).not.toContain('text-white');
   });
 });

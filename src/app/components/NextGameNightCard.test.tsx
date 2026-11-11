@@ -61,6 +61,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within, act } from '@testing-library/react';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the hold budget
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
@@ -402,6 +403,40 @@ describe('NextGameNightCard — inline RSVP (SPEC Req 4 / D-07, D-08)', () => {
 
     expect(document.activeElement).toBe(yesButton());
     expect(yesButton()).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('rule 1 (88.9): the hero RSVP button keeps its visible label beside the spinner while saving', async () => {
+    // Save-feedback rule 1 (owner, 2026-11-07: "the label NEVER changes"), applied to the hero
+    // by plan 88.9-47 (the Δ29 ruling). The heard name was already right ('<label>, saving');
+    // what this pins is the VISIBLE text: byte-identical at rest and in flight, with the house
+    // Spinner beside it — never a spinner-only button.
+    const write = deferred<unknown>();
+    submitRsvp.mockReturnValue(write.promise);
+    const user = userEvent.setup();
+    renderCard();
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    const pressed = yesButton();
+    const restingLabel = pressed.textContent;
+    await user.click(pressed);
+
+    // The visible text is everything except the sr-only suffix span.
+    const visibleText = (el: HTMLElement) =>
+      Array.from(el.childNodes)
+        .filter((n) => !(n instanceof HTMLElement && n.classList.contains('sr-only')))
+        .map((n) => n.textContent ?? '')
+        .join('');
+    expect(visibleText(pressed), 'the label stays while saving').toBe(restingLabel);
+    await waitFor(() => expect(pressed.querySelectorAll('[data-slot="spinner"]'), 'one house Spinner').toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
+    expect(pressed).toHaveAccessibleName(/^I'm in ?, saving$/);
+
+    await act(async () => {
+      write.resolve({ id: 'rsvp-own', status: 'yes', note: null });
+      await write.promise;
+    });
+    expect(visibleText(yesButton())).toBe(restingLabel);
+    expect(yesButton().querySelectorAll('[data-slot="spinner"]'), 'the hero stays mounted, so the spinner keeps its hold').toHaveLength(1); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    await waitFor(() => expect(yesButton().querySelector('[data-slot="spinner"]')).toBeNull(), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
   });
 
   it('surfaces a failed write in an assertive region AND reports it, leaving both buttons usable', async () => {

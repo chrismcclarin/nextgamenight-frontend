@@ -37,6 +37,8 @@ import * as React from 'react';
 import { render, screen, within, cleanup, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
+import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 
 const SELF_UUID = '11111111-1111-4111-8111-111111111111';
 const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
@@ -743,6 +745,53 @@ describe('gameDetail sessions header (D-39)', () => {
     expect(toggle).not.toHaveAttribute('aria-pressed');
     expect(toggle).toHaveAccessibleName('Show Filters & Sort');
   });
+
+  // 88.9-36 G2a (owner pick G2a, 88.9-PICKS-B6.json item G2, register W54): while the panel is
+  // open the toggle carries btn-fuse-bottom (square bottom corners below 640px, globals.css), the
+  // header row drops its bottom margin below 640px, and the panel drops its top edge and top radius
+  // below 640px — the toggle reads as the panel's header. Closed, nothing changes. jsdom applies
+  // no media query, so this pins the classes; the computed shape is the G2a e2e.
+  it('G2a (88.9): toggle and panel fuse, panel id kept', async () => {
+    const user = userEvent.setup();
+    renderGameDetail();
+    const header = await sessionsHeader();
+    const toggle = within(header).getByRole('button', { name: 'Show Filters & Sort' });
+
+    expect(toggle.classList.contains('btn-fuse-bottom')).toBe(false);
+    expect(header.classList.contains('mb-4')).toBe(true);
+    expect(header.classList.contains('mb-0')).toBe(false);
+
+    await user.click(toggle);
+    const open = within(header).getByRole('button', { name: 'Hide Filters' });
+    expect(open).toBe(toggle);
+    expect(open.classList.contains('btn-fuse-bottom')).toBe(true);
+    expect(header.classList.contains('mb-0')).toBe(true);
+    expect(header.classList.contains('sm:mb-4')).toBe(true);
+    expect(open).toHaveAttribute('aria-expanded', 'true');
+    expect(open).toHaveAttribute('aria-controls', 'game-sessions-filters');
+    const panel = document.getElementById('game-sessions-filters') as HTMLElement;
+    expect(panel).not.toBeNull();
+    for (const cls of [
+      'rounded-t-none',
+      'border-t-0',
+      'rounded-b-lg',
+      'sm:rounded-t-lg',
+      'sm:border-t',
+      'border',
+      'border-line',
+      'bg-surface-page',
+      'p-4',
+      'mb-6',
+    ]) {
+      expect(panel.classList.contains(cls), `panel class ${cls}`).toBe(true);
+    }
+    expect(panel.classList.contains('rounded-lg')).toBe(false);
+
+    await user.click(open);
+    expect(toggle.classList.contains('btn-fuse-bottom')).toBe(false);
+    expect(header.classList.contains('mb-4')).toBe(true);
+    expect(header.classList.contains('mb-0')).toBe(false);
+  });
 });
 
 // D-40 / F-6c / F-6d. jsdom applies no media queries, so BOTH breakpoint
@@ -801,6 +850,15 @@ describe('gameDetail role-gated session affordances', () => {
 // gate must BLOCK: nothing is deleted until an explicit confirmation, and cancel
 // aborts. These two pins are the mitigation the threat register names.
 describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
+  // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open; the commits
+  // below step past it. Describe-level and shouldAdvanceTime, per this file's fake-timer rule.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   async function openDeleteFromKebab(user: ReturnType<typeof userEvent.setup>) {
     // sessionsSection() now resolves only on the settled heading (rows present);
     // findByRole keeps the kebab query itself retrying too.
@@ -847,9 +905,47 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     renderGameDetail({ role: 'owner' });
 
     const dialog = await openDeleteFromKebab(user);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
     expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
     expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(SESSION.id);
+  });
+
+  // R-C3a (88.9-56, owner ruling 2026-11-10, 'hear'): the Delete session confirm keeps its verb
+  // beside the house spinner while the delete runs, heard as 'Delete, deleting'.
+  it("R-C3a (88.9): the pending Delete session confirm keeps its verb with the spinner and is named 'Delete, deleting'", async () => {
+    const visibleText = (el: HTMLElement): string | null => {
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.sr-only').forEach((node) => node.remove());
+      return clone.textContent;
+    };
+    const user = userEvent.setup();
+    const write = deferred(eventsAPI.deleteEvent as Mock);
+    renderGameDetail({ role: 'owner' });
+
+    const sessions = await sessionsSection();
+    await user.click(within(sessions).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    const pending = within(dialog).getByRole('button', { name: 'Delete, deleting' });
+    expect(pending).toHaveTextContent('Delete');
+    expect(visibleText(pending)).toBe('Delete');
+    await waitFor(() => expect(pending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(pending).toHaveAttribute('aria-disabled', 'true');
+    expect(pending).not.toHaveAttribute('disabled');
+    await waitFor(() => expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1));
+    fireEvent.click(pending);
+    await act(async () => {});
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
+
+    write.settle({});
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('routes the desktop ghost Delete through the same gate', async () => {
@@ -878,6 +974,9 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     const desktopDelete = within(sessions).getByRole('button', { name: 'Delete' });
     await user.click(desktopDelete);
     const dialog = await screen.findByRole('dialog');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(SESSION.id);
@@ -925,6 +1024,9 @@ describe('gameDetail session delete — focus lands on the list heading (88.6.1-
     expect(list, 'the Session actions kebab names its open list through aria-controls').not.toBeNull();
     await user.click(within(list as HTMLElement).getByRole('button', { name: 'Delete' }));
     const dialog = await screen.findByRole('dialog');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
     return trigger;
   }
@@ -1050,8 +1152,19 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
 // 3s revert, never a modal — is unchanged and re-pinned below.
 const RESTING_REMOVE = /^Remove .+ from this event$/;
 const ARMED_REMOVE = 'Tap again to confirm';
+// F9b (88.9-23): the armed label while the gate runs (it counts 3, 2, 1, then ARMED_REMOVE).
+const GATED_REMOVE = /^Tap again \(\d\)$/;
 
 describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)', () => {
+  // F9b (88.9-23): the second click is refused for CONFIRM_DELAY_MS after arming; the commits
+  // below step past it. Describe-level and shouldAdvanceTime, per this file's fake-timer rule.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('arms on the first click and deletes nothing yet, announcing the target', async () => {
     const user = userEvent.setup();
     (eventsAPI.removeParticipation as Mock).mockResolvedValue({});
@@ -1061,6 +1174,11 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
     const removes = within(dialog).getAllByRole('button', { name: RESTING_REMOVE });
     await user.click(removes[0]);
 
+    // F9b: gated first (the countdown label), and the announcement lands at the live edge.
+    expect(within(dialog).getByRole('button', { name: GATED_REMOVE })).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(
       within(dialog).getByRole('button', { name: ARMED_REMOVE })
     ).toBeInTheDocument();
@@ -1090,6 +1208,9 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
 
     const dialog = await openParticipantsModal(user);
     await user.click(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0]);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await user.click(within(dialog).getByRole('button', { name: ARMED_REMOVE }));
 
     expect(eventsAPI.removeParticipation).toHaveBeenCalledTimes(1);
@@ -1111,15 +1232,17 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
 
       const dialog = await openParticipantsModal(user);
       await user.click(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0]);
-      within(dialog).getByRole('button', { name: ARMED_REMOVE });
+      within(dialog).getByRole('button', { name: GATED_REMOVE });
 
+      // F9b: the window is now gated CONFIRM_DELAY_MS + live CONFIRM_LIVE_MS.
       await act(async () => {
-        vi.advanceTimersByTime(3100);
+        vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS + 100);
       });
 
       expect(
         within(dialog).queryByRole('button', { name: ARMED_REMOVE })
       ).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: GATED_REMOVE })).toBeNull();
       // Every row is back at rest — none of the six is self, so all six are removable.
       expect(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })).toHaveLength(
         SIX_PARTICIPANTS.length
@@ -1327,11 +1450,12 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
       invite.click();
     });
 
-    const sending = screen.getByRole('button', { name: 'Sending...' });
+    const sending = screen.getByRole('button', { name: 'Invite to group, sending' });
     expect(sending).toHaveAttribute('aria-disabled', 'true');
     expect(sending.hasAttribute('disabled')).toBe(false);
-    // The visible in-flight cue that replaces the `.btn:disabled` wash (V-17).
-    expect(sending).toHaveTextContent('Sending...');
+    // The visible in-flight cue that replaces the `.btn:disabled` wash (V-17): since rule 1
+    // (88.9-46 B26) the kept label plus the house spinner, never a label swap.
+    expect(sending).toHaveTextContent(/^Invite to group/);
     // No `disabled:opacity-*` utility was added at the call site — it keys on
     // the native attribute this control no longer carries.
     expect(sending.className).not.toMatch(/(^|[\s:])disabled:opacity-/);
@@ -1346,7 +1470,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     await user.click(invite);
     // The whole point of the 2026-09-14 amendment: a natively-disabled element
     // leaves the focus order and focus drops to <body> mid-submit.
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Sending...' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Invite to group, sending' }));
 
     await act(async () => {
       invite$.settle({});
@@ -1513,7 +1637,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     const invite = await screen.findByRole('button', { name: INVITE });
 
     await user.click(invite);
-    const sending = screen.getByRole('button', { name: 'Sending...' });
+    const sending = screen.getByRole('button', { name: 'Invite to group, sending' });
     expect(sending).toBe(invite);
 
     await act(async () => {
@@ -1523,6 +1647,67 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     const retry = await screen.findByRole('button', { name: 'Retry' });
     expect(retry).toBe(invite);
     expect(document.activeElement).toBe(retry);
+  });
+
+  // Rule 1 (88.9-46 B26 / B29, owner pick O16a + the Q3 ruling): the invite keeps the label the
+  // user PRESSED while sending (Invite to group from rest, Retry from the error state), and Share
+  // Game QR keeps its label; each shows the one house spinner and is named label plus suffix.
+  it('rule 1 (88.9): Invite to group and Share Game QR keep their labels and show the spinner while busy (B26, B29)', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await user.click(invite);
+    expect(invite).toHaveAccessibleName('Invite to group, sending');
+    expect(invite).toHaveTextContent(/^Invite to group/);
+    await waitFor(() => expect(invite.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(invite).toHaveAttribute('aria-disabled', 'true');
+    expect(invite.hasAttribute('disabled')).toBe(false);
+    await user.click(invite);
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      invite$.fail(new Error('network'));
+    });
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    expect(retry).toBe(invite);
+    await waitFor(() => expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
+
+    // Pressed from the error state: Retry is the label under the user's finger, so Retry stays.
+    const retry$ = deferredInvite();
+    await user.click(retry);
+    expect(retry).toHaveAccessibleName('Retry, sending');
+    expect(retry).toHaveTextContent(/^Retry/);
+    await waitFor(() => expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(retry).toHaveAttribute('aria-disabled', 'true');
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      retry$.settle({});
+    });
+    await screen.findByText('Invite sent!');
+
+    // B29 (R-W4: ', loading'): two presses in one act send ONE request; the busy control keeps its
+    // label with the spinner.
+    const token = deferred(eventsAPI.getEventInviteToken as Mock);
+    const share = screen.getByRole('button', { name: 'Share Game QR' });
+    await act(async () => {
+      share.click();
+      share.click();
+    });
+    expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(1);
+    expect(share).toHaveAccessibleName('Share Game QR, loading');
+    expect(share).toHaveTextContent(/^Share Game QR/);
+    await waitFor(() => expect(share.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(share).toHaveAttribute('aria-disabled', 'true');
+    expect(share.hasAttribute('disabled')).toBe(false);
+
+    await act(async () => {
+      token.settle({ invite_url: 'https://example.test/i/rule1' });
+    });
+    const idle = await screen.findByRole('button', { name: 'Share Game QR' });
+    expect(idle).toBe(share);
+    await waitFor(() => expect(idle.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
   });
 });
 
@@ -1705,6 +1890,37 @@ const SAVED_REVIEW = {
   createdAt: '2026-09-01T00:00:00Z',
   User: { id: SELF_UUID, username: 'Me' },
 };
+
+// R-C5 (88.9-56, owner ruling 2026-11-10): each review's stars are ONE labelled leaf (role img),
+// named on the half-star value the glyphs draw, with no sr-only sibling beside it (the project's
+// iPhone VoiceOver rule: a labelled leaf is spoken, a hidden sibling is a separate stop or silent).
+// renderStars is component-local, so the glyph strings are stated here as escapes.
+describe('R-C5 (88.9) — a review rating is heard as a number', () => {
+  it('R-C5 (88.9): a review\'s stars are one labelled leaf — role img, Rated n out of 5 on the half-star value the glyphs draw', async () => {
+    renderGameDetail({
+      role: 'member',
+      reviews: [
+        { ...SAVED_REVIEW, rating: 3.5 },
+        { ...SAVED_REVIEW, id: 'rev-2', rating: '3.7', User: { id: 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', username: 'Ann' } },
+        { ...SAVED_REVIEW, id: 'rev-3', rating: 9, User: { id: 'b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2', username: 'Bo' } },
+      ],
+    });
+    const section = await reviewsSection();
+    const leaves = await within(section).findAllByRole('img', { name: /^Rated / });
+    expect(leaves.map((leaf) => leaf.getAttribute('aria-label'))).toEqual([
+      'Rated 3.5 out of 5',
+      'Rated 3.5 out of 5',
+      'Rated 5 out of 5',
+    ]);
+    const HALF = '\u2605\u2605\u2605\u00bd\u2606';
+    expect(leaves.map((leaf) => leaf.textContent)).toEqual([HALF, HALF, '\u2605\u2605\u2605\u2605\u2605']);
+    for (const leaf of leaves) {
+      expect(leaf.tagName).toBe('SPAN');
+      expect(leaf.parentElement?.children).toHaveLength(1);
+      expect(leaf.parentElement?.querySelectorAll('.sr-only')).toHaveLength(0);
+    }
+  });
+});
 
 async function openEditDialog(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   await user.click(await within(await reviewsSection()).findByRole('button', { name: 'Edit' }));
@@ -1935,6 +2151,21 @@ async function openEventActions(user: ReturnType<typeof userEvent.setup>) {
   return { trigger, list: list as HTMLElement };
 }
 
+/**
+ * F9b (88.9-23): Cancel event / Leave event are twoTap, gated for CONFIRM_DELAY_MS after the
+ * first tap. Arm, step past the gate, commit. The fake clock (shouldAdvanceTime, so findBy and
+ * waitFor keep working) is the calling describe's, or installed here and restored by the
+ * calling describe's afterEach.
+ */
+async function commitEventAction(user: ReturnType<typeof userEvent.setup>, item: HTMLElement) {
+  if (!vi.isFakeTimers()) vi.useFakeTimers({ shouldAdvanceTime: true });
+  await user.click(item);
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+  await user.click(item);
+}
+
 /** A promise-returning mock that stays IN FLIGHT until `settle`/`fail` is called. */
 function deferred(mock: Mock) {
   let settle: (value?: unknown) => void = () => {};
@@ -1949,10 +2180,11 @@ function deferred(mock: Mock) {
   return { settle: (v?: unknown) => settle(v), fail: (r?: unknown) => fail(r) };
 }
 
-// 88.6.1-47 (D-35, AC-12, copy row E6): the event page's Share Game QR is a PRESSED control.
-// While its invite-token request is in flight it keeps focus (aria-disabled, never the native
-// attribute), reads the E6 label, and a synchronous ref latch refuses a second press, so two
-// presses send ONE request. The label literal below is byte-equal to the copy table's row E6.
+// 88.6.1-47 (D-35, AC-12): the event page's Share Game QR is a PRESSED control. While its
+// invite-token request is in flight it keeps focus (aria-disabled, never the native attribute),
+// keeps its label with the house spinner and is named by the heard suffix (rule 1, 88.9-46 B29 —
+// copy row E6's swap word is retired), and a synchronous ref latch refuses a second press, so two
+// presses send ONE request.
 //
 // The jsdom focus claim here is NODE IDENTITY only: jsdom never blurs a natively disabled
 // element (FE-TESTING-CONVENTIONS C-11), so `document.activeElement` staying on the button
@@ -1960,7 +2192,8 @@ function deferred(mock: Mock) {
 // request count. The real-browser focus proof (and the QR dialog handing focus back) is the
 // phone e2e, e2e/share-game-qr-pending.spec.ts, run in CI.
 describe('gameDetail Share Game QR in flight (88.6.1-47, D-35)', () => {
-  const LOADING = 'Loading QR code...';
+  // The busy NAME: the kept label plus the heard suffix (rule 1, 88.9-46; R-W4 ', loading').
+  const LOADING = 'Share Game QR, loading';
 
   it('Q1: two presses with no render flush between them send ONE request, and the pressed node stays focusable', async () => {
     deferred(eventsAPI.getEventInviteToken as Mock);
@@ -2069,6 +2302,50 @@ describe('gameDetail event-actions kebab: the three authorization gates (D56)', 
 });
 
 describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-entry latch', () => {
+  // F9b (88.9-23): Cancel event / Leave event are twoTap, gated for CONFIRM_DELAY_MS after the
+  // first tap. Describe-level and shouldAdvanceTime, per this file's fake-timer rule.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('F9b (88.9): Cancel event arms, stays inert 3 s, then commits once and keeps Cancel event readable with the spinner', async () => {
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    deferred(eventsAPI.deleteEvent as Mock);
+    renderEventDetail({ role: 'owner' });
+    const { list } = await openEventActions(user);
+    const cancel = within(list).getByRole('button', { name: 'Cancel event' });
+
+    await user.click(cancel);
+    expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+    expect(cancel).toHaveTextContent('Tap again (3)');
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    await user.click(cancel);
+    expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS - 1000);
+    });
+    expect(cancel).toHaveTextContent('Tap again to confirm');
+    await user.click(cancel);
+
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
+    // D24 c: the menu stays OPEN and the busy item is readable in place, focused — since rule 1
+    // (88.9-46 B27) the kept label with the house spinner, named 'Cancel event, cancelling'.
+    expect(list).toBeInTheDocument();
+    const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
+    expect(inFlight).toBe(cancel);
+    expect(inFlight).toHaveTextContent(/^Cancel event/);
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(document.activeElement).toBe(inFlight);
+  });
+
   it('keeps the menu OPEN and readable while Cancel is in flight, and sends exactly one DELETE', async () => {
     const user = userEvent.setup();
     deferred(eventsAPI.deleteEvent as Mock);
@@ -2080,15 +2357,25 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     // dispatched inside ONE `act()`, so the second runs the previous render's
     // closure where `cancellingEvent` is still false. After a flush the item gate
     // alone satisfies this and the test passes with no latch in the code.
+    // F9b (88.9-23): arm and step past the gate first, so the pair below is two activations
+    // of the LIVE item.
+    await act(async () => {
+      cancel.click();
+    });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       cancel.click();
       cancel.click();
     });
 
     expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
-    // The ruled arm (c): still OPEN, with the in-flight label readable IN PLACE —
-    // not "after reopening".
-    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    // The ruled arm (c): still OPEN, with the busy item readable IN PLACE — not "after
+    // reopening". Rule 1 (88.9-46 B27): the label is kept beside the spinner.
+    const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
+    expect(inFlight).toHaveTextContent(/^Cancel event/);
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight.hasAttribute('disabled')).toBe(false);
   });
@@ -2100,13 +2387,23 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     const { list } = await openEventActions(user);
 
     const leave = within(list).getByRole('button', { name: 'Leave event' });
+    // F9b (88.9-23): arm and step past the gate first, as above.
+    await act(async () => {
+      leave.click();
+    });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       leave.click();
       leave.click();
     });
 
     expect(eventsAPI.leaveEvent).toHaveBeenCalledTimes(1);
-    const inFlight = within(list).getByRole('button', { name: 'Leaving…' });
+    // Rule 1 (88.9-46 B28): Leave event keeps its label with the spinner, named ', leaving'.
+    const inFlight = within(list).getByRole('button', { name: 'Leave event, leaving' });
+    expect(inFlight).toHaveTextContent(/^Leave event/);
+    await waitFor(() => expect(inFlight.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(inFlight).toHaveAttribute('aria-disabled', 'true');
     expect(inFlight.hasAttribute('disabled')).toBe(false);
   });
@@ -2117,18 +2414,18 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     renderEventDetail({ role: 'owner' });
     const { trigger, list } = await openEventActions(user);
 
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     // The whole reason the gate is `ariaDisabled` and not the native attribute:
     // a natively-disabled focused element blurs to <body>, which is exactly the
     // state this menu's container-bound Escape cannot see.
-    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
     expect(document.activeElement).toBe(inFlight);
     expect(document.activeElement).not.toBe(document.body);
     expect(document.activeElement).not.toBe(trigger);
 
     await user.keyboard('{Escape}');
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Cancelling…' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Cancel event, cancelling' })).toBeNull()
     );
     expect(document.activeElement).toBe(trigger);
   });
@@ -2145,7 +2442,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     rerender(<GameDetailPage />);
 
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Leave event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Leave event' }));
     expect(eventsAPI.leaveEvent).not.toHaveBeenCalled();
     // `keepOpen` means the rejected activation left the menu open, so the SAME
     // list is still mounted for the retry — no second trigger click (which would
@@ -2157,7 +2454,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     // mount. Nothing else in this suite catches that.
     h.selfUuid = SELF_UUID;
     rerender(<GameDetailPage />);
-    await user.click(within(list).getByRole('button', { name: 'Leave event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Leave event' }));
 
     await waitFor(() => expect(eventsAPI.leaveEvent).toHaveBeenCalledTimes(1));
   });
@@ -2175,12 +2472,12 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     rerender(<GameDetailPage />);
 
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
 
     h.userSub = 'auth0|self-sub';
     rerender(<GameDetailPage />);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
 
     await waitFor(() => expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1));
   });
@@ -2203,6 +2500,33 @@ describe('gameDetail breadcrumb landmarks are named (#175)', () => {
     await screen.findByRole('heading', { name: 'Wingspan' });
     const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(nav).getByText('Wingspan')).toBeInTheDocument();
+  });
+});
+
+// 88.9-36 NAV-01 (owner ruling (a), chat 2026-11-07 1:08 PM Pacific, register row 69.9): both
+// gameDetail page roots cap at the header's 1280px box, centred, so at wide screens the body box
+// and the header box share their edges. The padding stays (DEF-88-24-01); the two roots move
+// together. Each root is found as the Breadcrumb navigation's parent, checked to be the render
+// container's first element child (one Breadcrumb navigation per view).
+describe('gameDetail page width — NAV-01 (88.9-36)', () => {
+  it("NAV-01 cap (88.9): both gameDetail roots are max-w-7xl mx-auto, the header's box", async () => {
+    const expectHeaderBox = (container: HTMLElement) => {
+      const root = screen.getByRole('navigation', { name: 'Breadcrumb' }).parentElement as HTMLElement;
+      expect(root).toBe(container.firstElementChild);
+      for (const cls of ['max-w-7xl', 'mx-auto', 'p-3', 'md:p-6']) {
+        expect(root.classList.contains(cls), `root class ${cls}`).toBe(true);
+      }
+      expect(root.classList.contains('max-w-6xl'), 'root keeps the 6xl cap').toBe(false);
+    };
+
+    const event = renderEventDetail({ role: 'owner' });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    expectHeaderBox(event.container);
+    event.unmount();
+
+    const game = renderGameDetail({ role: 'member' });
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    expectHeaderBox(game.container);
   });
 });
 
@@ -2287,6 +2611,7 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 import { axe } from 'vitest-axe';
 import { auditFormControls } from '../../test-utils/formControlAudit';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
 const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
@@ -2387,7 +2712,9 @@ describe('gameDetail — R7 composed axe audits + focus contracts (88.6-45)', ()
 
 const REAL_LOCATION = window.location;
 const SECOND_EVENT_ID = '88888888-8888-4888-8888-888888888888';
-const SIGN_IN_LATCH = `ngevent:signinRedirect:${EVENT_ID}`;
+// AMENDED Phase 88.9-40 (SESSION-01): the latch key is the shared guard's — one per path + search,
+// read from the CURRENT (stubbed) location — so every test stubs the location BEFORE setting it.
+const signInLatch = () => signInLatchKey(window.location);
 const UNAUTHORIZED = () => new ApiError('Unauthorized', 'unauthorized', 401);
 const FORBIDDEN = () => new ApiError('Access denied', 'forbidden', 403);
 const ACCOUNT_DELETED = () => new ApiError('gone', 'account_deleted', 410);
@@ -2396,7 +2723,7 @@ const ACCOUNT_DELETED = () => new ApiError('gone', 'account_deleted', 410);
 const NO_ACCESS_TITLE = "You don't have access to this event";
 const NO_ACCESS_DETAIL =
   "You may be signed in with a different account, or you haven't been invited yet.";
-const EVENT_LOAD_FAILED = "We couldn't load this event";
+const EVENT_LOAD_FAILED = "Couldn't load this event";
 const X1_SENTENCE = 'Your session may have expired. Sign in again to continue.';
 
 // The useFetchErrorState.test.tsx idiom: set the document's visibility, then dispatch.
@@ -2498,6 +2825,8 @@ async function expectGameNotFoundWithZeroRequests(search: string) {
 
 describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
   afterEach(() => {
+    // F9b (88.9-23): commitEventAction may install a fake clock mid-test; restore it here.
+    vi.useRealTimers();
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
@@ -2624,7 +2953,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     expect(replace).toHaveBeenCalledWith(
       '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}#vote`)
     );
-    expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBe('1');
+    expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
     expect(screen.getByText('Loading game night...')).toBeInTheDocument();
     expect(screen.queryByText('Event not found')).toBeNull();
     // Prohibition 1: the redirect path paints no event detail.
@@ -2728,18 +3057,93 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     expect(await screen.findByLabelText('Bringing a game')).toBeInTheDocument();
   });
 
+  // ---- Phase 88.9-40 (SESSION-01, SPEC A8): the shared guard on both views ----
+
+  // The game view's twin of R1 / C1: a primary 401 on the game read now takes the same answer arm.
+  // Render helper, not renderGameDetail: the game read must be a rejection from the first call.
+  function renderGameRejecting(error: unknown, search: string) {
+    h.selfUuid = SELF_UUID;
+    h.search = search;
+    (gamesAPI.getGame as Mock).mockRejectedValue(error);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('member'));
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
+    return renderPage(false);
+  }
+
+  it('SESSION-01 (88.9): a game link whose read answers 401 goes to sign-in once with the game as returnTo; back with the latch set it is the game banner with Sign in, never a second redirect; then game B in the same mount redirects once', async () => {
+    const searchA = `?game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search: searchA });
+    renderGameRejecting(UNAUTHORIZED(), searchA.slice(1));
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${searchA}`)
+    );
+    const keyA = signInLatch();
+    expect(window.sessionStorage.getItem(keyA)).toBe('1');
+    // The redirect frame is the loader, never the banner (P-5).
+    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    cleanup();
+
+    // Back with the latch set: the game banner with X1 and Sign in, no second redirect.
+    const r = renderGameRejecting(UNAUTHORIZED(), searchA.slice(1));
+    expect(await screen.findByText(GAME_LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.getByText(X1_SENTENCE)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.getItem(keyA)).toBe('1');
+
+    // Game B in the same mount: the clean slate resets the decision, B's own latch is clear, so one
+    // replace with B as returnTo; A's latch is untouched.
+    const searchB = `?game_id=${SECOND_GAME_ID}&group_id=${GROUP_ID}`;
+    const replaceB = stubLocation({ search: searchB });
+    h.search = searchB.slice(1);
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(replaceB).toHaveBeenCalledTimes(1));
+    expect(replaceB).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${searchB}`)
+    );
+    expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
+    expect(window.sessionStorage.getItem(keyA)).toBe('1');
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("SESSION-01 (88.9): another event in the same mount decides afresh — A declined with its latch set, B's 401 redirects once with B as returnTo, A's latch untouched", async () => {
+    const searchA = `?event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+    const replaceA = stubLocation({ search: searchA });
+    window.sessionStorage.setItem(signInLatch(), '1');
+    const keyA = signInLatch();
+    const r = renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
+    expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
+    expect(replaceA).not.toHaveBeenCalled();
+
+    const searchB = `?event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
+    const replaceB = stubLocation({ search: searchB });
+    h.search = searchB.slice(1);
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(replaceB).toHaveBeenCalledTimes(1));
+    expect(replaceB).toHaveBeenCalledWith(
+      '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${searchB}`)
+    );
+    expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
+    expect(window.sessionStorage.getItem(keyA)).toBe('1');
+    expect(replaceA).not.toHaveBeenCalled();
+  });
+
   // ---- Task 2: every other answer the event fetch can get has its own honest screen ----
 
   it('C1: a 401 with the latch already set (back from sign-in) renders the E3 banner with X1, never a second redirect (AC-2)', async () => {
-    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
     const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    window.sessionStorage.setItem(signInLatch(), '1');
     renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
     expect(await screen.findByText(EVENT_LOAD_FAILED)).toBeInTheDocument();
     expect(screen.getByText(X1_SENTENCE)).toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
     expect(screen.queryByText('Event not found')).toBeNull();
     // A 401 never clears the latch (review r2 #305): clearing it would rebuild the loop.
-    expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBe('1');
+    expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
   });
 
   it('C2: a latch read that throws fails CLOSED: the banner, never a redirect (P-4)', async () => {
@@ -2771,10 +3175,11 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
   });
 
   it('C4: a successful event load clears the latch', async () => {
-    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    window.sessionStorage.setItem(signInLatch(), '1');
     renderEventDetail();
     expect(await screen.findByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
-    await waitFor(() => expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBeNull());
+    await waitFor(() => expect(window.sessionStorage.getItem(signInLatch())).toBeNull());
   });
 
   it('C5: a 403 renders the no-access screen (E1, E2) with Back to Home, no banner, no redirect (AC-3)', async () => {
@@ -2803,18 +3208,19 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
   });
 
   it('C7: back from sign-in (latch set) and the answer is 403: the no-access screen, no second redirect (SPEC adjacency / R1)', async () => {
-    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
     const replace = stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    window.sessionStorage.setItem(signInLatch(), '1');
     renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
     expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
   });
 
   it('C7b: an answer that proves the session (403) clears the latch (review r2 #305)', async () => {
-    window.sessionStorage.setItem(SIGN_IN_LATCH, '1');
+    stubLocation({ search: `?event_id=${EVENT_ID}&group_id=${GROUP_ID}` });
+    window.sessionStorage.setItem(signInLatch(), '1');
     renderEventDetail({ getEventRejectsWith: FORBIDDEN() });
     expect(await screen.findByRole('heading', { name: NO_ACCESS_TITLE })).toBeInTheDocument();
-    await waitFor(() => expect(window.sessionStorage.getItem(SIGN_IN_LATCH)).toBeNull());
+    await waitFor(() => expect(window.sessionStorage.getItem(signInLatch())).toBeNull());
   });
 
   it('C8: a 404 keeps today\'s words, now as a heading, with the Back link, no banner and no redirect (AC-4)', async () => {
@@ -2944,7 +3350,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
     renderEventDetail({ role: 'owner', urlGroupId: null });
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
   });
 
@@ -2975,7 +3381,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
     expect(lastCreateEventGroupId()).toBe(GROUP_ID);
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
     // getEventSuggestions is event-scoped: the group only decides WHETHER to ask, so the URL hint
     // giving way to the event's group must not ask a second time.
@@ -2995,7 +3401,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     await waitFor(() => expect(h.createEventProps.length).toBeGreaterThan(0));
     expect(lastCreateEventGroupId()).toBe(GROUP_ID);
     const { list } = await openEventActions(user);
-    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    await commitEventAction(user, within(list).getByRole('button', { name: 'Cancel event' }));
     await waitFor(() => expect(h.push).toHaveBeenCalledWith(`/groupHomePage?id=${GROUP_ID}`));
   });
 
@@ -3400,6 +3806,38 @@ function rf1Region(): HTMLElement | undefined {
   return screen.getAllByRole('status').find((n) => n.textContent === RF1);
 }
 
+// Whether a region passed through EMPTY, read from the mutation RECORDS (EV-11). A textContent read
+// inside the callback would see only the batch's end state and miss the pass through the empty
+// string, so the flag comes from the records alone: a characterData record whose oldValue is the
+// empty string (the node held nothing before it was set again), or a childList record that removed
+// the region's text with no replacement.
+function observeClear(region: HTMLElement): { cleared: () => boolean; disconnect: () => void } {
+  const armedText = region.textContent ?? '';
+  let cleared = false;
+  const read = (records: MutationRecord[]) => {
+    for (const rec of records) {
+      if (rec.type === 'characterData' && rec.oldValue === '') cleared = true;
+      if (
+        rec.type === 'childList' &&
+        rec.addedNodes.length === 0 &&
+        armedText !== '' &&
+        Array.from(rec.removedNodes).some((n) => n.textContent === armedText)
+      ) {
+        cleared = true;
+      }
+    }
+  };
+  const observer = new MutationObserver(read);
+  observer.observe(region, { childList: true, characterData: true, characterDataOldValue: true, subtree: true });
+  return {
+    cleared: () => {
+      read(observer.takeRecords());
+      return cleared;
+    },
+    disconnect: () => observer.disconnect(),
+  };
+}
+
 // Render the event view and reach a failed same-event refresh (EV-1's state).
 async function reachEventRf1(options: RenderEventDetailOptions = {}) {
   const r = renderEventDetail(options);
@@ -3495,7 +3933,7 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     await reachEventRf1();
     const held = deferred(eventsAPI.getEvent as Mock);
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    const button = await screen.findByRole('button', { name: 'Retrying…' });
+    const button = await screen.findByRole('button', { name: 'Retry, retrying' });
     expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).not.toHaveAttribute('disabled');
@@ -3576,9 +4014,13 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     await reachEventRf1();
     const region = rf1Region() as HTMLElement;
     (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    // AMENDED Phase 88.9-55 (R-C8): a synchronous empty read right after the click raced the clear-then-re-announce (two renders; under full-suite load the rejection settled inside the click's await and the read saw RF1, wave-8 run at 2bfdf14), so the pass through empty is observed from the mutation records, armed before the click.
+    const clear = observeClear(region);
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(region.textContent).toBe('');
     await waitFor(() => expect(region.textContent).toBe(RF1));
+    expect(clear.cleared(), 'the region passed through empty before it re-announced').toBe(true);
+    clear.disconnect();
+    expect(rf1Region()).toBe(region);
     const button = screen.getByRole('button', { name: 'Retry' });
     expect(document.activeElement).toBe(button);
   });
@@ -3724,7 +4166,7 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
   });
 });
 
-const GAME_LOAD_FAILED = "We couldn't load this game";
+const GAME_LOAD_FAILED = "Couldn't load this game";
 // A second valid game id (UUID-shaped, so plan 25's guard lets it through to a request).
 const SECOND_GAME_ID = '99999999-9999-4999-8999-999999999999';
 
@@ -3786,7 +4228,7 @@ describe('gameDetail retained-content notice, game view — RF1 (88.6.1-74)', ()
     await reachGameRf1();
     const held = deferred(gamesAPI.getGame as Mock);
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    const button = await screen.findByRole('button', { name: 'Retrying…' });
+    const button = await screen.findByRole('button', { name: 'Retry, retrying' });
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(button);
     expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
@@ -3850,9 +4292,16 @@ describe('gameDetail retained-content notice, game view — RF1 (88.6.1-74)', ()
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
-  it('GV-8. a 401 refresh drops the game to the full banner with its register line (C10, C8 e)', async () => {
+  it('GV-8. a 401 refresh drops the game to the full banner with its register line (C10, C8 e) (latch set, 88.9-40)', async () => {
     const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
-    await refreshGameRejecting(e401);
+    // AMENDED Phase 88.9-40 (SESSION-01): a 401 refresh now redirects once (the shared guard), so the
+    // latch is set AFTER the loaded game (the load that succeeds clears a latch set before it) and
+    // this test pins the DECLINED arm — the full banner it always held.
+    const r = renderGameDetail();
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    window.sessionStorage.setItem(signInLatch(), '1');
+    (gamesAPI.getGame as Mock).mockRejectedValue(e401);
+    forceRefresh(r.rerender);
     expect(await screen.findByText(getFetchErrorMessage(e401))).toBeInTheDocument();
     expect(screen.queryByText('Wingspan')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -4326,15 +4775,29 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
     expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
   });
 
-  it('SR-17. a group read\'s 401 takes the primary-401 path: the sign-in line, never a silent page (review r2 #311)', async () => {
-    const r = renderGameDetail();
-    await screen.findByRole('heading', { name: 'Wingspan' });
-    const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
-    (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(e401);
-    forceRefresh(r.rerender);
-    expect(await screen.findByText(getFetchErrorMessage(e401))).toBeInTheDocument();
-    expect(screen.getByText(GAME_LOAD_FAILED)).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+  it('SR-17. a group read\'s 401 takes the primary-401 path: sign-in once, never a silent page (review r2 #311) (redirects once, 88.9-40)', async () => {
+    const search = `?game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search });
+    try {
+      const r = renderGameDetail();
+      await screen.findByRole('heading', { name: 'Wingspan' });
+      // AMENDED Phase 88.9-40 (SR-17): the primary-401 path now redirects once (the shared guard).
+      // The game read's own success clears the latch in the same run, so this is the REDIRECT arm,
+      // not a declined one: one replace with the game as returnTo and the loader frame — never a
+      // silent page, which is the property #311 pinned.
+      const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
+      (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(e401);
+      forceRefresh(r.rerender);
+      await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+      expect(replace).toHaveBeenCalledWith(
+        '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}`)
+      );
+      expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
+      expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+    }
   });
 
   it('SR-18. the event roster\'s own 403 removes the member actions and keeps the event (review r2 #316)', async () => {

@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
 import { Button } from '../../components/ui/Button';
+import { Icon } from '@/components/ui/Icon';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '@/lib/logger';
 
@@ -172,16 +173,25 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
             routed there because adopting a ring changes the visible focus indicator on a 44px
             box anchored in the dialog corner, which is a look call. Reasons 1-3 above still
             decide that the element stays a bare control. Changing any of this is a decision,
-            not a cleanup. */}
+            not a cleanup.
+
+            AMENDED Phase 88.9-29 (owner picks B6a, 88.9-PICKS-B1.json, 2026-11-04, and E8b,
+            88.9-PICKS-B4.json, 2026-11-06): the bare close now wears the fleet no-offset ring
+            (7.79 light / 8.30 dark on the dialog ground) and the stroked 20px X icon, chosen
+            OVER the UA default outline (2.40 light, under 3:1) and the 24px text glyph. Reasons
+            1-3 above still decide that it stays a bare control: the Button migration stays
+            forbidden. The 88-33 Task 3 correction (1) above (leading-none) leaves with the text
+            glyph: the icon is a fixed 20px box centred by inline-flex, with no line box to ride;
+            correction (2), the fleet-header insets, is unchanged. */}
         <button
           onClick={onClose}
-          className="absolute top-2 right-3 md:top-3 md:right-6 inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted hover:text-content-primary text-2xl leading-none"
+          className="absolute top-2 right-3 md:top-3 md:right-6 inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Close"
         >
-          &times;
+          <Icon name="X" size={20} strokeWidth={2} />
         </button>
 
-        <DialogTitle className="text-xl font-bold text-content-primary mb-4 text-center">
+        <DialogTitle className="text-content-primary mb-4 text-center">
           {title}
         </DialogTitle>
 

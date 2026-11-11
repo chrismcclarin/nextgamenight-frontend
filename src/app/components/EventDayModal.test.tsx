@@ -29,13 +29,15 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // Phase 88.6-27 (W16): the two channels the QR failure now uses. Spied rather than stubbed
 // away, because WHICH channel carries what is the assertion.
 const toastSpies = vi.hoisted(() => ({ error: vi.fn() }));
-const loggerSpies = vi.hoisted(() => ({ info: vi.fn() }));
+// AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-2 = b): warn is spied beside info — the
+// token failure now files a warning event, and info is asserted unused.
+const loggerSpies = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: toastSpies.error } }));
 vi.mock('@/lib/logger', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/logger')>();
   // `errCtx` is the REAL one: the ctx shape assertion below is about what the call site
   // passes, and stubbing the helper would assert the stub instead.
-  return { ...actual, logger: { ...actual.logger, info: loggerSpies.info } };
+  return { ...actual, logger: { ...actual.logger, info: loggerSpies.info, warn: loggerSpies.warn } };
 });
 
 // 88.6.1-47: the stub still renders nothing (every older test is unchanged by it), but it now
@@ -132,6 +134,7 @@ describe('EventDayModal — W16: the QR failure speaks, and stops speaking after
     h.getEventInviteToken.mockReset();
     toastSpies.error.mockClear();
     loggerSpies.info.mockClear();
+    loggerSpies.warn.mockClear();
   });
   afterEach(cleanup);
 
@@ -152,12 +155,13 @@ describe('EventDayModal — W16: the QR failure speaks, and stops speaking after
     expect(typeof message).toBe('string');
     expect((message as string).length).toBeGreaterThan(0);
 
-    // The developer half: `logger.info` (a breadcrumb — the level the owner amended AC-2 to on
-    // 2026-09-13), with the error's NAME and MESSAGE in the ctx object and the raw `Error`
-    // never passed. `checkJs: false` means typecheck cannot catch that mistake in a `.js`
-    // file, which is why it is asserted here.
-    expect(loggerSpies.info).toHaveBeenCalledTimes(1);
-    const [msg, ctx] = loggerSpies.info.mock.calls[0];
+    // The developer half: `logger.warn` (a Sentry warning event — owner ruling F1 / O-05,
+    // F1-2 = b, 2026-11-07, superseding the 2026-09-13 info breadcrumb), with the error's NAME
+    // and MESSAGE in the ctx object and the raw `Error` never passed. `checkJs: false` means
+    // typecheck cannot catch that mistake in a `.js` file, which is why it is asserted here.
+    expect(loggerSpies.warn).toHaveBeenCalledTimes(1);
+    expect(loggerSpies.info).not.toHaveBeenCalled();
+    const [msg, ctx] = loggerSpies.warn.mock.calls[0];
     expect(msg).toBe('Failed to get game invite token');
     expect(ctx).toEqual({ name: 'Error', message: 'boom' });
     expect(ctx).not.toBeInstanceOf(Error);
@@ -192,10 +196,11 @@ describe('EventDayModal — W16: the QR failure speaks, and stops speaking after
     });
 
     expect(toastSpies.error).not.toHaveBeenCalled();
-    // ...and the developer log STILL fires: a breadcrumb is not context, so it is deliberately
-    // outside the guard. Asserting it is what stops a future "fix" from moving the whole catch
-    // inside the ref check and silently losing the report.
-    expect(loggerSpies.info).toHaveBeenCalledTimes(1);
+    // ...and the developer log STILL fires: a developer log is not context, so it is
+    // deliberately outside the guard. Asserting it is what stops a future "fix" from moving the
+    // whole catch inside the ref check and silently losing the report.
+    expect(loggerSpies.warn).toHaveBeenCalledTimes(1);
+    expect(loggerSpies.info).not.toHaveBeenCalled();
   });
 });
 
@@ -294,7 +299,8 @@ describe('EventDayModal — R7 composed axe audit + focus contract (88.6-44)', (
 // page twin's real-browser proof is e2e/share-game-qr-pending.spec.ts.
 // ---------------------------------------------------------------------------
 describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)', () => {
-  const LOADING = 'Loading QR code...';
+  // Rule 1 (88.9-45): the label stays; the busy suffix joins the NAME while the QR loads.
+  const BUSY = 'Share Game QR, loading';
   const secondEvent = { ...upcomingEvent, id: 'evt-2', Game: { name: 'Azul' } };
   const twoEventDay = { date: future, events: [upcomingEvent, secondEvent] };
 
@@ -305,6 +311,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     h.getEventInviteToken.mockReset();
     toastSpies.error.mockClear();
     loggerSpies.info.mockClear();
+    loggerSpies.warn.mockClear();
     qrProps.current = null;
     pending = {};
     h.getEventInviteToken.mockImplementation(
@@ -322,7 +329,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     return { onEventClick };
   }
 
-  it('EQ1: two presses with no render flush send ONE request; the pressed node is aria-disabled with the E6 label and never opens the event', async () => {
+  it('EQ1 rule 1 (88.9): Share Game QR keeps its label + spinner while busy; two presses with no render flush send ONE request; the pressed node is aria-disabled and never opens the event', async () => {
     const { onEventClick } = renderDay(selectedDay);
     const share = screen.getByRole('button', { name: 'Share Game QR' });
     share.focus();
@@ -336,8 +343,10 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
 
     expect(h.getEventInviteToken).toHaveBeenCalledTimes(1);
     expect(h.getEventInviteToken).toHaveBeenCalledWith('evt-1');
-    const loading = screen.getByRole('button', { name: LOADING });
+    const loading = screen.getByRole('button', { name: BUSY });
     expect(loading).toBe(share);
+    expect(loading).toHaveTextContent('Share Game QR');
+    await waitFor(() => expect(loading.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(loading).toHaveAttribute('aria-disabled', 'true');
     expect(loading.hasAttribute('disabled')).toBe(false);
     // Confirm-only in jsdom (see the describe comment).
@@ -359,7 +368,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
 
     expect(h.getEventInviteToken).toHaveBeenCalledTimes(2);
     expect(h.getEventInviteToken.mock.calls.map((call) => call[0])).toEqual(['evt-1', 'evt-2']);
-    expect(share2).toHaveAccessibleName(LOADING);
+    expect(share2).toHaveAccessibleName(BUSY);
     expect(share2).toHaveAttribute('aria-disabled', 'true');
     // The superseded row reads idle again.
     expect(share1).toHaveAccessibleName('Share Game QR');
@@ -381,7 +390,7 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     // Still evt-2's QR after the late response landed.
     expect(qrProps.current?.isOpen).toBe(true);
     expect(qrProps.current?.url).toBe('https://example.test/i/evt-2');
-    expect(screen.queryByRole('button', { name: LOADING })).toBeNull();
+    expect(screen.queryByRole('button', { name: BUSY })).toBeNull();
   });
 
   it('EQ3 (control): a failed request toasts, releases the row, and the next press sends a second request', async () => {
@@ -425,9 +434,10 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
 
     // POSITIVE signal first (P-6): the developer log fires for every failure, newest or not, so
     // it proves the superseded rejection has settled before anything is read as absent.
-    await waitFor(() => expect(loggerSpies.info).toHaveBeenCalledTimes(1));
-    expect(loggerSpies.info.mock.calls[0][1]).toEqual({ name: 'Error', message: 'superseded' });
-    expect(share2).toHaveAccessibleName(LOADING);
+    await waitFor(() => expect(loggerSpies.warn).toHaveBeenCalledTimes(1));
+    expect(loggerSpies.info).not.toHaveBeenCalled();
+    expect(loggerSpies.warn.mock.calls[0][1]).toEqual({ name: 'Error', message: 'superseded' });
+    expect(share2).toHaveAccessibleName(BUSY);
     expect(share2).toHaveAttribute('aria-disabled', 'true');
     expect(toastSpies.error).not.toHaveBeenCalled();
 
@@ -444,5 +454,81 @@ describe('EventDayModal — Share Game QR in flight + the 80dvh cap (88.6.1-47)'
     expect(classes).toContain('max-h-[80dvh]');
     expect(classes).not.toContain('max-h-[80vh]');
     expect(classes).not.toContain('max-h-[90dvh]');
+  });
+});
+
+// 88.9-39 (owner picks F3b for W56, F2c for W57, B2a for R014 / B025): the round-2 day-modal rulings.
+describe('EventDayModal — round-2 look (88.9-39)', () => {
+  beforeEach(() => {
+    h.getEventInviteToken.mockReset();
+    h.getEventInviteToken.mockResolvedValue({ invite_url: 'https://example.test/i/abc' });
+  });
+  afterEach(cleanup);
+
+  function renderEvents(events: unknown[]) {
+    render(<EventDayModal selectedDay={{ date: future, events }} onClose={vi.fn()} onEventClick={vi.fn()} />);
+  }
+  const classesOf = (el: Element) => el.className.split(/\s+/).filter(Boolean);
+
+  it('F3b (88.9): 8px between the tag and the picture, and no picture slot when the night has none', () => {
+    const withPicture = { ...upcomingEvent, id: 'evt-pic', Game: { name: 'Catan', image_url: 'https://example.test/catan.jpg' } };
+    renderEvents([withPicture]);
+    // The container holding the tag column and the picture is the justify-between flex row.
+    const container = screen.getByText('Upcoming').closest('.justify-between') as HTMLElement;
+    expect(container, 'the tag column and the picture share one justify-between row').not.toBeNull();
+    expect(classesOf(container), '8px between the tag column and the picture').toContain('gap-2');
+    expect(document.querySelectorAll('.w-16.h-16'), 'one picture for a night with one').toHaveLength(1);
+    cleanup();
+
+    // The existing fixture has no image_url: NO slot, not a default glyph (R2E4 empty).
+    renderEvents([upcomingEvent]);
+    expect(document.querySelectorAll('.w-16.h-16'), 'no picture slot for a night with no picture').toHaveLength(0);
+  });
+
+  it('W57 (88.9): a cancelled or completed night is tagged Cancelled / Completed, never Upcoming', () => {
+    const cancelled = { ...upcomingEvent, id: 'evt-cancelled', status: 'cancelled', Game: { name: 'Azul' } };
+    const completed = { ...upcomingEvent, id: 'evt-completed', status: 'completed', Game: { name: 'Codenames' } };
+    renderEvents([cancelled, completed]);
+    for (const label of ['Cancelled', 'Completed'] as const) {
+      const tag = screen.getByText(label);
+      expect(classesOf(tag), `${label}: the muted fill`).toContain('bg-surface-muted');
+      expect(classesOf(tag), `${label}: the secondary ink`).toContain('text-content-secondary');
+    }
+    expect(screen.queryByText('Upcoming')).toBeNull();
+    // MED-80: the tag DESCRIBES the row (aria-describedby), adding to the computed name, never replacing it.
+    expect(screen.getByRole('button', { name: /Azul.*Tuesday Crew/ })).toHaveAccessibleDescription('Cancelled');
+    expect(screen.getByRole('button', { name: /Codenames.*Tuesday Crew/ })).toHaveAccessibleDescription('Completed');
+    cleanup();
+
+    // A scheduled night keeps the shipped Upcoming tag on the success pair (W31 honoured).
+    renderEvents([upcomingEvent]);
+    const upcoming = screen.getByText('Upcoming');
+    expect(classesOf(upcoming)).toContain('bg-status-success-subtle');
+    expect(classesOf(upcoming)).toContain('text-content-status-success');
+    expect(screen.queryByText(/^(Cancelled|Completed)$/)).toBeNull();
+    expect(screen.getByRole('button', { name: rowName })).toHaveAccessibleDescription('Upcoming');
+  });
+
+  it('B2a (88.9): on a tinted night the row and Share Game QR take the group-ground halo', () => {
+    const tinted = { ...upcomingEvent, id: 'evt-tinted', Group: { name: 'Tuesday Crew', background_color: '#722f37' } };
+    renderEvents([tinted]);
+    const row = screen.getByRole('button', { name: rowName });
+    const card = row.closest('.rounded-lg') as HTMLElement;
+    expect(card, 'the row sits inside the event card').not.toBeNull();
+    expect(card.style.getPropertyValue('--group-ground'), 'the fixture is tinted').toBe('#722f37');
+    expect(classesOf(card)).toContain('[--group-halo:var(--group-ground-light)]');
+    expect(classesOf(card)).toContain('dark:[--group-halo:var(--group-ground)]');
+    expect(classesOf(row)).toContain('focus-visible:ring-offset-surface-group-halo');
+    expect(classesOf(row)).not.toContain('focus-visible:ring-offset-surface-card');
+    const share = screen.getByRole('button', { name: 'Share Game QR' });
+    expect(classesOf(share)).toContain('focus-visible:ring-offset-surface-group-halo');
+    expect(classesOf(share), 'no dark: utility on the Button').not.toContain('dark:focus-visible:ring-offset-surface-group-halo');
+    cleanup();
+
+    // The untinted arm: the key's fallback (the card ground) — no --group-halo set on the card.
+    renderEvents([upcomingEvent]);
+    const plainCard = screen.getByRole('button', { name: rowName }).closest('.rounded-lg') as HTMLElement;
+    expect(plainCard.className).not.toContain('--group-halo');
+    expect(plainCard.style.getPropertyValue('--group-ground')).toBe('');
   });
 });

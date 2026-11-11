@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } from '../../lib/api';
+import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI, ApiError } from '../../lib/api';
 // Phase 87.3-07 (D-02): the profile's self row resolves via the shared
 // ['users','self'] query (useSelfIdentity) instead of an ad-hoc getUser
 // self-fetch. Because that cache is staleTime Infinity, every self-row mutation
@@ -44,8 +44,11 @@ import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Modal } from '../components/Modal';
 import { Combobox } from '../../components/ui/Combobox';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { useInlineReceipt } from '../../components/ui/useInlineReceipt';
+import { announceStatus } from '@/components/ui/announcer';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
@@ -56,9 +59,9 @@ import { focusElement, focusPageFloor } from '../../components/ui/focusPageFloor
 // shared name+message builder (88.6-13); the raw Error is never passed as `ctx`.
 import { logger, errCtx } from '../../lib/logger';
 
-// 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): the Disconnect Google Calendar
-// confirm's text while the disconnect is in flight (ConfirmDialog's pendingLabel).
-const DISCONNECT_CALENDAR_PENDING_LABEL = 'Disconnecting…';
+// Rule 1 (88.9-45, owner pick O16a): the Disconnect Google Calendar confirm keeps its label + the house
+// spinner while the disconnect runs; this is its busySuffix (CR-5 / A-75 history: a swap word, 2026-10-19).
+const DISCONNECT_CALENDAR_BUSY_SUFFIX = ', disconnecting';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -136,12 +139,15 @@ const DEFAULT_PREFERENCES = {
     event_updated: { email: true, sms: false },
     event_cancelled: { email: true, sms: false },
 };
-// Copy row P1 (88.6.1 D-30, ratified 2026-10-04): the pressed Verify's in-flight label.
-const VERIFY_CODE_IN_FLIGHT_LABEL = 'Verifying...';
-// Copy row P8 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; straight apostrophe): the collection's failed-first-load title.
-const COLLECTION_LOAD_FAILED_TITLE = "Couldn't load your collection";
-// Copy row P7 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; three ASCII full stops): the pressed Add to Collection's in-flight label.
-const ADDING_TO_COLLECTION_LABEL = 'Adding...';
+// Copy row P1 (88.6.1 D-30, ratified 2026-10-04; AMENDED Phase 88.9-46 rule 1 B32: the word is heard as the busy suffix, the label stays Verify): the pressed Verify's busy-name suffix.
+const VERIFY_CODE_BUSY_SUFFIX = ', verifying';
+// Copy row P8 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; straight apostrophe): the collection's failed-first-load title; AMENDED Phase 88.9-49 (BANNER-01): now the thing, the title composes.
+const COLLECTION_LOAD_FAILED_THING = 'your collection';
+// Copy row P7 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; AMENDED Phase 88.9-46 rule 1 B36: the word is heard as the busy suffix, lower-cased with no trailing dots, the label stays Add to Collection): the pressed Add to Collection's busy-name suffix.
+const ADDING_TO_COLLECTION_BUSY_SUFFIX = ', adding';
+// E4a (88.9-32, owner pick 2026-11-06): the ONE pressed arm both theme toggles read. A full literal so
+// Tailwind v4 emits every class. See the DECISION Phase 88.6-17 (D-11, outcome (a)) marker at the toggles.
+const THEME_TOGGLE_PRESSED = 'border-line-accent bg-surface-muted enabled-hover:bg-surface-muted text-content-accent';
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -162,6 +168,20 @@ function Profile(){
     // early-return, so the flags never clear and both zones spin forever. Derive the shared
     // error state here (kept RAW on purpose: DECISION Phase 88.6.1-79, identity kept row) and render the compact degrade banner in those two zones.
     const selfIdentityErrorState = useFetchErrorState(selfQuery);
+    // DECISION Phase 88.9-40 (SESSION-01): a signed-out visitor goes to sign-in and back here, chosen
+    // OVER the shipped blank page (the user && render drew nothing); a return with the latch set gets
+    // the profile banner with Sign in; a 401 on the self read redirects once (SPEC A8). The useUser
+    // error branch below (the Phase 88-19 DECISION on it) is unchanged and still reached: the hook's authError
+    // option keeps a useUser error out of holding (hook test 6; page test 'SESSION-01 (88.9): a useUser
+    // error with no user shows the 88-19 fallback, never a redirect'). Only a read made on THIS visit
+    // proves the session (isFetchedAfterMount), so a cached row can never clear the latch.
+    const signIn = useSignInRedirect({
+        authLoading: isLoading,
+        signedOut: !user,
+        authError: error,
+        unauthorized: selfIdentityErrorState.showError && selfIdentityErrorState.code === 'unauthorized',
+        sessionProven: selfQuery.isSuccess && selfQuery.isFetchedAfterMount,
+    });
     const [ownedGames, setOwnedGames] = useState([]);
     const [loadingGames, setLoadingGames] = useState(true);
     const [bggSearchQuery, setBggSearchQuery] = useState('');
@@ -184,6 +204,8 @@ function Profile(){
     const [editingUsername, setEditingUsername] = useState(false);
     const [username, setUsername] = useState('');
     const [savingUsername, setSavingUsername] = useState(false);
+    // Save-feedback rule 3 (88.9-24): the Username updated caption under the name row.
+    const { receipt: usernameReceipt, showReceipt, clearReceipt } = useInlineReceipt();
     
     // Availability settings state
     const [availabilityTab, setAvailabilityTab] = useState('recurring'); // 'recurring' or 'specific'
@@ -318,6 +340,26 @@ function Profile(){
     const patternsFailedWithNothingCached = patternsError.showError && !patternsRetained;
     // No-row half (88.6.1-61); selfIdentityErrorState stays RAW: plan 88.6.1-79 reads it over a kept row.
     const selfFailedWithNothingCached = selfIdentityFailedWithNoRow(selfQuery, self?.id);
+    // R-C2 (88.9-56): the no-row identity 401 on a declined return, latched through the episode's
+    // in-flight refetch (see the DECISION marker at its render branch below).
+    const rc2Active =
+        (selfFailedWithNothingCached && selfIdentityErrorState.code === 'unauthorized') ||
+        (signIn.decision === 'declined' && !self && selfQuery.isFetching);
+    const sessionDeadBannerState = useFetchErrorState({ isError: rc2Active, error: SESSION_DEAD_ERROR, refetch: resolveNothing });
+    const sessionDeadRef = useRef(null);
+    const sessionDeadFocusedRef = useRef(false);
+    useEffect(() => {
+        if (!rc2Active) {
+            sessionDeadFocusedRef.current = false;
+            return;
+        }
+        if (sessionDeadFocusedRef.current) return;
+        const active = document.activeElement;
+        if (active === document.body || !active || !active.isConnected) {
+            sessionDeadRef.current?.focus({ preventScroll: true });
+            sessionDeadFocusedRef.current = true;
+        }
+    }, [rc2Active]);
     /* DECISION Phase 88.6.1-79 (AC-29 / D-51, identity kept row): CHOSEN — Profile is the one host
        that DISPLAYS the identity row as content (the header's name and address line), so a failed
        identity refresh over a held row is retained data: ONE RF1 notice at the top of the header
@@ -1357,7 +1399,9 @@ function Profile(){
             // verified phone vanish from the cached self for the session.
             patchSelfCache(queryClient, { username: updatedUser.username });
             setEditingUsername(false);
-            toast.success('Username updated');
+            // Save-feedback rule 3 (88.9-24): an inline caption in the always-mounted region under the
+            // name row, spoken by that region alone (never also by the root announcer).
+            showReceipt('Username updated');
             settle();
         } catch (error) {
             logger.info('Error updating username:', errCtx(error));
@@ -1455,7 +1499,17 @@ function Profile(){
         try {
             await googleCalendarAPI.disconnect(selfUuid);
             setGoogleCalendarConnected(false);
-            toast.success('Google Calendar disconnected');
+            /* DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes; owner pick O16a,
+               88.9-PICKS-B9.json, 2026-11-07; owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): these six
+               profile outcomes fire NO success toast — each result is in view (the Calendar card's button
+               flips, the collection list gains or loses the row with focus on + Add from BGG, the new rows
+               show in the list below, the pattern row leaves the list) — the outcome is still spoken once by
+               the root announcer (src/components/ui/announcer.ts). Chosen OVER the Req 12 toasts
+               (88-UI-SPEC §6.2) these lines carried: rule 4 keeps a toast only for an outcome the person
+               cannot see. The call keeps the toast's place, before any close or settle. Every error toast
+               stays (rule 5). Username updated is the seventh profile receipt and goes inline instead (rule
+               3). Restoring a toast here is a decision, not a cleanup. */
+            announceStatus('Google Calendar disconnected');
         } catch (error) {
             logger.info('Error disconnecting Google Calendar:', errCtx(error));
             toast.error(
@@ -1477,7 +1531,7 @@ function Profile(){
         title: 'Disconnect Google Calendar?',
         body: 'Future events stop syncing. Events already on your calendar stay.',
         confirmLabel: 'Disconnect',
-        pendingLabel: DISCONNECT_CALENDAR_PENDING_LABEL,
+        busySuffix: DISCONNECT_CALENDAR_BUSY_SUFFIX,
         onConfirm: performDisconnectGoogleCalendar,
     });
 
@@ -1671,7 +1725,12 @@ function Profile(){
             await fetchOwnedGames();
             // Req 12: this mutation closes the search panel it was started from, so
             // without a receipt the only feedback is a panel vanishing.
-            toast.success('Game added');
+            // AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json; save-feedback rule 2, register
+            // 51.4 names Game added among the 11): the receipt is dropped — the game appears in the
+            // collection list and focus lands on + Add from BGG, which answers the panel-vanishing concern
+            // above; chosen OVER keeping this Req 12 toast. Spoken once by the root announcer: see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Game added');
             settle();
         } catch (error) {
             logger.info('Error adding game to collection:', errCtx(error));
@@ -1738,7 +1797,9 @@ function Profile(){
             await userGamesAPI.removeOwnedGame(selfUuid, game_id);
             const settle = dropRemovedGame();
             await fetchOwnedGames();
-            toast.success('Game removed');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Game removed');
             settle();
         } catch (error) {
             logger.info('Error removing game from collection:', errCtx(error));
@@ -1853,7 +1914,9 @@ function Profile(){
             // §6.2's form is `{Object} {past-tense verb}`, <=4 words — so the count
             // the old string carried is deliberately dropped rather than shortened
             // into it. The created rows are visible in the list directly below.
-            toast.success('Schedules created');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Schedules created');
             settle();
         } catch (error) {
             logger.info('Error creating schedule:', errCtx(error));
@@ -1930,7 +1993,9 @@ function Profile(){
                 endTime: '17:00',
                 isAvailable: true,
             });
-            toast.success('Override created');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Override created');
             settle();
         } catch (error) {
             logger.info('Error creating specific override:', errCtx(error));
@@ -1968,7 +2033,9 @@ function Profile(){
         try {
             await availabilityAPI.deleteAvailability(patternId);
             await patternsQuery.refetch();
-            toast.success('Pattern deleted');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Pattern deleted');
         } catch (error) {
             logger.info('Error deleting pattern:', errCtx(error));
             toast.error(
@@ -2202,7 +2269,9 @@ function Profile(){
     // §6.3: loading copy NAMES the thing. Worded identically to this route's own
     // `loading.tsx` fallback so the boundary and the component do not greet the
     // same person with two different sentences on one navigation.
-    if (isLoading) return <div className="flex items-center justify-center min-h-screen">Loading your profile...</div>;
+    // 88.9-40: the same line is the redirect frame (signIn.holding), so no blank page or banner paints
+    // for a frame before the browser navigates.
+    if (isLoading || signIn.holding) return <div className="flex items-center justify-center min-h-screen">Loading your profile...</div>;
 
     /* DECISION Phase 88-19 (Req 7 / T-88-19-02): the session-error branch renders
        the shared `ErrorFallback` — chosen OVER hand-writing a designed sentence
@@ -2237,18 +2306,60 @@ function Profile(){
         );
     }
 
+    // 88.9-40 (SESSION-01): the DECLINED signed-out return (back from sign-in with the latch set, or
+    // storage failed) — the profile banner with Sign in, in place of the blank page `user &&` drew.
+    // The title literal is the one this file already uses; plans 88.9-48 / 49 convert it to `thing=`.
+    if (!user) {
+        return (
+            <div className="p-3 md:p-6 max-w-4xl mx-auto">
+                <FetchErrorBanner state={signIn.signedOutErrorState} thing="your profile" reportContext="Profile page — signed out" />
+            </div>
+        );
+    }
+
+    /* DECISION Phase 88.9-56 (owner ruling R-C2 + 'profile', 88.9-RULINGS.md, 2026-11-10; closes plan 88.9-40
+       Deviations 8): a return with a LIVE cookie whose identity read still 401s and no row held renders ONE
+       page-level banner, Couldn't load your profile, with Sign in (FetchErrorBanner's unauthorized branch, plan
+       88.9-26 — the shape plan 88.9-42 gave the home page), chosen OVER the body with its in-zone Retry notices (a
+       401 cannot be retried; the notices offered no way back in) and OVER a second redirect (the latch is set:
+       SESSION-01's once-only rule). The banner reads a LATCHED state of its own (SESSION_DEAD_ERROR +
+       resolveNothing through useFetchErrorState, keyed on rc2Active), chosen OVER the raw identity state, whose
+       visibilitychange refetch drops its error flag for the fetch's duration and would swap the banner for the
+       body and back; rc2Active also holds through the declined episode's in-flight refetch. The banner REPLACES
+       the body — the same shape as the signed-out declined return directly above — chosen OVER the home page's
+       banner-above-the-columns, because on the profile every zone reads the identity row and nothing beneath
+       could render honestly. Its reportContext is its own value: the operator's report names the
+       session-expired shape, not the signed-out one. Focus: on the branch's first commit, if the active element
+       is body or disconnected, the wrapper (tabIndex -1; its first text is the banner title) takes focus once
+       per episode, chosen OVER leaving focus on body (the branch is reached on first load before any
+       interaction, where R-C4's main landing — the home page's guard — does not apply). Changing this is a
+       decision, not a cleanup. */
+    if (rc2Active) {
+        return (
+            <div ref={sessionDeadRef} tabIndex={-1} className="p-3 md:p-6 max-w-4xl mx-auto">
+                <FetchErrorBanner state={sessionDeadBannerState} thing="your profile" reportContext="Profile page — session expired" />
+            </div>
+        );
+    }
+
     return (
         user && (
             <div className="p-3 md:p-6 max-w-4xl mx-auto">
+                {/* DECISION Phase 88.9-32 NAV-01 (R2-82, owner ruling 2026-11-07 1:08 PM): the profile body KEEPS
+                    its own max-w-4xl mx-auto cap, chosen OVER the 7xl chrome cap the ruling gave the home and
+                    group bodies (and gameDetail, 6xl to 7xl). NAV-01 fixed bodies that stretched PAST the 1280px
+                    header and footer; this settings column is centred inside them and never reaches their edge,
+                    and widening it to 1280 was never put to the owner. The owner confirms this at the 1280 / 1440
+                    glance (plan 88.9-51); widening it is a decision, not a cleanup. */}
                 {/* SMS-disabled banner — gated on phoneJustRemoved (session flag
                     set by handleRemovePhone success) so it does NOT fire for users
                     who never had a phone. Also gated on sms_enabled per the
                     admin-entitlement model: non-entitled users never see SMS UI,
                     including this banner. Banner clears automatically when user
-                    re-adds a phone. Tokens mirror Phase 62-02 TimezoneNudgeBanner. */}
+                    re-adds a phone. Tokens: the B3a status-warning family (owner pick B3a, plan 88.9-32). */}
                 {userData?.sms_enabled && phoneJustRemoved && !userData?.phone && !smsDisabledBannerDismissed && (
-                    <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 flex items-start gap-3">
-                        <p ref={smsDisabledBannerTextRef} className="flex-1 text-sm text-amber-900 dark:text-amber-100">
+                    <div className="mb-4 p-3 rounded-lg bg-status-warning-subtle border border-status-warning flex items-start gap-3">
+                        <p ref={smsDisabledBannerTextRef} className="flex-1 text-sm text-content-status-warning">
                             SMS disabled — add a phone number to re-enable.
                         </p>
                         {/* DECISION Phase 88.6-17 (A10 / T-88.6-43 + R3 finding 144): this dismiss stays a
@@ -2296,8 +2407,17 @@ function Profile(){
                                against it, so page; ring vs halo 7.52 light / 10.13 dark (census, halo-approximate; the band
                                belongs to plan 88.9-16). Only the class string
                                gained the two halo tokens; the A10 and 88.6.1-53 markers above stand as written.
-                               Swapping the dark halo for the banner fill is a decision, not a cleanup. */
-                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
+                               Swapping the dark halo for the banner fill is a decision, not a cleanup.
+                               AMENDED Phase 88.9-32 (owner pick B3a, 88.9-PICKS-B1.json, 2026-11-04): the box is the OPAQUE
+                               status-warning family (the status-warning-subtle fill in each theme, values in UI-SPEC R2-69 and not
+                               spelled here so this file's untagged-raw-hex pin stays honest, warning border and ink) and the halo is
+                               that same declared key with no dark variant, chosen OVER option (a)'s amber-50 light halo and
+                               page-ground dark halo, which approximated a 20%-alpha box (band 1.09 dark). Measured: ring vs
+                               halo 6.65 / 6.37, band 1.00 in both themes (UI-SPEC R2-69). The ink moved with the box (build
+                               contract); the A10 marker's byte-unchanged sentence described plan 88.6-17's own edit and still
+                               holds for the glyph size and the 44 floor. Putting a dark variant back on this halo is a
+                               decision, not a cleanup. */
+                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-status-warning hover:text-content-primary text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
                             aria-label="Dismiss"
                         >
                             ×
@@ -2330,8 +2450,12 @@ function Profile(){
                         edit — chosen OVER the colour token alone. Its `font-semibold` was the only
                         thing distinguishing it from the sibling link; once that becomes 400, colour
                         is the sole remaining VISUAL cue, so the state is exposed programmatically
-                        as well. Dropping `aria-current` later is a decision, not a cleanup. */}
-                    <span aria-current="page" className="text-content-primary font-normal">Profile</span>
+                        as well. Dropping `aria-current` later is a decision, not a cleanup.
+                        AMENDED Phase 88.9-32 (owner pick C4a, 88.9-PICKS-B2.json, 2026-11-05): the current-page
+                        span reads 700 (font-bold), chosen OVER the shipped 400 — all five breadcrumb current
+                        crumbs now read 700 (UI-SPEC R2-19). aria-current stays, so the state is still exposed
+                        programmatically as well as by weight. */}
+                    <span aria-current="page" className="text-content-primary font-bold">Profile</span>
                 </nav>
 
                 {/* Profile Header */}
@@ -2354,7 +2478,8 @@ function Profile(){
                                     no `name` still renders the page's one h1 (Heading drops empty children). */}
                                 {user?.name || user?.email?.split('@')[0] || 'User'}
                             </Heading>
-                            <FetchErrorBanner state={selfIdentityErrorState} />
+                            {/* DECISION Phase 88.9-49 (BANNER-01, F26): the identity-withdrawn banner names what failed (Couldn't load your profile), chosen OVER the component default Something went wrong (the one full mount that typed no title); the sibling session ErrorFallback keeps its own We couldn't load your profile (not a banner). */}
+                            <FetchErrorBanner state={selfIdentityErrorState} thing="your profile" />
                         </div>
                     ) : profileLoaded ? (
                         <div className="flex items-center gap-3 md:gap-4">
@@ -2404,21 +2529,23 @@ function Profile(){
                                             that opened the editor, mounted in the same commit), else the profile
                                             <h1>.
                                             REJECTED: (a) native `disabled` for the in-flight half (it drops focus in
-                                            a real browser); (b) focusing the <h1> on a save (the success toast
+                                            a real browser); (b) focusing the <h1> on a save (the inline Username updated receipt, an always-mounted polite status region since 88.9-24,
                                             already announces the outcome, and one target for Save and Cancel keeps
                                             the editor's exit predictable); (c) per-host inline focus code (D-04).
                                             Disclosed visible delta: while saving, Save shows the gated primary pair
                                             instead of the half-strength wash. Dropping either half of the pair is a
-                                            decision, not a cleanup. */}
+                                            decision, not a cleanup.
+                                            AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (name "Save, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word and narrowed the button). The aria-disabled gate and the saveUsernameInFlightRef latch are unchanged. */}
                                         <div className="flex gap-2">
                                             <Button
                                                 variant="primary"
                                                 onClick={handleSaveUsername}
                                                 disabled={!username.trim()}
                                                 aria-disabled={savingUsername ? 'true' : undefined}
+                                                busy={savingUsername}
                                                 className="whitespace-nowrap"
                                             >
-                                                {savingUsername ? 'Saving...' : 'Save'}
+                                                Save
                                             </Button>
                                             <Button
                                                 variant="secondary"
@@ -2496,7 +2623,10 @@ function Profile(){
                                             a decision, not a cleanup. */}
                                         <button
                                             ref={editUsernamePencilRef}
-                                            onClick={() => setEditingUsername(true)}
+                                            onClick={() => {
+                                                clearReceipt();
+                                                setEditingUsername(true);
+                                            }}
                                             className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                                             title="Edit username"
                                         >
@@ -2504,6 +2634,18 @@ function Profile(){
                                         </button>
                                     </div>
                                 )}
+                                {/* Save-feedback rule 3 (88.9-24): the Username updated caption. A SIBLING after the
+                                    whole editor ternary, never inside either branch: the pencil's branch mounts in
+                                    the same commit as the receipt, and a polite region that mounts holding text is
+                                    not announced (src/components/ui/StatusRegion.tsx ("EMPTY-FIRST")). Mounted empty
+                                    and sr-only until the save lands; its own line under the name row at 375. */}
+                                <StatusRegion
+                                    data-testid="username-receipt"
+                                    politeness="polite"
+                                    srOnlyWhenEmpty
+                                    message={usernameReceipt}
+                                    className="text-xs text-content-status-success"
+                                />
                                 {/* THE ADDRESS THIS APP USES, not the Auth0 SESSION claim
                                     (Phase 88.8 plan 13, SPEC R12). Until this phase this line
                                     rendered `user.email` — the session claim — which after an
@@ -2682,8 +2824,9 @@ function Profile(){
                                                     message={phoneValidation.error}
                                                 />
                                             </div>
-                                            {/* The in-flight cue is the LABEL SWAP plus the muted input
-                                                ground, stated rather than inherited: the retired
+                                            {/* The in-flight cue is rule 1's kept label with the house
+                                                spinner (Phase 88.9-46 B31, Button busy) plus the muted
+                                                input ground, stated rather than inherited: the retired
                                                 `'saving'` branch carried an unconditional
                                                 `opacity-50 cursor-not-allowed`, and `.btn:disabled`'s
                                                 own opacity wash keys on the NATIVE attribute this
@@ -2692,14 +2835,28 @@ function Profile(){
                                                 deliberately not used as the replacement. The
                                                 not-allowed cursor still arrives, from
                                                 `.btn[aria-disabled='true']` in globals.css. */}
+                                            {/* DECISION Phase 88.9-46 (rule 1 B31-B36): the six in-flight profile
+                                                buttons (Save & Verify, Verify, Replay Tutorial, Import Collection,
+                                                Search, Add to Collection) keep their resting label with the house
+                                                spinner and a heard suffix that re-uses each site's shipped — for
+                                                P1 / P7 owner-ratified — in-flight word (", sending code" /
+                                                ", verifying" / ", starting" / ", importing" / ", searching" /
+                                                ", adding"), chosen OVER the shipped six label swaps (a swap
+                                                replaced the whole accessible name and changed the control's
+                                                width under the finger) and OVER minting new suffix words (Q6(b)).
+                                                Owner pick O16a extended by the Q3 ruling (88.9-RULINGS.md,
+                                                2026-11-08). Each site's own latch stays the refusal; the native
+                                                validity gates (rule of KIND) are unchanged. */}
                                             <Button
                                                 variant="primary"
                                                 onClick={handleSaveAndVerify}
                                                 disabled={!phoneValidation.valid}
                                                 aria-disabled={phoneState === 'saving' ? 'true' : undefined}
                                                 className="whitespace-nowrap"
+                                                busy={phoneState === 'saving'}
+                                                busySuffix=", sending code"
                                             >
-                                                {phoneState === 'saving' ? 'Sending code...' : 'Save & Verify'}
+                                                Save & Verify
                                             </Button>
                                         </div>
                                     )}
@@ -2734,7 +2891,9 @@ function Profile(){
                                                     rule of POSITION (`DECISION Phase 88.6-22`,
                                                     src/app/components/FriendInvitePanel.js ("the rule of KIND + the rule of POSITION")): this is the control the user
                                                     just pressed, so it keeps focus and a second press is
-                                                    refused. Its label while checking is copy row P1.
+                                                    refused. Its label while checking stays Verify; copy row
+                                                    P1's word is heard as the busy suffix (AMENDED Phase
+                                                    88.9-46 rule 1 B32, owner pick O16a + Q3).
                                                     REJECTED: (a) native `disabled` while checking — it
                                                     drops focus to <body> in a real browser; (b) folding
                                                     the precondition into `aria-disabled` — Save & Verify
@@ -2743,8 +2902,9 @@ function Profile(){
                                                     from that field (no form, no key handler on it), so it
                                                     is not the activated control.
                                                     Disclosed visible delta: while checking, Verify now
-                                                    shows the P1 label on the gated primary colour pair;
-                                                    before, nothing changed on screen. No call-site
+                                                    shows the house spinner beside its kept label on the
+                                                    gated primary colour pair (rule 1, 88.9-46); before,
+                                                    nothing changed on screen. No call-site
                                                     opacity or cursor class: both come from the
                                                     `aria-disabled` rules in globals.css. Dropping either
                                                     half of the pair is a decision, not a cleanup. */}
@@ -2754,8 +2914,10 @@ function Profile(){
                                                     disabled={verificationCode.length !== 6}
                                                     aria-disabled={checkingCode ? 'true' : undefined}
                                                     className="whitespace-nowrap"
+                                                    busy={checkingCode}
+                                                    busySuffix={VERIFY_CODE_BUSY_SUFFIX}
                                                 >
-                                                    {checkingCode ? VERIFY_CODE_IN_FLIGHT_LABEL : 'Verify'}
+                                                    Verify
                                                 </Button>
                                                 {/* DECISION Phase 88.6-17 (D-8): the cooldown gate is
                                                     `aria-disabled`, with the native `disabled` attribute
@@ -3045,6 +3207,23 @@ function Profile(){
                         below spells a utility in words. Converging these fills onto semantic tokens
                         is a look change and is out of this phase's contract.
 
+                        AMENDED Phase 88.9-32 (owner pick E4a, 88.9-PICKS-B4.json, 2026-11-06): this phase is that
+                        contract. The pressed arm of BOTH toggles is ONE token string (THEME_TOGGLE_PRESSED: the
+                        accent line border, the muted fill held through hover, the accent ink), chosen OVER the
+                        shipped raw pair — amber-500 on amber-50 in light (border 2.15 and fill 1.04 against the
+                        card, under 3:1) and amber-500 on purple-900 with white ink in dark. Measured: border vs
+                        card 3.19 light / 8.30 dark, ink on the muted fill 4.71 / 6.75 (tokenContrast 64, plan
+                        88.9-22). The raw-palette roster entry in btnCensus.test.tsx is deleted in the same commit;
+                        the label-size delta above stands. The weight cue lost in 88.6-17 is replaced by a check
+                        glyph (U+2713, aria-hidden, in the button's own ink) before the pressed button's label,
+                        with both buttons on one shared min width so the pair does not shift (owner ruling
+                        88.9-RULINGS.md R-P3a, 2026-11-08): pressed vs unpressed measure fill 1.50, border 1.38,
+                        ink 1.48 in light, colour alone without it (WCAG 1.4.1), so the sentence above that border
+                        and fill still carry selection no longer holds on its own. Chosen OVER a thicker inset edge
+                        on the pressed arm (option b, a 1px-vs-2px step that may not read at phone size) and OVER
+                        font-bold (option a, dead under the unlayered .btn font-weight). Removing the glyph or the
+                        shared width is a decision, not a cleanup. DECISION Phase 88-10 (aria-pressed) is unchanged.
+
                         `enabled-hover:bg-*` pins the SELECTED arm's fill through hover: ghost's base
                         carries `enabled-hover:bg-surface-hover`, which would otherwise wash the amber
                         (and the purple) on hover — a fill change P6 forbids. */}
@@ -3054,12 +3233,13 @@ function Profile(){
                                 variant="ghost"
                                 onClick={() => setTheme('light')}
                                 aria-pressed={resolvedTheme === 'light'}
-                                className={`border transition-colors ${
+                                className={`border min-w-32 transition-colors ${
                                     resolvedTheme === 'light'
-                                        ? 'border-amber-500 bg-amber-50 enabled-hover:bg-amber-50 text-content-primary'
+                                        ? THEME_TOGGLE_PRESSED
                                         : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
+                                {resolvedTheme === 'light' && <span aria-hidden="true">{'\u2713'}</span>}
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                                 </svg>
@@ -3069,12 +3249,13 @@ function Profile(){
                                 variant="ghost"
                                 onClick={() => setTheme('dark')}
                                 aria-pressed={resolvedTheme === 'dark'}
-                                className={`border transition-colors ${
+                                className={`border min-w-32 transition-colors ${
                                     resolvedTheme === 'dark'
-                                        ? 'border-amber-500 bg-purple-900 enabled-hover:bg-purple-900 text-white'
+                                        ? THEME_TOGGLE_PRESSED
                                         : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
+                                {resolvedTheme === 'dark' && <span aria-hidden="true">{'\u2713'}</span>}
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                                 </svg>
@@ -3591,18 +3772,20 @@ function Profile(){
                                             the form's close then loses it again; (b) two latches — they would split
                                             a state the page deliberately keeps as one; (c) focusing the new rows — a
                                             multi-day save creates several, so "the new row" is not one element, and
-                                            the success toast already announces the outcome; (d) minting a heading or
+                                            the root announcer (src/components/ui/announcer.ts) already speaks the outcome since 88.9-24; (d) minting a heading or
                                             any text (D-05, D-31).
                                             Disclosed visible delta: while a save runs the button shows the gated
                                             primary pair instead of the half-strength wash. Dropping either half of
-                                            the pair is a decision, not a cleanup. */}
+                                            the pair is a decision, not a cleanup.
+                                            AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (names "Save Schedule, saving" and "Save Override, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word). The aria-disabled gate and the savePatternInFlightRef latch are unchanged. */}
                                         <Button
                                             variant="primary"
                                             onClick={handleCreateRecurringPattern}
                                             aria-disabled={savingPattern ? 'true' : undefined}
+                                            busy={savingPattern}
                                             className="w-full focus-visible:ring-offset-surface-page"
                                         >
-                                            {savingPattern ? 'Saving...' : 'Save Schedule'}
+                                            Save Schedule
                                         </Button>
                                     </div>
                                 </div>
@@ -3643,7 +3826,7 @@ function Profile(){
                             ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
                                     state={patternsError}
-                                    title="Couldn't load your schedules"
+                                    thing="your schedules"
                                     reportSubject="Couldn't load availability patterns on /userProfile"
                                     reportContext="userProfile — availability schedules tab"
                                     focusTarget={schedulesHeadingRef}
@@ -3783,9 +3966,10 @@ function Profile(){
                                             variant="primary"
                                             onClick={handleCreateSpecificOverride}
                                             aria-disabled={savingPattern ? 'true' : undefined}
+                                            busy={savingPattern}
                                             className="w-full focus-visible:ring-offset-surface-page"
                                         >
-                                            {savingPattern ? 'Saving...' : 'Save Override'}
+                                            Save Override
                                         </Button>
                                     </div>
                                 </div>
@@ -3801,7 +3985,7 @@ function Profile(){
                             ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
                                     state={patternsError}
-                                    title="Couldn't load your overrides"
+                                    thing="your overrides"
                                     reportSubject="Couldn't load availability patterns on /userProfile"
                                     reportContext="userProfile — specific overrides tab"
                                     focusTarget={overridesHeadingRef}
@@ -3883,15 +4067,18 @@ function Profile(){
                         Disclosed visible delta: while resetting, Replay shows the DR-C gated primary
                         colour pair instead of the 50% native-disabled wash, and keeps that pair
                         while the tour is open (under the tour's scrim) — the same disclosure
-                        src/app/components/FriendInvitePanel.js ("VISIBLE DELTA, disclosed rather than discovered") makes. The in-flight label is existing text, not
-                        new copy (D-31 not triggered). Restoring the native attribute or dropping
-                        the latch is a decision, not a cleanup. */}
+                        src/app/components/FriendInvitePanel.js ("VISIBLE DELTA, disclosed rather than discovered") makes. The in-flight cue is the kept label
+                        with the house spinner (rule 1, 88.9-46 B33; the heard suffix re-uses the
+                        retired word, so D-31 is not triggered). Restoring the native attribute or
+                        dropping the latch is a decision, not a cleanup. */}
                     <Button
                         variant="primary"
                         onClick={handleReplayTutorial}
                         aria-disabled={replayingTutorial || showTutorial ? 'true' : undefined}
+                        busy={replayingTutorial}
+                        busySuffix=", starting"
                     >
-                        {replayingTutorial ? 'Starting...' : 'Replay Tutorial'}
+                        Replay Tutorial
                     </Button>
                 </div>
 
@@ -3971,16 +4158,27 @@ function Profile(){
                                 The username FIELD stays natively disabled while importing: a sibling (D-35),
                                 not the pressed control. Disclosed visible delta: while importing, the button
                                 shows the gated primary pair instead of the 50% wash. Dropping either half of
-                                the pair is a decision, not a cleanup. */}
+                                the pair is a decision, not a cleanup.
+                                AMENDED Phase 88.9-55 (R-C8, owner pick A, 2026-11-10): while the identity read is PENDING the
+                                opener is natively disabled beside the blank-username half (availability is validity's kind),
+                                chosen OVER an aria-disabled identity gate (it would keep a dead control focusable) and OVER
+                                opening the dialog before identity lands (option B) — on a fresh load an enabled opener's press
+                                silently toasted and opened nothing, the mechanism behind three CI flakes; the brief load window
+                                (the button is out of the tab order while identity loads, typically well under a second) is
+                                ACCEPTED because the alternative is a control that looks live and does nothing; the FAILED
+                                identity arm keeps the toast branch (an errored read must not disable the control forever; the
+                                no-row banners own that screen); the e2e helper's toBeEnabled wait is now a true positive signal. */}
                             <Button
                                 ref={importButtonRef}
                                 variant="primary"
                                 onClick={handleImportCollectionClick}
-                                disabled={!bggUsername.trim()}
+                                disabled={!bggUsername.trim() || (!selfUuid && selfQuery.isPending)}
                                 aria-disabled={importingCollection ? 'true' : undefined}
                                 className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+                                busy={importingCollection}
+                                busySuffix=", importing"
                             >
-                                {importingCollection ? 'Importing...' : 'Import Collection'}
+                                Import Collection
                             </Button>
                         </div>
                         {/* DECISION Phase 88.6.1-60 (Req 8 / D-22, BGG import outcome): the outcome box IS a
@@ -4061,7 +4259,8 @@ function Profile(){
                                     browser); (b) disabling the field while searching (typing is legitimate;
                                     only a second request is not); (c) a latest-request-wins counter (a second
                                     mechanism on a control the house rule already latches, and the button
-                                    already says Searching...). Disclosed visible delta: while searching, the
+                                    is already busy — label kept, house spinner beside it, rule 1 88.9-46
+                                    B35). Disclosed visible delta: while searching, the
                                     gated primary pair instead of the 50% wash. Dropping either half of the
                                     pair is a decision, not a cleanup. */}
                                 <Button
@@ -4070,8 +4269,10 @@ function Profile(){
                                     disabled={!bggSearchQuery.trim()}
                                     aria-disabled={bggSearching ? 'true' : undefined}
                                     className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+                                    busy={bggSearching}
+                                    busySuffix=", searching"
                                 >
-                                    {bggSearching ? 'Searching...' : 'Search'}
+                                    Search
                                 </Button>
                             </div>
                             
@@ -4097,10 +4298,11 @@ function Profile(){
                                                     on a control nobody pressed).
                                                     WHY: there was no in-flight guard at all; a double tap sent
                                                     two imports and two adds and toasted twice.
-                                                    LABEL: `Adding...` while in flight (copy row P7,
-                                                    owner-ratified 2026-10-05); the name follows the visible
-                                                    label. Swept: no unit test or e2e spec looked this button up
-                                                    by name before this plan.
+                                                    LABEL: kept while in flight; copy row P7's word (owner-ratified
+                                                    2026-10-05) is heard as the ", adding" suffix beside the house
+                                                    spinner (AMENDED Phase 88.9-46 rule 1 B36), so the name is the
+                                                    label plus the suffix. Swept: no unit test or e2e spec looked
+                                                    this button up by name before this plan.
                                                     REJECTED: (a) native `disabled` on the pressed button (it
                                                     drops focus in a real browser); (b) a per-game latch letting
                                                     two different adds race (the panel closes on the first
@@ -4116,8 +4318,10 @@ function Profile(){
                                                     disabled={isAlreadyOwned || (addingBggId !== null && !isAddingThis)}
                                                     aria-disabled={isAddingThis ? 'true' : undefined}
                                                     className="whitespace-nowrap shrink-0"
+                                                    busy={isAddingThis}
+                                                    busySuffix={ADDING_TO_COLLECTION_BUSY_SUFFIX}
                                                 >
-                                                    {isAlreadyOwned ? 'Already Owned' : isAddingThis ? ADDING_TO_COLLECTION_LABEL : 'Add to Collection'}
+                                                    {isAlreadyOwned ? 'Already Owned' : 'Add to Collection'}
                                                 </Button>
                                             </div>
                                         );
@@ -4201,7 +4405,7 @@ function Profile(){
                            guard acts on an unpressed withdrawal, not on a Remove.
                            Changing this order is a decision, not a cleanup. */
                         ownedGamesError ? (
-                            <FetchErrorBanner state={collectionErrorState} title={COLLECTION_LOAD_FAILED_TITLE} reportContext="userProfile — game collection fetch" focusTarget={collectionHeadingRef} />
+                            <FetchErrorBanner state={collectionErrorState} thing={COLLECTION_LOAD_FAILED_THING} reportContext="userProfile — game collection fetch" focusTarget={collectionHeadingRef} />
                         ) : (
                             <p className="text-content-secondary">Loading your collection...</p>
                         )
@@ -4211,13 +4415,15 @@ function Profile(){
                         {ownedGames.length > 0 ? (
                         <div aria-busy={loadingGames || undefined} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {ownedGames.map((game) => (
-                                // D49-b (owner ruling 2026-09-09, option i): `hover:shadow-md` here was
-                                // Tailwind's INLINED built-in scale, not the theme tier, so it snaps to
-                                // `hover:shadow-theme-md`. Plain `hover:` and not plan 05's
-                                // `enabled-hover:` — this is a card `div`, not a `.btn`. The snap
-                                // changes hue (warm tint in light, purple hairline plus glow in dark);
-                                // that is disclosed, not accidental.
-                                <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-theme-md transition-shadow">
+                                // D49-b (owner ruling 2026-09-09, option i): the inlined built-in md hover shadow was
+                                // snapped to the theme tier in 88.6, D49-b (a plain hover variant, not plan 05's
+                                // enabled-hover one, because this is a card div and not a .btn; the snap changed hue).
+                                // AMENDED Phase 88.9-32 (owner pick E3a, 88.9-PICKS-B4.json, 2026-11-06): the card carries
+                                // NO hover shadow and no shadow transition, chosen OVER the theme-tier md hover lift D49-b
+                                // shipped — the card is not a control (no click target of its own), so a hover lift
+                                // promised an action that does not exist. Re-adding a hover shadow here is a decision,
+                                // not a cleanup.
+                                <div key={game.id} className="border border-line rounded-lg p-4">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
                                             <Heading level={3} size="body" className="text-content-primary">{game.name}</Heading>
@@ -4268,9 +4474,10 @@ function Profile(){
                                                 `removeGameGate.isArmed(...)` call four lines up. It is
                                                 therefore carried in WEIGHT_ROSTER instead, which is why
                                                 that entry floors at FIVE and not at the armed roster's
-                                                four. Converting it is a decision, not a cleanup. */}
+                                                four. Converting it is a decision, not a cleanup.
+                                                AMENDED Phase 88.9-23 (F9b): the sizer reserves the countdown label, the widest armed state. */}
                                             <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
-                                                Remove
+                                                Remove (3)
                                             </span>
                                             <span className="col-start-1 row-start-1">
                                                 {removeGameGate.labelFor(game.id, '×')}
@@ -4341,5 +4548,11 @@ function Profile(){
         )
     );
 }
+
+// R-C2 (88.9-56): the latched session-dead source for the profile's no-row 401 banner — an ApiError
+// (the banner derives its code through instanceof) and a refetch that does nothing (a 401 is not
+// retried here; the banner's action is Sign in) — the same pair the home page builds for its groups report.
+const SESSION_DEAD_ERROR = new ApiError('Unauthorized', 'unauthorized', 401);
+const resolveNothing = () => Promise.resolve(undefined);
 
 export default Profile;

@@ -436,7 +436,12 @@ describe('CreateEvent + real EventScheduler — the Phase 66-01 controlled round
     fireEvent.click(visualToggle());
 
     await waitFor(() => expect(screen.queryByText('Selected Time:')).not.toBeInTheDocument());
-    expect(screen.getByText(/select a time slot for your event/i)).toBeInTheDocument();
+    // AMENDED Phase 88.9-41 (S1a): the at-rest prompt is now the range caption above the grid
+    // (desktop arm under jsdom's default matchMedia); with the field cleared it is VISIBLE
+    // again — the p never unmounts, it drops its `invisible` arm (R-P5).
+    const caption = screen.getByText(/pick a time range/i);
+    expect(caption).toBeInTheDocument();
+    expect(caption).not.toHaveClass('invisible');
   });
 });
 

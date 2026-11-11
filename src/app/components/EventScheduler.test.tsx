@@ -299,9 +299,14 @@ describe('EventScheduler — controlled selectedSlot renders the summary panel',
   });
 
   it('shows the drag-to-select prompt instead when nothing is selected', () => {
+    // AMENDED Phase 88.9-41 (S1a): the prompt is now the desktop range caption above the grid
+    // (jsdom's default matchMedia answers false, so this is the desktop arm); it is visible
+    // (no `invisible` class) while nothing is selected.
     render(<EventScheduler initialDate={WEEK_N} />);
     expect(screen.queryByText('Selected Time:')).not.toBeInTheDocument();
-    expect(screen.getByText(/select a time slot for your event/i)).toBeInTheDocument();
+    const caption = screen.getByText(/pick a time range/i);
+    expect(caption).toBeInTheDocument();
+    expect(caption).not.toHaveClass('invisible');
   });
 });
 
@@ -1059,8 +1064,9 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
   // The fork is a matchMedia state fork precisely so this is answerable at all — see the
   // DECISION markers in `src/lib/hooks/usePhoneViewport.ts` (DECISION Phase 88.6.1-09 /
   // DECISION Phase 88.1-11).
-  const PHONE_COPY = 'Tap and hold on a day to pick a time.';
-  const DESKTOP_COPY = 'Click and drag on the calendar to select a time slot for your event.';
+  // 88.9 S1a (owner pick, 88.9-PICKS-B8C.json): the prompt is a one-line caption ABOVE the grid naming the range.
+  const PHONE_COPY = 'Tap and hold a time, then drag to pick how long';
+  const DESKTOP_COPY = 'Click and drag to pick a time range';
 
   it('says tap-and-hold at md and below', () => {
     const restore = stubMatchMedia({ name: 'phone', hoverNone: true, maxWidth: 375 });
@@ -1073,7 +1079,7 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
     }
   });
 
-  it('keeps the shipped click-and-drag sentence above md', () => {
+  it('says click-and-drag a range above md', () => {
     const restore = stubMatchMedia({ name: 'desktop', hoverNone: false, maxWidth: 1280 });
     try {
       render(<EventScheduler initialDate={WEEK_N} />);
@@ -1084,11 +1090,15 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
     }
   });
 
-  it('shows no prompt at all once a slot is selected, on either arm', () => {
-    for (const viewport of [
-      { name: 'phone', hoverNone: true, maxWidth: 375 },
-      { name: 'desktop', hoverNone: false, maxWidth: 1280 },
-    ]) {
+  it('hides the caption once a slot is selected but keeps its line, on either arm', () => {
+    // R-P5 (owner ruling 2026-11-08, option B): the caption's p stays MOUNTED after the commit,
+    // `invisible` + aria-hidden, so its line box is reserved and the grid does not move. jsdom's
+    // queryByText still finds an invisible node, so the old "not in the document" read is amended
+    // to the kept-but-hidden shape; the OTHER arm's string is still absent.
+    for (const [viewport, own, other] of [
+      [{ name: 'phone', hoverNone: true, maxWidth: 375 }, PHONE_COPY, DESKTOP_COPY],
+      [{ name: 'desktop', hoverNone: false, maxWidth: 1280 }, DESKTOP_COPY, PHONE_COPY],
+    ] as const) {
       const restore = stubMatchMedia(viewport);
       try {
         render(
@@ -1097,8 +1107,55 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
             selectedSlot={{ start: new Date(2026, 6, 22, 19, 0, 0), end: new Date(2026, 6, 22, 21, 30, 0) }}
           />
         );
-        expect(screen.queryByText(PHONE_COPY)).not.toBeInTheDocument();
-        expect(screen.queryByText(DESKTOP_COPY)).not.toBeInTheDocument();
+        const caption = screen.getByText(own);
+        expect(caption.tagName).toBe('P');
+        expect(caption).toHaveClass('invisible');
+        expect(caption).toHaveAttribute('aria-hidden', 'true');
+        expect(screen.queryByText(other)).not.toBeInTheDocument();
+      } finally {
+        restore();
+        cleanup();
+      }
+    }
+  });
+
+  it('S1a (88.9): the range caption sits above the grid and names the range', () => {
+    // Owner pick S1a (88.9-PICKS-B8C.json, page 8c): ONE plain 14px caption ABOVE the strip-and-grid
+    // block, no box, no padding, naming the RANGE on each device arm. Then the commit as the parent
+    // performs it (EventScheduler is controlled: `onTimeSelected` reports the range and the parent
+    // passes it back as `selectedSlot`): the SAME p survives, now `invisible` + aria-hidden (R-P5).
+    // jsdom has no layout, so the same-node read is the offsetTop-independent proof that the line
+    // box is kept and the grid does not move.
+    const GRID_NAME = 'Group availability by day and time';
+    for (const [viewport, own] of [
+      [{ name: 'phone', hoverNone: true, maxWidth: 375 }, PHONE_COPY],
+      [{ name: 'desktop', hoverNone: false, maxWidth: 1280 }, DESKTOP_COPY],
+    ] as const) {
+      const restore = stubMatchMedia(viewport);
+      try {
+        const { rerender } = render(<EventScheduler initialDate={WEEK_N} />);
+        const caption = screen.getByText(own);
+        expect(caption.tagName).toBe('P');
+        expect(caption).toHaveClass('text-sm');
+        expect(caption).toHaveClass('text-content-secondary');
+        expect(caption).not.toHaveClass('p-4');
+        expect(caption).not.toHaveClass('invisible');
+        expect(caption).not.toHaveAttribute('aria-hidden');
+        expect(caption.closest('.bg-surface-page')).toBeNull();
+        const grid = screen.getByRole('grid', { name: GRID_NAME });
+        expect(caption.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+        rerender(
+          <EventScheduler
+            initialDate={WEEK_N}
+            selectedSlot={{ start: new Date(2026, 6, 22, 19, 0, 0), end: new Date(2026, 6, 22, 21, 30, 0) }}
+          />
+        );
+        const kept = screen.getByText(own);
+        expect(kept).toBe(caption);
+        expect(kept).toHaveClass('invisible');
+        expect(kept).toHaveAttribute('aria-hidden', 'true');
+        expect(screen.getByRole('grid', { name: GRID_NAME })).toBeInTheDocument();
       } finally {
         restore();
         cleanup();
@@ -1111,8 +1168,8 @@ describe('EventScheduler — the viewport fork reads the SHARED hook (88.6.1-09,
   // Each arm sets the hook's answer AGAINST the media stub, so it can pass only if the hook is
   // the component's sole viewport input: a component that read the media query itself would
   // follow the stub and render the other arm. Same bytes as the prompt describe's constants.
-  const PHONE_COPY = 'Tap and hold on a day to pick a time.';
-  const DESKTOP_COPY = 'Click and drag on the calendar to select a time slot for your event.';
+  const PHONE_COPY = 'Tap and hold a time, then drag to pick how long';
+  const DESKTOP_COPY = 'Click and drag to pick a time range';
 
   afterEach(() => {
     viewportOverride.value = undefined;

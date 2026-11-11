@@ -4,7 +4,7 @@
 // a regression that keeps the attribute strings but breaks the handler, drops the
 // RSVP suffix from the name, or leaks the keypress into the day cell reds here.
 import * as React from 'react';
-import { render, screen, cleanup, act, within } from '@testing-library/react';
+import { render, screen, cleanup, act, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CalendarMonthView from './CalendarMonthView';
@@ -93,7 +93,7 @@ describe('CalendarMonthView compact tile — keyboard + accessible name (88.3-cr
  * THE INVARIANT IS PER RENDERED **GRID**, NOT PER MONTH, and neither half is gated on
  * `isCurrentMonth`. `isCurrentDay` is computed from the date ALONE, and the cell's ground
  * ternary awards the today treatment BEFORE the adjacent-month branch is reached (the adjacent
- * page-ground arm comes after the today and full-variant past arms, 88.9 A4b). `getDaysInMonth` returns 42 cells including adjacent-month days,
+ * page-ground arm comes straight after the today arm, its full-variant past case nested inside it, 88.9 A4b, reordered by 88.9-28 C3). `getDaysInMonth` returns whole weeks (28, 35 or 42 cells, CS-05) including any adjacent-month days,
  * so a grid whose OVERFLOW contains today already renders that overflow cell tinted as today.
  * Gating either half on `isCurrentMonth` would desync the pair — and nothing in this suite
  * asserted the pair before this plan.
@@ -110,7 +110,7 @@ describe('CalendarMonthView compact tile — keyboard + accessible name (88.3-cr
  */
 describe('CalendarMonthView — aria-current="date" is per rendered GRID (88.6-40, W41)', () => {
   // 1 September 2031. August 2031 starts on a Friday, so `getDaysInMonth(August)`'s 42-cell
-  // window runs Sun 27 Jul -> Sat 6 Sep and contains 1 September in its OVERFLOW. That is the
+  // window (a six-row month under CS-05) runs Sun 27 Jul -> Sat 6 Sep and contains 1 September in its OVERFLOW. That is the
   // case which distinguishes a per-GRID implementation from an `isCurrentMonth`-gated one.
   const PINNED_TODAY = new Date(2031, 8, 1, 12, 0, 0, 0);
 
@@ -177,7 +177,7 @@ describe('CalendarMonthView — aria-current="date" is per rendered GRID (88.6-4
     expect(cells.indexOf(tinted[0])).toBeGreaterThan(lastOfMonth);
   });
 
-  it('W41-3. a grid whose FULL 42-day window contains no today carries the attribute ZERO times', () => {
+  it('W41-3. a grid whose FULL rendered window contains no today carries the attribute ZERO times', () => {
     // Two months away, deliberately — "a month with no today" is satisfiable by an overflow day
     // and would make this arm vacuous.
     const { container } = renderGrid(new Date(2031, 10, 1, 12, 0, 0, 0)); // November 2031
@@ -246,7 +246,7 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
   it('A4b (88.9): an adjacent-month cell is undimmed on the page ground and nothing in it carries the mute', () => {
     // Compact grid, August 2031: 3 September sits in the trailing overflow and holds an event.
     const { days, cells } = renderAt(new Date(2031, 7, 1, 12, 0, 0, 0), 'compact', [eventOn('evt-adj', '2031-09-03', 'Azul')]);
-    expect(cells).toHaveLength(42);
+    expect(cells, 'August 2031 is a six-row month under CS-05 (starts on a Friday, 31 days)').toHaveLength(42);
     const i = days.findIndex((c) => !c.isCurrentMonth && c.date.getMonth() === 8 && c.date.getDate() === 3);
     expect(i).toBeGreaterThan(-1);
     const cell = cells[i];
@@ -265,7 +265,7 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
   it('A4b (88.9): a clickable PAST adjacent cell on the full grid keeps the past treatment — page ground, no hover ground', () => {
     // Full grid, September 2031: 31 August is the leading overflow day, already past, and holds an
     // event (so it is cellClickable). The no-hover half is the ARM-ORDER guard: green before and
-    // after this plan, red only if the adjacent arm is placed ahead of the full-variant past arm.
+    // after this plan; since 88.9-28 C3 the adjacent arm comes straight after the today arm and nests the full-variant past case, so this half reds only if that nested past case is lost.
     const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', [eventOn('evt-past', '2031-08-31', 'Azul')]);
     const i = days.findIndex((c) => !c.isCurrentMonth && c.date.getMonth() === 7 && c.date.getDate() === 31);
     expect(i).toBeGreaterThan(-1);
@@ -300,7 +300,9 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
     const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', [eventOn('evt-past-cm', '2031-09-10', 'Azul')]);
     const cell = cellOn(days, cells, 8, 10);
     expect(within(cell).getByText('Azul')).toBeTruthy();
-    expect(cell.classList.contains('bg-surface-page')).toBe(true);
+    // AMENDED Phase 88.9-28 (C3): a full-grid past this-month cell sits on bg-surface-tile-past
+    // (owner pick C3), chosen OVER the page ground this line read before; the pointer half is unchanged.
+    expect(cell.classList.contains('bg-surface-tile-past')).toBe(true);
     expect(cell.classList.contains('cursor-pointer')).toBe(true);
   });
 
@@ -315,7 +317,220 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
     vi.setSystemTime(new Date(2031, 8, 15, 12, 0, 0, 0));
     const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', []);
     const cell = cellOn(days, cells, 8, 10);
-    expect(cell.classList.contains('bg-surface-page')).toBe(true);
+    // AMENDED Phase 88.9-28 (C3): the past this-month ground is bg-surface-tile-past now, as in (b).
+    expect(cell.classList.contains('bg-surface-tile-past')).toBe(true);
     expect(cell.classList.contains('cursor-pointer')).toBe(false);
+  });
+});
+
+// 88.9-28 round-2 look pins: N1 (month nav), C3 (soft tiles), C8a (weekday 12/700), E1a (no
+// visible compact count), F7a (light image arm) and D5a/O18a (guest edge). Same pinned clock as
+// the A4b describe above: 1 September 2031, a Monday.
+describe('CalendarMonthView — round-2 look (88.9-28)', () => {
+  const PINNED_TODAY = new Date(2031, 8, 1, 12, 0, 0, 0);
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(PINNED_TODAY);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  type GridOpts = {
+    anchor?: Date;
+    variant: 'compact' | 'full';
+    events?: unknown[];
+    viewerDbUserId?: string;
+    onNavigateMonth?: (delta: number) => void;
+    onGoToday?: () => void;
+    viewSwitch?: React.ReactNode;
+  };
+  function renderGrid({ anchor = new Date(2031, 8, 1, 12, 0, 0, 0), variant, events = [], viewerDbUserId, onNavigateMonth = vi.fn(), onGoToday = vi.fn(), viewSwitch }: GridOpts) {
+    const days = getDaysInMonth(anchor);
+    const out = render(
+      <CalendarMonthView
+        days={days}
+        activeEvents={events}
+        currentDate={anchor}
+        variant={variant}
+        onDayClick={vi.fn()}
+        onEventClick={vi.fn()}
+        onNavigateMonth={onNavigateMonth}
+        onGoToday={onGoToday}
+        monthNames={MONTHS}
+        tzLegend={null}
+        viewerDbUserId={viewerDbUserId}
+        viewSwitch={viewSwitch}
+      />,
+    );
+    const grids = out.container.querySelectorAll('.grid.grid-cols-7');
+    return {
+      days,
+      weekdays: Array.from(grids[0].children) as HTMLElement[],
+      cells: Array.from(grids[1].children) as HTMLElement[],
+    };
+  }
+  const tokens = (el: Element) => el.className.split(/\s+/).filter(Boolean);
+
+  it('N1 (88.9): icon-only month nav with the accessible names Previous month / Next month, one-line title, Today pill', () => {
+    for (const variant of ['full', 'compact'] as const) {
+      const onNavigateMonth = vi.fn();
+      const onGoToday = vi.fn();
+      renderGrid({ variant, onNavigateMonth, onGoToday });
+      const prev = screen.getByRole('button', { name: 'Previous month' });
+      const next = screen.getByRole('button', { name: 'Next month' });
+      for (const [label, btn] of [['Previous month', prev], ['Next month', next]] as const) {
+        expect((btn.textContent ?? '').trim(), `${variant}: ${label} carries visible text`).toBe('');
+        for (const t of ['btn-icon-square', 'min-h-11', 'min-w-11']) {
+          expect(tokens(btn), `${variant}: ${label} lacks ${t}`).toContain(t);
+        }
+      }
+      fireEvent.click(prev);
+      expect(onNavigateMonth).toHaveBeenLastCalledWith(-1);
+      fireEvent.click(next);
+      expect(onNavigateMonth).toHaveBeenLastCalledWith(1);
+      const heading = screen.getByRole('heading', { level: 3, name: 'September 2031' });
+      for (const t of ['whitespace-nowrap', 'truncate', 'text-ellipsis']) {
+        expect(tokens(heading), `${variant}: the month title clips (${t})`).not.toContain(t);
+      }
+      expect(heading.className, `${variant}: the month title clips (line-clamp)`).not.toMatch(/line-clamp-/);
+      fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+      expect(onGoToday).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: 'Go to Today' }), `${variant}: the retired Go to Today name is still rendered`).toBeNull();
+      cleanup();
+    }
+  });
+  it('N1 (88.9): the viewSwitch slot renders in the nav row beside the Today pill', () => {
+    // 88.9-39: EventCalendar passes the Month | List switch in; the nav row seats it next to Today.
+    for (const variant of ['full', 'compact'] as const) {
+      renderGrid({ variant, viewSwitch: <span data-testid="slot" /> });
+      const slot = screen.getByTestId('slot');
+      const today = screen.getByRole('button', { name: 'Today' });
+      expect(slot.parentElement, `${variant}: the slot and the Today pill share one parent`).toBe(today.parentElement);
+      cleanup();
+    }
+    // No slot passed: nothing extra renders beside Today.
+    renderGrid({ variant: 'full' });
+    expect(screen.queryByTestId('slot')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Today' })).toBeTruthy();
+  });
+  const cellOf = (days: { date: Date; isCurrentMonth: boolean }[], cells: HTMLElement[], month: number, date: number) => {
+    const i = days.findIndex((c) => c.date.getMonth() === month && c.date.getDate() === date);
+    expect(i).toBeGreaterThan(-1);
+    return cells[i];
+  };
+  const groundsOf = (el: Element) => tokens(el).filter((t) => /^bg-surface-/.test(t));
+
+  it('C3 (88.9): this-month tile / past / adjacent untiled', () => {
+    // Full grid, September 2031, today the 15th: 10 Sept is past, 20 Sept is future, 31 Aug and
+    // 2 Oct are the leading and trailing adjacent cells.
+    vi.setSystemTime(new Date(2031, 8, 15, 12, 0, 0, 0));
+    const { days, cells } = renderGrid({ variant: 'full' });
+    for (const cell of cells) {
+      expect(tokens(cell), 'every cell is radius 6px').toContain('rounded-md');
+      expect(tokens(cell), 'no cell keeps the old small radius').not.toContain('rounded-sm');
+      expect(tokens(cell), 'no cell keeps the old 1px line outline').not.toContain('border-line');
+      expect(tokens(cell).filter((t) => t === 'border'), 'every cell carries exactly one 1px border width').toHaveLength(1);
+      expect(groundsOf(cell), 'every cell carries exactly one ground').toHaveLength(1);
+    }
+    expect(groundsOf(cellOf(days, cells, 8, 20))).toEqual(['bg-surface-tile']);
+    expect(tokens(cellOf(days, cells, 8, 20))).toContain('border-transparent');
+    expect(groundsOf(cellOf(days, cells, 8, 10))).toEqual(['bg-surface-tile-past']);
+    for (const [month, date] of [[7, 31], [9, 2]] as const) {
+      const adjacent = cellOf(days, cells, month, date);
+      expect(groundsOf(adjacent), `adjacent ${month + 1}/${date} stays untiled on the page ground`).toEqual(['bg-surface-page']);
+    }
+    const today = cellOf(days, cells, 8, 15);
+    expect(groundsOf(today)).toEqual(['bg-surface-muted']);
+    expect(tokens(today)).toContain('border-line-accent');
+  });
+
+  it('C8a (88.9): weekday row 12/700', () => {
+    for (const variant of ['full', 'compact'] as const) {
+      const { weekdays } = renderGrid({ variant });
+      expect(weekdays).toHaveLength(7);
+      for (const cell of weekdays) {
+        expect(tokens(cell), `${variant}: weekday ${cell.textContent} is not 12px`).toContain('text-xs');
+        expect(tokens(cell), `${variant}: weekday ${cell.textContent} is not 700`).toContain('font-bold');
+        expect(tokens(cell), `${variant}: weekday ${cell.textContent} keeps the 14px size`).not.toContain('text-sm');
+      }
+      cleanup();
+    }
+  });
+
+  const rsvpEvent = {
+    id: 'evt-rsvp',
+    start_date: '2031-09-20T19:00:00',
+    Game: { name: 'Catan' },
+    Group: { name: 'Tuesday Crew', background_color: '#722f37' },
+    rsvp_summary: { yes: 3, maybe: 1, no: 2 },
+  };
+
+  it('E1a (88.9): compact tile carries no RSVP count', () => {
+    renderGrid({ variant: 'compact', events: [rsvpEvent] });
+    const tile = screen.getByRole('button', { name: "Catan - Tuesday Crew, 3 going, 1 maybe, 2 can't" });
+    for (const chip of ['3Y', '1M', '2N']) {
+      expect(within(tile).queryByText(chip), `the compact tile still renders the ${chip} count chip`).toBeNull();
+    }
+    expect((tile.textContent ?? '').trim()).toBe('Catan');
+  });
+
+  it("F7a (88.9): an image tile's light arm has no shadow and no stroke; its dark arm is unchanged", () => {
+    const imageEvent = {
+      ...rsvpEvent,
+      id: 'evt-image',
+      rsvp_summary: null,
+      Group: { name: 'Photo Crew', background_color: '#722f37', background_image_url: 'https://i.imgur.com/x.png' },
+    };
+    renderGrid({ variant: 'full', events: [imageEvent] });
+    const tile = screen.getByRole('button', { name: 'Catan - Photo Crew' });
+    expect(tile.style.getPropertyValue('--t-shadow-l'), 'light arm shadow').toBe('none');
+    expect(tile.style.getPropertyValue('--t-stroke-l'), 'light arm stroke').toBe('none');
+    expect(tile.style.getPropertyValue('--t-shadow'), 'dark arm shadow').toBe('2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)');
+    expect(tile.style.getPropertyValue('--t-stroke'), 'dark arm stroke').toBe('0.5px rgba(0, 0, 0, 0.9)');
+  });
+
+  it("D5a/O18a (88.9): a guest event's full tile carries the dashed amber edge, a member event's does not", () => {
+    // A synthetic viewer id (T-88.9-76): compared only, never rendered.
+    const VIEWER = '00000000-0000-4000-8000-000000000028';
+    const guestEvent = {
+      id: 'evt-guest',
+      start_date: '2031-09-20T19:00:00',
+      Game: { name: 'Azul' },
+      Group: { name: 'Guest Crew', background_color: null },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: true }],
+    };
+    const memberEvent = {
+      id: 'evt-member',
+      start_date: '2031-09-22T19:00:00',
+      Game: { name: 'Wingspan' },
+      Group: { name: 'Home Crew', background_color: null },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: false }],
+    };
+    renderGrid({ variant: 'full', events: [guestEvent, memberEvent], viewerDbUserId: VIEWER });
+    const guest = screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' });
+    for (const t of ['border-dashed', 'border-amber-700', 'dark:border-amber-500/70']) {
+      expect(tokens(guest), `the guest tile lacks ${t}`).toContain(t);
+    }
+    const member = screen.getByRole('button', { name: 'Wingspan - Home Crew' });
+    expect(tokens(member), 'a member tile is dashed').not.toContain('border-dashed');
+    cleanup();
+
+    // The compact tile gets neither the edge nor the word: its cue is the sheet row (88.9-39).
+    renderGrid({ variant: 'compact', events: [guestEvent], viewerDbUserId: VIEWER });
+    const compactTile = screen.getByRole('button', { name: 'Azul - Guest Crew' });
+    expect(tokens(compactTile), 'the compact guest tile is dashed').not.toContain('border-dashed');
+    cleanup();
+
+    // No viewer id: nothing is dashed and nothing says Guest.
+    renderGrid({ variant: 'full', events: [guestEvent, memberEvent] });
+    for (const name of ['Azul - Guest Crew', 'Wingspan - Home Crew']) {
+      expect(tokens(screen.getByRole('button', { name })), `${name} is dashed with no viewer id`).not.toContain('border-dashed');
+    }
   });
 });

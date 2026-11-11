@@ -103,6 +103,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import ManageMembers from './ManageMembers';
+import { CHIP_FILLS, chipFillIndex } from './MemberChipStack';
 import { groupsAPI, invitesAPI, friendshipsAPI } from '@/lib/api';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -513,5 +514,32 @@ describe('ManageMembers — the SECOND stacked instance in this file: the transf
       const el = document.querySelector(n.target.join(' '));
       expect(isFrameworkSourced(outer, el), `flagged node that is neither the outer dialog's content nor a Radix focus guard: ${n.target.join(' ')}`).toBe(true);
     }
+  });
+});
+
+// Phase 88.9-30 pin (round 2): owner pick D4a (88.9-PICKS-B3.json, votes-b3 v12 + chat 2026-11-06).
+describe('Phase 88.9-30 — D4a row chips in Manage Members', () => {
+  it('D4a (88.9): row chip — each active row starts with its 32px D1b chip', async () => {
+    renderManageMembers();
+    const dialog = await screen.findByRole('dialog');
+    await screen.findByText('Target');
+    for (const [name, id] of [
+      ['Owner', OWNER_UUID],
+      ['Target', TARGET_UUID],
+    ] as const) {
+      const row = screen
+        .getAllByText(name)
+        .map((el) => el.closest('[class*="hover:bg-surface-hover"]'))
+        .find(Boolean) as HTMLElement | undefined;
+      expect(row, `${name}: an active row`).toBeTruthy();
+      const container = row!.querySelector('.gap-3') as HTMLElement;
+      const chip = container.firstElementChild as HTMLElement;
+      expect(chip.tagName, `${name}: the chip opens the row`).toBe('SPAN');
+      expect(chip).toHaveAttribute('aria-hidden', 'true');
+      expect(chip).toHaveClass('h-8', 'w-8', 'text-white', CHIP_FILLS[chipFillIndex(id)]);
+    }
+    const pendBox = screen.getByText('Pend').closest('div.rounded-lg') as HTMLElement;
+    expect(pendBox.querySelector('[class*="bg-chip-"]'), 'a pending row carries no chip').toBeNull();
+    expect(await axe(dialog)).toHaveNoViolations();
   });
 });

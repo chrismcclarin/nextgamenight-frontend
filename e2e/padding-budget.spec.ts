@@ -223,7 +223,9 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
     // Anchor: the calendar body, NOT the identity header (the header is
     // already compliant and UI-SPEC-exempt — RESEARCH C-3). EventCalendar
     // renders its title as an <h2> inside the `card p-3 md:p-6` box
-    // (src/app/components/EventCalendar.js ("flex justify-between items-center mb-6")); groupHomePage passes title="Calendar"
+    // (src/app/components/EventCalendar.js ("const viewSwitch = showListView ?") sits in that same card
+    // branch); since 88.9-39 (CS-01) the h2 is sr-only — still in the DOM, still inside the card box,
+    // and the measured chain walks its ancestors, so the anchor holds. groupHomePage passes title="Calendar"
     // (src/app/groupHomePage/page.js ("const CALENDAR_TITLE =")).
     const anchor = page.getByRole('heading', { name: 'Calendar', exact: true });
     await expect(anchor).toBeVisible({ timeout: 15_000 });

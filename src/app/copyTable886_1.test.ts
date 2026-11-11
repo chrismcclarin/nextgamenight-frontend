@@ -58,7 +58,6 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'H5', text: 'Main', site: 'app/Header.js', kind: 'chunk' },
   // Notifications (D-30; N3-N6 passed as `fallback`, D-33 row 22)
   { id: 'N1', text: 'Loading notifications', site: 'app/components/NotificationBell.js', kind: 'chunk' },
-  { id: 'N2', text: 'Accepting...', site: 'app/components/NotificationBell.js', kind: 'chunk' },
   { id: 'N3', text: "We couldn't accept that invite. Please try again.", site: 'app/components/NotificationBell.js', kind: 'chunk' },
   { id: 'N4', text: "We couldn't decline that invite. Please try again.", site: 'app/components/NotificationBell.js', kind: 'chunk' },
   { id: 'N5', text: "We couldn't accept that friend request. Please try again.", site: 'app/components/NotificationBell.js', kind: 'chunk' },
@@ -72,18 +71,17 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'A2', text: '{day and time}, preferred / , if need be / , not selected', site: 'app/components/AvailabilityGrid.js', kind: 'concat', parts: ['preferred', 'if need be', 'not selected', ', '], code: ["return prefix + ', ' + word;"] },
   { id: 'A3', text: '{n} preferred, {m} if need be slots selected', site: 'app/components/AvailabilityGrid.js', kind: 'concat', parts: ['preferred', 'if need be', 'slots selected'], code: ["preferredCount + ' ' + PREFERENCE_WORD_PREFERRED + ', ' + ifNeedBeCount + ' ' + PREFERENCE_WORD_IF_NEED_BE + ' ' + SELECTION_SUMMARY_TAIL"] },
   { id: 'A4', text: 'All times cleared.', site: 'app/components/AvailabilityGrid.js', kind: 'chunk' },
-  { id: 'A5', text: 'Loading your availability…', site: 'app/components/AvailabilityForm.js', kind: 'chunk' },
   // Create Event
   { id: 'C1', text: '{day} at {time}, {n} of {total} available', site: 'app/components/heatmap/slotCellName.ts', kind: 'fragments', fragments: [', ', ' of ', ' available'] },
   { id: 'C2', text: '(required)', site: 'app/components/createEvent.js', kind: 'chunk' },
   // Event page
   { id: 'E1', text: "You don't have access to this event", site: 'app/gameDetail/page.js', kind: 'chunk' },
   { id: 'E2', text: "You may be signed in with a different account, or you haven't been invited yet.", site: 'app/gameDetail/page.js', kind: 'chunk' },
-  { id: 'E3', text: "We couldn't load this event", site: 'app/gameDetail/page.js', kind: 'chunk' },
+  // BANNER-01 (88.9-49, owner ruling short 2026-11-07): rows E3, FR1, N7, G7, G8 and P8 are concats — the title composes Couldn't load {thing} in FetchErrorBanner.tsx; E3 moved from We couldn't load this event
+  { id: 'E3', text: "Couldn't load this event", site: 'app/gameDetail/page.js', kind: 'concat', parts: ['this event'], code: ['thing={EVENT_LOAD_FAILED_THING}'] },
   { id: 'E4', text: 'Loading game night...', site: 'app/gameDetail/page.js', kind: 'chunk' },
   { id: 'E4b', text: 'Loading game night...', site: 'app/components/createEvent.js', kind: 'chunk' },
   { id: 'E5', text: 'To Date must be on or after From Date.', site: 'app/gameDetail/page.js', kind: 'chunk' },
-  { id: 'E6', text: 'Loading QR code...', site: 'app/components/shareGameQrCopy.ts', kind: 'chunk' },
   { id: 'E8', text: 'Updating suggestions…', site: 'app/components/BrowseMoreModal.js', kind: 'chunk' },
   { id: 'E9', text: "You haven't added any games to your collection yet.", site: 'app/components/BringGamePicker.js', kind: 'chunk' },
   { id: 'E10', text: "We couldn't load your games. Close this and try again.", site: 'app/components/BringGamePicker.js', kind: 'chunk' },
@@ -99,7 +97,6 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'G5', text: "Getting your group's plans...", site: 'app/groupPlanning/page.js', kind: 'chunk' },
   { id: 'G6', text: 'Some personal controls are unavailable.', site: 'components/ui/FetchErrorBanner.tsx', kind: 'chunk' },
   // Profile (P2 without a period, D-32 R7 — R7 is this row)
-  { id: 'P1', text: 'Verifying...', site: 'app/userProfile/page.js', kind: 'chunk' },
   { id: 'P2', text: 'We sent a code to {address}', site: 'app/components/EmailAddressSection.tsx', kind: 'fragments', fragments: ['We sent a code to ', ''] },
   // Feedback and Report Bug
   { id: 'F1', text: 'Screenshot attached: {file name}', site: 'app/components/FeedbackForm.js', kind: 'fragments', fragments: ['Screenshot attached: ', ''] },
@@ -119,23 +116,22 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'R4', text: 'Press and hold, then drag to schedule across the peak', site: 'app/components/tutorial/simulated/ScheduleDemo.js', kind: 'chunk' },
   { id: 'R5', text: 'Game detail page — event fetch', site: 'app/gameDetail/page.js', kind: 'chunk' },
   // D-47 (ratified 2026-10-05)
-  { id: 'FR1', text: "Couldn't load your friend requests", site: 'app/friends/page.js', kind: 'chunk' },
-  { id: 'N7', text: "Couldn't load your notifications", site: 'app/components/NotificationBell.js', kind: 'chunk' },
+  { id: 'FR1', text: "Couldn't load your friend requests", site: 'app/friends/page.js', kind: 'concat', parts: ['your friend requests'], code: ['thing={FRIEND_REQUESTS_LOAD_FAILED_THING}'] },
+  { id: 'N7', text: "Couldn't load your notifications", site: 'app/components/NotificationBell.js', kind: 'concat', parts: ['your notifications'], code: ['thing={NOTIFICATIONS_LOAD_FAILED_THING}'] },
   { id: 'N8a', text: 'Accept invite to {group}', site: 'app/components/NotificationBell.js', kind: 'fragments', fragments: ['Accept invite to ', ''] },
   { id: 'N8b', text: 'Decline invite to {group}', site: 'app/components/NotificationBell.js', kind: 'fragments', fragments: ['Decline invite to ', ''] },
   { id: 'N8c', text: 'Accept friend request from {name}', site: 'app/components/NotificationBell.js', kind: 'fragments', fragments: ['Accept friend request from ', ''] },
   { id: 'N8d', text: 'Decline friend request from {name}', site: 'app/components/NotificationBell.js', kind: 'fragments', fragments: ['Decline friend request from ', ''] },
   { id: 'R9', text: "We couldn't confirm your RSVP. Sign in and open the event to check your answer.", site: 'app/rsvp/[token]/page.js', kind: 'chunk' },
-  { id: 'G7', text: "Couldn't load this group", site: 'app/groupHomePage/page.js', kind: 'chunk' },
-  { id: 'G8', text: "Couldn't load this group's events", site: 'app/groupHomePage/page.js', kind: 'chunk' },
+  { id: 'G7', text: "Couldn't load this group", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ['this group'], code: ['thing={GROUP_LOAD_FAILED_THING}'] },
+  { id: 'G8', text: "Couldn't load this group's events", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ["this group's events"], code: ['thing={GROUP_EVENTS_LOAD_FAILED_THING}'] },
   { id: 'S1a', text: 'Sort order: ascending', site: 'app/components/GroupGamesList.js', kind: 'chunk' },
   { id: 'S1b', text: 'Sort order: descending', site: 'app/components/GroupGamesList.js', kind: 'chunk' },
-  // C7: `Creating...` is checked at createEvent.js only — createGroup.js ships its own.
-  { id: 'C7a', text: 'Creating...', site: 'app/components/createEvent.js', kind: 'chunk' },
-  { id: 'C7b', text: 'Updating...', site: 'app/components/createEvent.js', kind: 'chunk' },
-  { id: 'P7', text: 'Adding...', site: 'app/userProfile/page.js', kind: 'chunk' },
-  { id: 'P8', text: "Couldn't load your collection", site: 'app/userProfile/page.js', kind: 'chunk' },
-  { id: 'E15', text: "Couldn't load the game vote", site: 'app/components/BallotSection.js', kind: 'chunk' },
+  // C7 (88.9-24, save-feedback rule 1 + owner ruling Q6(b)): the in-flight word swap is retired; C7c is the Button default; createEvent keeps C7's ratified words as its suffix (", creating" / ", updating") and createGroup its own (", creating"), owner ruling Q6(b) "with its own verb".
+  { id: 'C7c', text: ', saving', site: 'components/ui/Button.tsx', kind: 'chunk' },
+  { id: 'P8', text: "Couldn't load your collection", site: 'app/userProfile/page.js', kind: 'concat', parts: ['your collection'], code: ['thing={COLLECTION_LOAD_FAILED_THING}'] },
+  // DECISION Phase 88.9-48 (BANNER-01): E15 is pinned as a concat (the thing at BallotSection) beside row BN1 (the composed form where the banner defines it), and P-82 keys on the naming attribute, chosen OVER keeping E15 a whole-sentence chunk at the site, which no longer types the sentence. Re-inlining a title at a mount is a decision, not a cleanup.
+  { id: 'E15', text: "Couldn't load the game vote", site: 'app/components/BallotSection.js', kind: 'concat', parts: ['the game vote'], code: ['thing={BALLOT_LOAD_FAILED_THING}'] },
   { id: 'B1', text: 'Some personal controls are still unavailable.', site: 'components/ui/FetchErrorBanner.tsx', kind: 'chunk' },
   { id: 'RF1', text: "Couldn't refresh. Showing what loaded earlier.", site: 'components/ui/FetchErrorBanner.tsx', kind: 'chunk' },
   { id: 'F7', text: 'Found {name}.', site: 'app/friends/page.js', kind: 'fragments', fragments: ['Found ', '.'] },
@@ -163,7 +159,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'P78', text: "{section}: Couldn't refresh. Showing what loaded earlier.", site: 'components/ui/FetchErrorBanner.tsx', kind: 'concat', parts: ["Couldn't refresh. Showing what loaded earlier."], code: ['`${sectionName}: `'] },
   { id: 'P78c', text: "Members: Couldn't refresh. Showing what loaded earlier.", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ['Members'], code: ['sectionName={MEMBERS_SECTION_NAME}'] },
   { id: 'P78a', text: "Calendar: Couldn't refresh. Showing what loaded earlier.", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ['Calendar'], code: ['sectionName={CALENDAR_TITLE}'] },
-  { id: 'P78b', text: "Group Games: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/GroupGamesList.js', kind: 'concat', parts: ['Group Games'], code: ['sectionName={GROUP_GAMES_TITLE}'] },
+  // AMENDED Phase 88.9-31 (owner pick T1, 88.9-PICKS-B7B.json): the games section is Play history.
+  { id: 'P78b', text: "Play history: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/GroupGamesList.js', kind: 'concat', parts: ['Play history'], code: ['sectionName={GROUP_GAMES_TITLE}'] },
   { id: 'P80', text: 'Loading calendar...', site: 'app/components/CalendarLoadingCard.tsx', kind: 'chunk' },
   // close ruling P-82 (owner 2026-10-18, "ratify all 5"): the report form's Where-line on five banners (88.6.1-91)
   { id: 'P82a', text: 'friends page — friend requests fetch', site: 'app/friends/page.js', kind: 'chunk' },
@@ -185,8 +182,6 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'CR3a', text: 'Refreshing responses…', site: 'app/components/ResponseDashboard.js', kind: 'chunk' },
   { id: 'CR3b', text: 'Responses refreshed.', site: 'app/components/ResponseDashboard.js', kind: 'chunk' },
   { id: 'CR4', text: "You're no longer a member of that group.", site: 'app/userHome/UserHomePage.js', kind: 'chunk' },
-  { id: 'CR5a', text: 'Disconnecting…', site: 'app/userProfile/page.js', kind: 'chunk' },
-  { id: 'CR5b', text: 'Promoting…', site: 'app/components/ManageMembers.js', kind: 'chunk' },
   { id: 'P78d', text: "Calendar: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/EventCalendar.js', kind: 'concat', parts: ['Calendar'], code: ['sectionName={CALENDAR_SECTION_NAME}'] },
   { id: 'P78e', text: "Groups: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/grouplist.js', kind: 'concat', parts: ['Groups'], code: ['sectionName={GROUPS_SECTION_NAME}'] },
   { id: 'P78f', text: "Upcoming game nights: Couldn't refresh. Showing what loaded earlier.", site: 'app/components/UpcomingEventsCard.js', kind: 'concat', parts: ['Upcoming game nights'], code: ['sectionName={UPCOMING_SECTION_NAME}'] },
@@ -197,28 +192,32 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   // Games to Bring re-entry ruling (owner 2026-10-21, deferred/phase-91.3.md; quick-261021-ffb)
   { id: 'GB1', text: 'Add games', site: 'app/components/BringSummary.js', kind: 'chunk' },
   { id: 'GB2', text: "No one has said what they're bringing yet.", site: 'app/components/BringSummary.js', kind: 'chunk' },
+  // Phase 88.9 round 2 BANNER-01 (owner ruling short, 2026-11-07): the composed load-failure title, defined once in the banner
+  { id: 'BN1', text: "Couldn't load {thing}", site: 'components/ui/FetchErrorBanner.tsx', kind: 'fragments', fragments: ["Couldn't load ", ''] },
 ];
 
 // The exact roster: a dropped or renamed row fails.
 const EXPECTED_IDS = [
-  'H1', 'H2', 'H3', 'H4', 'H5', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'T2', 'T3', 'T4',
-  'A1', 'A2', 'A3', 'A4', 'A5', 'C1', 'C2', 'E1', 'E2', 'E3', 'E4', 'E4b', 'E5', 'E6',
+  'H1', 'H2', 'H3', 'H4', 'H5', 'N1', 'N3', 'N4', 'N5', 'N6', 'T2', 'T3', 'T4',
+  'A1', 'A2', 'A3', 'A4', 'C1', 'C2', 'E1', 'E2', 'E3', 'E4', 'E4b', 'E5',
   'E8', 'E9', 'E10', 'E11', 'E12', 'E13', 'E14', 'E15', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6',
-  'G7', 'G8', 'P1', 'P2', 'P7', 'P8', 'F1', 'F2', 'F7', 'L1a', 'L1b', 'L1c', 'L2', 'X1',
+  'G7', 'G8', 'P2', 'P8', 'F1', 'F2', 'F7', 'L1a', 'L1b', 'L1c', 'L2', 'X1',
   'X3', 'X3r', 'R1', 'R2', 'R3', 'R4', 'R5', 'R9', 'FR1', 'N7', 'N8a', 'N8b', 'N8c', 'N8d',
-  'S1a', 'S1b', 'C7a', 'C7b', 'B1', 'RF1', 'Q1a', 'Q1b', 'NC-1', 'NC-2', 'NC-3', 'NC-4',
+  'S1a', 'S1b', 'C7c', 'B1', 'RF1', 'Q1a', 'Q1b', 'NC-1', 'NC-2', 'NC-3', 'NC-4',
   // owner rulings 2026-10-13 to 2026-10-15
   'GD1', 'GD2', 'E16', 'E17', 'E18', 'GD3', 'GD4', 'N9', 'N10', 'G9', 'F8a', 'F8b', 'C8',
   // close rulings 2026-10-17 to 2026-10-18
   'P14', 'P77a', 'P77b', 'P78', 'P78c', 'P78a', 'P78b', 'P80',
   'P82a', 'P82b', 'P82c', 'P82d', 'P82e',
   // code-review rulings 2026-10-19 ("ratify all")
-  'CR1a', 'CR1b', 'CR2a', 'CR2b', 'CR3a', 'CR3b', 'CR4', 'CR5a', 'CR5b',
+  'CR1a', 'CR1b', 'CR2a', 'CR2b', 'CR3a', 'CR3b', 'CR4',
   'P78d', 'P78e', 'P78f', 'P78g', 'P78h',
   // VoiceOver Part 2 walk ruling (owner 2026-10-20, Findings row VO-P2-3; quick-261020-tz3): the spoken range says 'to'
   'VO3',
   // Games to Bring re-entry ruling (owner 2026-10-21, deferred/phase-91.3.md; quick-261021-ffb)
   'GB1', 'GB2',
+  // Phase 88.9 round 2 BANNER-01 (owner ruling short, 2026-11-07): the composed load-failure title, defined once in the banner
+  'BN1',
 ];
 
 // Rows that ship no literal of their own.
@@ -238,9 +237,9 @@ interface Importer {
   // sentences this file must NOT carry a copy of
   noCopyOf?: string[];
 }
+// E6's gameDetail entry (SHARE_GAME_QR_LOADING_LABEL) retired with rule 1 (88.9-46 B29); the
+// constant's module under app/components is deleted — see RETIRED_LITERALS.
 const IMPORTERS: Importer[] = [
-  { importer: 'E6', file: 'app/components/EventDayModal.js', constant: 'SHARE_GAME_QR_LOADING_LABEL', from: './shareGameQrCopy', minUses: 1 },
-  { importer: 'E6', file: 'app/gameDetail/page.js', constant: 'SHARE_GAME_QR_LOADING_LABEL', from: '../components/shareGameQrCopy', minUses: 1 },
   { importer: 'F2', file: 'app/components/FeedbackButton.js', constant: 'FEEDBACK_SEND_FAILED_COPY', from: './FeedbackForm', minUses: 1 },
   { importer: 'E9/R6', file: 'app/components/BringGamePicker.js', constant: 'EMPTY_COLLECTION_LINE', minUses: 2 },
   { importer: 'N5r', file: 'app/friends/page.js', constant: 'ACCEPT_FRIEND_FAILED_COPY', from: '../components/NotificationBell', minUses: 1, noCopyOf: ["We couldn't accept that friend request. Please try again."] },
@@ -275,8 +274,31 @@ const RETIRED_LITERALS: Retired[] = [
   { text: 'No games in your collection.', scope: 'tree' },
   { text: 'Below minimum threshold', scope: 'tree' },
   { text: 'Already converted to event', scope: 'tree' },
+  // C7 (88.9-24): the visible in-flight words are retired; heard on as createEvent's busy suffix.
+  { text: 'Creating...', scope: 'tree' },
+  { text: 'Updating...', scope: 'tree' },
+  // A5 (88.9-45 rule 1): the saved pre-fill's swap word is retired; heard as the ', loading' suffix.
+  { text: 'Loading your availability…', scope: 'tree' },
+  // N2 (88.9-45 rule 1) + B24 (88.9-46 rule 1): the bell's and the friends page's Accept keep
+  // their labels; heard as ', accepting'. Tree-wide since 88.9-46.
+  { text: 'Accepting...', scope: 'tree' },
+  // E6 (88.9-46 rule 1, B29 + 45's B05): both Share Game QR buttons keep their label; heard as
+  // ', loading'. Scoped to E6's two former BUTTON sites: FriendInvitePanel.js keeps its QR status
+  // caption (a role=status region, not a button — outside rule 1), so tree scope would hold red.
+  { text: 'Loading QR code...', scope: ['app/gameDetail/page.js', 'app/components/EventDayModal.js'] },
+  // P1 / P7 (88.9-46 rule 1, B32 / B36): the profile's Verify and Add to Collection keep their
+  // labels; the two ratified words are heard as ', verifying' / ', adding'. Tree-wide: no other
+  // source file typed either literal at this plan's start.
+  { text: 'Verifying...', scope: 'tree' },
+  { text: 'Adding...', scope: 'tree' },
+  // CR5a / CR5b (88.9-45 rule 1): ConfirmDialog's pending text became the busy suffix; the two
+  // swap words are retired tree-wide (heard as ', disconnecting' / ', promoting').
+  { text: 'Disconnecting…', scope: 'tree' },
+  { text: 'Promoting…', scope: 'tree' },
   { text: 'Availability for ', scope: ['app/components/EventScheduler.tsx', 'app/components/EventHeatmapBackground.js'] },
   { text: 'Reset Token', scope: ['app/components/QRCodeModal.js'] },
+  // Phase 88.9-31 (owner pick T1): the games section's former name, retired where it lived.
+  { text: 'Group Games', scope: ['app/components/GroupGamesList.js'] },
   { text: 'Loading...', scope: LOADING_SITES, whole: true },
   { text: 'Loading…', scope: ['app/components/AvailabilityForm.js'], whole: true },
 ];
@@ -397,11 +419,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (125 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (118 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(125);
+    expect(ids).toHaveLength(118);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });
@@ -414,53 +436,139 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     const tpl = RATIFIED_ROWS.find((r) => r.id === 'N9')!;
     expect(rowMatches(tpl, readSrc(tpl.site))).toBe(true);
     expect(rowMatches({ ...tpl, fragments: ['Declined invite to ', '!'] }, readSrc(tpl.site))).toBe(false);
+    // BANNER-01 (88.9-48): the composed form is matched at its definition, and a We-prefixed
+    // fragment (the shape the owner ruled out) is refused.
+    const composed = RATIFIED_ROWS.find((r) => r.id === 'BN1')!;
+    expect(rowMatches(composed, readSrc(composed.site))).toBe(true);
+    expect(rowMatches({ ...composed, fragments: ["We couldn't load ", ''] }, readSrc(composed.site))).toBe(false);
   });
 });
 
 // Close ruling P-82: each ratified Where-line must ride on the banner it names, not merely exist
 // somewhere in the file (a chunk row alone would pass with the words on the wrong banner).
+// attr is the whole attribute that names the banner: a hoisted title today, or (BANNER-01,
+// 88.9-48) the thing the banner composes its title from.
 const REPORT_CONTEXTS = [
-  { id: 'P82a', site: 'app/friends/page.js', title: 'FRIEND_REQUESTS_LOAD_FAILED_TITLE', context: 'friends page — friend requests fetch' },
-  { id: 'P82b', site: 'app/userProfile/page.js', title: 'COLLECTION_LOAD_FAILED_TITLE', context: 'userProfile — game collection fetch' },
-  { id: 'P82c', site: 'app/components/BallotSection.js', title: 'BALLOT_LOAD_FAILED_TITLE', context: 'Game detail page — game vote fetch' },
-  { id: 'P82d', site: 'app/groupHomePage/page.js', title: 'GROUP_LOAD_FAILED_TITLE', context: 'Group home page — group and members fetch' },
-  { id: 'P82e', site: 'app/groupHomePage/page.js', title: 'GROUP_EVENTS_LOAD_FAILED_TITLE', context: 'Group home page — events fetch' },
+  { id: 'P82a', site: 'app/friends/page.js', attr: 'thing={FRIEND_REQUESTS_LOAD_FAILED_THING}', context: 'friends page — friend requests fetch' },
+  { id: 'P82b', site: 'app/userProfile/page.js', attr: 'thing={COLLECTION_LOAD_FAILED_THING}', context: 'userProfile — game collection fetch' },
+  { id: 'P82c', site: 'app/components/BallotSection.js', attr: 'thing={BALLOT_LOAD_FAILED_THING}', context: 'Game detail page — game vote fetch' },
+  { id: 'P82d', site: 'app/groupHomePage/page.js', attr: 'thing={GROUP_LOAD_FAILED_THING}', context: 'Group home page — group and members fetch' },
+  { id: 'P82e', site: 'app/groupHomePage/page.js', attr: 'thing={GROUP_EVENTS_LOAD_FAILED_THING}', context: 'Group home page — events fetch' },
 ];
 
-// Every FetchErrorBanner opening tag in the comment-stripped source whose text holds the title.
-function bannerTagsTitled(src: string, title: string): string[] {
+// Every FetchErrorBanner opening tag in the comment-stripped source whose text holds the attribute.
+function bannerTagsWith(src: string, attr: string): string[] {
   const code = withoutComments(src);
   const tags: string[] = [];
   let at = code.indexOf('<FetchErrorBanner');
   while (at >= 0) {
     const tag = readOpeningTag(code, at);
-    if (tag !== null && tag.includes(`title={${title}}`)) tags.push(tag);
+    if (tag !== null && tag.includes(attr)) tags.push(tag);
     at = code.indexOf('<FetchErrorBanner', at + 1);
   }
   return tags;
 }
 
-// true when exactly one banner carries the title, and that one carries the Where-line.
-function contextPlaced(src: string, title: string, context: string): boolean {
-  const tags = bannerTagsTitled(src, title);
+// true when exactly one banner carries the attribute, and that one carries the Where-line.
+function contextPlaced(src: string, attr: string, context: string): boolean {
+  const tags = bannerTagsWith(src, attr);
   return tags.length === 1 && tags[0].includes(`reportContext="${context}"`);
 }
 
 describe('P-82: each ratified Where-line rides on the banner it names (close ruling P-82, 88.6.1-91)', () => {
-  it.each(REPORT_CONTEXTS)('$id: the banner titled $title carries its Where-line', (rc) => {
-    const tags = bannerTagsTitled(readSrc(rc.site), rc.title);
-    expect(tags, `${rc.site}: banners titled ${rc.title}`).toHaveLength(1);
+  it.each(REPORT_CONTEXTS)('$id: the banner named by $attr carries its Where-line', (rc) => {
+    const tags = bannerTagsWith(readSrc(rc.site), rc.attr);
+    expect(tags, `${rc.site}: banners named by ${rc.attr}`).toHaveLength(1);
     expect(tags[0]).toContain(`reportContext="${rc.context}"`);
   });
 
   it('anti-vacuity: the placement matcher refuses a Where-line one character off', () => {
     const rc = REPORT_CONTEXTS.find((r) => r.id === 'P82e')!;
     const src = readSrc(rc.site);
-    expect(contextPlaced(src, rc.title, rc.context)).toBe(true);
-    expect(contextPlaced(src, rc.title, rc.context.replace('events', 'eventz'))).toBe(false);
+    expect(contextPlaced(src, rc.attr, rc.context)).toBe(true);
+    expect(contextPlaced(src, rc.attr, rc.context.replace('events', 'eventz'))).toBe(false);
     const altered = src.replace(`reportContext="${rc.context}"`, `reportContext="${rc.context.replace('events', 'event')}"`);
     expect(altered).not.toBe(src);
-    expect(contextPlaced(altered, rc.title, rc.context)).toBe(false);
+    expect(contextPlaced(altered, rc.attr, rc.context)).toBe(false);
+  });
+});
+
+// BANNER-01 (88.9-49, owner ruling short, register 51.13): a full (non-compact) FetchErrorBanner
+// names its object through thing and never types a title, so every mount reads Couldn't load {thing}
+// (the composed form row BN1 pins at the definition). thing is a quoted literal, or an UPPER_SNAKE
+// constant bound in the same file to one; the value is a lower-case noun phrase with no trailing
+// full stop, so no group name, error text or whole sentence can become a title (T-88.9-180).
+// FetchErrorBanner.tsx itself is skipped by name: RefreshFailedNotice's blocked-access fallback has
+// no section noun, and plan 88.9-26 kept the component default there.
+const BANNER_DEFINITION = 'components/ui/FetchErrorBanner.tsx';
+const BANNER_START = /<FetchErrorBanner(?=[\s/>])/g;
+const COMPACT_TOKEN = /\scompact(?=[\s/>])/;
+const THING_VALUE = /^[a-z](?:[^"]*[^".\s])?$/;
+
+// Why one opening tag breaks the BANNER-01 rule, or null when it keeps it. code is the
+// comment-stripped file the tag sits in (a constant's declaration is read from it).
+function thingViolation(code: string, tag: string): string | null {
+  if (/\stitle=/.test(tag)) return 'types a title';
+  const m = tag.match(/\sthing=(?:"([^"]*)"|\{([^}]*)\})/);
+  if (!m) return 'has no thing';
+  let value: string;
+  if (m[1] !== undefined) {
+    value = m[1];
+  } else {
+    const name = m[2].trim();
+    if (!/^[A-Z][A-Z0-9_]*$/.test(name)) return `thing={${name}} is not an UPPER_SNAKE constant`;
+    const decls = code.match(new RegExp(`^[ \\t]*(?:export\\s+)?(?:const|let|var)\\s+${name}\\b`, 'gm')) ?? [];
+    const literal = [...code.matchAll(new RegExp(`^(?:export )?const ${name} = (?:"([^"]*)"|'([^']*)');`, 'gm'))];
+    if (decls.length !== 1 || literal.length !== 1) return `${name} is not one module constant bound to a literal`;
+    value = literal[0][1] ?? literal[0][2];
+  }
+  if (!THING_VALUE.test(value)) return `thing "${value}" is not a lower-case noun phrase`;
+  return null;
+}
+
+// Every full banner tag in one file: how many were read, and the ones that break the rule.
+function bannerCensus(rel: string, src: string): { read: number; violations: string[] } {
+  const code = withoutComments(src);
+  let tags = 0;
+  const violations: string[] = [];
+  for (const m of code.matchAll(BANNER_START)) {
+    const tag = readOpeningTag(code, m.index ?? 0);
+    if (tag === null) {
+      violations.push(`${rel}: an unreadable FetchErrorBanner tag`);
+      continue;
+    }
+    if (COMPACT_TOKEN.test(tag)) continue;
+    tags += 1;
+    const why = thingViolation(code, tag);
+    if (why !== null) violations.push(`${rel}: ${collapse(tag).slice(0, 80)} (${why})`);
+  }
+  return { read: tags, violations };
+}
+
+describe('BANNER-01 (88.9): load-failure titles compose from thing (register 51.13)', () => {
+  it('BANNER-01 (88.9): every full FetchErrorBanner mount titles itself from thing — no hand-typed title, thing a literal or a module constant', () => {
+    let tagsRead = 0;
+    const violations: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const rel = path.relative(SRC, file).split(path.sep).join('/');
+      if (rel === BANNER_DEFINITION) continue;
+      const census = bannerCensus(rel, read(file));
+      tagsRead += census.read;
+      violations.push(...census.violations);
+    }
+    expect(violations, `${tagsRead} full FetchErrorBanner tags read`).toEqual([]);
+    expect(tagsRead).toBeGreaterThanOrEqual(29);
+
+    // Anti-vacuity: the same check reports each shape the rule exists to stop.
+    const grouplist = readSrc('app/components/grouplist.js');
+    const typedTitle = grouplist.replace('thing="your groups"', 'title="We couldn\'t load your groups"');
+    expect(bannerCensus('typed title', typedTitle).violations.length).toBeGreaterThanOrEqual(1);
+    const namesNothing = grouplist.replace('thing="your groups"', 'thing=""');
+    expect(bannerCensus('empty thing', namesNothing).violations.length).toBeGreaterThanOrEqual(1);
+    const dataThing = 'const X_THING = group?.name;\n<FetchErrorBanner state={s} thing={X_THING} />';
+    expect(bannerCensus('data thing', dataThing).violations).toHaveLength(1);
+    const sentenceThing = 'const X_THING = "Couldn\'t load reviews.";\n<FetchErrorBanner state={s} thing={X_THING} />';
+    expect(bannerCensus('sentence thing', sentenceThing).violations).toHaveLength(1);
   });
 });
 

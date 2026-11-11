@@ -183,7 +183,7 @@ describe('PromptScheduleManager — R7 composed axe audit (UI-SPEC §7.5)', () =
       new Error('boom')
     );
     const errored = renderManager();
-    await screen.findByText("We couldn't load your schedules");
+    await screen.findByText("Couldn't load your schedules");
     expect(
       await axe(errored.container.firstElementChild as HTMLElement, WCAG_412)
     ).toHaveNoViolations();
@@ -463,7 +463,7 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
   // so its polite region and the Retry's description say "Prompt schedule: " first and the visible line
   // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
   const SPOKEN = "Prompt schedule: Couldn't refresh. Showing what loaded earlier.";
-  const FULL_TITLE = "We couldn't load your schedules";
+  const FULL_TITLE = "Couldn't load your schedules";
 
   const getSettings = () => promptSettingsAPI.getGroupPromptSettings as unknown as Mock;
   const toggle = () => promptSettingsAPI.toggleSchedule as unknown as Mock;

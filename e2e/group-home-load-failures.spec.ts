@@ -188,7 +188,10 @@ test.describe('group home load failures — phone', () => {
     const headingBox = await heading.boundingBox();
     const titleBox = await title.boundingBox();
     expect(headingBox!.y + headingBox!.height).toBeLessThanOrEqual(titleBox!.y);
-    const viewToggle = page.getByRole('button', { name: /^(List|Month) View$/ });
+    // AMENDED Phase 88.9-39 (owner pick N1): the loaded-calendar marker is the Month segment of
+    // the Month | List group (role=group 'Calendar view'), chosen OVER the retired List View /
+    // Month View Button by name. Absent while the banner shows, present once the calendar loads.
+    const viewToggle = page.getByRole('group', { name: 'Calendar view' }).getByRole('button', { name: 'Month', exact: true });
     await expect(viewToggle).toHaveCount(0);
     const tryAgain = page.getByRole('button', { name: 'Try again', exact: true });
     await expectReachable(page, tryAgain);
@@ -252,7 +255,9 @@ test.describe('group home load failures — phone', () => {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await expect(page.locator('html')).toHaveClass(/dark/);
     const heading = page.getByRole('heading', { level: 2, name: 'Calendar', exact: true });
-    const viewToggle = page.getByRole('button', { name: /^(List|Month) View$/ }).first();
+    // AMENDED Phase 88.9-39 (owner pick N1): the loaded-calendar marker is the Month segment of
+    // the Month | List group, chosen OVER the retired List View / Month View Button by name.
+    const viewToggle = page.getByRole('group', { name: 'Calendar view' }).getByRole('button', { name: 'Month', exact: true }).first();
     await expect(heading).toBeVisible({ timeout: 15_000 });
     await expect(viewToggle).toBeVisible();
 
@@ -337,7 +342,8 @@ test.describe('group home load failures — phone', () => {
       await expectNoSidewaysScroll(page);
 
       release();
-      await expect(page.getByRole('button', { name: /^(List|Month) View$/ }).first()).toBeVisible({ timeout: 15_000 });
+      // AMENDED Phase 88.9-39 (owner pick N1): the loaded calendar is marked by the Month segment.
+      await expect(page.getByRole('group', { name: 'Calendar view' }).getByRole('button', { name: 'Month', exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(loading).toHaveCount(0);
     } finally {
       release();

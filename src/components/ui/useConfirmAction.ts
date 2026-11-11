@@ -42,16 +42,26 @@
  */
 import * as React from 'react';
 
+import {
+  CONFIRM_DELAY_MS,
+  CONFIRM_LIVE_MS,
+  countdownLabel,
+  useConfirmCountdown,
+} from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 
 export type ConfirmTier = 'typed' | 'dialog' | 'two-tap';
 
 /**
- * The arm window, in ms. This is the SHIPPED value from
- * src/app/components/KebabMenu.js ("}, 3000);") and
- * src/app/gameDetail/page.js (Phase 65-02 EVT-08), absorbed rather than reinvented.
+ * The arm window, in ms: gated, then live, both numbers from
+ * src/components/ui/confirmDelay.ts ("export const CONFIRM_DELAY_MS = 3000;"). The original
+ * 3 s window was the SHIPPED kebab value of src/app/gameDetail/page.js (Phase 65-02 EVT-08),
+ * absorbed rather than reinvented.
+ * AMENDED Phase 88.9-23 (owner pick F9b, 88.9-PICKS-B5.json, 2026-11-07): the window is now gated
+ * CONFIRM_DELAY_MS + live CONFIRM_LIVE_MS (6000 ms) from confirmDelay.ts, chosen OVER the shipped
+ * 3000 ms immediately-live window.
  */
-export const TWO_TAP_WINDOW_MS = 3000;
+export const TWO_TAP_WINDOW_MS = CONFIRM_DELAY_MS + CONFIRM_LIVE_MS;
 
 /** The armed visible label, matching `KebabMenu.js`'s shipped default. */
 export const DEFAULT_ARMED_LABEL = 'Tap again to confirm';
@@ -69,11 +79,12 @@ export interface UseConfirmActionConfig {
   /** The verb alone: "Remove", "Delete", "Disconnect". Never "OK"/"Yes". */
   confirmLabel: string;
   /**
-   * `dialog`/`typed` only, optional: the confirm's text while the commit is pending
-   * ("Disconnecting…"). Passed through `dialogProps`; see ConfirmDialog's `pendingLabel`.
-   * Ignored by `two-tap`. (88.6.1 code review CR-5 / A-75)
+   * `dialog`/`typed` only, optional: the sr-only words appended to the confirm's name while the
+   * commit is pending (", disconnecting") — rule 1 (88.9-45); the visible text keeps `confirmLabel`
+   * and the house spinner joins it. Passed through `dialogProps`; see ConfirmDialog's `busySuffix`.
+   * Ignored by `two-tap`. (88.6.1 code review CR-5 / A-75, re-shaped; default-off)
    */
-  pendingLabel?: string;
+  busySuffix?: string;
   /** Cancel copy. @default 'Cancel' */
   cancelLabel?: string;
   /** `typed` tier only: the phrase that must be entered EXACTLY. */
@@ -113,6 +124,11 @@ export interface ConfirmTriggerProps {
   onClick: (event?: React.MouseEvent<Element>) => void;
   /** Present ONLY while armed (a resting destructive button is not a toggle). */
   'aria-pressed'?: true;
+  /**
+   * Present ONLY while armed AND gated (F9b, 88.9-23): the second press is refused for
+   * CONFIRM_DELAY_MS. Never native `disabled` — the armed control keeps focus.
+   */
+  'aria-disabled'?: true;
   /** Present only when the caller supplied a resting name; swaps with the visible label. */
   'aria-label'?: string;
 }
@@ -125,9 +141,14 @@ export interface ConfirmDialogState {
   title: string;
   body?: React.ReactNode;
   confirmLabel: string;
-  pendingLabel?: string;
+  busySuffix?: string;
   cancelLabel: string;
   expectedPhrase?: string;
+  /**
+   * F9b (88.9-23): true for the `dialog` tier only — ConfirmDialog gates its confirm for
+   * CONFIRM_DELAY_MS from open. Static per gate; the per-second countdown lives in the dialog.
+   */
+  confirmDelay: boolean;
   onCancel: () => void;
   onConfirm: (typedValue?: string) => void;
   confirmDisabled: (typedValue?: string) => boolean;
@@ -145,6 +166,9 @@ export interface ConfirmActionState {
    * The always-mounted `role="status"` region. Render it ONCE, unconditionally,
    * anywhere inside the surface. See the DECISION marker below for why the hook
    * ships an element rather than asking the caller to render one.
+   * AMENDED Phase 88.9-23 (F9b): the two-tap arm text is written at the LIVE edge, not at arm,
+   * chosen OVER announcing at arm (a false instruction for CONFIRM_DELAY_MS) and OVER new live
+   * copy (research A12, no copy row).
    */
   statusNode: React.ReactElement;
   /**
@@ -211,7 +235,11 @@ function defaultAnnouncement(
    only. The value therefore lives in `ConfirmDialog` and is passed in here.
 
    Collapsing this back to a boolean is a decision about where re-render cost lands, not a
-   simplification. */
+   simplification.
+   AMENDED Phase 88.9-23 (F9b): the dialog-tier countdown lives in ConfirmDialog for the same
+   reason; the two-tap countdown lives here because the host renders the label — 3 extra host
+   renders per arm, accepted, chosen OVER a label leaf component that would change all 5
+   triggerProps sites. */
 
 export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionState {
   const {
@@ -219,7 +247,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     title,
     body,
     confirmLabel,
-    pendingLabel,
+    busySuffix,
     cancelLabel = 'Cancel',
     expectedPhrase,
     armedLabel = DEFAULT_ARMED_LABEL,
@@ -240,6 +268,11 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
   const targetRef = React.useRef<string | undefined>(undefined);
   const armedTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = React.useRef(true);
+  // F9b (88.9-23): the arm text waits here until the gate runs out (written at the live edge),
+  // and the dialog tier's open time backs the wall-clock refusal in confirm().
+  const pendingAnnouncementRef = React.useRef('');
+  const openRef = React.useRef(false);
+  const openedAtRef = React.useRef(0);
 
   // Latest-callback refs: `onConfirm` receives the committed target from the
   // ARMED state, and calls the newest handler — never a closure captured when
@@ -276,6 +309,24 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     };
   }, []);
 
+  // F9b (88.9-23): the two-tap countdown, keyed by the armed target. The dialog tier's visible
+  // countdown is ConfirmDialog's own (see the AMENDED line on the R2-M16 marker above); the typed
+  // tier has none. onLive writes the unchanged NC-1 arm text once pressing works.
+  const announceLive = React.useCallback(() => {
+    if (tierRef.current === 'two-tap' && armedIdRef.current !== null) {
+      setAnnouncement(pendingAnnouncementRef.current);
+    }
+  }, []);
+  const countdown = useConfirmCountdown(tier === 'two-tap' ? armedId : null, announceLive);
+  const { isLive, secondsLeft } = countdown;
+  const gated = tier === 'two-tap' && !countdown.live;
+  // The armed label: counting down while gated, then the live label. A gate with a custom armed
+  // label counts down on that label (userProfile's fork-7 'Remove' reads 'Remove (3)', owner
+  // 2026-11-08, 88.9-RULINGS.md R-W1); the default reads 'Tap again (3)' (copy table).
+  const armedText = gated
+    ? countdownLabel(armedLabel === DEFAULT_ARMED_LABEL ? 'Tap again' : armedLabel, secondsLeft)
+    : armedLabel;
+
   const disarm = React.useCallback(() => {
     clearArmTimer();
     armedIdRef.current = null;
@@ -311,6 +362,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       // Only the two-tap commit passes a context; the dialog tiers keep their one-argument call.
       await (context === undefined ? onConfirmRef.current(targetId) : onConfirmRef.current(targetId, context));
       if (!mountedRef.current) return;
+      openRef.current = false;
       setOpen(false);
       targetRef.current = undefined;
     } catch {
@@ -331,6 +383,9 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
 
       if (tierRef.current !== 'two-tap') {
         targetRef.current = targetId;
+        // F9b: the gate runs from OPEN; a trigger on an already-open dialog does not restart it.
+        if (!openRef.current) openedAtRef.current = Date.now();
+        openRef.current = true;
         setOpen(true);
         return;
       }
@@ -344,9 +399,12 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
         clearArmTimer();
         armedIdRef.current = key;
         setArmedId(key);
-        setAnnouncement(
-          armedAnnouncementRef.current(targetLabel, confirmLabelRef.current)
+        // F9b: the text is unchanged (copy NC-1); it is held until the countdown's live edge.
+        pendingAnnouncementRef.current = armedAnnouncementRef.current(
+          targetLabel,
+          confirmLabelRef.current
         );
+        setAnnouncement('');
         armedTimerRef.current = setTimeout(() => {
           armedTimerRef.current = null;
           armedIdRef.current = null;
@@ -357,14 +415,19 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
         return;
       }
 
-      // Second invocation on the SAME target inside the window — commit.
+      // Second invocation on the SAME target while the gate still runs — refused (F9b): stay
+      // armed, announcement unchanged. Read from a ref, so a double tap inside one tick cannot
+      // slip through.
+      if (!isLive(key)) return;
+
+      // Second invocation on the SAME target inside the live window — commit.
       clearArmTimer();
       armedIdRef.current = null;
       setArmedId(null);
       setAnnouncement('');
       void runConfirm(targetId, { from: from ?? null });
     },
-    [clearArmTimer, runConfirm]
+    [clearArmTimer, runConfirm, isLive]
   );
 
   const confirm = React.useCallback(
@@ -373,12 +436,22 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       // never commits unless the value it was handed matches exactly.
       const value = typeof typedValue === 'string' ? typedValue : undefined;
       if (tierRef.current === 'typed' && !matchesPhrase(value ?? '')) return;
+      // F9b, defence in depth behind ConfirmDialog's aria-disabled confirm (the Enter path): the
+      // dialog tier refuses for CONFIRM_DELAY_MS from open, by wall clock, so the host keeps no
+      // per-second state for it.
+      if (
+        tierRef.current === 'dialog' &&
+        Date.now() - openedAtRef.current < CONFIRM_DELAY_MS
+      ) {
+        return;
+      }
       void runConfirm(targetRef.current);
     },
     [matchesPhrase, runConfirm]
   );
 
   const cancel = React.useCallback(() => {
+    openRef.current = false;
     setOpen(false);
     targetRef.current = undefined;
     disarm();
@@ -391,8 +464,8 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
 
   const labelFor = React.useCallback(
     (targetId: string | undefined, restingLabel: string) =>
-      isArmed(targetId) ? armedLabel : restingLabel,
-    [isArmed, armedLabel]
+      isArmed(targetId) ? armedText : restingLabel,
+    [isArmed, armedText]
   );
 
   const triggerProps = React.useCallback(
@@ -406,7 +479,9 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       // label. A static aria-label sitting over a swapped visible label is the
       // failure this exists to prevent — so when armed, the name is the armed
       // label; when the caller supplies no name at all, none is invented.
-      const accessibleName = armed ? armedLabel : restingAriaLabel;
+      // F9b (88.9-23, MED-61): "the armed label" is the string labelFor renders, countdown
+      // included — never the live label under a visible 'Tap again (3)'.
+      const accessibleName = armed ? armedText : restingAriaLabel;
       return {
         type: 'button',
         // DECISION 88.6.1 code review A-74: the click's `currentTarget` is threaded to `onConfirm`
@@ -416,12 +491,13 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
         // decision, not a cleanup.
         onClick: (event) => trigger(targetId, targetLabel, event?.currentTarget ?? null),
         ...(armed ? { 'aria-pressed': true as const } : {}),
+        ...(armed && gated ? { 'aria-disabled': true as const } : {}),
         ...(restingAriaLabel !== undefined && accessibleName !== undefined
           ? { 'aria-label': accessibleName }
           : {}),
       };
     },
-    [isArmed, armedLabel, trigger]
+    [isArmed, armedText, gated, trigger]
   );
 
   const statusNode = React.useMemo(
@@ -443,9 +519,10 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       title,
       body,
       confirmLabel,
-      pendingLabel,
+      busySuffix,
       cancelLabel,
       expectedPhrase,
+      confirmDelay: tier === 'dialog',
       onCancel: cancel,
       onConfirm: confirm,
       confirmDisabled,
@@ -457,7 +534,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       title,
       body,
       confirmLabel,
-      pendingLabel,
+      busySuffix,
       cancelLabel,
       expectedPhrase,
       cancel,

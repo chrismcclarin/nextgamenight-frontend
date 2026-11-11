@@ -163,6 +163,9 @@ describe('apiFetch — the error sinks carry the path, never the query (CR-501)'
 
   it('the HTML-branch ApiError message carries the path and not the query', async () => {
     vi.spyOn(logger, 'info').mockImplementation(() => {});
+    // Phase 88.9-38 (F1-4a): the HTML branch now files a logger.warn — spied so no real Sentry
+    // call runs from this test.
+    vi.spyOn(logger, 'warn').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '<!DOCTYPE html><html><body>x</body></html>' })
@@ -178,6 +181,28 @@ describe('apiFetch — the error sinks carry the path, never the query (CR-501)'
     expect(msg).toContain('/api/friendships/search');
     expect(msg).not.toContain('?');
     expect(msg).not.toContain('example.com');
+  });
+
+  it('F1-4a (88.9): the HTML branch files a logger.warn whose ctx carries the path and not the query', async () => {
+    // Owner ruling F1 / O-05 (F1-4a = b, 2026-11-07): this branch is a Sentry WARNING event,
+    // and a warn ctx lands in event.extra, which beforeSend scrubs with scrubString, NOT the
+    // query-stripping scrubUrl that breadcrumb data gets. So the call site strips the query:
+    // the ctx is the BFF-relative path only (DECISION Phase 88.9-38 F1-4a in api.ts).
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '<!DOCTYPE html><html><body>x</body></html>' })
+    );
+    await expect(apiFetch(ENDPOINT)).rejects.toBeInstanceOf(ApiError);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [msg, ctx] = warn.mock.calls[0];
+    expect(String(msg).startsWith('API Error: Received HTML instead of JSON')).toBe(true);
+    expect(ctx).toEqual({ url: '/api/friendships/search' });
+    const serialised = JSON.stringify(warn.mock.calls);
+    expect(serialised).not.toContain('?');
+    expect(serialised).not.toContain('example.com');
+    expect(serialised).not.toContain('%40');
   });
 });
 

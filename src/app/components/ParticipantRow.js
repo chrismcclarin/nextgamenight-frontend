@@ -59,9 +59,9 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               element — an actively wrong association. The <label> renders ONLY when the
               input it names actually exists (custom rows); member rows get a span. */}
           {participant.isFromGroup ? (
-            <span className="text-xs text-content-secondary block">Participant Name</span>
+            <span className="text-sm text-content-secondary block">Participant Name</span>
           ) : (
-            <label htmlFor={nameId} className="text-xs text-content-secondary block">Participant Name</label>
+            <label htmlFor={nameId} className="text-sm text-content-secondary block">Participant Name</label>
           )}
           <label className="flex items-center gap-1 sm:hidden">
             <input
@@ -71,7 +71,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               checked={participant.is_new_player || false}
               onChange={(e) => onParticipantChange(index, 'is_new_player', e.target.checked)}
             />
-            <span className="text-xs text-content-primary">New Player</span>
+            <span className="text-sm text-content-primary">New Player</span>
           </label>
         </div>
         {participant.isFromGroup ? (
@@ -178,7 +178,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           {/* block at phone: label ABOVE the box (owner round 3) — inline-left
               labels were also silently eating Faction's stretch room. sm:+ keeps
               the original inline-left look. */}
-          <label htmlFor={scoreId} className="text-xs text-content-primary block sm:inline">Score</label>
+          <label htmlFor={scoreId} className="text-sm text-content-primary block sm:inline">Score</label>
           {/* DECISION Phase 88-21 (Req 1): adopts `Input` for the 16px floor but KEEPS `w-16 p-1`
               as an override, OVER taking the primitive's default `w-full p-2`. Those two values
               are the owner's 2026-08-04 round-2/round-3 phone tuning (score trimmed to 4-digit
@@ -200,7 +200,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         </div>
 
         <div className="flex-1 min-w-24 sm:flex-none">
-          <label htmlFor={factionId} className="text-xs text-content-primary block sm:inline">Faction</label>
+          <label htmlFor={factionId} className="text-sm text-content-primary block sm:inline">Faction</label>
           <Input
             id={factionId}
             name={factionId}
@@ -228,7 +228,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             onChange={(e) => onParticipantChange(index, 'is_new_player', e.target.checked)}
             className="mr-1"
           />
-          <label htmlFor={newPlayerId} className="text-xs text-content-primary">New Player</label>
+          <label htmlFor={newPlayerId} className="text-sm text-content-primary">New Player</label>
         </div>
 
         {/*

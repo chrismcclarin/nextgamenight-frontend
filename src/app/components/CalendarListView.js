@@ -21,10 +21,12 @@ import { formatTime, formatWithTzAbbr } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
-// SPEC Req 2 (88.5-08): the TWIN of the Calendar button's count pill. Same component,
-// so the per-theme fill fork it owns cannot drift between the two instances. It renders
-// the number this file is HANDED; nothing here counts anything.
-import UpcomingCountPill from './UpcomingCountPill';
+// 88.9-39: the ONE tag classifier (F2c) and the ONE guest predicate (D5a) — both shared with the
+// day modal / upcoming card, so no surface derives either twice. The twin count pill left with
+// D6c; nothing here counts anything.
+import { statusTagLabel } from '../../lib/upcomingEvents';
+import { isGuestEvent } from '../../lib/eventClassification';
+import GuestPill, { GUEST_ROW_EDGE } from './GuestPill';
 
 /**
  * CalendarListView — Phase 64 Plan 03 (CAL-06), Today-delineator revision.
@@ -100,6 +102,15 @@ const PAST_PAGE_SIZE = 30;
 // month-view card height.
 const CONTAINER_HEIGHT_COMPACT = 480;
 const CONTAINER_HEIGHT_FULL = 600;
+/* DECISION Phase 88.9-39 (88.9-25 hand-off 4, after CS-05): the two constants above stay as an
+   UPPER BOUND — the six-row month — chosen OVER sizing the list to the rendered grid. Since CS-05
+   (whole weeks: 28, 35 or 42 cells) the month card is 84px (compact) / 104px (full) shorter in a
+   five-week month, so Month <-> List changes the card height there; that is ACCEPTED as an
+   owner-visible consequence (glance row, 88.9-51). REJECTED: a list height derived from the grid's
+   row count — the list card would then change height month to month on its own, and editing the
+   desktop constants is what the 88.1 marker below rejects (look-only phase, P4). The comment above
+   is history: "match" now means "match the TALLEST month". Changing this is a decision, not a
+   cleanup. */
 
 /* DECISION Phase 88.1 (plan 10, SPEC Req 11b / UI-SPEC S4): the phone bottom-sheet rendering
    is an ADDITIVE `variant` arm ('sheet'), chosen OVER editing the two height constants above
@@ -109,6 +120,8 @@ const CONTAINER_HEIGHT_FULL = 600;
    includes ">=768px pixel-unchanged". The two constants exist to match CalendarMonthView's
    natural rendered height for the same variant (see the comment above them), so the OUTER card
    heights agree when the user toggles month/list — changing either one reflows the desktop card.
+   (AMENDED Phase 88.9-39: since CS-05 they match the six-row month only — the upper bound; the
+   DECISION above the 88.1 block records the five-week-month consequence as accepted.)
    Likewise the game name's `hidden sm:block` gate is the DESKTOP responsive-stripping ladder
    documented in the header block; lifting it globally would put the name back at 375px on every
    other host of this component too.
@@ -155,7 +168,8 @@ export default function CalendarListView({
      three-way split below, and they are computed ONCE in `UserHomePage` against ONE shared
      `now` clock (see its `DECISION Phase 88.5 (OWNER RULING 2a)` marker). This file performs
      NO date or status comparison of its own to decide membership — a second derivation here
-     is precisely the disagreement threat T-88.5-25 names.
+     is precisely the disagreement threat T-88.5-25 names. statusTagLabel (88.9-39) picks a TAG
+     for a row already placed; it never decides membership.
 
      EXTENDED Phase 88.6-27 (W58 + W59 / D47, owner ruling 2026-09-09 option a) — the sentences
      above stand and now cover a THIRD set. `happeningNowIds` is additionally bounded by the
@@ -171,10 +185,9 @@ export default function CalendarListView({
   happeningNowIds = EMPTY_ID_SET,
   startedNotLiveIds = EMPTY_ID_SET,
   thisWeekIds = EMPTY_ID_SET,
-  /* The number the Calendar button already shows, handed down so the twin pill is the SAME
-     value rather than a second count. `null` means "no claim is being made" (pending/error);
-     `UpcomingCountPill` owns that rule. */
-  upcomingCount = null,
+  // 88.9-39 D5a (R2-27), sheet arm only, threaded by UserHomePage: the viewer's own Users.id
+  // UUID, compared in memory by isGuestEvent to mark a guest night's row. Never rendered.
+  viewerDbUserId = null,
   // Plan 88.6.1-62 (Req 9): sheet arm only, set by the home page while a refresh of an
   // already-loaded list runs; marks the list's scroll region busy in place. The desktop arms pass
   // nothing, so their DOM is unchanged.
@@ -190,9 +203,9 @@ export default function CalendarListView({
   const uid = useId();
   const upcomingHeadingId = `${uid}-upcoming`;
   const pastPanelId = `${uid}-past`;
-  // 88.5-08 (D-04): the two sub-section headings, derived from the SAME `useId` value for
-  // the same collision reason. The happening-now group needs no id — it has no heading.
-  const thisWeekId = `${uid}-this-week`;
+  // 88.5-08 (D-04): the Later sub-section heading, derived from the SAME `useId` value for
+  // the same collision reason. AMENDED Phase 88.9-39 (owner pick D6c): the This-week id went
+  // with its heading; the happening-now and next-7-day rows share the outer h3 and need no id.
   const laterId = `${uid}-later`;
   // COLLAPSED by default — see the Req 12 DECISION marker at the section fork.
   const [pastExpanded, setPastExpanded] = useState(false);
@@ -444,6 +457,21 @@ export default function CalendarListView({
       sheetPastGroups: groupByDate([...pastSource].reverse()),
       sheetPastTotal: pastTotal,
     };
+  })();
+
+  /* DECISION Phase 88.9-39 D6c: happening-now and this-week groups fold by date key into ONE list,
+     chosen OVER two sibling maps; with no subheader between them a live game and a later game on
+     the same day would render two identical day headers. Changing this is a decision, not a
+     cleanup. A NEW object per key, never a source array mutated; happening-now rows first within
+     a day. The empty-state gate below still reads the three partition lists. */
+  const upcomingGroups = (() => {
+    const byKey = new Map();
+    for (const group of [...happeningNowGroups, ...thisWeekGroups]) {
+      const folded = byKey.get(group.key);
+      if (folded) folded.items.push(...group.items);
+      else byKey.set(group.key, { ...group, items: [...group.items] });
+    }
+    return [...byKey.values()];
   })();
 
   const hasAnyEvents = pastGroups.length > 0 || futureGroups.length > 0;
@@ -701,6 +729,15 @@ export default function CalendarListView({
                    (what a cancelled or completed row LOOKS like) is still unbuilt and is still
                    Phase 88.9's.
 
+                   AMENDED Phase 88.9-39 (owner pick D6c + F2c, 88.9-PICKS-B3B.json /
+                   88.9-PICKS-B5.json, 2026-11-07): the THIS WEEK eyebrow, its count pill and
+                   sr-only count left the sheet, chosen OVER the counted subheader; its rows now
+                   sit under the Upcoming events h3 at the default levels; cancelled / completed
+                   rows carry a status tag (F2c) — the "ordinary row treatment" sentence above is
+                   history: EventRow's statusTag arm is that per-status styling, gated on this
+                   Later section. The W58 visual half is settled by placement: an already-started
+                   cancelled / completed row is in Past, and F2c tags the future ones.
+
               REJECTED, each a real defect avoided:
                 (a) WORDING-ONLY SCOPING of the single existing section — retitle it and leave one
                     list. The count and the list then still disagree about which events the number
@@ -717,7 +754,9 @@ export default function CalendarListView({
               nothing and are unchanged — and the This-week/Later groups demote to `h5`/`h6`.
               Neither `<h4>` may be named after the outer heading: a second heading with that
               string inside the Calendar dialog is the strict-mode collision the `aria-labelledby`
-              construction above the scroll region exists to avoid. */}
+              construction above the scroll region exists to avoid.
+              AMENDED Phase 88.9-39 (owner pick D6c): only Later demotes now; the folded
+              happening-now + next-7-day list renders at the default levels under the `<h3>`. */}
           {isSheet ? (
             <>
               {/* Section 1 — upcoming, now subdivided (see the AMENDED paragraph above). Labelled
@@ -725,11 +764,15 @@ export default function CalendarListView({
                   already soonest-first and includes TODAY's events (the split is
                   `k >= todayKey`). */}
               <section aria-labelledby={upcomingHeadingId} className="space-y-6">
-                {/* 1. HAPPENING NOW — deliberately NO subheader, not even plain text. These rows
-                    sit directly under the outer `<h3>`, which is their only heading, so their
-                    `DateGroup` keeps the DEFAULT heading levels (h4 day header, h5 row title):
-                    there is no intervening sub-section heading to demote beneath. */}
-                {happeningNowGroups.map((group) => (
+                {/* 1 + 2. HAPPENING NOW and the NEXT-7-DAY rows — deliberately NO subheader, not
+                    even plain text (the THIS WEEK eyebrow, its pill and its sr-only count left
+                    with D6c, 88.9-39). These rows sit directly under the outer `<h3>`, which is
+                    their only heading, so their `DateGroup` keeps the DEFAULT heading levels (h4
+                    day header, h5 row title): there is no intervening sub-section heading to
+                    demote beneath. ONE map over `upcomingGroups` (the D6c marker above): the two
+                    partition buckets fold back by date key so a live game and a later game on the
+                    same day share one day header, live first. */}
+                {upcomingGroups.map((group) => (
                   <DateGroup
                     key={group.key}
                     group={group}
@@ -737,54 +780,18 @@ export default function CalendarListView({
                     timezone={timezone}
                     onEventClick={onEventClick}
                     isSheet={isSheet}
+                    viewerDbUserId={viewerDbUserId}
                   />
                 ))}
 
-                {/* 2. THIS WEEK — the only sub-section that carries the pill. */}
-                {thisWeekGroups.length > 0 && (
-                  <div className="space-y-3">
-                    <Heading
-                      level={4}
-                      size="label"
-                      id={thisWeekId}
-                      className="flex items-center gap-2 uppercase tracking-[0.08em] text-content-secondary"
-                    >
-                      This week
-                      <UpcomingCountPill count={upcomingCount} />
-                      {/* The pill is aria-hidden BY CONTRACT — its host announces the
-                          number (UpcomingCountPill.tsx doc). The Calendar button honours
-                          that; this heading is the other host and must too, or the count
-                          is sighted-only here (adversarial review 2026-09-01, ML15).
-                          Same visibility condition as the pill: null = no claim, 0 = none. */}
-                      {upcomingCount !== null && upcomingCount > 0 && (
-                        <span className="sr-only">, {upcomingCount} upcoming this week</span>
-                      )}
-                    </Heading>
-                    <section aria-labelledby={thisWeekId} className="space-y-6">
-                      {thisWeekGroups.map((group) => (
-                        <DateGroup
-                          key={group.key}
-                          group={group}
-                          formatDayHeader={formatDayHeader}
-                          timezone={timezone}
-                          onEventClick={onEventClick}
-                          isSheet={isSheet}
-                          headingLevel="h5"
-                          rowHeadingLevel="h6"
-                        />
-                      ))}
-                    </section>
-                  </div>
-                )}
-
-                {/* 3. LATER — never carries the pill. */}
+                {/* 3. LATER — the only sub-section whose rows may carry a status tag (F2c). */}
                 {laterGroups.length > 0 && (
                   <div className="space-y-3">
                     {/* Deliberately on ONE line: this plan's acceptance gate greps for the
                         literal `>Later<`, and a heading split across lines to satisfy a
                         formatter reads as absent to it. Single-text-child JSX on one line is
                         the shipped idiom in this file anyway. */}
-                    <Heading level={4} size="label" id={laterId} className="uppercase tracking-[0.08em] text-content-secondary">Later</Heading>
+                    <Heading level={4} size="label" id={laterId} className="uppercase tracking-wider text-content-secondary">Later</Heading>
                     <section aria-labelledby={laterId} className="space-y-6">
                       {laterGroups.map((group) => (
                         <DateGroup
@@ -796,6 +803,8 @@ export default function CalendarListView({
                           isSheet={isSheet}
                           headingLevel="h5"
                           rowHeadingLevel="h6"
+                          viewerDbUserId={viewerDbUserId}
+                          statusTagEligible
                         />
                       ))}
                     </section>
@@ -899,6 +908,7 @@ export default function CalendarListView({
                             timezone={timezone}
                             onEventClick={onEventClick}
                             isSheet={isSheet}
+                            viewerDbUserId={viewerDbUserId}
                           />
                         ))}
 
@@ -1011,7 +1021,7 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
           `text-xs` STAYS — 12px is this role's rung, not a miss — and only the WEIGHT moves,
           600 -> 700. It remains a `<span>`: an eyebrow is not a heading, and making it one
           would put a level into an outline that deliberately has none here. */}
-      <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-content-link text-white shadow-theme-sm">
+      <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-content-link text-white shadow-theme-sm">
         {label}
       </span>
     </div>
@@ -1048,6 +1058,9 @@ function DateGroup({
   isSheet = false,
   headingLevel = 'h4',
   rowHeadingLevel = 'h5',
+  // 88.9-39: forwarded to EventRow. `statusTagEligible` is passed by the Later group ONLY (F2c).
+  viewerDbUserId = null,
+  statusTagEligible = false,
 }) {
   // Capitalised so JSX treats it as a component; the value is a lowercase intrinsic tag.
   const DayHeading = headingLevel;
@@ -1056,7 +1069,7 @@ function DateGroup({
       {/* UI-SPEC §4.5: HIERARCHY, so 600 -> 700. The 14px rung is unchanged — this is the
           Label rung and it is on the scale already. The element stays the `headingLevel` seam
           (see the DR2-7b marker above); only the weight utility moves. */}
-      <DayHeading className="text-sm font-bold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
+      <DayHeading className="text-sm font-bold text-content-secondary uppercase tracking-wider pb-1 border-b border-line">
         {formatDayHeader(group.sample)}
       </DayHeading>
       <div className="space-y-2">
@@ -1067,6 +1080,8 @@ function DateGroup({
             timezone={timezone}
             isSheet={isSheet}
             headingLevel={rowHeadingLevel}
+            viewerDbUserId={viewerDbUserId}
+            statusTagEligible={statusTagEligible}
             onClick={() => onEventClick && onEventClick(event)}
           />
         ))}
@@ -1089,7 +1104,7 @@ function DateGroup({
  * view on first paint.
  */
 const EventRow = forwardRef(function EventRow(
-  { event, timezone, onClick, isSheet = false, headingLevel = 'h5' },
+  { event, timezone, onClick, viewerDbUserId = null, statusTagEligible = false, isSheet = false, headingLevel = 'h5' },
   ref
 ) {
   // See the `headingLevel` DECISION on `DateGroup` above — the default IS the shipped
@@ -1120,9 +1135,28 @@ const EventRow = forwardRef(function EventRow(
    * 0.85. Converting the flag alone would put TEXT_ON_DARK under a still-raw
    * white wash on an invalid-URL row over a dark preset — white on near-white.
    * The flag and its wash are one designed pair. A decision, not a cleanup.
+   *
+   * AMENDED Phase 88.9-39 F2c: the flag is also false on a status row — that row paints no
+   * image, so the flag now reads 'this row paints an image'; the derivation from
+   * safeBgImageStyle is unchanged.
    */
+  /* DECISION Phase 88.9-39 F2c: a cancelled / completed sheet row takes the card ground and
+     text-content-muted ink as its own arm of the ground ternary, chosen OVER keeping the group
+     tint or image under muted ink — muted is measured only on the card (6.58 / 6.00); on a
+     user-chosen tint it is unbounded. The label comes from statusTagLabel; this file still
+     compares no status itself. The tag is gated on the Later section (statusTagEligible), chosen
+     OVER isSheet alone — the past list holds every after-the-fact log, which the backend writes
+     as completed (backend:Sonnet/routes/events.js ("status: new Date(start_date) > new Date() ? 'scheduled' : 'completed',")). */
+  const statusTag = isSheet && statusTagEligible ? statusTagLabel(event) : null;
   const bgImageStyle = safeBgImageStyle(groupBgImage);
-  const hasBgImage = !!bgImageStyle;
+  const hasBgImage = !!bgImageStyle && !statusTag;
+  /* DECISION Phase 88.9-39 D5a: a guest sheet row swaps its 1px line border for the dashed amber
+     left edge as an exclusive border arm, chosen OVER stacking the edge on border-line —
+     border-dashed and the amber colour apply to every side, so a stacked row would dash all four
+     edges. The inline borderColor key is deleted rather than overridden, as EventDayModal's W30
+     did: an inline declaration beats any class, so the amber edge and border-line could not
+     paint. */
+  const guest = isSheet && isGuestEvent(event, viewerDbUserId);
   /*
    * DECISION Phase 88.3 (D-09, cascade fix): the row's ground is a MUTUALLY
    * EXCLUSIVE ternary gated on `tinted`, chosen OVER stacking the tint pair
@@ -1252,6 +1286,10 @@ const EventRow = forwardRef(function EventRow(
     subtitleTreatment(ground),
     subtitleTreatment(tinted),
   );
+  // 88.9-39 F2c: a status row takes text-content-muted alone at BOTH computations' consumers
+  // (title, time, game name) — no `--t-*` classes, no style vars, no shadow or stroke — so
+  // neither CR-02 path reaches it (the row's ground is the card, where muted is measured).
+  const statusInk = statusTag ? 'text-content-muted' : null;
 
   const eventTitle = event.title || event.Game?.name || 'Game Night';
   const startTime = formatTime(event.start_date, timezone);
@@ -1279,7 +1317,7 @@ const EventRow = forwardRef(function EventRow(
          enabled-hover variant exists to withhold the lift from a GATED CONTROL, and there is no
          control here to gate. REJECTED: leaving the alias in place for visual continuity.
          Re-spelling it back to `shadow-md` is a decision, not a cleanup. */
-      className={`p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-theme-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+      className={`p-3 sm:p-4 ${guest ? GUEST_ROW_EDGE : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${tinted && !statusTag ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
       style={{
         ...(tinted && {
           '--group-ground': ground,
@@ -1313,12 +1351,11 @@ const EventRow = forwardRef(function EventRow(
           surface: 'card',
           hasBackgroundImage: hasBgImage,
         }),
-        ...bgImageStyle,
+        ...(hasBgImage ? bgImageStyle : null),
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         position: 'relative',
         zIndex: 1,
-        borderColor: 'rgba(0,0,0,0.2)',
       }}
     >
       {/* contrast wash for bg images.
@@ -1371,14 +1408,16 @@ const EventRow = forwardRef(function EventRow(
                 isSheet
                   ? 'font-bold text-base min-w-0 line-clamp-2'
                   : 'font-bold text-base truncate'
-              } [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]`}
-              style={titleVars}
+              } ${statusInk ?? '[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]'}`}
+              style={statusInk ? undefined : titleVars}
             >
               {eventTitle}
             </TitleHeading>
-            <span className={`text-sm [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]`} style={subtitleVars}>
+            <span className={`text-sm ${statusInk ?? '[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]'}`} style={statusInk ? undefined : subtitleVars}>
               {startTime}
             </span>
+            {/* D5a (88.9-39): the shared Guest pill after the time, on a guest night's row only. */}
+            {guest && <GuestPill />}
           </div>
 
           {/* sm: game name (drops below 640px) — EXCEPT on the phone sheet arm.
@@ -1405,8 +1444,8 @@ const EventRow = forwardRef(function EventRow(
                 isSheet
                   ? 'block text-base line-clamp-2 mt-0.5'
                   : 'hidden sm:block text-sm truncate mt-0.5'
-              } [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]`}
-              style={subtitleVars}
+              } ${statusInk ?? '[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]'}`}
+              style={statusInk ? undefined : subtitleVars}
             >
               {gameName}
             </p>
@@ -1421,6 +1460,12 @@ const EventRow = forwardRef(function EventRow(
             />
           </div>
         </div>
+
+        {/* F2c (88.9-39): the Caption-12 status tag at the row end (bg-surface-muted + secondary
+            ink, 6.96 / 7.07); the title column is min-w-0 so it gives way first (R2E3 overflow). */}
+        {statusTag && (
+          <span className="ml-auto shrink-0 px-2 py-0.5 rounded-sm bg-surface-muted text-content-secondary text-xs font-bold">{statusTag}</span>
+        )}
 
         {event.Game?.image_url && (
           <SafeImage

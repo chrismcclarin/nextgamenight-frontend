@@ -817,7 +817,9 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     expect(retry, 'two presses in one tick issue exactly ONE retry').toHaveBeenCalledTimes(1);
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button, 'never the native gate: it would drop focus from the pressed control').not.toHaveAttribute('disabled');
-    expect(button).toHaveTextContent('Retrying…');
+    // rule 1 (88.9-46 B38): the label is kept; the busy name adds the heard suffix.
+    expect(button).toHaveAccessibleName('Try again, retrying');
+    expect(button).toHaveTextContent(/^Try again/);
 
     await act(async () => {
       d.resolve(undefined);
@@ -839,7 +841,9 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     expect(retry, 'two presses in one tick issue exactly ONE retry').toHaveBeenCalledTimes(1);
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).not.toHaveAttribute('disabled');
-    expect(button).toHaveTextContent('Retrying…');
+    // rule 1 (88.9-46 B37): the compact Retry keeps its label; the busy name adds the suffix.
+    expect(button).toHaveAccessibleName('Retry, retrying');
+    expect(button).toHaveTextContent(/^Retry/);
 
     await act(async () => {
       d.resolve(undefined);
@@ -873,7 +877,7 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     await act(async () => {
       d.resolve({ isError: false });
     });
-    expect(screen.queryByRole('button', { name: /^(Try again|Retrying…)$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Try again(, retrying)?$/ })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
@@ -887,7 +891,7 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     await act(async () => {
       d.resolve({ isError: false });
     });
-    expect(screen.queryByRole('button', { name: /^(Try again|Retrying…)$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Try again(, retrying)?$/ })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
@@ -901,7 +905,7 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     await act(async () => {
       d.resolve({ isError: false });
     });
-    expect(screen.queryByRole('button', { name: /^(Retry|Retrying…)$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Retry(, retrying)?$/ })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
@@ -915,7 +919,7 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     await act(async () => {
       d.resolve({ isError: false });
     });
-    expect(screen.queryByRole('button', { name: /^(Retry|Retrying…)$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Retry(, retrying)?$/ })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
@@ -1221,7 +1225,7 @@ describe('FetchErrorBanner — compact failed-retry outcome B1 (plan 88.6.1-21, 
     await user.click(button);
     expect(region.textContent, 'the region is emptied from the press').toBe('');
     expect(visibleLine(region)?.textContent, 'no visible flash').toBe(FIRST_FAILURE_NOTICE);
-    expect(button).toHaveTextContent('Retrying…');
+    expect(button).toHaveAccessibleName('Retry, retrying');
 
     await act(async () => {
       pending[0].resolve({ isError: true });

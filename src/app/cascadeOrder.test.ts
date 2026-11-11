@@ -511,7 +511,7 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
     ).toBeGreaterThan(smAt);
   });
 
-  it('8. neither `.btn-sm` nor `.btn-compact` is inside an `@layer` — they must beat utilities', () => {
+  it('8. `.btn-sm`, `.btn-compact` and `.btn-fuse-bottom` sit outside every `@layer` — they must beat utilities', () => {
     const css = strip(readGlobals());
     for (const sel of ['.btn-sm {', '.btn-compact {']) {
       const at = css.indexOf(sel);
@@ -524,6 +524,28 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
           'exact cascade defect 87.8 DEC-2/DEC-3 hit twice on this same pair.',
       ).toBeNull();
     }
+
+    // 88.9-36 G2a: the phone-only attached-disclosure modifier must stay unlayered, after
+    // .btn-compact, inside the 40rem media block, or the unlayered .btn border-radius wins and the
+    // open Show Filters & Sort toggle keeps its rounded bottom corners with no build error. The
+    // index is asserted first: an absent selector would make the layer check pass vacuously.
+    const fuseAt = css.indexOf('.btn-fuse-bottom {');
+    expect(fuseAt, '`.btn-fuse-bottom {` must exist in comment-stripped globals.css.').toBeGreaterThan(-1);
+    expect(
+      fuseAt,
+      '`.btn-fuse-bottom` must be authored AFTER `.btn-compact` (and so after `.btn`): both are ' +
+        '(0,1,0), so it wins the border-radius tie only on source order.',
+    ).toBeGreaterThan(css.indexOf('.btn-compact {'));
+    expect(layerAt(css, fuseAt), '`.btn-fuse-bottom` must stay UNLAYERED.').toBeNull();
+    expect(depthAt(css, fuseAt), '`.btn-fuse-bottom` must sit directly inside ONE block (its media query).').toBe(1);
+    const mediaAt = css.lastIndexOf('@media', fuseAt);
+    expect(
+      css.slice(mediaAt, fuseAt).startsWith('@media (width < 40rem)'),
+      'the block holding `.btn-fuse-bottom` must be `@media (width < 40rem)` (Tailwind sm, phone only).',
+    ).toBe(true);
+    const body = css.slice(fuseAt, css.indexOf('}', fuseAt));
+    expect(body).toMatch(/border-bottom-left-radius:\s*0;/);
+    expect(body).toMatch(/border-bottom-right-radius:\s*0;/);
   });
 
   it('9. ANTI-VACUITY FLOOR: the unlayered `.btn` block still carries its own geometry', () => {

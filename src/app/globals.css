@@ -385,6 +385,26 @@
      measurement's label would turn a true statement about what was measured then into a false one.
      Only pointers that direct a reader AT a live declaration or a live call site were amended. */
   --color-surface-muted: var(--color-bg-muted);
+  --color-surface-tile: var(--color-bg-tile);
+  --color-surface-tile-past: var(--color-bg-tile-past);
+  /* DECISION Phase 88.9-22 C2a / B2a: --color-surface-overlay points at the one scrim token, chosen
+     OVER the literal bg-[var(--color-bg-overlay)] (CR2-14; the build contract names
+     bg-surface-overlay). --color-surface-group-halo reads the host-set --group-halo and falls back
+     to --color-bg-card, chosen OVER no fallback (an unset variable invalidates the ring shadow and
+     the focus ring vanishes) and OVER a dark:-prefixed halo on Button (shared halo constraint 2:
+     the dark-on-Button cascade is unsettled). Hosts set --group-halo; controls take
+     ring-offset-surface-group-halo. */
+  --color-surface-overlay: var(--color-bg-overlay);
+  --color-surface-group-halo: var(--group-halo, var(--color-bg-card));
+  --color-chip-1: var(--color-member-chip-1);
+  --color-chip-2: var(--color-member-chip-2);
+  --color-chip-3: var(--color-member-chip-3);
+  --color-chip-4: var(--color-member-chip-4);
+  --color-chip-5: var(--color-member-chip-5);
+  --color-chip-6: var(--color-member-chip-6);
+  --color-chip-7: var(--color-member-chip-7);
+  --color-chip-8: var(--color-member-chip-8);
+  --color-chip-rim: var(--color-member-chip-rim);
   --color-surface-elevated: var(--color-bg-elevated);
   --color-surface-input: var(--color-bg-input);
   /* Phase 88.3 (D-02 / D-03, UI-SPEC §9.4): the two new surfaces, bridged in the house shape —
@@ -396,6 +416,14 @@
   --color-surface-hover: var(--color-bg-hover);
   --color-surface-sunken: var(--color-bg-sunken);
   --color-surface-nav: var(--color-bg-nav);
+  /* DECISION Phase 88.9-33 (O01a + B4a): --color-bg-hero is the landing hero's ground — the card
+     surface in light (owner pick O01a, 88.9-PICKS-B8A.json, 2026-11-07), the nav surface in dark —
+     and surface-hero is ONE key for both the hero fill and Get Started's focus halo, chosen OVER a
+     dark-prefixed halo twin on the Button (UI-SPEC shared halo constraint 2: the dark-on-Button
+     cascade is unsettled; cascadeOrder test 12 rule d) and over reusing the surface-group-halo host
+     variable (a key named for group colour on a page with no group). Either arm is a W55 look
+     decision, not a cleanup. */
+  --color-surface-hero: var(--color-bg-hero);
   --color-surface-nav-hover: var(--color-bg-nav-hover);
   --color-surface-header: var(--color-bg-header);
   --color-surface-header-hover: var(--color-bg-header-hover);
@@ -416,6 +444,12 @@
   --color-content-link: var(--color-text-link);
   --color-content-link-hover: var(--color-text-link-hover);
   --color-content-heatmap-count: var(--color-text-heatmap-count);
+  /* Plan 88.9-42 (O08b): the five heatmap legend swatch surfaces; values at the runtime tokens. */
+  --color-surface-heatmap-legend-1: var(--color-heatmap-legend-1);
+  --color-surface-heatmap-legend-2: var(--color-heatmap-legend-2);
+  --color-surface-heatmap-legend-3: var(--color-heatmap-legend-3);
+  --color-surface-heatmap-legend-4: var(--color-heatmap-legend-4);
+  --color-surface-heatmap-legend-5: var(--color-heatmap-legend-5);
   /* Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §9.4): the amber-as-TEXT keys. Named `--color-content-*`
      and NOT `--color-accent-text` on purpose — see the DECISION marker at the runtime declarations
      in `:root` below. Because the key name differs from the runtime property name, neither needs a
@@ -481,6 +515,11 @@
   --color-btn-secondary: var(--color-btn-secondary-bg);
   --color-btn-secondary-hover: var(--secondary-hover);
   --color-btn-secondary-text: var(--secondary-foreground);
+  /* 88.9-39 MED-78 (R-P3b): the pressed segment of the Month | List switch. The key names differ
+     from the runtime properties (toggle-pressed-*), so none self-references (the 87.7 rule above). */
+  --color-toggle-on: var(--color-toggle-pressed-bg);
+  --color-toggle-on-text: var(--color-toggle-pressed-text);
+  --color-toggle-on-hover: var(--color-toggle-pressed-hover);
 
   /* status */
   /* Phase 88.3 (OI-4): these three now read the per-theme `--color-status-{x}-border` runtime
@@ -966,8 +1005,32 @@
      `--color-bg-card-hover` until 88.6-02 (D-15); value byte-unchanged). */
   --color-bg-hover: var(--warm-50);
   --color-bg-sunken: var(--warm-50);
+  /* DECISION Phase 88.9-22 C3 (owner pick C3, 88.9-PICKS-B7A.json, CS-04): soft day tiles — the
+     tile is 55% and the past tile 28% of --color-bg-muted over --color-bg-card, written as literal
+     hexes per theme (dark pair in .dark), chosen OVER the collapsed 1px / 2px outline grid and the
+     hairline grid (CS-04 arms b and d) and OVER an inline color-mix(), which the Gate A resolver
+     cannot evaluate. A tile is a fill, not a control boundary: no 3:1 floor (1.24 light / 1.12 dark
+     against the card). Changing one hex without re-deriving it from the muted and card values is a
+     decision, not a cleanup. */
+  --color-bg-tile: #ebe6e0;
+  --color-bg-tile-past: #f5f2ef;
   --color-bg-elevated: #ffffff;
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  /* DECISION Phase 88.9-22 D1b / D3c (owner picks D1b votes-b3 v12 and D3c votes-b3a v2,
+     2026-11-05): eight theme-identical *-700 chip fills with white ink (5.02 minimum, green-700) and
+     a dark separation rim, purple-800 light / purple-950 dark, chosen OVER the shipped bg-white/85
+     tinted arm (dark initials 1.07) and OVER the page-3 D3a tap. The runtime names carry member-
+     because an @theme inline key pointing at its own name is a literal self-reference that emits
+     nothing. The rim is a separation edge with no floor. */
+  --color-member-chip-1: #b91c1c;
+  --color-member-chip-2: #c2410c;
+  --color-member-chip-3: #b45309;
+  --color-member-chip-4: #15803d;
+  --color-member-chip-5: #0f766e;
+  --color-member-chip-6: #0369a1;
+  --color-member-chip-7: #6d28d9;
+  --color-member-chip-8: #be185d;
+  --color-member-chip-rim: var(--purple-800);
   --color-bg-input: #ffffff;
   /* DECISION Phase 88-04 (D-15 / UI-SPEC §9.1): the EmptyState glyph circle gets its OWN accent
      tint token rather than reusing `--color-status-warning-subtle` (#f9ebda light / #423e36 dark,
@@ -1030,6 +1093,8 @@
      warm-100 page, 7.09 on the white card). The DARK arm is amber-500 on `#513902` at **5.05:1** —
      byte-identical to what shipped, because dark `--color-accent-text` is declared at today's
      `--color-accent` value on purpose.
+     AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark accent-text is
+     amber-400 now, 6.50:1 on #513902 (was 5.05), still a byte-copy of dark --color-accent.
      UNCHANGED, and this is the half a reader would get wrong: the owner-picked ARM B tint below is
      NOT touched, and the `DECISION 88-27 D-32` paired-ternary SHAPE is not touched either — only
      the class token inside the true arm moves (plan 08).
@@ -1042,6 +1107,7 @@
 
   /* Brand / Navigation */
   --color-bg-nav: var(--purple-900);
+  --color-bg-hero: var(--color-bg-card);
   --color-bg-nav-hover: var(--purple-800);
 
   /* Text */
@@ -1131,6 +1197,12 @@
      fills, which do not change with the theme, so its ink must not either. Re-pointing this at the
      text-primary token is a decision, not a cleanup. */
   --color-text-heatmap-count: var(--warm-900);
+  /* DECISION Phase 88.9-42 O08b (owner pick, chat 2026-11-07 6:18 PM Pacific): the legend ramp is --color-status-success-border mixed into the card at 20 / 35 / 50 / 70 / 90 percent, stored as literal hexes per theme (tokenContrast cannot resolve color-mix), chosen OVER the raw green-100..500 palette with no dark fork and OVER the dark-only fork O08a. Light: #166534 into #ffffff. */
+  --color-heatmap-legend-1: #d0e0d6;
+  --color-heatmap-legend-2: #adc9b8;
+  --color-heatmap-legend-3: #8bb29a;
+  --color-heatmap-legend-4: #5c9371;
+  --color-heatmap-legend-5: #2d7448;
 
   /* Accent (interactive elements) */
   /* DECISION Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §5.6.2, §9.2): `--color-accent-text` is RENAMED
@@ -1489,6 +1561,11 @@
   --color-btn-primary-bg: var(--purple-600);
   --color-btn-primary-hover: var(--purple-700);
   --color-btn-primary-text: #ffffff;
+  /* 88.9-39 MED-78 (R-P3b): the pressed Month | List segment, light = the btn-primary values by
+     reference (no light pixel moves). The dark arm is its own; marker in `.dark`. */
+  --color-toggle-pressed-bg: var(--color-btn-primary-bg);
+  --color-toggle-pressed-text: var(--color-btn-primary-text);
+  --color-toggle-pressed-hover: var(--color-btn-primary-hover);
   /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c), 2026-08-28): the accent
      BUTTON vocabulary, minted so the Create-Event amber has a name instead of only a literal.
      Owner: "The Share game qr button still looks odd. Lets make it amber, like the create event
@@ -1745,6 +1822,8 @@
             channel — t=0.15 resting, t=0.24 hover — against the CARD ground (`#ffffff` light,
             `#232d3e` dark), NOT the page. Painting one straight onto the page ground is a
             contrast change, not a reskin; re-derive against the page if you ever need that.
+            AMENDED Phase 88.9-19 (owner pick E7a): the dark ERROR pair is an owner-picked
+            exception to rule (i) — see the dark status-tint block.
        (ii) THERE IS DELIBERATELY NO FIFTH `info` FAMILY (D-33). Informational surfaces reuse
             Banner's shipped treatment — `border-line` on the container, `text-content-secondary`
             on the glyph. Minting an info colour is a decision, not a completion of the set.
@@ -1854,8 +1933,13 @@
      indistinguishable from the page and the three-surface ladder collapses back to two. Rounding
      this onto a neighbouring palette step is a decision, not a cleanup. */
   --color-bg-sunken: #1c2432;
+  /* Phase 88.9-22 C3: the dark tile pair — see the DECISION marker at the light declaration. */
+  --color-bg-tile: #2a3548;
+  --color-bg-tile-past: #263143;
   --color-bg-elevated: var(--purple-800);
   --color-bg-overlay: rgba(0, 0, 0, 0.7);
+  /* Phase 88.9-22 D3c: only the rim forks; the eight fills are theme-identical and inherit. */
+  --color-member-chip-rim: var(--purple-950);
   --color-bg-input: var(--purple-800);
   /* Phase 88-04 (D-15 / UI-SPEC §9.1) — OPAQUE literal, matching 88-01's D-32/D-33 treatment of
      the status tints: an `rgba()` amber over the card would shift with whatever sits behind it.
@@ -1875,6 +1959,7 @@
   --color-bg-today-tint: #513902;
 
   --color-bg-nav: var(--purple-950);
+  --color-bg-hero: var(--color-bg-nav);
   --color-bg-nav-hover: var(--purple-900);
 
   --color-text-primary: var(--warm-50);
@@ -1886,27 +1971,47 @@
   /* Phase 88.9-08 (M1b): byte-equal to the light declaration, deliberately; the DECISION marker and
      its measured ratios sit at the light --color-text-heatmap-count above. */
   --color-text-heatmap-count: var(--warm-900);
+  /* DECISION Phase 88.9-42 O08b (owner pick, chat 2026-11-07 6:18 PM Pacific): the legend ramp is --color-status-success-border mixed into the card at 20 / 35 / 50 / 70 / 90 percent, stored as literal hexes per theme (tokenContrast cannot resolve color-mix), chosen OVER the raw green-100..500 palette with no dark fork and OVER the dark-only fork O08a. Dark: #22c55e into #232d3e (the purple-900 card). */
+  --color-heatmap-legend-1: #234b44;
+  --color-heatmap-legend-2: #236249;
+  --color-heatmap-legend-3: #23794e;
+  --color-heatmap-legend-4: #229754;
+  --color-heatmap-legend-5: #22b65b;
 
-  --color-accent: var(--amber-500);
-  --color-accent-hover: var(--amber-400);
+  /* DECISION Phase 88.9-22 F4b (owner pick F4b, 88.9-PICKS-B8A.json, page 8a, O-11): every dark
+     accent role — accent, accent-text, accent-text-strong, border-accent and the count pill — sits
+     on amber-400, chosen OVER the shipped amber-500 (both passed; a taste call). The dark hovers
+     step to amber-300, 1.16:1 from resting, chosen OVER leaving them on amber-400, which would
+     equal the resting accent and delete the hover cue; it is the same step the dark link already
+     ships, this file ("--color-text-link-hover: var(--amber-300);"). The dark focus ring is
+     amber-400 too and reads 1.00 against an accent fill: every house ring keeps its offset halo,
+     src/app/cascadeOrder.test.ts ("every house offset ring in src declares a surface halo"); never
+     drop the offset on an accent control. The light theme does not move. */
+  --color-accent: var(--amber-400);
+  --color-accent-hover: var(--amber-300);
   /* Phase 88.3 (Req 4): the dark half of the accent rename + mint. The full rationale, the two
      rejected names and every measured ratio live at the light declarations above. These two values
      are today's `--color-accent` / `--color-accent-hover` VERBATIM, deliberately — that is what
      keeps "dark does not move" true across plan 08's sweep. amber-800 is not an option here: it
-     measures 1.95:1 on the dark card. */
+     measures 1.95:1 on the dark card.
+     AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark now moves — the
+     resting pair is amber-400 / amber-300, chosen OVER the "dark does not move" verbatim copy of
+     amber-500 / amber-400. */
   --color-on-accent: var(--purple-950);
-  --color-accent-text: var(--amber-500);
-  --color-accent-text-hover: var(--amber-400);
+  --color-accent-text: var(--amber-400);
+  --color-accent-text-hover: var(--amber-300);
   /* Phase 88.3-14 (owner ruling 3): copied VERBATIM from `--color-accent-text` two lines above —
-     NOT from `-hover` — so the dark glyph is byte-identical to today's. Gate A asserts it. */
-  --color-accent-text-strong: var(--amber-500);
+     NOT from `-hover` — so the dark glyph is byte-identical to today's. Gate A asserts it.
+     AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): still a verbatim copy of
+     the dark accent-text, so both moved to amber-400 together; test 41's byte-equality still holds. */
+  --color-accent-text-strong: var(--amber-400);
 
   --color-border: var(--purple-700);
   /* DECISION Phase 88-01 (D-34): darkened one step for the 1.4.11 hairline floor — see the full
      marker (and the two rejected alternatives) at the light declaration above. `--color-border`
      directly above stays put on purpose. */
   --color-border-strong: var(--purple-500);
-  --color-border-accent: var(--amber-500);
+  --color-border-accent: var(--amber-400);
 
   /* Dark mode: minimal shadows, replaced by borders/glow */
   /* AMENDED Phase 88.6-05 (N1): the DARK half of the same change — the bare `none` keyword becomes
@@ -1972,6 +2077,15 @@
      Collapsing this back onto purple-500 is a decision, not a cleanup — it re-opens an AA failure. */
   --color-btn-primary-hover: var(--purple-550);
   --color-btn-primary-text: #ffffff;
+  /* DECISION Phase 88.9-39 MED-78 (88.9-RULINGS.md R-P3b, 2026-11-08): the pressed Month | List
+     segment has its own dark arm — purple-400 fill, warm-900 ink, purple-300 hover: 4.02:1 against
+     the unpressed purple-800 segment, 4.93:1 against the purple-900 card, ink 6.40:1 — chosen OVER
+     reusing the dark primary-button fill (purple-600: 1.99:1 against the unpressed segment, 2.45:1
+     against the card, under WCAG 1.4.11's 3:1 for the only pressed cue). Light points at the
+     btn-primary values and does not move. Changing this is a decision, not a cleanup. */
+  --color-toggle-pressed-bg: var(--purple-400);
+  --color-toggle-pressed-text: var(--warm-900);
+  --color-toggle-pressed-hover: var(--purple-300);
   /* Phase 88.3-18: BYTE-IDENTICAL to the light arm, deliberately. The Create-Event button this
      matches carries one inline amber in both themes, so the accent CTA is theme-invariant by
      design; Gate A asserts the cross-theme equality so a future "dark needs its own amber" edit
@@ -2035,6 +2149,10 @@
      AMENDED Phase 88.9-01: the dark error BORDER stays #ef4444 while the dark error hue is now
      #b91c1c, so the border is no longer the hue verbatim; it still does not move (tokenContrast
      test 24 pins its literal).
+     AMENDED Phase 88.9-19 (owner pick E7a, 88.9-PICKS-B4.json, 2026-11-06): on the red-950
+     resting ground #450a0a red-300 reads 8.51 (the 6.41 above is the retired wine ground).
+     AMENDED Phase 88.9-19 (owner pick O23b, 88.9-PICKS-B8B.json, 2026-11-07): on the hover
+     ground #5c1d1d red-300 reads 6.71 (the 5.76 above is the retired wine hover).
      Folding the byte-identical pairs back into the hues above, or "upgrading" dark error's border
      to red-300 for symmetry with its text, is a decision, not a cleanup. */
   --color-status-success-text: #22c55e;
@@ -2048,11 +2166,23 @@
      `round((1-t)*card + t*hue)` per channel against the dark card `#232d3e`, t=0.15 resting /
      t=0.24 hover. See the full marker at the light declarations above for the two rejected
      mechanisms and the card-surface rule. Nudging one of these by eye desynchronises it from that
-     formula and from its hover step — a decision, not a cleanup. */
+     formula and from its hover step — a decision, not a cleanup.
+     AMENDED Phase 88.9-19 (owner picks E7a + O23b, 88.9-PICKS-B4.json / 88.9-PICKS-B8B.json,
+     2026-11-06 / 2026-11-07): the ERROR pair below is exempt from this formula (see its DECISION
+     marker), chosen OVER the derived wine pair (ink 6.41 resting); success and warning still
+     follow it. */
   --color-status-success-subtle: #234443;
   --color-status-success-subtle-hover: #235146;
-  --color-status-error-subtle: #42303f;
-  --color-status-error-subtle-hover: #54333f;
+  /* DECISION Phase 88.9-19 E7a (owner pick E7a, 88.9-PICKS-B4.json, 2026-11-06): the dark error
+     box ground is red-950 #450a0a, chosen OVER the shipped wine #42303f (ink 6.41, the pair the
+     owner called "rather pink", UAT3-J1) and OVER E7b #5c1d1d as the ground. Ink #fca5a5 and
+     border #ef4444 do not move: ink 8.51 on it, border 3.68 on the card, fill 1.17 on the card.
+     This pair no longer follows the tint formula above — on purpose; re-deriving it from the
+     formula reverses an owner pick, a decision, not a cleanup. Hover twin O23b
+     (88.9-PICKS-B8B.json, 2026-11-07): #5c1d1d, chosen OVER the shipped wine hover #54333f
+     (ink 5.76); ink 6.71 on it. */
+  --color-status-error-subtle: #450a0a;
+  --color-status-error-subtle-hover: #5c1d1d;
   --color-status-warning-subtle: #423e36;
   --color-status-warning-subtle-hover: #554832;
 
@@ -2209,7 +2339,7 @@
      here rather than folded into the JS list.
      DELIBERATELY EXCLUDED: code that reads a RAW palette token outside the `--color-*` namespace
      this alternative would rename — Header.js (twice) and LandingPage.js `[--ring:var(--amber-400)]`,
-     UpcomingCountPill.tsx `dark:[background-color:var(--amber-500)]` and `dark:[color:var(--warm-900)]`
+     UpcomingCountPill.tsx `dark:[background-color:var(--amber-400)]` and `dark:[color:var(--warm-900)]`
      (by `grep -rnE "var\(--(amber|purple|warm)-[0-9]+" src`, every hit opened; the rest are comment
      prose). Nothing reads `var(--amber-600)` any more: plan 88.6-21 moved the group page's CTA onto
      the accent Button, and that file names the shade only in comment prose. Line numbers in this
@@ -2385,6 +2515,20 @@ body {
   padding: 0.5rem 1rem;
   transition: var(--theme-transition);
   cursor: pointer;
+}
+
+/* DECISION Phase 88.9-22 O20c (owner direction 8b, confirmed page 9, 88.9-PICKS-B8B.json): the
+   Sonner rich error toast reads the status-error family. UNLAYERED on purpose: Sonner injects its
+   sheet at runtime, unlayered, so any rule inside a cascade layer loses to it whatever its
+   specificity; the selector is 0,3,0 against Sonner's 0,2,0 theme rule. Chosen OVER
+   toastOptions.classNames (every toast type would need it and the class must still out-rank
+   Sonner's attribute rule). The tokens fork on the .dark class, so the error toast follows the APP
+   theme although theme="system" follows the OS. Moving this into a layer or lowering the selector
+   is a decision, not a cleanup. */
+:root [data-sonner-toaster][data-sonner-theme] {
+  --error-bg: var(--color-status-error-subtle);
+  --error-border: var(--color-status-error-border);
+  --error-text: var(--color-status-error-text);
 }
 
 /* DECISION Phase 88.6-05 (W19): `.btn`'s `border: none` RESET — and ONLY that one declaration —
@@ -2993,6 +3137,30 @@ body {
      here re-deforms both steppers and reds e2e/touch-targets.spec.ts ("Math.abs(probes.compact.width - probes.compact.height)"). */
   padding-left: 0;
   padding-right: 0;
+}
+
+/* DECISION Phase 88.9-28 N1: a square 44x44 icon button is an unlayered padding-0 class placed
+   after .btn, chosen OVER a padding utility (every @layer utilities rule loses to the unlayered
+   .btn) and OVER an inline style on the call site (the primitive owns its sizes) — moving it above
+   .btn silently restores the 16px side padding. Emitted only by the Button size key iconSquare
+   (src/components/ui/Button.tsx ("iconSquare: 'btn-icon-square")), the month-nav chevrons
+   (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07). */
+.btn-icon-square {
+  padding: 0;
+}
+
+/* DECISION Phase 88.9-36 G2a (owner pick G2a, 88.9-PICKS-B6.json item G2, 2026-11-07 3:07 AM Pacific):
+   the attached disclosure's square bottom corners, as an unlayered modifier after `.btn` chosen OVER
+   a rounded-b utility at the call site (dead: `.btn` declares border-radius unlayered) and OVER an
+   important-flagged utility (none in src; it defeats cn() last-wins). Phone only (below 40rem,
+   Tailwind's sm), where the toggle spans the card — see
+   src/app/gameDetail/page.js ("DECISION Phase 88.9-36 G2a"). Layering it, or moving it above
+   `.btn`, re-breaks it with no build error. src/app/cascadeOrder.test.ts pins it (test 8). */
+@media (width < 40rem) {
+  .btn-fuse-bottom {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
 }
 
 /* DECISION Phase 87.8 DEC-3 — AMENDED BY PHASE 88-31: THE `.modal-overlay` RULES ARE GONE, AND

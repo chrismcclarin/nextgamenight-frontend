@@ -74,6 +74,34 @@ describe('TimezoneNudgeBanner — the two NON-scheduler mounts are unaffected', 
   });
 });
 
+describe('TimezoneNudgeBanner — K8, the B3a status-warning family (plan 88.9-42)', () => {
+  // Copy census K8: this box was light-only raw amber with no dark twin. It now wears the same
+  // opaque status-warning tokens as the removed-member notice and the SMS-disabled notice, in
+  // both themes, and its body STAYS at 14 (text-sm) - the rung plan 88.9-26 handed here; the
+  // reasons are in the component's AMENDED 88.6-26 marker.
+  it('K8 (88.9): the timezone nudge sits on the status-warning family and keeps its 14px body', () => {
+    render(<TimezoneNudgeBanner />);
+    const box = screen.getByRole('status');
+    expect(box).toHaveClass('bg-status-warning-subtle', 'border-status-warning');
+
+    const link = screen.getByRole('link', { name: 'Set your timezone' });
+    const body = link.closest('div') as HTMLElement;
+    expect(body).not.toBe(box);
+    expect(body).toHaveClass('text-sm', 'text-content-status-warning');
+
+    expect(link).toHaveClass('underline', 'hover:text-content-primary');
+    expect(
+      Array.from(link.classList).filter((c) => c.startsWith('text-')),
+      'the link inherits its ink from the body; no text- class of its own'
+    ).toEqual([]);
+
+    const amber = [box, ...Array.from(box.querySelectorAll<HTMLElement>('*'))]
+      .map((el) => el.getAttribute('class') ?? '')
+      .filter((c) => c.includes('amber'));
+    expect(amber, 'no raw amber class anywhere in the rendered banner').toEqual([]);
+  });
+});
+
 describe('TimezoneNudgeBanner — the late unmount is HELD under an active finger', () => {
   it('stays mounted while a paint gesture is active and goes on finger-up', () => {
     /* THE DEFECT: this banner disappears when `isProfileTimezoneSet` resolves, which can land

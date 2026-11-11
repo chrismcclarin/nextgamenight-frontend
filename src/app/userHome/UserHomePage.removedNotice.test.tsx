@@ -73,9 +73,11 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import UserHome from './UserHomePage';
 
-// The shipped amber class string of the notice's box, byte-for-byte (UserHomePage.js).
+// The notice box's class string, byte-for-byte (UserHomePage.js). X2 (owner pick B3a,
+// 88.9-PICKS-B1.json, plan 88.9-42): the opaque status-warning family in both themes, no
+// dark: fork and no amber.
 const BOX_CLASS =
-  'mb-4 px-4 py-3 rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-100 flex items-center justify-between gap-3';
+  'mb-4 px-4 py-3 rounded-card bg-status-warning-subtle border border-status-warning text-content-status-warning flex items-center justify-between gap-3';
 
 /** UserHomePage is `.js`, so its inferred prop type has every prop REQUIRED. */
 function homeElement() {
@@ -167,10 +169,12 @@ describe('the removed-from-group notice is spoken from a region that was already
     expect(box.querySelectorAll('[aria-live]')).toHaveLength(1);
   });
 
-  // 88.9-CR m6/m10: Dismiss wears the focus treatment of its amber-box twin in
-  // src/app/userProfile/page.js ("focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"),
-  // not the browser default outline on the amber notice box.
-  it('RB2b (88.9-CR m6/m10): Dismiss carries the amber-box focus-visible ring and its halo', () => {
+  // 88.9-CR m6/m10, moved by X2 (plan 88.9-42, owner pick B3a): Dismiss matches its twin in
+  // src/app/userProfile/page.js ("AMENDED Phase 88.9-32 (owner pick B3a")
+  // - warning ink with the primary hover, the house ring, and ONE halo key that is the box's own
+  // fill (focus-visible:ring-offset-status-warning-subtle) with no dark: variant, because the box
+  // is opaque in both themes. Not the browser default outline, not the amber-50 / page pair.
+  it('RB2b / X2 (88.9): Dismiss sits on the status-warning family - warning ink, the ring and ONE box-token halo', () => {
     vi.useFakeTimers();
     h.selfUuid = SELF_UUID;
     h.search = 'removedFrom=Weekend%20Warriors';
@@ -180,16 +184,23 @@ describe('the removed-from-group notice is spoken from a region that was already
     });
     const dismiss = screen.getByRole('button', { name: 'Dismiss' });
     for (const token of [
+      'text-content-status-warning',
+      'hover:text-content-primary',
       'rounded-btn',
       'focus:outline-hidden',
       'focus-visible:ring-2',
       'focus-visible:ring-focus-ring',
       'focus-visible:ring-offset-2',
-      'focus-visible:ring-offset-amber-50',
-      'dark:focus-visible:ring-offset-surface-page',
+      'focus-visible:ring-offset-status-warning-subtle',
     ]) {
       expect(dismiss.classList.contains(token), 'Dismiss class list carries ' + token).toBe(true);
     }
+    const classes = Array.from(dismiss.classList);
+    expect(
+      classes.filter((c) => c.startsWith('dark:focus-visible:ring-offset-')),
+      'ONE halo key: no dark: ring-offset variant on an opaque box'
+    ).toEqual([]);
+    expect(classes.filter((c) => c.includes('amber')), 'no raw amber on Dismiss').toEqual([]);
   });
 
   it('RB3: with no removed group the region is mounted, empty and sr-only, with no box and no Dismiss', () => {

@@ -768,7 +768,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: "create-event's Next week arrow, width (88.9 A9a; measured 24px wide)",
     },
-    // 88.9 A9a: the footer's Report bug text button, under 44 tall. No ring today (X1, a round-2 register row), so no halo.
+    // 88.9 A9a: the footer's Report bug text button, under 44 tall. Halo page since X1 B5a (plan 88.9-37): it added the house ring with the page halo; the round-1 note read no ring.
     footerReportBugHeight: {
       anchor: 'onClick={() => setShowFeedbackForm(true)}',
       expectedFile: 'app/components/Footer.js',
@@ -778,13 +778,49 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       label: "the footer's Report bug button, height (88.9 A9a)",
     },
     // 88.9 A9a: the month grid's Go to Today text link, under 44 tall. Keeps ring-offset-2 (the 88.3-17 marker); halo card (O3a).
+    // 88.9-28 N1: the control is now the Today pill (same raw button, same anchor); the row is relabelled, not moved.
     goToTodayHeight: {
       anchor: 'onClick={onGoToday}',
       expectedFile: 'app/components/CalendarMonthView.js',
       expectedCount: 1,
       floor: MIN_TARGET_44,
       dimensions: ['min-h', 'h'],
-      label: "the month grid's Go to Today link, height (88.9 A9a)",
+      label: "the month grid's Today pill, height (88.9 A9a + N1)",
+    },
+    // 88.9-28 N1: the two month-nav chevrons, square 44x44 through the Button primitive's iconSquare size key.
+    monthNavChevronHeight: {
+      anchor: 'size="iconSquare"',
+      expectedFile: 'app/components/CalendarMonthView.js',
+      expectedCount: 2,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: 'the month nav chevrons, height (88.9 N1)',
+    },
+    monthNavChevronWidth: {
+      anchor: 'size="iconSquare"',
+      expectedFile: 'app/components/CalendarMonthView.js',
+      expectedCount: 2,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: 'the month nav chevrons, width (88.9 N1)',
+    },
+    // 88.9-39 N1: the Month | List switch's two segments are raw buttons (no .btn), one JSX site, floored in the inline literal.
+    segmentedToggleHeight: {
+      anchor: 'aria-pressed={pressed}',
+      expectedFile: 'components/ui/SegmentedToggle.tsx',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the Month | List switch's segments, height (88.9 N1)",
+    },
+    // 88.9 D13c (owner pick, 88.9-PICKS-B3.json item D13, 2026-11-06): the suggestions slot's Try again link, a raw button floored in the inline literal (min-h-11).
+    quickSuggestionsRetryHeight: {
+      anchor: 'onClick={onRetry}',
+      expectedFile: 'app/components/QuickSuggestions.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the suggestions slot's Try again link, height (88.9 D13c)",
     },
   };
 
@@ -860,8 +896,28 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
   // breakpoint half only. A max-* floor would red here too, the safe direction for a floor gate:
   // decide it as its own subject. Every subject was floored unprefixed when this was written.
   /** Does this tag declare an explicit, unprefixed dimension at or above `floor`, at phone width? */
+  // DECISION Phase 88.9-28 N1: a Button call site is floored through the primitive's own size map, chosen OVER repeating min-h-11 min-w-11 at the call site — the floor lives once, in the cva size key.
+  /**
+   * The class tokens a `<Button size="<key>">` call site gets from the primitive's size map, read
+   * from src/components/ui/Button.tsx's raw source (SOURCES already holds it). A tag that is not a
+   * `<Button` or carries no `size` literal contributes nothing. A key the map does not hold throws:
+   * a floor read through a size that does not exist would pass vacuously.
+   */
+  function primitiveSizeTokens(tag: string): { raw: string; base: string }[] {
+    if (!/^<Button(?=[\s/>])/.test(tag)) return [];
+    const size = /\ssize="([A-Za-z0-9]+)"/.exec(tag);
+    if (!size) return [];
+    const button = SOURCES.find((s) => s.rel === 'components/ui/Button.tsx');
+    if (!button) throw new Error('primitiveSizeTokens: components/ui/Button.tsx is not in the scanned source tree');
+    const entry = new RegExp(`\\b${size[1]}: '([^']*)'`).exec(button.raw);
+    if (!entry) {
+      throw new Error(`primitiveSizeTokens: the Button size map has no \`${size[1]}\` key (tag: ${tag.slice(0, 80)})`);
+    }
+    return tagTokens(entry[1]);
+  }
+
   function meetsFloor(tag: string, floor: number, dimensions: string[]): boolean {
-    return tagTokens(tag).some(({ raw, base }) => {
+    return [...tagTokens(tag), ...primitiveSizeTokens(tag)].some(({ raw, base }) => {
       if (gatesAboveThePhone(raw)) return false;
       if (raw.replace(/^!/, '') !== base) return false;
       const px = utilityPx(base, dimensions);

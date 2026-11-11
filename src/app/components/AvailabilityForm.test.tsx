@@ -6,6 +6,7 @@
 // painted grid with no undo, and their gate moved off `window.confirm` onto the
 // shared dialog tier. The gate was previously untested at this level.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
@@ -48,6 +49,7 @@ vi.mock('./AvailabilityGrid', () => ({ default: () => <div data-testid="grid" />
 import type { ComponentType } from 'react';
 import AvailabilityFormDefault from './AvailabilityForm';
 import { logger } from '@/lib/logger';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { ApiError, availabilityFormAPI } from '@/lib/api';
 
 // AvailabilityForm is a JS component; its inferred prop type marks every prop
@@ -285,9 +287,16 @@ describe('Phase 88-13 — replacing painted selections is gated by a styled dial
   };
 
   beforeEach(() => {
+    // F9b (88.9-23): a fake clock that still advances with real time, so the confirms
+    // below can step past the dialog tier's gate.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.clearAllMocks();
     (availabilityFormAPI.prefillFromGcal as Mock).mockResolvedValue({ slot_ids: [], count: 0 });
     (availabilityFormAPI.prefillFromSaved as Mock).mockResolvedValue({ slot_ids: [], count: 0 });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   /** The replace gate, addressed by its accessible name (UI-SPEC §11.2 copy). */
@@ -312,6 +321,10 @@ describe('Phase 88-13 — replacing painted selections is gated by a styled dial
     // Blocking, not advisory: nothing has been fetched or painted yet.
     expect(availabilityFormAPI.prefillFromGcal).not.toHaveBeenCalled();
 
+    // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Replace' }));
     await waitFor(() => expect(availabilityFormAPI.prefillFromGcal).toHaveBeenCalledTimes(1));
   });
@@ -384,11 +397,60 @@ describe('Phase 88-13 — replacing painted selections is gated by a styled dial
 
     // ...and confirming the SECOND trigger runs the SECOND action, not the
     // first: one shared config must not mean one shared target.
+    // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     fireEvent.click(within(replaceDialog()).getByRole('button', { name: 'Replace' }));
     await waitFor(() => expect(availabilityFormAPI.prefillFromSaved).toHaveBeenCalledTimes(1));
     expect(availabilityFormAPI.prefillFromGcal).not.toHaveBeenCalled();
 
     unmount();
+  });
+
+  // R-C3a (88.9-56, owner ruling 2026-11-10, 'hear'): the Replace confirm keeps its verb beside the
+  // house spinner while the pre-fill runs, heard as 'Replace, replacing'.
+  it("R-C3a (88.9): the pending Replace confirm keeps its verb with the spinner and is named 'Replace, replacing'", async () => {
+    const visibleText = (el: HTMLElement): string | null => {
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.sr-only').forEach((node) => node.remove());
+      return clone.textContent;
+    };
+    let settle!: (value: unknown) => void;
+    (availabilityFormAPI.prefillFromGcal as Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { settle = resolve; })
+    );
+    render(
+      <AvailabilityForm
+        magicToken="tok"
+        userName="Sam"
+        promptId="p1"
+        gcalConnected
+        existingResponse={PAINTED}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /import from google calendar/i }));
+    const dialog = await screen.findByRole('dialog', { name: 'Replace your current selections?' });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Replace' }));
+
+    const pending = within(dialog).getByRole('button', { name: 'Replace, replacing' });
+    expect(pending).toHaveTextContent('Replace');
+    expect(visibleText(pending)).toBe('Replace');
+    await waitFor(() => expect(pending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(pending).toHaveAttribute('aria-disabled', 'true');
+    expect(pending).not.toHaveAttribute('disabled');
+    await waitFor(() => expect(availabilityFormAPI.prefillFromGcal).toHaveBeenCalledTimes(1));
+    fireEvent.click(pending);
+    await act(async () => {});
+    expect(availabilityFormAPI.prefillFromGcal).toHaveBeenCalledTimes(1);
+
+    settle({ slot_ids: [], count: 0 });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Replace your current selections?' })).not.toBeInTheDocument()
+    );
   });
 });
 
@@ -426,6 +488,15 @@ describe('Phase 88.6-54 (R7 / SC-4, UI-SPEC §7.5) — composed axe audit of the
   const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
   const DIALOG_NAME = 'Replace your current selections?';
 
+  // F9b (88.9-23): the audit runs on the LIVE gate (its confirm past CONFIRM_DELAY_MS).
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   // Its own fixture, same shape as the replace-gate describe's: one painted slot is "anything to lose".
   const PAINTED = {
     time_slots: [{ slotId: '2026-08-10T18:00:00.000Z', preference: 'preferred' }],
@@ -451,6 +522,10 @@ describe('Phase 88.6-54 (R7 / SC-4, UI-SPEC §7.5) — composed axe audit of the
     fireEvent.click(screen.getByRole('button', { name: /import from google calendar/i }));
     const dialog = await screen.findByRole('dialog', { name: DIALOG_NAME });
     // A branch-specific control of the open dialog: the audit runs on the settled gate, not a frame.
+    // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(within(dialog).getByRole('button', { name: 'Replace' })).toBeInTheDocument();
     return dialog;
   }
@@ -601,34 +676,33 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     release();
   });
 
-  it('the spinner arcs carry SVG `opacity` attributes, never the bare utility', async () => {
-    // The blocker this conversion had to clear, pinned so re-introducing the utility spelling
+  it('AMENDED Phase 88.9-45 (rule 1): the busy CTA shows the house spinner — no SVG arc, no bare opacity utility', async () => {
+    // Pinned by 88.6-42 as "the spinner arcs carry SVG opacity attributes, never the bare
+    // utility": the blocker that conversion had to clear, so re-introducing the utility spelling
     // reds HERE as well as in tokenContrast test 53(b2) — two independent layers, because the
-    // gate's 400-character window is a heuristic and this one is exact.
+    // gate's 400-character window is a heuristic and this one is exact. Rule 1 (88.9-45) deletes
+    // the white SVG arc for the house Spinner (src/components/ui/Spinner.tsx ("export const SPINNER_CLASS")), whose class string
+    // carries no opacity at all, so the pin now reads: one [data-slot="spinner"], no svg arc, and
+    // no bare opacity-<n> utility anywhere inside the busy CTA.
     const user = userEvent.setup();
     (availabilityFormAPI.submitResponse as Mock).mockImplementation(
       () => new Promise(() => {})
     );
     const { container } = render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
     await user.click(screen.getByRole("checkbox", { name: /unavailable this week/i }));
-    await user.click(screen.getByRole("button", { name: /submit availability/i }));
+    const cta = screen.getByRole("button", { name: /submit availability/i });
+    await user.click(cta);
 
-    const spinner = await waitFor(() => {
-      const found = container.querySelector('svg.animate-spin');
-      expect(found).not.toBeNull();
-      return found as SVGElement;
-    });
-    expect(spinner.querySelector('circle')?.getAttribute('opacity')).toBe('0.25');
-    expect(spinner.querySelector('path')?.getAttribute('opacity')).toBe('0.75');
-    expect(spinner.innerHTML).not.toContain('opacity-25');
-    expect(spinner.innerHTML).not.toContain('opacity-75');
+    await waitFor(() => expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(container.querySelector('svg.animate-spin')).toBeNull();
+    expect(cta.innerHTML).not.toMatch(/(^|[\s"])opacity-\d/);
   });
 
   // Plan 88.6.1-26 (W001 / R3-M19, AC-12, Edge R4). The latch kept the request count at one, but
   // a second click re-ran react-hook-form, whose settle dropped `isSubmitting` mid-request: the
   // CTA read `Submit Availability` again with `aria-disabled="false"`. `useAppForm` now refuses
   // the second submit before react-hook-form runs.
-  it('A1: a second press while submitting sends nothing, and the CTA keeps Submitting... and aria-disabled', async () => {
+  it('A1 rule 1 (88.9): Submit keeps its label + spinner while busy; a second press sends nothing', async () => {
     const user = userEvent.setup();
     let release: () => void = () => {};
     (availabilityFormAPI.submitResponse as Mock).mockImplementationOnce(
@@ -644,12 +718,15 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     const form = cta.closest('form') as HTMLFormElement;
     await user.click(cta);
     await waitFor(() => expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1));
-    expect(cta).toHaveAccessibleName('Submitting...');
+    // Rule 1 (88.9-45): the label stays, the house spinner joins it and the sr-only suffix is heard.
+    expect(cta).toHaveAccessibleName('Submit Availability, submitting');
+    expect(cta).toHaveTextContent('Submit Availability');
+    await waitFor(() => expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
 
     await user.click(cta);
     await new Promise((r) => setTimeout(r, 50));
     expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
-    expect(cta).toHaveAccessibleName('Submitting...');
+    expect(cta).toHaveAccessibleName('Submit Availability, submitting');
     expect(cta).toHaveAttribute('aria-disabled', 'true');
     expect(cta).not.toHaveAttribute('disabled');
 
@@ -657,10 +734,11 @@ describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', 
     expect(fireEvent.submit(form)).toBe(false);
     await new Promise((r) => setTimeout(r, 50));
     expect(availabilityFormAPI.submitResponse).toHaveBeenCalledTimes(1);
-    expect(cta).toHaveAccessibleName('Submitting...');
+    expect(cta).toHaveAccessibleName('Submit Availability, submitting');
 
     release();
     await waitFor(() => expect(cta).toHaveAccessibleName('Submit Availability'));
+    await waitFor(() => expect(cta.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
   });
 });
 
@@ -701,18 +779,19 @@ describe('AvailabilityForm "unavailable this week" toggle — exposes its state 
   });
 });
 
-// Plan 88.6.1-26 (D-35 rule of POSITION, copy row A5, Requirement 8). The pre-fill button the
+// Plan 88.6.1-26 (D-35 rule of POSITION, copy row A5 — retired by rule 1, 88.9-45, Requirement 8). The pre-fill button the
 // person pressed stays in the focus order (`aria-disabled` + a first-line ref latch) and names
 // what it is loading; the OTHER button keeps native `disabled`. Before this plan both buttons were
 // natively disabled during either pre-fill (a pressed button dropped a keyboard user to <body>)
 // and BOTH switched to their loading words, because their labels read `prefillStatus`, which is
 // null until the fetch settles. The outcome sentence is now also spoken through an always-mounted
 // sr-only polite region, and one ref-held timer clears it (two timers used to collide).
-describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its timer (D-35, A5)', () => {
-  // Copy row A5, byte-equal to 88.6.1-COPY-TABLE.html (the ellipsis is U+2026).
-  const A5 = 'Loading your availability…';
+describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its timer (D-35; A5 retired by rule 1, 88.9-45)', () => {
   const SAVED = 'Use my saved availability';
   const GCAL = 'Import from Google Calendar';
+  // Rule 1 (88.9-45): the pressed button keeps its label; the busy suffix joins its NAME.
+  const SAVED_BUSY = 'Use my saved availability, loading';
+  const GCAL_BUSY = 'Import from Google Calendar, importing';
 
   // mockReset, not only clearAllMocks: earlier describes leave persistent and once-only
   // implementations on the two pre-fill mocks, and an unconsumed once-value would leak across arms.
@@ -733,14 +812,16 @@ describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its 
     return (v: T) => release(v);
   }
 
-  it('P1: Saved pressed — it reads A5, stays aria-disabled (never disabled) at 44px; GCal is natively disabled; one call', async () => {
+  it('P1 rule 1 (88.9): Saved pressed — it keeps Use my saved availability + spinner (named with ", loading"), stays aria-disabled (never disabled) at 44px; GCal is natively disabled; one call', async () => {
     const release = hold<{ slot_ids: string[]; count: number }>('prefillFromSaved');
     render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability gcalConnected />);
     const saved = screen.getByRole('button', { name: SAVED });
     const gcal = screen.getByRole('button', { name: GCAL });
 
     fireEvent.click(saved);
-    await waitFor(() => expect(saved).toHaveAccessibleName(A5));
+    await waitFor(() => expect(saved).toHaveAccessibleName(SAVED_BUSY));
+    expect(saved).toHaveTextContent(SAVED);
+    await waitFor(() => expect(saved.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(saved).toHaveAttribute('aria-disabled', 'true');
     expect(saved).not.toHaveAttribute('disabled');
     expect(saved).toHaveClass('min-h-11');
@@ -756,16 +837,20 @@ describe('88.6.1-26 — the pressed pre-fill button, its outcome region and its 
     await waitFor(() => expect(saved).toHaveAccessibleName(SAVED));
     expect(saved).not.toHaveAttribute('aria-disabled');
     expect(gcal).toBeEnabled();
+    expect(saved.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    await waitFor(() => expect(saved.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
   });
 
-  it('P2: GCal pressed — it reads Importing… and stays aria-disabled; Saved keeps its name and is natively disabled', async () => {
+  it('P2 rule 1 (88.9): Import from Google Calendar keeps its label + spinner while busy; Saved stays natively disabled', async () => {
     const release = hold<{ slot_ids: string[]; count: number }>('prefillFromGcal');
     render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" hasSavedAvailability gcalConnected />);
     const saved = screen.getByRole('button', { name: SAVED });
     const gcal = screen.getByRole('button', { name: GCAL });
 
     fireEvent.click(gcal);
-    await waitFor(() => expect(gcal).toHaveAccessibleName('Importing…'));
+    await waitFor(() => expect(gcal).toHaveAccessibleName(GCAL_BUSY));
+    expect(gcal).toHaveTextContent(GCAL);
+    await waitFor(() => expect(gcal.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(gcal).toHaveAttribute('aria-disabled', 'true');
     expect(gcal).not.toHaveAttribute('disabled');
     expect(gcal).toHaveClass('min-h-11');

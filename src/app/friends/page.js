@@ -6,6 +6,8 @@ import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
+import { buildSignInUrl } from '@/lib/signIn';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import {
     FetchErrorBanner,
@@ -18,6 +20,7 @@ import { ACCEPT_FRIEND_FAILED_COPY, DECLINE_FRIEND_FAILED_COPY } from '../compon
 // The friend batch's terminal-409 rule and the invite panel's two shipped lines (one source).
 import {
     isAlreadyInvitedOrMember,
+    isPermanentInviteRefusal,
     ALL_ALREADY_INVITED_MESSAGE,
     invitedWithAlreadyMessage,
     allFailedBatchLine,
@@ -31,15 +34,17 @@ import { queryCacheOnError } from '../../lib/queryClient';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '../../lib/logger';
 
 // Copy row FR1 (owner ruling 2026-10-05, D-47; D-32 R8 straight apostrophe): the Requests tab's
-// full-banner title when the provider's load failed and nothing is retained.
-const FRIEND_REQUESTS_LOAD_FAILED_TITLE = "Couldn't load your friend requests";
+// full-banner title when the provider's load failed and nothing is retained. AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): the constant holds the thing; the composed title is unchanged, chosen OVER typing the whole title.
+const FRIEND_REQUESTS_LOAD_FAILED_THING = 'your friend requests';
 
 // Copy row F7 (owner ruling 2026-10-05, D-47): the found result, heard and not seen; `name` is
 // what the result row shows.
@@ -77,7 +82,7 @@ function neighbourControl(row, isRowInFlight) {
 }
 
 function FriendsPage() {
-    const { user, isLoading: authLoading } = useUser();
+    const { user, error: authError, isLoading: authLoading } = useUser();
 
     // D-09 (Pitfall 5 / D-07 window rule): the friends page GATES on identity.
     // Incoming-vs-outgoing request classification, the admin-group derive, and
@@ -172,8 +177,10 @@ function FriendsPage() {
 
        Invite to Group is such a control. Its VALIDITY half (no group, no friend selected, the
        group's members still loading) moves to `aria-disabled` as well, because the batch's own
-       settle empties the selection, and a native gate would then blur the very button the user
-       pressed. Disclosed visible delta: at rest with nothing selected (and while a group's
+       settle empties the ids whose outcome is final (AMENDED Phase 88.9-56, R-C1 twin), and a
+       native gate would then blur the very button the user pressed. AMENDED Phase 88.9-56 (R-C3b reach):
+       its in-flight glyph is Button's busy now (the delayed, held house spinner, heard as Invite to Group,
+       sending), replacing the hand-rolled spinning div and its sr-only words. Disclosed visible delta: at rest with nothing selected (and while a group's
        members load) it shows the gated colour pair instead of the 50% wash; pressing it then
        sends nothing.
 
@@ -417,6 +424,21 @@ function FriendsPage() {
         isError: Boolean(sentError),
         error: sentError,
         refetch: retrySent,
+    });
+    // DECISION Phase 88.9-40 (SESSION-01): a signed-out visitor goes straight to sign-in and back here,
+    // chosen OVER the prompt as the first screen (one more tap, and its bare login link returned the
+    // person to the home page, not here); the prompt remains for a return with the latch set, its Log
+    // In link now carrying returnTo. A 401 on identity or the friends / sent lists redirects once too
+    // (SPEC A8). A useUser() error shows Reload, not the log-in prompt. See
+    // src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling").
+    const signIn = useSignInRedirect({
+        authLoading,
+        signedOut: !user,
+        authError,
+        unauthorized: [selfIdentityErrorState, friendsErrorState, sentErrorState].some(
+            (s) => s.showError && s.code === 'unauthorized'
+        ),
+        sessionProven: friendsLoaded,
     });
 
     // The Requests tab over the shared provider (88.6.1-70 contract C5): the refetch is plan
@@ -776,30 +798,45 @@ function FriendsPage() {
         let failCount = 0;
         let alreadyCount = 0;
         let firstFailure = null;
+        // R-C1 (88.9-56): the ids whose outcome is FINAL, removed from the selection after the batch.
+        const finalIds = new Set();
 
         try {
             for (const friendUserId of selectedFriends) {
                 // Skip anyone already in the group; otherwise invite by user_id.
                 // The friend's email is resolved server-side (83-06 PII default-deny).
-                if (groupMembers.includes(friendUserId)) continue;
+                // A friend already in at the press leaves the selection with no request (final).
+                if (groupMembers.includes(friendUserId)) {
+                    finalIds.add(friendUserId);
+                    continue;
+                }
                 try {
                     await invitesAPI.sendFriendInvite(selectedGroupId, friendUserId);
                     successCount++;
+                    finalIds.add(friendUserId);
                 } catch (err) {
                     // 88.6.1-72 (owner ruling 2026-10-05): a terminal 409 is already invited,
                     // never a failure; the panel's rule, from the shared module.
                     if (isAlreadyInvitedOrMember(err)) {
                         alreadyCount++;
+                        finalIds.add(friendUserId);
                     } else {
                         failCount++;
                         if (!firstFailure) firstFailure = err;
                         logger.info('Error sending friend invite:', errCtx(err));
+                        // A permanent refusal is final; a transient failure stays ticked for the retry.
+                        if (isPermanentInviteRefusal(err)) finalIds.add(friendUserId);
                     }
                 }
             }
 
             setBulkInviteResult({ successCount, failCount, alreadyCount, groupName, firstFailure });
-            setSelectedFriends(new Set());
+            // DECISION Phase 88.9-56 (R-C1): final-outcome clear over clearing the whole selection and over a sent-only clear — the twin of the invite panel's B08 amendment.
+            setSelectedFriends((prev) => {
+                const next = new Set(prev);
+                for (const id of finalIds) next.delete(id);
+                return next;
+            });
         } finally {
             bulkInviteInFlightRef.current = false;
             setBulkInviteLoading(false);
@@ -856,8 +893,9 @@ function FriendsPage() {
         return { type: 'send', label: 'Send Request' };
     };
 
-    // Loading / not logged in
-    if (authLoading) {
+    // Loading / not logged in. 88.9-40: the same hold is the redirect frame (signIn.holding), so no
+    // prompt or banner paints for a frame before the browser navigates.
+    if (authLoading || signIn.holding) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
                 <div role="status" aria-label="Signing you in" className="flex items-center gap-2 text-content-secondary">
@@ -868,6 +906,14 @@ function FriendsPage() {
         );
     }
 
+    // 88.9-40 (SESSION-01): useUser() itself failed (offline, or /api/auth/me answered 5xx) — Reload,
+    // never the prompt and never a redirect. The title is this page's banner title; the body is
+    // userProfile's 88-19 sentence (no new copy).
+    if (signIn.sessionError) {
+        return <ErrorFallback title="Couldn't load your friends" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />;
+    }
+
+    // Reached only on the DECLINED arm (back from sign-in with the latch set, or storage failed).
     if (!user) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
@@ -885,7 +931,7 @@ function FriendsPage() {
                         unlayered `.btn` (its padding and `display: inline-flex`, both in the block marked at
                         src/app/globals.css ("UNLAYERED with every other declaration it has today"); re-pointed 88.6.1-40). */}
                     <Button asChild variant="primary" size="default" className="focus-visible:ring-offset-surface-page">
-                        <a href="/api/auth/login">Log In</a>
+                        <a href={buildSignInUrl()}>Log In</a>
                     </Button>
                 </div>
             </div>
@@ -904,7 +950,7 @@ function FriendsPage() {
                     <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
                     <FetchErrorBanner
                         state={selfIdentityErrorState}
-                        title="Couldn't load your friends"
+                        thing="your friends"
                         reportContext="friends page — self-identity resolution"
                     />
                 </div>
@@ -937,7 +983,7 @@ function FriendsPage() {
                     <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
                     <FetchErrorBanner
                         state={friendsErrorState.showError ? friendsErrorState : sentErrorState}
-                        title="Couldn't load your friends"
+                        thing="your friends"
                         reportContext="friends page — page data failed while identity was still resolving"
                     />
                 </div>
@@ -1023,18 +1069,30 @@ function FriendsPage() {
                             className="flex-1"
                             required
                         />
+                        {/* DECISION Phase 88.9-46 (rule 1 B21-B25): every in-flight friends button keeps its
+                            resting label with the house spinner and a heard suffix that re-uses its shipped
+                            in-flight word (Search, searching / Send Request, sending / Remove <name>, removing /
+                            Accept, accepting / Decline, declining), chosen OVER the shipped label swaps (five
+                            sites, 88.6.1 era — a swap replaced the whole accessible name and changed the
+                            control's width under the finger) and OVER minting new suffix words (Q6(b)). Owner
+                            pick O16a extended by the Q3 ruling (88.9-RULINGS.md, 2026-11-08); B25's word
+                            confirmed at R-W4. Each site's own latch stays the refusal. The search status line
+                            below the form is a status caption, not a button, and keeps its text. */}
                         <Button
                             type="submit"
                             variant="primary"
                             size="default"
                             disabled={!searching && !searchEmail.trim()}
                             aria-disabled={searching ? 'true' : undefined}
+                            busy={searching}
+                            busySuffix=", searching"
                         >
-                            {searching ? 'Searching...' : 'Search'}
+                            Search
                         </Button>
                     </form>
 
                     {/* Search Result */}
+                    {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. */}
                     {searching && (
                         <div role="status" aria-label="Searching for that email address" className="mt-4 flex items-center gap-2 text-content-secondary">
                             <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-btn-primary" />
@@ -1122,8 +1180,10 @@ function FriendsPage() {
                                                     size="default"
                                                     onClick={(e) => handleSendRequest(searchResult.id, e)}
                                                     aria-disabled={sendingRequest ? 'true' : undefined}
+                                                    busy={sendingRequest}
+                                                    busySuffix=", sending"
                                                 >
-                                                    {sendingRequest ? 'Sending...' : 'Send Request'}
+                                                    Send Request
                                                 </Button>
                                             );
                                         default:
@@ -1234,7 +1294,7 @@ function FriendsPage() {
                             the friends list beside it is intact, so this must not blank it. */}
                         {groupsErrorState.showError && (
                             <div className="mb-4">
-                                <FetchErrorBanner state={groupsErrorState} compact />
+                                <FetchErrorBanner state={groupsErrorState} compact hostGround="page" />
                             </div>
                         )}
                         {/* DECISION Phase 88-14 (Req 6 / Req 14, UI-SPEC §9.2): empty and failed-to-load
@@ -1260,7 +1320,7 @@ function FriendsPage() {
                         {!friendsRetained && friendsErrorState.showError ? (
                             <FetchErrorBanner
                                 state={friendsErrorState}
-                                title="Couldn't load your friends"
+                                thing="your friends"
                                 reportContext="friends page — friends list fetch"
                                 focusTarget={friendsTabRef}
                             />
@@ -1323,13 +1383,9 @@ function FriendsPage() {
                                                         onClick={handleBulkInvite}
                                                         aria-disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading || groupMembersLoading ? 'true' : undefined}
                                                         aria-busy={bulkInviteLoading || undefined}
+                                                        busy={bulkInviteLoading}
+                                                        busySuffix=", sending"
                                                     >
-                                                        {bulkInviteLoading && (
-                                                            <>
-                                                                <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                                                                <span className="sr-only">Sending invites...</span>
-                                                            </>
-                                                        )}
                                                         Invite to Group
                                                     </Button>
                                                     {selectedFriends.size > 0 && (
@@ -1338,6 +1394,7 @@ function FriendsPage() {
                                                         </span>
                                                     )}
                                                 </div>
+                                                {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. */}
                                                 {groupMembersLoading && (
                                                     <div role="status" aria-label="Loading group members" className="mt-2 flex items-center gap-2 text-xs text-content-muted">
                                                         <div aria-hidden="true" className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
@@ -1459,10 +1516,16 @@ function FriendsPage() {
                                                                         `Remove ${friendName}`
                                                                     )}
                                                                     // Label-in-Name (WCAG 2.5.3) during the commit: the
-                                                                    // visible label is "Removing...", so the accessible name
-                                                                    // must contain it. The hook only owns resting-vs-armed.
-                                                                    {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
-                                                                    aria-disabled={removing ? 'true' : undefined}
+                                                                    // visible label stays Remove (rule 1, 88.9-46 B23) and
+                                                                    // the name adds the removing suffix — the aria-label
+                                                                    // overrides content, so it carries the person AND the
+                                                                    // suffix. The hook only owns resting-vs-armed.
+                                                                    {...(removing ? { 'aria-label': `Remove ${friendName}, removing` } : {})}
+                                                                    // F9b (88.9-23): a conditional spread, the house form
+                                                                    // (src/components/ui/useConfirmAction.ts ("'aria-pressed': true as const")),
+                                                                    // so the hook's gated aria-disabled is not overwritten by an
+                                                                    // explicit undefined while the request is idle.
+                                                                    {...(removing ? { 'aria-disabled': 'true' } : {})}
                                                                     // DECISION Phase 88-27 (D-32 bucket D): the hover affordance
                                                                     // 87.7 stripped from here was a TEXT alpha (error text at
                                                                     // 80% on hover). It comes back as a subtle SURFACE, chosen
@@ -1480,9 +1543,14 @@ function FriendsPage() {
                                                                             : 'border-transparent'
                                                                     }`}
                                                                 >
-                                                                    {removing
-                                                                        ? 'Removing...'
-                                                                        : removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                                    {removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                                    {/* Raw host (not Button, not flex): the house spinner with
+                                                                        the same ml-2 spacing plan 88.9-45 gives AvailabilityForm's
+                                                                        raw buttons; the suffix rides the aria-label above.
+                                                                        AMENDED Phase 88.9-56 (R-C3b reach): the delayed, held
+                                                                        element; the row leaves with the friend on success, so
+                                                                        the hold ends with the host. */}
+                                                                    <DelayedSpinner busy={removing} className="ml-2 align-middle" />
                                                                 </button>
                                                             );
                                                         })()}
@@ -1556,7 +1624,7 @@ function FriendsPage() {
                         ) : requestsFullBannerShown ? (
                             <FetchErrorBanner
                                 state={requestsErrorState}
-                                title={FRIEND_REQUESTS_LOAD_FAILED_TITLE}
+                                thing={FRIEND_REQUESTS_LOAD_FAILED_THING}
                                 reportContext="friends page — friend requests fetch"
                                 focusTarget={requestsTabRef}
                             />
@@ -1605,8 +1673,10 @@ function FriendsPage() {
                                                             onClick={(e) => handleAccept(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'accept' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'decline' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
+                                                            busy={actionLoading[request.id] === 'accept'}
+                                                            busySuffix=", accepting"
                                                         >
-                                                            {actionLoading[request.id] === 'accept' ? 'Accepting...' : 'Accept'}
+                                                            Accept
                                                         </Button>
                                                         <Button
                                                             variant="secondary"
@@ -1615,8 +1685,10 @@ function FriendsPage() {
                                                             onClick={(e) => handleDecline(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'decline' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'accept' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
+                                                            busy={actionLoading[request.id] === 'decline'}
+                                                            busySuffix=", declining"
                                                         >
-                                                            {actionLoading[request.id] === 'decline' ? 'Declining...' : 'Decline'}
+                                                            Decline
                                                         </Button>
                                                     </div>
                                                 </div>
@@ -1666,7 +1738,7 @@ function FriendsPage() {
                         {!sentRetained && sentErrorState.showError ? (
                             <FetchErrorBanner
                                 state={sentErrorState}
-                                title="Couldn't load your sent requests"
+                                thing="your sent requests"
                                 reportContext="friends page — sent requests fetch"
                                 focusTarget={sentTabRef}
                             />

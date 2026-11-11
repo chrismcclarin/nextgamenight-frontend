@@ -513,7 +513,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
         <Modal.Body>
           <div className="text-center">
             <div className="text-content-status-success text-5xl mb-4">✓</div>
-            <DialogTitle className="text-xl font-bold text-content-primary mb-2">Thank You!</DialogTitle>
+            <DialogTitle className="text-content-primary mb-2">Thank You!</DialogTitle>
             <p className="text-content-secondary">Your feedback has been submitted successfully.</p>
           </div>
         </Modal.Body>
@@ -871,11 +871,14 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               variant="primary"
               disabled={!subject.trim() || !description.trim()}
               aria-disabled={selfNotReady || submitting ? 'true' : undefined}
+              busy={submitting}
+              busySuffix=", submitting"
               /* Round 5 #37: the failure joins the gate line, so a user returning to
                  Submit hears WHY it failed and not only whether it is available. */
               aria-describedby={[error ? errorId : null, statusId].filter(Boolean).join(' ')}
             >
-              {submitting ? 'Submitting...' : 'Submit'}
+              {/* DECISION Phase 88.9-45 (rule 1): Submit keeps its label + spinner while sending, chosen OVER the Submitting swap — the house busy idiom (src/components/ui/Button.tsx ("', saving'")). */}
+              Submit
             </Button>
           </div>
         </form>

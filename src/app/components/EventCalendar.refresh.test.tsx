@@ -41,20 +41,42 @@ vi.mock('@/lib/api', async (importOriginal) => {
 const authUser = vi.hoisted(() => ({ user: { sub: 'auth0|self' }, isLoading: false }));
 vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => authUser }));
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+// 88.9-39 W59: ONE hoisted push, so a test can read WHERE the default event click routed.
+const nav = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: nav.push }) }));
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'America/New_York', setTimezone: vi.fn() }),
 }));
 
 // The month view renders one <li> per event id, so a test can read WHICH events are on screen.
+// 88.9-39 N1: it also renders the `viewSwitch` slot EventCalendar passes into the nav row, so the
+// Month | List switch is reachable in month mode exactly as the real nav row mounts it.
+// 88.9-39 W59: and one `open <id>` button per event OUTSIDE the list (the <li> text stays the bare
+// id for monthIds), so a test can press an event the way a tile press reaches onEventClick.
 vi.mock('@/app/components/CalendarMonthView', () => ({
-  default: ({ activeEvents }: { activeEvents: { id: string }[] }) => (
-    <ul data-testid="month-view">
+  default: ({
+    activeEvents,
+    viewSwitch,
+    onEventClick,
+  }: {
+    activeEvents: { id: string }[];
+    viewSwitch?: React.ReactNode;
+    onEventClick?: (event: { id: string }) => void;
+  }) => (
+    <div>
+      <ul data-testid="month-view">
+        {activeEvents.map((e) => (
+          <li key={e.id}>{e.id}</li>
+        ))}
+      </ul>
       {activeEvents.map((e) => (
-        <li key={e.id}>{e.id}</li>
+        <button key={e.id} type="button" onClick={() => onEventClick?.(e)}>
+          {`open ${e.id}`}
+        </button>
       ))}
-    </ul>
+      {viewSwitch}
+    </div>
   ),
 }));
 vi.mock('@/app/components/CalendarListView', () => ({ default: () => null }));
@@ -71,6 +93,7 @@ type CalendarProps = {
   events?: unknown[] | null;
   title?: string;
   headingRef?: React.RefObject<HTMLElement | null>;
+  showListView?: boolean;
 };
 const EventCalendar = EventCalendarDefault as unknown as ComponentType<CalendarProps>;
 
@@ -86,6 +109,9 @@ beforeEach(() => {
   eventsMock().mockReset();
   h.selfUuid = undefined;
   h.identityError = false;
+  // 88.9-39 N1: EventCalendar persists the view (CAL-03) in localStorage; a test that presses List
+  // must not hand the next test a calendar that hydrates in list mode (no month-view).
+  window.localStorage.clear();
 });
 afterEach(() => cleanup());
 
@@ -267,7 +293,7 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
-  it('EC-RF-4. Retry answers only when its fetch settles: Retrying… holds and the region stays quiet while held (C4, Edge R5 ordering)', async () => {
+  it('EC-RF-4. Retry answers only when its fetch settles: the busy Retry holds (rule 1) and the region stays quiet while held (C4, Edge R5 ordering)', async () => {
     const user = userEvent.setup();
     await loadThenRefresh(server500());
     await waitForRf1();
@@ -280,7 +306,7 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     await act(async () => {
       await sleep(150);
     });
-    expect(retry).toHaveTextContent('Retrying…');
+    expect(retry).toHaveAccessibleName('Retry, retrying');
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(retry);
     expect(region.textContent, 'the region stays quiet while the fetch is out').toBe('');
@@ -397,10 +423,12 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
 
   it('EC-RF-12. a refresh nobody pressed never drops focus to <body>: a 403 withdrawal and a success while Retry holds focus (C8 f, C12)', async () => {
     // (f1) The view toggle inside the calendar holds focus; the tab-return re-attempt is a 403.
+    // AMENDED Phase 88.9-39 (owner pick N1): the toggle is the List segment of the Month | List
+    // switch (role=group 'Calendar view'), chosen OVER the retired single List View / Month View Button.
     const ref = React.createRef<HTMLElement>();
     await loadThenRefresh(server500(), { headingRef: ref });
     await waitForRf1();
-    const toggle = screen.getByRole('button', { name: /^(List|Month) View$/ });
+    const toggle = within(screen.getByRole('group', { name: 'Calendar view' })).getByRole('button', { name: 'List' });
     act(() => toggle.focus());
     expect(document.activeElement).toBe(toggle);
     const e403 = new ApiError('Access denied', 'forbidden', 403);
@@ -453,7 +481,7 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     });
     // The Retry's run and two tab returns: ONE more request.
     expect(eventsMock()).toHaveBeenCalledTimes(callsBefore + 1);
-    expect(retry).toHaveTextContent('Retrying…');
+    expect(retry).toHaveAccessibleName('Retry, retrying');
 
     await act(async () => {
       held.reject(server500());
@@ -479,5 +507,100 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     expect(monthIds()).toEqual(['e1']);
     expect(document.activeElement).not.toBe(homeH1());
     expect(document.activeElement).not.toBe(document.body);
+  });
+
+  // 88.9-39 (owner pick N1, votes-b7a v3, 2026-11-07): the Month | List switch, and CS-01's sr-only
+  // loaded heading. Both mounts (home, group page) go through this one component.
+  it('N1 (88.9): the Month | List switch is a labelled group of two aria-pressed buttons, present in BOTH modes', async () => {
+    const user = userEvent.setup();
+    render(<Host events={[]} />);
+    expect(await screen.findByTestId('month-view')).toBeInTheDocument();
+    const group = () => screen.getByRole('group', { name: 'Calendar view' });
+    // A string `name` on a role query is already a whole-string match (so 'List' never matches 'List View').
+    const segment = (name: 'Month' | 'List') => within(group()).getByRole('button', { name });
+
+    expect(within(group()).getAllByRole('button')).toHaveLength(2);
+    expect(segment('Month')).toHaveAttribute('aria-pressed', 'true');
+    expect(segment('List')).toHaveAttribute('aria-pressed', 'false');
+    expect(segment('Month').className.split(/\s+/)).toContain('min-h-11');
+    expect(segment('List').className.split(/\s+/)).toContain('min-h-11');
+    expect(screen.queryByRole('button', { name: /^(List|Month) View$/ })).toBeNull();
+
+    // A press flips both pressed states and the group is STILL present (list mode, the way back).
+    await user.click(segment('List'));
+    expect(screen.queryByTestId('month-view')).toBeNull();
+    expect(segment('List')).toHaveAttribute('aria-pressed', 'true');
+    expect(segment('Month')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: /^(List|Month) View$/ })).toBeNull();
+
+    // AUT-2, the keyboard path: the pressed segment unmounts with its parent (the nav row, or the
+    // list-mode row), so focus must land on the NEW group's pressed segment, never on <body>.
+    act(() => segment('Month').focus());
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(document.activeElement).toBe(segment('Month')));
+    expect(segment('Month')).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByTestId('month-view')).toBeInTheDocument();
+    act(() => segment('List').focus());
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(document.activeElement).toBe(segment('List')));
+    expect(segment('List')).toHaveAttribute('aria-pressed', 'true');
+    expect(document.activeElement).not.toBe(document.body);
+    cleanup();
+
+    // showListView false: no switch at all (the CAL-06 guard still forces month mode).
+    window.localStorage.clear();
+    render(<Host events={[]} showListView={false} />);
+    expect(await screen.findByTestId('month-view')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Calendar view' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(List|Month) View$/ })).toBeNull();
+  });
+
+  it('CS-01 (88.9): the calendar heading is in the DOM, sr-only, and still receives focus from RefreshFailedNotice', async () => {
+    const user = userEvent.setup();
+    await loadThenRefresh(server500());
+    await waitForRf1();
+    const h2 = calendarH2();
+    const classes = h2.className.split(/\s+/);
+    expect(classes, 'the loaded heading is sr-only').toContain('sr-only');
+    // MED-79: shown while it holds keyboard focus, so a successful Retry does not land on nothing.
+    expect(classes, 'the heading is shown while focused').toContain('focus-visible:not-sr-only');
+    expect(h2.isConnected).toBe(true);
+
+    eventsMock().mockResolvedValueOnce([E2]);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(document.activeElement).toBe(calendarH2()));
+    expect(monthIds()).toEqual(['e2']);
+  });
+
+  it('W59 (88.9): a live event with a game, started an hour ago, routes to gameDetail?event_id=', async () => {
+    // Owner by chat 2026-11-07 3:15 AM Pacific ("W59 event."): a night in progress opens the EVENT
+    // page, not the game view. The ended night (started 10h ago, 2h long) still opens the game.
+    const user = userEvent.setup();
+    const now = Date.now();
+    const live = {
+      id: 'e-live',
+      group_id: 'g1',
+      game_id: 'game-1',
+      status: 'scheduled',
+      start_date: new Date(now - 60 * 60 * 1000).toISOString(),
+      duration_minutes: 180,
+    };
+    const ended = {
+      id: 'e-ended',
+      group_id: 'g1',
+      game_id: 'game-2',
+      status: 'scheduled',
+      start_date: new Date(now - 10 * 60 * 60 * 1000).toISOString(),
+      duration_minutes: 120,
+    };
+    render(<Host events={[live, ended]} />);
+    expect(await screen.findByTestId('month-view')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'open e-live' }));
+    expect(nav.push).toHaveBeenLastCalledWith('/gameDetail?event_id=e-live&group_id=g1');
+
+    await user.click(screen.getByRole('button', { name: 'open e-ended' }));
+    expect(nav.push).toHaveBeenLastCalledWith('/gameDetail?game_id=game-2&group_id=g1');
+    expect(nav.push).toHaveBeenCalledTimes(2);
   });
 });

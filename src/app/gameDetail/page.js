@@ -14,7 +14,6 @@ import BringGamePicker from '../components/BringGamePicker';
 import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import QRCodeModal from '../components/QRCodeModal';
-import { SHARE_GAME_QR_LOADING_LABEL } from '../components/shareGameQrCopy';
 import { Modal } from '../components/Modal';
 import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -28,6 +27,7 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { logger, errCtx } from '../../lib/logger';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { useSignInRedirect } from '@/lib/hooks/useSignInRedirect';
 import {
     FetchErrorBanner,
     RefreshFailedNotice,
@@ -71,14 +71,14 @@ function RsvpStatusPill({ status }) {
        can wrap; every other badge on this surface is a single word. */
     if (!status) {
         return (
-            <span className="text-xs whitespace-nowrap uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-secondary">
+            <span className="text-xs whitespace-nowrap uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-secondary">
                 No reply
             </span>
         );
     }
     const m = map[status] || map.no;
     return (
-        <span className={`text-xs uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${m.cls}`}>
+        <span className={`text-xs uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${m.cls}`}>
             {m.label}
         </span>
     );
@@ -131,14 +131,14 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
                 chip says "No reply" for a list that failed. */}
             {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} />}
             {role === 'owner' && (
-                <span className="text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
+                <span className="text-xs uppercase tracking-wider bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
             )}
             {role === 'admin' && (
-                <span className="text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded-sm font-bold">Admin</span>
+                <span className="text-xs uppercase tracking-wider bg-blue-100 text-blue-700 px-1 rounded-sm font-bold">Admin</span>
             )}
             {participant.is_guest && viewerScope === 'group-member' && (
                 <span
-                    className="text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
+                    className="text-xs uppercase tracking-wider rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
                     title="Joined via game-invite QR (not a group member)"
                 >
                     Guest
@@ -185,6 +185,12 @@ function GuestInviteButton({ groupId, userId }) {
        2026-09-14 amendment the in-flight gate is `aria-disabled`, which does not stop the browser
        firing this handler. The attribute without this latch is a re-sendable invite button. */
     const sendingRef = useRef(false);
+    /* DECISION Phase 88.9-46 (rule 1 B26): the invite keeps the label the user PRESSED while
+       sending — Invite to group from rest, Retry after an error — held in this ref at the press,
+       chosen OVER showing the rest label during a retry, which would change the text under the
+       user's finger, and OVER the shipped swap to an in-flight word (the whole name changed). The
+       house Spinner and the heard ", sending" suffix ride Button's busy prop. */
+    const pressedLabelRef = useRef('Invite to group');
     // 88.6.1-47 (D-06): the settled chip's node, and the shared focus-recovery instance that
     // lands focus on it. Above the settled early return below (hooks order).
     const chipRef = useRef(null);
@@ -208,6 +214,7 @@ function GuestInviteButton({ groupId, userId }) {
     const handleInvite = async (event) => {
         if (sendingRef.current || status === 'sending' || settled) return;
         const settle = inviteFocus.arm({ preferred: () => chipRef.current, from: event.currentTarget });
+        pressedLabelRef.current = status === 'error' ? 'Retry' : 'Invite to group';
         sendingRef.current = true;
         setStatus('sending');
         try {
@@ -337,8 +344,9 @@ function GuestInviteButton({ groupId, userId }) {
        `aria-disabled={isFlight`; `src/app/components/EmailAddressSection.tsx` states the split
        outright at `the control being ACTED ON gets` — the control being acted on gets
        `aria-disabled`, a control nobody is standing on may be natively disabled). COST, disclosed: the `.btn:disabled` wash no longer renders while
-       sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is the shipped
-       "Sending..." label swap plus the house `aria-disabled` treatment already in globals.css
+       sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is rule 1's
+       kept label with the house spinner (Phase 88.9-46 B26, Button busy — the label swap it
+       replaced is retired) plus the house `aria-disabled` treatment already in globals.css
        (`cursor: not-allowed`) and on ghost (`aria-disabled:text-content-muted`, which beats this
        call site's `text-content-link` on specificity). Do NOT add a `disabled:opacity-*` utility
        here: it keys on the native attribute this control no longer carries and is dead on a
@@ -389,8 +397,10 @@ function GuestInviteButton({ groupId, userId }) {
                conflicting with the base token instead of stacking a second background. */
             className={`border border-line ${branchInk}`}
             title={title}
+            busy={status === 'sending'}
+            busySuffix=", sending"
         >
-            {status === 'sending' && 'Sending...'}
+            {status === 'sending' && pressedLabelRef.current}
             {status === 'error' && 'Retry'}
             {!status && 'Invite to group'}
         </Button>
@@ -405,49 +415,14 @@ const EVENT_NOT_FOUND_TITLE = 'Event not found';
 const EVENT_NOT_FOUND_DETAIL = 'This event no longer exists or has been cancelled.';
 const PAGE_LOADING_LABEL = 'Loading game night...';
 // Copy rows E1, E2 and E3 (88.6.1-COPY-TABLE.html, ratified 2026-10-04, D-30), shipped with the
-// straight apostrophe (D-32 R8).
+// straight apostrophe (D-32 R8). AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): E3 now composes Couldn't load this event through thing, chosen OVER the ratified We couldn't load this event (D-30, 2026-10-04).
 const EVENT_NO_ACCESS_TITLE = "You don't have access to this event";
 const EVENT_NO_ACCESS_DETAIL = "You may be signed in with a different account, or you haven't been invited yet.";
-const EVENT_LOAD_FAILED_TITLE = "We couldn't load this event";
+const EVENT_LOAD_FAILED_THING = 'this event';
 
-// 88.6.1-25 (D-01): the per-event sign-in latch. The key follows the in-repo `ng<feature>:<purpose>`
-// convention (src/app/page.js, 'nggroups:refresh'). Every helper is FAIL-CLOSED: a storage call that
-// throws reads as "latch already set" (banner, never a redirect) and a write that throws reports
-// failure, so blocked storage can never produce a redirect loop (RESEARCH P-4). None of them logs.
-const SIGN_IN_LATCH_PREFIX = 'ngevent:signinRedirect:';
-
-function readSignInLatch(eventId) {
-    try {
-        return window.sessionStorage.getItem(SIGN_IN_LATCH_PREFIX + eventId) !== null;
-    } catch {
-        return true;
-    }
-}
-
-function writeSignInLatch(eventId) {
-    try {
-        window.sessionStorage.setItem(SIGN_IN_LATCH_PREFIX + eventId, '1');
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-function clearSignInLatch(eventId) {
-    try {
-        window.sessionStorage.removeItem(SIGN_IN_LATCH_PREFIX + eventId);
-    } catch {
-        // Nothing to do: a latch that cannot be removed only means one more banner, never a loop.
-    }
-}
-
-// The return address is built from this page's own location (path + search + hash) and NEVER read
-// from the query string (SPEC Constraint, V5.1.5); the Auth0 SDK's same-origin check is the
-// server-side control. The hash rides inside returnTo because a fragment never reaches a server.
-function buildSignInUrl() {
-    const { pathname, search, hash } = window.location;
-    return `/api/auth/login?returnTo=${encodeURIComponent(pathname + search + hash)}`;
-}
+// 88.9-40 (SESSION-01): the per-event sign-in latch and the sign-in URL builder that lived here
+// (88.6.1-25 D-01) moved into the shared guard, src/lib/hooks/useSignInRedirect.ts, and into
+// src/lib/signIn.ts; the AMENDED D-01 marker on the event view's effect records the move.
 
 // 88.6.1-47 (D-44): the id of the Game Sessions filter panel, named by the "Show Filters & Sort"
 // disclosure's aria-controls while the panel is mounted.
@@ -565,7 +540,13 @@ export default function GameDetailPage() {
     // 'idle' (none decided), 'redirecting' (replace called), 'declined' (the latch was already set or
     // storage failed, so the 401 renders the banner instead).
     const [eventError, setEventError] = useState(null);
-    const [signInRedirect, setSignInRedirect] = useState('idle');
+    // 88.9-40 (SESSION-01): the shared sign-in guard. The event view decides in its own
+    // generation-gated effect below (signIn.requestSignIn()); the game view hands its primary 401
+    // to the hook's answer arm. No signed-out arm on this page — the AMENDED D-01 marker says why.
+    const signIn = useSignInRedirect({
+        authLoading,
+        unauthorized: Boolean(game_id) && gameError instanceof ApiError && gameError.code === 'unauthorized',
+    });
     // 88.6.1-25 (D-02, review r2 #31): true from the moment a 410 `account_deleted` from the event
     // fetch starts the identity recheck until that recheck settles. Set in the SAME batch as the
     // error (the query's own fetching flag is still false in that render, so the banner would flash).
@@ -1002,7 +983,7 @@ export default function GameDetailPage() {
     // the C10 drop. Side reads no longer overwrite on failure, so without it a new event would
     // inherit the previous one's side data, and an event whose access returns would show the
     // pre-drop roster, RSVP pills and brings as current. It never touches `eventError`,
-    // `signInRedirect` (plan 25's per-code dispatch owns them), `effectiveGroupId` or the
+    // the sign-in decision (plan 25's per-code dispatch owns them), `effectiveGroupId` or the
     // suggestions (the suggestions effect does not re-run on the same key).
     const clearEventKeyData = () => {
         setUserRole(null);
@@ -1044,7 +1025,9 @@ export default function GameDetailPage() {
             setSingleEvent(null);
             setLoadedFor(null);
             setEventError(null);
-            setSignInRedirect('idle');
+            // 88.9-40: the decision resets with the entity; the latch is NEVER touched here (this block
+            // runs on every first load, so clearing it would delete the latch before the 401 — T-88.9-136).
+            signIn.resetDecision();
             clearEventKeyData();
             // DECISION Phase 88.6.1-25 (retention rule, amended by the wave 4 CI gate, run 38878098281):
             // Recommended Games is cleared only when the EVENT ID changes, NOT on every run that reaches
@@ -1090,7 +1073,7 @@ export default function GameDetailPage() {
                 // An answer the backend sends only to an AUTHENTICATED caller proves the session, so it
                 // clears the sign-in latch (review r2 #305). Never a 401, network, 5xx, 429 or unknown.
                 if (code === 'forbidden' || code === 'not_found' || code === 'account_deleted') {
-                    clearSignInLatch(event_id);
+                    signIn.clearLatch();
                 }
                 // D-02: re-check identity so useSelfIdentity's own effect routes to the goodbye
                 // logout, even from a tab whose self row was cached before the deletion.
@@ -1109,8 +1092,7 @@ export default function GameDetailPage() {
             // 88.6.1-74 (C2): a FIRST run clears the error on the primary success; a refresh clears
             // it at its clean end, so the notice never disappears and reappears inside one Retry.
             if (!isRefresh) setEventError(null);
-            setSignInRedirect('idle');
-            clearSignInLatch(event_id);
+            signIn.markSessionProven();
             setSingleEvent(eventData);
             setLoadedFor(entityKey);
             // DECISION Phase 88.6.1-74 (wave 8 CI gate, run 39026336968): the event view stamps the
@@ -1395,8 +1377,9 @@ export default function GameDetailPage() {
     // handleShowGameQR pattern (loading state + error swallow).
     /* DECISION Phase 88.6.1-47 (D-35): CHOSEN — the pressed control stays focusable
        (`aria-disabled`) and a synchronous ref latch (`qrLoadingRef`) refuses a second press,
-       released beside the loading reset in the `finally`; the in-flight label is copy row E6, read
-       from the one constant in `shareGameQrCopy.ts`. REJECTED — (a) the native attribute: it drops
+       released beside the loading reset in the `finally`; the in-flight cue is rule 1's kept label
+       with the house spinner, heard as the ", loading" busy suffix (Phase 88.9-46 B29; copy row E6
+       and its constant module retired). REJECTED — (a) the native attribute: it drops
        focus off the control the user just pressed, and the QR dialog then records no opener to
        return focus to (W014 case 1); (b) a state-only guard: a second press in the same tick reads
        the previous render's `false` and sends a second request. The look follows the owner's
@@ -1530,6 +1513,8 @@ export default function GameDetailPage() {
         if (loadedEntityKeyRef.current !== entityKey) {
             setLoading(true);
             clearGameKeyData();
+            // 88.9-40 (SESSION-01): C3's clean slate now covers the sign-in decision too.
+            signIn.resetDecision();
         }
         try {
             // Fetch game details using gamesAPI which includes proper API URL and auth
@@ -1580,6 +1565,8 @@ export default function GameDetailPage() {
             }
             if (!isCurrentRun()) return undefined;
             setGame(gameData);
+            // 88.9-40 (SESSION-01): a game read that succeeded proves the session (clears this path's latch).
+            signIn.markSessionProven();
             setLoadedFor(entityKey);
             // A first run (or a full banner's Try again) gives way to the content at once.
             if (!isRefresh) setGameError(null);
@@ -1855,7 +1842,7 @@ export default function GameDetailPage() {
     const eventErrorArmed =
         Boolean(eventError) &&
         eventErrorArmedCode !== 'not_found' &&
-        !(eventErrorArmedCode === 'unauthorized' && signInRedirect !== 'declined');
+        !(eventErrorArmedCode === 'unauthorized' && signIn.decision !== 'declined');
     const eventErrorState = useFetchErrorState({
         // 88.6.1-74: plan 25's armed predicate over `eventError`, OR a side-read failure of a read
         // that had loaded (code-less, P-2). Plan 25's gates read `eventError` itself for the access
@@ -1919,20 +1906,29 @@ export default function GameDetailPage() {
     // clears it -> a later 401 redirects once more -> a 401 on return finds the latch and gets the
     // banner. Only an answer that proves the session clears the latch; a 401 never does.
     // Removing the latch or the auth-settled gate is a decision, not a cleanup.
+    // AMENDED Phase 88.9-40 (owner ruling SESSION-01, register page 9 / 88.9-PICKS-B9.json, 2026-11-07):
+    // the latch, its fail-closed storage and the sign-in URL now live in the shared guard —
+    // src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling") and
+    // src/lib/signIn.ts — keyed per path + search under the ngauth prefix (one key per event link, as
+    // before), chosen OVER the per-event key in this file (one rule for every protected page).
+    // REJECTED (b) re-tested at the width SESSION-01 now IS: the latch is still chosen OVER
+    // withPageAuthRequired, which redirects only a visitor with no user (a live cookie with a rejected
+    // token would 401 here with no way out), uses location.assign (REJECTED (c)'s Back trap) and has
+    // no latch. The game view now takes the same answer arm: a 401 from the game read redirects once.
+    // No signed-out arm on this page: a signed-out visitor's read 401s through the proxy, and
+    // e2e/event-link-signed-out.spec.ts pins that a bad id, a 403 and a 500 render their own screens
+    // with no sign-in request. The per-event clean slate (88.6.1-25 retention rule) is kept: a new
+    // event or game resets the decision with resetDecision(), which never touches the latch.
     useEffect(() => {
         if (authLoading || !event_id) return;
         if (!(eventError instanceof ApiError) || eventError.code !== 'unauthorized') return;
         // A newer run is in flight: its answer, not this one, decides.
         if (eventErrorGenRef.current !== eventFetchGenRef.current) return;
-        if (signInRedirect !== 'idle') return;
-        if (readSignInLatch(event_id) || !writeSignInLatch(event_id)) {
-            // Already redirected once for this event (or storage failed): the banner, never a loop.
-            setSignInRedirect('declined');
-            return;
-        }
-        setSignInRedirect('redirecting');
-        window.location.replace(buildSignInUrl());
-    }, [eventError, authLoading, event_id, signInRedirect]);
+        if (signIn.decision !== 'idle') return;
+        // The shared guard reads and writes the latch fail-closed, then replaces — or declines to the
+        // banner when the latch is already set (back from sign-in) or storage failed.
+        signIn.requestSignIn();
+    }, [eventError, authLoading, event_id, signIn.decision, signIn.requestSignIn]);
 
     /* DECISION Phase 88.6.1-47 (H6 / D-04 / D-05): CHOSEN — arm the shared `useFocusRecovery`
        hook (plan 88.6.1-04) at the confirmed delete. The dialog's own restore returns focus to the
@@ -1990,11 +1986,17 @@ export default function GameDetailPage() {
        ("does it need explaining?") therefore puts it on a dialog. The kebab additionally
        cannot host two-tap at all (D-07: the menu unmounts the armed trigger). Retiering this
        is a one-word edit by design — but it is a decision, not a simplification. */
+    // DECISION Phase 88.9-56 (owner ruling R-C3a, 88.9-RULINGS.md, 2026-11-10, 'hear'): every confirm dialog's pending
+    // confirm carries the house spinner and a heard verb derived from its own confirmLabel (Q6(b)), chosen OVER the
+    // default-off that left this gate silent while its write ran (ConfirmDialog's busy is pending AND a suffix; plan
+    // 88.9-45 converted only the two gates whose swap words were ratified copy rows). The visible verb never changes;
+    // the verb is heard only; the spinner leaves with the dialog on success (the close is the completion feedback).
     const deleteSessionGate = useConfirmAction({
         tier: 'dialog',
         title: 'Delete this session?',
         body: 'The play record, scores and who was there are deleted for everyone.',
         confirmLabel: 'Delete',
+        busySuffix: ', deleting',
         onConfirm: (event_id) => performDeleteEvent(event_id),
     });
 
@@ -2080,12 +2082,15 @@ export default function GameDetailPage() {
     };
 
 
+    // R-C5 (88.9-56): ratings are stored on a 0-5 scale. drawnRating is the half-star value the
+    // glyphs draw (3.7 draws 3.5); the stars and their spoken label both read it, so they agree.
+    const clampRating = (rating) => Math.max(0, Math.min(5, Number(rating) || 0));
+    const drawnRating = (rating) => Math.floor(clampRating(rating) * 2) / 2;
+
     const renderStars = (rating) => {
-        // Ratings are stored on a 0-5 scale, display directly
-        const ratingValue = Number(rating) || 0;
-        const validRating = Math.max(0, Math.min(5, ratingValue));
-        const fullStars = Math.floor(validRating);
-        const hasHalfStar = validRating % 1 >= 0.5;
+        const drawn = drawnRating(rating);
+        const fullStars = Math.floor(drawn);
+        const hasHalfStar = drawn % 1 === 0.5;
         const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
         return '★'.repeat(fullStars) + (hasHalfStar ? '½' : '') + '☆'.repeat(emptyStars);
     };
@@ -2400,7 +2405,7 @@ export default function GameDetailPage() {
                                                                 // prefix is dropped; `participation.user_id` here is UUID-keyed
                                                                 // (unlike every other flat user_id site) and is allowlisted in the
                                                                 // plan-06 residue grep.
-                                                                <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
+                                                                <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} hostGround="muted" />
                                                             )}
                                                         </span>
                                                         {participation.is_guest && (
@@ -2644,8 +2649,9 @@ export default function GameDetailPage() {
                the deferral happened to cite by line number would have made the phone gutter
                depend on whether the URL carried a game_id, which nobody would read as
                intentional. This is also the branch `/gameDetail?event_id=…&group_id=…`
-               actually renders, so it is the one the padding-budget e2e loads. */
-            <div className="p-3 md:p-6 max-w-6xl mx-auto">
+               actually renders, so it is the one the padding-budget e2e loads.
+               NAV-01 (88.9-36): capped together with the game view — see this file ("DECISION Phase 88.9-36 NAV-01"). */
+            <div className="p-3 md:p-6 max-w-7xl mx-auto">
                 {/* DECISION Phase 88.6.1-52 (D-46 / R7-M7): this breadcrumb and the game view's below
                     reach the house standard. CHOSEN (a): the house focus ring on both links, per
                     site (`DECISION Phase 88.3-17`, which chose per-site OVER a global
@@ -2709,7 +2715,7 @@ export default function GameDetailPage() {
                     Participants/RSVP surface (userScope defaults to 'none' when
                     selfUuid can't resolve, hiding those sections) so the failure
                     surfaces loudly-but-small instead of silently. */}
-                <FetchErrorBanner state={selfIdentityErrorState} compact />
+                <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
 
                 {/* DECISION Phase 88.6.1-74 (AC-29 / RF1, event view): CHOSEN — plan 70's shared
                     RefreshFailedNotice, mounted unconditionally here, beside the event it qualifies and
@@ -2813,26 +2819,45 @@ export default function GameDetailPage() {
                             is in flight.
                             Neither item is `twoTap`: single-tap commit is the Phase 65-02 decision
                             recorded above — the kebab PLACEMENT is the friction — and adding a
-                            confirm here would be a behaviour change, not a hardening. */}
+                            confirm here would be a behaviour change, not a hardening.
+                            AMENDED Phase 88.9-23 (owner pick F9b, 88.9-PICKS-B5.json, 2026-11-07): both
+                            items are now twoTap + keepOpen with the delayed enable, chosen OVER the
+                            single-tap commit above — one capture tap on Cancel event hard-deleted the
+                            walk DB's ballot night with every RSVP, vote and option (2026-11-07 ~12:03 AM
+                            Pacific). D24 c holds: the menu stays open and Cancelling… / Leaving… stays
+                            readable after the commit.
+                            AMENDED Phase 88.9-46 (owner pick O16a + Q3, 88.9-PICKS-B9.json, 2026-11-08): rule 1
+                            ends the in-flight WORD on both items — the label stays Cancel event / Leave
+                            event with the house spinner (KebabMenu's per-item busy flag) and the in-flight
+                            word moves into the heard name (Cancel event, cancelling / Leave event, leaving),
+                            chosen OVER the shipped swap to the in-flight word (D24 c, 2026-09-09: the items
+                            read Cancelling… / Leaving…); keepOpen and the D3 ariaDisabled rule are kept, so
+                            the menu still stays open and focused for the whole request. */}
                         {((userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')) || userScope === 'game-only') && (
                             <KebabMenu
                                 ariaLabel="Event actions"
                                 items={[
                                     ...(userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')
                                         ? [{
-                                            label: cancellingEvent ? 'Cancelling…' : 'Cancel event',
+                                            label: 'Cancel event',
                                             onClick: handleCancelEvent,
                                             ariaDisabled: cancellingEvent,
+                                            busy: cancellingEvent,
+                                            busySuffix: ', cancelling',
                                             danger: true,
+                                            twoTap: true,
                                             keepOpen: true,
                                         }]
                                         : []),
                                     ...(userScope === 'game-only'
                                         ? [{
-                                            label: leavingEvent ? 'Leaving…' : 'Leave event',
+                                            label: 'Leave event',
                                             onClick: handleLeaveEvent,
                                             ariaDisabled: leavingEvent,
+                                            busy: leavingEvent,
+                                            busySuffix: ', leaving',
                                             danger: true,
+                                            twoTap: true,
                                             keepOpen: true,
                                         }]
                                         : []),
@@ -2911,14 +2936,18 @@ export default function GameDetailPage() {
                                        prop and took the count to 2. [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).] */
                                     className="shrink-0"
                                     title="Share Game QR"
+                                    busy={qrLoading}
+                                    busySuffix=", loading"
                                 >
                                     {/* Decorative — the visible label names the button. Same pair
-                                        as the twin's decorative `<svg` in `EventDayModal.js`. */}
+                                        as the twin's decorative `<svg` in `EventDayModal.js`. While the
+                                        code loads the label is kept and the name reads ", loading"
+                                        (rule 1, 88.9-46 B29 — the same word 88.9-45 gave the twin). */}
                                     <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                                     </svg>
-                                    {qrLoading ? SHARE_GAME_QR_LOADING_LABEL : 'Share Game QR'}
+                                    Share Game QR
                                 </Button>
                             )}
                         </div>
@@ -2988,6 +3017,8 @@ export default function GameDetailPage() {
                 <div className="space-y-4">
                     <RsvpSection
                         key={`rsvp-${rsvpRefreshKey}`}
+                        /* DECISION Phase 88.9-35 (B1a): see the BallotSection mount below — the single-event host passes its page ground. */
+                        hostGround="page"
                         eventId={singleEvent.id}
                         self={self}
                         eventDate={singleEvent.start_date}
@@ -3022,6 +3053,8 @@ export default function GameDetailPage() {
                     {!repliesLoadState.showError && (
                         <BallotSection
                             key={ballotRefreshKey}
+                            /* DECISION Phase 88.9-35 (B1a): the single-event view mounts RSVP and the ballot on the PAGE ground, so this host passes page; the list mounts sit inside event cards and keep the card default — passing page there is a decision, not a cleanup. */
+                            hostGround="page"
                             eventId={singleEvent.id}
                             eventDate={singleEvent.start_date}
                             userRole={userRole}
@@ -3228,7 +3261,7 @@ export default function GameDetailPage() {
                                             // (Owner=purple, Admin=blue) while staying distinguishable from
                                             // Owner's purple. Self is a viewer-perspective indicator, not a
                                             // role, but the visual family is the closest existing pattern.
-                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
+                                            <span className="align-middle text-xs uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
                                                 You
                                             </span>
                                         )}
@@ -3240,15 +3273,15 @@ export default function GameDetailPage() {
                                             // through ClickableMemberName above. Emerald color echoes the
                                             // text-status-success used by that mobile inline indicator for
                                             // visual continuity across viewports.
-                                            <span className="hidden md:inline-flex items-center align-middle text-xs uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
+                                            <span className="hidden md:inline-flex items-center align-middle text-xs uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
                                                 Friend
                                             </span>
                                         )}
                                         {role === 'owner' && (
-                                            <span className="align-middle text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
+                                            <span className="align-middle text-xs uppercase tracking-wider bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
                                         )}
                                         {role === 'admin' && (
-                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
+                                            <span className="align-middle text-xs uppercase tracking-wider bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
                                         )}
                                         {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                             when viewer is a full group member. Skips render for game-only
@@ -3258,7 +3291,7 @@ export default function GameDetailPage() {
                                             can decide who to onboard via admin-initiated invite. */}
                                         {p.is_guest && userScope === 'group-member' && (
                                             <span
-                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs uppercase tracking-wider rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
                                                 title="Joined via game-invite QR (not a group member)"
                                             >
                                                 Guest
@@ -3405,7 +3438,7 @@ export default function GameDetailPage() {
     // "Event not found" never paints for a frame before navigation (RESEARCH P-5); only a declined
     // redirect (latch already set, or storage failed) falls through to the banner.
     const holdEventLoader =
-        !game_id && eventErrorCode === 'unauthorized' && signInRedirect !== 'declined';
+        !game_id && eventErrorCode === 'unauthorized' && signIn.decision !== 'declined';
     // (i) D-02: a 410 holds the loader ONLY while the recheck this run started is in flight, or while
     // the identity query itself reports the deleted account (its effect is routing to goodbye). Any
     // other settled outcome falls through to the banner, so the loader is never a dead end (r2 #31).
@@ -3420,7 +3453,8 @@ export default function GameDetailPage() {
     // answered in this visit's run, so an in-page key change never paints "Game not found" or a
     // stale game view for one commit. See the AMENDED line on the DECISION Phase 88-25 gate below.
     const gameKeyUnanswered = Boolean(game_id) && gameAnsweredFor !== entityKey;
-    if (loading || holdEventLoader || holdAccountDeletedLoader || gameKeyUnanswered) {
+    // 88.9-40: `signIn.holding` is the game view's redirect frame (the event view's is holdEventLoader).
+    if (loading || holdEventLoader || holdAccountDeletedLoader || gameKeyUnanswered || signIn.holding) {
         return (
             <div className="flex items-center justify-center min-h-screen" role="status" aria-label={PAGE_LOADING_LABEL}>
                 <p className="text-content-secondary">{PAGE_LOADING_LABEL}</p>
@@ -3444,7 +3478,7 @@ export default function GameDetailPage() {
                 <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
                     <FetchErrorBanner
                         state={eventErrorState}
-                        title={EVENT_LOAD_FAILED_TITLE}
+                        thing={EVENT_LOAD_FAILED_THING}
                         // A quoted literal on purpose: loggerCtxShape.test.ts (test 5) gates every reportContext.
                         reportContext="Game detail page — event fetch"
                     />
@@ -3484,7 +3518,7 @@ export default function GameDetailPage() {
                 <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
                     <FetchErrorBanner
                         state={gameErrorState}
-                        title="We couldn't load this game"
+                        thing="this game"
                         reportContext="Game detail page — game/session fetch"
                     />
                 </div>
@@ -3523,8 +3557,14 @@ export default function GameDetailPage() {
            gameDetail URL renders a 24px gutter and another a 12px one.
 
            Restoring `p-6` is a DECISION (it re-tightens the budget to ~72/75 and re-splits the
-           two branches), not a cleanup. */
-        <div className="p-3 md:p-6 max-w-6xl mx-auto">
+           two branches), not a cleanup.
+
+           DECISION Phase 88.9-36 NAV-01 (owner ruling (a), chat 2026-11-07 1:08 PM Pacific): this
+           root and the event-view root cap at 7xl (1280px), centred, the same box as
+           src/app/Header.js ("w-full max-w-7xl mx-auto px-4 h-full"), chosen OVER the shipped 6xl
+           (1152px) cap, which stopped 64px inside the header and footer box on each side at wide
+           screens. Narrowing it again is a decision, not a cleanup. */
+        <div className="p-3 md:p-6 max-w-7xl mx-auto">
             {/* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): the group-content guard. */}
             <RetainedContentFocusGuard retained={groupContentRetained} focusTarget={gameTitleRef} />
             {/* Breadcrumbs */}
@@ -3813,7 +3853,9 @@ export default function GameDetailPage() {
                     converged it, so both headers are now 20/700 — the marker there records the
                     reopening. This marker's OWN subject (the conditional count and the stacking)
                     is untouched by that ruling and still stands. */}
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                <div className={showFilters
+                    ? "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-0 sm:mb-4"
+                    : "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4"}>
                     <Heading ref={sessionsHeadingRef} level={2} size="heading" className="w-full text-content-primary">
                         {/* Post-split (Task 7 step 1b): counts key on the HISTORY partition —
                             keying on raw `events` would show "3 of 5" with no filter active
@@ -3835,13 +3877,24 @@ export default function GameDetailPage() {
                         always and toggling `hidden` (KebabMenu's recorded rejected alternative: it
                         changes what the card contains while closed). The visible label swap stays:
                         those are existing words (D-31). Size unchanged (`min-h-11` from the cva
-                        base, D-21's delta here is 0). */}
+                        base, D-21's delta here is 0).
+
+                        DECISION Phase 88.9-36 G2a (owner pick G2a, 88.9-PICKS-B6.json item G2): below
+                        640px, while the panel is open, the toggle sheds its bottom corners
+                        (src/app/globals.css (".btn-fuse-bottom {")), this row drops its 16px bottom
+                        margin and the panel drops its top edge and top radius, so the toggle reads as
+                        the panel's header — chosen OVER the house bottom sheet G2b (my read) and
+                        chips G2c. From 640px the shipped detached shape stays, chosen OVER fusing at
+                        every width: there the toggle is auto-width at the row's right end, so a panel
+                        without its top edge would stand open beside it (the pick was rendered at 375
+                        only; the owner confirms the wide shape at the 88.9-51 glance). Closed, nothing
+                        changes. */}
                     <Button
                         variant="secondary"
                         onClick={() => setShowFilters(!showFilters)}
                         aria-expanded={showFilters}
                         {...(showFilters ? { 'aria-controls': SESSION_FILTERS_PANEL_ID } : {})}
-                        className="w-full sm:w-auto"
+                        className={showFilters ? "w-full sm:w-auto btn-fuse-bottom" : "w-full sm:w-auto"}
                     >
                         {showFilters ? (
                             <>
@@ -3859,7 +3912,7 @@ export default function GameDetailPage() {
                 
                 {/* Filters and Sorting */}
                 {showFilters && (
-                <div id={SESSION_FILTERS_PANEL_ID} className="mb-6 p-4 bg-surface-page rounded-lg border border-line">
+                <div id={SESSION_FILTERS_PANEL_ID} className="mb-6 p-4 bg-surface-page rounded-b-lg rounded-t-none sm:rounded-t-lg border border-line border-t-0 sm:border-t">
                     <div className="flex justify-between items-center mb-3">
                         {/* DECISION Phase 88-24 (Req 2 / UI-SPEC §4.1): 16/700, NOT the
                             20/700 Heading role — chosen OVER the literal reading of Task 3's
@@ -4195,8 +4248,17 @@ export default function GameDetailPage() {
                                 </p>
                             </div>
                             <div className="text-right">
-                                <p className="text-yellow-500 text-xl">
-                                    {renderStars(userReview.rating)}
+                                {/* DECISION Phase 88.9-56 (owner ruling R-C5, 2026-11-10; the DEC-2 / R-P2 ink of plan 88.9-44), for this star
+                                    paragraph and the other reviews' one below: the rating ink is yellow-800 in light and yellow-500 in dark —
+                                    written here in prose, never as the class pair, so the miniPicks count of the class literal stays exact
+                                    (6.85 light / 7.22 dark on the card, 88.9-RULINGS.md Q7 ADDENDUM), chosen OVER the shipped raw yellow
+                                    (2.94 light at rest on the same ground, plan 44's measurement) and OVER waiting for a consistency phase
+                                    (Phase 91 is a backend phase); the star glyphs are ONE role img leaf labelled Rated n out of 5 on the
+                                    half-star value they draw, chosen OVER five star characters read aloud and OVER an sr-only sibling (iOS
+                                    VoiceOver speaks a labelled leaf; a hidden sibling is a separate swipe stop or nothing, measured
+                                    2026-10-20). Changing the pair or the leaf is a decision, not a cleanup. */}
+                                <p className="text-yellow-800 dark:text-yellow-500 text-xl">
+                                    <span role="img" aria-label={`Rated ${drawnRating(userReview.rating)} out of 5`}>{renderStars(userReview.rating)}</span>
                                 </p>
                                 {userReview.is_recommended && (
                                     <p className="text-sm text-content-status-success">✓ Recommended</p>
@@ -4253,8 +4315,8 @@ export default function GameDetailPage() {
                                                 </p>
                                             </div>
                                             <div className="text-right">
-                                                <p className="text-yellow-500 text-xl">
-                                                    {renderStars(review.rating)}
+                                                <p className="text-yellow-800 dark:text-yellow-500 text-xl">
+                                                    <span role="img" aria-label={`Rated ${drawnRating(review.rating)} out of 5`}>{renderStars(review.rating)}</span>
                                                 </p>
                                                 {review.is_recommended && (
                                                     <p className="text-sm text-content-status-success">✓ Recommended</p>

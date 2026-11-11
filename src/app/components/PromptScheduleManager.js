@@ -311,7 +311,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       ) : failedWithNothingCached ? (
         <FetchErrorBanner
           state={settingsErrorState}
-          title="We couldn't load your schedules"
+          thing="your schedules"
           reportContext="Recurring availability schedules (group planning)"
         />
       ) : (

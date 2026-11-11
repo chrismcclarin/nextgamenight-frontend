@@ -9,6 +9,7 @@ import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './suppo
 // A local copy would be the duplication this project's tenet forbids; `support/contrast.ts` is not
 // a spec file, so importing it adds no collected suite.
 import { focusByKeyboard } from './support/contrast';
+import { routeFakeGameSuccess } from './support/fakeGame';
 // 88.6.1 code review WR-03: the shared write hold for the R4 toggle arms (see the note above them).
 import { expectNoApiWrites, holdWrites } from './support/inFlight';
 import { expectTouchTarget } from './support/touchTarget';
@@ -506,11 +507,18 @@ async function probeExpandedChipRow(row: Locator): Promise<ChipRowProbe> {
     // ABOVE it; scan every item and let probePair's own overlap guards reject the
     // non-adjacent ones. The vertical probes have the same teeth: `gap-3` sets the row
     // gap to 12px, so 6+6 extension zones meet exactly on the y axis too.
+    // AMENDED Phase 88.9-55 (R-C8): the FIRST overlapping item in DOM order can sit two or more rows up once the stack wraps to three rows, so its gap spans a whole chip row (run 42560011616: 100px = 44 + 12 + 44); the fallback now keeps the layout-adjacent candidate, the one with the smallest non-negative gap.
     if (showLessPair === null && showLessIndex >= 0) {
-      for (let i = 0; i < items.length && showLessPair === null; i += 1) {
+      let layoutAdjacentAbove = null;
+      for (let i = 0; i < items.length; i += 1) {
         if (i === showLessIndex) continue;
-        showLessPair = probePair(items[i], items[showLessIndex]);
+        const candidate = probePair(items[i], items[showLessIndex]);
+        if (candidate === null || candidate.gap < 0) continue;
+        if (layoutAdjacentAbove === null || candidate.gap < layoutAdjacentAbove.gap) {
+          layoutAdjacentAbove = candidate;
+        }
       }
+      showLessPair = layoutAdjacentAbove;
     }
 
     const diagnostics = items
@@ -763,15 +771,17 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
   /* Phase 88-30 (DEF-88-28-02): the two controls plan 88-28 RESIZED are the two whose
      new size was never measured. Both are located by their shipped accessible names —
-     "Toggle menu" (Header.js) and "Group actions" (the `ariaLabel` groupHomePage passes
-     to KebabMenu) — so the selector policy above holds and a rename fails loudly rather
-     than silently measuring nothing.
+     "Toggle menu" (Header.js) and, since 88.9-31, the group page gear named exactly
+     "Group settings" plus the Manage Members member-row kebab named "Member actions for "
+     followed by the member's name (the shared KebabMenu) — so the selector policy above
+     holds and a rename fails loudly rather than silently measuring nothing.
+     Re-pointed Phase 88.9-31: the group page no longer mounts a KebabMenu (F5b).
 
      The hamburger is `md:hidden`, so this assertion is only meaningful in the phone
      project; the file-level skip already guarantees that. The kebab renders at every
      breakpoint (its own marker says so) but its floor is a phone-tenet requirement, so it
      is asserted here rather than in `journeys`. */
-  test('R4: hamburger and KebabMenu trigger measure >= 44x44 at 375px (88-28 geometry, measured not derived)', async ({ page }) => {
+  test('R4: hamburger, the group page Group settings gear and a KebabMenu item row measure >= 44x44 at 375px (88-28 geometry, measured not derived)', async ({ page }) => {
     await page.goto('/');
     await assertDarkTheme(page);
 
@@ -782,14 +792,20 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await guardResolved(hamburger, 'the Header hamburger (md:hidden — phone only)');
     await assertMin44(hamburger, 'Header hamburger');
 
-    // The kebab is gated on `userRole && userRole !== 'pending'`; the fixture user owns
-    // the seeded group, so it MUST render — a missing kebab is a fixture/locator failure,
-    // never a silent skip.
+    // The gear is gated on owner or admin; the fixture user owns the seeded group, so it
+    // MUST render — a missing gear is a fixture/locator failure, never a silent skip.
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertDarkTheme(page);
-    const kebab = page.getByRole('button', { name: 'Group actions' });
-    await guardResolved(kebab, 'the groupHomePage KebabMenu trigger (owner/member only)');
-    await assertMin44(kebab, 'KebabMenu trigger');
+    const gear = page.getByRole('button', { name: 'Group settings', exact: true });
+    await guardResolved(gear, 'the groupHomePage Group settings gear (owner/admin only)');
+    await assertMin44(gear, 'Group settings gear');
+
+    // A KebabMenu the app still mounts: the Manage Members member-row kebab (phone only, it
+    // sits inside md:hidden). The seeded group has three other members, so the owner sees at
+    // least one row trigger; a missing one is a seed fact for the BE seed task, never a skip.
+    await page.getByRole('button', { name: 'Manage Members' }).click();
+    const kebab = page.getByRole('button', { name: /^Member actions for / }).first();
+    await guardResolved(kebab, 'the first Manage Members member-row KebabMenu trigger');
 
     // 88-CODE-REVIEW MED#13: the ITEMS behind the trigger — the destructive row
     // actions D-40 routed through this menu — carried the census's ~36px FAIL
@@ -1350,8 +1366,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
       const LIST_CLASS =
         'absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-theme-lg py-1';
+      // AMENDED Phase 88.9-23 (O-17): the gated item's look is muted ink, transcribed in lockstep.
       const ITEM_CLASS =
-        'w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
+        'w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
       const ARMED_EXTRA = 'text-content-status-error bg-status-error-subtle font-semibold';
       const RESTING_EXTRA = 'text-content-primary hover:bg-surface-hover';
 
@@ -2357,12 +2374,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
   });
 
   test('R4 (88.6.1-48, AC-19 / D-44): the group games Filter is a disclosure and measures >= 44x44 at 375px', async ({ page }) => {
-    // The Overview tab is the default and mounts the Group Games list.
+    // The Overview tab is the default and mounts the Play history list.
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
     const filter = page.getByRole('button', { name: /^Filter( \(\d+\))?$/ });
-    await guardResolved(filter, 'the Group Games "Filter" toggle');
-    await assertMin44(filter, '"Filter" (Group Games, 375px)');
+    await guardResolved(filter, 'the Play history "Filter" toggle');
+    await assertMin44(filter, '"Filter" (Play history, 375px)');
     await expect(filter).toHaveAttribute('aria-expanded', 'false');
     await expect(filter).not.toHaveAttribute('aria-controls');
 
@@ -2389,8 +2406,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
     const sort = page.getByRole('button', { name: /^Sort order: (ascending|descending)$/ });
-    await guardResolved(sort, 'the Group Games sort-direction toggle');
-    await assertMin44(sort, 'the sort arrow (Group Games, 375px)');
+    await guardResolved(sort, 'the Play history sort-direction toggle');
+    await assertMin44(sort, 'the sort arrow (Play history, 375px)');
     await expect(sort).toHaveAccessibleName('Sort order: ascending');
     await expect(sort).toHaveAttribute('title', 'Ascending (click to reverse)');
 
@@ -2407,6 +2424,88 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     ).toBe(true);
     // A sort press would have sent a write to the API (held in the browser, never sent).
     expectNoApiWrites(hold);
+  });
+
+  test('R4 (88.9 B5a): every footer control in both footers measures >= 44px tall at 375px', async ({ page, browser, baseURL }) => {
+    // Signed in: AuthFooter (src/app/components/Footer.js ("function AuthFooter() {")).
+    await page.goto('/');
+    const footer = page.getByRole('contentinfo');
+    const signedIn = [
+      { label: 'About (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'About', exact: true }) },
+      { label: 'Privacy (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'Privacy', exact: true }) },
+      { label: 'Terms (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'Terms', exact: true }) },
+      { label: 'Report bug (AuthFooter, 375px)', control: footer.getByRole('button', { name: /^Report bug/ }) },
+    ];
+    for (const { label, control } of signedIn) {
+      await expect(control, `${label}: no such control in the footer — a zero-count locator measures nothing`).toBeVisible({ timeout: 15_000 });
+      await expectTouchTarget(control, label, { axes: 'height' });
+    }
+
+    // Signed out: PublicFooter (src/app/components/Footer.js ("function PublicFooter() {")), on the
+    // e2e/feedback-stacking.spec.ts ("const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });") idiom.
+    const context = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+      baseURL,
+      viewport: { width: 375, height: 667 },
+      isMobile: true,
+      hasTouch: true,
+      colorScheme: 'dark',
+    });
+    try {
+      const anon = await context.newPage();
+      await anon.goto('/');
+      const publicFooter = anon.getByRole('contentinfo');
+      for (const name of ['About', 'Privacy', 'Terms']) {
+        const control = publicFooter.getByRole('link', { name, exact: true });
+        const label = `${name} (PublicFooter, signed out, 375px)`;
+        await expect(control, `${label}: no such link in the footer — a zero-count locator measures nothing`).toBeVisible({ timeout: 15_000 });
+        await expectTouchTarget(control, label, { axes: 'height' });
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  // DECISION Phase 88.9-21 O15b: a route-served custom game, chosen over a seeded game — the seed has none in CI and the review is never submitted.
+  test('R4 (88.9 O15b): each review star is 48 x 48 and each half-star radio 24 x 48 at 375px', async ({ page }) => {
+    // The shared fake custom game of e2e/support/fakeGame.ts ("export async function routeFakeGameSuccess("), under this test's own id.
+    const gameId = '0e2e0000-0000-4000-8000-000000000921';
+    await routeFakeGameSuccess(page, { id: gameId });
+
+    try {
+      await page.goto(`/gameDetail?game_id=${gameId}&group_id=${E2E_GROUP_ID}`);
+      const add = page.getByRole('button', { name: 'Add Review', exact: true });
+      await expect(add, 'O15b: Add Review never rendered — the custom game or the member roster did not load').toBeVisible({ timeout: 15_000 });
+      await add.click();
+      const rating = page.getByRole('radiogroup', { name: 'Game rating' });
+      await expect(rating, 'O15b: the review dialog has no Game rating radiogroup').toBeVisible();
+      const radios = rating.getByRole('radio');
+      await expect(radios).toHaveCount(10);
+      // AMENDED Phase 88.9-55 (R-C8): the boxes were read inside the review dialog's zoom-in-95 open animation (22.88 / 24 = 0.953 on run 42879553917, 23.65 / 24 = 0.985 on run 42838530373, both axes of both boxes, a transform not a layout size); the file's shared settle runs first and the 0.5px tolerance stays.
+      await settleOpenAnimation(page, radios.first(), 'O15b stars');
+
+      const tol = 0.5;
+      for (let i = 0; i < 10; i += 1) {
+        const radio = radios.nth(i);
+        const box = await radio.boundingBox();
+        const starBox = await radio.locator('xpath=..').boundingBox();
+        expect(box, `O15b: half-star radio ${i + 1} has no layout box`).not.toBeNull();
+        expect(starBox, `O15b: star ${Math.floor(i / 2) + 1} has no layout box`).not.toBeNull();
+        const r = box!;
+        const s = starBox!;
+        const record = `radio ${r.width}x${r.height}px, star ${s.width}x${s.height}px`;
+        expect(Math.abs(r.width - 24), `O15b: half-star radio ${i + 1} is not 24px wide (${record})`).toBeLessThanOrEqual(tol);
+        expect(Math.abs(r.height - 48), `O15b: half-star radio ${i + 1} is not 48px tall (${record})`).toBeLessThanOrEqual(tol);
+        expect(Math.abs(s.width - 48), `O15b: star ${Math.floor(i / 2) + 1} is not 48px wide (${record})`).toBeLessThanOrEqual(tol);
+        expect(Math.abs(s.height - 48), `O15b: star ${Math.floor(i / 2) + 1} is not 48px tall (${record})`).toBeLessThanOrEqual(tol);
+      }
+
+      // Closed without submitting (Esc closes the shared Modal).
+      await page.keyboard.press('Escape');
+      await expect(rating).toBeHidden();
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
   });
 });
 

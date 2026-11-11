@@ -206,6 +206,68 @@ test.describe('RSVP and restore token pages — failure states at phone width (8
     await expectNoHorizontalScroll(page);
   });
 
+  test('A5. RSVP O06c (88.9): EXPIRED_LINK and SUCCESS show Go to the event, 44 tall, above Go to Home', async ({
+    page,
+  }) => {
+    // 88.9 O06c (owner pick, 88.9-PICKS-B8B.json, 2026-11-07): the page leads to the event the link
+    // names. Both navigations use RSVP_PATH, which carries `e=` — without it the page's event href
+    // is null and the link correctly never renders, so the test would fail for the wrong reason.
+    // Bodies are synthesized in the shape of the unit file's BODY_EXPIRED_LINK_403 / BODY_SUCCESS.
+    await routeRespond(page, (route) =>
+      route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ error: 'expired_link', message: 'synthetic (88.9-43 e2e)' }),
+      }),
+    );
+
+    await page.goto(RSVP_PATH);
+
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'This link has already been used', exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    const expiredEventLink = page.getByRole('link', { name: 'Go to the event', exact: true });
+    await expect(expiredEventLink).toBeVisible();
+    await expect(expiredEventLink).toHaveAttribute('href', /^\/gameDetail\?event_id=/);
+    const home = page.getByRole('link', { name: 'Go to Home', exact: true });
+    await expect(home).toBeVisible();
+    const eventBox = await expiredEventLink.boundingBox();
+    const homeBox = await home.boundingBox();
+    expect(eventBox, 'the Go to the event link has no layout box').not.toBeNull();
+    expect(homeBox, 'the Go to Home link has no layout box').not.toBeNull();
+    expect(eventBox!.height, 'Go to the event is shorter than 44px').toBeGreaterThanOrEqual(44);
+    expect(eventBox!.y + eventBox!.height, 'Go to the event does not sit above Go to Home').toBeLessThanOrEqual(homeBox!.y);
+    await expectInsideViewport(page, expiredEventLink);
+    await expectInsideViewport(page, home);
+    await expectNoHorizontalScroll(page);
+
+    // SUCCESS: a second navigation (the page submits once per instance), answered with a success body.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await routeRespond(page, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ success: true, status: 'yes', event_name: 'E2E Event', event_date: 'March 3' }),
+      }),
+    );
+
+    await page.goto(RSVP_PATH);
+
+    await expect(page.getByRole('heading', { level: 1, name: "You're in!", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    const successEventLink = page.getByRole('link', { name: 'Go to the event', exact: true });
+    await expect(successEventLink).toBeVisible();
+    await expect(successEventLink).toHaveAttribute('href', /^\/gameDetail\?event_id=/);
+    const successBox = await successEventLink.boundingBox();
+    expect(successBox, 'the Go to the event link has no layout box').not.toBeNull();
+    expect(successBox!.height, 'Go to the event is shorter than 44px').toBeGreaterThanOrEqual(44);
+    await expectInsideViewport(page, successEventLink);
+    await expectNoHorizontalScroll(page);
+  });
+
   test('B. restore: the L2 loading line and the error state fit, and a keyboard Try again lands focus on the settled heading (88.6.1-36)', async ({
     page,
   }) => {

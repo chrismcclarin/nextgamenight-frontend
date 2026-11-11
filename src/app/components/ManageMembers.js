@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
 import ClickableMemberName from './ClickableMemberName';
+import { MemberChip } from './MemberChipStack';
 import KebabMenu from './KebabMenu';
 import FriendInvitePanel from './FriendInvitePanel';
 import { toast } from 'sonner';
@@ -11,6 +12,8 @@ import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { useInlineReceipt } from '../../components/ui/useInlineReceipt';
+import { announceStatus } from '@/components/ui/announcer';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
@@ -23,9 +26,13 @@ import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 // Copy row G1 (Phase 88.6.1 D-30, owner-ratified 2026-10-04): the opener says what its dialog title and its receipt say.
 const RESET_INVITE_LINK_LABEL = 'Reset invite link';
 
-// 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): the Make admin confirm's text
-// while the grant is in flight (ConfirmDialog's pendingLabel).
-const PROMOTE_ADMIN_PENDING_LABEL = 'Promoting…';
+// DECISION Phase 88.9-45 (rule 1): the Make admin confirm, Reset invite link, Transfer ownership and
+// Confirm Leave keep their labels with the house spinner while busy, named "<label>, <verb>" through
+// Button's busy / busySuffix — chosen OVER the retired swap words (the Promoting swap that the 88.6.1
+// code review CR-5 / A-75 ratified 2026-10-19 as ConfirmDialog's pending text, and the Resetting,
+// Transferring and Leaving swaps). This suffix is the Make admin gate's busySuffix.
+// AMENDED Phase 88.9-56 (R-C3a): the Remove, Reject and Reset link confirms join the Make admin confirm, each with its own derived verb.
+const PROMOTE_ADMIN_BUSY_SUFFIX = ', promoting';
 
 // The outcome plan 21's `classifyRetryResult` reads from a retry's own result (plan 55's names and shape).
 const LOAD_OK = Object.freeze({ isError: false });
@@ -133,6 +140,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // the actual invite UI is the existing FriendInvitePanel modal.
     const [inviteModalOpen, setInviteModalOpen] = useState(false);
     const [resettingInvite, setResettingInvite] = useState(false);
+    // Save-feedback rule 3 (88.9-24): the Invite link reset caption beside the opener.
+    const { receipt, showReceipt, clearReceipt } = useInlineReceipt();
     // Phase 69-04 mirror: same confirm-modal Leave flow as GroupSettings,
     // so the in-row "Leave Group" button (non-owner self-row) gets the
     // canonical copy + inline error UX rather than window.confirm.
@@ -337,11 +346,17 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
-            // Req 12 receipt (UI-SPEC §6.2): `{Object} {past-tense verb}`, <=4 words,
-            // no exclamation mark and no adverb — the shipped error-toast voice.
-            // (The banned adverb is deliberately not spelled out here: Req 12's
-            // acceptance is a plain grep over this file that does not exempt comments.)
-            toast.success('Role updated');
+            /* DECISION Phase 88.9-24 (save-feedback rule 2; owner pick O16a, 88.9-PICKS-B9.json,
+               2026-11-07; owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): Role updated and Member removed
+               fire NO success toast — the role select shows the new role; the row leaves the roster and
+               focus goes to its neighbour — the outcome is still spoken once by the root announcer
+               (src/components/ui/announcer.ts). Chosen OVER the Req 12 receipts (UI-SPEC §6.2) these two
+               lines carried: rule 4 keeps a toast only for an outcome the person cannot see. Each call
+               sits where its toast was, in the one shared commit path, so the desktop dialog and the
+               mobile kebab still get the same words from one line. Errors still toast (rule 5). Invite
+               link reset goes inline instead (rule 3). Restoring a toast here is a decision, not a
+               cleanup. */
+            announceStatus('Role updated');
             return true;
         } catch (error) {
             logger.info('Error updating role:', errCtx(error));
@@ -369,7 +384,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         title: `Make ${promoteTarget?.name || 'this member'} an admin?`,
         body: 'Admins can edit events, manage members, and approve or remove people.',
         confirmLabel: 'Make admin',
-        pendingLabel: PROMOTE_ADMIN_PENDING_LABEL,
+        busySuffix: PROMOTE_ADMIN_BUSY_SUFFIX,
         onConfirm: async (target_user_id) => {
             const ok = await performRoleChange(target_user_id, 'admin');
             // Rejecting keeps the gate open (useConfirmAction's contract) so the
@@ -412,10 +427,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
-            // Req 12 receipt (UI-SPEC §6.2). Deliberately here and not at the two
-            // call sites: the desktop dialog gate and the mobile kebab two-tap share
-            // this commit path, so both surfaces get the same receipt from one line.
-            toast.success('Member removed');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 marker at Role updated above.
+            announceStatus('Member removed');
             return true;
         } catch (error) {
             logger.info('Error removing member:', errCtx(error));
@@ -429,11 +443,17 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     };
 
     // Desktop Remove button — dialog tier (UI-SPEC §11.2). Copy verbatim.
+    // DECISION Phase 88.9-56 (owner ruling R-C3a, 88.9-RULINGS.md, 2026-11-10, 'hear'): every confirm dialog's pending
+    // confirm carries the house spinner and a heard verb derived from its own confirmLabel (Q6(b)), chosen OVER the
+    // default-off that left this gate silent while its write ran (ConfirmDialog's busy is pending AND a suffix; plan
+    // 88.9-45 converted only the two gates whose swap words were ratified copy rows). The visible verb never changes;
+    // the verb is heard only; the spinner leaves with the dialog on success (the close is the completion feedback).
     const removeMemberGate = useConfirmAction({
         tier: 'dialog',
         title: `Remove ${removeTarget?.name || 'this member'} from this group?`,
         body: "They'll lose access to events and planning. You can re-invite them.",
         confirmLabel: 'Remove',
+        busySuffix: ', removing',
         onConfirm: async (target_user_id) => {
             const ok = await handleRemoveMemberConfirmed(target_user_id);
             if (!ok) throw new Error('Remove failed');
@@ -506,6 +526,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         title: `Reject ${rejectTarget?.name || 'this member'}?`,
         body: "They'll be removed from the pending list.",
         confirmLabel: 'Reject',
+        busySuffix: ', rejecting',
         onConfirm: async (target_user_id) => {
             const ok = await performRejectMember(target_user_id);
             if (!ok) throw new Error('Reject failed');
@@ -525,7 +546,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             await groupsAPI.resetInviteToken(group_id);
             // The one W11 receipt this phase wires. String ratified VERBATIM in
             // 88-UI-SPEC §6.2.1 and 88.6-UI-SPEC §6.3 — no copy is authored here.
-            toast.success('Invite link reset');
+            // AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json; save-feedback rule 3): the same
+            // words are now an inline caption beside the Reset invite link opener, in an always-mounted
+            // polite region (spoken by that region alone), chosen OVER the toast: the modal stays open
+            // on the button the person returns to.
+            showReceipt('Invite link reset');
             return true;
         } catch (err) {
             logger.info('Failed to reset invite token:', errCtx(err));
@@ -543,6 +568,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         title: 'Reset the invite link?',
         body: 'Every copy of the old link stops working — including printed QR codes.',
         confirmLabel: 'Reset link',
+        busySuffix: ', resetting',
         onConfirm: async () => {
             const ok = await performResetInviteToken();
             if (!ok) throw new Error('Reset invite link failed');
@@ -582,7 +608,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             owner: 'bg-purple-100 text-purple-800 border-purple-300',
             admin: 'bg-surface-muted text-content-accent border-accent',
             member: 'bg-surface-muted text-content-secondary border-line',
-            pending: 'bg-amber-100 text-amber-800 border-amber-300'
+            pending: 'bg-status-warning-subtle text-content-status-warning border-status-warning'
         };
         
         /* DECISION Phase 88.6-19 (§4.5, D-03): the role pill keeps a WEIGHT and takes 700, not
@@ -689,15 +715,28 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                 size="default"
                                 onClick={() => {
                                     if (resettingInvite) return;
+                                    clearReceipt();
                                     resetInviteGate.trigger();
                                 }}
                                 aria-disabled={resettingInvite || undefined}
+                                busy={resettingInvite}
+                                busySuffix=", resetting"
                                 className="text-content-status-error"
                                 title="Invalidate the current invite link and generate a new one"
                             >
-                                {resettingInvite ? 'Resetting…' : RESET_INVITE_LINK_LABEL}
+                                {RESET_INVITE_LINK_LABEL}
                             </Button>
                         )}
+                        {/* Save-feedback rule 3 (88.9-24): the Invite link reset caption. Mounted empty (and
+                            sr-only) with this stable row, outside the opener's own condition, so the reset's
+                            text is a CHANGE and is announced; the row wraps it under the buttons at 375. */}
+                        <StatusRegion
+                            data-testid="invite-reset-receipt"
+                            politeness="polite"
+                            srOnlyWhenEmpty
+                            message={receipt}
+                            className="text-xs text-content-status-success self-center"
+                        />
                     </div>
                 )}
 
@@ -742,7 +781,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 {membersErrorState.showError && !rosterRetained && (
                     <FetchErrorBanner
                         state={membersErrorState}
-                        title="Couldn't load members"
+                        thing="members"
                         reportContext="manage members — member list fetch"
                     />
                 )}
@@ -759,18 +798,24 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             <div className="mb-6">
                                 <div className="flex items-center gap-2 mb-2">
                                     <Heading level={3} size="heading" className="text-content-primary">Pending Members</Heading>
-                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                         {members.filter(m => m.UserGroup?.role === 'pending').length}
                                     </span>
                                 </div>
                                 <p className="text-sm text-content-muted mb-3">Auto-approved after 24h</p>
+                                {/* DECISION Phase 88.9-30 B3a (owner pick B3a, 88.9-PICKS-B1.json, votes-b1 v9, 2026-11-04):
+                                    the pending and pending-invites boxes, their pills and the Approve / Reject halo ride
+                                    the status-warning family, which has a dark twin, chosen OVER the raw amber palette the
+                                    boxes shipped with (no dark twin: name ink 1.02 and halo 1.61 in dark). The pills follow
+                                    (research open question 11) so no light pill sits on the dark box; owner glance at plan
+                                    88.9-51. */}
                                 <div className="space-y-3">
                                     {members.filter(m => m.UserGroup?.role === 'pending').map((member) => (
-                                        <div key={member.id} className="flex items-center justify-between p-4 border border-amber-200 rounded-lg bg-amber-50">
+                                        <div key={member.id} className="flex items-center justify-between p-4 border border-status-warning rounded-lg bg-status-warning-subtle">
                                             <div className="flex items-center gap-3 flex-1">
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2">
-                                                        <p className="font-bold text-content-primary"><ClickableMemberName userId={member.id} username={member.username || member.email} /></p>
+                                                        <p className="font-bold text-content-status-warning"><ClickableMemberName userId={member.id} hostGround="warning" username={member.username || member.email} /></p>
                                                         {getRoleBadge('pending')}
                                                     </div>
                                                 </div>
@@ -779,6 +824,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <Button
                                                     variant="primary"
                                                     size="default"
+                                                    className="focus-visible:ring-offset-status-warning-subtle"
                                                     onClick={(event) => handleApproveMember(member.id, event)}
                                                 >
                                                     Approve
@@ -786,6 +832,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <Button
                                                     variant="danger"
                                                     size="default"
+                                                    className="focus-visible:ring-offset-status-warning-subtle"
                                                     onClick={() => handleRejectMember(member.id, member.username || member.email)}
                                                 >
                                                     Reject
@@ -810,6 +857,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                         className="flex items-center justify-between p-4 border border-line rounded-lg hover:bg-surface-hover"
                                     >
                                         <div className="flex items-center gap-3 flex-1">
+                                            {/* DECISION Phase 88.9-30 D4a (owner pick D4a, 88.9-PICKS-B3.json, votes-b3 v12 + chat
+                                                2026-11-06 'the manage members spot is great'): a 32px D1b chip opens each ACTIVE
+                                                row, chosen OVER name text alone (W62) and OVER chips on the pending rows too (the
+                                                build contract's pin names active rows; a pending row is a request on the warning
+                                                box, not a member yet). The chip is aria-hidden: identity is the name beside it. */}
+                                            <MemberChip label={member.username || member.email} colorKey={member.id} />
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-bold text-content-primary">
@@ -1023,7 +1076,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     <div className="mt-6">
                         <div className="flex items-center gap-2 mb-3">
                             <Heading level={3} size="heading" className="text-content-primary">Pending Invites</Heading>
-                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                 {pendingInvites.length}
                             </span>
                         </div>
@@ -1031,15 +1084,15 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             {pendingInvites.map((invite) => (
                                 <div
                                     key={invite.id}
-                                    className="flex items-center justify-between p-4 border border-line rounded-lg bg-amber-50"
+                                    className="flex items-center justify-between p-4 border border-status-warning rounded-lg bg-status-warning-subtle"
                                 >
                                     <div className="flex items-center gap-3 flex-1">
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
-                                                <p className="font-bold text-content-primary">
+                                                <p className="font-bold text-content-status-warning">
                                                     {invite.invited_email}
                                                 </p>
-                                                <span className="px-2 py-1 rounded-sm text-xs font-bold border bg-amber-100 text-amber-800 border-amber-300">
+                                                <span className="px-2 py-1 rounded-sm text-xs font-bold border bg-status-warning-subtle text-content-status-warning border-status-warning">
                                                     Pending
                                                 </span>
                                             </div>
@@ -1160,8 +1213,10 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             setTransferring(false);
                         }
                     }}
+                    busy={transferring}
+                    busySuffix=", transferring"
                 >
-                    {transferring ? 'Transferring…' : 'Transfer ownership'}
+                    Transfer ownership
                 </Modal.Action>
             </Modal.Footer>
         </Modal>
@@ -1240,10 +1295,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 <Modal.Action
                     variant="danger"
                     aria-disabled={leaving || undefined}
+                    busy={leaving}
+                    busySuffix=", leaving"
                     aria-describedby={leaveErrorId}
                     onClick={handleLeaveGroupConfirmed}
                 >
-                    {leaving ? 'Leaving…' : 'Confirm Leave'}
+                    Confirm Leave
                 </Modal.Action>
             </Modal.Footer>
         </Modal>

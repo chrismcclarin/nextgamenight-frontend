@@ -21,15 +21,17 @@ import { scrubbedFetch } from './support/scrubbedFetch';
 // The spec reads only the fixture ids the existing journeys read (`E2E_AVAILABILITY_TOKEN`,
 // `E2E_GROUP_ID`, `E2E_GAME_NAME`).
 
-// Copy row A5 (88.6.1-COPY-TABLE.html), byte-equal: the ellipsis is U+2026.
-const SAVED_PREFILL_LOADING_LABEL = 'Loading your availability…';
+// Rule 1 (88.9-45): the pressed pre-fill button keeps its label (copy row A5 is retired); the busy
+// suffix joins its name, with Chromium's optional space before the sr-only comma.
+const SAVED_PREFILL_LABEL = 'Use my saved availability';
+const SAVED_PREFILL_BUSY_NAME = /^Use my saved availability ?, loading$/;
 
 // The magic-link page calls the public backend directly (`PUBLIC_API_BASE_URL` in src/lib/api.ts),
 // whose origin differs between environments, so routes match on the PATHNAME only.
 const pathEndsWith = (suffix: string) => (url: URL) => url.pathname.endsWith(suffix);
 
 test.describe('Availability form — a second press while submitting changes nothing (AC-12)', () => {
-  test('a second press while submitting changes nothing: one POST, the CTA stays Submitting..., aria-disabled and focused', async ({
+  test('a second press while submitting changes nothing: one POST, the CTA keeps its label with the spinner, stays aria-disabled and focused', async ({
     page,
   }) => {
     const token = process.env.E2E_AVAILABILITY_TOKEN ?? 'seed-availability-token';
@@ -40,7 +42,9 @@ test.describe('Availability form — a second press while submitting changes not
     await page.getByRole('button', { name: /submit availability|update availability/i }).click();
     await post.arrived;
 
-    const busy = page.getByRole('button', { name: /submitting/i });
+    const busy = page.getByRole('button', { name: /^(Submit|Update) Availability ?, submitting$/ });
+    await expect(busy).toHaveText(/^(Submit|Update) Availability/);
+    await expect(busy.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(busy).toHaveAttribute('aria-disabled', 'true');
     await expect(busy).not.toHaveAttribute('disabled');
     await expect(busy).toBeFocused();
@@ -50,7 +54,7 @@ test.describe('Availability form — a second press while submitting changes not
     // A negative needs a settle window: long enough for a second fetch to reach the route.
     await page.waitForTimeout(500);
     expect(post.count()).toBe(1);
-    await expect(busy).toHaveAccessibleName(/submitting/i);
+    await expect(busy).toHaveAccessibleName(/^(Submit|Update) Availability ?, submitting$/);
 
     await post.abortAll();
     // Filtered to a non-empty alert: Next.js's route announcer is also a `role="alert"` (empty on
@@ -65,8 +69,8 @@ test.describe('Availability form — a second press while submitting changes not
   });
 });
 
-test.describe('Availability form — the pressed pre-fill button (D-35, copy row A5)', () => {
-  test('the pressed pre-fill button reads A5, stays focused and aria-disabled; its sibling is natively disabled; one POST', async ({
+test.describe('Availability form — the pressed pre-fill button (D-35; rule 1, 88.9-45)', () => {
+  test('the pressed pre-fill button keeps its label with the spinner, stays focused and aria-disabled; its sibling is natively disabled; one POST', async ({
     page,
   }) => {
     const token = process.env.E2E_AVAILABILITY_TOKEN ?? 'seed-availability-token';
@@ -102,12 +106,14 @@ test.describe('Availability form — the pressed pre-fill button (D-35, copy row
     const saved = await holdRequests(page, { method: 'POST', match: pathEndsWith('/availability-prefill/saved') });
 
     await page.goto(`/availability-form/${token}`);
-    const savedButton = page.getByRole('button', { name: 'Use my saved availability', exact: true });
+    const savedButton = page.getByRole('button', { name: SAVED_PREFILL_LABEL, exact: true });
     const gcalButton = page.getByRole('button', { name: 'Import from Google Calendar', exact: true });
     await savedButton.click();
     await saved.arrived;
 
-    const pressed = page.getByRole('button', { name: SAVED_PREFILL_LOADING_LABEL, exact: true });
+    const pressed = page.getByRole('button', { name: SAVED_PREFILL_BUSY_NAME });
+    await expect(pressed).toHaveText(/^Use my saved availability/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
     await expect(pressed).toBeFocused();
@@ -135,7 +141,7 @@ test.describe('Availability form — the pressed pre-fill button (D-35, copy row
 });
 
 test.describe('Create Event — a second press while creating changes nothing (D-35)', () => {
-  test('a second press while creating changes nothing: one POST, the submit reads Creating..., stays aria-disabled and focused', async ({
+  test('a second press while creating changes nothing: one POST, the submit keeps Create Event and shows the spinner, stays aria-disabled and focused', async ({
     page,
   }) => {
     const groupId = process.env.E2E_GROUP_ID ?? '1';
@@ -154,14 +160,18 @@ test.describe('Create Event — a second press while creating changes nothing (D
 
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await expect(submit).not.toHaveAttribute('disabled');
-    await expect(submit).toHaveAccessibleName('Creating...');
+    // AMENDED Phase 88.9-24 (CI 42677038697 at 4c66253): Chromium computes the busy name as
+    // "Create Event , creating" (the label is a flex item and the sr-only suffix its own out-of-flow
+    // box, so a space is inserted before the comma); read aloud it is the same words. The optional
+    // space keeps the pin on label-first plus the verb.
+    await expect(submit).toHaveAccessibleName(/^Create Event ?, creating$/);
     await expect(submit).toBeFocused();
     await expectTouchTarget(submit, 'the busy Create Event submit', { axes: 'height', withinViewportOf: page });
 
     await submit.click({ force: true });
     await page.waitForTimeout(500);
     expect(create.count()).toBe(1);
-    await expect(submit).toHaveAccessibleName('Creating...');
+    await expect(submit).toHaveAccessibleName(/^Create Event ?, creating$/);
 
     // Abort the held create: the failure is a toast, the dialog stays open, and the person is
     // left where they pressed, on the re-enabled submit.
@@ -202,7 +212,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     const submit = page.getByTestId('create-event-submit');
     await submit.click();
     await create.arrived;
-    await expect(submit).toHaveAccessibleName('Creating...');
+    await expect(submit).toHaveAccessibleName(/^Create Event ?, creating$/);
 
     // Close mid-create, then reopen. The reopen re-runs the members read (`GET /api/groups/<id>/users`),
     // which rebuilds the form; wait for it so nothing below races that rebuild.
@@ -227,7 +237,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     // and no second POST is sent.
     await fillCreateEventFields(page, { switchMode: 'if-offered' });
     await submit.click();
-    await expect(submit).toHaveAccessibleName('Creating...');
+    await expect(submit).toHaveAccessibleName(/^Create Event ?, creating$/);
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await page.waitForTimeout(500);
     expect(create.count()).toBe(1);

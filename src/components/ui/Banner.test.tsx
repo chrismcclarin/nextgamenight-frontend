@@ -59,7 +59,7 @@ describe('Banner — the additive actions slot (plan 88.6.1-21, AC-11 / D-42)', 
     expect(column.children).toHaveLength(2);
     const region = column.children[0] as HTMLElement;
     expect(region).toHaveAttribute('role', 'alert');
-    expect(region.className, 'the region carries only its own base class here').toBe('text-sm');
+    expect(region.className, 'the region carries only its own base class here — text-base since C7a').toBe('text-base');
     expect(region.textContent, 'the region holds the title and children only').toBe('Heads upBody text');
     expect(column.children[1]).toBe(button);
   });
@@ -85,5 +85,29 @@ describe('Banner — the additive actions slot (plan 88.6.1-21, AC-11 / D-42)', 
       </Banner>
     );
     expect(container.querySelector('[actions]')).toBeNull();
+  });
+
+  // Phase 88.9-26 (R2-31, owner pick C7a, 88.9-PICKS-B2.json): the whole Banner family reads at
+  // the 16px body rung. StatusRegion paints its own text-sm, so the box AND the region must both
+  // carry text-base (twMerge drops the region's earlier text-sm); checked in both layouts.
+  it('C7a (88.9): the banner family body is 16px', () => {
+    const shapes = [
+      ['no actions', undefined],
+      ['actions shape', <button key="go" type="button">Go</button>],
+    ] as const;
+    for (const [shape, actions] of shapes) {
+      const { container, unmount } = render(
+        <Banner tone="warning" title="Heads up" actions={actions}>
+          <p>Body text</p>
+        </Banner>
+      );
+      const box = container.firstElementChild as HTMLElement;
+      expect(box, `${shape}: the box is on the body rung`).toHaveClass('text-base');
+      expect(box, `${shape}: the box no longer carries text-sm`).not.toHaveClass('text-sm');
+      const region = screen.getByRole('alert');
+      expect(region, `${shape}: the region is on the body rung`).toHaveClass('text-base');
+      expect(region, `${shape}: the region no longer carries text-sm`).not.toHaveClass('text-sm');
+      unmount();
+    }
   });
 });

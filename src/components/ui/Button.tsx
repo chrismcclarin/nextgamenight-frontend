@@ -41,12 +41,17 @@
  * - **No raw palette classes** — semantic tokens only inside `src/components/ui/`.
  * - **No barrel export.** There is no `src/components/ui/index.ts` and this
  *   phase does not add one; import from `@/components/ui/Button`.
+ *
+ * What it does add:
+ * - **Busy (rule 1)** — `busy` / `busySuffix`; see the 88.9-24 marker on the render.
  */
 import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '@/lib/cn';
+
+import { DelayedSpinner } from './DelayedSpinner';
 
 /* DECISION Phase 88-02 (D-01/D-02): Button COMPOSES the legacy `.btn` class rather than
    re-emitting its properties as Tailwind utilities. Chosen OVER a pure-utility base
@@ -237,6 +242,13 @@ const buttonVariants = cva(
          (The retired class is described rather than quoted: plan 06's
          acceptance gate greps this whole FILE for that literal, comments
          included, so writing it here would red a correct tree.)
+         AMENDED Phase 88.9-28 (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07): Phase 88.9
+         takes the square — a NEW size key iconSquare emits the unlayered btn-icon-square class
+         (padding 0, authored in globals.css after .btn) beside min-h-11 min-w-11, used by the
+         month-nav chevrons only, chosen OVER zeroing icon itself: the four shipped size icon
+         sites (FeedbackButton, FeedbackForm, PendingMemberBanner, BottomSheet close) keep their
+         52x44 lozenge, because the owner's N1 picture showed the calendar chevrons, not those
+         controls.
 
          (2) `min-h-11` LIVES ON THE cva BASE — chosen OVER widening the
          `@media (width < 48rem)` rule on the `.btn` class. D-36's reasoning is
@@ -257,6 +269,8 @@ const buttonVariants = cva(
         // D-02's "legitimate 44x44 home" for bare icon buttons, delivered once
         // here instead of invented per call site.
         icon: 'min-h-11 min-w-11',
+        // 88.9-28 N1: the month-nav square (44x44, padding 0 from the unlayered .btn-icon-square rule).
+        iconSquare: 'btn-icon-square min-h-11 min-w-11',
         // 88.6 D-09, the compact row-action rung. `btn-sm` ONLY: the compact
         // horizontal padding comes from the unlayered `.btn-sm` rule
         // (src/app/globals.css (".btn-sm {")), and every padding or font-size utility that
@@ -274,15 +288,57 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {
   /** Render the single child element instead of a `<button>` (Radix Slot). */
   asChild?: boolean;
+  /**
+   * In flight (save-feedback rule 1): sets `aria-disabled`, keeps the label and adds the
+   * house Spinner plus an sr-only suffix. Never swallows the press — the site's own latch
+   * is the refusal. Ignored for rendering under `asChild` (only `aria-disabled` is set).
+   * The Spinner is delayed and held (R-C3b, 88.9-54): it appears after 200 ms of busy and
+   * stays 500 ms from its appearance; the refusal and the suffix are immediate. Passing
+   * `busy` (true or false) mounts the delayed element; leaving it undefined mounts nothing.
+   */
+  busy?: boolean;
+  /**
+   * The sr-only words appended to the accessible name while `busy`. Defaults to the
+   * Q6(b) suffix (", saving"); a site passes its own verb (", creating", ", sending" ...).
+   */
+  busySuffix?: string;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    { variant, size, asChild = false, className, type = 'button', ...props },
+    {
+      variant,
+      size,
+      asChild = false,
+      className,
+      type = 'button',
+      busy: busyProp,
+      busySuffix = ', saving',
+      children,
+      ...props
+    },
     ref
   ) => {
+    const busy = busyProp ?? false;
+    // Only a caller that passes busy (true OR false) mounts the delayed Spinner element, so
+    // the resting majority of Buttons pays no hook subscription; a false after a true keeps
+    // the element mounted, which is what lets the hold outlive the busy.
+    const tracksBusy = busyProp !== undefined;
     const Comp = asChild ? Slot : 'button';
 
+    /* DECISION Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1):
+       busy is ONE prop carrying the whole in-flight affordance — aria-disabled (whose dim is the gated
+       colour pair at src/app/globals.css ("DECISION Phase 88.8 (plan 13, DR-C)")), the house Spinner
+       beside the UNCHANGED label, and an sr-only suffix (", saving" by default; a site passes its own
+       verb through busySuffix, owner ruling Q6(b) 2026-11-08) so the name reads "<label>, saving" or
+       "<label>, <its verb>". Chosen OVER the per-site label swap (it replaced the whole accessible name
+       with a bare progress word and narrowed the button 128 to 92px) and OVER an opacity dim (2.0974:1
+       on a composited label, 88.8 HIGH-A). It does NOT swallow the press: each site's own refusal latch
+       stays the refusal (src/app/components/ScheduleForm.js ("The refusal is the latch, not the")),
+       chosen over a central click guard that would preventDefault a submit and double up with the
+       latches. Not applied under asChild (Slot takes one child). Changing any of this is a decision,
+       not a cleanup.
+       AMENDED Phase 88.9-54 (owner ruling R-C3b, 88.9-RULINGS.md, 2026-11-10): the Spinner now renders through DelayedSpinner (useDelayedSpinner: 200 ms appear delay, 500 ms minimum hold — the numbers and their measured basis live on that hook's marker), mounted only when a caller passes busy (41 of 207 Button mounts at 35d5348), so a resting Button pays nothing; aria-disabled and the sr-only suffix stay immediate so the refusal and the heard name never wait. The Spinner is MOUNTED on show, chosen OVER a reserved invisible slot (a sub-200 ms write would twitch the control's width by the spinner's 16 px plus the btn gap, the very jump rule 1 ends). ConfirmDialog's confirm and Modal.Action inherit this through Button; asChild is still untouched (no Spinner there). Every raw-host Spinner site outside Button takes the same element in plan 88.9-56. */
     return (
       <Comp
         ref={ref}
@@ -290,7 +346,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...(asChild ? {} : { type })}
         className={cn(buttonVariants({ variant, size }), className)}
         {...props}
-      />
+        {...(busy ? { 'aria-disabled': true } : {})}
+      >
+        {asChild ? (
+          children
+        ) : (
+          <>
+            {children}
+            {tracksBusy ? <DelayedSpinner busy={busy} /> : null}
+            {busy ? <span className="sr-only">{busySuffix}</span> : null}
+          </>
+        )}
+      </Comp>
     );
   }
 );

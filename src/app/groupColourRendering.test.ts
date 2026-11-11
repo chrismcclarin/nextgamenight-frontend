@@ -55,11 +55,13 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-// Plan 88.3.1-09: imported so test 21's fixture is CHECKED against the shipped table
-// rather than transcribed from it. A source-scan file importing production data is the
-// exception here, not the rule — it is safe because the assertion is "my fixture still
-// matches yours", which is exactly the drift a transcribed hex hides.
-import { GROUP_COLOUR_PRESETS } from '../lib/groupColourPresets';
+// Plan 88.3.1-09 imported GROUP_COLOUR_PRESETS here so test 21's fixture was CHECKED against the
+// shipped table. AMENDED Phase 88.9-28 (E1a): test 21 no longer measures RSVP text on a tint (the
+// compact tile renders no count), so that import went; test 21 now RENDERS the compact tile, the
+// one place this source-scan file imports a component and the testing library.
+import { createElement } from 'react';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import CalendarMonthView from './components/CalendarMonthView';
 import { contrastRatio } from '../lib/wcag';
 import { lineAt, readOpeningTag, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
@@ -355,7 +357,8 @@ const RING_SCAN_FILES: { file: string; count: number }[] = [
  * adding a name to this set removes real coverage and must be paid for by a matching
  * assertion against that primitive's base class.
  */
-const RING_BEARING_PRIMITIVES = new Set(['Button', 'SelectControl', 'KebabMenu']);
+// ADDED 88.9-39: its segments carry the house ring, src/components/ui/SegmentedToggle.tsx ("focus-visible:ring-offset-surface-card'")
+const RING_BEARING_PRIMITIVES = new Set(['Button', 'SelectControl', 'KebabMenu', 'SegmentedToggle']);
 
 /**
  * The three groupHomePage header controls — Manage Members, Plan Game Session, Add New Game Event.
@@ -380,6 +383,7 @@ const PRIMITIVE_RING_SOURCE: Record<string, string> = {
   Button: 'components/ui/Button.tsx',
   SelectControl: 'components/ui/Input.tsx',
   KebabMenu: 'app/components/KebabMenu.js',
+  SegmentedToggle: 'components/ui/SegmentedToggle.tsx',
 };
 
 /** The mutual-exclusion ternary, as it must appear in a className expression. */
@@ -700,6 +704,12 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      * channel gets its own positive assertion in test 27 rather than being folded
      * in here, because a counter that admits both shapes could no longer tell a
      * site that kept its fallback from one that dropped it.
+     *
+     * AMENDED Phase 88.9-27 (owner by chat 2026-11-08, RULINGS Q2 add-on; owner ruling R-P4):
+     * the grouplist.js half of the paragraph above no longer holds for its DARK arm. The Last
+     * Game row and date now read the --t-* channel directly in dark (the tinted arm) and on the
+     * image arm, so this regex also matches there; the floor of 1 still guards the title fork,
+     * and test 27 pins the new arms. EventDayModal's Req 8 site is unchanged.
      */
     const floors: Record<string, number> = {
       'app/components/grouplist.js': 1,
@@ -1184,6 +1194,23 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     ]) {
       expect(title!.text, `the h1 lost its ${util} utility`).toContain(util);
     }
+
+    // AMENDED Phase 88.9-27 (owner ruling O21b / pick O02d1): the h1 AND the stats line read the
+    // paint-order pair beside the stroke pair, so the image arm's 1.5px outline is painted BEFORE
+    // the fill (outside the glyph). Every className expression carrying the light stroke utility
+    // must carry both halves; a no-image header reads them as normal (the pair is absent there).
+    const strokeCarriers = attrExprs(src, 'className').filter((e) =>
+      e.text.includes('[-webkit-text-stroke:var(--t-stroke-l)]'),
+    );
+    expect(strokeCarriers.length, 'the h1 and the stats line no longer both carry the stroke pair').toBeGreaterThanOrEqual(2);
+    for (const e of strokeCarriers) {
+      expect(e.text, 'a stroke-carrying header element lost the light paint-order utility').toContain(
+        '[paint-order:var(--t-paint-l,normal)]',
+      );
+      expect(e.text, 'a stroke-carrying header element lost the dark paint-order utility').toContain(
+        'dark:[paint-order:var(--t-paint,normal)]',
+      );
+    }
   });
 
   it('14. GATE B — the dim is three explicit cases and the 0.15 is never inline', () => {
@@ -1212,12 +1239,15 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       'dark:bg-black/15',
     );
 
-    // Only the IMAGE case keeps an inline backgroundColor. An inline
-    // `'transparent'` on the same property would outrank the `dark:` class and
-    // silently delete the dark dim in both themes.
-    expect(src, 'the photo dim is gone — it is needed in BOTH themes').toContain('rgba(0, 0, 0, 0.4)');
+    // AMENDED Phase 88.9-27 (owner ruling O21b / pick O02d1): case (1) now paints NO dim; the
+    // photo shows at full strength and the title + stats carry their own 1.5px outline. So the
+    // inline 0.4 black is gone and the overlay carries no inline backgroundColor in ANY case. An
+    // inline 'transparent' on the same property would still outrank the dark class and silently
+    // delete the dark dim in both themes, so that negative stays.
+    expect(src, 'the inline 0.4 photo dim came back (O21b ruled no photo dim)').not.toContain('rgba(0, 0, 0, 0.4)');
     const style = attrExprs(src, 'style').find((e) => e.text.includes('borderRadius'));
     expect(style, 'the overlay style object was not found').toBeTruthy();
+    expect(style!.text, 'the overlay carries an inline backgroundColor again').not.toContain('backgroundColor');
     expect(style!.text, 'an inline 0.15 remains on the overlay').not.toContain('0.15');
     expect(style!.text, "an inline 'transparent' remains on the overlay").not.toContain(
       "'transparent'",
@@ -1631,95 +1661,50 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     }
   });
 
-  it('21. the compact tile\'s RSVP text clears 4.5:1 on every pinned tint once tinted', () => {
-    // T-88.3-79. These three colours are hard-coded in `RsvpCount.js` and pass
-    // 4.5:1 only against the compact tile's SHIPPED `bg-surface-muted`
-    // ground. Once the tile takes `--group-ground-light` they fail on the
-    // majority of preset/status pairings, so plan 16 forks them onto the tile's
-    // own tint pole via a defaulted `inheritColor` prop. This pins BOTH halves:
-    // the wiring, and the number that made it necessary.
-    const rsvp = code('app/components/RsvpCount.js');
-    expect(rsvp, 'RsvpCount lost its inheritColor opt-in').toMatch(/inheritColor\s*=\s*false/);
-    expect(
-      rsvp,
-      'the compact spans no longer drop their status class when inheritColor is set',
-    ).toMatch(/inheritColor \? undefined : token/);
-    // the UNTINTED default is byte-unchanged: all three status tokens still here
-    for (const token of [
-      'text-content-status-success',
-      'text-content-status-warning',
-      'text-content-status-error',
-    ]) {
-      expect(rsvp, `the untinted compact tile lost ${token}`).toContain(token);
-    }
-    // the other call site passes no prop, so it renders exactly as before
-    const list = code('app/components/CalendarListView.js');
-    expect(list, 'CalendarListView started passing inheritColor — it must not').not.toContain(
-      'inheritColor',
-    );
-
-    // …and the compact tile passes it keyed on the SAME `tinted` value that
-    // gates the title fork, never on a second computation.
-    expect(code('app/components/CalendarMonthView.js')).toMatch(/inheritColor=\{!!tinted\}/);
-
-    /*
-     * RE-PINNED plan 88.3.1-09: from the eight **t = 0.70 derived tints** to the eight
-     * **stored LIGHT SURFACES**.
-     *
-     * WHY, and it is not a cosmetic swap. This tile's light-mode ground is no longer
-     * computed by mixing a near-black preset toward white — Phase 88.3.1 replaced that
-     * whole model (withdrawn ruling 4a; the eight old tints measured ΔE2000 **1.62**
-     * apart, sub-JND, which is the UAT finding that created this phase). A group now
-     * stores a preset id and the FE resolves it to a hand-tuned light surface. Leaving
-     * the old hexes here would have kept measuring a ground that nothing paints any
-     * more: the assertion would stay green while the shipped pixels went unmeasured,
-     * which is the worst failure mode a contrast gate has.
-     *
-     * The FLOOR is deliberately unchanged at 4.5 and the actual is deliberately NOT
-     * asserted — that is `groupColourPresets.test.ts`'s job (UI-SPEC 10.1 tests 8-10),
-     * and duplicating a number here would give two places to update and one to forget.
-     * Measured on the new surfaces: **6.44-6.50:1**, comfortably up from the 4.5-5.7
-     * band the tints gave.
-     *
-     * The pole is UNCHANGED: `getEventTileTextColor(light surface)` still resolves to
-     * `TILE_TEXT_LIGHT_BG`, because every light surface is W3C-brighter than 128
-     * (measured 211-227; `groupColourPresets.test.ts` test 11 pins the tier per
-     * preset). `#1e40af` being BLUE rather than near-black is a deliberate shipped
-     * decision (src/lib/colorUtils.js ("Intentionally different from getContrastColor.")),
-     * flagged to the owner as one line at the Req 10 check and
-     * NOT changed by this plan. If he picks near-black, this test still passes and the
-     * literal below moves with the pole.
-     */
-    const TILE_POLE = '#1e40af';
-    const LIGHT_SURFACES: Record<string, string> = {
-      red: '#ffd3d4',
-      orange: '#ffd6b1',
-      amber: '#e7e0aa',
-      green: '#bde9c2',
-      teal: '#94edf0',
-      blue: '#c4e1ff',
-      violet: '#dfd9ff',
-      rose: '#fdd1f8',
+  it('21. E1a (88.9): the compact tile renders no RsvpCount, so no RSVP text sits on a tint; the count stays in the tile\'s accessible name', () => {
+    // T-88.3-79 (history, kept): the three RSVP colours were hard-coded in `RsvpCount.js` and
+    // passed 4.5:1 only against the compact tile's shipped `bg-surface-muted` ground. Once the
+    // tile took `--group-ground-light` they failed on most preset/status pairings, so plan 16
+    // forked them onto the tile's own tint pole via a defaulted `inheritColor` prop, and this test
+    // pinned the wiring and the number (6.44-6.50:1 on the eight stored light surfaces, re-pinned
+    // by plan 88.3.1-09).
+    // AMENDED Phase 88.9-28 (E1a): the element this test floored is gone; RsvpCount no longer has a
+    // compact variant or an inheritColor prop (its only consumer was this tile). The pin is now the
+    // removal itself, on a rendered TINTED compact tile, plus the spoken count that stays.
+    const date = new Date(2099, 5, 15, 19, 0, 0, 0);
+    const event = {
+      id: 'evt-21',
+      start_date: '2099-06-15T19:00:00',
+      Game: { name: 'Catan' },
+      Group: { name: 'Tuesday Crew', background_color: '#722f37' },
+      rsvp_summary: { yes: 3, maybe: 1, no: 2 },
     };
-    // ANTI-VACUITY: eight surfaces, and each must be the hex the shipped table holds.
-    // A rename or a re-sort of the palette reds here rather than silently shrinking
-    // the population this loop measures.
-    expect(Object.keys(LIGHT_SURFACES)).toHaveLength(8);
-    for (const [name, hex] of Object.entries(LIGHT_SURFACES)) {
-      expect(
-        GROUP_COLOUR_PRESETS.find((p) => p.name === name)?.light,
-        `the shipped '${name}' light surface no longer matches this test's fixture`,
-      ).toBe(hex);
+    const noop = () => {};
+    render(
+      createElement(CalendarMonthView, {
+        days: [{ date, isCurrentMonth: true }],
+        activeEvents: [event],
+        currentDate: date,
+        variant: 'compact',
+        onDayClick: noop,
+        onEventClick: noop,
+        onNavigateMonth: noop,
+        onGoToday: noop,
+        monthNames: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+        tzLegend: null,
+      }),
+    );
+    try {
+      const tile = screen.getByRole('button', { name: "Catan - Tuesday Crew, 3 going, 1 maybe, 2 can't" });
+      expect(tile.style.getPropertyValue('--group-ground-light'), 'the fixture tile must be TINTED, or this pins nothing').not.toBe('');
+      for (const chip of ['3Y', '1M', '2N']) {
+        expect(within(tile).queryByText(chip), `the tinted compact tile still renders the ${chip} RSVP chip`).toBeNull();
+      }
+    } finally {
+      cleanup();
     }
-    for (const [name, surface] of Object.entries(LIGHT_SURFACES)) {
-      const ratio = contrastRatio(TILE_POLE, surface)!;
-      expect(
-        Number(ratio.toFixed(2)),
-        `compact RSVP text on the ${name} light surface measures ${ratio.toFixed(2)}:1 — ` +
-          'needs >= 4.5 (the hard-coded status colours it replaces measured 3.55-4.56 on the ' +
-          'superseded tints and FAILED)',
-      ).toBeGreaterThanOrEqual(4.5);
-    }
+    expect(code('app/components/CalendarMonthView.js'), 'CalendarMonthView renders RsvpCount again').not.toContain('<RsvpCount');
+    expect(code('app/components/RsvpCount.js')).not.toMatch(/inheritColor|variant === 'compact'/);
   });
   it('22. EVERY focusable in the group-page render tree carries a project focus ring (DEF-88.3-13-04, owner ruling A)', () => {
     // The primitive exemption, PAID FOR rather than asserted. Each exempted tag is
@@ -2057,8 +2042,13 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(rowTag, 'grouplist.js: the Last Game row is not on the card ink').toContain(
       'var(--group-ink-l,var(--t-color-l))',
     );
-    expect(rowTag, 'grouplist.js: the Last Game row has no dark arm').toContain(
-      'dark:[color:var(--group-ink,var(--t-color))]',
+    // AMENDED Phase 88.9-27 (owner by chat 2026-11-08, RULINGS Q2 add-on): the dark arm of the
+    // Last Game row and date is the title's --t-* trio, light unchanged.
+    expect(rowTag, 'grouplist.js: the Last Game row has no dark title-treatment arm').toContain(
+      'dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]',
+    );
+    expect(rowTag, 'grouplist.js: the Last Game row still takes the preset dark ink').not.toContain(
+      'dark:[color:var(--group-ink,',
     );
     // and the old predicate is GONE, not merely overridden
     expect(
@@ -2076,8 +2066,12 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(dateTag, 'grouplist.js: the date is not on the muted rung of the card ink').toContain(
       'var(--group-ink-muted-l,var(--t-color-l))',
     );
-    expect(dateTag, 'grouplist.js: the date has no dark arm').toContain(
-      'dark:[color:var(--group-ink-muted,var(--t-color))]',
+    // AMENDED Phase 88.9-27 (owner by chat 2026-11-08, RULINGS Q2 add-on): same trio on the date.
+    expect(dateTag, 'grouplist.js: the date has no dark title-treatment arm').toContain(
+      'dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]',
+    );
+    expect(dateTag, 'grouplist.js: the date still takes the preset muted dark ink').not.toContain(
+      'dark:[color:var(--group-ink-muted,',
     );
 
     // site 2 — EventDayModal's "Duration:" line. Pinned as an exact literal by
@@ -2462,7 +2456,14 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     ).toBeGreaterThanOrEqual(3);
   });
 
-  it('30. the member chip forks its fill on the TINT, in BOTH disclosure states (88.5 SPEC Req 5)', () => {
+  it('30. the member chip forks its HAIRLINE on the TINT and its fill on user.id, in BOTH disclosure states (88.5 SPEC Req 5; D1b 88.9)', () => {
+    // AMENDED Phase 88.9-30 (owner pick D1b, 88.9-PICKS-B3.json, votes-b3 v12, 2026-11-05): the
+    // white wash below is HISTORY. Its dark-mode initials read 1.07, so every chip with an id now
+    // wears one of eight saturated literal fills picked by a hash of the member's user id, with
+    // white ink, on EVERY card arm (neutral, tinted, photo). What still forks on the tint is the
+    // neutral hairline (TINTED_HAIRLINE), and the two-state property this test owns is unchanged:
+    // both disclosure states must pass the tint flag AND the id, or one state drifts. The photo
+    // gate (d) is kept: it still decides the hairline and the visible text carriers' ink.
     /*
      * Phase 88.5 puts member-initials chips on the home group card, and a chip is the first
      * thing this phase family has drawn ON TOP of a tinted ground rather than beside it. The
@@ -2508,9 +2509,10 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     //     semantic tokens, so `tintTreatment.test.ts`'s `parseAlphaToken(token, semantic)`
     //     detector does not fire on them and they must NOT be "fixed" into a semantic token —
     //     the shipped `bg-white/80` at `groupHomePage/page.js` is the precedent.
-    expect(src, 'the tinted chip lost its white wash').toMatch(
-      /TINTED_FILL\s*=\s*'bg-white\/85 ring-1 ring-black\/25'/,
+    expect(src, 'the tinted chip lost its neutral hairline').toMatch(
+      /TINTED_HAIRLINE\s*=\s*'ring-1 ring-black\/25'/,
     );
+    expect(src, 'the white wash came back (its dark-mode initials read 1.07)').not.toContain('bg-white/85');
     expect(src, 'the tinted chip stopped taking the card ink through the shipped fallback chain')
       .toMatch(
         /TINTED_INK\s*=\s*\n?\s*'\[color:var\(--group-ink-l,var\(--t-color-l\)\)\] dark:\[color:var\(--group-ink,var\(--t-color\)\)\]'/,
@@ -2547,16 +2549,19 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         'pairing because both halves are module-level constants',
     ).not.toMatch(/neutralInk[\s\S]{0,80}text-content-muted/);
 
-    // (b) ONE fork, and it keys on the TINT ALONE. A `tinted && separated ?` — the shape that
-    //     applies the arm to the collapsed stack only — fails here, which is the anti-vacuity
-    //     probe recorded in 88.5-09-SUMMARY.md.
-    const FILL_FORK =
-      /(?:^|[^\w.])tinted\s*\?\s*`\$\{TINTED_FILL\} \$\{TINTED_INK\}`\s*:\s*`\$\{NEUTRAL_FILL\} \$\{neutralInk\}`/g;
+    // (b) ONE fork each. AMENDED Phase 88.9-30 (D1b): FILL_FORK pinned the wash/neutral ternary;
+    //     the fill is now selected from the id in exactly one place, and the hairline forks on
+    //     the tint alone in exactly one place. A `tinted && separated ?` hairline (the
+    //     half-applied arm 88.5-09 probed) fails the second count.
     expect(
-      (src.match(FILL_FORK) ?? []).length,
-      'the chip fill arm is not selected in exactly one place by the tint alone — either a ' +
-        'second fork appeared (the two states can now drift) or the one fork grew a condition ' +
-        'beyond the tint (the arm is half-applied)',
+      src.split('chipFillIndex(colorKey)').length - 1,
+      'the chip fill is not selected from the id in exactly one place',
+    ).toBe(1);
+    const HAIRLINE_FORK = /(?:^|[^\w.&])tinted\s*\?\s*TINTED_HAIRLINE\s*:/g;
+    expect(
+      (src.match(HAIRLINE_FORK) ?? []).length,
+      'the hairline is not selected in exactly one place by the tint alone — either a second ' +
+        'fork appeared (the two states can now drift) or the one fork grew a condition',
     ).toBe(1);
 
     // (c) EVERY chip render passes the flag, in BOTH states. `separated` is the collapsed-only
@@ -2580,6 +2585,17 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         `MemberChipStack.tsx:${site.line}: a chip renders without the tint flag, so this ` +
           'disclosure state keeps the neutral fill on a coloured card (1.11:1 — invisible)',
       ).toMatch(/\btinted\b/);
+    }
+    // AMENDED Phase 88.9-30 (D1b): every NON-overflow chip site also passes the member id, in
+    // both states, or that state renders the neutral fallback for a real member.
+    const idSites = [...collapsedSites, ...expandedSites].filter((t) => !/\boverflow=/.test(t.attrs));
+    expect(idSites.length, 'no non-overflow chip site found').toBeGreaterThanOrEqual(3);
+    for (const site of idSites) {
+      expect(
+        site.attrs,
+        `MemberChipStack.tsx:${site.line}: a chip renders without colorKey, so it takes the neutral ` +
+          'fallback instead of its D1b fill',
+      ).toMatch(/\bcolorKey=/);
     }
 
     // (d) the call site hands over the CARD's own flag, gated on the photo case.

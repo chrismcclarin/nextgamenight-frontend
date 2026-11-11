@@ -193,21 +193,27 @@ export default function ScheduleList({
                   )}
                 </div>
 
-                <div className="space-y-1 text-sm text-content-secondary">
+                {/* DECISION Phase 88.9-34 (E6a): value first — the row wrapper carries the value ink
+                    (text-content-primary) and the four labels step down to text-content-muted, chosen
+                    OVER wrapping each value in its own primary span: one ink source per row, so the
+                    inline Response-window computation stays unwrapped and a future fact line inherits
+                    the value ink. Muted on card measures 6.58 light / 6.00 dark (above 4.5, D-07). The
+                    status badges below keep DECISION Phase 88.6-32 untouched. */}
+                <div className="space-y-1 text-sm text-content-primary">
                   <p>
-                    <span className="text-content-primary">When:</span> {dayName} at {timeFormatted}
+                    <span className="text-content-muted">When:</span> {dayName} at {timeFormatted}
                   </p>
                   <p>
-                    <span className="text-content-primary">Game:</span> {gameName}
+                    <span className="text-content-muted">Game:</span> {gameName}
                   </p>
                   {schedule.min_participants && (
                     <p>
-                      <span className="text-content-primary">Min players:</span> {schedule.min_participants}
+                      <span className="text-content-muted">Min players:</span> {schedule.min_participants}
                     </p>
                   )}
                   {schedule.default_deadline_hours && (
                     <p>
-                      <span className="text-content-primary">Response window:</span> {(() => {
+                      <span className="text-content-muted">Response window:</span> {(() => {
                         const days = Math.round(schedule.default_deadline_hours / 24);
                         if (days < 1) return 'Less than 1 day';
                         return `${days} day${days === 1 ? '' : 's'}`;
@@ -232,11 +238,12 @@ export default function ScheduleList({
                 {/* Pause/Resume toggle. 88.6.1 code review A-47: the in-flight state is SHOWN as
                     well as exposed — `aria-disabled:opacity-50`, the house raw-button wash
                     (ResponseDashboard's Remind, KebabMenu items), so a sighted user sees why a
-                    second press does nothing. */}
+                    second press does nothing.
+                    AMENDED Phase 88.9-23 (O-17): the in-flight look is muted ink, not an opacity wash, with the kebab items. */}
                 <button
                   onClick={() => onToggle?.(schedule.id)}
                   aria-disabled={togglingIds?.[schedule.id] ? 'true' : undefined}
-                  className={`px-3 py-1.5 text-sm rounded-btn transition-colors aria-disabled:opacity-50 ${
+                  className={`px-3 py-1.5 text-sm rounded-btn transition-colors aria-disabled:text-content-muted ${
                     isActive
                       ? 'bg-status-warning-subtle text-content-status-warning enabled-hover:bg-status-warning-subtle-hover'
                       : 'bg-status-success-subtle text-content-status-success enabled-hover:bg-status-success-subtle-hover'

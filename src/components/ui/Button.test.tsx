@@ -371,7 +371,7 @@ describe('Button', () => {
       expect(link).not.toHaveAttribute('type');
     });
 
-    it('the derived key list really is the whole 5 x 3 surface', () => {
+    it('the derived key list really is the whole 5 x 4 surface', () => {
       // A derivation that silently returns [] makes every matrix assertion
       // vacuous, so the anti-vacuity check comes first and names the mechanism.
       expect(
@@ -386,10 +386,13 @@ describe('Button', () => {
         'primary',
         'secondary',
       ]);
-      expect([...ALL_SIZES].sort()).toEqual(['default', 'icon', 'sm']);
+      // AMENDED Phase 88.9-28 (N1): the size map gained iconSquare (the month-nav square, owner pick
+      // N1), so the surface is 5 x 4 = 20, chosen OVER leaving the 5 x 3 expectation, which is now
+      // false by the owner's ruling. The title moved with it (88.6-06 wrote 5 x 3).
+      expect([...ALL_SIZES].sort()).toEqual(['default', 'icon', 'iconSquare', 'sm']);
       // The stated expectation, kept beside the derivation rather than instead
-      // of it: 15 combinations after this plan.
-      expect(ALL_VARIANTS.length * ALL_SIZES.length).toBe(15);
+      // of it: 15 combinations after plan 88.6-06, 20 after 88.9-28.
+      expect(ALL_VARIANTS.length * ALL_SIZES.length).toBe(20);
     });
 
     it('SOURCE SCAN: no unprefixed hover token in the cva base or the variant map', () => {

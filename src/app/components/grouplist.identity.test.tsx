@@ -9,7 +9,7 @@
 // Follows the established `<name>.identity.test.tsx` convention
 // (groupHomePage.identity.test.tsx shows the useSelfIdentity mocking approach).
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -44,13 +44,15 @@ vi.mock('@/components/ui/useFetchErrorState', () => ({
 // 88-18: GroupList now mounts TWO of these — the D-08 identity degrade AND the
 // groups-fetch failure (which used to be flattened into `setGroups([])` and shown
 // as "No groups yet"). The stub renders the `title` so the two are tellable apart;
-// the testid is kept for the pre-existing WR-03 assertions.
+// the testid is kept for the pre-existing WR-03 assertions. BANNER-01 (88.9-49): the groups
+// banner now passes `thing`, so the stub composes Couldn't load {thing} exactly as the real
+// banner does (a passed title still wins).
 // 88.6.1-70 contract C9: keep the real module so useRetainedContent and isAccessOrGoneError stay real; the notice itself is proven in grouplist.refresh.test.tsx against the real module.
 vi.mock('@/components/ui/FetchErrorBanner', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/ui/FetchErrorBanner')>()),
-  FetchErrorBanner: ({ state, title }: { state: { showError: boolean }; title?: string }) =>
+  FetchErrorBanner: ({ state, title, thing }: { state: { showError: boolean }; title?: string; thing?: string }) =>
     state.showError ? (
-      <div data-testid="identity-degrade-banner">{title ?? 'degraded'}</div>
+      <div data-testid="identity-degrade-banner">{title ?? (thing ? `Couldn't load ${thing}` : 'degraded')}</div>
     ) : null,
   RefreshFailedNotice: () => null,
 }));
@@ -180,7 +182,7 @@ describe('GroupList empty vs failed groups fetch (Req 6 / T-88-18-01)', () => {
     render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
 
     expect(
-      await screen.findByText("We couldn't load your groups")
+      await screen.findByText("Couldn't load your groups")
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'No groups yet' })).toBeNull();
     expect(screen.queryByText('No groups yet!')).toBeNull();
@@ -221,7 +223,7 @@ const BETA = crew('g-beta', 'Beta Crew');
 const GAMMA = crew('g-gamma', 'Gamma Crew');
 const ZETA = crew('g-zeta', 'Zeta Crew');
 
-const BANNER_TEXT = "We couldn't load your groups";
+const BANNER_TEXT = "Couldn't load your groups";
 
 describe('D-37 — the home list refreshes in place (Req 9)', () => {
   const getUserGroups = () => groupsAPI.getUserGroups as Mock;
@@ -388,5 +390,71 @@ describe('D-37 — the home list refreshes in place (Req 9)', () => {
     await waitFor(() => expect(titleBlock('Zeta Crew')).toBeInTheDocument());
 
     expect(screen.queryByRole('button', { name: 'Alpha Crew' })).toBeNull();
+  });
+});
+
+// Owner ruling 88.9-RULINGS.md R-P4 (2026-11-08, MED-66 option A): with the photo dim gone (O21b),
+// every un-outlined word on a photo card needs a guaranteed treatment. On the image arm (coloured or
+// not, both themes) the Last Game row, its date and its label take the title's O02d1 outline
+// utilities; a plain card keeps the content tokens. The utilities resolve to the outline because the
+// card root carries the image arm's --t-* values (src/lib/colorUtils.js ("const STROKE_OUTLINE =")).
+describe("R-P4 (88.9-27): a photo card's secondary row takes the title's outline treatment", () => {
+  const R_P4 =
+    '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] ' +
+    '[paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] ' +
+    'dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)]';
+  const PHOTO = 'https://example.test/photo.png';
+  const getUserGroups = () => groupsAPI.getUserGroups as Mock;
+
+  beforeEach(() => {
+    getUserGroups().mockReset();
+    h.selfUuid = SELF_UUID;
+  });
+
+  const partsOf = (name: string) => {
+    const card = screen.getByRole('button', { name }).closest('[data-testid="group-card"]') as HTMLElement | null;
+    expect(card, `${name}: no group card found`).not.toBeNull();
+    const label = within(card!).getByText('Last Game:', { exact: true });
+    const row = label.closest('div') as HTMLElement;
+    const date = row.lastElementChild as HTMLElement;
+    return { card: card!, label, row, date };
+  };
+
+  it('R-P4. on a photo card the Last Game row, date and label take the O02d1 outline utilities in both themes; a plain card keeps the content tokens', async () => {
+    getUserGroups().mockResolvedValueOnce([
+      { ...crew('g-photo', 'Photo Crew'), background_image_url: PHOTO },
+      { ...crew('g-tint', 'Tint Crew'), color_preset: 'blue', background_image_url: PHOTO },
+      crew('g-plain', 'Plain Crew'),
+    ]);
+    render(<GroupList {...listProps} />);
+    await screen.findByRole('button', { name: 'Plain Crew' });
+
+    // Anti-vacuity: the coloured photo card really is on the tinted arm, so "the image wins over a
+    // stored colour" is exercised, not assumed.
+    expect(partsOf('Tint Crew').card.className, 'Tint Crew did not resolve a tinted ground').toContain(
+      'bg-[var(--group-ground-light)]',
+    );
+
+    for (const name of ['Photo Crew', 'Tint Crew']) {
+      const { card, label, row, date } = partsOf(name);
+      for (const [part, el] of [['row', row], ['date', date]] as const) {
+        expect(el.className, `${name}: the ${part} lost the O02d1 outline utilities`).toContain(R_P4);
+        for (const old of ['text-content-secondary', 'text-content-muted', 'var(--group-ink']) {
+          expect(el.className, `${name}: the ${part} still carries ${old}`).not.toContain(old);
+        }
+      }
+      expect(label.hasAttribute('class'), `${name}: the label kept a class and will not inherit the outline`).toBe(false);
+      expect(card.outerHTML, `${name}: the card root does not carry the O02d1 paint-order value`).toContain(
+        '--t-paint-l: stroke fill',
+      );
+    }
+
+    const plain = partsOf('Plain Crew');
+    expect(plain.row.className).toContain('text-content-secondary');
+    expect(plain.date.className).toContain('text-content-muted');
+    expect(plain.label.className).toContain('text-content-primary');
+    for (const el of [plain.row, plain.date, plain.label]) {
+      expect(el.className, 'Plain Crew picked up the photo-arm outline utilities').not.toContain(R_P4);
+    }
   });
 });

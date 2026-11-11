@@ -15,6 +15,7 @@ import {
   resolveGroupGround,
   groupInkVars,
   storedGroupColour,
+  themedTextStyleVars,
   SUBTEXT_MUTED_ON_DARK,
   SUBTEXT_MUTED_ON_LIGHT,
 } from './colorUtils';
@@ -72,9 +73,46 @@ describe('getTextStyle — no group colour (D-28)', () => {
   });
 
   it('still uses the outlined white treatment behind a background image', () => {
-    const style = getTextStyle(true, null);
-    expect(style.color).toBe('#ffffff');
-    expect(style.WebkitTextStroke).toBeTruthy();
+    // AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json, 2026-11-07; Q2 default, 88.9-RULINGS.md
+    // round 2): the image arm is white + a 1.5px solid black outline painted BEFORE the fill, no shadow,
+    // in place of white + heavy blurred shadow + 0.5px stroke. A photo and a failed image (#207) both
+    // take it; the W50 F10 no-image arms are pinned byte-unchanged below.
+    const O02D1_TITLE = {
+      color: '#ffffff',
+      textShadow: 'none',
+      WebkitTextStroke: '1.5px #000000',
+      paintOrder: 'stroke fill',
+      fontWeight: '600',
+    };
+    const O02D1_SUBTITLE = {
+      color: '#ffffff',
+      textShadow: 'none',
+      WebkitTextStroke: '1.5px #000000',
+      paintOrder: 'stroke fill',
+    };
+    expect(getTextStyle(true, null)).toEqual(O02D1_TITLE);
+    expect(getTextStyle(true, '#00274d')).toEqual(O02D1_TITLE);
+    expect(getSubtitleStyle(true, '#c4e1ff')).toEqual(O02D1_SUBTITLE);
+
+    // The paint-order pair reaches the cascade only on an O02d1 arm.
+    const img = getTextStyle(true, '#00274d');
+    const imgVars = themedTextStyleVars(img, img);
+    expect(imgVars['--t-paint']).toBe('stroke fill');
+    expect(imgVars['--t-paint-l']).toBe('stroke fill');
+
+    // The W50 keep half: a no-image dark ground still gets the shipped 0.5px stroke and no
+    // paint-order, and two no-image styles hand the cascade exactly the six shipped keys.
+    const plainDark = getTextStyle(false, '#00274d');
+    expect(plainDark.WebkitTextStroke).toBe('0.5px rgba(0, 0, 0, 0.9)');
+    expect(plainDark).not.toHaveProperty('paintOrder');
+    expect(Object.keys(themedTextStyleVars(plainDark, getTextStyle(false, '#c4e1ff'))).sort()).toEqual([
+      '--t-color',
+      '--t-color-l',
+      '--t-shadow',
+      '--t-shadow-l',
+      '--t-stroke',
+      '--t-stroke-l',
+    ]);
   });
 });
 

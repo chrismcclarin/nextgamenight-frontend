@@ -10,22 +10,18 @@
 /**
  * Get calendar grid cells for a given month.
  *
- * Returns exactly 42 cells (6 rows × 7 cols, Sunday-start) covering:
+ * Returns whole Sunday-start weeks — 28, 35 or 42 cells, only the weeks the
+ * month touches (CS-05, plan 88.9-25) — covering:
  *   - Trailing days of the previous month (leading cells)
- *   - All days of the target month (`isCurrentMonth: true`)
- *   - Leading days of the next month (trailing cells)
- *
- * 42 cells covers every possible monthly layout — months that span 6 weeks
- * (e.g., when the 1st is late in the week and the 31st is early in the next)
- * still fit without truncation, and 5-week months get an extra row of
- * next-month days. This produces a stable, non-jumping grid height.
+ *   - Every day of the target month (`isCurrentMonth: true`)
+ *   - The next month's days that finish the last week (trailing cells)
  *
  * Phase 64-02 (CAL-01): adjacent-month days are exposed (not null padding)
  * so callers can render them with muted styling and still display events
  * that fall on those dates.
  *
  * @param {Date} date - Any date within the target month
- * @returns {Array<{date: Date, isCurrentMonth: boolean}>} 42-cell grid
+ * @returns {Array<{date: Date, isCurrentMonth: boolean}>} a 28-, 35- or 42-cell grid
  */
 export function getDaysInMonth(date) {
   const year = date.getFullYear();
@@ -59,11 +55,19 @@ export function getDaysInMonth(date) {
     });
   }
 
-  // Trailing cells: leading days of the next month, padded to 42 total
+  // Trailing cells: the next month's leading days, added only to finish the
+  // last week that holds a day of this month (none when the month ends on a
+  // Saturday).
   const nextMonthYear = month === 11 ? year + 1 : year;
   const nextMonthIndex = month === 11 ? 0 : month + 1;
   let nextDay = 1;
-  while (cells.length < 42) {
+  // DECISION Phase 88.9-25 (CS-05, owner chat 2026-11-07 "Yeah, we can lose the padding.",
+  // CALENDAR-SESSION; R2-85, CR2-15): the grid pads only to the end of the last week that holds a
+  // day of the month — 28, 35 or 42 cells — chosen OVER the fixed six-week grid of 42, whose stable
+  // height cost five-week months a whole row of next-month padding (84px of the compact grid at
+  // 375). Accepted consequence: the card's height follows the month. Going back to a fixed count is
+  // a decision, not a cleanup.
+  while (cells.length % 7 !== 0) {
     cells.push({
       date: new Date(nextMonthYear, nextMonthIndex, nextDay),
       isCurrentMonth: false,

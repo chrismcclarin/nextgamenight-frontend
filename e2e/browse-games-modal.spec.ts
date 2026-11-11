@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { assertTheme, forceLightMode, inkRatioThroughOpacity } from './support/contrast';
 import { settleAnimations } from './support/inFlight';
 
 /**
@@ -64,8 +65,10 @@ const GAME_ALPHA = {
   playing_time: 45,
   weight: 1.9,
   owners: [] as string[],
-  avg_group_rating: null,
-  review_count: 0,
+  // D15b (plan 88.9-21): a rating so the card renders its rating line for the DEC-2 read. Safe:
+  // every other read of ALPHA is by its button name, which comes from the title alone.
+  avg_group_rating: 4.2,
+  review_count: 3,
 };
 const GAME_BETA = {
   id: '8b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e',
@@ -299,5 +302,103 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
     } finally {
       route.release();
     }
+  });
+
+  test('D15b (88.9): the results dim to 85% while a refresh is in flight, the meta line still reads, and they return to full after', async ({ page }) => {
+    // The RULINGS Q7 default (85%); plan 88.9-44 builds it as the only value. 70% is not built:
+    // the muted meta line reads 3.29 / 3.72 through it.
+    const DIM = 0.85;
+    const FLOOR = 4.5;
+    const route = await installSuggestionsRoute(page);
+
+    // DECISION Phase 88.9-44 D15b (both themes): the title-through-dim read rides plan 21's dim
+    // test, chosen OVER a new contrast.spec.ts test (the round-2 FLOOR chain stays 41 and the dim
+    // has one test that owns it). The read multiplies ancestor opacity
+    // (e2e/support/contrast.ts ("export async function inkRatioThroughOpacity(")); ratioAgainstGround
+    // would ignore it. The held-refresh body runs once per theme, dark first by an init script and
+    // light by emulateMedia plus forceLightMode, the plan-20 order copied as spec-local code; every
+    // read (title, meta line, rating number, star) runs in both arms, after assertTheme.
+    const heldRefreshArm = async (theme: 'light' | 'dark') => {
+      try {
+        const browse = await openBrowseGames(page);
+        await assertTheme(page, theme);
+        const results = browse.getByTestId('browse-more-results');
+        const childOpacities = () =>
+          results.evaluate((el) => Array.from(el.children).map((child) => Number.parseFloat(getComputedStyle(child).opacity)));
+
+        route.hold();
+        await browse.getByRole('button', { name: 'Increase player count' }).click();
+        await expect(results).toHaveAttribute('aria-busy', 'true');
+
+        const busy = await childOpacities();
+        expect(busy.length, `D15b (${theme}): the results region has no child to dim — the read below would be vacuous`).toBeGreaterThan(0);
+        for (const [i, value] of busy.entries()) {
+          expect(value, `D15b (${theme}): results child ${i + 1} computes opacity ${value} while busy, not ${DIM}`).toBe(DIM);
+        }
+
+        // Plan 88.9-44: the card TITLE through the dim (anti-vacuity: the opacity product must be
+        // the dim itself, so a read on an undimmed tree cannot pass the floor by accident).
+        const title = results.getByText(GAME_ALPHA.name, { exact: true });
+        const titleRead = await inkRatioThroughOpacity(title, `D15b title (${theme})`);
+        expect(titleRead.opacity, `D15b title (${theme}): reads through opacity ${titleRead.opacity}, not ${DIM} — the dim is not in the product`).toBeCloseTo(DIM, 2);
+        expect(
+          titleRead.ratio,
+          `D15b title (${theme}): ${titleRead.ratio.toFixed(3)}:1 through opacity ${titleRead.opacity}, floor ${FLOOR}:1`,
+        ).toBeGreaterThanOrEqual(FLOOR);
+
+        // ONE ink read through the dim: the first card's 14px muted meta line, the
+        // src/app/components/GameSuggestionCard.js ("flex flex-wrap gap-x-3 gap-y-1 text-sm text-content-muted") span, reached through
+        // the card's aria-describedby (the meta id is first, the rating id last when it renders,
+        // src/app/components/GameSuggestionCard.js ("const describedBy = [metaId, hasOwners ? ownersId : null, hasRating ? ratingId : null]")).
+        const card = browse.getByRole('button', { name: GAME_ALPHA.name });
+        const ids = ((await card.getAttribute('aria-describedby')) ?? '').split(/\s+/).filter(Boolean);
+        expect(ids.length, `D15b (${theme}): the first card carries no aria-describedby ids (meta + rating expected)`).toBeGreaterThanOrEqual(2);
+        const meta = browse.locator(`[id="${ids[0]}"]`);
+        const ratingLine = browse.locator(`[id="${ids[ids.length - 1]}"]`);
+        const star = ratingLine.locator('xpath=./span[1]');
+
+        const metaRead = await inkRatioThroughOpacity(meta, `D15b meta line (${theme})`);
+        expect(metaRead.opacity, `D15b (${theme}): the meta line reads through opacity ${metaRead.opacity} — the dim is not in the product`).toBeLessThan(1);
+        expect(
+          metaRead.ratio,
+          `D15b meta line (${theme}): ${metaRead.ratio.toFixed(3)}:1 through opacity ${metaRead.opacity} (ink ${metaRead.effectiveFg} on ${metaRead.ground}), floor ${FLOOR}:1`,
+        ).toBeGreaterThanOrEqual(FLOOR);
+
+        // DEC-2 (ink-agnostic): the rating number and its star through the same dim. The test
+        // names no ink; it reds on the shipped yellow and greens on the owner's pick (plan 88.9-44).
+        await expect(ratingLine, `D15b (${theme}): the rating line did not render — GAME_ALPHA carries a rating`).toBeVisible();
+        for (const [what, el] of [['rating number', ratingLine], ['rating star', star]] as const) {
+          const r = await inkRatioThroughOpacity(el, `D15b ${what} (${theme})`);
+          expect(r.opacity, `D15b ${what} (${theme}): opacity ${r.opacity} — the dim is not in the product`).toBeLessThan(1);
+          expect(
+            r.ratio,
+            `D15b ${what} (${theme}): ${r.ratio.toFixed(3)}:1 through opacity ${r.opacity} (ink ${r.effectiveFg} on ${r.ground}), floor ${FLOOR}:1`,
+          ).toBeGreaterThanOrEqual(FLOOR);
+        }
+
+        route.release();
+        await expect(results).not.toHaveAttribute('aria-busy', 'true');
+        const after = await childOpacities();
+        for (const [i, value] of after.entries()) {
+          expect(value, `D15b (${theme}): results child ${i + 1} computes opacity ${value} after the refresh, not 1`).toBe(1);
+        }
+      } finally {
+        route.release();
+      }
+    };
+
+    await test.step('D15b — dark', async () => {
+      const darkWriter = await page.addInitScript(() => window.localStorage.setItem('theme', 'dark'));
+      try {
+        await heldRefreshArm('dark');
+      } finally {
+        await darkWriter.dispose();
+      }
+    });
+    await test.step('D15b — light', async () => {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await forceLightMode(page);
+      await heldRefreshArm('light');
+    });
   });
 });

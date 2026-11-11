@@ -25,13 +25,21 @@
  *     component's own shipped class strings. Read a red here against a red there.
  */
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within, act, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
+import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the appear and hold budgets
 import KebabMenu from './KebabMenu';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 // axe-core's `runOnly` takes ONE selector, so the two rules run as two explicit passes — the same
 // shape src/app/components/PromptScheduleManager.test.tsx ("const WCAG_412 = { runOnly: { type: 'tag' as const") uses.
@@ -84,9 +92,21 @@ describe('KebabMenu composed axe audit — the OPEN menu, where the ARIA change 
     // `aria-pressed` on a plain button is the attribute D-12 traded the item role FOR (it is
     // illegal on the old role: axe-core 4.12.1's allowed-attrs list is posinset/setsize/expanded).
     // Auditing only the disarmed menu would never exercise it.
+    // F9b (88.9-23): the armed item is first GATED (aria-pressed + aria-disabled, the countdown
+    // label), then live. Both armed states are audited.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
     const { list } = openMenu();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    const gated = within(list).getByRole('button', { name: 'Tap again (3)' });
+    expect(gated).toHaveAttribute('aria-pressed', 'true');
+    expect(gated).toHaveAttribute('aria-disabled', 'true');
+    expect(await axe(document.body, WCAG_412)).toHaveNoViolations();
+    expect(await axe(document.body, HEADING_ORDER)).toHaveNoViolations();
+
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(within(list).getByRole('button', { name: 'Tap again to remove' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -163,6 +183,8 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
   it('E6-long-text (source half). No clipping utility on the item, disarmed OR armed, and the height is a FLOOR', () => {
     const LONG =
       'Transfer ownership of this group to this member right now, permanently and irreversibly';
+    // F9b (88.9-23): the long armed label shows once the gate has run out.
+    vi.useFakeTimers();
     render(
       <KebabMenu
         ariaLabel="Member actions"
@@ -188,6 +210,9 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
     ).not.toMatch(/(^|\s)h-\d/);
 
     fireEvent.click(disarmed);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     const armed = within(list).getByRole('button', { name: `${LONG} — tap again` });
     expect(armed, 'the armed label swap must not remount the item').toBe(disarmed);
     expect(
@@ -215,5 +240,218 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
       /(^|\s)(w-\[|w-\d|left-0)/,
     );
     expect('w-full min-h-11 text-left px-3 py-2').not.toMatch(/(^|\s)h-\d/);
+  });
+});
+
+// F9b (88.9-23, owner pick F9b, 88.9-PICKS-B5.json item F9; window = the Q4 ruling in
+// 88.9-RULINGS.md round 2): a twoTap item is inert for CONFIRM_DELAY_MS after arming, then
+// live; the gated look is a muted ink, never an opacity wash (O-17).
+describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () => {
+  it('F9b (88.9): a twoTap item stays inert 3 s then commits', async () => {
+    // shouldAdvanceTime: user-event's keyboard waits on a timeout of its own.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const onClose = vi.fn();
+    render(
+      <KebabMenu
+        ariaLabel="Poll actions"
+        items={[{ label: 'Close poll', danger: true, twoTap: true, onClick: onClose }]}
+      />
+    );
+    const { list } = openMenu('Poll actions');
+    const item = within(list).getByRole('button', { name: 'Close poll' });
+
+    fireEvent.click(item);
+    expect(item).toHaveTextContent('Tap again (3)');
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).toHaveAttribute('aria-pressed', 'true');
+    // DEC-5: nothing is announced while pressing would do nothing.
+    expect(screen.getByRole('status').textContent).toBe('');
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    fireEvent.click(item);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(item).toHaveTextContent('Tap again (2)');
+    expect(item).toHaveAttribute('aria-pressed', 'true');
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    item.focus();
+    await user.keyboard('{Enter}');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('status').textContent).toBe('');
+
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS - 2500);
+    });
+    expect(item).toHaveTextContent('Tap again to confirm');
+    expect(item).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('status').textContent).toBe('Press again to confirm: Close poll');
+
+    fireEvent.click(item);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // No keepOpen: the commit closes the menu as before.
+    expect(list).not.toBeInTheDocument();
+  });
+
+  it('F9b: gated look is colour, no opacity class', () => {
+    vi.useFakeTimers();
+    render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[
+          // The in-flight shape since rule 1 (88.9-46): the label kept, busy + the heard suffix.
+          { label: 'Cancel event', danger: true, ariaDisabled: true, busy: true, busySuffix: ', cancelling', onClick: vi.fn() },
+          { label: 'Leave event', danger: true, twoTap: true, onClick: vi.fn() },
+        ]}
+      />
+    );
+    const { list } = openMenu('Event actions');
+    const inFlight = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
+    const twoTap = within(list).getByRole('button', { name: 'Leave event' });
+    const expectGatedLook = (button: HTMLElement) => {
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(button.className, 'the gated state changes INK').toContain(
+        'aria-disabled:text-content-muted',
+      );
+      expect(button.className, 'and never dims the row (O-17)').not.toMatch(
+        /aria-disabled:opacity/,
+      );
+    };
+
+    // The in-flight item (Cancel event, busy) first, then a twoTap item inside its gate.
+    expectGatedLook(inFlight);
+    fireEvent.click(twoTap);
+    expectGatedLook(twoTap);
+  });
+});
+
+// Rule 1 (88.9-46, owner pick O16a + the Q3 ruling): a per-item `busy` flag. The item keeps its
+// label, renders the house Spinner (data-slot spinner, plan 88.9-24) and the same sr-only suffix
+// span Button renders, so it is NAMED label plus suffix. busy never refuses on its own — the
+// caller's `ariaDisabled` stays the gate (the 88.6-16 D-12 split).
+describe('KebabMenu busy item (rule 1, 88.9-46)', () => {
+  it('rule 1 (88.9): a busy item keeps its label, shows the spinner and is named label plus suffix', async () => {
+    const onClick = vi.fn();
+    const { rerender } = render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[
+          { label: 'Cancel event', danger: true, ariaDisabled: true, busy: true, busySuffix: ', cancelling', onClick },
+        ]}
+      />
+    );
+    const { list } = openMenu('Event actions');
+    const item = within(list).getByRole('button', { name: 'Cancel event, cancelling' });
+    expect(item).toHaveTextContent(/^Cancel event/);
+    await waitFor(() => expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).not.toHaveAttribute('disabled');
+    fireEvent.click(item);
+    expect(onClick).not.toHaveBeenCalled();
+    // The item stays mounted when busy drops, so its spinner keeps the hold, then leaves.
+    rerender(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[
+          { label: 'Cancel event', danger: true, ariaDisabled: true, busy: false, busySuffix: ', cancelling', onClick },
+        ]}
+      />
+    );
+    expect(item).toHaveAccessibleName('Cancel event');
+    expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    await waitFor(() => expect(item.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    cleanup();
+
+    // At rest the same item carries neither the spinner nor the suffix (anti-vacuity for the
+    // busy branch), and a press reaches the handler.
+    render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[{ label: 'Cancel event', danger: true, busy: false, busySuffix: ', cancelling', onClick }]}
+      />
+    );
+    const resting = within(openMenu('Event actions').list).getByRole('button', { name: 'Cancel event' });
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, SPINNER_DELAY_MS + 300))); // AMENDED Phase 88.9-56 (R-C3b reach): read after the appear window
+    expect(resting.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0); // AMENDED Phase 88.9-56 (R-C3b reach): read after the appear window
+    expect(resting.textContent).toBe('Cancel event');
+    fireEvent.click(resting);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Plan 88.9-35 (owner pick B2a, 88.9-PICKS-B1.json): the trigger's focus halo is the ground its
+// HOST paints, passed as a typed hostGround key, card by default (every live phone host is a card).
+describe('KebabMenu trigger host halo (88.9-35)', () => {
+  const SHIPPED = [
+    'min-h-11',
+    'min-w-11',
+    'text-2xl',
+    'leading-none',
+    'focus:outline-hidden',
+    'focus-visible:ring-2',
+    'focus-visible:ring-focus-ring',
+    'focus-visible:ring-offset-2',
+  ];
+  const trigger = () => screen.getByRole('button', { name: 'Member actions' });
+
+  it('R033 (88.9): the trigger halo comes from hostGround — card by default, the host\'s ground when passed', () => {
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    for (const token of SHIPPED) expect(trigger()).toHaveClass(token);
+    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-card');
+    cleanup();
+
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround="page" />);
+    for (const token of SHIPPED) expect(trigger()).toHaveClass(token);
+    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-page');
+    expect(trigger()).not.toHaveClass('focus-visible:ring-offset-surface-card');
+    cleanup();
+
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround="group" />);
+    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-group-halo');
+    expect(trigger()).not.toHaveClass('focus-visible:ring-offset-surface-card');
+    cleanup();
+
+    const unknown = 'not-a-ground' as unknown as 'card';
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround={unknown} />);
+    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-card');
+  });
+
+  // R033's desktop arm was a census false positive (88.9-50): the check-in kebab's nearest painting
+  // ancestor is OpenPollCard's li, which paints card at every width, so the mount passes no host
+  // prop and keeps the default card halo. Read with fs and a local comment strip, not the
+  // sourceScan import (that would register this file as a drift gate).
+  it('R033 mount pin (88.9-50): the check-in kebab passes no host ground — its li paints card at every width', () => {
+    const stripComments = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/[^\n]*/g, (m, lead) =>
+        m.startsWith('/*') ? m.replace(/[^\n]/g, ' ') : (lead ?? ''),
+      );
+    const kebabTags = (src: string) => {
+      const tags: string[] = [];
+      const open = /<KebabMenu\b/g;
+      let hit: RegExpExecArray | null;
+      while ((hit = open.exec(src)) !== null) {
+        const end = src.indexOf('/>', hit.index);
+        tags.push(src.slice(hit.index, end === -1 ? src.length : end + 2));
+      }
+      return tags;
+    };
+    const HOST_PROP = /\bhostGround\w*=/;
+
+    const source = stripComments(
+      readFileSync(resolve(process.cwd(), 'src/app/components/OpenPollsList.js'), 'utf8'),
+    );
+    const tags = kebabTags(source);
+    expect(tags, 'OpenPollsList mounts exactly one KebabMenu').toHaveLength(1);
+    expect(tags[0]).toContain('ariaLabel="Check-in actions"');
+    expect(tags[0], 'the check-in kebab must not pass a host ground: its li paints card').not.toMatch(HOST_PROP);
+
+    // Anti-vacuity: the same matcher sees a host prop when one is there.
+    const probe = kebabTags('<KebabMenu ariaLabel="Check-in actions" hostGroundFromMd="page" />');
+    expect(probe).toHaveLength(1);
+    expect(probe[0]).toMatch(HOST_PROP);
   });
 });

@@ -26,6 +26,7 @@ import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRe
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { Icon } from '../../components/ui/Icon';
 import { logger, errCtx } from '../../lib/logger';
 
 /* DECISION Phase 88.6.1-54 (D-19, D-52, copy rows H1/H2, D-33 row 13): each group card's
@@ -80,7 +81,18 @@ const GROUPS_SECTION_NAME = 'Groups';
 const LOAD_OK = Object.freeze({ isError: false });
 const LOAD_FAILED = Object.freeze({ isError: true });
 
-const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
+const GroupList = ({
+  onGroupSelect,
+  onCreateGroup,
+  user,
+  onGroupSettingsUpdated,
+  refreshTrigger,
+  // Plan 88.9-42 (O22d / SESSION-02): optional. `onGroupsUnauthorized` reports a BOOLEAN — "the
+  // groups load ended with code unauthorized" — up to the home page, which owns the ONE
+  // page-level session banner; `sessionBannerShown` comes back down while that banner shows.
+  onGroupsUnauthorized,
+  sessionBannerShown = false,
+}) => {
   const router = useRouter();
   const { user: authUser } = Auth();
   const { timezone } = useTimezone();
@@ -319,6 +331,17 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   const groupsRetained = useRetainedContent(groupsLoadedFor === selfUuid, groupsErrorState);
   // The full groups banner holds the list's place only while nothing is retained (contract C6).
   const groupsBannerShown = groupsErrorState.showError && !groupsRetained;
+  /* DECISION Phase 88.9-42 O22d: GroupList reports a BOOLEAN, chosen OVER passing its error-state
+     object (useFetchErrorState returns a new literal each render,
+     src/components/ui/useFetchErrorState.ts ("return { showError, message, code, retry, retryFailed };")
+     — storing it in parent state is one deps edit from a render loop, and the snapshot goes
+     stale). The cleanup lowers the parent's flag on unmount. */
+  const groupsUnauthorized = groupsErrorState.showError && groupsErrorState.code === 'unauthorized';
+  useEffect(() => {
+    if (!onGroupsUnauthorized) return undefined;
+    onGroupsUnauthorized(groupsUnauthorized);
+    return () => onGroupsUnauthorized(false);
+  }, [groupsUnauthorized, onGroupsUnauthorized]);
 
   const handleGroupClick = (group, e) => {
     // Navigate to group page instead of opening modal
@@ -359,9 +382,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             </Button>
           )}
         </div>
-        <div className="py-8 px-4">
-          <FetchErrorBanner state={selfIdentityErrorState} compact />
-        </div>
+        {/* Plan 88.9-42 (SESSION-02): while the home page's session banner shows, this shell keeps
+            its header row and the compact notice yields — one sentence for a dead session. */}
+        {!sessionBannerShown && (
+          <div className="py-8 px-4">
+            <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
+          </div>
+        )}
       </div>
     );
   }
@@ -459,14 +486,17 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary
             that put the full banner in place of retained cards (see DECISION Phase 88.6.1-41
             (D-37, Req 9) above). The banner holds the list's place only while nothing loaded. */}
-        {groupsBannerShown && (
+        {/* DECISION Phase 88.9-42 O22d / SESSION-02: while the home page's session banner shows, this
+            list renders neither its banner nor its empty state, chosen OVER hiding the banner alone
+            (the EmptyState would then claim no groups after a failure — the DECISION Phase 88-18 bug). */}
+        {groupsBannerShown && !sessionBannerShown && (
           <FetchErrorBanner
             state={groupsErrorState}
-            title="We couldn't load your groups"
+            thing="your groups"
             reportContext="Your groups list (home page)"
           />
         )}
-        {!groupsBannerShown && groups.length === 0 && (
+        {!groupsBannerShown && !sessionBannerShown && groups.length === 0 && (
           /* DECISION Phase 88-18 (Req 6): this EmptyState's CTA is rendered IN ADDITION to the
              identical header button above, not instead of it — the opposite call to
              OpenPollsList/PromptScheduleManager, which suppress theirs. The difference is where
@@ -686,6 +716,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  Pinned by `groupColourRendering.test.ts` test 32, EXACTLY once and on the tag that
                  carries `shadow-theme-sm`. Deleting this attribute reds that pin and Gate C.
                  Owner ruling 2026-09-21, decision (1): default stands. */
+              /* DECISION Phase 88.9-31 B2a (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04; census R047 B078
+                 R048): a tinted card declares --group-halo on its host and its three controls take the
+                 group-halo ring-offset key, chosen OVER the card halo on a tint (band against the tint,
+                 UI-SPEC R2-63) — the same one-variable idiom as the group page header. Each control spells
+                 one FULL literal per arm (the 88.9 halo fleet rule), never one arm's halo interpolated for
+                 both. Dropping the host pair empties the key to its card fallback, a decision, not a cleanup. */
               <div
                 key={group.id}
                 ref={(node) => {
@@ -693,7 +729,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   else cardNodesRef.current.delete(group.id);
                 }}
                 data-testid="group-card"
-                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
+                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
                 style={{
                   ...(tinted && {
@@ -714,6 +750,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                    * REJECTED: `!!bgImage`, the raw URL — a URL the allowlist rejects
                    * paints no image, so that card IS a plain coloured card and must
                    * get its ink. A decision, not a cleanup.
+                   *
+                   * AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json,
+                   * 2026-11-07): on the image arm the card title and the stats row
+                   * fall back to the --t-* channel's O02d1 values (white, 1.5px
+                   * black outline painted first via --t-paint, no shadow), chosen
+                   * OVER the heavy blurred shadow + 0.5px stroke; the ink stays off
+                   * on an image.
                    */
                   ...groupInkVars(cardGround, {
                     surface: 'card',
@@ -725,33 +768,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   backgroundPosition: 'center',
                 }}
               >
-                {hasBgImage && (
-                  // Phase 73-02 gave this overlay a semantic surface tint at 85%
-                  // so the bg image dims and the title stays readable; that
-                  // slash-opacity was inert on v3's var()-backed tokens and
-                  // 87.7 D-18 stripped it rather than let v4 start rendering it
-                  // (census: 87.7-OPACITY-CENSUS.md). The div was kept so the
-                  // fix would be a class edit, not a structure change.
-                  //
-                  // DECISION Phase 88-27 (D-32 bucket D): the dim is now
-                  // `--color-bg-overlay`, one of the three UI-SPEC §10.3
-                  // exemplars. Chosen OVER restoring what 73-02 actually wrote —
-                  // 85% of the CARD colour, which is near-WHITE in light mode.
-                  // A group title over a background image is ALWAYS white text
-                  // with a dark shadow, in both themes, unconditionally
-                  // (colorUtils.js getTextStyle, the `hasBackgroundImage`
-                  // branch). So a card-coloured wash in light mode would have
-                  // put white text on a near-white ground — the overlay would
-                  // have caused the illegibility it exists to prevent.
-                  // `--color-bg-overlay` darkens in both themes, which is what
-                  // white text needs. Re-deriving this from the card surface is
-                  // a decision that breaks light mode, not a fidelity fix.
-                  //
-                  // The `{bgImage && …}` gate is deliberate and unchanged: this
-                  // never renders for colour-only cards, whose title takes a
-                  // contrast-computed pole instead and needs no dim.
-                  <div className="absolute inset-0 z-0 rounded-card bg-[var(--color-bg-overlay)]" />
-                )}
+                {/* DECISION Phase 88.9-27 (owner ruling O21b, chat 2026-11-07 6:18 PM Pacific; pick O02d1,
+                    88.9-PICKS-B9.json): no photo dim on the home card, chosen OVER the overlay-token wash that
+                    DECISION Phase 88-27 (D-32 bucket D) put here - the title and Last Game row carry O02d1's own
+                    1.5px outline, so the photo is shown undimmed. The bg-overlay token itself stays (the tutorial
+                    scrim uses it). Re-adding a dim is a decision, not a cleanup. */}
                 <div className="relative z-1">
                   {/* 87.8-13 walkthrough F-8: single row at ALL widths — the old
                       max-[480px] column-stack dropped the players pill to its own
@@ -802,7 +823,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                             handleGroupClick(group, e);
                           }
                         }}
-                        className="flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                        className={
+                          tinted
+                            ? 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                            : 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                        }
                       >
                         {/* DECISION Phase 88.6-21 (W42, D-04): this heading sits INSIDE the
                             `role="button"` block above, and that costs a real property rather than
@@ -828,7 +853,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         <Heading
                           level={3}
                           size="heading"
-                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]"
                         >
                           {group.name}
                         </Heading>
@@ -1021,7 +1046,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       - IF YOU ARE HERE TO "RESTORE" `text-content-primary` ON THE
                         TINTED ARM: that is a decision requiring an owner ruling, not
                         a cleanup. See the DECISION marker directly below. */}
-                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-bold' : ''}`}>
+                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] ${cardTextBold ? 'font-bold' : ''}`}>
                   {/* DECISION Phase 88.3.1 (SPEC Req 8, site 1 of 3 — UI-SPEC 3.5). This block
                       REPLACES the 88.3-cr M1 LIMIT block (2026-08-28), which is closed, not lost:
                       that LIMIT said these two rows take the THEME token on the tinted arm rather
@@ -1063,8 +1088,19 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       `var(--t-color-l)` / `var(--t-color)` is the card's own `getTextStyle` output,
                       computed against the rendered ground, and it is emitted on this card's root in
                       every one of those cases. Verified 2026-08-29 that tailwindcss@4.3.3 in this
-                      tree compiles the nested-fallback arbitrary value and its `dark:` variant. */}
-                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${tinted ? '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--group-ink,var(--t-color))]' : 'text-content-secondary'}`}>
+                      tree compiles the nested-fallback arbitrary value and its `dark:` variant.
+
+                      AMENDED Phase 88.9-27 (owner by chat 2026-11-08, RULINGS Q2 add-on): in DARK
+                      mode the secondary row and date take the title's --t-* pole treatment, chosen
+                      OVER the preset inkDark / mutedDark so a coloured card carries ONE treatment in
+                      dark as it already reads in light; LIGHT keeps the preset inks (W50 F10 keep).
+                      Reverting the dark arm to the preset inks is a decision, not a cleanup. On the
+                      IMAGE arm (owner ruling 88.9-RULINGS.md R-P4, 2026-11-08) the secondary row and
+                      date take the title's O02d1 outline treatment in both themes, coloured or not,
+                      chosen OVER content tokens / preset inks under no dim (white on a white photo
+                      measured 1.00:1); this is a third arm, not a convergence - the uncoloured
+                      no-image arm keeps its content tokens. */}
+                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)]' : tinted ? '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-secondary'}`}>
                     {/* DECISION Phase 88.3.1: the `Last Game:` LABEL moves WITH the row on the
                         tinted arm — it drops its class and inherits the row's ink — chosen so a
                         coloured card reads in ONE ink instead of two.
@@ -1077,9 +1113,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         REJECTED (b): dropping the class outright. That would also re-tone the
                         UNCOLOURED card, where the shipped look is deliberately a primary label on a
                         secondary row and nobody has complained about it — an unasked visual change
-                        on a surface outside this phase. Hence the ternary rather than a deletion. */}
-                    <span><strong className={tinted ? undefined : 'text-content-primary'}>Last Game:</strong> {lastGame?.name || 'None'}</span>
-                    <span className={`text-xs ${tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--group-ink-muted,var(--t-color))]' : 'text-content-muted'}`}>
+                        on a surface outside this phase. Hence the ternary rather than a deletion.
+                        AMENDED Phase 88.9-27 (owner ruling 88.9-RULINGS.md R-P4, 2026-11-08): the
+                        label also drops its class on a photo card and inherits the row's O02d1
+                        outline treatment, chosen OVER the primary label under a black outline;
+                        REJECTED (b) still holds for the uncoloured no-image card. */}
+                    <span><strong className={hasBgImage || tinted ? undefined : 'text-content-primary'}>Last Game:</strong> {lastGame?.name || 'None'}</span>
+                    <span className={`text-xs ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)]' : tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-muted'}`}>
                       {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
                     </span>
                   </div>
@@ -1099,7 +1139,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
                       <Button
                         variant="primary"
-                        className="flex-1 shadow-theme-md enabled-hover:shadow-theme-lg"
+                        className={
+                          tinted
+                            ? 'flex-1 shadow-theme-md enabled-hover:shadow-theme-lg focus-visible:ring-offset-surface-group-halo'
+                            : 'flex-1 shadow-theme-md enabled-hover:shadow-theme-lg'
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onGroupSelect) {
@@ -1276,16 +1320,24 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                          `customizeGroupLabel` or its argument, or moving the name back to an
                          `aria-label`, reds both scans, and that is intended.
 
-                         Any of this is a decision, not a cleanup. */
+                         Any of this is a decision, not a cleanup.
+
+                         AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json): the glyph is the
+                         lucide Settings SVG, aria-hidden as required above, chosen OVER the emoji (it
+                         renders per-platform and is not stroke-controllable); the title stays the name. */
                       <button
-                        className="min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                        className={
+                          tinted
+                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);
                         }}
                         title={customizeGroupLabel(group.name)}
                       >
-                        <span aria-hidden="true">⚙️</span>
+                        <Icon name="Settings" size={20} />
                       </button>
                     )}
                   </div>

@@ -173,7 +173,11 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
 
     await trigger.tap();
     await dialog.getByRole('button', { name: 'Remove', exact: true }).tap();
-    await dialog.getByRole('button', { name: 'Tap again to remove' }).tap();
+    // F9b (88.9-23): the armed item is gated for 3 s; wait for the live label before the
+    // committing tap (the 5 s expect timeout covers the gate).
+    const confirmRemove = dialog.getByRole('button', { name: 'Tap again to remove' });
+    await expect(confirmRemove).toHaveText('Tap again to remove');
+    await confirmRemove.tap();
 
     // POSITIVE signal: the refresh after the removal reached the route and is held.
     await postRemovalArrived;
@@ -444,7 +448,12 @@ test.describe('Phase 88.6.1-50 — a pressed Transfer ownership keeps focus at 3
     // A missing request is a failure, never a skip.
     await expect.poll(() => hold.count('POST', TRANSFER_PATH), { timeout: 15_000 }).toBe(1);
 
-    const pressed = transferDialog.getByRole('button', { name: /^Transferring/ });
+    // AMENDED Phase 88.9-45 (rule 1): the pressed confirm keeps "Transfer ownership" with the house
+    // spinner and is named "Transfer ownership, transferring" (Chromium may insert a space before
+    // the sr-only comma) — the Transferring swap word is retired.
+    const pressed = transferDialog.getByRole('button', { name: /^Transfer ownership ?, transferring$/ });
+    await expect(pressed).toHaveText(/^Transfer ownership/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(pressed).toBeFocused();
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');

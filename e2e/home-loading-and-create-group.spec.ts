@@ -47,7 +47,10 @@ test.describe('Home — create group while the request is in flight (D-35)', () 
     await firstPostSeen;
 
     // In flight: gated by aria-disabled, never the native attribute, and still focused.
-    const busy = dialog.getByRole('button', { name: /^creating/i });
+    // AMENDED Phase 88.9-24 (save-feedback rule 1; CI 42677038697 at 4c66253): the label no longer
+    // swaps to Creating... — busy keeps Create Group and the sr-only suffix adds ", creating" (Chromium
+    // inserts a space before the comma, hence the optional space).
+    const busy = dialog.getByRole('button', { name: /^create group ?, creating$/i });
     await expect(busy).toHaveAttribute('aria-disabled', 'true');
     await expect(busy).not.toHaveAttribute('disabled');
     await expect(busy).toBeFocused();

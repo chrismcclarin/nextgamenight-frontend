@@ -346,4 +346,101 @@ describe('88.9 RULING A mini-page picks', () => {
     expect(count(block, 'sr-only'), 'timezoneItems block sr-only occurrences (want 0)').toBe(0);
     expect(count(block, '(current)'), 'timezoneItems block visible (current) text occurrences (want 0)').toBe(0);
   });
+
+  it('6. 88.9 R-C5 — the GroupGamesList rating number and the two gameDetail review star lines carry the DEC-2 rating ink in both themes, the stars are one role=img leaf each, and the shipped raw yellow rating inks are gone', () => {
+    // Owner ruling R-C5 (88.9-RULINGS.md, 2026-11-10) on plan 88.9-44's DEC-2 ink. The class pair is
+    // counted in CODE only: the R-C5 markers name the ink in prose, so the comment-stripped count is
+    // exact. The ink's ratios on the card are pinned by plan 88.9-44's GameSuggestionCard reads.
+    const groupGames = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'GroupGamesList.js'), 'utf8'),
+    );
+    const gameDetail = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'gameDetail', 'page.js'), 'utf8'),
+    );
+    const suggestion = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'GameSuggestionCard.js'), 'utf8'),
+    );
+    const count = (src: string, needle: string): number => src.split(needle).length - 1;
+    const PAIR = 'text-yellow-800 dark:text-yellow-500';
+    const USER_STARS = '{renderStars(userReview.rating)}';
+    const REVIEW_STARS = '{renderStars(review.rating)}';
+
+    expect(count(groupGames, 'Rating: <span className='), 'anti-vacuity: the GroupGamesList rating span is present').toBe(1);
+    expect(count(gameDetail, USER_STARS), 'anti-vacuity: the user review stars are present').toBe(1);
+    expect(count(gameDetail, REVIEW_STARS), 'anti-vacuity: the other reviews stars are present').toBe(1);
+
+    expect(count(groupGames, PAIR), 'GroupGamesList.js ruled rating ink occurrences in code (want 1)').toBe(1);
+    expect(count(gameDetail, PAIR), 'gameDetail/page.js ruled rating ink occurrences in code (want 2)').toBe(2);
+    expect(count(suggestion, PAIR), 'GameSuggestionCard.js ruled rating ink occurrences in code (want 1)').toBe(1);
+    expect(count(groupGames, 'text-yellow-600'), 'GroupGamesList.js old rating ink occurrences (want 0)').toBe(0);
+    expect(count(gameDetail, 'text-yellow-600'), 'gameDetail/page.js old rating ink occurrences (want 0)').toBe(0);
+    expect(count(suggestion, 'text-yellow-600'), 'GameSuggestionCard.js old rating ink occurrences (want 0)').toBe(0);
+    // Anchored on the opening quote: the ruled string also contains the old class start.
+    expect(count(gameDetail, '"text-yellow-500 text-xl'), 'gameDetail/page.js old star line class start (want 0)').toBe(0);
+
+    // The leaf: role img, its label opening with Rated, wrapping the stars; no sr-only sibling.
+    const LEAF_OPEN = '<span role="img" aria-label={' + '\u0060' + 'Rated ';
+    expect(count(gameDetail, LEAF_OPEN), 'gameDetail/page.js role=img Rated leaves (want 2)').toBe(2);
+    for (const stars of [USER_STARS, REVIEW_STARS]) {
+      const at = gameDetail.indexOf(stars);
+      const open = gameDetail.lastIndexOf(LEAF_OPEN, at);
+      expect(open, 'a Rated leaf opens before ' + stars).toBeGreaterThan(-1);
+      expect(gameDetail.slice(open, at).includes('</span>'), 'the leaf is still open at ' + stars).toBe(false);
+      expect(gameDetail.slice(at + stars.length).trimStart().startsWith('</span>'), 'the leaf closes right after ' + stars).toBe(true);
+    }
+    expect(count(gameDetail, 'sr-only">Rated'), 'gameDetail/page.js sr-only Rated siblings (want 0)').toBe(0);
+  });
+
+  it('7. 88.9 R-C3b reach — every DelayedSpinner mount sits outside its host\'s busy guard', () => {
+    // Plan 88.9-56 (R-C3b reach): a DelayedSpinner inside a busy guard unmounts when busy drops and
+    // loses its hold. A guard here is a fragment opened by an and-operator or a ternary whose test
+    // names a busy flag; Button's own tracksBusy opt-in renders the element or null with no
+    // fragment, and is exempt by name.
+    const MOUNT = '<DelayedSpinner';
+    const BUSY_TEST = /busy|loading|saving|sending|removing|reminding|retrying|inviting|prefillSource|flight/i;
+    const guardedMounts = (src: string): number[] => {
+      const hits: number[] = [];
+      for (const m of src.matchAll(/(&&|\?)\s*\(\s*<>/g)) {
+        const at = m.index ?? 0;
+        const guardTest = src.slice(src.lastIndexOf('{', at) + 1, at);
+        if (!BUSY_TEST.test(guardTest)) continue;
+        const frag = /<>|<\/>/g;
+        frag.lastIndex = at + m[0].length - 2;
+        let depth = 0;
+        let end = src.length;
+        for (let f = frag.exec(src); f; f = frag.exec(src)) {
+          depth += f[0] === '<>' ? 1 : -1;
+          if (depth === 0) {
+            end = f.index;
+            break;
+          }
+        }
+        const body = src.slice(at, end);
+        for (let k = body.indexOf(MOUNT); k >= 0; k = body.indexOf(MOUNT, k + 1)) hits.push(at + k);
+      }
+      return hits;
+    };
+    // Positive control: the detector finds a planted guarded mount and passes an unguarded one.
+    expect(guardedMounts('{saving && (\n  <>\n    <DelayedSpinner busy={saving} />\n  </>\n)}')).toHaveLength(1);
+    expect(guardedMounts('Save<DelayedSpinner busy={saving} />{saving && (<><span>, saving</span></>)}')).toHaveLength(0);
+
+    const files: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(jsx?|tsx?)$/.test(entry.name) && !/\.test\./.test(entry.name)) files.push(full);
+      }
+    };
+    walk(path.join(__dirname, '..'));
+    let mounts = 0;
+    for (const file of files) {
+      const src = withoutComments(fs.readFileSync(file, 'utf8'));
+      if (!src.includes(MOUNT)) continue;
+      mounts += src.split(MOUNT).length - 1;
+      if (path.basename(file) === 'Button.tsx') continue;
+      expect(guardedMounts(src), path.relative(path.join(__dirname, '..'), file) + ' DelayedSpinner mounts inside a busy guard (want none)').toEqual([]);
+    }
+    expect(mounts, 'DelayedSpinner mounts in src (want at least 9: Button 1, AvailabilityForm 2, KebabMenu 1, NextGameNightCard 1, ResponseDashboard 1, RsvpSection 2, friends 1)').toBeGreaterThanOrEqual(9);
+  });
 });

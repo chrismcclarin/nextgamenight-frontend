@@ -193,7 +193,15 @@ function Header(){
                                 brand wordmark — to Phase 88.9 as a LOOK CALL, and the routing wins
                                 over the general rule. Plan 88.6-34 swept the rest of this file and
                                 deliberately left these two classes byte-unchanged. Collapsing them
-                                to one rung is 88.9's decision, not a cleanup. */}
+                                to one rung is 88.9's decision, not a cleanup.
+                                AMENDED Phase 88.9-37 (owner pick C100, 88.9-PICKS-B2.json item C10,
+                                votes-b2 v11, read 2026-11-05 1:10 PM Pacific; UI-SPEC R2-50): RULED —
+                                the pair stays as this wordmark's recorded exception to §4.3's one-rung
+                                rule (18 at 375, 20 from md; dark 16.95), chosen OVER C10b (18 at every
+                                width, the desktop wordmark shrinks a rung) and C10c (20 at every width,
+                                the phone wordmark grows a rung). The exemption is now an owner accept,
+                                not a pending look call; collapsing the pair is a decision, not a
+                                cleanup. */}
                             <span className="text-lg md:text-xl font-bold tracking-tight text-white">
                                 Next Game Night
                             </span>

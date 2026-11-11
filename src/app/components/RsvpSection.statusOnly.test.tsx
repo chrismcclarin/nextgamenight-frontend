@@ -21,18 +21,34 @@
  */
 import type * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // R-C3b (88.9-56): the hold budget
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { formatDateTime } from '@/lib/datetime';
+import type { HostGround } from '@/components/ui/hostGround';
 
 // The respondent list is not under test; a passthrough keeps the render light and
-// avoids the popover's own context requirements.
-vi.mock('./ClickableMemberName', () => ({
-  default: ({ children, username }: { children?: React.ReactNode; username?: string }) => (
-    <span>{children ?? username}</span>
-  ),
-}));
+// avoids the popover's own context requirements. The passthrough resolves the hostGround it is
+// handed through the REAL halo map (88.9-50), the call the real trigger makes, so a test can
+// read which ground RsvpSection forwards; the real component's own resolution is pinned in
+// its own test files.
+vi.mock('./ClickableMemberName', async () => {
+  const { hostGroundHalo } = await import('@/components/ui/hostGround');
+  return {
+    default: ({
+      children,
+      username,
+      hostGround,
+    }: {
+      children?: React.ReactNode;
+      username?: string;
+      hostGround?: HostGround;
+    }) => <span className={hostGroundHalo(hostGround)}>{children ?? username}</span>,
+  };
+});
 
 // `rsvpAPI` MUST be mocked: the component fires `getEventRsvps` on mount, and an
 // unmocked `rsvpAPI` reaches the real `apiFetch` (a real jsdom fetch). The spread
@@ -69,6 +85,7 @@ const RsvpSection = RsvpSectionUntyped as unknown as React.ComponentType<{
   self?: { id: string };
   eventDate?: string;
   onRsvpChange?: (status: string) => void;
+  hostGround?: HostGround;
 }>;
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -434,6 +451,40 @@ describe('RsvpSection W44 — the status trio is a named group that keeps focus 
     });
   });
 
+  // rule 1 + R-C3b (88.9-56): the in-flight trio keeps its status word; the delayed spinner joins it
+  // after the appear delay, and because the trio stays mounted the spinner finishes its hold.
+  it("rule 1 + R-C3b (88.9): an in-flight RSVP button keeps its visible status word, shows the delayed spinner beside it, is still named '<status text>, saving', and holds the spinner after the write lands", async () => {
+    const visibleText = (el: HTMLElement): string | null => {
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.sr-only').forEach((node) => node.remove());
+      return clone.textContent;
+    };
+    const user = userEvent.setup();
+    const write = deferred<unknown>();
+    submitRsvp.mockReturnValue(write.promise);
+    renderSection();
+
+    const no = await screen.findByRole('button', { name: statusConfig.no.buttonText });
+    await user.click(no);
+    expect(visibleText(no)).toBe(statusConfig.no.buttonText);
+    expect(no).toHaveAccessibleName(statusConfig.no.buttonText + ', saving');
+    expect(no).toHaveAttribute('aria-disabled', 'true');
+    expect(no.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
+    await waitFor(() => expect(no.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(visibleText(no)).toBe(statusConfig.no.buttonText);
+
+    await act(async () => {
+      write.resolve({ id: 'rsvp-own', status: 'no', note: null });
+      await write.promise;
+    });
+    // The hold: the write has landed and the button is live again, the spinner is still there.
+    expect(no.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(no).not.toHaveAttribute('aria-disabled');
+    await waitFor(() => expect(no.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), {
+      timeout: SPINNER_MIN_MS + 1500,
+    });
+  });
+
   it('the 44px floor is on the button class list (SOURCE half — the phone lane measures the box)', async () => {
     renderSection();
     await screen.findByRole('button', { name: statusConfig.no.buttonText });
@@ -519,8 +570,8 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     await waitFor(() => expect(region.textContent?.trim()).toBe(NOTE_SAVED_COPY));
     expect(outcomeStatus()).toBe(region);
-    // D-22: a set region is visible.
-    expect(region).not.toHaveClass('sr-only');
+    // E2a (88.9-35): the note regions are heard-only; the visible half is the counter-row span
+    expect(region).toHaveClass('sr-only');
 
     // SECOND save, deferred so the in-flight window is observable: the region must be EMPTY
     // while the second request is still in flight, which is what proves the clear happened at
@@ -540,8 +591,8 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
 
     await waitFor(() => expect(region.textContent?.trim()).toBe(NOTE_SAVED_COPY));
     expect(outcomeStatus()).toBe(region);
-    // ...and the region holding text never is (visible-when-set, owner ruling 2026-09-14).
-    expect(region).not.toHaveClass('sr-only');
+    // E2a (88.9-35): the note regions are heard-only; the visible half is the counter-row span
+    expect(region).toHaveClass('sr-only');
   });
 
   it('success and failure CLEAR EACH OTHER — the two regions cannot contradict', async () => {
@@ -560,16 +611,17 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     await waitFor(() => expect(failure.textContent?.trim()).not.toBe(''));
     expect(success.textContent?.trim()).toBe('');
-    // D-22: whichever region is empty is visually hidden; whichever holds text is not.
+    // E2a (88.9-35): the note regions are heard-only; the visible half is the counter-row span
     expect(success).toHaveClass('sr-only');
-    expect(failure).not.toHaveClass('sr-only');
+    expect(failure).toHaveClass('sr-only');
 
     submitRsvp.mockResolvedValue({ id: 'rsvp-own', status: 'yes', note: null });
     await user.click(screen.getByRole('button', { name: 'Save note' }));
     await waitFor(() => expect(success.textContent?.trim()).toBe(NOTE_SAVED_COPY));
     expect(failure.textContent?.trim()).toBe('');
+    // E2a (88.9-35): the note regions are heard-only; the visible half is the counter-row span
     expect(failure).toHaveClass('sr-only');
-    expect(success).not.toHaveClass('sr-only');
+    expect(success).toHaveClass('sr-only');
   });
 });
 
@@ -1201,5 +1253,147 @@ describe('RsvpSection W61 — superseded and post-unmount responses write nothin
     );
     expect(actWarnings).toEqual([]);
     consoleError.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Plan 88.9-35 (owner picks E2a + E2f2, 88.9-PICKS-B4.json, and B1a, 88.9-PICKS-B1.json).
+//
+// The note outcome's VISIBLE half moves onto the counter row, between the count and Save note,
+// in one slot: success a 16px check and Note saved in success ink, failure the ratified E2f2
+// sentence in error ink. The two live regions stay where they are and become heard-only. Save
+// note's halo is the ground its HOST paints, card by default, the page when passed.
+const NOTE_FAILURE_COPY = "Couldn't save. Try again.";
+const counterRow = () => {
+  const counter = screen.getByText(/^\d+\/500$/);
+  return counter.parentElement as HTMLElement;
+};
+
+describe('RsvpSection — round-2 cues (88.9-35)', () => {
+  it('E2a/E2f2 (88.9): success and failure render on the counter row and Save note does not move', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    const save = await screen.findByRole('button', { name: 'Save note' });
+
+    const row = counterRow();
+    expect(row.children).toHaveLength(2);
+    expect(row.lastElementChild).toBe(save);
+
+    submitRsvp.mockRejectedValue(new Error('network down'));
+    await user.click(save);
+    const failureLine = await within(row).findByText(NOTE_FAILURE_COPY, { exact: true });
+    expect(within(row).getAllByText(NOTE_FAILURE_COPY, { exact: true })).toHaveLength(1);
+    expect(failureLine).toHaveClass('text-content-status-error');
+    expect(failureLine).toHaveClass('ml-2');
+    expect(failureLine).toHaveClass('mr-auto');
+    expect(failureLine).not.toHaveAttribute('role');
+    expect(failureLine).not.toHaveAttribute('aria-live');
+    expect(row.children).toHaveLength(3);
+    expect(row.children[0].textContent).toMatch(/^\d+\/500$/);
+    expect(row.children[1]).toBe(failureLine);
+    expect(row.lastElementChild).toBe(save);
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toBe(NOTE_FAILURE_COPY);
+    expect(alert).toHaveClass('sr-only');
+
+    submitRsvp.mockResolvedValue({ id: 'rsvp-own', status: 'yes', note: null });
+    await user.click(save);
+    const words = await within(row).findByText(NOTE_SAVED_COPY, { exact: true });
+    const slot = words.parentElement as HTMLElement;
+    expect(slot.parentElement).toBe(row);
+    expect(slot).toHaveClass('text-content-status-success');
+    expect(slot).toHaveClass('ml-2');
+    expect(slot).toHaveClass('mr-auto');
+    expect(slot).not.toHaveAttribute('role');
+    expect(slot).not.toHaveAttribute('aria-live');
+    const icon = slot.querySelector('svg');
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute('aria-hidden', 'true');
+    expect(icon).toHaveAttribute('width', '16');
+    expect(within(row).queryByText(NOTE_FAILURE_COPY)).toBeNull();
+    expect(row.children).toHaveLength(3);
+    expect(row.lastElementChild).toBe(save);
+    const polite = outcomeStatus();
+    expect(polite.textContent?.trim()).toBe(NOTE_SAVED_COPY);
+    expect(polite).toHaveClass('sr-only');
+  });
+
+  it("B063 (88.9): Save note's halo comes from hostGround — card by default, the page when passed", async () => {
+    renderSection();
+    const save = await screen.findByRole('button', { name: 'Save note' });
+    expect(save.className).toContain('focus-visible:ring-offset-surface-card');
+    cleanup();
+
+    render(
+      <RsvpSection
+        eventId={EVENT_ID}
+        self={{ id: SELF_UUID }}
+        eventDate={EVENT_DATE}
+        onRsvpChange={vi.fn()}
+        hostGround="page"
+      />
+    );
+    const paged = await screen.findByRole('button', { name: 'Save note' });
+    expect(paged.className).toContain('focus-visible:ring-offset-surface-page');
+    expect(paged.className).not.toContain('focus-visible:ring-offset-surface-card');
+  });
+});
+
+describe('RsvpSection — the RSVP name and the gameDetail mounts take their host ground (88.9-50)', () => {
+  const PAT_UUID = '33333333-3333-4333-8333-333333333333';
+  const patSaysYes = () => ({
+    rsvps: [
+      {
+        id: 'rsvp-pat-yes',
+        event_id: EVENT_ID,
+        user_id: PAT_UUID,
+        status: 'yes',
+        note: null,
+        User: { id: PAT_UUID, username: 'Pat' },
+      },
+    ],
+    summary: { yes: 1, maybe: 0, no: 0 },
+  });
+
+  it("R012/R013 (88.9-50): the RSVP name takes RsvpSection's host ground", async () => {
+    getEventRsvps.mockResolvedValue(patSaysYes());
+    render(
+      <RsvpSection
+        eventId={EVENT_ID}
+        self={{ id: SELF_UUID }}
+        eventDate={EVENT_DATE}
+        onRsvpChange={vi.fn()}
+        hostGround="page"
+      />
+    );
+    const paged = await screen.findByText('Pat', { exact: true });
+    expect(paged.className).toContain('focus-visible:ring-offset-surface-page');
+    expect(paged.className).not.toContain('focus-visible:ring-offset-surface-card');
+    cleanup();
+
+    getEventRsvps.mockResolvedValue(patSaysYes());
+    renderSection();
+    const carded = await screen.findByText('Pat', { exact: true });
+    expect(carded.className).toContain('focus-visible:ring-offset-surface-card');
+  });
+
+  // Read with fs and a local comment strip, not the sourceScan import (that would register this
+  // unit file as a drift gate). Every gameDetail mount is one self-closing line.
+  it("R012/R013 mount pin (88.9-50): gameDetail's participation chip passes its muted ground", () => {
+    const stripComments = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/[^\n]*/g, (m, lead) =>
+        m.startsWith('/*') ? m.replace(/[^\n]/g, ' ') : (lead ?? ''),
+      );
+    const source = stripComments(
+      readFileSync(resolve(process.cwd(), 'src/app/gameDetail/page.js'), 'utf8'),
+    );
+    const mounts = source.match(/<ClickableMemberName\b[^>]*\/>/g) ?? [];
+    expect(mounts, 'gameDetail mounts five ClickableMemberName names').toHaveLength(5);
+    const chip = mounts.filter((m) => m.includes('participation.User?.username || participation.username'));
+    expect(chip, 'exactly one mount is the participation chip').toHaveLength(1);
+    expect(chip[0], 'the chip name sits on the bg-surface-muted chip').toContain('hostGround="muted"');
+    const others = mounts.filter((m) => m !== chip[0]);
+    expect(others).toHaveLength(4);
+    for (const m of others) expect(m, 'card-ground mounts keep the default').not.toMatch(/\bhostGround=/);
   });
 });

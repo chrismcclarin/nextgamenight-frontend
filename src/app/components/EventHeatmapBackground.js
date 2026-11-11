@@ -232,13 +232,16 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
             {slot.availableCount} of {totalMembers} available{names ? ` — ${names}` : ''}
           </div>
         )}
+        {/* Plan 88.9-42 (K8): the two conflict lines take the warning ink on the tooltip's
+            bg-surface-elevated ground — measured 6.85 light (#854d0e on #ffffff) / 5.25 dark
+            (#f59e0b on #2f3b50), both over the 4.50 floor — instead of raw amber-700. */}
         {userHasConflict && (
-          <div className="text-amber-700 mt-1">
+          <div className="text-content-status-warning mt-1">
             You have a Google Calendar conflict at this time
           </div>
         )}
         {otherConflicts.map(c => (
-          <div key={c.user_id} className="text-amber-700 text-xs mt-1">
+          <div key={c.user_id} className="text-content-status-warning text-xs mt-1">
             {c.username}: said yes, calendar shows busy
           </div>
         ))}
@@ -428,15 +431,17 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
       </div>
 
       {/* Legend strip */}
+      {/* DECISION Phase 88.9-42 O08b: legend swatches on the heatmap-legend tokens and the words on
+          text-content-secondary; the grid cells keep ReadCell's ramp (the pick changed the legend only). */}
       <div className="flex items-center justify-center gap-1 mt-2">
-        <span className="text-xs text-content-muted">Less</span>
+        <span className="text-xs text-content-secondary">Less</span>
         <div className="w-3 h-3 bg-surface-elevated rounded-xs" />
-        <div className="w-3 h-3 bg-green-100 rounded-xs" />
-        <div className="w-3 h-3 bg-green-200 rounded-xs" />
-        <div className="w-3 h-3 bg-green-300 rounded-xs" />
-        <div className="w-3 h-3 bg-green-400 rounded-xs" />
-        <div className="w-3 h-3 bg-green-500 rounded-xs" />
-        <span className="text-xs text-content-muted">More available</span>
+        <div className="w-3 h-3 bg-surface-heatmap-legend-1 rounded-xs" />
+        <div className="w-3 h-3 bg-surface-heatmap-legend-2 rounded-xs" />
+        <div className="w-3 h-3 bg-surface-heatmap-legend-3 rounded-xs" />
+        <div className="w-3 h-3 bg-surface-heatmap-legend-4 rounded-xs" />
+        <div className="w-3 h-3 bg-surface-heatmap-legend-5 rounded-xs" />
+        <span className="text-xs text-content-secondary">More available</span>
         {/* Plan 72-02: dropped the "(hover for names)" hint — interaction is no
             longer hover-only (touch + keyboard now reach the tooltip via the
             shared HeatmapTooltip primitive). Keeping the legend clean instead
@@ -467,8 +472,10 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
       )}
 
       {/* gcal conflict warning */}
+      {/* DECISION Phase 88.9-42 K8: the conflict box wears the B3a status-warning family in both themes,
+          chosen OVER the light-only raw amber box with no dark twin (copy census K8). */}
       {conflictNames.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-sm text-xs text-amber-700 px-2 py-1 mt-2">
+        <div className="bg-status-warning-subtle border border-status-warning rounded-sm text-xs text-content-status-warning px-2 py-1 mt-2">
           Heads up: {conflictNames.join(' and ')} may have Google Calendar conflicts
         </div>
       )}

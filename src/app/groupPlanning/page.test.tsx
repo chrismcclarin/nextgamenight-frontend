@@ -42,7 +42,8 @@ const h = vi.hoisted(() => {
     G1,
     G2,
     DEFAULT_QUERY,
-    AUTH: { user: USER as unknown, isLoading: false },
+    // 88.9-40 (SESSION-01): `error` is what useUser reports when /api/auth/me itself fails.
+    AUTH: { user: USER as unknown, isLoading: false } as { user: unknown; isLoading: boolean; error?: unknown },
     SELF: { uuid: SELF_UUID as string | null },
     PARAMS: new URLSearchParams(`group_id=${G1}`),
     // Mirrors PARAMS into the jsdom location through the PROTOTYPE method, so a test's history
@@ -154,6 +155,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import GroupPlanningPage from './page';
 import { ApiError, eventsAPI, groupsAPI, promptAPI } from '@/lib/api';
 import { promptKeys } from '@/lib/queryKeys/promptKeys';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -587,7 +589,7 @@ describe('groupPlanning page — one load per visit (88.6.1-16, W060)', () => {
   it('L4: a failed group fetch is a logger breadcrumb with errCtx, and the group banner still shows', async () => {
     (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('group failed', 'internal', 500));
     render(<GroupPlanningPage />);
-    await screen.findByText("We couldn't load this group");
+    await screen.findByText("Couldn't load this group");
     expect(h.logInfo).toHaveBeenCalledWith('Error fetching group:', { name: 'ApiError', message: 'group failed' });
   });
 });
@@ -857,7 +859,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(replaced).toHaveLength(1);
     expect(queryOf(replaced[0]).get('group_id')).toBe(G1);
     expect(queryOf(replaced[0]).has('poll')).toBe(false);
-    expect(screen.queryByText("We couldn't load the poll responses")).toBeNull();
+    expect(screen.queryByText("Couldn't load the poll responses")).toBeNull();
     expect(h.logInfo).toHaveBeenCalledWith('Selected poll did not load; showing the active poll:', expect.anything());
 
     reRender(rerender);
@@ -958,7 +960,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     await user.click(ben);
     reRender(rerender);
     await settledOn(P2);
-    expect(screen.queryByText("We couldn't load the poll responses")).toBeNull();
+    expect(screen.queryByText("Couldn't load the poll responses")).toBeNull();
     expect(promptAPI.getPromptById).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(ben);
   });
@@ -1010,7 +1012,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${P2}`);
     (promptAPI.getPromptById as Mock).mockRejectedValueOnce(new ApiError('failed', 'internal', 500));
     render(<GroupPlanningPage />);
-    expect(await screen.findByText("We couldn't load the poll responses")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load the poll responses")).toBeInTheDocument();
     expect(replaced).toHaveLength(0);
     expect(h.PARAMS.get('poll')).toBe(P2);
     expect(h.logError).toHaveBeenCalledTimes(1);
@@ -1296,5 +1298,87 @@ describe('groupPlanning page: review fix batch (quick-261026-pi6-fix)', () => {
     expect(promptAPI.getActivePrompt).not.toHaveBeenCalled();
     expect(promptAPI.getPromptById).not.toHaveBeenCalled();
     expect(promptAPI.getOpenPrompts).not.toHaveBeenCalled();
+  });
+});
+
+// Phase 88.9-40 (SESSION-01, owner ruling 2026-11-07, SPEC A8): this page's hand-rolled guard
+// (location.href, returnTo without the hash, no latch) is replaced by the shared useSignInRedirect
+// (src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling"))). A
+// signed-out visitor is replaced to sign-in once, Back-safe and hash-keeping; a return with the
+// latch set is the group banner with Sign in; a useUser() error is the Reload fallback.
+describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+
+  // A location stub with a spied href SETTER, so an assignment to location.href (the shipped
+  // idiom) is observable as a call rather than a jsdom navigation.
+  function stubLocation({ search, hash = '' }: { search: string; hash?: string }) {
+    const replace = vi.fn();
+    const hrefSet = vi.fn();
+    const loc: Record<string, unknown> = {
+      origin: 'http://localhost',
+      protocol: 'http:',
+      host: 'localhost',
+      hostname: 'localhost',
+      port: '',
+      pathname: '/groupPlanning',
+      search,
+      hash,
+      replace,
+      assign: vi.fn(),
+    };
+    Object.defineProperty(loc, 'href', {
+      get: () => `http://localhost/groupPlanning${search}${hash}`,
+      set: hrefSet,
+      enumerable: true,
+    });
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: loc });
+    return { replace, hrefSet };
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    window.sessionStorage.clear();
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+  });
+
+  it('SESSION-01 (88.9): signed out, the planning page replaces itself with sign-in once (returnTo keeps the hash) and never assigns location.href; back with the latch set it shows the group banner with Sign in', async () => {
+    const search = `?group_id=${h.G1}`;
+    const target = '/api/auth/login?returnTo=' + encodeURIComponent(`/groupPlanning${search}#polls`);
+    const { replace, hrefSet } = stubLocation({ search, hash: '#polls' });
+    h.AUTH = { user: undefined, isLoading: false };
+    render(<GroupPlanningPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(target);
+    expect(hrefSet).not.toHaveBeenCalled();
+    expect(screen.getByText('Redirecting to login...')).toBeInTheDocument();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    cleanup();
+
+    // Back in the same tab without signing in: the latch is set, so the banner, with Sign in.
+    render(<GroupPlanningPage />);
+    expect(await screen.findByText("Couldn't load this group")).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', target);
+    expect(screen.queryByText('Redirecting to login...')).toBeNull();
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(hrefSet).not.toHaveBeenCalled();
+    expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
+  });
+
+  it('SESSION-01 (88.9): a useUser error on the planning page shows Reload, never a redirect or a blank page', async () => {
+    const { replace, hrefSet } = stubLocation({ search: `?group_id=${h.G1}` });
+    h.AUTH = {
+      user: undefined,
+      error: Object.assign(new Error('me failed'), { status: 0 }),
+      isLoading: false,
+    };
+    render(<GroupPlanningPage />);
+    expect(await screen.findByRole('button', { name: 'Reload page' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: "Couldn't load this group" })).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    expect(hrefSet).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
   });
 });

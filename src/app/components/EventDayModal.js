@@ -15,11 +15,11 @@ import {
   TEXT_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { statusTagLabel } from '../../lib/upcomingEvents';
 import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import QRCodeModal from './QRCodeModal';
-import { SHARE_GAME_QR_LOADING_LABEL } from './shareGameQrCopy';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { eventsAPI } from '../../lib/api';
 import { Button } from '../../components/ui/Button';
@@ -125,14 +125,20 @@ export default function EventDayModal({
       /* AC-2, at the level the owner amended it to on 2026-09-13: `logger.info`, REPLACING the
          raw `console.error` rather than sitting beside it — the module's contract is that call
          sites use `logger.*` instead of raw `console.*`. STATE THE COST HONESTLY: `logger.info`
-         is `Sentry.addBreadcrumb` (`logger.ts`, `Sentry.addBreadcrumb({ message: msg, level: 'info'`), so this failure reaches Sentry only
+         is `Sentry.addBreadcrumb`
+         (src/lib/logger.ts ("Sentry.addBreadcrumb({ message: msg, level: 'info', data: ctx });")), so this failure reaches Sentry only
          ATTACHED TO a later event in the same session; it does not become independently visible
          to an operator. Whether these paths deserve a Sentry EVENT is routed to the owner, not
          decided here. `errCtx(err)` and never the raw `Error`: `logger.info(msg, ctx)`'s second
          parameter is a plain object, and `checkJs: false` hides that mistake in a `.js` file.
          The message is the literal; the ctx carries the error's name and message and nothing
-         else (T-84-01). Fires regardless of mount state — a developer log is not context. */
-      logger.info('Failed to get game invite token', errCtx(err));
+         else (T-84-01). Fires regardless of mount state — a developer log is not context.
+         AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-2 = b, chat 2026-11-07 6:35 PM
+         Pacific — a D-03 dialog-only item; 88.9-UI-SPEC.md (d) Resolutions of (c)): the owner
+         question this comment routed is answered — the level moved to logger.warn, an event of
+         its own, chosen OVER the logger.info breadcrumb of 2026-09-13 (D2). The cost paragraph
+         above records that earlier level. ctx unchanged; the toast arm above is unchanged. */
+      logger.warn('Failed to get game invite token', errCtx(err));
     } finally {
       // Only the newest request re-enables: a superseded request's finally changes nothing, so
       // it can never clear the row pressed since.
@@ -194,6 +200,13 @@ export default function EventDayModal({
               {selectedDay.events.map(event => {
                 const eventDate = new Date(event.start_date);
                 const isPastEvent = eventDate < new Date();
+                /* DECISION Phase 88.9-39 W57 / F2c: a cancelled / completed night's tag reads Cancelled /
+                   Completed on the muted pair from statusTagLabel, chosen OVER the Upcoming tag keyed on
+                   the date alone. The Share Game QR gate is unchanged (look-only phase). The tag, whichever
+                   renders, carries an id the row names through aria-describedby (MED-80) — a description
+                   ADDS to the computed name and never replaces it (the NO aria-label note below stands). */
+                const statusTag = statusTagLabel(event);
+                const dayTagId = `day-tag-${event.id}`;
                 const groupProfilePic = event.Group?.profile_picture_url;
                 const groupBgImage = event.Group?.background_image_url;
                 /*
@@ -430,7 +443,11 @@ export default function EventDayModal({
                        template expression reads to it as exactly that offence, and it reds.
                        Each arm therefore carries width AND colour together. Hoisting the width
                        out is a decision, not a cleanup. */
-                    className={`p-4 ${isPastEvent ? 'border border-line-control' : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+                    /* DECISION Phase 88.9-39 B2a (R014 / B025): a tinted card sets --group-halo from its own
+                       ground pair and the row and Share Game QR take ring-offset-surface-group-halo, which
+                       falls back to the card ground when unset, chosen OVER the card offset on a tinted
+                       ground; the modal is portalled, so no ancestor's --group-halo reaches it. */
+                    className={`p-4 ${isPastEvent ? 'border border-line-control' : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]' : 'bg-surface-card'}`}
                     style={{
                       ...(tinted && {
                         '--group-ground': ground,
@@ -480,7 +497,8 @@ export default function EventDayModal({
                       backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
                       borderRadius: '0.5rem',
                     }} />
-                    <div className="flex justify-between items-start relative z-10">
+                    {/* F3b (88.9-39, owner pick, votes-b5 v10): gap-2 — 8px between the tag column and the picture. */}
+                    <div className="flex justify-between items-start gap-2 relative z-10">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           {/* DECISION Phase 88.6-27 (D-14b, RESEARCH §C.2 Open Question 6):
@@ -539,7 +557,8 @@ export default function EventDayModal({
                                 onEventClick(event);
                               }
                             }}
-                            className="rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                            aria-describedby={!isPastEvent ? dayTagId : undefined}
+                            className="rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo"
                           >
                             {/* D-04: this `<h4>` carries NO SIZE class, so it renders at body
                                 size — `<Heading level={4} size="body">` (16) states that rather
@@ -598,9 +617,15 @@ export default function EventDayModal({
                                `text-xs` STAYS: a chip label is Caption 12 by §4.2's closed role
                                list. */}
                           {!isPastEvent && (
-                            <span className="px-2 py-0.5 bg-status-success-subtle text-content-status-success text-xs rounded-sm ml-auto">
-                              Upcoming
-                            </span>
+                            statusTag ? (
+                              <span id={dayTagId} className="px-2 py-0.5 bg-surface-muted text-content-secondary text-xs rounded-sm ml-auto">
+                                {statusTag}
+                              </span>
+                            ) : (
+                              <span id={dayTagId} className="px-2 py-0.5 bg-status-success-subtle text-content-status-success text-xs rounded-sm ml-auto">
+                                Upcoming
+                              </span>
+                            )
                           )}
                         </div>
                         {/* DECISION Phase 88.3.1 (SPEC Req 8, site 2 of 3 — UI-SPEC 3.5).
@@ -664,6 +689,8 @@ export default function EventDayModal({
                             variant="accent"
                             onClick={(e) => handleShowGameQR(e, event)}
                             aria-disabled={qrInFlight || undefined}
+                            busy={qrInFlight}
+                            busySuffix=", loading"
                             /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c),
                                2026-08-28): `btn-secondary` -> `btn-accent`. Owner: "The Share game
                                qr button still looks odd. Lets make it amber, like the create event
@@ -703,28 +730,38 @@ export default function EventDayModal({
                                [AMENDED Phase 88.6.1-47 (D-35)] The control no longer carries the
                                native attribute: it is gated by `aria-disabled` plus the handler's
                                per-row latch (see the marker at `handleShowGameQR`). [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).] */
-                            className="mt-2"
+                            // B2a (88.9-39): the group-ground halo rides the Button's ONE className (a second
+                            // className attribute would be dropped by JSX); no dark: utility — the key's dark
+                            // twin rides --group-ground.
+                            className="mt-2 focus-visible:ring-offset-surface-group-halo"
                             title="Share Game QR"
                           >
-                            {/* Decorative: the visible "Share Game QR" label, or the in-flight label
-                                (copy row E6), already
-                                gives this button its accessible name, so the icon is hidden from AT
-                                rather than announced as a stray image before the label. House
-                                convention — the decorative status glyphs in `invite/game/[token]/page.js`
-                                (`aria-hidden="true" focusable="false"`) carry the same pair. */}
+                            {/* Decorative: the visible "Share Game QR" label (plus the sr-only busy
+                                suffix while the QR loads) already gives this button its accessible
+                                name, so the icon is hidden from AT rather than announced as a stray
+                                image before the label. House convention — the decorative status
+                                glyphs in `invite/game/[token]/page.js` (`aria-hidden="true"
+                                focusable="false"`) carry the same pair.
+                                DECISION Phase 88.9-45 (rule 1): Share Game QR keeps its label + spinner while the
+                                QR loads, chosen OVER the E6 swap word; gameDetail's twin converts in 88.9-46. */}
                             <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                             </svg>
-                            {qrInFlight ? SHARE_GAME_QR_LOADING_LABEL : 'Share Game QR'}
+                            Share Game QR
                           </Button>
                         )}
                       </div>
-                      <SafeImage
-                        src={event.Game?.image_url}
-                        alt={event.Game?.name}
-                        className="w-16 h-16 object-cover rounded-sm"
-                      />
+                      {/* DECISION Phase 88.9-39 F3b: the picture slot renders only when the night has a
+                          picture of its own, chosen OVER SafeImage's fallback glyph (the default die the
+                          owner named). */}
+                      {event.Game?.image_url && (
+                        <SafeImage
+                          src={event.Game.image_url}
+                          alt={event.Game?.name}
+                          className="w-16 h-16 object-cover rounded-sm"
+                        />
+                      )}
                     </div>
                   </div>
                 );

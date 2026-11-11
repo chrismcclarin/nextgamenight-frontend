@@ -118,7 +118,7 @@ import {
   assertRosterShape,
   type ExemptionRoster,
 } from '../test-utils/exemption';
-import { lineAt, sourceFiles, withoutComments } from '../test-utils/sourceScan';
+import { lineAt, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -188,9 +188,9 @@ const NAMED_SURFACES = [
  * §4.1's working set, as Tailwind utilities: 14 / 16 / 20 / 30.
  *
  * DO NOT ADD `xs` HERE. These assertions are HEADING-scoped, and admitting `text-xs`
- * would re-legalize the two text-xs h4s plan 88.6-27 retired — now
- * src/app/components/CalendarListView.js ("id={thisWeekId}") and
- * src/app/components/CalendarListView.js ("id={laterId}"), both Heading level 4 size label at
+ * would re-legalize the two text-xs h4s plan 88.6-27 retired — now the one surviving
+ * src/app/components/CalendarListView.js ("id={laterId}") (the This-week h4 left the sheet with
+ * 88.9-39 D6c), Heading level 4 size label at
  * 14 — the exact sites UI-SPEC §1.2 row V-5
  * (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 1.2 The sanctioned visible deltas"),
  * "h4 12px → 14px") exists to move UP. 12px is the tree-wide FLOOR (task 2's sub-12px
@@ -571,7 +571,10 @@ const REVIEWS_HEADING = (h: Heading) =>
  * The five LITERAL prop seams, enumerated so one appearing or disappearing is visible.
  * Re-measured at this plan's commit.
  */
-const EXPECTED_PROP_SEAMS = 5;
+// AMENDED Phase 88.9-39 (owner pick D6c): 5 -> 3. The THIS WEEK DateGroup call site left
+// CalendarListView.js with its headingLevel="h5" / rowHeadingLevel="h6" pair (the next-7-day rows
+// fold into the default-level upcoming list); the Later pair and the EventRow seam remain.
+const EXPECTED_PROP_SEAMS = 3;
 
 /**
  * The `heading-primitive` floor, asserted SEPARATELY from `prop-seam` so neither can be
@@ -777,7 +780,10 @@ const EXPECTED_PROP_SEAMS = 5;
 // DECISION Phase 88.6.2-15 (EMP): compared EXACTLY (toBe) over the >= floor this constant was, and over deriving it from the other rosters (a number derived from the scan it pins can never disagree with it). Measured at FE 995023d: 136 heading-primitive call sites against a floor of 131 — five migrations landed without a raise and the >= stayed green. A sweep that adds OR removes a primitive now reds until this number moves in the same commit. The RAISED history above, and its ">=" sentences, describe the floor before 88.6.2-15.
 // Re-measured at execution (FE de26524, 88.6.2-15 task 2): 136, by this suite's own failure
 // message — "expected 137 to be 131" with a one-site plant present, then the plant deleted.
-const EXPECTED_PRIMITIVES = 136;
+// AMENDED Phase 88.9-39 (owner pick D6c): 136 -> 135. The THIS WEEK `<Heading level={4}>` left
+// CalendarListView.js's sheet arm (its rows fold into the default-level upcoming list); measured by
+// this suite's own failure message, "expected 135 to be 136".
+const EXPECTED_PRIMITIVES = 135;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -1335,9 +1341,11 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // `ErrorFallback.tsx`'s `<Heading level={1}>` is literal and IS counted; this one is not.
       // Raising the floor by two would have RED the floor assertion, which is the honest outcome — do
       // not "fix" that by resolving the expression (see `PROP_SEAM_EXPRESSION`).
+      // AMENDED Phase 88.9-22 (owner pick F4b): the EmptyState entry moved 179 -> 182 because 88.9-22 added a three-line F4b AMENDED comment above the same Heading; the skipped element is unchanged.
+      // AMENDED Phase 88.9-39 (owner picks F2c / D5a / D6c; then the 88.9-25 hand-off 4 heights marker): the CalendarListView entry (DateGroup's `<DayHeading`) moved 1069 -> 1071 -> 1082 because 88.9-39's OWNER RULING 2a sentence, the D6c fold and the heights DECISION block sit above it; the skipped element is unchanged.
     ).toEqual([
-      'app/components/CalendarListView.js:1069',
-      'components/ui/EmptyState.tsx:179',
+      'app/components/CalendarListView.js:1082',
+      'components/ui/EmptyState.tsx:182',
     ]);
   });
 
@@ -1646,7 +1654,10 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/components/BallotOptionsEditor.js': { 3: 1 },
   'app/components/BallotSection.js': { 3: 6 },
   'app/components/BringSummary.js': { 3: 1 },
-  'app/components/CalendarListView.js': { 3: 2, 4: 2, 5: 2, 6: 2 },
+  // AMENDED Phase 88.9-39 (owner pick D6c): { 3: 2, 4: 2, 5: 2, 6: 2 } -> one level-4 `Heading` (the
+  // THIS WEEK subheader left the sheet) and one h5 / h6 seam pair (Later's; the next-7-day rows
+  // render at the default levels). Not an R7 outline violation: a level LEFT, none moved.
+  'app/components/CalendarListView.js': { 3: 2, 4: 1, 5: 1, 6: 1 },
   'app/components/CalendarMonthView.js': { 3: 1 },
   'app/components/DangerZoneDeleteAccount.tsx': { 2: 1 },
   'app/components/EmailAddressSection.tsx': { 2: 3 },
@@ -2121,7 +2132,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // own outcome LEAD was right: EMPHASIS, utility DELETED, the colour token doing the work. It is
   // §4.5's own named precedent shape — a link-styled button already carrying
   // `text-content-link underline`, exactly like the primitive's three link-buttons, the compact
-  // src/components/ui/FetchErrorBanner.tsx ("{retrying ? 'Retrying…' : 'Retry'}") and the full
+  // src/components/ui/FetchErrorBanner.tsx ("aria-describedby={textId}") and the full
   // branch's Try again and Report this beside it — so the weight
   // was a third redundant signal beside the colour and the underline. Its `text-sm` STAYS and is
   // LIVE (a bare `<button>`, not a `.btn`, so the size utility is not dead), and its `min-h-11`
@@ -2240,7 +2251,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     jump on top would be an unsanctioned visible delta with no V-row.
   //   - the group-transfer link's `font-semibold`: the same case as the primitive's own
   //     link-buttons, the compact
-  //     src/components/ui/FetchErrorBanner.tsx ("{retrying ? 'Retrying…' : 'Retry'}") and the
+  //     src/components/ui/FetchErrorBanner.tsx ("aria-describedby={textId}") and the
   //     full branch's Try again and Report this — `text-content-link` does the work.
   //   - the confirm field's `<label>`: stays Label 14, weight only.
   //   - the FIFTH was deleted one commit earlier, by task 2's in-place conversion of the
@@ -3112,5 +3123,95 @@ describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx
       'an off-scale weight sitting on a heading must be rostered by the weight rule as well ' +
         'as by the heading rule',
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// K7 (88.9) / C3b: one tracking spelling for uppercase labels (UI-SPEC rows R2-13 / R2-20)
+// ---------------------------------------------------------------------------------------
+//
+// DECISION Phase 88.9-47 (K7 / owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): an uppercase
+// label that carries a letter-spacing utility carries exactly tracking-wider (0.05em). The
+// scan keys on a string chunk holding BOTH the uppercase class and any tracking utility,
+// chosen OVER the R2-13 census command keyed on text-xs, which misses the 14px Heading size
+// label sites (Later, the day heading, the FriendInvitePanel section headings). The tutorial
+// exemption is a counted roster entry by file name, chosen OVER a directory glob, so a new
+// tutorial site still has to be counted and the tutorial rewrite deletes the entry.
+//
+// The classifier reads ONE string chunk (stringChunks crosses newlines, recurses into
+// template interpolations and drops comments, so a marker that quotes the old spelling is
+// never a site). 'none' = not a letter-spaced uppercase label (no uppercase token, or no
+// tracking token); 'on' = exactly one tracking utility and it is tracking-wider; 'off' =
+// any other letter-spaced uppercase label (an old spelling, an arbitrary value, or two
+// tracking utilities at once).
+
+const K7_UPPERCASE_TOKEN = /(?:^|[\s:])uppercase(?=\s|$)/;
+const K7_TRACKING_TOKEN = /(?:^|[\s:])(tracking-[^\s'"\x60]+)/g;
+
+function k7Classify(text: string): 'off' | 'on' | 'none' {
+  if (!K7_UPPERCASE_TOKEN.test(text)) return 'none';
+  const tracking: string[] = [];
+  K7_TRACKING_TOKEN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = K7_TRACKING_TOKEN.exec(text)) !== null) tracking.push(m[1]);
+  if (tracking.length === 0) return 'none';
+  return tracking.length === 1 && tracking[0] === 'tracking-wider' ? 'on' : 'off';
+}
+
+// Exempt BY NAME, with an exact count. Kind 'owner', not 'decision': the K7 ruling of
+// 2026-11-07, not the file's own 88.6-35 weight marker, is the decision that exempts it.
+const K7_TRACKING_EXEMPTIONS: ExemptionRoster = {
+  'app/components/tutorial/simulated/CheckInDemo.js': {
+    sites: 2,
+    why:
+      'the two simulated tutorial eyebrows (Members set their own availability / Or send them ' +
+      'a check-in) keep the tutorial file\'s own 0.025em step; the UI-SPEC routes every tutorial ' +
+      'look item to the v2.1 tutorial phase, which deletes this entry when it converges them',
+    owner: {
+      kind: 'owner',
+      date: '2026-11-07',
+      ruling:
+        'K7 (orchestrator ruling on the COPY-CENSUS corrections, 2026-11-07): every UPPERCASE ' +
+        'label that carries a letter-spacing utility takes the ONE spelling tracking-wider; ' +
+        'tutorial files exempt by name (CheckInDemo.js keeps tracking-wide, its own keep their ' +
+        'own call; the UI-SPEC routes every tutorial look item to the v2.1 tutorial phase)',
+    },
+  },
+};
+
+describe('K7 (88.9) / C3b: one tracking spelling for uppercase labels', () => {
+  it('K7 (88.9): every uppercase letter-spaced label uses tracking-wider; tutorial files exempt by name', () => {
+    // Controls first, so a scan that has gone blind fails here and not only on the floor.
+    expect(k7Classify('text-xs uppercase tracking-wide'), 'the former majority step').toBe('off');
+    expect(k7Classify('uppercase tracking-[0.08em]'), 'the former hero step').toBe('off');
+    expect(k7Classify('uppercase tracking-wider tracking-wide'), 'two utilities at once').toBe('off');
+    expect(k7Classify('text-xs font-bold uppercase tracking-wider'), 'the C3b spelling').toBe('on');
+    expect(k7Classify('uppercase shadow-theme-sm'), 'uppercase with no tracking').toBe('none');
+    expect(k7Classify('w-32 text-center tracking-widest'), 'tracking with no uppercase').toBe('none');
+
+    // BUILD ONCE (AC-11, owner 2026-09-09): iterate the module-scope FILES, no second walk.
+    const measured: Record<string, number> = {};
+    const offSites: string[] = [];
+    let total = 0;
+    for (const f of FILES) {
+      for (const chunk of stringChunks(f.stripped)) {
+        const verdict = k7Classify(chunk.text);
+        if (verdict === 'none') continue;
+        total += 1;
+        if (verdict === 'off') {
+          measured[f.key] = (measured[f.key] ?? 0) + 1;
+          offSites.push(`${f.key}:${lineAt(f.stripped, chunk.offset)}`);
+        }
+      }
+    }
+
+    expect(assertRosterShape(K7_TRACKING_EXEMPTIONS)).toEqual([]);
+    expect(assertExactCounts(K7_TRACKING_EXEMPTIONS, measured), offSites.join('\n')).toEqual([]);
+    expect(
+      total,
+      'the census floor: letter-spaced uppercase chunks tree-wide, on OR off (30 measured at ' +
+        'plan 88.9-47, 2026-11-10: 28 on tracking-wider + the 2 exempt tutorial eyebrows). A total ' +
+        'under the floor means the scan has gone blind, not that the tree got tidier.',
+    ).toBeGreaterThanOrEqual(28);
   });
 });

@@ -618,12 +618,29 @@ export async function apiFetch<T = unknown>(
       // '/api' and every token-bearing helper in this module BYPASSES apiFetch.
       // The third console line printed API_BASE_URL, the BACKEND origin this
       // request never dialled; it is DROPPED rather than converted.
-      logger.info('API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.', { url });
+      // AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-4a = b, chat 2026-11-07 6:35 PM
+      // Pacific; 88.9-UI-SPEC.md (d) Resolutions of (c)): the level moved to logger.warn — a
+      // warning event — chosen OVER the logger.info breadcrumb of 2026-09-13 (D2).
+      const urlPath = url.split('?')[0];
+      logger.warn('API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.', { url: urlPath });
       // Phase 88.6-57 (CR-501): the MESSAGE carries the path only -- it becomes the Sentry
       // exception value via queryCacheOnError, and a query can carry a third party's
-      // email. The `{ url }` ctx above is safe as-is: key `url` goes through scrubUrl.
+      // email. DECISION Phase 88.9-38 F1-4a: the warning's ctx carries the PATH only (urlPath),
+      // chosen OVER passing the url unchanged — a warn ctx lands in event.extra, which
+      // sentry.scrub.js ("function deepScrub(value, keyHint, secretAncestor)") runs through
+      // scrubString, not the query-stripping scrubUrl that breadcrumb data gets
+      // (sentry.scrub.js ("URL-bearing fields get the stronger scrubUrl")). The path is the
+      // whole diagnosis on this branch. event.extra also skips scrubUrl's fragment strip and
+      // long-hex path backstop, so this ctx is safe only because it is a BFF-relative apiFetch
+      // path — BFF_BASE is '/api' and every token-bearing helper bypasses apiFetch (the AC-2
+      // WIDENED paragraph above); keep it that way. For a query-routed call this warning sits
+      // beside queryCacheOnError's capture of the same 'config' ApiError
+      // (src/lib/queryClient.ts ("Sentry.captureException(error, upstreamMessage")), and the
+      // query's one retry ('config' is not a non-retryable code) files it again unless Dedupe
+      // drops it; for a direct apiFetch caller it is the only event. Removing it as a duplicate
+      // is a decision, not a cleanup. Re-adding the query is a decision, not a cleanup.
       throw new ApiError(
-        `API configuration error: the same-origin BFF route handler (app/api/[...path]/route.ts) returned HTML instead of JSON for ${url.split('?')[0]}. Check the NEXT_PUBLIC_API_URL environment variable that route resolves its upstream from.`,
+        `API configuration error: the same-origin BFF route handler (app/api/[...path]/route.ts) returned HTML instead of JSON for ${urlPath}. Check the NEXT_PUBLIC_API_URL environment variable that route resolves its upstream from.`,
         'config',
         response.status
       );
@@ -696,6 +713,10 @@ export async function apiFetch<T = unknown>(
     // whoever revisits the fetch boundary. If an event is ever wanted here it must be
     // FILTERED (status >= 500), never blanket. Changing this to logger.error is a
     // decision, not a cleanup.
+    // RE-RULED Phase 88.9-38 (owner ruling F1 / O-05, F1-4b = a, chat 2026-11-07 6:35 PM
+    // Pacific): this breadcrumb stays logger.info, chosen OVER logger.warn (b) — every failed
+    // call passes through this catch; the HTML branch above (F1-4a) is the one api.ts site
+    // promoted.
     //
     // AND: plan 13's shared errCtx(err) helper is DECLINED at THIS ONE SITE, deliberately.
     // errCtx returns the caught error name AND MESSAGE, and for the ApiError this module
