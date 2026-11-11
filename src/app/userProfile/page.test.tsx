@@ -66,6 +66,8 @@ const h = vi.hoisted(() => ({
   selfError: null as null | Error,
   // Plan 88.6.1-61: ONE stable refetch for the identity query, so a case can supply the row on Retry.
   refetchSelf: vi.fn(),
+  // Plan 88.9-56 (R-C2): the identity query's isFetching, so a case can model a tab-return refetch.
+  selfFetching: false,
   /**
    * Availability rows the mocked `useQuery` returns. Held here (not baked into
    * the mock) so the two-tap delete pins can render real rows without a
@@ -122,7 +124,7 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({
     self: h.self,
     selfUuid: h.self?.id as string | undefined,
-    query: { isError: Boolean(h.selfError), error: h.selfError, isPending: !h.self && !h.selfError, refetch: h.refetchSelf },
+    query: { isError: Boolean(h.selfError), error: h.selfError, isPending: !h.self && !h.selfError, isFetching: h.selfFetching, refetch: h.refetchSelf },
     isPending: !h.self && !h.selfError,
     // Plan 88.6.1-79 (D-r3-10): the identity query's cache key, the same shape the real hook builds.
     queryKey: ['users', 'self', h.authUser?.sub],
@@ -335,6 +337,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.self = undefined;
   h.selfError = null;
+  h.selfFetching = false;
   h.refetchSelf.mockReset();
   h.patterns = [];
   h.patternsError = null;
@@ -6056,5 +6059,65 @@ describe('userProfile sign-in guard (88.9-40: SESSION-01)', () => {
     expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
     expect(replace).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
+  });
+
+  // R-C2 (88.9-56, owner ruling 2026-11-10 + 'profile'; closes plan 88.9-40 Deviations 8): a LIVE
+  // cookie whose identity read still 401s, with no row held and the latch set, gets ONE page-level
+  // banner with Sign in. The banner reads a latched state of its own, so a tab-return refetch (which
+  // drops the raw identity error for the fetch's duration) never swaps it for the body.
+  it('R-C2 (88.9): a live-cookie return whose identity read 401s with no row and the latch set shows ONE latched page-level banner with Sign in — no redirect, no Retry notices; a tab-return refetch keeps it and focus lands on it once', async () => {
+    const replace = stubLocation();
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.selfError = new ApiError('Unauthorized', 'unauthorized', 401);
+    const { rerender } = render(<Profile />);
+
+    const title = await screen.findByText("Couldn't load your profile");
+    expect(screen.getAllByText("Couldn't load your profile")).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      '/api/auth/login?returnTo=%2FuserProfile'
+    );
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Try again/ })).toBeNull();
+    expect(screen.queryByText('Loading your profile...')).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    expect(document.body.textContent).not.toBe('');
+    // First commit, focus on body: the banner wrapper takes focus once.
+    const wrapper = title.closest('div.max-w-4xl') as HTMLElement | null;
+    expect(wrapper).not.toBeNull();
+    expect(wrapper).toHaveAttribute('tabindex', '-1');
+    await waitFor(() => expect(document.activeElement).toBe(wrapper));
+    const refocus = vi.spyOn(wrapper as HTMLElement, 'focus');
+
+    // A tab return: the identity refetch runs (error flag down, fetching, no row), held in flight.
+    let release!: (value: unknown) => void;
+    h.refetchSelf.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    h.selfError = null;
+    h.selfFetching = true;
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    rerender(<Profile />);
+    expect(screen.getAllByText("Couldn't load your profile")).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(document.activeElement).toBe(wrapper);
+    expect(refocus).not.toHaveBeenCalled();
+
+    // The refetch answers the same 401: still the one banner, focus untouched, no redirect.
+    h.selfError = new ApiError('Unauthorized', 'unauthorized', 401);
+    h.selfFetching = false;
+    await act(async () => {
+      release({ isError: true });
+    });
+    rerender(<Profile />);
+    expect(screen.getAllByText("Couldn't load your profile")).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(document.activeElement).toBe(wrapper);
+    expect(refocus).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
   });
 });
