@@ -415,10 +415,10 @@ const EVENT_NOT_FOUND_TITLE = 'Event not found';
 const EVENT_NOT_FOUND_DETAIL = 'This event no longer exists or has been cancelled.';
 const PAGE_LOADING_LABEL = 'Loading game night...';
 // Copy rows E1, E2 and E3 (88.6.1-COPY-TABLE.html, ratified 2026-10-04, D-30), shipped with the
-// straight apostrophe (D-32 R8).
+// straight apostrophe (D-32 R8). AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): E3 now composes Couldn't load this event through thing, chosen OVER the ratified We couldn't load this event (D-30, 2026-10-04).
 const EVENT_NO_ACCESS_TITLE = "You don't have access to this event";
 const EVENT_NO_ACCESS_DETAIL = "You may be signed in with a different account, or you haven't been invited yet.";
-const EVENT_LOAD_FAILED_TITLE = "We couldn't load this event";
+const EVENT_LOAD_FAILED_THING = 'this event';
 
 // 88.9-40 (SESSION-01): the per-event sign-in latch and the sign-in URL builder that lived here
 // (88.6.1-25 D-01) moved into the shared guard, src/lib/hooks/useSignInRedirect.ts, and into
@@ -3478,7 +3478,7 @@ export default function GameDetailPage() {
                 <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
                     <FetchErrorBanner
                         state={eventErrorState}
-                        title={EVENT_LOAD_FAILED_TITLE}
+                        thing={EVENT_LOAD_FAILED_THING}
                         // A quoted literal on purpose: loggerCtxShape.test.ts (test 5) gates every reportContext.
                         reportContext="Game detail page — event fetch"
                     />
@@ -3518,7 +3518,7 @@ export default function GameDetailPage() {
                 <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
                     <FetchErrorBanner
                         state={gameErrorState}
-                        title="We couldn't load this game"
+                        thing="this game"
                         reportContext="Game detail page — game/session fetch"
                     />
                 </div>

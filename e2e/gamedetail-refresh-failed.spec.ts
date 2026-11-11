@@ -188,7 +188,7 @@ test('event page: a failed background refresh keeps the event and shows the noti
 
   // Part B — the refresh failure.
   // DIAGNOSTIC ONLY (wave 7 CI gate, run 39020174955): this arm withdrew the event to the full
-  // "We couldn't load this event" banner in both attempts, which the page does only on a different
+  // "Couldn't load this event" banner in both attempts, which the page does only on a different
   // entity key, an access answer, or a fresh mount, and the same sequence keeps the event under RF1
   // in jsdom. The trail below (request order and answers, main-frame navigations, page errors, and
   // the loader / h1 timeline after the release) is printed ONLY when the RF1 wait fails, so the
@@ -262,7 +262,7 @@ test('event page: a failed background refresh keeps the event and shows the noti
     throw error;
   }
 
-  await expect(page.getByText("We couldn't load this event")).toHaveCount(0);
+  await expect(page.getByText("Couldn't load this event")).toHaveCount(0);
   await expect(heading).toBeVisible();
   // Wave 9 gate: the notice is above the KEPT content — the RSVP group is still on the page.
   await expect(rsvpGroup).toBeVisible();
@@ -345,7 +345,7 @@ test('game page: a failed background refresh keeps the game and shows the notice
   const card = line.locator('xpath=../following-sibling::div[1]');
   await expect(card.getByRole('heading', { level: 1, name: E2E_GAME_NAME })).toBeVisible();
 
-  await expect(page.getByText("We couldn't load this game")).toHaveCount(0);
+  await expect(page.getByText("Couldn't load this game")).toHaveCount(0);
   await expect(heading).toBeVisible();
   await expectRf1Layout(page, card, reference, testInfo, 'game');
 

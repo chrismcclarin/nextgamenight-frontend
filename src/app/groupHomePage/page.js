@@ -45,8 +45,9 @@ const LOAD_FAILED = Object.freeze({ isError: true });
 // Copy rows G7 / G8, ratified by the owner on 2026-10-05 (revision lap 3, recorded as D-47): one
 // constant per string, so a copy scan finds each byte for byte. CALENDAR_TITLE is the calendar's
 // existing title, hoisted so the calendar and the events failure arm's heading cannot drift apart.
-const GROUP_LOAD_FAILED_TITLE = "Couldn't load this group";
-const GROUP_EVENTS_LOAD_FAILED_TITLE = "Couldn't load this group's events";
+// AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): each constant holds the thing and FetchErrorBanner composes the title, chosen OVER one whole-title constant per string; the copy rows pin the noun plus the thing attribute.
+const GROUP_LOAD_FAILED_THING = 'this group';
+const GROUP_EVENTS_LOAD_FAILED_THING = "this group's events";
 const CALENDAR_TITLE = "Calendar";
 // Copy row P78c (close ruling P-78, owner 2026-10-17): the members notice's spoken section name — the member list has no heading of its own.
 const MEMBERS_SECTION_NAME = 'Members';
@@ -266,8 +267,8 @@ function GroupHomePage(){
 
     /* DECISION Phase 88.6.1-71 (Req 9, members load failure — owner ruling 2026-10-05): CHOSEN — a
        members request that fails for any reason but removal, or answers with something that is not
-       a list, is TRACKED; on the first load the gate shows the full banner titled
-       GROUP_LOAD_FAILED_TITLE with Try again, checked BEFORE the group loading line; on a refresh
+       a list, is TRACKED; on the first load the gate shows the full banner titled from
+       GROUP_LOAD_FAILED_THING with Try again, checked BEFORE the group loading line; on a refresh
        the member list is kept (the refresh notice says so).
        REJECTED (a) — emptying the member list and moving on (what shipped): the first load sat on
        the group loading line forever because nothing ever opened the gate, and a failed refresh
@@ -386,7 +387,7 @@ function GroupHomePage(){
 
     /* DECISION Phase 88.6.1-71 (Req 9, events load failure — owner ruling 2026-10-05): CHOSEN — a
        failed events request is TRACKED; on this group's first load the calendar's place shows its
-       section heading and the full banner titled GROUP_EVENTS_LOAD_FAILED_TITLE, checked BEFORE
+       section heading and the full banner titled from GROUP_EVENTS_LOAD_FAILED_THING, checked BEFORE
        the calendar because a failed request also has zero events — the same heading-plus-banner
        shape as the games section below; on a refresh the events already shown are kept
        (`eventsRetained`, from plan 88.6.1-70's `useRetainedContent` over `eventsLoadedFor`) — an
@@ -794,7 +795,7 @@ function GroupHomePage(){
             <>
                 <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
                     <div className="w-full max-w-xl">
-                        <FetchErrorBanner state={pageGateState} title={GROUP_LOAD_FAILED_TITLE} reportContext="Group home page — group and members fetch" />
+                        <FetchErrorBanner state={pageGateState} thing={GROUP_LOAD_FAILED_THING} reportContext="Group home page — group and members fetch" />
                     </div>
                 </div>
                 {membersFocusGuard}
@@ -1870,7 +1871,7 @@ function GroupHomePage(){
                         </Heading>
                         <FetchErrorBanner
                             state={eventsErrorState}
-                            title={GROUP_EVENTS_LOAD_FAILED_TITLE}
+                            thing={GROUP_EVENTS_LOAD_FAILED_THING}
                             reportContext="Group home page — events fetch"
                             focusTarget={calendarHeadingRef}
                         />

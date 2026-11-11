@@ -58,7 +58,7 @@ test.describe('Phase 88.6.1-25 — a signed-out event link at phone width (phone
     // Back to the event in the SAME tab without signing in: the latch is still set, so the 401 now
     // renders the banner and makes no second sign-in request (AC-2; MC-6 measured).
     await page.goto(EVENT_PATH);
-    await expect(page.getByText("We couldn't load this event")).toBeVisible();
+    await expect(page.getByText("Couldn't load this event")).toBeVisible();
     expect(loginRequests, 'no second sign-in request after the round trip').toHaveLength(1);
   });
 
@@ -148,7 +148,7 @@ test.describe('Phase 88.6.1-25 — a signed-out event link at phone width (phone
       route.fulfill({ status: 500, json: { code: 'internal', message: 'Internal error' } })
     );
     await page.goto(INTERCEPTED_EVENT_PATH);
-    await expect(page.getByText("We couldn't load this event")).toBeVisible();
+    await expect(page.getByText("Couldn't load this event")).toBeVisible();
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });

@@ -159,7 +159,7 @@ test.describe('Profile identity refresh (88.6.1-79)', () => {
     const rf1Line = page.getByText(RF1, { exact: true }).and(page.locator('span'));
     await expect(rf1Line.first()).toBeVisible({ timeout: 15_000 });
     await expect(h1).toBeVisible();
-    await expect(headerCard.getByText('Something went wrong', { exact: true })).toHaveCount(0);
+    await expect(headerCard.getByText("Couldn't load your profile", { exact: true })).toHaveCount(0);
 
     const retry = headerCard.getByRole('button', { name: 'Retry', exact: true });
     await expectFitsPhone(page, retry);
@@ -209,7 +209,7 @@ test.describe('Profile identity refresh (88.6.1-79)', () => {
     const signIn = page.getByRole('link', { name: 'Sign in', exact: true }).first();
     await expect(signIn).toBeVisible({ timeout: 15_000 });
     await expect(signIn).toHaveAttribute('href', /^\/api\/auth\/login\?returnTo=%2FuserProfile/);
-    await expect(page.getByText("We couldn't load your profile")).toBeVisible();
+    await expect(page.getByText("Couldn't load your profile")).toBeVisible();
     await expect(page.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0);
     await expect(page.getByText(RF1, { exact: true })).toHaveCount(0);
     await expect(page.getByText('Loading your profile...')).toBeHidden();

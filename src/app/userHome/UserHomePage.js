@@ -930,7 +930,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 ) : upcomingErrorState.showError && !upcomingRetained ? (
                     <FetchErrorBanner
                         state={upcomingErrorState}
-                        title="We couldn't load your calendar"
+                        thing="your calendar"
                         reportContext="Calendar sheet (home page, phone)"
                     />
                 ) : (

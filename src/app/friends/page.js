@@ -43,8 +43,8 @@ import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '../../lib/logger';
 
 // Copy row FR1 (owner ruling 2026-10-05, D-47; D-32 R8 straight apostrophe): the Requests tab's
-// full-banner title when the provider's load failed and nothing is retained.
-const FRIEND_REQUESTS_LOAD_FAILED_TITLE = "Couldn't load your friend requests";
+// full-banner title when the provider's load failed and nothing is retained. AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): the constant holds the thing; the composed title is unchanged, chosen OVER typing the whole title.
+const FRIEND_REQUESTS_LOAD_FAILED_THING = 'your friend requests';
 
 // Copy row F7 (owner ruling 2026-10-05, D-47): the found result, heard and not seen; `name` is
 // what the result row shows.
@@ -950,7 +950,7 @@ function FriendsPage() {
                     <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
                     <FetchErrorBanner
                         state={selfIdentityErrorState}
-                        title="Couldn't load your friends"
+                        thing="your friends"
                         reportContext="friends page — self-identity resolution"
                     />
                 </div>
@@ -983,7 +983,7 @@ function FriendsPage() {
                     <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
                     <FetchErrorBanner
                         state={friendsErrorState.showError ? friendsErrorState : sentErrorState}
-                        title="Couldn't load your friends"
+                        thing="your friends"
                         reportContext="friends page — page data failed while identity was still resolving"
                     />
                 </div>
@@ -1320,7 +1320,7 @@ function FriendsPage() {
                         {!friendsRetained && friendsErrorState.showError ? (
                             <FetchErrorBanner
                                 state={friendsErrorState}
-                                title="Couldn't load your friends"
+                                thing="your friends"
                                 reportContext="friends page — friends list fetch"
                                 focusTarget={friendsTabRef}
                             />
@@ -1624,7 +1624,7 @@ function FriendsPage() {
                         ) : requestsFullBannerShown ? (
                             <FetchErrorBanner
                                 state={requestsErrorState}
-                                title={FRIEND_REQUESTS_LOAD_FAILED_TITLE}
+                                thing={FRIEND_REQUESTS_LOAD_FAILED_THING}
                                 reportContext="friends page — friend requests fetch"
                                 focusTarget={requestsTabRef}
                             />
@@ -1738,7 +1738,7 @@ function FriendsPage() {
                         {!sentRetained && sentErrorState.showError ? (
                             <FetchErrorBanner
                                 state={sentErrorState}
-                                title="Couldn't load your sent requests"
+                                thing="your sent requests"
                                 reportContext="friends page — sent requests fetch"
                                 focusTarget={sentTabRef}
                             />

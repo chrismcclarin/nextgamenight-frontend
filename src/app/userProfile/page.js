@@ -141,8 +141,8 @@ const DEFAULT_PREFERENCES = {
 };
 // Copy row P1 (88.6.1 D-30, ratified 2026-10-04; AMENDED Phase 88.9-46 rule 1 B32: the word is heard as the busy suffix, the label stays Verify): the pressed Verify's busy-name suffix.
 const VERIFY_CODE_BUSY_SUFFIX = ', verifying';
-// Copy row P8 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; straight apostrophe): the collection's failed-first-load title.
-const COLLECTION_LOAD_FAILED_TITLE = "Couldn't load your collection";
+// Copy row P8 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; straight apostrophe): the collection's failed-first-load title; AMENDED Phase 88.9-49 (BANNER-01): now the thing, the title composes.
+const COLLECTION_LOAD_FAILED_THING = 'your collection';
 // Copy row P7 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; AMENDED Phase 88.9-46 rule 1 B36: the word is heard as the busy suffix, lower-cased with no trailing dots, the label stays Add to Collection): the pressed Add to Collection's busy-name suffix.
 const ADDING_TO_COLLECTION_BUSY_SUFFIX = ', adding';
 // E4a (88.9-32, owner pick 2026-11-06): the ONE pressed arm both theme toggles read. A full literal so
@@ -2312,7 +2312,7 @@ function Profile(){
     if (!user) {
         return (
             <div className="p-3 md:p-6 max-w-4xl mx-auto">
-                <FetchErrorBanner state={signIn.signedOutErrorState} title="We couldn't load your profile" reportContext="Profile page — signed out" />
+                <FetchErrorBanner state={signIn.signedOutErrorState} thing="your profile" reportContext="Profile page — signed out" />
             </div>
         );
     }
@@ -2478,7 +2478,8 @@ function Profile(){
                                     no `name` still renders the page's one h1 (Heading drops empty children). */}
                                 {user?.name || user?.email?.split('@')[0] || 'User'}
                             </Heading>
-                            <FetchErrorBanner state={selfIdentityErrorState} />
+                            {/* DECISION Phase 88.9-49 (BANNER-01, F26): the identity-withdrawn banner names what failed (Couldn't load your profile), chosen OVER the component default Something went wrong (the one full mount that typed no title); the sibling session ErrorFallback keeps its own We couldn't load your profile (not a banner). */}
+                            <FetchErrorBanner state={selfIdentityErrorState} thing="your profile" />
                         </div>
                     ) : profileLoaded ? (
                         <div className="flex items-center gap-3 md:gap-4">
@@ -3825,7 +3826,7 @@ function Profile(){
                             ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
                                     state={patternsError}
-                                    title="Couldn't load your schedules"
+                                    thing="your schedules"
                                     reportSubject="Couldn't load availability patterns on /userProfile"
                                     reportContext="userProfile — availability schedules tab"
                                     focusTarget={schedulesHeadingRef}
@@ -3984,7 +3985,7 @@ function Profile(){
                             ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
                                     state={patternsError}
-                                    title="Couldn't load your overrides"
+                                    thing="your overrides"
                                     reportSubject="Couldn't load availability patterns on /userProfile"
                                     reportContext="userProfile — specific overrides tab"
                                     focusTarget={overridesHeadingRef}
@@ -4395,7 +4396,7 @@ function Profile(){
                            guard acts on an unpressed withdrawal, not on a Remove.
                            Changing this order is a decision, not a cleanup. */
                         ownedGamesError ? (
-                            <FetchErrorBanner state={collectionErrorState} title={COLLECTION_LOAD_FAILED_TITLE} reportContext="userProfile — game collection fetch" focusTarget={collectionHeadingRef} />
+                            <FetchErrorBanner state={collectionErrorState} thing={COLLECTION_LOAD_FAILED_THING} reportContext="userProfile — game collection fetch" focusTarget={collectionHeadingRef} />
                         ) : (
                             <p className="text-content-secondary">Loading your collection...</p>
                         )
