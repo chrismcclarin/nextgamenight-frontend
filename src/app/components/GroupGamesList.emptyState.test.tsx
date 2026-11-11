@@ -124,7 +124,7 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     );
 
     expect(
-      screen.getByText("We couldn't load this group's games")
+      screen.getByText("Couldn't load this group's games")
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'No game nights logged yet' })
@@ -159,7 +159,7 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     );
 
     expect(
-      screen.getByText("We couldn't load this group's games")
+      screen.getByText("Couldn't load this group's games")
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
   });
@@ -182,7 +182,7 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     expect(
       screen.getByRole('heading', { name: 'No game nights logged yet' })
     ).toBeInTheDocument();
-    expect(screen.queryByText("We couldn't load this group's games")).toBeNull();
+    expect(screen.queryByText("Couldn't load this group's games")).toBeNull();
   });
 
   it('does not render the empty state when the group has played games', () => {
@@ -234,7 +234,7 @@ const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // section heading's text, then RF1. Since plan 88.6.1-88 the region holds this and the visible line
 // holds RF1 alone, so RF1 by exact text is found ONCE.
 const GAMES_SPOKEN = "Play history: Couldn't refresh. Showing what loaded earlier.";
-const BANNER_TITLE = "We couldn't load this group's games";
+const BANNER_TITLE = "Couldn't load this group's games";
 const WINGSPAN = { id: 'game-1', name: 'Wingspan', play_count: 2 };
 
 const rf1Region = () =>

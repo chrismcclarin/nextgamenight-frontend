@@ -152,7 +152,7 @@ describe('UpcomingEventsCard — branch precedence (DECISION Phase 88-18)', () =
     // failed to load. Ordering is load-bearing, not stylistic.
     renderCard({ events: [], errorState });
 
-    expect(screen.getByText("We couldn't load your upcoming events")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load your upcoming events")).toBeInTheDocument();
     expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
     expect(screen.queryByText(/Nothing scheduled in the next 7 days/)).not.toBeInTheDocument();
   });
@@ -162,7 +162,7 @@ describe('UpcomingEventsCard — branch precedence (DECISION Phase 88-18)', () =
 
     const status = screen.getByRole('status', { name: /loading your upcoming events/i });
     expect(within(status).getByText(/Loading your upcoming events/)).toBeInTheDocument();
-    expect(screen.queryByText("We couldn't load your upcoming events")).not.toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your upcoming events")).not.toBeInTheDocument();
     expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
   });
 });
@@ -205,7 +205,7 @@ describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
   // so its polite region and the Retry's description say "Upcoming game nights: " first and the visible line
   // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
   const SPOKEN = "Upcoming game nights: Couldn't refresh. Showing what loaded earlier.";
-  const LOAD_TITLE = "We couldn't load your upcoming events";
+  const LOAD_TITLE = "Couldn't load your upcoming events";
   const failed = {
     showError: true,
     message: 'Something went wrong on our end. Please try again.',

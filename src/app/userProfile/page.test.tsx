@@ -5747,7 +5747,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
     const heading = screen.getByRole('heading', { level: 1, name: 'RealName' });
     expect(visibleRf1(headerCard()).compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(headerCard()).queryByText('Something went wrong')).toBeNull();
+    expect(within(headerCard()).queryByText("Couldn't load your profile")).toBeNull();
   });
 
   it('K2: the RF1 region is one of the header card status nodes present before the failure', async () => {
@@ -5796,6 +5796,8 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     await commit(view.rerender);
 
     const line = (await within(headerCard()).findAllByText(getFetchErrorMessage(err)))[0];
+    // BANNER-01 (88.9-49, F26): the withdrawn header banner names what failed.
+    expect(within(headerCard()).getByText("Couldn't load your profile")).toBeInTheDocument();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
     const headings = screen.getAllByRole('heading', { level: 1 });
     expect(headings).toHaveLength(1);
@@ -6039,7 +6041,7 @@ describe('userProfile sign-in guard (88.9-40: SESSION-01)', () => {
 
     // Back in the same tab without signing in: the profile banner with Sign in, no redirect.
     render(<Profile />);
-    expect(await screen.findByText("We couldn't load your profile")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load your profile")).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
       'href',
       '/api/auth/login?returnTo=%2FuserProfile'

@@ -343,7 +343,7 @@ const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // so its polite region and the Retry's description say "Open polls: " first and the visible line
 // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
 const SPOKEN = "Open polls: Couldn't refresh. Showing what loaded earlier.";
-const FULL_TITLE = "We couldn't load the check-ins";
+const FULL_TITLE = "Couldn't load the check-ins";
 
 describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 notice (88.6.1-75, AC-29 / D-47)', () => {
   const key = promptKeys.openPolls('g1');

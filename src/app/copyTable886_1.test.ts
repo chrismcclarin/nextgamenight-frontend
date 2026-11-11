@@ -77,7 +77,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   // Event page
   { id: 'E1', text: "You don't have access to this event", site: 'app/gameDetail/page.js', kind: 'chunk' },
   { id: 'E2', text: "You may be signed in with a different account, or you haven't been invited yet.", site: 'app/gameDetail/page.js', kind: 'chunk' },
-  { id: 'E3', text: "We couldn't load this event", site: 'app/gameDetail/page.js', kind: 'chunk' },
+  // BANNER-01 (88.9-49, owner ruling short 2026-11-07): rows E3, FR1, N7, G7, G8 and P8 are concats — the title composes Couldn't load {thing} in FetchErrorBanner.tsx; E3 moved from We couldn't load this event
+  { id: 'E3', text: "Couldn't load this event", site: 'app/gameDetail/page.js', kind: 'concat', parts: ['this event'], code: ['thing={EVENT_LOAD_FAILED_THING}'] },
   { id: 'E4', text: 'Loading game night...', site: 'app/gameDetail/page.js', kind: 'chunk' },
   { id: 'E4b', text: 'Loading game night...', site: 'app/components/createEvent.js', kind: 'chunk' },
   { id: 'E5', text: 'To Date must be on or after From Date.', site: 'app/gameDetail/page.js', kind: 'chunk' },
@@ -115,20 +116,20 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'R4', text: 'Press and hold, then drag to schedule across the peak', site: 'app/components/tutorial/simulated/ScheduleDemo.js', kind: 'chunk' },
   { id: 'R5', text: 'Game detail page — event fetch', site: 'app/gameDetail/page.js', kind: 'chunk' },
   // D-47 (ratified 2026-10-05)
-  { id: 'FR1', text: "Couldn't load your friend requests", site: 'app/friends/page.js', kind: 'chunk' },
-  { id: 'N7', text: "Couldn't load your notifications", site: 'app/components/NotificationBell.js', kind: 'chunk' },
+  { id: 'FR1', text: "Couldn't load your friend requests", site: 'app/friends/page.js', kind: 'concat', parts: ['your friend requests'], code: ['thing={FRIEND_REQUESTS_LOAD_FAILED_THING}'] },
+  { id: 'N7', text: "Couldn't load your notifications", site: 'app/components/NotificationBell.js', kind: 'concat', parts: ['your notifications'], code: ['thing={NOTIFICATIONS_LOAD_FAILED_THING}'] },
   { id: 'N8a', text: 'Accept invite to {group}', site: 'app/components/NotificationBell.js', kind: 'fragments', fragments: ['Accept invite to ', ''] },
   { id: 'N8b', text: 'Decline invite to {group}', site: 'app/components/NotificationBell.js', kind: 'fragments', fragments: ['Decline invite to ', ''] },
   { id: 'N8c', text: 'Accept friend request from {name}', site: 'app/components/NotificationBell.js', kind: 'fragments', fragments: ['Accept friend request from ', ''] },
   { id: 'N8d', text: 'Decline friend request from {name}', site: 'app/components/NotificationBell.js', kind: 'fragments', fragments: ['Decline friend request from ', ''] },
   { id: 'R9', text: "We couldn't confirm your RSVP. Sign in and open the event to check your answer.", site: 'app/rsvp/[token]/page.js', kind: 'chunk' },
-  { id: 'G7', text: "Couldn't load this group", site: 'app/groupHomePage/page.js', kind: 'chunk' },
-  { id: 'G8', text: "Couldn't load this group's events", site: 'app/groupHomePage/page.js', kind: 'chunk' },
+  { id: 'G7', text: "Couldn't load this group", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ['this group'], code: ['thing={GROUP_LOAD_FAILED_THING}'] },
+  { id: 'G8', text: "Couldn't load this group's events", site: 'app/groupHomePage/page.js', kind: 'concat', parts: ["this group's events"], code: ['thing={GROUP_EVENTS_LOAD_FAILED_THING}'] },
   { id: 'S1a', text: 'Sort order: ascending', site: 'app/components/GroupGamesList.js', kind: 'chunk' },
   { id: 'S1b', text: 'Sort order: descending', site: 'app/components/GroupGamesList.js', kind: 'chunk' },
   // C7 (88.9-24, save-feedback rule 1 + owner ruling Q6(b)): the in-flight word swap is retired; C7c is the Button default; createEvent keeps C7's ratified words as its suffix (", creating" / ", updating") and createGroup its own (", creating"), owner ruling Q6(b) "with its own verb".
   { id: 'C7c', text: ', saving', site: 'components/ui/Button.tsx', kind: 'chunk' },
-  { id: 'P8', text: "Couldn't load your collection", site: 'app/userProfile/page.js', kind: 'chunk' },
+  { id: 'P8', text: "Couldn't load your collection", site: 'app/userProfile/page.js', kind: 'concat', parts: ['your collection'], code: ['thing={COLLECTION_LOAD_FAILED_THING}'] },
   // DECISION Phase 88.9-48 (BANNER-01): E15 is pinned as a concat (the thing at BallotSection) beside row BN1 (the composed form where the banner defines it), and P-82 keys on the naming attribute, chosen OVER keeping E15 a whole-sentence chunk at the site, which no longer types the sentence. Re-inlining a title at a mount is a decision, not a cleanup.
   { id: 'E15', text: "Couldn't load the game vote", site: 'app/components/BallotSection.js', kind: 'concat', parts: ['the game vote'], code: ['thing={BALLOT_LOAD_FAILED_THING}'] },
   { id: 'B1', text: 'Some personal controls are still unavailable.', site: 'components/ui/FetchErrorBanner.tsx', kind: 'chunk' },
@@ -448,11 +449,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
 // attr is the whole attribute that names the banner: a hoisted title today, or (BANNER-01,
 // 88.9-48) the thing the banner composes its title from.
 const REPORT_CONTEXTS = [
-  { id: 'P82a', site: 'app/friends/page.js', attr: 'title={FRIEND_REQUESTS_LOAD_FAILED_TITLE}', context: 'friends page — friend requests fetch' },
-  { id: 'P82b', site: 'app/userProfile/page.js', attr: 'title={COLLECTION_LOAD_FAILED_TITLE}', context: 'userProfile — game collection fetch' },
+  { id: 'P82a', site: 'app/friends/page.js', attr: 'thing={FRIEND_REQUESTS_LOAD_FAILED_THING}', context: 'friends page — friend requests fetch' },
+  { id: 'P82b', site: 'app/userProfile/page.js', attr: 'thing={COLLECTION_LOAD_FAILED_THING}', context: 'userProfile — game collection fetch' },
   { id: 'P82c', site: 'app/components/BallotSection.js', attr: 'thing={BALLOT_LOAD_FAILED_THING}', context: 'Game detail page — game vote fetch' },
-  { id: 'P82d', site: 'app/groupHomePage/page.js', attr: 'title={GROUP_LOAD_FAILED_TITLE}', context: 'Group home page — group and members fetch' },
-  { id: 'P82e', site: 'app/groupHomePage/page.js', attr: 'title={GROUP_EVENTS_LOAD_FAILED_TITLE}', context: 'Group home page — events fetch' },
+  { id: 'P82d', site: 'app/groupHomePage/page.js', attr: 'thing={GROUP_LOAD_FAILED_THING}', context: 'Group home page — group and members fetch' },
+  { id: 'P82e', site: 'app/groupHomePage/page.js', attr: 'thing={GROUP_EVENTS_LOAD_FAILED_THING}', context: 'Group home page — events fetch' },
 ];
 
 // Every FetchErrorBanner opening tag in the comment-stripped source whose text holds the attribute.
@@ -489,6 +490,85 @@ describe('P-82: each ratified Where-line rides on the banner it names (close rul
     const altered = src.replace(`reportContext="${rc.context}"`, `reportContext="${rc.context.replace('events', 'event')}"`);
     expect(altered).not.toBe(src);
     expect(contextPlaced(altered, rc.attr, rc.context)).toBe(false);
+  });
+});
+
+// BANNER-01 (88.9-49, owner ruling short, register 51.13): a full (non-compact) FetchErrorBanner
+// names its object through thing and never types a title, so every mount reads Couldn't load {thing}
+// (the composed form row BN1 pins at the definition). thing is a quoted literal, or an UPPER_SNAKE
+// constant bound in the same file to one; the value is a lower-case noun phrase with no trailing
+// full stop, so no group name, error text or whole sentence can become a title (T-88.9-180).
+// FetchErrorBanner.tsx itself is skipped by name: RefreshFailedNotice's blocked-access fallback has
+// no section noun, and plan 88.9-26 kept the component default there.
+const BANNER_DEFINITION = 'components/ui/FetchErrorBanner.tsx';
+const BANNER_START = /<FetchErrorBanner(?=[\s/>])/g;
+const COMPACT_TOKEN = /\scompact(?=[\s/>])/;
+const THING_VALUE = /^[a-z](?:[^"]*[^".\s])?$/;
+
+// Why one opening tag breaks the BANNER-01 rule, or null when it keeps it. code is the
+// comment-stripped file the tag sits in (a constant's declaration is read from it).
+function thingViolation(code: string, tag: string): string | null {
+  if (/\stitle=/.test(tag)) return 'types a title';
+  const m = tag.match(/\sthing=(?:"([^"]*)"|\{([^}]*)\})/);
+  if (!m) return 'has no thing';
+  let value: string;
+  if (m[1] !== undefined) {
+    value = m[1];
+  } else {
+    const name = m[2].trim();
+    if (!/^[A-Z][A-Z0-9_]*$/.test(name)) return `thing={${name}} is not an UPPER_SNAKE constant`;
+    const decls = code.match(new RegExp(`^[ \\t]*(?:export\\s+)?(?:const|let|var)\\s+${name}\\b`, 'gm')) ?? [];
+    const literal = [...code.matchAll(new RegExp(`^(?:export )?const ${name} = (?:"([^"]*)"|'([^']*)');`, 'gm'))];
+    if (decls.length !== 1 || literal.length !== 1) return `${name} is not one module constant bound to a literal`;
+    value = literal[0][1] ?? literal[0][2];
+  }
+  if (!THING_VALUE.test(value)) return `thing "${value}" is not a lower-case noun phrase`;
+  return null;
+}
+
+// Every full banner tag in one file: how many were read, and the ones that break the rule.
+function bannerCensus(rel: string, src: string): { read: number; violations: string[] } {
+  const code = withoutComments(src);
+  let tags = 0;
+  const violations: string[] = [];
+  for (const m of code.matchAll(BANNER_START)) {
+    const tag = readOpeningTag(code, m.index ?? 0);
+    if (tag === null) {
+      violations.push(`${rel}: an unreadable FetchErrorBanner tag`);
+      continue;
+    }
+    if (COMPACT_TOKEN.test(tag)) continue;
+    tags += 1;
+    const why = thingViolation(code, tag);
+    if (why !== null) violations.push(`${rel}: ${collapse(tag).slice(0, 80)} (${why})`);
+  }
+  return { read: tags, violations };
+}
+
+describe('BANNER-01 (88.9): load-failure titles compose from thing (register 51.13)', () => {
+  it('BANNER-01 (88.9): every full FetchErrorBanner mount titles itself from thing — no hand-typed title, thing a literal or a module constant', () => {
+    let tagsRead = 0;
+    const violations: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const rel = path.relative(SRC, file).split(path.sep).join('/');
+      if (rel === BANNER_DEFINITION) continue;
+      const census = bannerCensus(rel, read(file));
+      tagsRead += census.read;
+      violations.push(...census.violations);
+    }
+    expect(violations, `${tagsRead} full FetchErrorBanner tags read`).toEqual([]);
+    expect(tagsRead).toBeGreaterThanOrEqual(29);
+
+    // Anti-vacuity: the same check reports each shape the rule exists to stop.
+    const grouplist = readSrc('app/components/grouplist.js');
+    const typedTitle = grouplist.replace('thing="your groups"', 'title="We couldn\'t load your groups"');
+    expect(bannerCensus('typed title', typedTitle).violations.length).toBeGreaterThanOrEqual(1);
+    const namesNothing = grouplist.replace('thing="your groups"', 'thing=""');
+    expect(bannerCensus('empty thing', namesNothing).violations.length).toBeGreaterThanOrEqual(1);
+    const dataThing = 'const X_THING = group?.name;\n<FetchErrorBanner state={s} thing={X_THING} />';
+    expect(bannerCensus('data thing', dataThing).violations).toHaveLength(1);
+    const sentenceThing = 'const X_THING = "Couldn\'t load reviews.";\n<FetchErrorBanner state={s} thing={X_THING} />';
+    expect(bannerCensus('sentence thing', sentenceThing).violations).toHaveLength(1);
   });
 });
 

@@ -180,7 +180,7 @@ describe('GroupList empty vs failed groups fetch (Req 6 / T-88-18-01)', () => {
     render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
 
     expect(
-      await screen.findByText("We couldn't load your groups")
+      await screen.findByText("Couldn't load your groups")
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'No groups yet' })).toBeNull();
     expect(screen.queryByText('No groups yet!')).toBeNull();
@@ -221,7 +221,7 @@ const BETA = crew('g-beta', 'Beta Crew');
 const GAMMA = crew('g-gamma', 'Gamma Crew');
 const ZETA = crew('g-zeta', 'Zeta Crew');
 
-const BANNER_TEXT = "We couldn't load your groups";
+const BANNER_TEXT = "Couldn't load your groups";
 
 describe('D-37 — the home list refreshes in place (Req 9)', () => {
   const getUserGroups = () => groupsAPI.getUserGroups as Mock;

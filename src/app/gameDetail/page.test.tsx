@@ -2723,7 +2723,7 @@ const ACCOUNT_DELETED = () => new ApiError('gone', 'account_deleted', 410);
 const NO_ACCESS_TITLE = "You don't have access to this event";
 const NO_ACCESS_DETAIL =
   "You may be signed in with a different account, or you haven't been invited yet.";
-const EVENT_LOAD_FAILED = "We couldn't load this event";
+const EVENT_LOAD_FAILED = "Couldn't load this event";
 const X1_SENTENCE = 'Your session may have expired. Sign in again to continue.';
 
 // The useFetchErrorState.test.tsx idiom: set the document's visibility, then dispatch.
@@ -4130,7 +4130,7 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
   });
 });
 
-const GAME_LOAD_FAILED = "We couldn't load this game";
+const GAME_LOAD_FAILED = "Couldn't load this game";
 // A second valid game id (UUID-shaped, so plan 25's guard lets it through to a request).
 const SECOND_GAME_ID = '99999999-9999-4999-8999-999999999999';
 

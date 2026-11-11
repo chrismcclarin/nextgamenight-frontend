@@ -571,7 +571,7 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
 
     const dialog = await openCalendarSheet(user);
     expect(
-      await within(dialog).findByText("We couldn't load your calendar")
+      await within(dialog).findByText("Couldn't load your calendar")
     ).toBeInTheDocument();
     // The empty state is what a flipped branch order would render here. The matcher
     // covers BOTH empty strings (T-88.1-27): plan 88.1-17 changed the sheet arm's copy to
@@ -589,7 +589,7 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
     const user = userEvent.setup();
     renderHome();
     const dialog = await openCalendarSheet(user);
-    await within(dialog).findByText("We couldn't load your calendar");
+    await within(dialog).findByText("Couldn't load your calendar");
 
     // THE LEVEL IS warn: owner ruling F1 / O-05 (F1-1 = b, 2026-11-07) — a Sentry warning event
     // of its own — superseding the 2026-09-13 D2 ruling that kept it an info breadcrumb. info and
@@ -633,7 +633,7 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
     // Same T-88.1-27 widening as the guard above — see its comment.
     expect(within(dialog).queryByText(/^no (upcoming )?events$/i)).toBeNull();
     // The identity branch is checked FIRST, so the events copy is not also shown.
-    expect(within(dialog).queryByText("We couldn't load your calendar")).toBeNull();
+    expect(within(dialog).queryByText("Couldn't load your calendar")).toBeNull();
   });
 });
 
@@ -1115,7 +1115,7 @@ describe('Phase 88.5 — the "Next game night" hero in the sheet', () => {
 
     const dialog = await openCalendarSheet(user);
     expect(
-      await within(dialog).findByText("We couldn't load your calendar")
+      await within(dialog).findByText("Couldn't load your calendar")
     ).toBeInTheDocument();
     expect(within(dialog).queryByText('Next game night')).toBeNull();
   });
@@ -1439,8 +1439,8 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
   // `sectionName`, so its region holds CARD_SPOKEN and RF1 by exact text is found ONCE in the card;
   // the sheet's notice (a titled dialog, alone on screen) is unnamed and still holds RF1 twice.
   const CARD_SPOKEN = "Upcoming game nights: Couldn't refresh. Showing what loaded earlier.";
-  const CARD_LOAD_TITLE = "We couldn't load your upcoming events";
-  const SHEET_LOAD_TITLE = "We couldn't load your calendar";
+  const CARD_LOAD_TITLE = "Couldn't load your upcoming events";
+  const SHEET_LOAD_TITLE = "Couldn't load your calendar";
   const PAIR = [FUTURE_EVENT, FUTURE_LATER];
   const err500 = () => new ApiError('Server error', 'internal', 500);
 

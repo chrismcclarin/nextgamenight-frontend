@@ -69,7 +69,7 @@ const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // so its polite region and the Retry's description say "Groups: " first and the visible line
 // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
 const SPOKEN = "Groups: Couldn't refresh. Showing what loaded earlier.";
-const LOAD_TITLE = "We couldn't load your groups";
+const LOAD_TITLE = "Couldn't load your groups";
 
 const ALPHA = { id: 'g-alpha', name: 'Alpha Crew', Users: [], Events: [] };
 const BETA = { id: 'g-beta', name: 'Beta Crew', Users: [], Events: [] };
