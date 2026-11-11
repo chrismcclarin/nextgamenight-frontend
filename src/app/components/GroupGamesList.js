@@ -64,9 +64,15 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                         <p>
                             Last played: {formatDate(game.last_played, timezone)}
                         </p>
+                        {/* DECISION Phase 88.9-56 (owner ruling R-C5, 2026-11-10; the DEC-2 / R-P2 ink of plan 88.9-44): the rating
+                            ink is yellow-800 in light and yellow-500 in dark — written here in prose, never as the class pair, so
+                            the miniPicks count of the class literal stays exact (6.85 light / 7.22 dark on the card, 88.9-RULINGS.md
+                            Q7 ADDENDUM), chosen OVER the shipped raw yellow (2.94 light at rest on the same ground, plan 44's
+                            measurement) and OVER waiting for a consistency phase (Phase 91 is a backend phase). The rating here is a
+                            number, read as it is, so it takes no label. Changing the pair is a decision, not a cleanup. */}
                         {game.avg_rating && (
                             <p>
-                                Rating: <span className="text-yellow-600">{formatRating(game.avg_rating)}</span>
+                                Rating: <span className="text-yellow-800 dark:text-yellow-500">{formatRating(game.avg_rating)}</span>
                                 {game.review_count > 0 && (
                                     <span className="text-content-muted"> ({game.review_count} {game.review_count === 1 ? 'review' : 'reviews'})</span>
                                 )}

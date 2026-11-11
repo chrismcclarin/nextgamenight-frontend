@@ -666,11 +666,17 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
      Weakening the typed gate, re-stacking a second prompt behind it, or adding a
      refusal gate re-litigates 88.2-SPEC.md § Boundaries. That is a decision, not
      a cleanup. */
+  // DECISION Phase 88.9-56 (owner ruling R-C3a, 88.9-RULINGS.md, 2026-11-10, 'hear'): every confirm dialog's pending
+  // confirm carries the house spinner and a heard verb derived from its own confirmLabel (Q6(b)), chosen OVER the
+  // default-off that left this gate silent while its write ran (ConfirmDialog's busy is pending AND a suffix; plan
+  // 88.9-45 converted only the two gates whose swap words were ratified copy rows). The visible verb never changes;
+  // the verb is heard only; the spinner leaves with the dialog on success (the close is the completion feedback).
   const deleteGate = useConfirmAction({
     tier: 'typed',
     title: `Delete ${group.name}?`,
     body: deleteDialogBody,
     confirmLabel: 'Delete',
+    busySuffix: ', deleting',
     expectedPhrase: group.name,
     onConfirm: performDeleteGroup,
   });

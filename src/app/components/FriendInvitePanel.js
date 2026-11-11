@@ -18,6 +18,7 @@ import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { logger, errCtx } from '@/lib/logger';
 import {
     isAlreadyInvitedOrMember,
+    isPermanentInviteRefusal,
     ALL_ALREADY_INVITED_MESSAGE,
     invitedWithAlreadyMessage,
     allFailedBatchLine,
@@ -276,29 +277,44 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
         // line. The friends page twin already ships the same sentence. Where the outcome is
         // shown and heard is recorded at the result regions in the bulk block.
         let firstFailure = null;
+        // R-C1 (88.9-56): the ids whose outcome is FINAL, removed from the selection after the batch.
+        const finalIds = new Set();
 
         try {
             for (const friendUserId of selectedFriends) {
                 // Skip anyone already in the group; otherwise invite by user_id.
                 // The friend's email is resolved server-side (83-06 PII default-deny).
-                if (groupMemberIds.includes(friendUserId)) continue;
+                // A friend already in at the press leaves the selection with no request (final).
+                if (groupMemberIds.includes(friendUserId)) {
+                    finalIds.add(friendUserId);
+                    continue;
+                }
                 try {
                     await invitesAPI.sendFriendInvite(group.id, friendUserId);
                     successCount++;
+                    finalIds.add(friendUserId);
                 } catch (err) {
                     // The terminal-409 rule and its contract (Wave-12 review MED #9) live in ./friendBatchInviteOutcome (88.6.1-72).
                     if (isAlreadyInvitedOrMember(err)) {
                         alreadyCount++;
+                        finalIds.add(friendUserId);
                     } else {
                         failCount++;
                         if (!firstFailure) firstFailure = err;
                         logger.info('Error sending friend invite:', errCtx(err));
+                        // A permanent refusal is final; a transient failure stays ticked for the retry.
+                        if (isPermanentInviteRefusal(err)) finalIds.add(friendUserId);
                     }
                 }
             }
 
             setInviteResult({ successCount, failCount, alreadyCount, firstFailure });
-            setSelectedFriends(new Set());
+            // DECISION Phase 88.9-56 (R-C1): final-outcome clear over clearing the whole selection and over a sent-only clear — see the B08 marker at the bulk invite button.
+            setSelectedFriends((prev) => {
+                const next = new Set(prev);
+                for (const id of finalIds) next.delete(id);
+                return next;
+            });
 
             if (successCount > 0 && onMemberAdded) {
                 onMemberAdded();
@@ -692,7 +708,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                 {/* DECISION Phase 88.9-45 (rule 1 B08): while sending, the button shows the label the user
                                     pressed, chosen OVER the live selection count — the checkboxes stay live mid-send, so a
                                     toggle would change the text under the finger while the request still covers the
-                                    pressed selection. */}
+                                    pressed selection.
+                                    AMENDED Phase 88.9-56 (owner ruling R-C1 + orchestrator merits ruling, 2026-11-10): after the batch lands only the ids
+                                    with a FINAL outcome leave the selection — sent, already a member or invited, skipped because already a member, or
+                                    permanently refused (forbidden / not_found / validation); a transient failure (network, internal, rate_limited,
+                                    unknown) stays ticked for the retry; chosen OVER the shipped whole-selection clear (it unticked a friend ticked
+                                    mid-send who was never invited) and OVER a sent-only clear (a permanently refused id left ticked re-fails on every
+                                    press) — the live checkboxes this marker keeps now mean what they show. */}
                                 <Button
                                     variant="primary"
                                     size="default"

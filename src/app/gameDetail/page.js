@@ -1986,11 +1986,17 @@ export default function GameDetailPage() {
        ("does it need explaining?") therefore puts it on a dialog. The kebab additionally
        cannot host two-tap at all (D-07: the menu unmounts the armed trigger). Retiering this
        is a one-word edit by design — but it is a decision, not a simplification. */
+    // DECISION Phase 88.9-56 (owner ruling R-C3a, 88.9-RULINGS.md, 2026-11-10, 'hear'): every confirm dialog's pending
+    // confirm carries the house spinner and a heard verb derived from its own confirmLabel (Q6(b)), chosen OVER the
+    // default-off that left this gate silent while its write ran (ConfirmDialog's busy is pending AND a suffix; plan
+    // 88.9-45 converted only the two gates whose swap words were ratified copy rows). The visible verb never changes;
+    // the verb is heard only; the spinner leaves with the dialog on success (the close is the completion feedback).
     const deleteSessionGate = useConfirmAction({
         tier: 'dialog',
         title: 'Delete this session?',
         body: 'The play record, scores and who was there are deleted for everyone.',
         confirmLabel: 'Delete',
+        busySuffix: ', deleting',
         onConfirm: (event_id) => performDeleteEvent(event_id),
     });
 
@@ -2076,12 +2082,15 @@ export default function GameDetailPage() {
     };
 
 
+    // R-C5 (88.9-56): ratings are stored on a 0-5 scale. drawnRating is the half-star value the
+    // glyphs draw (3.7 draws 3.5); the stars and their spoken label both read it, so they agree.
+    const clampRating = (rating) => Math.max(0, Math.min(5, Number(rating) || 0));
+    const drawnRating = (rating) => Math.floor(clampRating(rating) * 2) / 2;
+
     const renderStars = (rating) => {
-        // Ratings are stored on a 0-5 scale, display directly
-        const ratingValue = Number(rating) || 0;
-        const validRating = Math.max(0, Math.min(5, ratingValue));
-        const fullStars = Math.floor(validRating);
-        const hasHalfStar = validRating % 1 >= 0.5;
+        const drawn = drawnRating(rating);
+        const fullStars = Math.floor(drawn);
+        const hasHalfStar = drawn % 1 === 0.5;
         const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
         return '★'.repeat(fullStars) + (hasHalfStar ? '½' : '') + '☆'.repeat(emptyStars);
     };
@@ -4239,8 +4248,17 @@ export default function GameDetailPage() {
                                 </p>
                             </div>
                             <div className="text-right">
-                                <p className="text-yellow-500 text-xl">
-                                    {renderStars(userReview.rating)}
+                                {/* DECISION Phase 88.9-56 (owner ruling R-C5, 2026-11-10; the DEC-2 / R-P2 ink of plan 88.9-44), for this star
+                                    paragraph and the other reviews' one below: the rating ink is yellow-800 in light and yellow-500 in dark —
+                                    written here in prose, never as the class pair, so the miniPicks count of the class literal stays exact
+                                    (6.85 light / 7.22 dark on the card, 88.9-RULINGS.md Q7 ADDENDUM), chosen OVER the shipped raw yellow
+                                    (2.94 light at rest on the same ground, plan 44's measurement) and OVER waiting for a consistency phase
+                                    (Phase 91 is a backend phase); the star glyphs are ONE role img leaf labelled Rated n out of 5 on the
+                                    half-star value they draw, chosen OVER five star characters read aloud and OVER an sr-only sibling (iOS
+                                    VoiceOver speaks a labelled leaf; a hidden sibling is a separate swipe stop or nothing, measured
+                                    2026-10-20). Changing the pair or the leaf is a decision, not a cleanup. */}
+                                <p className="text-yellow-800 dark:text-yellow-500 text-xl">
+                                    <span role="img" aria-label={`Rated ${drawnRating(userReview.rating)} out of 5`}>{renderStars(userReview.rating)}</span>
                                 </p>
                                 {userReview.is_recommended && (
                                     <p className="text-sm text-content-status-success">✓ Recommended</p>
@@ -4297,8 +4315,8 @@ export default function GameDetailPage() {
                                                 </p>
                                             </div>
                                             <div className="text-right">
-                                                <p className="text-yellow-500 text-xl">
-                                                    {renderStars(review.rating)}
+                                                <p className="text-yellow-800 dark:text-yellow-500 text-xl">
+                                                    <span role="img" aria-label={`Rated ${drawnRating(review.rating)} out of 5`}>{renderStars(review.rating)}</span>
                                                 </p>
                                                 {review.is_recommended && (
                                                     <p className="text-sm text-content-status-success">✓ Recommended</p>

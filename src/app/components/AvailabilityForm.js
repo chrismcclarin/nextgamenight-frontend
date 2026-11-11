@@ -404,11 +404,17 @@ export default function AvailabilityForm({
   // and never reject, so the gate closes after a failed fetch. That is intended:
   // consent was given, and the failure surface is the status line under the
   // buttons — not a dialog left hanging open.
+  // DECISION Phase 88.9-56 (owner ruling R-C3a, 88.9-RULINGS.md, 2026-11-10, 'hear'): every confirm dialog's pending
+  // confirm carries the house spinner and a heard verb derived from its own confirmLabel (Q6(b)), chosen OVER the
+  // default-off that left this gate silent while its write ran (ConfirmDialog's busy is pending AND a suffix; plan
+  // 88.9-45 converted only the two gates whose swap words were ratified copy rows). The visible verb never changes;
+  // the verb is heard only; the spinner leaves with the dialog on success (the close is the completion feedback).
   const replaceGate = useConfirmAction({
     tier: 'dialog',
     title: 'Replace your current selections?',
     body: "What you've painted so far will be overwritten.",
     confirmLabel: 'Replace',
+    busySuffix: ', replacing',
     onConfirm: (source) =>
       source === 'gcal' ? performGcalPrefill() : performSavedPrefill(),
   });

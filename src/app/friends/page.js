@@ -20,6 +20,7 @@ import { ACCEPT_FRIEND_FAILED_COPY, DECLINE_FRIEND_FAILED_COPY } from '../compon
 // The friend batch's terminal-409 rule and the invite panel's two shipped lines (one source).
 import {
     isAlreadyInvitedOrMember,
+    isPermanentInviteRefusal,
     ALL_ALREADY_INVITED_MESSAGE,
     invitedWithAlreadyMessage,
     allFailedBatchLine,
@@ -176,8 +177,8 @@ function FriendsPage() {
 
        Invite to Group is such a control. Its VALIDITY half (no group, no friend selected, the
        group's members still loading) moves to `aria-disabled` as well, because the batch's own
-       settle empties the selection, and a native gate would then blur the very button the user
-       pressed. Disclosed visible delta: at rest with nothing selected (and while a group's
+       settle empties the ids whose outcome is final (AMENDED Phase 88.9-56, R-C1 twin), and a
+       native gate would then blur the very button the user pressed. Disclosed visible delta: at rest with nothing selected (and while a group's
        members load) it shows the gated colour pair instead of the 50% wash; pressing it then
        sends nothing.
 
@@ -795,30 +796,45 @@ function FriendsPage() {
         let failCount = 0;
         let alreadyCount = 0;
         let firstFailure = null;
+        // R-C1 (88.9-56): the ids whose outcome is FINAL, removed from the selection after the batch.
+        const finalIds = new Set();
 
         try {
             for (const friendUserId of selectedFriends) {
                 // Skip anyone already in the group; otherwise invite by user_id.
                 // The friend's email is resolved server-side (83-06 PII default-deny).
-                if (groupMembers.includes(friendUserId)) continue;
+                // A friend already in at the press leaves the selection with no request (final).
+                if (groupMembers.includes(friendUserId)) {
+                    finalIds.add(friendUserId);
+                    continue;
+                }
                 try {
                     await invitesAPI.sendFriendInvite(selectedGroupId, friendUserId);
                     successCount++;
+                    finalIds.add(friendUserId);
                 } catch (err) {
                     // 88.6.1-72 (owner ruling 2026-10-05): a terminal 409 is already invited,
                     // never a failure; the panel's rule, from the shared module.
                     if (isAlreadyInvitedOrMember(err)) {
                         alreadyCount++;
+                        finalIds.add(friendUserId);
                     } else {
                         failCount++;
                         if (!firstFailure) firstFailure = err;
                         logger.info('Error sending friend invite:', errCtx(err));
+                        // A permanent refusal is final; a transient failure stays ticked for the retry.
+                        if (isPermanentInviteRefusal(err)) finalIds.add(friendUserId);
                     }
                 }
             }
 
             setBulkInviteResult({ successCount, failCount, alreadyCount, groupName, firstFailure });
-            setSelectedFriends(new Set());
+            // DECISION Phase 88.9-56 (R-C1): final-outcome clear over clearing the whole selection and over a sent-only clear — the twin of the invite panel's B08 amendment.
+            setSelectedFriends((prev) => {
+                const next = new Set(prev);
+                for (const id of finalIds) next.delete(id);
+                return next;
+            });
         } finally {
             bulkInviteInFlightRef.current = false;
             setBulkInviteLoading(false);

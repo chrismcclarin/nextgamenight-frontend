@@ -31,6 +31,7 @@ const RESET_INVITE_LINK_LABEL = 'Reset invite link';
 // Button's busy / busySuffix — chosen OVER the retired swap words (the Promoting swap that the 88.6.1
 // code review CR-5 / A-75 ratified 2026-10-19 as ConfirmDialog's pending text, and the Resetting,
 // Transferring and Leaving swaps). This suffix is the Make admin gate's busySuffix.
+// AMENDED Phase 88.9-56 (R-C3a): the Remove, Reject and Reset link confirms join the Make admin confirm, each with its own derived verb.
 const PROMOTE_ADMIN_BUSY_SUFFIX = ', promoting';
 
 // The outcome plan 21's `classifyRetryResult` reads from a retry's own result (plan 55's names and shape).
@@ -442,11 +443,17 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     };
 
     // Desktop Remove button — dialog tier (UI-SPEC §11.2). Copy verbatim.
+    // DECISION Phase 88.9-56 (owner ruling R-C3a, 88.9-RULINGS.md, 2026-11-10, 'hear'): every confirm dialog's pending
+    // confirm carries the house spinner and a heard verb derived from its own confirmLabel (Q6(b)), chosen OVER the
+    // default-off that left this gate silent while its write ran (ConfirmDialog's busy is pending AND a suffix; plan
+    // 88.9-45 converted only the two gates whose swap words were ratified copy rows). The visible verb never changes;
+    // the verb is heard only; the spinner leaves with the dialog on success (the close is the completion feedback).
     const removeMemberGate = useConfirmAction({
         tier: 'dialog',
         title: `Remove ${removeTarget?.name || 'this member'} from this group?`,
         body: "They'll lose access to events and planning. You can re-invite them.",
         confirmLabel: 'Remove',
+        busySuffix: ', removing',
         onConfirm: async (target_user_id) => {
             const ok = await handleRemoveMemberConfirmed(target_user_id);
             if (!ok) throw new Error('Remove failed');
@@ -519,6 +526,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         title: `Reject ${rejectTarget?.name || 'this member'}?`,
         body: "They'll be removed from the pending list.",
         confirmLabel: 'Reject',
+        busySuffix: ', rejecting',
         onConfirm: async (target_user_id) => {
             const ok = await performRejectMember(target_user_id);
             if (!ok) throw new Error('Reject failed');
@@ -560,6 +568,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         title: 'Reset the invite link?',
         body: 'Every copy of the old link stops working — including printed QR codes.',
         confirmLabel: 'Reset link',
+        busySuffix: ', resetting',
         onConfirm: async () => {
             const ok = await performResetInviteToken();
             if (!ok) throw new Error('Reset invite link failed');

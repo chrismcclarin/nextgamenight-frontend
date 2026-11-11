@@ -11,6 +11,7 @@
    gone. REJECTED: R2 on the page for mixed reasons (the two surfaces would disagree for one batch). */
 
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { ApiError, type ApiErrorCode } from '../../lib/api';
 
 // Wave-12 review MED #9: fork-F contract — a terminal 409
 // (already a member / invite pending) is not a FAILURE; count
@@ -23,6 +24,21 @@ export function isAlreadyInvitedOrMember(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
   const code = (err as { code?: unknown }).code;
   return code === 'already_member' || code === 'invite_pending';
+}
+
+// DECISION Phase 88.9-56 (R-C1, orchestrator merits ruling 2026-11-10): a PERMANENT refusal is a
+// final outcome — the server answers the same next press — so the id leaves the batch selection;
+// every other failure (unknown, network, internal, rate_limited, a non-ApiError) is TRANSIENT and
+// stays ticked for the retry. Chosen OVER a sent-only clear (a refused id left ticked re-fails on
+// every press). The one list for both bulk-invite surfaces, beside the terminal-409 rule above.
+export const PERMANENT_INVITE_REFUSALS: readonly ApiErrorCode[] = Object.freeze([
+  'forbidden',
+  'not_found',
+  'validation',
+]);
+
+export function isPermanentInviteRefusal(err: unknown): boolean {
+  return err instanceof ApiError && PERMANENT_INVITE_REFUSALS.includes(err.code);
 }
 
 // The invite panel's two shipped lines (plan 88.6.1-27), moved here byte-for-byte; the dash in
