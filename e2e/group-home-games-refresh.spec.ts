@@ -29,7 +29,7 @@ import { holdWrites } from './support/inFlight';
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 
 // GroupGamesList's banner title (existing copy, read only).
-const GAMES_TITLE = "We couldn't load this group's games";
+const GAMES_TITLE = "Couldn't load this group's games";
 
 // The browser calls the same-origin BFF: `GET /api/lists/games/<group id>/<self uuid>?…`
 // (src/lib/api.ts, getGroupGames).

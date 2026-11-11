@@ -273,7 +273,7 @@ export default function OpenPollsList({
       ) : pollsErrorState.showError && !pollsRetained ? (
         <FetchErrorBanner
           state={pollsErrorState}
-          title="We couldn't load the check-ins"
+          thing="the check-ins"
           reportContext="Open availability check-ins list (group page)"
         />
       ) : (

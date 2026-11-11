@@ -345,9 +345,10 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
         return (
             <div className="mt-8">
                 <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mb-4">{GROUP_GAMES_TITLE}</Heading>
+                {/* DECISION Phase 88.9-49 (BANNER-01, F04): thing keeps the shipped noun this group's games, chosen OVER renaming it after the section's Play history heading (R2-47 renamed the heading only; no copy row rules the banner noun). Owner glance at 88.9-51; renaming it is a copy decision, not a cleanup. */}
                 <FetchErrorBanner
                     state={errorState}
-                    title="We couldn't load this group's games"
+                    thing="this group's games"
                     reportContext="Group games list (group home page)"
                     focusTarget={gamesFocusRef}
                 />

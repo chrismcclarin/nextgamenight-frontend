@@ -186,7 +186,7 @@ test('E2, AC-29 / RF1: a failed refresh keeps the check-ins under the RF1 notice
   await expect(noticeRow).toContainText(RF1);
 
   // 3. The rows stayed, so focus stayed on the trigger; the full banner never shows.
-  await expect(page.getByText("We couldn't load the check-ins")).toHaveCount(0);
+  await expect(page.getByText("Couldn't load the check-ins")).toHaveCount(0);
   await expect(checkInTriggers(page)).toHaveCount(2);
   await expect(triggerA).toBeFocused();
 

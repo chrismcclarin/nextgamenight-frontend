@@ -492,7 +492,7 @@ const GroupList = ({
         {groupsBannerShown && !sessionBannerShown && (
           <FetchErrorBanner
             state={groupsErrorState}
-            title="We couldn't load your groups"
+            thing="your groups"
             reportContext="Your groups list (home page)"
           />
         )}

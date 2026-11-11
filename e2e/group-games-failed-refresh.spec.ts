@@ -25,7 +25,7 @@ const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 // copy row RF1 / D-47 — the shared refresh notice's sentence (plan 88.6.1-70 owns the one constant;
 // written once here, contract C7).
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
-const GAMES_TITLE = "We couldn't load this group's games";
+const GAMES_TITLE = "Couldn't load this group's games";
 const EMPTY_HEADING = 'No game nights logged yet';
 const RETAINED_GAME = 'E2E Retained Game';
 

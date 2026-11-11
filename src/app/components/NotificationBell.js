@@ -17,8 +17,8 @@ const LOADING_NOTIFICATIONS = 'Loading notifications';
 
 // Copy row N7 (D-47, owner-ratified 2026-10-05; planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/planning-briefs/revision-lap-3-manifest.md ("## Ratified strings")), the
 // full banner's title when the notifications could not be loaded and there is nothing to show;
-// straight apostrophe (D-32 R8).
-const NOTIFICATIONS_LOAD_FAILED_COPY = "Couldn't load your notifications";
+// straight apostrophe (D-32 R8). AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): the constant holds the thing and FetchErrorBanner composes the same title, chosen OVER typing the whole title here.
+const NOTIFICATIONS_LOAD_FAILED_THING = 'your notifications';
 
 // DECISION Phase 88.9-45 (rule 1, owner pick O16a, 88.9-PICKS-B9.json; Q3 scope B): both row Accepts
 // and both row Declines keep their labels with the house spinner while busy, named "Accept, accepting"
@@ -851,7 +851,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
             ) : loadErrorState?.showError ? (
               <div className="px-4 py-3">
                 {/* DECISION Phase 88.6.1-80 (N7 banner): CHOSEN — the house FULL banner titled
-                    with NOTIFICATIONS_LOAD_FAILED_COPY (copy row N7, D-47), in a branch AFTER the
+                    from NOTIFICATIONS_LOAD_FAILED_THING (copy row N7, D-47), in a branch AFTER the
                     first load and BEFORE the empty branch (Prohibition 2: the bell never says there
                     is nothing pending when it could not find out), keyed on the provider's one
                     adapter; focusTarget is the panel heading, so a successful Try again keeps focus
@@ -865,7 +865,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                     context string (none ratified). Changing this is a decision, not a cleanup. */}
                 <FetchErrorBanner
                   state={loadErrorState}
-                  title={NOTIFICATIONS_LOAD_FAILED_COPY}
+                  thing={NOTIFICATIONS_LOAD_FAILED_THING}
                   focusTarget={panelHeadingRef}
                 />
               </div>

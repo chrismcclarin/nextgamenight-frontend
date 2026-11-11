@@ -230,7 +230,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
         <div className="mt-2">
           <FetchErrorBanner
             state={errorState}
-            title="We couldn't load your upcoming events"
+            thing="your upcoming events"
             reportContext="Upcoming events card (home page)"
           />
         </div>
