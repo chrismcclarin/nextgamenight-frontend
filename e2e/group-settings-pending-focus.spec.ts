@@ -40,6 +40,10 @@ import { expectGatedPair, holdWrites, type WriteHold } from './support/inFlight'
 const DELETE_PATH = /\/groups\/[^/]+$/;
 const SETTINGS_PATH = /\/groups\/[^/]+\/settings$/;
 const DELETE_DIALOG = /^Delete .+\?$/;
+// AMENDED Phase 88.9-56 (R-C3a, CI runs 42942569549 / 42942575643 at cec87fd): the typed Delete confirm is
+// named 'Delete, deleting' while its write runs (the visible verb stays Delete); Chromium may put a space
+// before the comma (the Save Changes note below), so the space is optional.
+const DELETE_CONFIRM = /^Delete( ?, deleting)?$/;
 // The shipped names of the eight default icons, in reading order (GroupSettings.js,
 // DEFAULT_PROFILE_PICTURES).
 const ICON_NAMES = ['Dice', 'Cards', 'Trophy', 'Game', 'Puzzle', 'Star', 'Fire', 'Rocket'];
@@ -84,7 +88,7 @@ test.describe('Group settings — pressed controls keep focus and send one write
     await expect(input).toBeFocused();
     await expect(input).toHaveAttribute('readonly');
     await expect(input).toHaveAttribute('aria-disabled', 'true');
-    const confirm = dialog.getByRole('button', { name: 'Delete', exact: true });
+    const confirm = dialog.getByRole('button', { name: DELETE_CONFIRM }); // AMENDED Phase 88.9-56 (R-C3a): the pending name
     await expect(confirm).toHaveAttribute('aria-disabled', 'true');
     await expect(confirm).not.toHaveAttribute('disabled');
 
@@ -97,7 +101,7 @@ test.describe('Group settings — pressed controls keep focus and send one write
 
   test('Delete confirm, button path: it keeps focus, aria-disabled, painting the gated danger pair, and a second Enter sends nothing (R123 / AC-9)', async ({ page }) => {
     const { dialog } = await openDeleteConfirmAndType(page);
-    const confirm = dialog.getByRole('button', { name: 'Delete', exact: true });
+    const confirm = dialog.getByRole('button', { name: DELETE_CONFIRM }); // AMENDED Phase 88.9-56 (R-C3a): the same node at rest and pending
     await confirm.focus();
     await page.keyboard.press('Enter');
     await expect.poll(() => hold.count('DELETE', DELETE_PATH), { timeout: 15_000 }).toBe(1);
