@@ -252,7 +252,9 @@ const heroRsvpButtons = (page: Page) => [
 /** Named in every fixture-dependent failure message. A seeded account with no event history
  *  makes the Req 12 expand case vacuous, and a seeded account with no event inside 7 days
  *  makes the count pill vacuous — both are FIXTURE failures, never a pass.
- *  `seed-sample-data.js` seeds the past rows (7 of them, -1 to -14 days);
+ *  `seed-sample-data.js` seeds the past rows (several nights in the last two weeks; no count is
+ *  written here, because it moves with every seed change — it said 7 until BE quick 261110-ugi
+ *  added more — so read the live Past disclosure, never this comment);
  *  `e2e-fixtures.js` seeds events at +3 and +4 days (backend:Sonnet/scripts/e2e-fixtures.js ("start_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),"), backend:Sonnet/scripts/e2e-fixtures.js ("const [eventPhone] = await Event.findOrCreate({")) and owns the invariant
  *  that the e2e account still sees them. */
 const FIXTURE_OWNER =
