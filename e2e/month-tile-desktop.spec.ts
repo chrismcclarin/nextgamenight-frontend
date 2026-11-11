@@ -135,8 +135,8 @@ function isUncolouredGroup(group: GroupColours | null | undefined): boolean {
 }
 
 /**
- * The viewer's User.id: the last path segment of the events GET (/events/user/<id>), the same read
- * the guest tiles make. Compared in memory only, never printed.
+ * The viewer's User.id: the last path segment of the events GET (/events/user/<id>). Compared in
+ * memory only, never printed.
  */
 function viewerFromEventsUrl(url: string): string {
   const segments = new URL(url).pathname.split('/').filter(Boolean);
@@ -145,9 +145,9 @@ function viewerFromEventsUrl(url: string): string {
 
 /**
  * A real event a tile may be measured on or copy its shape from: a scheduled night, on an
- * uncoloured group, that the viewer does not join as a guest. The guest rule is the app's own
- * (isGuestEvent): the viewer's participation, matched on User.id, with is_guest strictly true. An
- * unread viewer (empty) counts ANY guest row, so an unknown viewer can never admit a guest night.
+ * uncoloured group, that the viewer does not join as a guest. The guest rule is the one the upcoming
+ * list's Guest pill reads: the viewer's own participation, matched on User.id, with is_guest strictly
+ * true. An unread viewer (empty) counts ANY guest row, so an unknown viewer never admits a guest night.
  */
 function isPlainScheduled(e: PlainCandidate, viewer: string): boolean {
   if (e.status !== 'scheduled' || !e.Group || !isUncolouredGroup(e.Group)) return false;
@@ -163,8 +163,8 @@ function isPlainScheduled(e: PlainCandidate, viewer: string): boolean {
 // DECISION Phase 88.9 (quick 261110-ugi S-2): the guest rule is restated in isPlainScheduled, chosen
 // OVER importing isGuestEvent, because this picker also lands on FE main, where that module does not
 // exist yet, and both copies must stay textually identical so the phase merge is clean. Every
-// synthetic tile also sets EventParticipations to an empty list, so a drift between the two rules
-// can move only the real Scenario A/B target, never a synthetic tile's guest cue.
+// synthetic tile also sets its own EventParticipations (an empty list, unless it is a guest tile on
+// purpose), so a drift between the two rules can move only the real Scenario A/B target.
 function plainScheduledTemplate(real: unknown[], viewer: string): Record<string, unknown> | null {
   const found = (real as PlainCandidate[]).find((e) => isPlainScheduled(e, viewer));
   return (found as Record<string, unknown> | undefined) ?? null;
