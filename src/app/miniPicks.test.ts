@@ -390,4 +390,57 @@ describe('88.9 RULING A mini-page picks', () => {
     }
     expect(count(gameDetail, 'sr-only">Rated'), 'gameDetail/page.js sr-only Rated siblings (want 0)').toBe(0);
   });
+
+  it('7. 88.9 R-C3b reach — every DelayedSpinner mount sits outside its host\'s busy guard', () => {
+    // Plan 88.9-56 (R-C3b reach): a DelayedSpinner inside a busy guard unmounts when busy drops and
+    // loses its hold. A guard here is a fragment opened by an and-operator or a ternary whose test
+    // names a busy flag; Button's own tracksBusy opt-in renders the element or null with no
+    // fragment, and is exempt by name.
+    const MOUNT = '<DelayedSpinner';
+    const BUSY_TEST = /busy|loading|saving|sending|removing|reminding|retrying|inviting|prefillSource|flight/i;
+    const guardedMounts = (src: string): number[] => {
+      const hits: number[] = [];
+      for (const m of src.matchAll(/(&&|\?)\s*\(\s*<>/g)) {
+        const at = m.index ?? 0;
+        const guardTest = src.slice(src.lastIndexOf('{', at) + 1, at);
+        if (!BUSY_TEST.test(guardTest)) continue;
+        const frag = /<>|<\/>/g;
+        frag.lastIndex = at + m[0].length - 2;
+        let depth = 0;
+        let end = src.length;
+        for (let f = frag.exec(src); f; f = frag.exec(src)) {
+          depth += f[0] === '<>' ? 1 : -1;
+          if (depth === 0) {
+            end = f.index;
+            break;
+          }
+        }
+        const body = src.slice(at, end);
+        for (let k = body.indexOf(MOUNT); k >= 0; k = body.indexOf(MOUNT, k + 1)) hits.push(at + k);
+      }
+      return hits;
+    };
+    // Positive control: the detector finds a planted guarded mount and passes an unguarded one.
+    expect(guardedMounts('{saving && (\n  <>\n    <DelayedSpinner busy={saving} />\n  </>\n)}')).toHaveLength(1);
+    expect(guardedMounts('Save<DelayedSpinner busy={saving} />{saving && (<><span>, saving</span></>)}')).toHaveLength(0);
+
+    const files: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(jsx?|tsx?)$/.test(entry.name) && !/\.test\./.test(entry.name)) files.push(full);
+      }
+    };
+    walk(path.join(__dirname, '..'));
+    let mounts = 0;
+    for (const file of files) {
+      const src = withoutComments(fs.readFileSync(file, 'utf8'));
+      if (!src.includes(MOUNT)) continue;
+      mounts += src.split(MOUNT).length - 1;
+      if (path.basename(file) === 'Button.tsx') continue;
+      expect(guardedMounts(src), path.relative(path.join(__dirname, '..'), file) + ' DelayedSpinner mounts inside a busy guard (want none)').toEqual([]);
+    }
+    expect(mounts, 'DelayedSpinner mounts in src (want at least 9: Button 1, AvailabilityForm 2, KebabMenu 1, NextGameNightCard 1, ResponseDashboard 1, RsvpSection 2, friends 1)').toBeGreaterThanOrEqual(9);
+  });
 });
