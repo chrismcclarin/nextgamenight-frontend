@@ -3806,6 +3806,38 @@ function rf1Region(): HTMLElement | undefined {
   return screen.getAllByRole('status').find((n) => n.textContent === RF1);
 }
 
+// Whether a region passed through EMPTY, read from the mutation RECORDS (EV-11). A textContent read
+// inside the callback would see only the batch's end state and miss the pass through the empty
+// string, so the flag comes from the records alone: a characterData record whose oldValue is the
+// empty string (the node held nothing before it was set again), or a childList record that removed
+// the region's text with no replacement.
+function observeClear(region: HTMLElement): { cleared: () => boolean; disconnect: () => void } {
+  const armedText = region.textContent ?? '';
+  let cleared = false;
+  const read = (records: MutationRecord[]) => {
+    for (const rec of records) {
+      if (rec.type === 'characterData' && rec.oldValue === '') cleared = true;
+      if (
+        rec.type === 'childList' &&
+        rec.addedNodes.length === 0 &&
+        armedText !== '' &&
+        Array.from(rec.removedNodes).some((n) => n.textContent === armedText)
+      ) {
+        cleared = true;
+      }
+    }
+  };
+  const observer = new MutationObserver(read);
+  observer.observe(region, { childList: true, characterData: true, characterDataOldValue: true, subtree: true });
+  return {
+    cleared: () => {
+      read(observer.takeRecords());
+      return cleared;
+    },
+    disconnect: () => observer.disconnect(),
+  };
+}
+
 // Render the event view and reach a failed same-event refresh (EV-1's state).
 async function reachEventRf1(options: RenderEventDetailOptions = {}) {
   const r = renderEventDetail(options);
@@ -3982,9 +4014,13 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     await reachEventRf1();
     const region = rf1Region() as HTMLElement;
     (eventsAPI.getEvent as Mock).mockRejectedValueOnce(SERVER_500());
+    // AMENDED Phase 88.9-55 (R-C8): a synchronous empty read right after the click raced the clear-then-re-announce (two renders; under full-suite load the rejection settled inside the click's await and the read saw RF1, wave-8 run at 2bfdf14), so the pass through empty is observed from the mutation records, armed before the click.
+    const clear = observeClear(region);
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(region.textContent).toBe('');
     await waitFor(() => expect(region.textContent).toBe(RF1));
+    expect(clear.cleared(), 'the region passed through empty before it re-announced').toBe(true);
+    clear.disconnect();
+    expect(rf1Region()).toBe(region);
     const button = screen.getByRole('button', { name: 'Retry' });
     expect(document.activeElement).toBe(button);
   });

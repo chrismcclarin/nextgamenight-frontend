@@ -399,7 +399,8 @@ test.describe('Response dashboard Remind (plan 88.6.1-11)', () => {
       const line = page.getByText(LOADING_RESPONSES, { exact: true });
       // A missing line is a failure, never a skip.
       await expect(line).toBeVisible({ timeout: 15_000 });
-      expect(respondentsGets, 'the first respondents GET is the one being held').toBe(1);
+      // AMENDED Phase 88.9-55 (R-C8): the card renders the loading line from its initial state before it issues the respondents GET, so a visible line never implied the GET was out (run 42838530373: Expected 1, Received 0); the test waits on the counter itself, and the hold still proves the line stays while that GET is out.
+      await expect.poll(() => respondentsGets, 'the first respondents GET is the one being held').toBe(1);
 
       const viewport = page.viewportSize();
       expect(viewport, 'the page has a viewport').not.toBeNull();

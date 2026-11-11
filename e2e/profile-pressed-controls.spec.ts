@@ -784,11 +784,10 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     // One locator for both names of the one control (idle, and busy with the ', importing' suffix —
     // rule 1, 88.9-46 B34), so it follows the busy flip.
     const importBtn = page.getByRole('button', { name: /^Import Collection( ?, importing)?$/ });
-    await focusByKeyboard(page, importBtn);
-    await page.keyboard.press('Enter');
+    // AMENDED Phase 88.9-55 (R-C8): the first press goes through the shared openImportDialog helper like the two result-timer titles, so one positive-signal path opens the dialog for all three (a tidy; the no-dialog press itself is a product race, fixed in the page).
+    await openImportDialog(page, field, importBtn, 'e2e-meeple');
 
     const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
     await recordRegionMutations(page);
     await focusByKeyboard(page, dialog.getByRole('button', { name: 'Continue' }));
     // The double-activation arm: a second Enter during the dialog's exit.

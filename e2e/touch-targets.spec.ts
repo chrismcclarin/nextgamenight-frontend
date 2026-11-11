@@ -507,11 +507,18 @@ async function probeExpandedChipRow(row: Locator): Promise<ChipRowProbe> {
     // ABOVE it; scan every item and let probePair's own overlap guards reject the
     // non-adjacent ones. The vertical probes have the same teeth: `gap-3` sets the row
     // gap to 12px, so 6+6 extension zones meet exactly on the y axis too.
+    // AMENDED Phase 88.9-55 (R-C8): the FIRST overlapping item in DOM order can sit two or more rows up once the stack wraps to three rows, so its gap spans a whole chip row (run 42560011616: 100px = 44 + 12 + 44); the fallback now keeps the layout-adjacent candidate, the one with the smallest non-negative gap.
     if (showLessPair === null && showLessIndex >= 0) {
-      for (let i = 0; i < items.length && showLessPair === null; i += 1) {
+      let layoutAdjacentAbove = null;
+      for (let i = 0; i < items.length; i += 1) {
         if (i === showLessIndex) continue;
-        showLessPair = probePair(items[i], items[showLessIndex]);
+        const candidate = probePair(items[i], items[showLessIndex]);
+        if (candidate === null || candidate.gap < 0) continue;
+        if (layoutAdjacentAbove === null || candidate.gap < layoutAdjacentAbove.gap) {
+          layoutAdjacentAbove = candidate;
+        }
       }
+      showLessPair = layoutAdjacentAbove;
     }
 
     const diagnostics = items
@@ -2474,6 +2481,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       await expect(rating, 'O15b: the review dialog has no Game rating radiogroup').toBeVisible();
       const radios = rating.getByRole('radio');
       await expect(radios).toHaveCount(10);
+      // AMENDED Phase 88.9-55 (R-C8): the boxes were read inside the review dialog's zoom-in-95 open animation (22.88 / 24 = 0.953 on run 42879553917, 23.65 / 24 = 0.985 on run 42838530373, both axes of both boxes, a transform not a layout size); the file's shared settle runs first and the 0.5px tolerance stays.
+      await settleOpenAnimation(page, radios.first(), 'O15b stars');
 
       const tol = 0.5;
       for (let i = 0; i < 10; i += 1) {
