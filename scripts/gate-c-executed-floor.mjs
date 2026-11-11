@@ -80,6 +80,11 @@
  * D12b line ink, the O20c error toast and the SPEC A7 #207 image-arm title outline, red by design
  * until plans 88.9-43, -22 and -27 land; the floor guards the three being deleted or skipped.
  *
+ * RAISED 41 -> 42, Phase 88.9-50, MEASURED 2026-11-10: npx playwright test --list --project=phone
+ * reports 42 tests in e2e/contrast.spec.ts, all of which execute in phone. The new one is the O-19
+ * accent ring on the event view's Share Game QR, both themes; the floor guards it being deleted or
+ * skipped.
+ *
  * GENERALISED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4). DECISION Phase
  * 88.6-55: optional flags on THIS script, chosen OVER a second floor script — two copies of the
  * same report walk is the duplication the milestone tenet forbids, and they would drift. The
@@ -111,7 +116,7 @@ import { pathToFileURL } from 'node:url';
 const REPORT = process.argv[2] ?? 'playwright-results.json';
 const SPEC = 'e2e/contrast.spec.ts';
 const PROJECT = 'phone';
-const FLOOR = 41;
+const FLOOR = 42;
 
 // Optional overrides (see the GENERALISED note above). Parsed strictly: fail closed.
 const KNOWN_FLAGS = {

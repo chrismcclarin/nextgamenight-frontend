@@ -9,7 +9,10 @@ import {
   blend,
   compositeGround,
   contrastRatio,
+  describeRatio,
+  focusRingMeasurement,
   forceLightMode,
+  haloGroundRatio,
   inkRatioThroughOpacity,
   probeElement,
 } from './support/contrast';
@@ -867,6 +870,172 @@ test.describe('the image-backed FULL month tile, light (88.9 F7a)', () => {
       expect(shadow, 'F7a (light): the image tile game name still carries a text shadow').toBe('none');
       expect(strokeWidth, 'F7a (light): the image tile game name still carries a text stroke').toBe('0px');
       expect(vars.stroke, 'F7a: --t-stroke (dark arm) is not colorUtils.js STROKE_DARK').toBe(strokeDarkFromSource());
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
+  });
+});
+
+/* =========================================================================================
+ * O-19 (88.9-50) — the accent Share Game QR ring on a TINTED day-modal row at 1280, both themes.
+ *
+ * The day modal opens only for a day with two or more events:
+ * src/app/components/EventCalendar.js ("setSelectedDay({ date, events: dayEvents });")
+ * So two synthetic upcoming nights are planted on one free day of next month in the browser copy
+ * of the events response (the D5a/O18a shape above):
+ * one on E2E_COLOURED_GROUP_ID with the coloured fixture's values, one uncoloured. The tinted row's
+ * Share Game QR is focused by keyboard and read: the ring against its halo, the ring against the
+ * tinted row ground, each at 3:1 on the unrounded value, and the halo equals the row ground (the
+ * G halo, plan 88.9-39). A read under 3:1 is an owner floor pick, never a lowered assertion.
+ * ======================================================================================= */
+
+const E2E_COLOURED_GROUP_ID = process.env.E2E_COLOURED_GROUP_ID ?? '1';
+const O19_FLOOR = 3;
+const O19_HALO_EQUAL = 1.01;
+const O19_TINTED = 'E2E O19 Tinted';
+const O19_PLAIN = 'E2E O19 Plain';
+
+interface O19Day {
+  tinted: FixtureEvent;
+  day: number;
+  year: number;
+  month: number;
+}
+
+// DECISION Phase 88.9-50 O-19: the tinted day is two synthetic events planted in the browser copy of the events response, chosen over a seeded second event on the coloured group — the seed holds no two-event day, a scratch insert is barred, and the D5a/O18a recipe above already plants tiles this way; no write is made and the viewer id is never printed.
+async function seedTintedDay(page: Page): Promise<() => O19Day> {
+  const ids = { tinted: crypto.randomUUID(), plain: crypto.randomUUID() };
+  const plainGroupId = crypto.randomUUID();
+  let planted: O19Day | null = null;
+  let seedError = '';
+  let rewrites = 0;
+
+  await page.route('**/api/events/user/**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await scrubbedFetch(route);
+    let real: unknown;
+    try {
+      real = await response.json();
+    } catch {
+      await route.fulfill({ response });
+      return;
+    }
+    if (!Array.isArray(real) || real.length === 0) {
+      seedError = 'the events GET carried no array of real events to copy a row shape from';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    const now = new Date();
+    const year = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const month = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+    // DATE-PROOF: the day is computed from THIS response, bucketed by LOCAL date like the grid.
+    const occupied = new Set<number>();
+    for (const e of real as { start_date?: string }[]) {
+      if (!e.start_date) continue;
+      const d = new Date(e.start_date);
+      if (d.getFullYear() === year && d.getMonth() === month) occupied.add(d.getDate());
+    }
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let day = 0;
+    for (let d = 8; d <= daysInMonth && day === 0; d += 1) if (!occupied.has(d)) day = d;
+    if (day === 0) {
+      seedError = 'no day at or after the 8th of next month holds no real event';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    const template = (real[0] ?? {}) as Record<string, unknown>;
+    const group = (template.Group as Record<string, unknown> | null | undefined) ?? {};
+    const make = (
+      id: string,
+      hour: number,
+      name: string,
+      groupId: string,
+      colours: { color_preset: string | null; background_color: string | null }
+    ): FixtureEvent => {
+      const start = new Date(year, month, day, hour); // LOCAL time, never a UTC-midnight literal
+      return {
+        ...template,
+        id,
+        start_date: start.toISOString(),
+        ...('end_date' in template ? { end_date: new Date(start.getTime() + 2 * 3600_000).toISOString() } : {}),
+        Game: { ...((template.Game as object | null | undefined) ?? {}), name },
+        Group: {
+          ...group,
+          id: groupId,
+          name: `${name} Group`,
+          ...colours,
+          background_image_url: null,
+          profile_picture_url: null,
+        },
+      } as FixtureEvent;
+    };
+    // The coloured fixture's values, e2e/contrast.spec.ts ("background_color:'#172554'").
+    const tinted = make(ids.tinted, 18, O19_TINTED, E2E_COLOURED_GROUP_ID, { color_preset: 'blue', background_color: '#172554' });
+    const plain = make(ids.plain, 20, O19_PLAIN, plainGroupId, { color_preset: null, background_color: null });
+    planted = { tinted, day, year, month };
+    rewrites += 1;
+    await route.fulfill({ response, json: [...real, tinted, plain] });
+  });
+
+  return () => {
+    if (rewrites === 0 || !planted) {
+      throw new Error(
+        `O-19 fixture: the events intercept never planted the tinted day (rewrites=${rewrites})` +
+          (seedError ? ` — ${seedError}` : ' — the month view did not fetch the events list') +
+          '; nothing below is measured'
+      );
+    }
+    return planted;
+  };
+}
+
+async function measureDayModalQr(page: Page, read: () => O19Day, theme: 'light' | 'dark'): Promise<void> {
+  await page.goto('/');
+  await assertTheme(page, theme);
+  const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+  expect(isDark, `O-19 (${theme}): the html element's dark class is ${isDark} — the theme switch did not land`).toBe(theme === 'dark');
+  await expect(page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ })).toBeVisible({ timeout: 20_000 });
+  const { tinted, day, month } = read();
+  await tileFor(page, tinted, new RegExp(`^${escapeRegExp(d5aLabel(tinted))}(, Guest)?$`));
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  const dayTarget = page.getByRole('button', { name: `${monthNames[month]} ${day}, 2 games. Open this day.`, exact: true });
+  await expect(dayTarget, `O-19 (${theme}): the two-event day target is not on the grid`).toBeVisible();
+  await dayTarget.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog, `O-19 (${theme}): the day modal did not open`).toBeVisible({ timeout: 15_000 });
+  const row = dialog.locator('div.p-4.rounded-lg').filter({ hasText: O19_TINTED });
+  await expect(row, `O-19 (${theme}): exactly one tinted row`).toHaveCount(1);
+  const share = row.getByRole('button', { name: 'Share Game QR', exact: true });
+  await expect(share, `O-19 (${theme}): the tinted row's Share Game QR is not visible`).toBeVisible();
+
+  const label = `O-19 day-modal Share Game QR ring on the tinted row (${theme})`;
+  const m = await focusRingMeasurement(page, share, label);
+  const h = await haloGroundRatio(m, share);
+  const outside = contrastRatio(m.fg, h.behind);
+  if (outside === null) throw new Error(`${label}: could not compute the ring ${m.fg} against the row ground ${h.behind}`);
+  // eslint-disable-next-line no-console -- the measured ratios are recorded from the CI log
+  console.log(
+    `${label}: ring ${m.fg} vs halo ${m.ground} ${m.ratio.toFixed(2)}:1 (${m.ratio}); ring vs row ground ${h.behind} ` +
+      `${outside.toFixed(2)}:1 (${outside}); halo vs row ground ${h.ratio.toFixed(3)}:1`
+  );
+  expect.soft(m.ratio, describeRatio(`${label} — ring vs halo`, O19_FLOOR, m)).toBeGreaterThanOrEqual(O19_FLOOR);
+  expect.soft(outside, `${label}: the ring ${m.fg} on the tinted row ground ${h.behind} is ${outside.toFixed(2)}:1, floor ${O19_FLOOR}:1`).toBeGreaterThanOrEqual(O19_FLOOR);
+  expect.soft(h.ratio, `${label}: the halo ${h.halo} is ${h.ratio.toFixed(3)}:1 against the row ground ${h.behind}; the G halo must equal it (<= ${O19_HALO_EQUAL}:1)`).toBeLessThanOrEqual(O19_HALO_EQUAL);
+  await page.keyboard.press('Escape');
+  await expect(dialog, `O-19 (${theme}): the day modal did not close`).toBeHidden();
+}
+
+test.describe('the accent ring on a tinted day-modal row at 1280 (88.9-50 O-19)', () => {
+  test('O-19 day-modal Share Game QR ring', async ({ page }) => {
+    test.slow();
+    const read = await seedTintedDay(page);
+    try {
+      await measureDayModalQr(page, read, 'dark');
+      await forceLightMode(page);
+      await measureDayModalQr(page, read, 'light');
     } finally {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     }

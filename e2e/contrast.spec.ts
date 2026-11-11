@@ -926,6 +926,30 @@ async function outsideRing(page: Page, target: Locator, label: string): Promise<
   expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
 }
 
+/**
+ * O-19 (88.9-50): the accent ring's two reads, after proving the theme switch landed (a no-op
+ * switch must red, never re-measure the other theme): the ring against its halo, and the ring
+ * against the ground just outside the halo band. Both >= NON_TEXT on the unrounded value.
+ */
+async function accentRingReads(page: Page, target: Locator, label: string, theme: Theme): Promise<void> {
+  const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+  expect(isDark, `${label}: the html element's dark class is ${isDark}, expected ${theme === 'dark'} — the theme switch did not land`).toBe(theme === 'dark');
+  const m = await focusRingMeasurement(page, target, label);
+  const h = await haloGroundRatio(m, target);
+  const outside = contrastRatio(m.fg, h.behind);
+  if (outside === null) throw new Error(`${label}: could not compute the ring ${m.fg} against the ground ${h.behind}`);
+  // eslint-disable-next-line no-console -- the measured ratios are recorded from the CI log
+  console.log(
+    `${label}: ring ${m.fg} vs halo ${m.ground} ${m.ratio.toFixed(2)}:1 (${m.ratio}); ring vs ground outside ${h.behind} ` +
+      `${outside.toFixed(2)}:1 (${outside}); halo vs ground ${h.ratio.toFixed(3)}:1`
+  );
+  expect.soft(m.ratio, describeRatio(`${label} — ring vs halo`, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+  expect.soft(
+    outside,
+    `${label}: the ring ${m.fg} on the ground outside the halo ${h.behind} is ${outside.toFixed(2)}:1, floor ${NON_TEXT}:1`
+  ).toBeGreaterThanOrEqual(NON_TEXT);
+}
+
 const COLOURED_GROUP_MISSING =
   'the coloured group is not in the home list response — the E2E_COLOURED_GROUP_ID fixture is missing; never delete this guard';
 
@@ -2635,6 +2659,26 @@ test.describe('Req 11 Gate C — round 2 pins (88.9 R2), both themes per test', 
       await assertTheme(page, theme);
       const name = coloured.name();
       await titleOutline(colouredCard(page, name).getByRole('heading', { name, exact: true }), `A7 #207 home card title (${theme})`);
+    });
+  });
+
+  // O-19 (88.9-50): the accent Share Game QR ring was never measured; this is its Gate C read on
+  // the event view at 375, both themes. Ring vs halo, then ring vs the ground outside the halo,
+  // each >= 3.00 on the unrounded value; a read under 3:1 is an owner floor pick, never a lowered
+  // assertion. The ratios are printed for the record; messages carry colours and ratios only.
+  test('O-19 (88.9): accent ring on gameDetail CTA ≥ 3:1', async ({ page }) => {
+    test.slow();
+    await holdWrites(page, {});
+    await patchQrEventRoutes(page);
+    await inBothThemes(page, 'O-19 gameDetail Share Game QR ring', async (theme) => {
+      await page.goto(E2E_EVENT_DETAIL_PATH);
+      await assertTheme(page, theme);
+      const share = page.getByRole('button', { name: 'Share Game QR', exact: true });
+      await expect(
+        share,
+        `O-19 (${theme}): Share Game QR never rendered — it needs the Participants card (the events route patches one custom participant) and a group-member viewer`
+      ).toBeVisible({ timeout: 15_000 });
+      await accentRingReads(page, share, `O-19 gameDetail Share Game QR ring on the card (${theme})`, theme);
     });
   });
 });
