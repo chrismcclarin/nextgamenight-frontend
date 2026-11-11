@@ -442,6 +442,67 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
   });
 });
 
+// R-C3a (88.9-56, owner ruling 2026-11-10, 'hear'): the Remove, Reject and Reset link confirms were
+// silent while their write ran; each now keeps its verb beside the house spinner and is heard
+// with its own derived busy word. The spinner leaves with the dialog on success.
+describe('ManageMembers R-C3a (88.9) — the Remove, Reject and Reset link confirms keep their verb with the spinner', () => {
+  // The text a sighted user reads: the button's text with its sr-only suffix removed.
+  const visibleText = (el: HTMLElement): string | null => {
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.sr-only').forEach((node) => node.remove());
+    return clone.textContent;
+  };
+
+  async function pressHeldConfirm(opener: string, dialogName: string, label: string, api: Mock) {
+    let settle!: (value: unknown) => void;
+    api.mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }));
+    await openMembersModal();
+    fireEvent.click(await screen.findByText(opener));
+    const dialog = await screen.findByRole('dialog', { name: dialogName });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: label }));
+    return { dialog, settle: (value: unknown) => settle(value) };
+  }
+
+  async function expectHeardPendingThenClose(
+    opener: string, dialogName: string, label: string, name: string, api: Mock,
+  ) {
+    const { dialog, settle } = await pressHeldConfirm(opener, dialogName, label, api);
+    // The heard name is immediate; the visible text is exactly the label.
+    const pending = within(dialog).getByRole('button', { name });
+    expect(pending).toHaveTextContent(label);
+    expect(visibleText(pending)).toBe(label);
+    await waitFor(() => expect(pending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(pending).toHaveAttribute('aria-disabled', 'true');
+    expect(pending).not.toHaveAttribute('disabled');
+    // The hook's latch: a second press issues no second request.
+    await waitFor(() => expect(api).toHaveBeenCalledTimes(1));
+    fireEvent.click(pending);
+    await act(async () => {});
+    expect(api).toHaveBeenCalledTimes(1);
+    // The write lands: the dialog closes and the spinner leaves with it.
+    settle({});
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: dialogName })).not.toBeInTheDocument());
+  }
+
+  it("R-C3a (88.9): the pending Remove confirm keeps its verb with the spinner and is named 'Remove, removing'", async () => {
+    await expectHeardPendingThenClose('Remove', 'Remove Target from this group?', 'Remove', 'Remove, removing',
+      groupsAPI.removeUserFromGroup as Mock);
+  });
+
+  it("R-C3a (88.9): the pending Reject confirm keeps its verb with the spinner and is named 'Reject, rejecting'", async () => {
+    await expectHeardPendingThenClose('Reject', 'Reject Pend?', 'Reject', 'Reject, rejecting',
+      groupsAPI.rejectMember as Mock);
+  });
+
+  it("R-C3a (88.9): the pending Reset link confirm keeps its verb with the spinner and is named 'Reset link, resetting'", async () => {
+    await expectHeardPendingThenClose('Reset invite link', 'Reset the invite link?', 'Reset link', 'Reset link, resetting',
+      groupsAPI.resetInviteToken as Mock);
+  });
+});
+
 describe('ManageMembers Req 12 — success receipts for the two named silent mutations', () => {
   // AMENDED Phase 88.9-24 (save-feedback rule 2): the row leaves the roster, so no success toast;
   // the root announcer speaks the outcome once per completed action.

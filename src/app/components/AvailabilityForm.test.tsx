@@ -407,6 +407,51 @@ describe('Phase 88-13 — replacing painted selections is gated by a styled dial
 
     unmount();
   });
+
+  // R-C3a (88.9-56, owner ruling 2026-11-10, 'hear'): the Replace confirm keeps its verb beside the
+  // house spinner while the pre-fill runs, heard as 'Replace, replacing'.
+  it("R-C3a (88.9): the pending Replace confirm keeps its verb with the spinner and is named 'Replace, replacing'", async () => {
+    const visibleText = (el: HTMLElement): string | null => {
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.sr-only').forEach((node) => node.remove());
+      return clone.textContent;
+    };
+    let settle!: (value: unknown) => void;
+    (availabilityFormAPI.prefillFromGcal as Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { settle = resolve; })
+    );
+    render(
+      <AvailabilityForm
+        magicToken="tok"
+        userName="Sam"
+        promptId="p1"
+        gcalConnected
+        existingResponse={PAINTED}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /import from google calendar/i }));
+    const dialog = await screen.findByRole('dialog', { name: 'Replace your current selections?' });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Replace' }));
+
+    const pending = within(dialog).getByRole('button', { name: 'Replace, replacing' });
+    expect(pending).toHaveTextContent('Replace');
+    expect(visibleText(pending)).toBe('Replace');
+    await waitFor(() => expect(pending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(pending).toHaveAttribute('aria-disabled', 'true');
+    expect(pending).not.toHaveAttribute('disabled');
+    await waitFor(() => expect(availabilityFormAPI.prefillFromGcal).toHaveBeenCalledTimes(1));
+    fireEvent.click(pending);
+    await act(async () => {});
+    expect(availabilityFormAPI.prefillFromGcal).toHaveBeenCalledTimes(1);
+
+    settle({ slot_ids: [], count: 0 });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Replace your current selections?' })).not.toBeInTheDocument()
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------------------

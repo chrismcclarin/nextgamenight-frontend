@@ -41,7 +41,7 @@ export const gates = [
   { file: 'src/app/decisionMarkers.test.ts', min: 23, why: 'Phase 88 D-36 / D-37 — the decision markers Phase 88 overrode say so, in place' },
   { file: 'src/app/rawColorValues.test.ts', min: 7, why: 'Phase 88 Req 2 — no raw hex or black shadows' },
   { file: 'src/app/tokenContrast.test.ts', min: 79, why: 'Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
-  { file: 'src/app/miniPicks.test.ts', min: 5, why: '88.9 RULING A mini-page picks' },
+  { file: 'src/app/miniPicks.test.ts', min: 7, why: '88.9 RULING A mini-page picks; 88.9-56 R-C5 rating ink (floor raised to the count)' },
   { file: 'src/app/surfaceHoverSweep.test.ts', min: 12, why: 'Phase 88.3 Req 1 / D-02 — the hover and sunken sweep' },
   { file: 'src/app/darkChromeLegibility.test.ts', min: 8, why: 'Phase 88.3 Req 7/8 — dark-chrome ring, muted-label corrections, mobile-panel inert guard' },
   { file: 'src/app/accentSweep.test.ts', min: 7, why: 'Phase 88.3 Req 4/5 — the text-safe accent sweep, incl. the today number' },

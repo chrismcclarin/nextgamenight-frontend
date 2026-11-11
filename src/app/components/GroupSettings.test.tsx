@@ -1304,4 +1304,35 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     expect(screen.queryByRole('dialog', { name: DELETE_DIALOG })).toBeNull();
     expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
   });
+
+  // R-C3a (88.9-56, owner ruling 2026-11-10, 'hear'): the typed Delete confirm keeps its verb
+  // beside the house spinner while the delete runs, heard as 'Delete, deleting'.
+  it("R-C3a (88.9): the typed Delete confirm keeps its verb with the spinner, is named 'Delete, deleting', and the phrase input stays read-only", async () => {
+    const visibleText = (el: HTMLElement): string | null => {
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.sr-only').forEach((node) => node.remove());
+      return clone.textContent;
+    };
+    const request = held<unknown>();
+    (groupsAPI.deleteGroup as Mock).mockReturnValue(request.promise);
+    renderSettings();
+    await waitFor(() => expect(dangerZone().textContent).toContain('37'));
+    const dialog = await openDeleteGate();
+    const input = within(dialog).getByRole('textbox');
+    fireEvent.change(input, { target: { value: GROUP_NAME } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    const pending = within(dialog).getByRole('button', { name: 'Delete, deleting' });
+    expect(pending).toHaveTextContent('Delete');
+    expect(visibleText(pending)).toBe('Delete');
+    await waitFor(() => expect(pending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(pending).toHaveAttribute('aria-disabled', 'true');
+    expect(pending).not.toHaveAttribute('disabled');
+    expect(input).toHaveAttribute('readonly');
+    fireEvent.click(pending);
+    expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
+
+    request.resolve({});
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: DELETE_DIALOG })).toBeNull());
+  });
 });

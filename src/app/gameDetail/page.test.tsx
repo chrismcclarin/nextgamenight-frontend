@@ -913,6 +913,41 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(SESSION.id);
   });
 
+  // R-C3a (88.9-56, owner ruling 2026-11-10, 'hear'): the Delete session confirm keeps its verb
+  // beside the house spinner while the delete runs, heard as 'Delete, deleting'.
+  it("R-C3a (88.9): the pending Delete session confirm keeps its verb with the spinner and is named 'Delete, deleting'", async () => {
+    const visibleText = (el: HTMLElement): string | null => {
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.sr-only').forEach((node) => node.remove());
+      return clone.textContent;
+    };
+    const user = userEvent.setup();
+    const write = deferred(eventsAPI.deleteEvent as Mock);
+    renderGameDetail({ role: 'owner' });
+
+    const sessions = await sessionsSection();
+    await user.click(within(sessions).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    const pending = within(dialog).getByRole('button', { name: 'Delete, deleting' });
+    expect(pending).toHaveTextContent('Delete');
+    expect(visibleText(pending)).toBe('Delete');
+    await waitFor(() => expect(pending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(pending).toHaveAttribute('aria-disabled', 'true');
+    expect(pending).not.toHaveAttribute('disabled');
+    await waitFor(() => expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1));
+    fireEvent.click(pending);
+    await act(async () => {});
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
+
+    write.settle({});
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('routes the desktop ghost Delete through the same gate', async () => {
     const user = userEvent.setup();
     (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
@@ -1855,6 +1890,37 @@ const SAVED_REVIEW = {
   createdAt: '2026-09-01T00:00:00Z',
   User: { id: SELF_UUID, username: 'Me' },
 };
+
+// R-C5 (88.9-56, owner ruling 2026-11-10): each review's stars are ONE labelled leaf (role img),
+// named on the half-star value the glyphs draw, with no sr-only sibling beside it (the project's
+// iPhone VoiceOver rule: a labelled leaf is spoken, a hidden sibling is a separate stop or silent).
+// renderStars is component-local, so the glyph strings are stated here as escapes.
+describe('R-C5 (88.9) — a review rating is heard as a number', () => {
+  it('R-C5 (88.9): a review\'s stars are one labelled leaf — role img, Rated n out of 5 on the half-star value the glyphs draw', async () => {
+    renderGameDetail({
+      role: 'member',
+      reviews: [
+        { ...SAVED_REVIEW, rating: 3.5 },
+        { ...SAVED_REVIEW, id: 'rev-2', rating: '3.7', User: { id: 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', username: 'Ann' } },
+        { ...SAVED_REVIEW, id: 'rev-3', rating: 9, User: { id: 'b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2', username: 'Bo' } },
+      ],
+    });
+    const section = await reviewsSection();
+    const leaves = await within(section).findAllByRole('img', { name: /^Rated / });
+    expect(leaves.map((leaf) => leaf.getAttribute('aria-label'))).toEqual([
+      'Rated 3.5 out of 5',
+      'Rated 3.5 out of 5',
+      'Rated 5 out of 5',
+    ]);
+    const HALF = '\u2605\u2605\u2605\u00bd\u2606';
+    expect(leaves.map((leaf) => leaf.textContent)).toEqual([HALF, HALF, '\u2605\u2605\u2605\u2605\u2605']);
+    for (const leaf of leaves) {
+      expect(leaf.tagName).toBe('SPAN');
+      expect(leaf.parentElement?.children).toHaveLength(1);
+      expect(leaf.parentElement?.querySelectorAll('.sr-only')).toHaveLength(0);
+    }
+  });
+});
 
 async function openEditDialog(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   await user.click(await within(await reviewsSection()).findByRole('button', { name: 'Edit' }));

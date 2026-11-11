@@ -1237,6 +1237,51 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     await waitFor(() => expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
   });
 
+  // R-C1 (88.9-56, owner ruling 2026-11-10 + the orchestrator's final-outcome merits ruling): only
+  // the ids whose outcome is FINAL leave the selection. The skipped already-member arm stays in
+  // code but is not pinned here: a member's box is checked and disabled, and the members load
+  // that fills the member list also clears the selection, so no UI path ticks one.
+  it('R-C1 (88.9): after a batch only the ids with a final outcome leave the selection — sent, already a member, permanently refused — a transient failure and a mid-send tick stay for the next press', async () => {
+    const { invitesAPI, ApiError } = await import('@/lib/api');
+    const FOURTH_UUID = 'abababab-abab-4bab-8bab-abababababab';
+    const FOURTH_FRIENDSHIP = { id: 'fr-5', friend: { id: FOURTH_UUID, username: 'Gus' } };
+    let release: (value: unknown) => void = () => {};
+    (invitesAPI.sendFriendInvite as Mock)
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500))
+      .mockRejectedValueOnce(new ApiError('Forbidden', 'forbidden', 403));
+    renderPanel({ friends: [FRIENDSHIP, OTHER_FRIENDSHIP, THIRD_FRIENDSHIP, FOURTH_FRIENDSHIP] });
+    await screen.findByText('Gus');
+    const [a, b, c, d] = screen.getAllByRole('checkbox');
+    fireEvent.click(a);
+    fireEvent.click(c);
+    fireEvent.click(d);
+    fireEvent.click(screen.getByRole('button', { name: 'Invite 3 Friends' }));
+    await waitFor(() => expect(invitesAPI.sendFriendInvite).toHaveBeenCalledTimes(1));
+    // A friend ticked while the batch is in flight.
+    fireEvent.click(b);
+
+    await act(async () => {
+      release({});
+    });
+    await waitFor(() => expect(invitesAPI.sendFriendInvite).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(a).not.toBeChecked()); // sent
+    expect(d).not.toBeChecked(); // permanently refused (forbidden)
+    expect(c).toBeChecked(); // transient (internal): kept for the retry
+    expect(b).toBeChecked(); // ticked mid-send, never sent
+    expect((invitesAPI.sendFriendInvite as Mock).mock.calls.map((call) => call[1])).toEqual([
+      FRIEND_UUID,
+      THIRD_UUID,
+      FOURTH_UUID,
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Invite 2 Friends' }));
+    await waitFor(() => expect(invitesAPI.sendFriendInvite).toHaveBeenCalledTimes(5));
+    expect((invitesAPI.sendFriendInvite as Mock).mock.calls.slice(3).map((call) => call[1]).sort()).toEqual(
+      [OTHER_UUID, THIRD_UUID].sort()
+    );
+  });
+
   it('B1: an all-failed batch whose first failure has no code says R2 from the alert region (D-32 R2)', async () => {
     const { invitesAPI } = await import('@/lib/api');
     (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(new Error('x'));

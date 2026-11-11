@@ -2385,6 +2385,40 @@ describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)'
     expect(errorRegion()?.textContent).toBe('');
   });
 
+  // R-C1 twin (88.9-56): the friends page Invite to Group clears only the ids whose outcome is final.
+  it('R-C1 (88.9): the friends page bulk invite clears only the ids with a final outcome and keeps a transient failure and a mid-send tick', async () => {
+    const LEE_UUID = 'cacacaca-caca-4aca-8aca-cacacacacaca';
+    const FRIENDSHIP_3 = { id: 'fr-3', friend: { id: LEE_UUID, username: 'Lee' } };
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1', { friends: [FRIENDSHIP, FRIENDSHIP_2, FRIENDSHIP_3] });
+    const send = deferred();
+    (invitesAPI.sendFriendInvite as Mock)
+      .mockReturnValueOnce(send.promise)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    const dana = screen.getByRole('checkbox', { name: 'Select Dana' });
+    const sam = screen.getByRole('checkbox', { name: 'Select Sam' });
+    const lee = screen.getByRole('checkbox', { name: 'Select Lee' });
+    fireEvent.click(dana);
+    fireEvent.click(sam);
+    fireEvent.click(inviteButton());
+    await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(1));
+    // A friend ticked while the batch is in flight.
+    fireEvent.click(lee);
+
+    await act(async () => {
+      send.resolve({});
+    });
+    await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(dana).not.toBeChecked()); // sent
+    expect(sam).toBeChecked(); // transient (internal): kept for the retry
+    expect(lee).toBeChecked(); // ticked mid-send, never sent
+
+    fireEvent.click(inviteButton());
+    await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(4));
+    expect((invitesAPI.sendFriendInvite as Mock).mock.calls.slice(2).map((call) => call[1]).sort()).toEqual(
+      [FRIEND_2_UUID, LEE_UUID].sort()
+    );
+  });
+
   it('K2. a batch where everyone was already a member reads the panel line, success tint, never a failure', async () => {
     await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
     (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(
