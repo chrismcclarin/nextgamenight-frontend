@@ -103,9 +103,50 @@ function strokeDarkFromSource(): string {
   return m[1];
 }
 
+/**
+ * `colorUtils.js`'s white-is-unset rule is module-private too, so its pattern is READ FROM THE
+ * SOURCE the same way: src/lib/colorUtils.js ("const UNSET_BACKGROUND_PATTERN = "). Every seeded
+ * group stores background_color '#ffffff' (the backend model default), which the app renders as NO
+ * colour, so a plain truthiness test calls every seeded group coloured.
+ */
+function unsetBackgroundFromSource(): RegExp {
+  const src = readFileSync(resolve(__dirname, '../src/lib/colorUtils.js'), 'utf8');
+  const m = src.match(/const UNSET_BACKGROUND_PATTERN = \/(.+)\/([a-z]*);/);
+  if (!m) throw new Error('colorUtils.js no longer declares `const UNSET_BACKGROUND_PATTERN = /…/` — re-derive this spec');
+  return new RegExp(m[1], m[2]);
+}
+
+type GroupColours = { color_preset?: string | null; background_color?: string | null };
+
+/**
+ * TRUE when the app renders this group with no colour of its own: no preset, and a stored
+ * background_color that is null, empty, or the white sentinel.
+ */
+function isUncolouredGroup(group: GroupColours | null | undefined): boolean {
+  if (!group || group.color_preset != null) return false;
+  const bg = typeof group.background_color === 'string' ? group.background_color.trim() : group.background_color;
+  return bg == null || bg === '' || unsetBackgroundFromSource().test(bg);
+}
+
+/** A real event a synthetic tile may copy its shape from: a scheduled night on an uncoloured group. */
+function isPlainScheduled(e: { status?: string | null; Group?: GroupColours | null }): boolean {
+  return e.status === 'scheduled' && !!e.Group && isUncolouredGroup(e.Group);
+}
+
+// DECISION Phase 88.9 (quick 261110-ugi H-1): every synthetic tile below copies its shape from the
+// first plain scheduled event (isPlainScheduled), chosen OVER the positional real[0], which is the
+// NEWEST event the viewer can see (the events GET orders by start_date DESC) and so silently takes
+// on whatever group and status the seed last added: a green group and a completed status after
+// BE PR 70. No such event is a fixture error, never a fallback.
+function plainScheduledTemplate(real: unknown[]): Record<string, unknown> | null {
+  const found = (real as { status?: string | null; Group?: GroupColours | null }[]).find(isPlainScheduled);
+  return (found as Record<string, unknown> | undefined) ?? null;
+}
+
 interface FixtureEvent {
   id: string;
   start_date: string;
+  status?: string | null;
   Game?: { name?: string } | null;
   Group?: {
     id: string;
@@ -134,6 +175,7 @@ interface Seeded {
 async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
   let seeded: FixtureEvent | null = null;
   let rewrites = 0;
+  let seedError = '';
   await page.route('**/api/events/user/**', async (route) => {
     const response = await scrubbedFetch(route);
     let body: unknown;
@@ -148,8 +190,42 @@ async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
       return;
     }
     const events = body as FixtureEvent[];
-    const target =
-      events.find((e) => e.Group && !e.Group.background_color && !e.Group.color_preset) ?? events[0];
+    // DECISION Phase 88.9 (quick 261110-ugi H-1): the target is FOUND by predicate (a plain
+    // scheduled night, isPlainScheduled, still to come, and one of the two tiles its day cell
+    // renders), and none is a thrown fixture error, chosen OVER the old positional events[0]
+    // fallback. Every seeded group stores background_color '#ffffff', so the old truthiness find
+    // never matched and events[0], the NEWEST event, was measured whatever its colour; when BE PR 70
+    // made the newest event a green Strategy Squad night, Scenario B read a green tile's shadow.
+    // Upcoming because tileFor walks forward only; the two-tile rule because the cell renders
+    // dayEvents.slice(0, 2) in payload order (src/app/components/CalendarMonthView.js ("{dayEvents.slice(0, 2).map(event => {")).
+    const nowMs = Date.now();
+    const dayKey = (iso: string): string => {
+      const d = new Date(iso); // LOCAL date, the grid's bucketing; runner and browser share the host timezone
+      return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    };
+    const rendered = new Set<FixtureEvent>();
+    const perDay = new Map<string, number>();
+    for (const e of events) {
+      if (!e.start_date) continue;
+      const k = dayKey(e.start_date);
+      const n = perDay.get(k) ?? 0;
+      if (n < 2) rendered.add(e);
+      perDay.set(k, n + 1);
+    }
+    const candidates = events.filter(
+      (e) => isPlainScheduled(e) && new Date(e.start_date).getTime() >= nowMs && rendered.has(e)
+    );
+    const target = candidates.reduce<FixtureEvent | null>(
+      (best, e) => (!best || new Date(e.start_date).getTime() < new Date(best.start_date).getTime() ? e : best),
+      null
+    );
+    if (!target) {
+      seedError =
+        `no upcoming scheduled event on an uncoloured group renders as a tile (${events.length} events in the payload) — ` +
+        'the plain treatment has nothing to be measured on; fix the seed, never fall back to a coloured event';
+      await route.fulfill({ response, json: events });
+      return;
+    }
     for (const e of events) {
       if (e.Group && e.Group.id === target.Group?.id) {
         e.Group = { ...e.Group, background_image_url: url };
@@ -160,6 +236,7 @@ async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
     await route.fulfill({ response, json: events });
   });
   return () => {
+    if (seedError) throw new Error(`the image fixture found no target: ${seedError}; nothing below is measured`);
     if (!seeded) {
       throw new Error(
         `the events intercept never rewrote a payload (rewrites=${rewrites}) — the month view did not fetch ` +
@@ -418,11 +495,17 @@ async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<voi
       await route.fulfill({ response, json: real });
       return;
     }
-    // Shape copied from a real element; the group keeps its colour but carries NO background image,
-    // because an image-backed full tile keeps the owner-ruled white/stroke treatment over a photo,
-    // which a colour ratio cannot measure.
-    const template = (real[0] ?? {}) as Record<string, unknown>;
-    const group = (template.Group as Record<string, unknown> | null | undefined) ?? { id: 'e2e-adjacent-home-group', name: 'E2E Adjacent Home' };
+    // Shape copied from a real plain scheduled event (plainScheduledTemplate), so the tile measured
+    // is an UNCOLOURED one, the case this read has measured since 88.9-04; the group carries NO
+    // background image, because an image-backed full tile keeps the owner-ruled white/stroke
+    // treatment over a photo, which a colour ratio cannot measure.
+    const template = plainScheduledTemplate(real);
+    if (!template) {
+      seedError = 'the events GET holds no scheduled event on an uncoloured group to copy a tile shape from';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    const group = template.Group as Record<string, unknown>;
     const start = new Date(nextYear, nextMonth, syntheticDay, 12); // LOCAL noon, never a UTC-midnight literal
     const synthetic = {
       ...template,
@@ -713,8 +796,15 @@ async function seedGuestTiles(page: Page): Promise<() => GuestTiles> {
       await route.fulfill({ response, json: real });
       return;
     }
-    const template = (real[0] ?? {}) as Record<string, unknown>;
-    const group = (template.Group as Record<string, unknown> | null | undefined) ?? {};
+    // A plain scheduled template (plainScheduledTemplate): the colours are overridden per tile
+    // below, but the status is not, so a completed or cancelled template would be copied onto all three.
+    const template = plainScheduledTemplate(real);
+    if (!template) {
+      seedError = 'the events GET holds no scheduled event on an uncoloured group to copy a tile shape from';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    const group = template.Group as Record<string, unknown>;
     const make = (
       id: string,
       day: number,
@@ -902,7 +992,8 @@ interface O19Day {
   month: number;
 }
 
-// DECISION Phase 88.9-50 O-19: the tinted day is two synthetic events planted in the browser copy of the events response, chosen over a seeded second event on the coloured group — the seed holds no two-event day, a scratch insert is barred, and the D5a/O18a recipe above already plants tiles this way; no write is made and the viewer id is never printed.
+// DECISION Phase 88.9-50 O-19: the tinted day is two synthetic events planted in the browser copy of the events response, chosen over a seeded second event on the coloured group — the seed holds no two-event day on E2E_COLOURED_GROUP_ID, a scratch insert is barred, and the D5a/O18a recipe above already plants tiles this way; no write is made and the viewer id is never printed.
+// AMENDED 2026-11-10 (quick 261110-ugi, item 52-X2): "the seed holds no two-event day" was unqualified and went stale when the BE seed put a cancelled and a completed Strategy Squad night on one day (+12). Still planted, because that day is on the green preset, not the coloured fixture's blue #172554 group this read measures, and its date moves with the seed; the free day is derived from the live response, so no seeded day can collide with it.
 async function seedTintedDay(page: Page): Promise<() => O19Day> {
   const ids = { tinted: crypto.randomUUID(), plain: crypto.randomUUID() };
   const plainGroupId = crypto.randomUUID();
@@ -943,8 +1034,15 @@ async function seedTintedDay(page: Page): Promise<() => O19Day> {
       await route.fulfill({ response, json: real });
       return;
     }
-    const template = (real[0] ?? {}) as Record<string, unknown>;
-    const group = (template.Group as Record<string, unknown> | null | undefined) ?? {};
+    // A plain scheduled template (plainScheduledTemplate): both rows must read as upcoming nights,
+    // so a completed template's status must not ride along onto the day modal's status tag.
+    const template = plainScheduledTemplate(real);
+    if (!template) {
+      seedError = 'the events GET holds no scheduled event on an uncoloured group to copy a row shape from';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    const group = template.Group as Record<string, unknown>;
     const make = (
       id: string,
       hour: number,
