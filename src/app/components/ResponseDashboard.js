@@ -9,7 +9,8 @@ import {
 } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
-import { Spinner } from '../../components/ui/Spinner';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
+import { useDelayedSpinner } from '../../components/ui/useDelayedSpinner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger } from '@/lib/logger';
@@ -38,6 +39,13 @@ const RESPONSES_REFRESHED_COPY = 'Responses refreshed.';
  * @param {boolean} blindVotingEnabled - Whether blind voting is enabled for this prompt
  * @param {boolean} pollClosed - Whether the poll has closed (deadline passed)
  */
+// R-C3b reach (88.9-56): the pressed Refresh's spinning icon on the delayed, held schedule — one
+// tiny component so the hook runs here and the dashboard itself calls no new hook.
+function RefreshSpinIcon({ refreshing }) {
+  const spin = useDelayedSpinner(refreshing);
+  return <RefreshIcon className={spin ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />;
+}
+
 export default function ResponseDashboard({
   promptId,
   isAdmin = false,
@@ -57,6 +65,9 @@ export default function ResponseDashboard({
   const [error, setError] = useState(null);
   // Review #237 (Phase 88.6.1-73): true while a PRESSED 'Refresh' is out; drives the word-free
   // busy cue (the icon's spin and the list's aria-busy). Only the press sets it.
+  // AMENDED Phase 88.9-56 (R-C3b reach): the word-free busy cue is now the delayed-spinner hook inside
+  // RefreshSpinIcon keying the icon class (the spin appears after 200 ms and keeps 500 ms); the list's
+  // aria-busy and the polite status stay keyed on refreshing, immediate.
   const [refreshing, setRefreshing] = useState(false);
   // CR-3 / A-42: the spoken line of a PRESSED Refresh (the marker at the region in the render).
   const [refreshStatus, setRefreshStatus] = useState('');
@@ -650,7 +661,7 @@ export default function ResponseDashboard({
         onClick={handleRefresh}
         className="mt-1 -mb-3 min-h-11 text-sm text-content-muted hover:text-content-secondary active:opacity-75 inline-flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
       >
-        <RefreshIcon className={refreshing ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />
+        <RefreshSpinIcon refreshing={refreshing} />
         Refresh
       </button>
       {/* DECISION Phase 88.6.1 code review CR-3 / A-42 (owner ratified 2026-10-19, WCAG 4.1.3):
@@ -733,14 +744,10 @@ function RemindButton({ userId, lastRemindedAt, isReminding, statusId, onRemind 
       aria-disabled={isReminding || undefined}
       className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:text-content-muted shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
     >
-      {/* DECISION Phase 88.9-45 (rule 1, raw button): the Spinner primitive plus an sr-only ", sending" span are composed here by hand, chosen OVER converting this link-styled row control to Button (the unlayered .btn rules would repaint it) and OVER the Sending swap word. */}
+      {/* DECISION Phase 88.9-45 (rule 1, raw button): the Spinner primitive plus an sr-only ", sending" span are composed here by hand, chosen OVER converting this link-styled row control to Button (the unlayered .btn rules would repaint it) and OVER the Sending swap word. AMENDED Phase 88.9-56 (R-C3b reach): the spinner is the delayed, held element beside the label, outside the busy guard; a sent reminder replaces this button with its Reminded line (the hold ends with the host), a failed one keeps the button, so the spinner finishes its hold. */}
       Remind
-      {isReminding && (
-        <>
-          <Spinner className="ml-2" />
-          <span className="sr-only">, sending</span>
-        </>
-      )}
+      <DelayedSpinner busy={isReminding} className="ml-2" />
+      {isReminding && <span className="sr-only">, sending</span>}
     </button>
   );
 }

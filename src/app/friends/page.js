@@ -37,7 +37,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
-import { Spinner } from '../../components/ui/Spinner';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '../../lib/logger';
@@ -178,7 +178,9 @@ function FriendsPage() {
        Invite to Group is such a control. Its VALIDITY half (no group, no friend selected, the
        group's members still loading) moves to `aria-disabled` as well, because the batch's own
        settle empties the ids whose outcome is final (AMENDED Phase 88.9-56, R-C1 twin), and a
-       native gate would then blur the very button the user pressed. Disclosed visible delta: at rest with nothing selected (and while a group's
+       native gate would then blur the very button the user pressed. AMENDED Phase 88.9-56 (R-C3b reach):
+       its in-flight glyph is Button's busy now (the delayed, held house spinner, heard as Invite to Group,
+       sending), replacing the hand-rolled spinning div and its sr-only words. Disclosed visible delta: at rest with nothing selected (and while a group's
        members load) it shows the gated colour pair instead of the 50% wash; pressing it then
        sends nothing.
 
@@ -1090,6 +1092,7 @@ function FriendsPage() {
                     </form>
 
                     {/* Search Result */}
+                    {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. */}
                     {searching && (
                         <div role="status" aria-label="Searching for that email address" className="mt-4 flex items-center gap-2 text-content-secondary">
                             <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-btn-primary" />
@@ -1380,13 +1383,9 @@ function FriendsPage() {
                                                         onClick={handleBulkInvite}
                                                         aria-disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading || groupMembersLoading ? 'true' : undefined}
                                                         aria-busy={bulkInviteLoading || undefined}
+                                                        busy={bulkInviteLoading}
+                                                        busySuffix=", sending"
                                                     >
-                                                        {bulkInviteLoading && (
-                                                            <>
-                                                                <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                                                                <span className="sr-only">Sending invites...</span>
-                                                            </>
-                                                        )}
                                                         Invite to Group
                                                     </Button>
                                                     {selectedFriends.size > 0 && (
@@ -1395,6 +1394,7 @@ function FriendsPage() {
                                                         </span>
                                                     )}
                                                 </div>
+                                                {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. */}
                                                 {groupMembersLoading && (
                                                     <div role="status" aria-label="Loading group members" className="mt-2 flex items-center gap-2 text-xs text-content-muted">
                                                         <div aria-hidden="true" className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
@@ -1546,8 +1546,11 @@ function FriendsPage() {
                                                                     {removeFriendGate.labelFor(friendship.id, 'Remove')}
                                                                     {/* Raw host (not Button, not flex): the house spinner with
                                                                         the same ml-2 spacing plan 88.9-45 gives AvailabilityForm's
-                                                                        raw buttons; the suffix rides the aria-label above. */}
-                                                                    {removing && <Spinner className="ml-2 align-middle" />}
+                                                                        raw buttons; the suffix rides the aria-label above.
+                                                                        AMENDED Phase 88.9-56 (R-C3b reach): the delayed, held
+                                                                        element; the row leaves with the friend on success, so
+                                                                        the hold ends with the host. */}
+                                                                    <DelayedSpinner busy={removing} className="ml-2 align-middle" />
                                                                 </button>
                                                             );
                                                         })()}

@@ -10,7 +10,7 @@ import {
   useConfirmCountdown,
 } from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
-import { Spinner } from '@/components/ui/Spinner';
+import { DelayedSpinner } from '@/components/ui/DelayedSpinner';
 import { useDismissal } from '@/components/ui/useDismissal';
 import { hostGroundHalo } from '@/components/ui/hostGround';
 import { cn } from '@/lib/cn';
@@ -598,20 +598,20 @@ export default function KebabMenu({
                   }`}
                 >
                   {label}
-                  {item.busy ? (
-                    /* DECISION Phase 88.9-46 (rule 1 kebab busy): a busy item keeps its label and
+                  {/* DECISION Phase 88.9-46 (rule 1 kebab busy): a busy item keeps its label and
                        shows the house spinner plus a heard suffix (the same sr-only span Button
                        renders), chosen OVER the caller swapping the label string (the shipped
                        gameDetail pattern — the in-flight word replaced the whole name) and OVER a
                        native disabled item (the 88.6-18 D3 marker: a focused natively-disabled item
                        blurs to body). The item is a block w-full button, not flex, so the spinner
                        carries its own ml-2 (the raw-button composition of 88.9-45). busy is not a
-                       refusal: `item.ariaDisabled` stays the gate. */
-                    <>
-                      <Spinner className="ml-2 align-middle" />
-                      <span className="sr-only">{item.busySuffix}</span>
-                    </>
-                  ) : null}
+                       refusal: `item.ariaDisabled` stays the gate.
+                       AMENDED Phase 88.9-56 (R-C3b reach): the spinner is the delayed, held element, mounted
+                       beside the label outside the busy ternary (an element, not a hook, so it works inside
+                       items.map); the ternary keeps only the heard suffix. An item that navigates on success
+                       keeps busy until the page unmounts. */}
+                  <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />
+                  {item.busy ? <span className="sr-only">{item.busySuffix}</span> : null}
                 </button>
               </li>
             );

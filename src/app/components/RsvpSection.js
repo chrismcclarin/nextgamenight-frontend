@@ -8,7 +8,7 @@ import ClickableMemberName from './ClickableMemberName';
 import { statusConfig } from './rsvpStatusConfig';
 import { Textarea } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
-import { Spinner } from '../../components/ui/Spinner';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
 import { Icon } from '../../components/ui/Icon';
 import { hostGroundHalo } from '../../components/ui/hostGround';
 import { StatusRegion } from '../../components/ui/StatusRegion';
@@ -456,24 +456,26 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange, ho
                     ${otherInFlight ? 'opacity-50 cursor-not-allowed' : ''}
                   `}
                 >
-                  {isLoading ? (
-                    <>
-                      <Spinner
-                        // The shipped spinner, swapped in PLACE so the button element — and
-                        // therefore DOM focus — survives the submit.
-                      />
-                      {/* The button deliberately KEEPS focus in flight (`aria-disabled` above), so
-                          it must keep an accessible NAME too — otherwise the control the user just
-                          activated announces as nothing for the whole round trip (WCAG 4.1.2;
-                          `NextGameNightCard.tsx:537-541`, its in-flight `sr-only` name). The busy context is ADDITIONAL to the
-                          preserved status word, never a replacement for it: an `aria-label` on the
-                          SPINNER is the natural wrong turn here and would leave the focused button
-                          announcing as "loading" instead of "Going, saving". */}
-                      <span className="sr-only">{config.buttonText}, saving</span>
-                    </>
-                  ) : (
-                    config.buttonText
-                  )}
+                  {/* DECISION Phase 88.9-56 (rule 1 + R-C3b reach, 2026-11-10): the in-flight RSVP button keeps its
+                      visible status word beside the delayed spinner, chosen OVER the shipped spinner-only state (the
+                      pre-47 hero shape) — with a 200 ms appear delay a spinner-only button would be EMPTY for that
+                      window, and rule 1 (the label never changes while busy; Δ29, universal) already forbade the swap;
+                      the heard name is unchanged; the trio stays mounted after the save, so its spinner finishes its
+                      hold. */}
+                  {config.buttonText}
+                  {/* AMENDED Phase 88.9-56 (R-C3b reach): the shipped spinner was swapped in PLACE of the status
+                      word; the word now stays and the spinner sits beside it, so the button element — and
+                      therefore DOM focus — still survives the submit. */}
+                  <DelayedSpinner busy={isLoading} className="ml-2 align-middle" />
+                  {/* The button deliberately KEEPS focus in flight (`aria-disabled` above), so
+                      it must keep an accessible NAME too — otherwise the control the user just
+                      activated announces as nothing for the whole round trip (WCAG 4.1.2; the hero's
+                      in-flight sr-only name, src/app/components/NextGameNightCard.tsx ("focused control announces as nothing for the whole round trip")).
+                      The busy context is ADDITIONAL to the preserved status word, never a replacement for it: an
+                      `aria-label` on the SPINNER is the natural wrong turn here and would leave the focused button
+                      announcing as "loading" instead of "Going, saving". The word is visible now, so this
+                      span carries only the suffix. */}
+                  {isLoading ? <span className="sr-only">, saving</span> : null}
                 </button>
               );
             })}
@@ -597,17 +599,15 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange, ho
                 className={hostGroundHalo(hostGround)}
               >
                 Save note
-                {savingNote && (
-                  <>
-                    {/* DECISION Phase 88.9-35 (Δ6, house Spinner): Save note keeps its own sr-only
-                        , saving span beside the house Spinner, chosen OVER Button's busy prop —
-                        busy's suffix is the pending Q6(b) wording and its spinner drops the 8px
-                        ml-2 this control has shipped; moving Save note onto busy is a look change,
-                        a decision, not a cleanup. */}
-                    <Spinner className="ml-2 align-middle" />
-                    <span className="sr-only">, saving</span>
-                  </>
-                )}
+                {/* DECISION Phase 88.9-35 (Δ6, house Spinner): Save note keeps its own sr-only
+                    , saving span beside the house Spinner, chosen OVER Button's busy prop —
+                    busy's suffix is the pending Q6(b) wording and its spinner drops the 8px
+                    ml-2 this control has shipped; moving Save note onto busy is a look change,
+                    a decision, not a cleanup.
+                    AMENDED Phase 88.9-56 (R-C3b reach): its spinner is the delayed, held element mounted
+                    outside the savingNote guard (still not Button's busy); the guard keeps the suffix. */}
+                <DelayedSpinner busy={savingNote} className="ml-2 align-middle" />
+                {savingNote && <span className="sr-only">, saving</span>}
               </Button>
             </div>
           </div>

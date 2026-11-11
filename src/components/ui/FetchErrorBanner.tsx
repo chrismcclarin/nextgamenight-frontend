@@ -44,6 +44,7 @@ import { Banner } from './Banner';
 import { hostGroundHalo, type HostGround } from './hostGround';
 import { Icon } from './Icon';
 import { Spinner } from './Spinner';
+import { useDelayedSpinner } from './useDelayedSpinner';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { useFeedbackReport } from '@/app/components/FeedbackModalProvider';
 import { logger, errCtx } from '@/lib/logger';
@@ -399,6 +400,14 @@ interface NoticeRowProps {
    token is unchanged. (b) stands: the host passes a typed key resolved from a literal map, never a
    class string, and the default card token stays inside the literal with the host's key merged
    after it (the last one wins). */
+// R-C3b reach (88.9-56): both retry controls' icon slot. The slot must stay filled, so the RefreshCw
+// icon stays until the delayed spinner shows (200 ms) and the spinner then keeps 500 ms; one small
+// component so no hook call sits in the banner's body below its compact early return.
+function RetrySlot({ retrying }: { retrying: boolean }) {
+  const shown = useDelayedSpinner(retrying);
+  return shown ? <Spinner /> : <Icon name="RefreshCw" size={14} />;
+}
+
 function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, hostGround }: NoticeRowProps) {
   const textId = React.useId();
   return (
@@ -469,8 +478,12 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, host
             to the in-flight word (it replaced the whole accessible name) and OVER keeping the
             spinning icon as a second spinner look (rule 1: busy looks the same everywhere). The
             polite region beside each branch is a status caption, not a button, and keeps its word.
-            Owner pick O16a extended by the Q3 ruling (88.9-RULINGS.md, 2026-11-08). */}
-        {retrying ? <Spinner /> : <Icon name="RefreshCw" size={14} />}
+            Owner pick O16a extended by the Q3 ruling (88.9-RULINGS.md, 2026-11-08).
+            AMENDED Phase 88.9-56 (R-C3b reach): the slot is driven by the delayed-spinner hook inside
+            RetrySlot — the RefreshCw icon stays until the spinner shows, so a fast retry never changes the
+            slot; a successful retry unmounts the banner (the hold ends with the host), a failed one keeps
+            it, so the spinner finishes its hold. */}
+        <RetrySlot retrying={retrying} />
         Retry
         {retrying ? <span className="sr-only">, retrying</span> : null}
       </button>
@@ -773,7 +786,7 @@ export function FetchErrorBanner({
           className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
         >
           {/* Same in-flight shape as the shared row's Retry — see the rule 1 B37/B38 marker there. */}
-          {retrying ? <Spinner /> : <Icon name="RefreshCw" size={14} />}
+          <RetrySlot retrying={retrying} />
           Try again
           {retrying ? <span className="sr-only">, retrying</span> : null}
         </button>

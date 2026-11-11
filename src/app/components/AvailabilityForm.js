@@ -14,7 +14,7 @@ import { useAppForm } from '../../lib/useAppForm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Button } from '../../components/ui/Button';
-import { Spinner } from '../../components/ui/Spinner';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
@@ -502,7 +502,10 @@ export default function AvailabilityForm({
           {/* DECISION Phase 88.9-45 (rule 1, raw buttons): the Spinner primitive and the same sr-only
               suffix span Button renders are composed here by hand, chosen OVER converting these raw
               buttons to Button (the unlayered .btn rules would repaint their shipped outline-card
-              classes). One spinner, one suffix shape. */}
+              classes). One spinner, one suffix shape.
+              AMENDED Phase 88.9-56 (R-C3b reach): the spinner is the delayed, held element mounted beside
+              each label OUTSIDE its guard (it appears after 200 ms and keeps 500 ms); the guard keeps only
+              the sr-only suffix, which stays immediate. */}
           {gcalConnected && (
             <button
               type="button"
@@ -512,12 +515,8 @@ export default function AvailabilityForm({
               className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
             >
               Import from Google Calendar
-              {prefillSource === 'gcal' && (
-                <>
-                  <Spinner className="ml-2 align-middle" />
-                  <span className="sr-only">, importing</span>
-                </>
-              )}
+              <DelayedSpinner busy={prefillSource === 'gcal'} className="ml-2 align-middle" />
+              {prefillSource === 'gcal' && <span className="sr-only">, importing</span>}
             </button>
           )}
           <button
@@ -529,12 +528,8 @@ export default function AvailabilityForm({
             className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
           >
             Use my saved availability
-            {prefillSource === 'saved' && (
-              <>
-                <Spinner className="ml-2 align-middle" />
-                <span className="sr-only">, loading</span>
-              </>
-            )}
+            <DelayedSpinner busy={prefillSource === 'saved'} className="ml-2 align-middle" />
+            {prefillSource === 'saved' && <span className="sr-only">, loading</span>}
           </button>
         </div>
         {!hasSavedAvailability && (
