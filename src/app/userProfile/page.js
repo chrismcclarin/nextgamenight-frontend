@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } from '../../lib/api';
+import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI, ApiError } from '../../lib/api';
 // Phase 87.3-07 (D-02): the profile's self row resolves via the shared
 // ['users','self'] query (useSelfIdentity) instead of an ad-hoc getUser
 // self-fetch. Because that cache is staleTime Infinity, every self-row mutation
@@ -340,6 +340,26 @@ function Profile(){
     const patternsFailedWithNothingCached = patternsError.showError && !patternsRetained;
     // No-row half (88.6.1-61); selfIdentityErrorState stays RAW: plan 88.6.1-79 reads it over a kept row.
     const selfFailedWithNothingCached = selfIdentityFailedWithNoRow(selfQuery, self?.id);
+    // R-C2 (88.9-56): the no-row identity 401 on a declined return, latched through the episode's
+    // in-flight refetch (see the DECISION marker at its render branch below).
+    const rc2Active =
+        (selfFailedWithNothingCached && selfIdentityErrorState.code === 'unauthorized') ||
+        (signIn.decision === 'declined' && !self && selfQuery.isFetching);
+    const sessionDeadBannerState = useFetchErrorState({ isError: rc2Active, error: SESSION_DEAD_ERROR, refetch: resolveNothing });
+    const sessionDeadRef = useRef(null);
+    const sessionDeadFocusedRef = useRef(false);
+    useEffect(() => {
+        if (!rc2Active) {
+            sessionDeadFocusedRef.current = false;
+            return;
+        }
+        if (sessionDeadFocusedRef.current) return;
+        const active = document.activeElement;
+        if (active === document.body || !active || !active.isConnected) {
+            sessionDeadRef.current?.focus({ preventScroll: true });
+            sessionDeadFocusedRef.current = true;
+        }
+    }, [rc2Active]);
     /* DECISION Phase 88.6.1-79 (AC-29 / D-51, identity kept row): CHOSEN — Profile is the one host
        that DISPLAYS the identity row as content (the header's name and address line), so a failed
        identity refresh over a held row is retained data: ONE RF1 notice at the top of the header
@@ -2293,6 +2313,31 @@ function Profile(){
         return (
             <div className="p-3 md:p-6 max-w-4xl mx-auto">
                 <FetchErrorBanner state={signIn.signedOutErrorState} title="We couldn't load your profile" reportContext="Profile page — signed out" />
+            </div>
+        );
+    }
+
+    /* DECISION Phase 88.9-56 (owner ruling R-C2 + 'profile', 88.9-RULINGS.md, 2026-11-10; closes plan 88.9-40
+       Deviations 8): a return with a LIVE cookie whose identity read still 401s and no row held renders ONE
+       page-level banner, Couldn't load your profile, with Sign in (FetchErrorBanner's unauthorized branch, plan
+       88.9-26 — the shape plan 88.9-42 gave the home page), chosen OVER the body with its in-zone Retry notices (a
+       401 cannot be retried; the notices offered no way back in) and OVER a second redirect (the latch is set:
+       SESSION-01's once-only rule). The banner reads a LATCHED state of its own (SESSION_DEAD_ERROR +
+       resolveNothing through useFetchErrorState, keyed on rc2Active), chosen OVER the raw identity state, whose
+       visibilitychange refetch drops its error flag for the fetch's duration and would swap the banner for the
+       body and back; rc2Active also holds through the declined episode's in-flight refetch. The banner REPLACES
+       the body — the same shape as the signed-out declined return directly above — chosen OVER the home page's
+       banner-above-the-columns, because on the profile every zone reads the identity row and nothing beneath
+       could render honestly. Its reportContext is its own value: the operator's report names the
+       session-expired shape, not the signed-out one. Focus: on the branch's first commit, if the active element
+       is body or disconnected, the wrapper (tabIndex -1; its first text is the banner title) takes focus once
+       per episode, chosen OVER leaving focus on body (the branch is reached on first load before any
+       interaction, where R-C4's main landing — the home page's guard — does not apply). Changing this is a
+       decision, not a cleanup. */
+    if (rc2Active) {
+        return (
+            <div ref={sessionDeadRef} tabIndex={-1} className="p-3 md:p-6 max-w-4xl mx-auto">
+                <FetchErrorBanner state={sessionDeadBannerState} thing="your profile" reportContext="Profile page — session expired" />
             </div>
         );
     }
@@ -4493,5 +4538,11 @@ function Profile(){
         )
     );
 }
+
+// R-C2 (88.9-56): the latched session-dead source for the profile's no-row 401 banner — an ApiError
+// (the banner derives its code through instanceof) and a refetch that does nothing (a 401 is not
+// retried here; the banner's action is Sign in) — the same pair the home page builds for its groups report.
+const SESSION_DEAD_ERROR = new ApiError('Unauthorized', 'unauthorized', 401);
+const resolveNothing = () => Promise.resolve(undefined);
 
 export default Profile;
