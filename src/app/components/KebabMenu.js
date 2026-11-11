@@ -454,7 +454,8 @@ export default function KebabMenu({
            after the shipped literal with cn so the literal keeps its card key, chosen OVER round 1's
            fixed card halo on every host. The tinted group-page host left with F5b; the groupPlanning
            desktop arm (card on a phone, page from md) cannot be named by one key and is plan
-           88.9-50's. Changing this is a decision, not a cleanup. */
+           88.9-50's. Changing this is a decision, not a cleanup.
+           AMENDED Phase 88.9-50 (plan review 2026-11-08): the groupPlanning desktop arm named above was a census false positive — OpenPollCard's li paints bg-surface-card at every width (src/app/components/OpenPollsList.js ("const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex items-start';")), so every live host is a card and the default key is right; no md companion on this trigger, chosen OVER one (it would paint a page-coloured gap on a card row from 768px, band 1.31 / 1.22). */
         className={cn(
           'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
           hostGroundHalo(hostGround)

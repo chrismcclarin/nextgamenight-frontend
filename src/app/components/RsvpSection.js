@@ -794,7 +794,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange, ho
                               affordance, and the userId handed to the (soon
                               UUID-keyed) friendship provider is a UUID. */}
                           {rsvp.User?.id ? (
-                            <ClickableMemberName userId={rsvp.User.id} username={rsvp.User.username || 'Unknown'} />
+                            <ClickableMemberName userId={rsvp.User.id} username={rsvp.User.username || 'Unknown'} hostGround={hostGround} />
                           ) : (
                             'Unknown'
                           )}

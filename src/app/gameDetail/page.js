@@ -2405,7 +2405,7 @@ export default function GameDetailPage() {
                                                                 // prefix is dropped; `participation.user_id` here is UUID-keyed
                                                                 // (unlike every other flat user_id site) and is allowlisted in the
                                                                 // plan-06 residue grep.
-                                                                <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
+                                                                <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} hostGround="muted" />
                                                             )}
                                                         </span>
                                                         {participation.is_guest && (
