@@ -117,6 +117,12 @@ function unsetBackgroundFromSource(): RegExp {
 }
 
 type GroupColours = { color_preset?: string | null; background_color?: string | null };
+type Participation = { user_id?: string | null; is_guest?: boolean | null };
+type PlainCandidate = {
+  status?: string | null;
+  Group?: GroupColours | null;
+  EventParticipations?: readonly Participation[] | null;
+};
 
 /**
  * TRUE when the app renders this group with no colour of its own: no preset, and a stored
@@ -128,9 +134,25 @@ function isUncolouredGroup(group: GroupColours | null | undefined): boolean {
   return bg == null || bg === '' || unsetBackgroundFromSource().test(bg);
 }
 
-/** A real event a synthetic tile may copy its shape from: a scheduled night on an uncoloured group. */
-function isPlainScheduled(e: { status?: string | null; Group?: GroupColours | null }): boolean {
-  return e.status === 'scheduled' && !!e.Group && isUncolouredGroup(e.Group);
+/**
+ * The viewer's User.id: the last path segment of the events GET (/events/user/<id>), the same read
+ * the guest tiles make. Compared in memory only, never printed.
+ */
+function viewerFromEventsUrl(url: string): string {
+  const segments = new URL(url).pathname.split('/').filter(Boolean);
+  return decodeURIComponent(segments[segments.length - 1] ?? '');
+}
+
+/**
+ * A real event a tile may be measured on or copy its shape from: a scheduled night, on an
+ * uncoloured group, that the viewer does not join as a guest. The guest rule is the app's own
+ * (isGuestEvent): the viewer's participation, matched on User.id, with is_guest strictly true. An
+ * unread viewer (empty) counts ANY guest row, so an unknown viewer can never admit a guest night.
+ */
+function isPlainScheduled(e: PlainCandidate, viewer: string): boolean {
+  if (e.status !== 'scheduled' || !e.Group || !isUncolouredGroup(e.Group)) return false;
+  const participations = Array.isArray(e.EventParticipations) ? e.EventParticipations : [];
+  return !participations.some((p) => p.is_guest === true && (viewer === '' || p.user_id === viewer));
 }
 
 // DECISION Phase 88.9 (quick 261110-ugi H-1): every synthetic tile below copies its shape from the
@@ -138,8 +160,13 @@ function isPlainScheduled(e: { status?: string | null; Group?: GroupColours | nu
 // NEWEST event the viewer can see (the events GET orders by start_date DESC) and so silently takes
 // on whatever group and status the seed last added: a green group and a completed status after
 // BE PR 70. No such event is a fixture error, never a fallback.
-function plainScheduledTemplate(real: unknown[]): Record<string, unknown> | null {
-  const found = (real as { status?: string | null; Group?: GroupColours | null }[]).find(isPlainScheduled);
+// DECISION Phase 88.9 (quick 261110-ugi S-2): the guest rule is restated in isPlainScheduled, chosen
+// OVER importing isGuestEvent, because this picker also lands on FE main, where that module does not
+// exist yet, and both copies must stay textually identical so the phase merge is clean. Every
+// synthetic tile also sets EventParticipations to an empty list, so a drift between the two rules
+// can move only the real Scenario A/B target, never a synthetic tile's guest cue.
+function plainScheduledTemplate(real: unknown[], viewer: string): Record<string, unknown> | null {
+  const found = (real as PlainCandidate[]).find((e) => isPlainScheduled(e, viewer));
   return (found as Record<string, unknown> | undefined) ?? null;
 }
 
@@ -147,6 +174,7 @@ interface FixtureEvent {
   id: string;
   start_date: string;
   status?: string | null;
+  EventParticipations?: Participation[] | null;
   Game?: { name?: string } | null;
   Group?: {
     id: string;
@@ -190,6 +218,7 @@ async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
       return;
     }
     const events = body as FixtureEvent[];
+    const viewer = viewerFromEventsUrl(route.request().url());
     // DECISION Phase 88.9 (quick 261110-ugi H-1): the target is FOUND by predicate (a plain
     // scheduled night, isPlainScheduled, still to come, and one of the two tiles its day cell
     // renders), and none is a thrown fixture error, chosen OVER the old positional events[0]
@@ -213,7 +242,7 @@ async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
       perDay.set(k, n + 1);
     }
     const candidates = events.filter(
-      (e) => isPlainScheduled(e) && new Date(e.start_date).getTime() >= nowMs && rendered.has(e)
+      (e) => isPlainScheduled(e, viewer) && new Date(e.start_date).getTime() >= nowMs && rendered.has(e)
     );
     const target = candidates.reduce<FixtureEvent | null>(
       (best, e) => (!best || new Date(e.start_date).getTime() < new Date(best.start_date).getTime() ? e : best),
@@ -221,7 +250,7 @@ async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
     );
     if (!target) {
       seedError =
-        `no upcoming scheduled event on an uncoloured group renders as a tile (${events.length} events in the payload) — ` +
+        `no upcoming scheduled event on an uncoloured group, that the viewer is not a guest on, renders as a tile (${events.length} events in the payload) — ` +
         'the plain treatment has nothing to be measured on; fix the seed, never fall back to a coloured event';
       await route.fulfill({ response, json: events });
       return;
@@ -498,10 +527,11 @@ async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<voi
     // Shape copied from a real plain scheduled event (plainScheduledTemplate), so the tile measured
     // is an UNCOLOURED one, the case this read has measured since 88.9-04; the group carries NO
     // background image, because an image-backed full tile keeps the owner-ruled white/stroke
-    // treatment over a photo, which a colour ratio cannot measure.
-    const template = plainScheduledTemplate(real);
+    // treatment over a photo, which a colour ratio cannot measure. It carries NO participations
+    // either, so it is a member tile whatever guest rows the template held.
+    const template = plainScheduledTemplate(real, viewerFromEventsUrl(route.request().url()));
     if (!template) {
-      seedError = 'the events GET holds no scheduled event on an uncoloured group to copy a tile shape from';
+      seedError = 'the events GET holds no scheduled event on an uncoloured group, not a guest night for the viewer, to copy a tile shape from';
       await route.fulfill({ response, json: real });
       return;
     }
@@ -514,6 +544,7 @@ async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<voi
       ...('end_date' in template ? { end_date: new Date(start.getTime() + 2 * 3600_000).toISOString() } : {}),
       Game: { ...((template.Game as object | null | undefined) ?? {}), name: O4B_GAME },
       Group: { ...group, background_image_url: null },
+      EventParticipations: [],
     };
     rewrites += 1;
     await route.fulfill({ response, json: [...real, synthetic] });
@@ -727,6 +758,8 @@ test.describe('the 16px group avatar fallback on the FULL month tile (88.9-CR d1
  * at 3:1 on the unrounded value, in dark and light, on an uncoloured (transparent) tile and a
  * tinted one. A quoted number is never the oracle: O18a amber-600 is 3.19 on the old card-white
  * cell but 2.5680 on the C3 tile ground (research Pitfall 10). A member tile carries no dash.
+ * The cue is decided by src/lib/eventClassification.ts ("export function isGuestEvent("), the rule
+ * isPlainScheduled above restates to keep every other synthetic tile and template a member one.
  * ======================================================================================= */
 
 const D5A_FLOOR = 3;
@@ -760,8 +793,7 @@ async function seedGuestTiles(page: Page): Promise<() => GuestTiles> {
   // events appended in the browser copy. No write is made.
   await page.route('**/api/events/user/**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
-    const segments = new URL(route.request().url()).pathname.split('/').filter(Boolean);
-    const viewer = decodeURIComponent(segments[segments.length - 1] ?? '');
+    const viewer = viewerFromEventsUrl(route.request().url());
     const response = await scrubbedFetch(route);
     let real: unknown;
     try {
@@ -798,9 +830,9 @@ async function seedGuestTiles(page: Page): Promise<() => GuestTiles> {
     }
     // A plain scheduled template (plainScheduledTemplate): the colours are overridden per tile
     // below, but the status is not, so a completed or cancelled template would be copied onto all three.
-    const template = plainScheduledTemplate(real);
+    const template = plainScheduledTemplate(real, viewer);
     if (!template) {
-      seedError = 'the events GET holds no scheduled event on an uncoloured group to copy a tile shape from';
+      seedError = 'the events GET holds no scheduled event on an uncoloured group, not a guest night for the viewer, to copy a tile shape from';
       await route.fulfill({ response, json: real });
       return;
     }
@@ -1035,10 +1067,11 @@ async function seedTintedDay(page: Page): Promise<() => O19Day> {
       return;
     }
     // A plain scheduled template (plainScheduledTemplate): both rows must read as upcoming nights,
-    // so a completed template's status must not ride along onto the day modal's status tag.
-    const template = plainScheduledTemplate(real);
+    // so a completed template's status must not ride along onto the day modal's status tag; both rows
+    // carry NO participations, so neither takes on a guest row the template held.
+    const template = plainScheduledTemplate(real, viewerFromEventsUrl(route.request().url()));
     if (!template) {
-      seedError = 'the events GET holds no scheduled event on an uncoloured group to copy a row shape from';
+      seedError = 'the events GET holds no scheduled event on an uncoloured group, not a guest night for the viewer, to copy a row shape from';
       await route.fulfill({ response, json: real });
       return;
     }
@@ -1065,6 +1098,7 @@ async function seedTintedDay(page: Page): Promise<() => O19Day> {
           background_image_url: null,
           profile_picture_url: null,
         },
+        EventParticipations: [],
       } as FixtureEvent;
     };
     // The coloured fixture's values, e2e/contrast.spec.ts ("background_color:'#172554'").
