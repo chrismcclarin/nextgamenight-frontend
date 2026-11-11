@@ -25,16 +25,30 @@ import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testi
 import userEvent from '@testing-library/user-event';
 import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // R-C3b (88.9-56): the hold budget
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { formatDateTime } from '@/lib/datetime';
 import type { HostGround } from '@/components/ui/hostGround';
 
 // The respondent list is not under test; a passthrough keeps the render light and
-// avoids the popover's own context requirements.
-vi.mock('./ClickableMemberName', () => ({
-  default: ({ children, username }: { children?: React.ReactNode; username?: string }) => (
-    <span>{children ?? username}</span>
-  ),
-}));
+// avoids the popover's own context requirements. The passthrough resolves the hostGround it is
+// handed through the REAL halo map (88.9-50), the call the real trigger makes, so a test can
+// read which ground RsvpSection forwards; the real component's own resolution is pinned in
+// its own test files.
+vi.mock('./ClickableMemberName', async () => {
+  const { hostGroundHalo } = await import('@/components/ui/hostGround');
+  return {
+    default: ({
+      children,
+      username,
+      hostGround,
+    }: {
+      children?: React.ReactNode;
+      username?: string;
+      hostGround?: HostGround;
+    }) => <span className={hostGroundHalo(hostGround)}>{children ?? username}</span>,
+  };
+});
 
 // `rsvpAPI` MUST be mocked: the component fires `getEventRsvps` on mount, and an
 // unmocked `rsvpAPI` reaches the real `apiFetch` (a real jsdom fetch). The spread
@@ -1322,5 +1336,64 @@ describe('RsvpSection — round-2 cues (88.9-35)', () => {
     const paged = await screen.findByRole('button', { name: 'Save note' });
     expect(paged.className).toContain('focus-visible:ring-offset-surface-page');
     expect(paged.className).not.toContain('focus-visible:ring-offset-surface-card');
+  });
+});
+
+describe('RsvpSection — the RSVP name and the gameDetail mounts take their host ground (88.9-50)', () => {
+  const PAT_UUID = '33333333-3333-4333-8333-333333333333';
+  const patSaysYes = () => ({
+    rsvps: [
+      {
+        id: 'rsvp-pat-yes',
+        event_id: EVENT_ID,
+        user_id: PAT_UUID,
+        status: 'yes',
+        note: null,
+        User: { id: PAT_UUID, username: 'Pat' },
+      },
+    ],
+    summary: { yes: 1, maybe: 0, no: 0 },
+  });
+
+  it("R012/R013 (88.9-50): the RSVP name takes RsvpSection's host ground", async () => {
+    getEventRsvps.mockResolvedValue(patSaysYes());
+    render(
+      <RsvpSection
+        eventId={EVENT_ID}
+        self={{ id: SELF_UUID }}
+        eventDate={EVENT_DATE}
+        onRsvpChange={vi.fn()}
+        hostGround="page"
+      />
+    );
+    const paged = await screen.findByText('Pat', { exact: true });
+    expect(paged.className).toContain('focus-visible:ring-offset-surface-page');
+    expect(paged.className).not.toContain('focus-visible:ring-offset-surface-card');
+    cleanup();
+
+    getEventRsvps.mockResolvedValue(patSaysYes());
+    renderSection();
+    const carded = await screen.findByText('Pat', { exact: true });
+    expect(carded.className).toContain('focus-visible:ring-offset-surface-card');
+  });
+
+  // Read with fs and a local comment strip, not the sourceScan import (that would register this
+  // unit file as a drift gate). Every gameDetail mount is one self-closing line.
+  it("R012/R013 mount pin (88.9-50): gameDetail's participation chip passes its muted ground", () => {
+    const stripComments = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/[^\n]*/g, (m, lead) =>
+        m.startsWith('/*') ? m.replace(/[^\n]/g, ' ') : (lead ?? ''),
+      );
+    const source = stripComments(
+      readFileSync(resolve(process.cwd(), 'src/app/gameDetail/page.js'), 'utf8'),
+    );
+    const mounts = source.match(/<ClickableMemberName\b[^>]*\/>/g) ?? [];
+    expect(mounts, 'gameDetail mounts five ClickableMemberName names').toHaveLength(5);
+    const chip = mounts.filter((m) => m.includes('participation.User?.username || participation.username'));
+    expect(chip, 'exactly one mount is the participation chip').toHaveLength(1);
+    expect(chip[0], 'the chip name sits on the bg-surface-muted chip').toContain('hostGround="muted"');
+    const others = mounts.filter((m) => m !== chip[0]);
+    expect(others).toHaveLength(4);
+    for (const m of others) expect(m, 'card-ground mounts keep the default').not.toMatch(/\bhostGround=/);
   });
 });

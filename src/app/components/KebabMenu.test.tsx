@@ -29,6 +29,8 @@ import { render, screen, cleanup, fireEvent, within, act, waitFor } from '@testi
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the appear and hold budgets
@@ -416,5 +418,40 @@ describe('KebabMenu trigger host halo (88.9-35)', () => {
     const unknown = 'not-a-ground' as unknown as 'card';
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround={unknown} />);
     expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-card');
+  });
+
+  // R033's desktop arm was a census false positive (88.9-50): the check-in kebab's nearest painting
+  // ancestor is OpenPollCard's li, which paints card at every width, so the mount passes no host
+  // prop and keeps the default card halo. Read with fs and a local comment strip, not the
+  // sourceScan import (that would register this file as a drift gate).
+  it('R033 mount pin (88.9-50): the check-in kebab passes no host ground — its li paints card at every width', () => {
+    const stripComments = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/[^\n]*/g, (m, lead) =>
+        m.startsWith('/*') ? m.replace(/[^\n]/g, ' ') : (lead ?? ''),
+      );
+    const kebabTags = (src: string) => {
+      const tags: string[] = [];
+      const open = /<KebabMenu\b/g;
+      let hit: RegExpExecArray | null;
+      while ((hit = open.exec(src)) !== null) {
+        const end = src.indexOf('/>', hit.index);
+        tags.push(src.slice(hit.index, end === -1 ? src.length : end + 2));
+      }
+      return tags;
+    };
+    const HOST_PROP = /\bhostGround\w*=/;
+
+    const source = stripComments(
+      readFileSync(resolve(process.cwd(), 'src/app/components/OpenPollsList.js'), 'utf8'),
+    );
+    const tags = kebabTags(source);
+    expect(tags, 'OpenPollsList mounts exactly one KebabMenu').toHaveLength(1);
+    expect(tags[0]).toContain('ariaLabel="Check-in actions"');
+    expect(tags[0], 'the check-in kebab must not pass a host ground: its li paints card').not.toMatch(HOST_PROP);
+
+    // Anti-vacuity: the same matcher sees a host prop when one is there.
+    const probe = kebabTags('<KebabMenu ariaLabel="Check-in actions" hostGroundFromMd="page" />');
+    expect(probe).toHaveLength(1);
+    expect(probe[0]).toMatch(HOST_PROP);
   });
 });
