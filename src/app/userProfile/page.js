@@ -4158,12 +4158,21 @@ function Profile(){
                                 The username FIELD stays natively disabled while importing: a sibling (D-35),
                                 not the pressed control. Disclosed visible delta: while importing, the button
                                 shows the gated primary pair instead of the 50% wash. Dropping either half of
-                                the pair is a decision, not a cleanup. */}
+                                the pair is a decision, not a cleanup.
+                                AMENDED Phase 88.9-55 (R-C8, owner pick A, 2026-11-10): while the identity read is PENDING the
+                                opener is natively disabled beside the blank-username half (availability is validity's kind),
+                                chosen OVER an aria-disabled identity gate (it would keep a dead control focusable) and OVER
+                                opening the dialog before identity lands (option B) — on a fresh load an enabled opener's press
+                                silently toasted and opened nothing, the mechanism behind three CI flakes; the brief load window
+                                (the button is out of the tab order while identity loads, typically well under a second) is
+                                ACCEPTED because the alternative is a control that looks live and does nothing; the FAILED
+                                identity arm keeps the toast branch (an errored read must not disable the control forever; the
+                                no-row banners own that screen); the e2e helper's toBeEnabled wait is now a true positive signal. */}
                             <Button
                                 ref={importButtonRef}
                                 variant="primary"
                                 onClick={handleImportCollectionClick}
-                                disabled={!bggUsername.trim()}
+                                disabled={!bggUsername.trim() || (!selfUuid && selfQuery.isPending)}
                                 aria-disabled={importingCollection ? 'true' : undefined}
                                 className="whitespace-nowrap focus-visible:ring-offset-surface-page"
                                 busy={importingCollection}
