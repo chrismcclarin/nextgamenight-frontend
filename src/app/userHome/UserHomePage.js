@@ -812,7 +812,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         Plan 88.9-42 (O22d / SESSION-02): while the page-level session banner shows,
                         this column renders neither the compact notice nor the card. */}
                     {pageSessionState ? null : selfIdentityErrorState.showError ? (
-                        <FetchErrorBanner state={selfIdentityErrorState} compact />
+                        <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
                     ) : (
                         /* DECISION Phase 88-18 (Req 6, UI-SPEC 9.2): NO `action` is passed, so this
                            card's empty state ships without the contract row's "Plan Game Session"

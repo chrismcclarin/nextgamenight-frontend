@@ -2715,7 +2715,7 @@ export default function GameDetailPage() {
                     Participants/RSVP surface (userScope defaults to 'none' when
                     selfUuid can't resolve, hiding those sections) so the failure
                     surfaces loudly-but-small instead of silently. */}
-                <FetchErrorBanner state={selfIdentityErrorState} compact />
+                <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
 
                 {/* DECISION Phase 88.6.1-74 (AC-29 / RF1, event view): CHOSEN — plan 70's shared
                     RefreshFailedNotice, mounted unconditionally here, beside the event it qualifies and

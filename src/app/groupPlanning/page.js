@@ -781,7 +781,7 @@ export default function GroupPlanningPage() {
                 AMENDED Phase 88.6.1-63 (AC-29): identity counts as failed only with no row held;
                 with a held row the role read runs and, if it fails, it is the failure this notice
                 tells and the request its Retry repeats; the two can no longer show at once. */}
-            <FetchErrorBanner state={personalControlsErrorState} compact />
+            <FetchErrorBanner state={personalControlsErrorState} compact hostGround="page" />
 
             {/* A failed GROUP load — the page keeps its generic "Plan Game Session" title and the
                 poll tooling below still works, so this is a banner rather than a dead-end page. */}

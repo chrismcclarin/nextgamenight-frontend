@@ -639,8 +639,8 @@ export function FetchErrorBanner({
      Routed to Phase 92 (planning:.planning/deferred/phase-92.md ("## [correctness] A background refetch of a never-loaded query")).
 
      HONESTY: the six caller-gated compact sites (measured 2026-10-15) — src/app/userHome/UserHomePage.js ("TERMINAL identity failure it never fires — degrade with the") and src/app/userHome/UserHomePage.js (") : upcomingErrorState.showError && !upcomingRetained ? ("),
-     src/app/userProfile/page.js ("// check never ran; show the degrade notice, not a") and src/app/userProfile/page.js ("// fetch never ran; surface the degrade notice instead of"), src/app/friends/page.js ("<FetchErrorBanner state={groupsErrorState} compact />"),
-     src/app/components/grouplist.js ("<FetchErrorBanner state={selfIdentityErrorState} compact />"), each the compact banner beside its anchor, the grouplist one inside the
+     src/app/userProfile/page.js ("// check never ran; show the degrade notice, not a") and src/app/userProfile/page.js ("// fetch never ran; surface the degrade notice instead of"), src/app/friends/page.js ("{groupsErrorState.showError && ("),
+     src/app/components/grouplist.js ("if (selfIdentityErrorState.showError) {"), each the compact banner beside its anchor, the grouplist one inside the
      early return at src/app/components/grouplist.js ("if (selfIdentityErrorState.showError) {") — destroy this component at the press for a never-loaded identity query
      (friends: its one is the groups query, whose retry clears the error first) and re-create it on failure, so they get neither
      B1 nor an announcement. Owned by Phase 92 (planning:.planning/deferred/phase-92.md ("### Six caller-gated")). */

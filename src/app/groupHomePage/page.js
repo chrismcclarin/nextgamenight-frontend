@@ -820,7 +820,7 @@ function GroupHomePage(){
                     {/* D-08: if identity resolution permanently fails, the membership
                         check can never complete — surface a compact, non-blocking
                         degrade notice instead of an indefinite silent spinner (D-11). */}
-                    <FetchErrorBanner state={selfIdentityErrorState} compact />
+                    <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
                 </div>
                 {membersFocusGuard}
                 {groupFocusGuard}
