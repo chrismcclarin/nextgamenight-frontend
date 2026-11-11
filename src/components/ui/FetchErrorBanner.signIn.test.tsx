@@ -11,6 +11,8 @@
 // Testing rules (.planning/codebase/FE-TESTING-CONVENTIONS.md): line comments only (CF-9); these
 // are class / DOM pins (SPEC Edge R4 empty: no new text-over-colour pair is introduced here).
 import * as React from 'react';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { act, render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -184,5 +186,103 @@ describe('FetchErrorBanner — 88.9-26 title, halo and sign-in pins', () => {
     await waitFor(() =>
       expect(document.activeElement, '(b) focus lands on Sign in').toBe(screen.getByRole('link', { name: 'Sign in' }))
     );
+  });
+});
+
+describe('FetchErrorBanner — R073 mount grounds (88.9-50)', () => {
+  // DECISION Phase 88.9-50 R073: MOUNT_GROUNDS reads the mount files with fs and a local comment strip, chosen OVER the sourceScan import and a drift-registry row — registration would turn this unit file into a registered gate with a min count to keep in lockstep for a one-test table pin; plan 88.9-35 keeps KebabMenu.test, BallotSection.test and RsvpSection.statusOnly unregistered the same way. Changing it is a decision, not a cleanup.
+  //
+  // One row per compact mount, walked by hand at the branch head to the nearest painting ancestor.
+  // anchor: a snippet that occurs once in the comment-stripped file; the mount is the tag that
+  // contains it, else the first FetchErrorBanner tag after it. key card = the mount passes no
+  // hostGround (the default). No mount changes ground at 768px, so no row names a fromMd.
+  type MountRow = { file: string; anchor: string; key: 'card' | 'page'; fromMd?: 'page' };
+  const MOUNT_GROUNDS: MountRow[] = [
+    // the Modal panel paints bg-card
+    { file: 'src/app/components/ManageMembers.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact', key: 'card' },
+    // bg-surface-page from md; surface-flat-phone below it, and the UserHomePage host is unpainted to the body
+    { file: 'src/app/components/grouplist.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact', key: 'page' },
+    // the min-h-screen bg-surface-page page root
+    { file: 'src/app/friends/page.js', anchor: '<FetchErrorBanner state={groupsErrorState} compact', key: 'page' },
+    // the event view's unpainted wrapper, so the body's page ground
+    { file: 'src/app/gameDetail/page.js', anchor: '<TimezoneNudgeBanner />', key: 'page' },
+    // the reviews card
+    { file: 'src/app/gameDetail/page.js', anchor: '<div className="card p-3 md:p-6">', key: 'card' },
+    // the unpainted Loading group gate, so the body's page ground
+    { file: 'src/app/groupHomePage/page.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact', key: 'page' },
+    // the unpainted page wrapper, so the body's page ground
+    { file: 'src/app/groupPlanning/page.js', anchor: '<FetchErrorBanner state={personalControlsErrorState} compact', key: 'page' },
+    // the desktop-only column (hidden below md), unpainted to the body
+    { file: 'src/app/userHome/UserHomePage.js', anchor: '{pageSessionState ? null : selfIdentityErrorState.showError ? (', key: 'page' },
+    // the phone BottomSheet panel paints bg-surface-card
+    { file: 'src/app/userHome/UserHomePage.js', anchor: 'bodyClassName="flex min-h-0 flex-col overflow-hidden"', key: 'card' },
+    // the four profile mounts sit inside card p-3 md:p-6 sections
+    { file: 'src/app/userProfile/page.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact />', key: 'card' },
+    { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={schedulesHeadingRef}', key: 'card' },
+    { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={overridesHeadingRef}', key: 'card' },
+    { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={collectionHeadingRef}', key: 'card' },
+  ];
+
+  const stripComments = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/[^\n]*/g, (m, lead) =>
+      m.startsWith('/*') ? m.replace(/[^\n]/g, ' ') : (lead ?? ''),
+    );
+  const fromRoot = (rel: string) => stripComments(readFileSync(resolve(process.cwd(), rel), 'utf8'));
+  const tagFrom = (src: string, start: number) => {
+    const end = src.indexOf('/>', start);
+    return src.slice(start, end === -1 ? src.length : end + 2);
+  };
+  const COMPACT = /\scompact(?=[\s/>])/;
+
+  it('R073 mounts (88.9-50): every compact mount on a page ground passes its host', () => {
+    for (const row of MOUNT_GROUNDS) {
+      const src = fromRoot(row.file);
+      const where = `${row.file} (${row.anchor})`;
+      expect(src.split(row.anchor).length - 1, `${where}: the anchor occurs once`).toBe(1);
+      const at = src.indexOf(row.anchor);
+      const before = src.lastIndexOf('<FetchErrorBanner', at);
+      const start =
+        before !== -1 && src.indexOf('/>', before) >= at + row.anchor.length
+          ? before
+          : src.indexOf('<FetchErrorBanner', at);
+      expect(start, `${where}: a FetchErrorBanner tag at the anchor`).toBeGreaterThan(-1);
+      const tag = tagFrom(src, start);
+      expect(tag, `${where}: the tag is a compact mount`).toMatch(COMPACT);
+      if (row.key === 'card') {
+        expect(tag, `${where}: a card mount keeps the default`).not.toMatch(/\bhostGround=/);
+      } else {
+        expect(tag, `${where}: passes its ${row.key} ground`).toContain(`hostGround="${row.key}"`);
+      }
+      if (row.fromMd) expect(tag, `${where}: passes its desktop ground`).toContain(`hostGroundFromMd="${row.fromMd}"`);
+      else expect(tag, `${where}: no desktop companion`).not.toMatch(/\bhostGroundFromMd=/);
+    }
+
+    // Completeness: every compact FetchErrorBanner tag in src is a table row, file by file.
+    const counts = new Map<string, number>();
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(js|jsx|ts|tsx)$/.test(entry.name) && !/\.(test|spec)\./.test(entry.name)) {
+          const src = stripComments(readFileSync(full, 'utf8'));
+          const open = /<FetchErrorBanner\b/g;
+          let hit: RegExpExecArray | null;
+          while ((hit = open.exec(src)) !== null) {
+            if (COMPACT.test(tagFrom(src, hit.index))) {
+              const rel = relative(process.cwd(), full).split('\\').join('/');
+              counts.set(rel, (counts.get(rel) ?? 0) + 1);
+            }
+          }
+        }
+      }
+    };
+    walk(resolve(process.cwd(), 'src'));
+    const expected = new Map<string, number>();
+    for (const row of MOUNT_GROUNDS) expected.set(row.file, (expected.get(row.file) ?? 0) + 1);
+    const differ = [...new Set([...counts.keys(), ...expected.keys()])]
+      .filter((f) => (counts.get(f) ?? 0) !== (expected.get(f) ?? 0))
+      .map((f) => `${f}: src ${counts.get(f) ?? 0}, table ${expected.get(f) ?? 0}`);
+    expect(differ, 'files whose compact mount count differs from MOUNT_GROUNDS').toEqual([]);
+    expect([...counts.values()].reduce((a, b) => a + b, 0)).toBe(MOUNT_GROUNDS.length);
   });
 });
