@@ -2775,9 +2775,16 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     // control is a Button, so .btn already renders 600 at rest and armed alike, and this utility
     // is DEAD — it carries no armed cue. Counted in ARMED_STATE_600_ROSTER too; its deletion is
     // routed to Phase 92 (DECISION Phase 88.6.2-15 (PC-2), at that roster's entry).
-    sites: 1,
+    // AMENDED Phase 88.9-63 (X16, owner at N04, 2026-11-11: D): 1 -> 3. The two new sites are the
+    // participant NAME spans, one on the Participants chip and one on the See-all row, which the
+    // owner ruled take 600 so a name outweighs the pill beside it (pills are 12px sentence case
+    // from this plan). An owner-ruled exception to UI-SPEC §4.5's two weights, chosen OVER 700
+    // (as heavy as the Owner pill, so the name would not lead) and OVER C (smaller pills). The
+    // font loads with no weight list, so 600 renders from it as it does on every .btn. The dead
+    // armed-state site and its Phase 92 routing are unchanged; this entry floors at 3 until then.
+    sites: 3,
     why:
-      '1 off-scale weight site: the font-semibold on the ARMED branch of the two-tap participant Remove. It is DEAD: the control is a Button and .btn sets the weight unlayered, so rest and armed both render 600 and the weight carries no armed cue. Counted in ARMED_STATE_600_ROSTER too (88.6.2-15, W049); deleting it is a className edit routed to Phase 92, and that commit deletes both entries together. Owning plans: 88.6-18 (swept), 88.6-46 (closeout), 88.6.2-15 (W049).',
+      '3 off-scale weight sites. One is the font-semibold on the ARMED branch of the two-tap participant Remove. It is DEAD: the control is a Button and .btn sets the weight unlayered, so rest and armed both render 600 and the weight carries no armed cue. Counted in ARMED_STATE_600_ROSTER too (88.6.2-15, W049); deleting it is a className edit routed to Phase 92, and that commit deletes the armed entry and lowers this one to 2. The other two are LIVE and stay: the 600 participant names on the Participants chip and the See-all row (88.9-63 X16, owner ruling D at N04, 2026-11-11), an owner-ruled exception to the two-weight rule. Owning plans: 88.6-18 (swept), 88.6-46 (closeout), 88.6.2-15 (W049), 88.9-63 (X16).',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6.2-15 (PC-2)' },
   },
   // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 (wave 7, 2026-09-16), all seven sites:
@@ -3221,11 +3228,20 @@ describe('K7 (88.9) / C3b: one tracking spelling for uppercase labels', () => {
 
     expect(assertRosterShape(K7_TRACKING_EXEMPTIONS)).toEqual([]);
     expect(assertExactCounts(K7_TRACKING_EXEMPTIONS, measured), offSites.join('\n')).toEqual([]);
+    // AMENDED Phase 88.9-63 (X16, owner at N04, 2026-11-11: D): the floor moves 28 -> 18. The ten
+    // chunks that leave are the game page's person, role and RSVP pills, which read sentence case
+    // with no letter-spacing from this plan: No reply and the Going / Maybe / No template in
+    // RsvpStatusPill (2), the chip's Owner, Admin and Guest (3), and the See-all row's You,
+    // Friend, Owner, Admin and Guest (5). A pill is not a label, so it leaves this census; the
+    // rule above (one spelling for every letter-spaced uppercase LABEL) is unchanged.
     expect(
       total,
       'the census floor: letter-spaced uppercase chunks tree-wide, on OR off (30 measured at ' +
-        'plan 88.9-47, 2026-11-10: 28 on tracking-wider + the 2 exempt tutorial eyebrows). A total ' +
-        'under the floor means the scan has gone blind, not that the tree got tidier.',
-    ).toBeGreaterThanOrEqual(28);
+        'plan 88.9-47, 2026-11-10: 28 on tracking-wider + the 2 exempt tutorial eyebrows; 28 ' +
+        'in all after 88.9-61, by its own count; 18 after 88.9-63 took the ' +
+        'ten game-page pills to sentence case: RsvpStatusPill 2, the chip Owner / Admin / Guest 3, ' +
+        'the See-all You / Friend / Owner / Admin / Guest 5). A total under the floor means the ' +
+        'scan has gone blind, not that the tree got tidier.',
+    ).toBeGreaterThanOrEqual(18);
   });
 });

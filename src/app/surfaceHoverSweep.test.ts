@@ -31,7 +31,7 @@
  * directions. MISSES: the token lives in `closeClassName=` (src/app/components/createGroup.js,
  * at 88.3; that site no longer carries it), in object-literal config maps
  * (src/app/components/RsvpSection.js, at 88.3; likewise gone), in `cls:` lookup tables
- * (src/app/gameDetail/page.js ("cls: 'bg-surface-muted text-content-secondary'")) and in
+ * (src/app/gameDetail/page.js, at 88.3; since 88.9-63 that table carries the pill family) and in
  * template-literal ternary branches (src/app/components/KebabMenu.js and
  * src/app/components/ScheduleList.js, at 88.3; neither carries it now;
  * src/app/components/FriendInvitePanel.js ("? 'border-accent bg-surface-muted cursor-pointer'")) — a

@@ -2370,6 +2370,63 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(measured, 'anti-vacuity: (5 pairs + 8 preset halos) x 2 themes').toBe(26);
   });
+
+  it('X17a (88.9): six pill families resolve to the picked pairs in both themes, words clear 4.5, and fills stand off the card, Maybe included on the amber pair', () => {
+    // 88.9-63 (X17a, owner pick page 10a, 2026-11-14): one pill family per hue. Each fill is the
+    // hue's 500 step mixed 30% into the light card and 35% into the dark card; each ink is the
+    // hue's own dark (light theme) or pale (dark theme) step. The pairs are pinned as the PICKED
+    // hexes (deliberate hex exception: a pill value other than the pick is a defect, P3), and the
+    // two floors beside them (D-07): the word on its own fill at 4.5, and the fill against the
+    // card at 1.25 in light and 1.50 in dark, which is what makes a pill read as a pill and not
+    // as the card (the 52-X17 complaint about No reply melting into the dark card).
+    // Emerald (Friend) is the same recipe; it was not on the pick page and is named as derived.
+    // Maybe has NO token of its own: the game-page Maybe pill reuses the amber pair, which is
+    // also Guest's (owner ruling Q1 A1, 2026-11-14), so amber is measured once here, on the same
+    // floors as every other family, and there is no warning-pair row in this test.
+    const PICKED = {
+      light: {
+        green: ['#bdeecf', '#166534'],
+        neutral: ['#ddd7d2', '#4a3d32'],
+        violet: ['#e5ccfd', '#6b21a8'],
+        blue: ['#c4dafc', '#1e40af'],
+        amber: ['#fce2b6', '#92400e'],
+        emerald: ['#b7ead9', '#065f46'],
+      },
+      dark: {
+        green: ['#236249', '#bbf7d0'],
+        neutral: ['#48484d', '#e8e0d8'],
+        violet: ['#523b7f', '#f3e8ff'],
+        blue: ['#2b4b7e', '#dbeafe'],
+        amber: ['#6d552c', '#fde68a'],
+        emerald: ['#1c5e55', '#a7f3d0'],
+      },
+    } as const;
+    const FILL_FLOOR = { light: 1.25, dark: 1.5 } as const;
+    const FAMILIES = ['green', 'neutral', 'violet', 'blue', 'amber', 'emerald'] as const;
+
+    const themeBlock = blockOf('theme');
+    let measured = 0;
+    for (const family of FAMILIES) {
+      expect(
+        declIn(themeBlock, `--color-surface-pill-${family}`),
+        `X17a (88.9) — @theme inline must expose --color-surface-pill-${family}, pointing at the runtime fill`,
+      ).toBe(`var(--color-pill-${family}-bg)`);
+      expect(
+        declIn(themeBlock, `--color-content-pill-${family}`),
+        `X17a (88.9) — @theme inline must expose --color-content-pill-${family}, pointing at the runtime ink`,
+      ).toBe(`var(--color-pill-${family}-text)`);
+
+      for (const theme of ['light', 'dark'] as const) {
+        const [fill, ink] = PICKED[theme][family];
+        expect(resolve(theme, `--color-pill-${family}-bg`), `X17a (88.9) — [${theme}] the ${family} pill fill is the picked value`).toBe(fill);
+        expect(resolve(theme, `--color-pill-${family}-text`), `X17a (88.9) — [${theme}] the ${family} pill ink is the picked value`).toBe(ink);
+        expectRatio(theme, `--color-pill-${family}-text`, `--color-pill-${family}-bg`, 4.5, `X17a (88.9) ${family} word on its fill`);
+        expectRatio(theme, `--color-pill-${family}-bg`, '--color-bg-card', FILL_FLOOR[theme], `X17a (88.9) ${family} fill against the card`);
+        measured += 2;
+      }
+    }
+    expect(measured, 'anti-vacuity: 6 families x 2 themes x (word + fill)').toBe(24);
+  });
 });
 
 // =====================================================================================
