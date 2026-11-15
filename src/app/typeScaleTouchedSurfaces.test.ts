@@ -1352,8 +1352,9 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // AMENDED Phase 88.9-60 (X6): the CalendarListView entry moved 1082 -> 1083 because 88.9-60 added the one-line useBgImageFailed import at the top of that file; the skipped element (DateGroup's DayHeading) is unchanged.
       // AMENDED Phase 88.9-61 (X11): the CalendarListView entry moved 1083 -> 1077 because the Later section, its heading id and the this-week bucket left that file and the X11 / X26 amendment sentences were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
       // AMENDED Phase 88.9-61 (X25a + X29 A): the CalendarListView entry moved 1077 -> 1027 because the desktop feed, the Today delineator and the mount-time centre-scroll left that file and the SectionHeader component and the X29 amendment sentences were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
+      // AMENDED Phase 88.9-61 (X25a sticky): the CalendarListView entry moved 1027 -> 1072 because the fold-scroll layout effect, the isomorphic layout-effect const and the two X25a DECISION markers were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
     ).toEqual([
-      'app/components/CalendarListView.js:1027',
+      'app/components/CalendarListView.js:1072',
       'components/ui/EmptyState.tsx:182',
     ]);
   });

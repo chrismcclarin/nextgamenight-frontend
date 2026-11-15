@@ -1,5 +1,5 @@
 'use client';
-import { forwardRef, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { Icon } from '../../components/ui/Icon';
@@ -101,6 +101,11 @@ import GuestPill, { GUEST_ROW_EDGE } from './GuestPill';
  * guest cue, status tag). See the Req 12 DECISION marker in the render body.
  */
 const PAST_PAGE_SIZE = 30;
+
+// The house isomorphic form (src/app/components/heatmap/paintGestureActiveStore.ts ("const useIsomorphicLayoutEffect = typeof window")):
+// a layout effect in the browser, a plain effect on the server, where React 18 warns about the
+// former on every server-rendered page. Used once below, for the scroll correction after a fold.
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 // The day header's pattern — "Saturday, May 10". The year is never written here: the shared rule
 // in src/lib/datetime.ts appends it when the day is outside the viewer's current year (X29).
@@ -250,9 +255,14 @@ export default function CalendarListView({
      header button FIRST — the control the person just used, or would use to reopen it
      (T-88.9-262). `preventScroll` because the header is already where the eye is. Focus that is
      anywhere else is left alone. */
+  const pendingFoldRef = useRef(null);
   const toggleSection = (expanded, setExpanded, panelRef, buttonRef) => {
-    if (expanded && panelRef.current && panelRef.current.contains(document.activeElement)) {
-      buttonRef.current?.focus({ preventScroll: true });
+    if (expanded && panelRef.current) {
+      if (panelRef.current.contains(document.activeElement)) {
+        buttonRef.current?.focus({ preventScroll: true });
+      }
+      // Read by the layout effect below, after this fold has committed.
+      pendingFoldRef.current = panelRef.current.closest('section');
     }
     setExpanded(!expanded);
   };
@@ -522,6 +532,24 @@ export default function CalendarListView({
   // Today delineator left with the delineator).
   const containerRef = useRef(null);
 
+  /* FOLD SCROLL (X25a, 88.9-61). A header sticks only while its own rows are under it, so a
+     section folded from deep inside it shrinks to its header and that header is left ABOVE the
+     visible part of the list — the person has just pressed a control that then vanishes, and
+     with a long open Past section the browser does not pull the list back on its own. After the
+     fold commits, if the folded section starts above the visible part, the region scrolls to the
+     section's top: its header is back in view with the next section's header directly under it.
+     A layout effect, so the corrected position is the first one painted. It runs only for a
+     fold the person just made (the pending ref), never on mount and never on an unfold. */
+  useIsomorphicLayoutEffect(() => {
+    const section = pendingFoldRef.current;
+    if (!section) return;
+    pendingFoldRef.current = null;
+    const container = containerRef.current;
+    if (!container) return;
+    // The region is `position: relative`, so it is the offset parent of both sections.
+    if (section.offsetTop < container.scrollTop) container.scrollTop = section.offsetTop;
+  }, [upcomingExpanded, pastExpanded]);
+
   // Past-window IntersectionObserver: when the sentinel at the BOTTOM of the open Past region
   // enters the SCROLL CONTAINER's viewport AND there are more past events to load, reveal
   // another page of them. We use the scroll container as the IO root so the
@@ -588,9 +616,12 @@ export default function CalendarListView({
   const shellClassName = isSheet
     ? 'space-y-4 flex h-full min-h-0 flex-col'
     : 'space-y-4';
+  // Both arms pad the region's scroll position at the top by 3.5rem (the 44px header, the 4px a
+  // row's ring reaches above it, 8px of air; rem, so it grows with the text like the header's
+  // own floor) — see the X25a DECISION above SectionHeader.
   const scrollRegionClassName = isSheet
-    ? 'relative overflow-y-auto pr-1 min-h-0 flex-1 max-h-[85dvh]'
-    : 'relative overflow-y-auto pr-1';
+    ? 'relative overflow-y-auto pr-1 min-h-0 flex-1 max-h-[85dvh] scroll-pt-14'
+    : 'relative overflow-y-auto pr-1 scroll-pt-14';
   // Inline height only on the desktop arms — the sheet arm is sized by flex.
   const scrollRegionStyle = isSheet ? undefined : { height: containerHeight };
 
@@ -945,17 +976,31 @@ export default function CalendarListView({
  * THE LABEL SPAN CARRIES THE TYPE, for the same unlayered reason: `.btn` sets 14px / 600 on the
  * button, which would win over the `<h3>`'s own 20 / 700 for the text inside it. The span's own
  * classes put the heading rung back on the words (X25a: the Past label at the h3's 20px / 700).
+ *
+ * DECISION Phase 88.9-61 (X25a, page 10a; owner N40: 'it looks like the past events are under
+ * the Upcoming events heading'): each header sticks while its own rows are under it, chosen OVER
+ * X25b (headers scroll away) and X250 (one fixed heading over every row). Scroll padding keeps a
+ * focused row clear of a stuck header (WCAG 2.4.11), chosen OVER a script focus handler.
+ * Removing either is a decision, not a cleanup. The heading sticks at the top of the scroll
+ * region, above the rows (a row paints at z-index 1) and on the card ground, which is the ground
+ * of the sheet and of both desktop cards, so a row passing under it does not show through.
  */
 function SectionHeader({ headingId, panelId, expanded, onToggle, buttonRef, children }) {
   return (
-    <Heading level={3} size="heading" id={headingId}>
+    <Heading level={3} size="heading" id={headingId} className="sticky top-0 z-10 bg-surface-card">
+      {/* DECISION Phase 88.9-61 (X25a focus ring): the header button draws the house ring INSET,
+          chosen OVER Button's default ring-offset-2, whose 4px outside ring the scroll region
+          cuts on the left (overflow clips both axes, no left pad), at scrollTop 0, and above a
+          stuck header (WCAG 2.4.7); the house form for a full-bleed control (ThemeToggle row,
+          compact month tile). Removing it is a decision, not a cleanup. The ring sits on the
+          button's own ground, the card: 7.79:1 light and 8.30:1 dark, against a 3:1 floor. */}
       <Button
         ref={buttonRef}
         variant="ghost"
         onClick={onToggle}
         aria-expanded={expanded}
         aria-controls={panelId}
-        className="w-full min-h-11"
+        className="w-full min-h-11 focus-visible:ring-inset focus-visible:ring-offset-0"
       >
         <span className="flex w-full items-center justify-between gap-2">
           <span className="text-xl leading-tight font-bold text-content-primary">{children}</span>
