@@ -1090,11 +1090,11 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
     }
   });
 
-  it('hides the caption once a slot is selected but keeps its line, on either arm', () => {
-    // R-P5 (owner ruling 2026-11-08, option B): the caption's p stays MOUNTED after the commit,
-    // `invisible` + aria-hidden, so its line box is reserved and the grid does not move. jsdom's
-    // queryByText still finds an invisible node, so the old "not in the document" read is amended
-    // to the kept-but-hidden shape; the OTHER arm's string is still absent.
+  it('X39 (88.9-57): the caption stays visible and spoken once a slot is selected, on either arm', () => {
+    // Owner ruling 52-X39 (2026-11-13: "I don't think it needs to disappear. With it gone, it just
+    // looks like a wide space."): the caption's p stays MOUNTED, VISIBLE and exposed to assistive
+    // tech after the commit. It amends R-P5 (2026-11-08), which kept the line but hid the text.
+    // The grid still does not move (same node, same line box); the OTHER arm's string is absent.
     for (const [viewport, own, other] of [
       [{ name: 'phone', hoverNone: true, maxWidth: 375 }, PHONE_COPY, DESKTOP_COPY],
       [{ name: 'desktop', hoverNone: false, maxWidth: 1280 }, DESKTOP_COPY, PHONE_COPY],
@@ -1109,8 +1109,10 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
         );
         const caption = screen.getByText(own);
         expect(caption.tagName).toBe('P');
-        expect(caption).toHaveClass('invisible');
-        expect(caption).toHaveAttribute('aria-hidden', 'true');
+        expect(caption).not.toHaveClass('invisible');
+        expect(caption).not.toHaveAttribute('aria-hidden');
+        expect(caption).toHaveClass('text-sm');
+        expect(caption).toHaveClass('text-content-secondary');
         expect(screen.queryByText(other)).not.toBeInTheDocument();
       } finally {
         restore();
@@ -1123,7 +1125,8 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
     // Owner pick S1a (88.9-PICKS-B8C.json, page 8c): ONE plain 14px caption ABOVE the strip-and-grid
     // block, no box, no padding, naming the RANGE on each device arm. Then the commit as the parent
     // performs it (EventScheduler is controlled: `onTimeSelected` reports the range and the parent
-    // passes it back as `selectedSlot`): the SAME p survives, now `invisible` + aria-hidden (R-P5).
+    // passes it back as `selectedSlot`): the SAME p survives, still visible and still spoken
+    // (owner ruling 52-X39, plan 88.9-57, amending R-P5's hidden reserved line).
     // jsdom has no layout, so the same-node read is the offsetTop-independent proof that the line
     // box is kept and the grid does not move.
     const GRID_NAME = 'Group availability by day and time';
@@ -1153,9 +1156,37 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
         );
         const kept = screen.getByText(own);
         expect(kept).toBe(caption);
-        expect(kept).toHaveClass('invisible');
-        expect(kept).toHaveAttribute('aria-hidden', 'true');
+        expect(kept).not.toHaveClass('invisible');
+        expect(kept).not.toHaveAttribute('aria-hidden');
         expect(screen.getByRole('grid', { name: GRID_NAME })).toBeInTheDocument();
+      } finally {
+        restore();
+        cleanup();
+      }
+    }
+  });
+});
+
+describe('EventScheduler — 52-X38 no text selection (88.9-57)', () => {
+  // Owner, 2026-11-13: a desktop drag highlighted the numbers and the times. The guard is one CSS
+  // class on the scheduler's own grid panel. The shared WeekGrid is not edited, so the grid node
+  // itself must not carry it. The rendered proof is on CI:
+  // e2e/event-scheduler-touch.spec.ts ("X38 (88.9-57): a mouse drag across the grid selects no page text").
+  it('X38 (88.9-57): the grid panel takes no text selection — select-none on the scheduler panel, not on the shared WeekGrid', () => {
+    for (const viewport of [
+      { name: 'phone', hoverNone: true, maxWidth: 375 },
+      { name: 'desktop', hoverNone: false, maxWidth: 1280 },
+    ] as const) {
+      const restore = stubMatchMedia(viewport);
+      try {
+        render(<EventScheduler initialDate={WEEK_N} />);
+        const grid = screen.getByRole('grid', { name: 'Group availability by day and time' });
+        // The NEAREST ancestor that takes the guard is the scheduler's card panel.
+        const guarded = grid.closest('.select-none');
+        expect(guarded, `${viewport.name}: no ancestor of the grid carries select-none`).not.toBeNull();
+        expect(guarded).toHaveClass('bg-surface-card');
+        expect(guarded).not.toBe(grid);
+        expect(grid).not.toHaveClass('select-none');
       } finally {
         restore();
         cleanup();
