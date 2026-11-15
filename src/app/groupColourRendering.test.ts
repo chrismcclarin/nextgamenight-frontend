@@ -1485,7 +1485,10 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     const cog = attrExprs(gl, 'className').filter((e) => e.end < at).pop();
     expect(cog, 'no className expression precedes the cog title').toBeDefined();
 
-    for (const util of ['bg-btn-secondary', 'dark:bg-surface-elevated', 'border border-line-control']) {
+    // AMENDED Phase 88.9-58 (X60 De3): the cog wears the secondary fill, so its border is the
+    // secondary button's own edge (warm-400 in light, transparent in dark), not the shared
+    // control edge Manage Members keeps above.
+    for (const util of ['bg-btn-secondary', 'dark:bg-surface-elevated', 'border border-line-btn-secondary']) {
       expect(cog!.text, `the cog lost its ${util}`).toContain(util);
     }
     // The dark arm must stay `dark:`-scoped. An un-prefixed `bg-surface-elevated`

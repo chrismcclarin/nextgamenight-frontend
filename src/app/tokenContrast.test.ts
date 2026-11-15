@@ -1058,6 +1058,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // PAGE, NOT THE HEX — and ruling 1c moved `--color-bg-page` to warm-200, vacating warm-100. The
     // page-side cue is preserved bit-for-bit at 1.1523. THIS ROW IS THE THING THAT STILL GUARDS IT.
     // Restoring warm-200 here would red this row, because warm-200 IS the page now.
+    // AMENDED Phase 88.9-58 (X60 Sb): the fill is the owner-picked #e3dad1 now (pinned in the X60
+    // test below). It is still neither the page nor the card, which is all this row asserts.
     const fill = resolve('light', '--color-btn-secondary-bg');
     const page = resolve('light', '--color-bg-page');
     const card = resolve('light', '--color-bg-card');
@@ -1093,7 +1095,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     const cardHover = resolve('light', '--color-bg-muted');
     expect(fill, `88.3-18 ruling 1c — the CLOSED third ground: light --color-btn-secondary-bg (${fill}) must NO LONGER be byte-equal to --color-bg-muted (${cardHover}); the 88.3-14 disclosure is dissolved, not deleted`).not.toBe(cardHover);
     // The fill must actually carry that ground now, not merely differ from it.
-    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-muted', 1.05, '88.3-18 ruling 1c / the fill now reads on the third ground (1.3280)');
+    // AMENDED Phase 88.9-58 (X60 Sb): re-measured at the #e3dad1 fill, 1.0902 against bg-muted
+    // (was 1.3280 at warm-100). The fill is still the lighter of the two and the 1.05 floor holds,
+    // with 0.04 of room; the button's own edge reads 1.5350 on this ground and carries it too.
+    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-muted', 1.05, '88.3-18 ruling 1c / the fill still reads on the third ground (1.0902 at the X60 Sb fill; was 1.3280)');
   });
 
   it('34. 88.3-14 / ruling 2 — the fill sits inside the shipped fill-vs-ground band', () => {
@@ -1110,6 +1115,12 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // slide, so the obvious one-step-down warm-300 measures 1.5954 here and would red this row.
     // Raising the ceiling to fit it is a band change that leaves the surveyed range entirely, and
     // this row's own comment reserves that for a named decision with a fresh survey.
+    //
+    // AMENDED Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14: "I would prefer it doesn't
+    // match the background"). The BAND IS UNCHANGED and the picked fill sits inside it on both
+    // grounds: 1.0572 against the page (0.007 over the floor, shown to the owner as the price of
+    // the pick) and 1.3802 against the white card (was 1.1330). The fill moved DOWN after all,
+    // by owner ruling, to the minted step the 88.3-18 marker had rejected on its margin rule.
     expectRatio('light', '--color-btn-secondary-bg', '--color-bg-page', 1.05, '88.3-14 ruling 2 / fill band');
     expectRatioBelow('light', '--color-btn-secondary-bg', '--color-bg-page', 1.4, '88.3-14 ruling 2 / fill band');
     expectRatio('light', '--color-btn-secondary-bg', '--color-bg-card', 1.05, '88.3-14 ruling 2 / fill band');
@@ -1128,8 +1139,21 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // HELD). Only the fill beneath it moved, so the ring now reads 1.4081 on it (was 1.2220) —
     // mid-band rather than at the floor, i.e. this pairing got BETTER. warm-500 on the new fill
     // would read 3.36, still far above the ceiling, so the rejection above is unaffected.
-    expectRatio('light', '--color-border-control', '--color-btn-secondary-bg', 1.2, '88.3-14 ruling 2 / ring band');
-    expectRatioBelow('light', '--color-border-control', '--color-btn-secondary-bg', 1.6, '88.3-14 ruling 2 / ring band (upper bound is deliberate)');
+    //
+    // AMENDED Phase 88.9-58 (X60 De3, owner pick page 11, votes-b11, 2026-11-14; the owner on the
+    // lighter options: "I would like the line to be bolder/heavier than the options presented to
+    // me"). This row now judges the secondary button's OWN edge token, and its ceiling moves
+    // 1.60 -> 1.70 for that edge by that ruling: warm-400 on the X60 Sb fill measures 1.6734. The
+    // ceiling is a DESIGN band from the 13-system survey, not a WCAG floor, and the owner chose
+    // the heavier line on a rendering. The floor stays 1.20. The rejection above still holds:
+    // warm-500 reads 2.9793 on the new fill, far over 1.70. The shared control edge is judged in
+    // test 36, under its old bands.
+    expect(
+      lookup('light', '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — the secondary button must have its own edge token, light --color-btn-secondary-border',
+    ).not.toBeNull();
+    expectRatio('light', '--color-btn-secondary-border', '--color-btn-secondary-bg', 1.2, 'X60 De3 (88.9) / own edge on the fill, floor');
+    expectRatioBelow('light', '--color-btn-secondary-border', '--color-btn-secondary-bg', 1.7, 'X60 De3 (88.9) / own edge on the fill (1.6734; the upper bound is deliberate, amended 1.60 -> 1.70 by owner ruling De3)');
   });
 
   it('36. 88.3-14 / ruling 2 — the ring reads on BOTH grounds the button sits on', () => {
@@ -1149,6 +1173,23 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expectRatioBelow('light', '--color-border-control', '--color-bg-page', 2.0, '88.3-14 ruling 2 / ring vs page');
     expectRatio('light', '--color-border-control', '--color-bg-card', 1.2, '88.3-14 ruling 2 / ring vs card');
     expectRatioBelow('light', '--color-border-control', '--color-bg-card', 2.0, '88.3-14 ruling 2 / ring vs card');
+
+    // AMENDED Phase 88.9-58 (X60 De3, owner pick page 11, votes-b11, 2026-11-14: "I would like the
+    // line to be bolder/heavier than the options presented to me"). The four rows above are
+    // UNCHANGED and still bind the shared control edge (warm-300: 1.2220 on the page, 1.5954 on
+    // the card), so every other control stays inside 1.20-2.00. The secondary button's OWN edge
+    // (warm-400) is judged here on the same two grounds: the page in the unchanged 1.20-2.00
+    // (1.7690), and the card with the ceiling amended 2.00 -> 2.40 for this edge by that ruling
+    // (2.3096, the figure the hold above names as over the old cap). A design band, not a WCAG
+    // floor; warm-500 on the card reads 4.1120 and still reds.
+    expect(
+      lookup('light', '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — the secondary button must have its own edge token, light --color-btn-secondary-border',
+    ).not.toBeNull();
+    expectRatio('light', '--color-btn-secondary-border', '--color-bg-page', 1.2, 'X60 De3 (88.9) / own edge vs page');
+    expectRatioBelow('light', '--color-btn-secondary-border', '--color-bg-page', 2.0, 'X60 De3 (88.9) / own edge vs page (1.7690)');
+    expectRatio('light', '--color-btn-secondary-border', '--color-bg-card', 1.2, 'X60 De3 (88.9) / own edge vs card');
+    expectRatioBelow('light', '--color-btn-secondary-border', '--color-bg-card', 2.4, 'X60 De3 (88.9) / own edge vs card (2.3096; ceiling amended 2.00 -> 2.40 by owner ruling De3)');
   });
 
   it('37. 88.3-14 / ruling 2 — the label still clears 4.5:1 on the darker fill', () => {
@@ -1156,6 +1197,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // measures 11.51, so there is enormous headroom — but the assertion is what keeps it true.
     // AMENDED 88.3-18 (ruling 1c): the fill is warm-100 now and warm-800 on it measures 13.2669 —
     // more headroom, same assertion. The row earns its keep precisely because the fill moved twice.
+    // AMENDED Phase 88.9-58 (X60 Sb): a third move. warm-800 on #e3dad1 measures 10.8910, and on
+    // the hover fill #cdc1b4 8.5056.
     expectRatio('light', '--color-btn-secondary-text', '--color-btn-secondary-bg', 4.5, '88.3-14 ruling 2 / label on fill');
   });
 
@@ -1163,7 +1206,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     const fill = resolve('light', '--color-btn-secondary-bg');
     const hover = resolve('light', '--color-btn-secondary-hover');
     expect(hover, `88.3-14 ruling 2 — light --color-btn-secondary-hover (${hover}) must differ from the resting fill (${fill}); leaving hover at warm-200 after the fill moved there would make hover indistinguishable from rest`).not.toBe(fill);
+    // AMENDED Phase 88.9-58 (X60 Sb + De3): the hover edge token is unchanged (warm-400, the same
+    // step as the new rest edge), so on hover only the fill steps: #cdc1b4, 1.2805 from rest.
+    // The hover edge on the hover fill measures 1.3069.
     expectRatio('light', '--color-border-control-hover', '--color-btn-secondary-hover', 1.2, '88.3-14 ruling 2 / hover ring on hover fill');
+    expectRatio('light', '--color-btn-secondary-text', '--color-btn-secondary-hover', 4.5, 'X60 Sb (88.9) / label on the hover fill (8.5056)');
   });
 
   it('39. 88.3-14 / ruling 2 — dark is INERT: both control-edge tokens are `transparent` and the dark trio is byte-unchanged', () => {
@@ -1175,6 +1222,13 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       const raw = resolveRaw('dark', prop);
       expect(raw, `88.3-14 ruling 2 — dark ${prop} is "${raw}"; ruling 2 is LIGHT-ONLY, so dark must stay transparent. Declared rather than omitted so the 1px border is unconditional and the theme toggle shifts no layout`).toBe('transparent');
     }
+    // AMENDED Phase 88.9-58 (X60 De3): the secondary button's own edge token joins the
+    // dark-transparent list. Read from the dark block itself, so a missing dark line cannot pass
+    // by falling back to the light warm-400.
+    expect(
+      declIn(blockOf('dark'), '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — dark --color-btn-secondary-border must be declared transparent in the dark block; the De3 edge is LIGHT-ONLY',
+    ).toBe('transparent');
     // ...and the dark `.btn-secondary` trio did not move while the light one did.
     expect(resolve('dark', '--color-btn-secondary-bg'), '88.3-14 — dark --color-btn-secondary-bg must still be purple-800').toBe(resolve('dark', '--purple-800'));
     expect(resolve('dark', '--color-btn-secondary-hover'), '88.3-14 — dark --color-btn-secondary-hover must still be purple-700').toBe(resolve('dark', '--purple-700'));
@@ -1190,6 +1244,9 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     for (const key of [
       '--color-line-control',
       '--color-line-control-hover',
+      // AMENDED Phase 88.9-58 (X60 De3): a fifth key, the bridge for the secondary button's own
+      // edge (the landing Google light arm and the home-card gear take it as a border utility).
+      '--color-line-btn-secondary',
       '--color-surface-accent-subtle-strong',
       '--color-content-accent-strong',
     ]) {
@@ -1197,6 +1254,87 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
         new RegExp(`${key}[ \\t]*:`),
       );
     }
+  });
+
+  it('X60 Sb (88.9): the light secondary fill is #e3dad1 with hover #cdc1b4, its own edge is warm-400 (De3), the gated fill follows the rest and its gated edge is warm-300, darker than that fill, the .btn-secondary rule reads the new edge, and the page-fill token is the card in light and the secondary fill in dark', () => {
+    // DECISION Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14: "I would prefer it doesn't
+    // match the background"; edge De3, pick page 11, votes-b11, 2026-11-14: "I would like the line
+    // to be bolder/heavier than the options presented to me"; Calendar button, owner by chat
+    // 2026-11-14: "Make the calendar button White like the dialog's and the cards"). The picked
+    // hexes are pinned as hexes (D-03: a token that differs from the pick is a defect). The bands
+    // these values sit in are tests 34 to 38; the WCAG floors are test 37 (label), 51 (count
+    // pill), 53 (gated ink) and 67 (pressed segment).
+    const rest = resolve('light', '--color-btn-secondary-bg');
+    const hover = resolve('light', '--color-btn-secondary-hover');
+    expect(rest, 'X60 Sb (88.9) — the light secondary fill must be the picked #e3dad1').toBe('#e3dad1');
+    expect(hover, 'X60 Sb (88.9) — the light secondary hover must be the picked #cdc1b4').toBe('#cdc1b4');
+
+    // The button's own edge (De3): warm-400 in light, transparent in dark.
+    expect(
+      lookup('light', '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — light --color-btn-secondary-border must be declared as the warm-400 palette step',
+    ).toBe('var(--warm-400)');
+    expect(
+      declIn(blockOf('dark'), '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — dark --color-btn-secondary-border must be transparent (the edge is light-only)',
+    ).toBe('transparent');
+
+    // The gated fill follows the rest: ink recedes, fill stays (the 88.8 HIGH-A shape).
+    expect(
+      lookup('light', '--color-btn-secondary-gated-bg'),
+      'X60 Sb (88.9) — the light gated fill must point at the resting fill token, so the two cannot drift apart',
+    ).toBe('var(--color-btn-secondary-bg)');
+    expect(resolve('light', '--color-btn-secondary-gated-bg'), 'X60 Sb (88.9) — the light gated fill must equal the resting fill').toBe(rest);
+
+    // The gated edge. Design record, not a WCAG floor: owner Q9 A (Picks 12, 2026-11-14) carries
+    // the 88.8 HIGH-A shape, the gated edge one step lighter than the rest edge (warm-400 rest,
+    // warm-300 gated); 1.4.11 is not claimed here, as for the 1.67 rest edge, and the inactive
+    // exemption is not the reason, because DR-C keeps aria-disabled controls active.
+    const gatedEdge = resolve('light', '--color-btn-secondary-gated-border');
+    const gatedFill = resolve('light', '--color-btn-secondary-gated-bg');
+    expect(gatedEdge, 'X60 gated edge (88.9, owner Q9 A) — the light gated edge must be warm-300 #d6cbc0').toBe('#d6cbc0');
+    expect(gatedEdge, 'X60 gated edge (88.9) — #d6cbc0 is the palette step warm-300').toBe(resolve('light', '--warm-300'));
+    const edgeL = lStarOf(gatedEdge, 'X60 gated edge');
+    const fillL = lStarOf(gatedFill, 'X60 gated fill');
+    expect(
+      edgeL,
+      `X60 gated edge (88.9, owner Q9 A) — the light gated edge (${gatedEdge}, L* ${edgeL.toFixed(2)}) must be DARKER than the gated fill (${gatedFill}, L* ${fillL.toFixed(2)}); an edge lighter than its fill is the warm-200 state this ruling replaced`,
+    ).toBeLessThan(fillL);
+    expect(
+      resolveRaw('dark', '--color-btn-secondary-gated-border'),
+      'X60 gated edge (88.9) is light only — the dark gated edge must stay transparent',
+    ).toBe('transparent');
+
+    // The rule itself reads the new edge (comment-masked source, so marker prose cannot satisfy it).
+    const rule = braceBlock(uniqueMatch(/^\.btn-secondary[ \t]*\{/gm, '.btn-secondary {'), '.btn-secondary rule');
+    expect(
+      rule,
+      'X60 De3 (88.9) — the secondary button rule must take its border from --color-btn-secondary-border, not from the shared control edge',
+    ).toMatch(/border:[ \t]*1px solid var\(--color-btn-secondary-border\);/);
+    expect(rule, 'X60 De3 (88.9) — the secondary button rule must no longer read the shared control edge').not.toMatch(/--color-border-control\b/);
+
+    // The page-fill token: a secondary on the page ground fills with the card in light and with
+    // the dark secondary fill in dark (dark unchanged).
+    expect(
+      lookup('light', '--color-btn-secondary-page-bg'),
+      'X60 (88.9) — light --color-btn-secondary-page-bg must point at the card token',
+    ).toBe('var(--color-bg-card)');
+    expect(
+      resolve('dark', '--color-btn-secondary-page-bg'),
+      'X60 (88.9) — dark --color-btn-secondary-page-bg must equal the dark secondary fill (dark is unchanged)',
+    ).toBe(resolve('dark', '--color-btn-secondary-bg'));
+    expectRatio('light', '--color-btn-secondary-page-bg', '--color-bg-page', 1.05, 'X60 (88.9) / page-fill vs page, band floor (1.3056)');
+    expectRatioBelow('light', '--color-btn-secondary-page-bg', '--color-bg-page', 1.4, 'X60 (88.9) / page-fill vs page, band ceiling (1.3056)');
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-btn-secondary-text', '--color-btn-secondary-page-bg', 4.5, 'X60 (88.9) / label on the page-fill');
+      expectRatio(theme, '--color-btn-secondary-gated-text', '--color-btn-secondary-page-bg', 4.5, 'X60 (88.9) / gated ink on the page-fill');
+    }
+
+    // The shared control edge did not move: every other control keeps warm-300.
+    expect(
+      resolve('light', '--color-border-control'),
+      'X60 De3 (88.9) — the SHARED control edge must stay warm-300; only the secondary button took the heavier line',
+    ).toBe(resolve('light', '--warm-300'));
   });
 
   it('41. 88.3-14 / ruling 3 — the accent-circle-strong pair clears its floors in light and is byte-identical in dark', () => {
@@ -1272,10 +1410,15 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // side reds instead of silently splitting them, and so a "deduplicate these" pass has to be a
     // named decision. `--color-btn-secondary-bg` == `--color-badge-member-bg` (both warm-100) and
     // `--color-text-secondary` == `--color-badge-member-text` (both warm-700).
+    //
+    // AMENDED Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14): the FIRST pair is DISSOLVED.
+    // The secondary fill moved to its own hex and the member badge stays warm-100, so the two names
+    // no longer share a value. The row now asserts the split, so a later edit that puts the fill
+    // back on the badge's hex reds here and has to be a named decision. The second pair stands.
     expect(
       resolve('light', '--color-btn-secondary-bg'),
-      '88.3-18 ruling 1c — DISCLOSED: light --color-btn-secondary-bg and --color-badge-member-bg are both warm-100 on purpose. If this reds, one of them moved — decide, do not deduplicate',
-    ).toBe(resolve('light', '--color-badge-member-bg'));
+      'X60 Sb (88.9) — light --color-btn-secondary-bg must NOT equal --color-badge-member-bg any more: the 88.3-18 duplication is dissolved by the owner-picked fill. If this reds, the fill went back to warm-100',
+    ).not.toBe(resolve('light', '--color-badge-member-bg'));
     expect(
       resolve('light', '--color-text-secondary'),
       '88.3-18 ruling 1c — DISCLOSED: light --color-text-secondary and --color-badge-member-text are both warm-700 on purpose. If this reds, one of them moved — decide, do not deduplicate',
@@ -1645,8 +1788,16 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expectRatio('dark', '--warm-900', '--amber-400', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-400 (10.7630, F4b). White here is 1.6694, an AA failure: the ink MUST fork with the fill');
 
     // Fill vs ground, use site 1 — the home Calendar button (3.0, WCAG 1.4.11 non-text).
-    expectRatio('light', '--color-btn-accent-bg', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / LIGHT pill on the Calendar button fill (4.4321)');
-    expectRatio('dark', '--amber-400', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / DARK pill on the Calendar button fill (6.7549, F4b). amber-700 here is 2.2456 — this is the number the fork exists to fix');
+    // AMENDED Phase 88.9-58 (X60, owner 2026-11-14: "Make the calendar button White like the
+    // dialog's and the cards"): the phone Calendar button is the one secondary on the page ground
+    // and is card-white in light through the page-fill token, so both rows read that token. Light
+    // 5.0216 (was 4.4321 on the warm-100 fill); dark is the dark secondary fill, unchanged, 6.7549.
+    expect(
+      lookup('light', '--color-btn-secondary-page-bg'),
+      'X60 (88.9) — the page-fill token --color-btn-secondary-page-bg must be declared; the Calendar button fills with it',
+    ).not.toBeNull();
+    expectRatio('light', '--color-btn-accent-bg', '--color-btn-secondary-page-bg', 3.0, '88.5 Req 2 / LIGHT pill on the card-white Calendar button (5.0216; X60, 88.9-58)');
+    expectRatio('dark', '--amber-400', '--color-btn-secondary-page-bg', 3.0, '88.5 Req 2 / DARK pill on the Calendar button fill (6.7549, F4b). amber-700 here is 2.2456 — this is the number the fork exists to fix');
 
     // Fill vs ground, use site 2 — the sheet's "This week" subheader on `bg-surface-card`.
     expectRatio('light', '--color-btn-accent-bg', '--color-bg-card', 3.0, '88.5 Req 2 / LIGHT twin pill on the sheet card (5.0216)');
@@ -2159,6 +2310,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // segment, 5.66 vs the card, ink 5.66); dark has its own arm, purple-400 fill / warm-900 ink
     // (4.02 vs the unpressed purple-800 segment, 4.93 vs the purple-900 card, ink 6.40), replacing
     // the 1.99 / 2.45 the dark primary fill measured. WCAG 1.4.11: the fill is the only pressed cue.
+    // AMENDED Phase 88.9-58 (X60 Sb): the light unpressed segment is #e3dad1 now, so the light
+    // pressed segment reads 4.1021 against it (was 5.00 against warm-100). The 3.0 floor holds.
     let measured = 0;
     for (const theme of ['light', 'dark'] as const) {
       expectRatio(theme, '--color-toggle-pressed-bg', '--color-btn-secondary-bg', 3.0, '88.9 N1 / MED-78 pressed segment vs unpressed segment');

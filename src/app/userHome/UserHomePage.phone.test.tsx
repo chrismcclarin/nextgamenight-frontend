@@ -779,3 +779,27 @@ describe('SPEC Req 1 — the phone trigger announces the sheet it opens', () => 
     expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
   });
 });
+
+describe('Phase 88.9-58 — X60: the phone Calendar button on the page ground', () => {
+  // The Calendar button is the one secondary button that sits on the page ground (the halo
+  // census names it). The owner, 2026-11-14: "Make the calendar button White like the dialog's
+  // and the cards". The unlayered secondary rule beats any background utility at the call site,
+  // so the site re-points the two properties that rule reads (rest and gated) at the page-fill
+  // token. The token values and their contrast floors are pinned in tokenContrast.test.ts
+  // ("X60 Sb (88.9)" and test 51).
+  it('X60 (88.9): the phone Calendar button keeps the secondary variant and the page halo and takes the card-white fill through the page-fill token', async () => {
+    await mockEvents(EVENTS);
+    renderHome();
+
+    const button = await findCalendarButton(nameFor(FILTERED.length));
+    const tokens = (button.getAttribute('class') ?? '').split(/\s+/);
+    expect(tokens, 'the Calendar button must stay the secondary variant').toContain('btn-secondary');
+    expect(tokens, 'the Calendar button must keep the page halo').toContain('focus-visible:ring-offset-surface-page');
+    expect(tokens, 'the resting fill must read the page-fill token').toContain(
+      '[--color-btn-secondary-bg:var(--color-btn-secondary-page-bg)]',
+    );
+    expect(tokens, 'the gated fill must read the page-fill token too, or a gated button turns tan').toContain(
+      '[--color-btn-secondary-gated-bg:var(--color-btn-secondary-page-bg)]',
+    );
+  });
+});

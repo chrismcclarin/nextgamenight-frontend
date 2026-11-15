@@ -118,11 +118,14 @@ describe('Phase 88.9-33 — the landing hero (O01a, L1b, B4a)', () => {
       expect.arrayContaining([
         'bg-btn-secondary',
         'text-btn-secondary-text',
-        'border-line-control',
+        // AMENDED Phase 88.9-58 (X60 De3): the light arm wears the secondary fill, so it takes the
+        // secondary button's own edge, not the shared control edge.
+        'border-line-btn-secondary',
         'dark:bg-white/20',
         'dark:text-white',
       ]),
     );
+    expect(g, 'X60 De3 (88.9-58): the Google light arm must not keep the shared control edge').not.toContain('border-line-control');
     expect(getStarted.getAttribute('href')).toBe('/api/auth/login');
     expect(google.getAttribute('href')).toBe('/api/auth/login?connection=google-oauth2');
   });
