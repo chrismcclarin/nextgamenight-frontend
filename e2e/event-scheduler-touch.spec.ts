@@ -2034,4 +2034,67 @@ test.describe('Phase 88.1 Req 5 — visual scheduler mouse range-select (desktop
       `a drag anchored in the "${anchorHeader}" column and released in the "${targetHeader}" column committed day ${sel.dayOfMonth} ("${sel.text}") — a horizontal drag must NOT span days`,
     ).toBe(Number(anchorHeader.slice(0, 2)));
   });
+
+  // Phase 88.9-57 — 52-X38 (owner, 2026-11-13: "When I click and drag on PC I am highlighting all
+  // the numbers and the times."). A mouse drag is the scheduler's range gesture, so it must not
+  // also start a browser text selection. Two drags: the diagonal one the case above performs, and
+  // one that leaves the grid through its bottom edge with the button still down. Red by design
+  // before the fix (the panel takes text selection). Nothing is written: a pick is page state only.
+  test('X38 (88.9-57): a mouse drag across the grid selects no page text, inside the grid or past its edge', async ({ page }) => {
+    await openVisualScheduler(page);
+    await dialog(page).getByRole('columnheader').first().scrollIntoViewIfNeeded();
+    await settleSchedulerGeometry(page);
+    await resetColumnScroll(page);
+
+    const selectedText = (): Promise<string> => page.evaluate(() => window.getSelection()?.toString() ?? '');
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+    expect(await selectedText(), 'the page must start with no text selected').toBe('');
+
+    // Drag 1 — diagonal, rows and columns, released inside the grid.
+    const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
+    const anchorColumn = corridorCells(geo, 1);
+    const targetColumn = corridorCells(geo, 3);
+    expect(
+      Math.min(anchorColumn.length, targetColumn.length),
+      'fewer than 3 corridor cells in the columns this case drags between — the grid is not tall enough in view for a drag',
+    ).toBeGreaterThanOrEqual(3);
+    const anchor = anchorColumn[0];
+    const target = targetColumn[targetColumn.length - 1];
+    await page.mouse.move(anchor.cx, anchor.cy);
+    await page.mouse.down();
+    await mouseMovesToCell(page, { x: anchor.cx, y: anchor.cy }, target.coord);
+    await expect(
+      dialog(page).getByTestId('scheduler-drag-rect'),
+      'no live selection rectangle during the mouse drag — the range gesture never engaged, so this case measured nothing',
+    ).toBeVisible();
+    await page.mouse.up();
+    const inside = await selectedText();
+    expect(
+      inside.length,
+      `a mouse drag inside the scheduler grid selected ${inside.length} characters of page text — the drag surface must take no text selection`,
+    ).toBe(0);
+
+    // Drag 2 — from a cell, out through the bottom edge of the reachable grid band, released 40px
+    // below it. Geometry is read again: the first pick re-laid the modal.
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+    await settleSchedulerGeometry(page);
+    const after = must(await gridGeometry(page), "the scheduler grid's geometry after the first pick");
+    const column = corridorCells(after, 2);
+    expect(column.length, 'no corridor cell in view for the second drag').toBeGreaterThanOrEqual(1);
+    const start = column[0];
+    const viewport = must(page.viewportSize(), 'the journeys project viewport');
+    const below = Math.min(after.visibleBand.bottom + 40, viewport.height - 2);
+    await page.mouse.move(start.cx, start.cy);
+    await page.mouse.down();
+    const steps = 8;
+    for (let i = 1; i <= steps; i++) {
+      await page.mouse.move(start.cx, start.cy + ((below - start.cy) * i) / steps);
+    }
+    await page.mouse.up();
+    const past = await selectedText();
+    expect(
+      past.length,
+      `a mouse drag that left the scheduler grid through its bottom edge selected ${past.length} characters of page text — the drag surface must take no text selection`,
+    ).toBe(0);
+  });
 });
