@@ -1520,6 +1520,8 @@ function GroupHomePage(){
                            `@media (hover: hover)`, so it is desktop-only and INERT on the phone lane
                            — it cannot affect the Req 12 phone re-check. If the wash should ever
                            persist under the pointer, the recorded step is `hover:bg-white/90`.
+                           AMENDED Phase 88.9-64 (X30): the owner was asked (52-X30, 2026-11-12); light
+                           arms now take the secondary hover.
 
                            REJECTED, and each matters:
                              - a >= 3:1 NEUTRAL BORDER (`border-line-strong` / warm-500). This is the
@@ -1559,6 +1561,7 @@ function GroupHomePage(){
                                header, not 1.31 — i.e. a WEAKER opaque cue than when this bullet was
                                written. That makes the ring this control actually ships more
                                defensible, not less. Nothing here changed in code.
+                               AMENDED Phase 88.9-64 (X9): TAKEN on the image arm only.
 
                            Phase 88.6's `Button` migration still owns the real border/ring MODEL;
                            this is an interim per-site edge. Changing it is a decision, not a
@@ -1588,6 +1591,8 @@ function GroupHomePage(){
                                 spelling had to change: `enabled-hover` excludes `:disabled` and
                                 `[aria-disabled]`, and a bare `hover:` left beside it would not
                                 de-dupe under tailwind-merge, so both would survive.
+                                AMENDED Phase 88.9-64 (X30): the call site sets the hover;
+                                tailwind-merge drops the ghost one. Item 2 stands.
                              2. `dark:hover:bg-white/20` becomes `dark:enabled-hover:bg-white/20`,
                                 and this one is LOAD-BEARING rather than tidy. `enabled-hover`
                                 compiles to `&:not(:disabled):not([aria-disabled='true']):hover`
@@ -1649,9 +1654,29 @@ function GroupHomePage(){
                                 // wash drops the light-mode ink it sits under). The image arm is tested BEFORE the
                                 // D-10 darkArm fork, which still decides every no-image header. No-image arms keep
                                 // the owner-ruled wash byte for byte. Changing this is a decision, not a cleanup.
-                                (hasHeaderImage ? ' dark:bg-surface-elevated' : darkArm
-                                    ? ' dark:text-white dark:bg-white/10 dark:enabled-hover:bg-white/20 dark:backdrop-blur-xs'
-                                    : '')
+                                // AMENDED Phase 88.9-64 (X9, owner RULED solid 2026-11-11): the image arm is opaque in
+                                // BOTH themes, the secondary button's fill, hover and own edge (dark rest unchanged),
+                                // chosen OVER the 80% white wash (on a white photo the ring was the only cue) and OVER
+                                // elevated white in light (no token gives it a visible hover). A failed picture is the
+                                // no-image arm (88.9-60). No-image arms keep the D-10 / 88.3-16 wash and ring (X31b
+                                // dropped).
+                                // HOW the image arm wins: its fill, hover and ring-colour classes come after the shared
+                                // string above, so tailwind-merge keeps them and drops the wash and the shared ring
+                                // colour; the shared string itself is not edited. The dark elevated-surface class is
+                                // gone from this arm because the secondary fill is that same purple-800 in dark.
+                                // DECISION Phase 88.9-64 (X30 + X31 direction, owner 2026-11-12: let manage members darken
+                                // or lighten as needed): every arm hovers by ΔL* at least 4.0 (tokenContrast test 1's
+                                // ladder step, pinned X30 (88.9)), label at least 4.5. Light arms DARKEN to the secondary
+                                // hover (lightening has at most ΔL* 2.56 of room); dark arms LIGHTEN (photo purple-800 to
+                                // purple-700; no photo the D-10 wash, unchanged). Chosen OVER one direction for all arms
+                                // and OVER the ghost hover (ΔL* 2.35 or less; 0 on the dark photo arm). This control
+                                // becomes the Members tab in Phase 88.9.1 (UI-SPEC R2-79): polish it there. Changing a
+                                // direction is a decision, not a cleanup.
+                                (hasHeaderImage
+                                    ? ' bg-btn-secondary enabled-hover:bg-btn-secondary-hover ring-line-btn-secondary'
+                                    : ' enabled-hover:bg-btn-secondary-hover' + (darkArm
+                                        ? ' dark:text-white dark:bg-white/10 dark:enabled-hover:bg-white/20 dark:backdrop-blur-xs'
+                                        : ''))
                             }
                         >
                             Manage Members
