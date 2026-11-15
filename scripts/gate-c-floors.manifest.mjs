@@ -94,6 +94,7 @@ export const floors = [
   { spec: 'e2e/restore-preview.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/route-fallbacks.spec.ts', project: 'journeys', floor: 1, why: '1 of 1 listed run in journeys; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/rsvp-section-outcome-spacing.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/session-chip-wrap.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/share-game-qr-pending.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/tailwind-v4-styles.spec.ts', project: 'journeys', floor: 3, why: '3 of 3 listed run in journeys; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/touch-targets.spec.ts', project: 'journeys', floor: 3, why: '3 of 28 listed run in journeys; 25 skipped here by an isMobile predicate (the D10 arm; the D10 step keeps its own title-prefixed floor)' },
