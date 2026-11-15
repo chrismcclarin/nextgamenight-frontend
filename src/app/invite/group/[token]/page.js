@@ -7,7 +7,7 @@ import { groupsAPI } from '../../../../lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 
@@ -150,10 +150,13 @@ function GroupInvitePage() {
            2026-11-06): a Try again control now ships on the non-404 arm (primary, above a
            secondary Go Home), chosen OVER the shipped Go Home alone — the register line says try
            again and there was nothing to press. The 404 arm keeps the invalid-link sentence and
-           no Try again. */
+           no Try again.
+           AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): the non-404 arm renders Try again, so
+           its line is the register line's beside-retry form (shown and announced); the join
+           catch below renders no Try again and keeps the full line. */
         setStatus('error');
         setPreviewFailed(err?.status === 404 ? 'not_found' : 'other');
-        setError(err?.status === 404 ? INVALID_LINK_DETAIL : getFetchErrorMessage(err));
+        setError(err?.status === 404 ? INVALID_LINK_DETAIL : messageBesideRetry(getFetchErrorMessage(err)));
       }
     }
 

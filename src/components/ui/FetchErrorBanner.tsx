@@ -49,7 +49,7 @@ import { StatusRegion, REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { useFeedbackReport } from '@/app/components/FeedbackModalProvider';
 import { logger, errCtx } from '@/lib/logger';
 import { buildSignInUrl } from '@/lib/signIn';
-import { RETRY_OUTCOME_WINDOW_MS, type FetchErrorCode, type FetchErrorState } from './useFetchErrorState';
+import { RETRY_OUTCOME_WINDOW_MS, messageBesideRetry, type FetchErrorCode, type FetchErrorState } from './useFetchErrorState';
 import { useFocusRecovery } from './useFocusRecovery';
 import { DIALOG_ROLE_SELECTOR, focusElement, focusPageFloor, isFocusLost, isOpenDialog } from './focusPageFloor';
 
@@ -669,10 +669,14 @@ export function FetchErrorBanner({
 
   // BANNER-01: a passed title wins; else Couldn't load {thing}; else the shipped default.
   const resolvedTitle = title ?? (thing ? `Couldn't load ${thing}` : 'Something went wrong');
-  const subject = reportSubject ?? `Couldn't load: ${state.message}`;
+  // O22d: a 401 cannot be retried, so its full banner offers Sign in instead of Try again.
+  const sessionDead = state.code === 'unauthorized';
+  // DECISION Phase 88.9-66 (X68, owner RULED 2026-11-14): the banner owns whether a retry shows, so it picks the beside-retry line, chosen OVER editing the register (it cannot know; screens with no retry would lose the refresh advice), OVER a retry flag on useFetchErrorState / getFetchErrorMessage (a second source of this render's fact) and OVER byCode overrides at 54 mounts.
+  const shownMessage = sessionDead ? state.message : messageBesideRetry(state.message);
+  const subject = reportSubject ?? `Couldn't load: ${shownMessage}`;
   const description =
     `An error occurred (code: ${state.code}).\n\n` +
-    `Message shown: ${state.message}\n\n` +
+    `Message shown: ${shownMessage}\n\n` +
     (reportContext ? `Where: ${reportContext}\n\n` : '') +
     'What I was doing when this happened:\n\n' +
     'Anything else worth noting:\n';
@@ -735,8 +739,6 @@ export function FetchErrorBanner({
 
   // The full branch's controls, rendered in Banner's `actions` slot (outside the live region).
   // Hoisted so the Banner's own opening tag carries no handler of its own.
-  // O22d: a 401 cannot be retried, so its full banner offers Sign in instead of Try again.
-  const sessionDead = state.code === 'unauthorized';
   const actionRow = state.showError ? (
     <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
       {/* DECISION Phase 88.6-36 (D-03 / UI-SPEC §4.5): the three link-buttons in this file
@@ -841,7 +843,7 @@ export function FetchErrorBanner({
         title={state.showError ? resolvedTitle : undefined}
         actions={actionRow}
       >
-        {state.showError ? <p>{state.message}</p> : null}
+        {state.showError ? <p>{shownMessage}</p> : null}
       </Banner>
 
       {/* Polite, secondary live region for transient retry feedback and a failed retry's
@@ -1288,14 +1290,17 @@ export function SectionLoadFailedNotice({ state, className }: SectionLoadFailedN
     dwellOnPress: true,
     quietOnMount: true,
   });
+  // X68 (88.9-66): this notice always renders its Retry, so it shows the beside-retry line (the
+  // marker is on the full banner's shownMessage above).
+  const shownText = messageBesideRetry(state.message);
   return (
     <>
       <StatusRegion politeness="polite" className="sr-only">
-        {shown && !regionQuiet ? state.message : ''}
+        {shown && !regionQuiet ? shownText : ''}
       </StatusRegion>
       {shown ? (
         <div className={className}>
-          <NoticeRow text={state.message} retrying={retrying} handleRetry={handleRetry} watchFocus={watchFocus} />
+          <NoticeRow text={shownText} retrying={retrying} handleRetry={handleRetry} watchFocus={watchFocus} />
         </div>
       ) : null}
     </>

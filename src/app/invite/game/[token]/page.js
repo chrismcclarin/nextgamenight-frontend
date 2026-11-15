@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { eventsAPI } from '../../../../lib/api';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 
@@ -151,7 +151,9 @@ function GameInvitePage() {
         const kind = classifyError(err);
         if (kind === 'transient') {
           setStatus('error-transient');
-          setError(getFetchErrorMessage(err));
+          // X68 (88.9-66, owner ruled 2026-11-14): the transient branch renders Retry, so its line
+          // is the register line's beside-retry form.
+          setError(messageBesideRetry(getFetchErrorMessage(err)));
         } else {
           setStatus('error-permanent');
           setError('This invite link is no longer valid.');
@@ -220,8 +222,11 @@ function GameInvitePage() {
           setStatus('expired');
           return;
         }
-        setError(getFetchErrorMessage(err));
-        setStatus(classifyError(err) === 'permanent' ? 'error-permanent' : 'error-transient');
+        // X68 (88.9-66): Retry shows on the transient branch only, so only that branch takes the
+        // beside-retry form; the permanent branch keeps the register line.
+        const permanent = classifyError(err) === 'permanent';
+        setError(permanent ? getFetchErrorMessage(err) : messageBesideRetry(getFetchErrorMessage(err)));
+        setStatus(permanent ? 'error-permanent' : 'error-transient');
       });
     // NOTE: `status` deliberately omitted from deps — its inclusion was the
     // root cause of the parallel-POST flicker bug.
