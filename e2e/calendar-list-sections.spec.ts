@@ -183,6 +183,60 @@ async function readRegion(header: Locator): Promise<RegionRead | null> {
   });
 }
 
+interface Placement {
+  left: number;
+  top: number;
+  bottom: number;
+  regionLeft: number;
+  regionTop: number;
+  regionBottom: number;
+}
+
+// Where a header button sits against the scroll region, BOTH boxes read in one page read.
+// AMENDED Phase 88.9-61 (after CI run 43730473151 at FE 3db93e4, 1 flaky): the first form read
+// the region and the button in two separate round trips, and on the Calendar sheet the first
+// read can land while the sheet is still sliding up, so the two boxes were 17px apart in time,
+// not in space. One read cannot disagree with itself.
+async function readPlacement(button: Locator): Promise<Placement | null> {
+  return button.evaluate((el) => {
+    let node = el.parentElement;
+    while (node) {
+      const overflow = getComputedStyle(node).overflowY;
+      if (overflow === 'auto' || overflow === 'scroll') break;
+      node = node.parentElement;
+    }
+    if (!node) return null;
+    const region = node.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    return {
+      left: box.left,
+      top: box.top,
+      bottom: box.bottom,
+      regionLeft: region.left,
+      regionTop: region.top,
+      regionBottom: region.bottom,
+    };
+  });
+}
+
+// Wait until the list has stopped moving (the Calendar sheet slides up when it opens): two
+// consecutive reads of the header's position, a moment apart, must agree.
+async function waitForStill(target: Locator, label: string): Promise<void> {
+  let last = Number.NaN;
+  await expect
+    .poll(
+      async () => {
+        const box = await target.boundingBox();
+        const y = box ? Math.round(box.y * 100) / 100 : Number.NaN;
+        const still = y === last;
+        last = y;
+        return still;
+      },
+      { message: `${label}: the list never stopped moving`, intervals: [100, 100, 150, 200, 250], timeout: 5_000 },
+    )
+    .toBe(true);
+}
+
 interface HeaderRead {
   position: string;
   top: number;
@@ -313,13 +367,11 @@ async function expectInsetHeaderRing(page: Page, scope: Locator, label: string):
   expect.soft(ring.boxShadow, `${label}: the focused header button's ring is not drawn inset (box-shadow: ${ring.boxShadow})`).toContain('inset');
   expect.soft(ring.ringGroundKind, `${label}: the ring is not an inset ring`).toBe('inset');
   expect.soft(ring.ratio, describeRatio(label, 3, ring)).toBeGreaterThanOrEqual(3);
-  const region = await readRegion(header);
-  const box = await header.boundingBox();
-  expect(region, `${label}: no scroll region`).not.toBeNull();
-  expect(box, `${label}: the header button is not rendered`).not.toBeNull();
-  if (!region || !box) return;
-  expect.soft(box.x, `${label}: the header button starts at ${box.x}px, left of the region's edge at ${region.left}px`).toBeGreaterThanOrEqual(region.left - 0.5);
-  expect.soft(box.y, `${label}: the header button starts at ${box.y}px, above the region's top at ${region.top}px`).toBeGreaterThanOrEqual(region.top - 0.5);
+  const place = await readPlacement(header);
+  expect(place, `${label}: no scroll region around the header button`).not.toBeNull();
+  if (!place) return;
+  expect.soft(place.left, `${label}: the header button starts at ${place.left}px, left of the region's edge at ${place.regionLeft}px`).toBeGreaterThanOrEqual(place.regionLeft - 0.5);
+  expect.soft(place.top, `${label}: the header button starts at ${place.top}px, above the region's top at ${place.regionTop}px`).toBeGreaterThanOrEqual(place.regionTop - 0.5);
 }
 
 // Both headers at rest: Upcoming open, Past closed, both 44px tall, both sticky, the rule above Past.
@@ -394,6 +446,7 @@ test.describe('Calendar list sections at phone width (88.9-61, X25a + X29 A)', (
     await expect(upcomingHeader(sheet), `${label}: the Upcoming header`).toBeVisible();
     await expect.poll(() => upcomingRows(sheet, page).count(), { message: `${label}: the staged upcoming rows` }).toBeGreaterThanOrEqual(UPCOMING_COPIES);
     await expectStaged(state, label);
+    await waitForStill(upcomingHeader(sheet), label);
 
     // The list opens at its top.
     expect((await readRegion(upcomingHeader(sheet)))?.scrollTop, `${label}: the list does not open at its top`).toBe(0);
@@ -413,13 +466,11 @@ test.describe('Calendar list sections at phone width (88.9-61, X25a + X29 A)', (
     await upcomingHeader(sheet).click();
     await expect(upcomingHeader(sheet)).toHaveAttribute('aria-expanded', 'false');
     await expect(upcomingHeader(sheet), `${label}: focus did not move to the header of the folded section`).toBeFocused();
-    const folded = await readRegion(upcomingHeader(sheet));
-    const pastBox = await pastHeader(sheet).boundingBox();
-    expect(folded, `${label}: no scroll region after the fold`).not.toBeNull();
-    expect(pastBox, `${label}: the Past header is not rendered after the fold`).not.toBeNull();
-    if (folded && pastBox) {
-      expect(pastBox.y, `${label}: after the fold the Past header starts at ${pastBox.y}px, above the region's top at ${folded.top}px`).toBeGreaterThanOrEqual(folded.top - 0.5);
-      expect(pastBox.y + pastBox.height, `${label}: after the fold the Past header ends at ${pastBox.y + pastBox.height}px, below the region's bottom at ${folded.bottom}px`).toBeLessThanOrEqual(folded.bottom + 0.5);
+    const folded = await readPlacement(pastHeader(sheet));
+    expect(folded, `${label}: no scroll region around the Past header after the fold`).not.toBeNull();
+    if (folded) {
+      expect(folded.top, `${label}: after the fold the Past header starts at ${folded.top}px, above the region's top at ${folded.regionTop}px`).toBeGreaterThanOrEqual(folded.regionTop - 0.5);
+      expect(folded.bottom, `${label}: after the fold the Past header ends at ${folded.bottom}px, below the region's bottom at ${folded.regionBottom}px`).toBeLessThanOrEqual(folded.regionBottom + 0.5);
     }
     await upcomingHeader(sheet).click();
     await expect(upcomingHeader(sheet)).toHaveAttribute('aria-expanded', 'true');
@@ -438,6 +489,7 @@ test.describe('Calendar list sections at phone width (88.9-61, X25a + X29 A)', (
     await expect(upcomingHeader(scope), `${label}: the Upcoming header`).toBeVisible();
     await expect.poll(() => upcomingRows(scope, page).count(), { message: `${label}: the staged upcoming rows` }).toBeGreaterThanOrEqual(UPCOMING_COPIES);
     await expectStaged(state, label);
+    await waitForStill(upcomingHeader(scope), label);
 
     await expect(page.getByRole('separator', { name: /^Today,/ }), `${label}: a Today delineator is still rendered`).toHaveCount(0);
     expect((await readRegion(upcomingHeader(scope)))?.scrollTop, `${label}: the list does not open at its top`).toBe(0);
@@ -465,6 +517,7 @@ test.describe('Calendar list sections at desktop width (88.9-61, X29 A)', () => 
     await expect(upcomingHeader(scope), `${label}: the Upcoming header`).toBeVisible();
     await expect.poll(() => upcomingRows(scope, page).count(), { message: `${label}: the staged upcoming rows` }).toBeGreaterThanOrEqual(UPCOMING_COPIES);
     await expectStaged(state, label);
+    await waitForStill(upcomingHeader(scope), label);
 
     await expect(page.getByRole('separator', { name: /^Today,/ }), `${label}: a Today delineator is still rendered`).toHaveCount(0);
     expect((await readRegion(upcomingHeader(scope)))?.scrollTop, `${label}: the list does not open at its top`).toBe(0);
