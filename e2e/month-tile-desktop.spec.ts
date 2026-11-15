@@ -1005,6 +1005,62 @@ test.describe('the image-backed FULL month tile, light (88.9 F7a)', () => {
 });
 
 /* =========================================================================================
+ * X6 (88.9-60, owner F1) — a group picture that FAILS TO LOAD on the FULL month tile at 1280.
+ *
+ * The URL is allow-listed (https), so the validator passes it and the tile first paints its photo
+ * arm; the route answers 404, the load probe records the failure, and the tile must then paint
+ * exactly what a tile with no picture paints: no background-image, no image overlay, the plain
+ * treatment. Scenario B above is the REJECTED-url twin; this is the allowed-but-dead one. The host
+ * is on the reserved .invalid TLD and every request to it is fulfilled by the route, so no remote
+ * host is reached. Assertions retry, because the flip follows the failed load.
+ * ======================================================================================= */
+
+const X6_FAILED_PHOTO_URL = 'https://e2e-x6.invalid/failed-photo.png';
+
+test.describe('a group picture that fails to load on the FULL month tile (88.9 X6)', () => {
+  test('X6 (88.9): an allowed picture URL that fails to load paints the no-picture tile — no image, no outline, the plain treatment', async ({ page }) => {
+    let photoRequests = 0;
+    await page.route('https://e2e-x6.invalid/**', async (route) => {
+      photoRequests += 1;
+      await route.fulfill({ status: 404, body: '' });
+    });
+    const read = await seedGroupImage(page, X6_FAILED_PHOTO_URL);
+    try {
+      await page.goto('/');
+      await expect(page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ })).toBeVisible({ timeout: 20_000 });
+      const { event } = read();
+      const tile = await tileFor(page, event);
+
+      // Anti-vacuity: the browser really asked for the picture and was told it is not there.
+      await expect
+        .poll(() => photoRequests, { message: 'X6: the dead picture was never requested, so its failure was never under test', timeout: 15_000 })
+        .toBeGreaterThanOrEqual(1);
+
+      await expect
+        .poll(async () => (await tileVars(tile)).bgImage, {
+          message: 'X6: a picture that failed to load is still set as the tile background-image (the tile kept its photo arm)',
+          timeout: 15_000,
+        })
+        .toBe('none');
+      expect(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'X6: the image overlay is mounted on a tile whose picture failed to load').toBe(0);
+
+      // The plain treatment of an uncoloured group (seedGroupImage picks one): no stroke, no shadow.
+      const vars = await tileVars(tile);
+      expect(vars.stroke, 'X6: the image-tuned stroke stayed on a tile whose picture failed to load').toBe('none');
+      expect(vars.strokeL, 'X6: the image-tuned light stroke stayed on a tile whose picture failed to load').toBe('none');
+      expect(vars.shadow, 'X6: the image-tuned shadow stayed on a tile whose picture failed to load').toBe('none');
+      const width = await gameName(tile, event).evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-text-stroke-width'));
+      expect(width, 'X6: the game name still carries an outline').toBe('0px');
+
+      // eslint-disable-next-line no-console -- the request count per dead picture URL is recorded from the CI log
+      console.log(`X6 failed picture: ${photoRequests} request(s) for the dead URL`);
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
+  });
+});
+
+/* =========================================================================================
  * O-19 (88.9-50) — the accent Share Game QR ring on a TINTED day-modal row at 1280, both themes.
  *
  * The day modal opens only for a day with two or more events:

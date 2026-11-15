@@ -864,7 +864,7 @@ async function timezoneRowCue(page: Page, theme: 'light' | 'dark'): Promise<void
 // The round-2 pins live in the two describes at the END of this file: the eight halo host
 // families the UI-SPEC round-2 shared halo constraint (5) names (the round-2 research counts
 // eight, not seven), the D12b failed-save line, the O20c error toast and the SPEC A7 #207
-// image-arm title outline. Each one reads BOTH themes inside one test (inBothThemes below).
+// failed-picture title (image-arm title outline until plan 88.9-60 X6). Each one reads BOTH themes inside one test (inBothThemes below).
 // They are red by design until the round-2 build plans land each ruling; the owed RED set and
 // its CI run id are recorded in the 88.9-20 SUMMARY.
 //
@@ -1148,40 +1148,49 @@ function answerBringReads(url: URL): unknown {
 // remote host is ever reached.
 const R2_FAILED_IMAGE_URL = 'https://e2e-r2-207.invalid/failed-photo.png';
 
+const TITLE_TREATMENT_PROPS = ['color', '-webkit-text-stroke-color', '-webkit-text-stroke-width', 'paint-order', 'text-shadow'];
+
+/** What one title paints: its raw computed text treatment, for comparing two renders of that title. */
+async function titleTreatment(el: Locator): Promise<Record<string, string>> {
+  const p = await probeElement(el, TITLE_TREATMENT_PROPS);
+  return Object.fromEntries(TITLE_TREATMENT_PROPS.map((prop) => [prop, (p.computed[prop]?.raw ?? '').trim()]));
+}
+
 /**
- * The image-arm title outline (O02d1 / O21b), read on one title element.
+ * X6 (88.9-60, owner F1): a title over a group picture that FAILED to load paints what the same
+ * title paints with no picture at all. reference is that title read on the same group, same theme,
+ * with no picture; the read retries, because the flip follows the failed load.
  *
- * The ground read takes the BETTER of the outline colour and the fill against the ground, per
- * theme. WCAG 1.4.3 Note 5 ("A narrow border around the letter would be used as the letter") reads
- * a narrow outline as part of the glyph, and UI-SPEC (d) O-02 says one of the two colours clears
- * the ground on every fill; on the blue fixture's dark ground a black outline reads 1.40 while the
- * white fill reads 15.03, so an outline-only read could never pass. The fill must still separate
- * from its own outline (>= 4.5). The width, paint-order and no-shadow checks are what keep this
- * pin RED on today's 0.5px stroke with a heavy shadow.
+ * DECISION Phase 88.9-60 (X6, A7 reversed): the pin is EQUALITY with the no-picture read plus an
+ * ink floor, chosen OVER a fixed 0px stroke in both themes. The no-picture arm on a dark preset
+ * ground carries the shipped half-pixel dark stroke (src/lib/colorUtils.js ("const STROKE_DARK =")),
+ * so a fixed 0px would red in dark on a correct build; light, where that arm has no stroke, is
+ * still pinned at exactly 0px. The photo outline is what must be gone: under 1.5px and not painted
+ * stroke-first.
  */
-async function titleOutline(el: Locator, label: string): Promise<void> {
+async function noPictureTitle(el: Locator, reference: Record<string, string>, label: string, theme: Theme): Promise<void> {
   await expect(el, `${label}: the title is not visible`).toBeVisible({ timeout: 15_000 });
-  const p = await probeElement(el, ['color', '-webkit-text-stroke-color', '-webkit-text-stroke-width', 'paint-order', 'text-shadow']);
-  const widthRaw = p.computed['-webkit-text-stroke-width']?.raw ?? '';
+  await expect
+    .poll(() => titleTreatment(el), {
+      message: `${label}: a group picture that failed to load does not paint the title this group paints with no picture (expected ${JSON.stringify(reference)})`,
+      timeout: 15_000,
+    })
+    .toEqual(reference);
+  const widthRaw = reference['-webkit-text-stroke-width'] ?? '';
+  if (theme === 'light') {
+    expect.soft(widthRaw, `${label}: the no-picture title carries a text stroke in light`).toBe('0px');
+  }
   expect
-    .soft(Number.parseFloat(widthRaw), `${label}: -webkit-text-stroke-width is ${JSON.stringify(widthRaw)}; the image-arm outline is at least 1.5px`)
-    .toBeGreaterThanOrEqual(1.5);
-  const paintOrder = (p.computed['paint-order']?.raw ?? '').trim();
-  expect.soft(paintOrder, `${label}: paint-order is ${JSON.stringify(paintOrder)}; the outline is drawn first, under the fill`).toMatch(/^stroke\b/);
-  const shadow = (p.computed['text-shadow']?.raw ?? '').trim();
-  expect.soft(shadow, `${label}: text-shadow is ${JSON.stringify(shadow)}; the outline replaces the shadow`).toBe('none');
-  const outline = await ratioAgainstGround(el, `${label} — outline colour`, '-webkit-text-stroke-color');
-  const fill = await ratioAgainstGround(el, `${label} — fill`, 'color');
-  const better = Math.max(outline.ratio, fill.ratio);
+    .soft(Number.parseFloat(widthRaw), `${label}: -webkit-text-stroke-width is ${JSON.stringify(widthRaw)}; the photo outline (1.5px or more) is still on a title with no picture`)
+    .toBeLessThan(1.5);
   expect
-    .soft(
-      better,
-      `${label}: the better of outline ${outline.fg} (${outline.ratio.toFixed(3)}:1) and fill ${fill.fg} (${fill.ratio.toFixed(3)}:1) on the ground ${fill.ground} is ${better.toFixed(3)}:1, floor ${AA_TEXT}:1`
-    )
-    .toBeGreaterThanOrEqual(AA_TEXT);
-  const fillVsOutline = contrastRatio(fill.fg, outline.fg) ?? 0;
+    .soft(reference['paint-order'] ?? '', `${label}: paint-order is ${JSON.stringify(reference['paint-order'])}; the photo outline's stroke-first paint is still on a title with no picture`)
+    .not.toMatch(/^stroke\b/);
+  const ink = await ratioAgainstGround(el, `${label} — ink`, 'color');
+  // eslint-disable-next-line no-console -- the measured ink ratio is recorded from the CI log
+  console.log(`${label}: ink ${ink.fg} on ${ink.ground} ${ink.ratio.toFixed(4)}:1, stroke ${JSON.stringify(widthRaw)}`);
   expect
-    .soft(fillVsOutline, `${label}: fill ${fill.fg} vs outline ${outline.fg} measured ${fillVsOutline.toFixed(3)}:1, floor ${AA_TEXT}:1`)
+    .soft(ink.ratio, `${label}: ink ${ink.fg} on the ground ${ink.ground} is ${ink.ratio.toFixed(3)}:1, floor ${AA_TEXT}:1`)
     .toBeGreaterThanOrEqual(AA_TEXT);
 }
 
@@ -2668,24 +2677,61 @@ test.describe('Req 11 Gate C — round 2 pins (88.9 R2), both themes per test', 
     });
   });
 
-  test('A7 #207 (88.9): image-arm title outline ≥ 4.5 on header and card', async ({ page }) => {
+  // AMENDED Phase 88.9-60 (X6, owner F1, 2026-11-11): this pin used to REQUIRE the photo outline on a
+  // picture that fails to load (pick O02d1); a failed picture now shows the no-picture title, so the
+  // pin compares it with the same group read with no picture. The loaded-photo outline is pinned by
+  // the X7 test of the same plan.
+  test('A7 #207 / X6 (88.9): a failed group picture shows the no-picture title on header and card, ink ≥ 4.5', async ({ page }) => {
     test.slow();
     await holdWrites(page, {});
-    const coloured = await patchColouredGroup(page, { imageUrl: R2_FAILED_IMAGE_URL });
+    // One mutable options object: the route reads imageUrl per response, so the same route serves
+    // the no-picture reference read and then the failed-picture read.
+    const picture: { imageUrl?: string } = {};
+    const coloured = await patchColouredGroup(page, picture);
+    let photoRequests = 0;
     await page.route('https://e2e-r2-207.invalid/**', async (route) => {
+      photoRequests += 1;
       await route.fulfill({ status: 404, body: '' });
     });
-    await inBothThemes(page, 'A7 #207 image-arm title outline (O02d1 / O21b)', async (theme) => {
-      await page.goto(`/groupHomePage?id=${E2E_COLOURED_GROUP_ID}`);
-      await assertTheme(page, theme);
-      await titleOutline(page.getByRole('heading', { level: 1 }), `A7 #207 group header title (${theme})`);
+    const isGroupDetailRead = (r: { url(): string; request(): { method(): string } }): boolean =>
+      r.request().method() === 'GET' && new URL(r.url()).pathname.endsWith(`/groups/${E2E_COLOURED_GROUP_ID}`);
+    const headerTitle = page.getByRole('heading', { level: 1 });
 
-      const listRead = page.waitForResponse(isGroupListRead);
-      await page.goto('/');
-      await listRead;
-      await assertTheme(page, theme);
-      const name = coloured.name();
-      await titleOutline(colouredCard(page, name).getByRole('heading', { name, exact: true }), `A7 #207 home card title (${theme})`);
+    await inBothThemes(page, 'A7 #207 / X6 failed-picture title', async (theme) => {
+      const openHeader = async (): Promise<void> => {
+        const detailRead = page.waitForResponse(isGroupDetailRead);
+        await page.goto(`/groupHomePage?id=${E2E_COLOURED_GROUP_ID}`);
+        await detailRead;
+        await assertTheme(page, theme);
+        await expect(headerTitle, `A7 #207 / X6 (${theme}): the group header title never showed the group's name`).toContainText(coloured.name(), { timeout: 15_000 });
+      };
+      const openCard = async (): Promise<Locator> => {
+        const listRead = page.waitForResponse(isGroupListRead);
+        await page.goto('/');
+        await listRead;
+        await assertTheme(page, theme);
+        const name = coloured.name();
+        const title = colouredCard(page, name).getByRole('heading', { name, exact: true });
+        await expect(title, `A7 #207 / X6 (${theme}): the coloured group's home card title is not visible`).toBeVisible({ timeout: 15_000 });
+        return title;
+      };
+
+      // The reference: this group with NO picture.
+      picture.imageUrl = undefined;
+      await openHeader();
+      const headerReference = await titleTreatment(headerTitle);
+      const cardReference = await titleTreatment(await openCard());
+
+      // The same group with a picture that fails to load.
+      picture.imageUrl = R2_FAILED_IMAGE_URL;
+      const requestsBefore = photoRequests;
+      await openHeader();
+      await noPictureTitle(headerTitle, headerReference, `A7 #207 / X6 group header title (${theme})`, theme);
+      await noPictureTitle(await openCard(), cardReference, `A7 #207 / X6 home card title (${theme})`, theme);
+      expect(
+        photoRequests,
+        `A7 #207 / X6 (${theme}): the dead picture was never requested, so its failure was never under test`
+      ).toBeGreaterThan(requestsBefore);
     });
   });
 
