@@ -664,6 +664,31 @@ describe('DEF-88-30-02 — the e2e typecheck step (parsed from ci.yml by step na
   });
 });
 
+// ---------------------------------------------------------------------------
+// Phase 88.9 plan 57 — the e2e lint step (52-X1).
+//
+// The package lint script is next lint, whose default directories do not include e2e/, so a
+// lint error in a Playwright spec reached the branch head three times with the lint step green.
+// A separate quality step runs eslint over e2e/. Pinned for the reason the typecheck step
+// above is: deleting one line of ci.yml would silently re-open the hole.
+// ---------------------------------------------------------------------------
+
+const E2E_LINT_STEP = 'Lint e2e specs (52-X1';
+
+describe('52-X1 — the e2e lint step (parsed from ci.yml by step name)', () => {
+  test('52-X1 (88.9-57): the e2e lint step exists and runs eslint over e2e/, which next lint never reads', () => {
+    const window = stepWindow(E2E_LINT_STEP).join('\n');
+    expect(window).toMatch(/run:\s*npx eslint e2e\s*$/m);
+    // The anti-vacuity half: while the package script is still next lint, the step above is
+    // the ONLY lint that reads a spec. If the script ever names e2e itself, this pin reds and
+    // the step is retired on purpose, not left as a silent duplicate.
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts.lint).toBe('next lint');
+  });
+});
+
 describe('Req 19 — the two-sided CSS bundle guard step (parsed from ci.yml by step name)', () => {
   const window = stepWindow(BUNDLE_STEP).join('\n');
 
