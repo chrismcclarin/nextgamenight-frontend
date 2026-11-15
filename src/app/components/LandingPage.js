@@ -255,13 +255,16 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold text-center text-content-primary mb-12">
             Everything your group needs
           </h2>
+          {/* DECISION Phase 88.9-58 (X14, owner 2026-11-11, applied by the orchestrator): static
+              feature cards, so no hover lift or border, chosen OVER the shipped lift (it promised a
+              press that does nothing). */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* DECISION Phase 88.6-35 (UI-SPEC §4.3 row 4): the `text-4xl` on each of the
                 three emoji tiles below is ICON SIZING, not type — §4.3 rules glyph-only spans
                 (`×`, `⋮`, `+`, emoji) OUT of the type scale explicitly, so they are left
                 alone by this sweep on purpose rather than by omission. Folding them to a type
                 rung is a decision, not a cleanup. */}
-            <div className="card p-3 md:p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
+            <div className="card p-3 md:p-6 transition-all border border-line">
               <div className="text-4xl mb-4">🎲</div>
               <Heading level={3} size="heading" className="mb-2 text-content-primary">Track Sessions</Heading>
               <p className="text-content-secondary">
@@ -269,7 +272,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="card p-3 md:p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
+            <div className="card p-3 md:p-6 transition-all border border-line">
               <div className="text-4xl mb-4">👥</div>
               <Heading level={3} size="heading" className="mb-2 text-content-primary">Gather Your Crew</Heading>
               <p className="text-content-secondary">
@@ -277,7 +280,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="card p-3 md:p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
+            <div className="card p-3 md:p-6 transition-all border border-line">
               <div className="text-4xl mb-4">⭐</div>
               <Heading level={3} size="heading" className="mb-2 text-content-primary">Rate &amp; Remember</Heading>
               <p className="text-content-secondary">

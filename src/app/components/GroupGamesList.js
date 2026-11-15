@@ -34,9 +34,10 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
         // mechanism. `ring-offset-2` over `ring-inset`: this is a card in a vertical
         // list with `space-y` between rows, so an outset ring has room and reads as a
         // card outline rather than an inner line at 375px.
+        // DECISION Phase 88.9-58 (X14): this whole-card control keeps its own hover wash; the card utility has none (owner 2026-11-11).
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-            className="block card p-3 md:p-6 hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+            className="block card p-3 md:p-6 hover:bg-surface-hover hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
         >
             <div className="flex items-start gap-4">
                 <SafeImage

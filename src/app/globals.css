@@ -2424,14 +2424,14 @@ body {
    the diff was phone-only was WRONG), review against this:
    (i)   `p-4` sites that ALSO author `md:p-6` change at phone only;
    (ii)  the five BARE-`p-4` sites (src/app/components/BringSummary.js ("card p-3 md:p-6"), src/app/components/UpcomingEventsCard.js ("card p-3 md:p-6 mb-4"),
-         src/app/components/GroupGamesList.js ("block card p-3 md:p-6"), src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 flex gap-4"), src/app/friends/page.js ("mb-4 p-3 md:p-6 card")) would
+         src/app/components/GroupGamesList.js ("block card p-3 md:p-6"), src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 hover:bg-surface-hover flex gap-4"), src/app/friends/page.js ("mb-4 p-3 md:p-6 card")) would
          have silently dropped desktop padding 24px -> 16px — Task 1b of plan 87.8-01
          adds `md:p-6` to each so desktop is preserved;
    (iii) the 13 sites authoring `p-6` are a no-op;
    (iv)  previously-inert `hover:shadow-theme-*` comes alive on DESKTOP ONLY, because
          Tailwind v4 wraps `hover:` in `@media (hover: hover)` which is false on the
          phone lane — src/app/components/LandingPage.js ("Track Sessions"), src/app/components/LandingPage.js ("Gather Your Crew"), src/app/components/LandingPage.js ("Rate &amp; Remember"), src/app/components/GroupGamesList.js ("block card p-3 md:p-6"),
-         src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 flex gap-4");
+         src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 hover:bg-surface-hover flex gap-4");
    (v)   the `transition-*` utilities at those same sites stop losing to `.card`'s own
          `transition` now that `.card` is layered — a second un-inert flip; do not
          mistake it for a regression.
@@ -2476,7 +2476,8 @@ body {
      Rejected: migrating the 28-29 `.card` call sites to `<Card>` — that is Phase 88.6's
      `.btn`-to-`Button`-shaped work and must not be pulled forward into a token phase.
      Rejected: doing nothing — the option that fails the Req 12 UAT question.
-     Putting this back to `-md` re-splits the two idioms; it is a decision, not a cleanup. */
+     Putting this back to `-md` re-splits the two idioms; it is a decision, not a cleanup.
+     AMENDED Phase 88.9-58 (X14): static cards no longer react; census 33 call sites in 13 files. */
   box-shadow: var(--shadow-sm);
   /* DECISION Phase 88-24: this 24px is the FALLBACK, not the shipped value. All 28
      `.card` call sites author `p-3 md:p-6` (12px phone / 24px desktop) and every one
@@ -2485,8 +2486,8 @@ body {
   padding: 1.5rem;
   transition: var(--theme-transition);
 
-  &:hover {
-    /* DECISION Phase 88.3 (D-02 / UI-SPEC §8.4): this is THE 43RD HOVER SITE, and the only one
+  /* HISTORY, kept as written; the hover block it sat in is gone (see the amendment at its end).
+       DECISION Phase 88.3 (D-02 / UI-SPEC §8.4): this is THE 43RD HOVER SITE, and the only one
        that lives in CSS rather than in a `className`. The plan-06 sweep that moves 42
        `hover:bg-surface-card-hover` sites to `hover:bg-surface-hover` greps JSX — it will never
        find this line, so it is changed here, by hand, in the same wave the token is minted.
@@ -2499,9 +2500,12 @@ body {
        its number moves. `--color-bg-card-hover` is now the minted `--warm-250`, so a hovered
        `.card` pointed back at it would jump ΔL* **15.63** from the white card (was 10.4), against
        the ΔL* 2.35 that `--color-bg-hover` (warm-50) actually gives. Heavier wash, same
-       conclusion. */
-    background-color: var(--color-bg-hover);
-  }
+       conclusion.
+       AMENDED Phase 88.9-58 (X14, owner at N13, 2026-11-11: yes, remove the hover from
+       non-clickable cards): the wash is REMOVED, chosen OVER a wash on every card — a box that
+       reacts but does nothing when pressed is a false affordance, and in dark the wash equals the
+       secondary fill (52-X48, 52-X13). Whole-card controls carry their own hover:bg-surface-hover.
+       A hover back here is a decision, not a cleanup. */
 }
 
 .btn {

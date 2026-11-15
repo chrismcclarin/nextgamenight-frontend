@@ -1468,11 +1468,12 @@ function FriendsPage() {
                                                 const isInGroup = selectedGroupId && groupMembers.includes(friendUserId);
                                                 const checkboxDisabled = !selectedGroupId || isInGroup;
 
+                                                // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
                                                 return (
                                                     <div
                                                         key={friendship.id}
                                                         data-friend-row={friendship.id}
-                                                        className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
+                                                        className="flex items-center justify-between p-4 bg-surface-card border border-line rounded-card"
                                                     >
                                                         <div className="flex items-center gap-3 flex-1">
                                                             <input
@@ -1485,7 +1486,7 @@ function FriendsPage() {
                                                                 checked={isInGroup || selectedFriends.has(friendUserId)}
                                                                 disabled={checkboxDisabled}
                                                                 onChange={() => toggleFriendSelection(friendUserId)}
-                                                                className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page ${
+                                                                className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
                                                                     checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                                 }`}
                                                             />
@@ -1651,11 +1652,12 @@ function FriendsPage() {
                                             const requester = request.Requester;
                                             if (!requester) return null;
 
+                                            // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
                                             return (
                                                 <div
                                                     key={request.id}
                                                     data-request-row={request.id}
-                                                    className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
+                                                    className="flex items-center justify-between p-4 bg-surface-card border border-line rounded-card"
                                                 >
                                                     <div className="flex-1">
                                                         <p className="font-bold text-content-primary">
@@ -1669,7 +1671,6 @@ function FriendsPage() {
                                                         <Button
                                                             variant="primary"
                                                             size="default"
-                                                            className="focus-visible:ring-offset-surface-page"
                                                             onClick={(e) => handleAccept(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'accept' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'decline' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
@@ -1681,7 +1682,6 @@ function FriendsPage() {
                                                         <Button
                                                             variant="secondary"
                                                             size="default"
-                                                            className="focus-visible:ring-offset-surface-page"
                                                             onClick={(e) => handleDecline(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'decline' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'accept' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
@@ -1767,10 +1767,11 @@ function FriendsPage() {
                                             const addressee = request.Addressee;
                                             if (!addressee) return null;
 
+                                            // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
                                             return (
                                                 <div
                                                     key={request.id}
-                                                    className="flex items-center justify-between p-4 border border-line rounded-card"
+                                                    className="flex items-center justify-between p-4 bg-surface-card border border-line rounded-card"
                                                 >
                                                     <div className="flex-1">
                                                         <p className="font-bold text-content-primary">
