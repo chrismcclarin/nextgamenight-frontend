@@ -209,22 +209,24 @@ describe('Phase 88.6-29 — the type/weight sweep outcomes', () => {
   });
 });
 
-// Phase 88.9-34 (owner pick C5a, 88.9-PICKS-B2.json item C5): the row's six form labels
-// (Participant Name as span or label, New Player as span and label, Score, Faction) step up
+// Phase 88.9-34 (owner pick C5a, 88.9-PICKS-B2.json item C5): the row's form labels
+// (Participant Name as span or label, New Player, Score, Faction) step up
 // from Caption 12 to Label 14 with their shipped inks unchanged. The two Guest badges and the
 // duplicate-name hint stay Caption 12 (the test above pins the badges). The one-line geometry
 // at 375 is pinned in e2e/participant-row-one-line.spec.ts.
+// AMENDED Phase 88.9-65 (X40): New Player renders ONCE per row now (the from-sm twin is gone), so a
+// row holds four labels, not five; the title follows.
 describe('C5a (88.9) — the form labels on Label 14', () => {
-  it('C5a (88.9): the six form labels are 14px', () => {
+  it('C5a (88.9): the four form labels are 14px', () => {
     const labelTexts = ['Participant Name', 'New Player', 'Score', 'Faction'];
     const readLabels = () => labelTexts.flatMap((text) => screen.getAllByText(text, { exact: true }));
 
-    // A member row: Participant Name is a span, New Player renders twice (phone span, sm label).
+    // A member row: Participant Name is a span; New Player is one span inside its label.
     renderRow({
       participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true },
     });
     const memberLabels = readLabels();
-    expect(memberLabels).toHaveLength(5);
+    expect(memberLabels).toHaveLength(4);
     for (const el of memberLabels) {
       expect(el.className.split(/\s+/), el.textContent ?? '').toContain('text-sm');
       expect(el.className.split(/\s+/), el.textContent ?? '').not.toContain('text-xs');
@@ -234,10 +236,67 @@ describe('C5a (88.9) — the form labels on Label 14', () => {
     // A custom row: Participant Name is a label tied to the editable name input.
     renderRow();
     const customLabels = readLabels();
-    expect(customLabels).toHaveLength(5);
+    expect(customLabels).toHaveLength(4);
     for (const el of customLabels) {
       expect(el.className.split(/\s+/), el.textContent ?? '').toContain('text-sm');
       expect(el.className.split(/\s+/), el.textContent ?? '').not.toContain('text-xs');
+    }
+  });
+});
+
+// Phase 88.9-65 (owner fix rows 52-X40 with its addendum, and 52-X43).
+// X40, owner at N32: "What do you think of putting the new player text and the box on the same
+// line as participant name, but right justified?" The row used to hold TWO checkboxes for one
+// value, each hidden at one width; the phone one measured 90 by 20 at 375, under the 24px floor.
+// There is now ONE, on the Participant Name line at every width, and its label is a real 44px box.
+// X43, owner: "'participant name' is a different color than 'Score' 'Faction' and 'new player'".
+// All four labels read the primary ink, the one UI-SPEC row R2-14 measured for this row.
+// jsdom lays nothing out: the 44 by 44 box and the shared line at 375 are the phone spec's.
+describe('X40 + X43 (88.9-65) — one New Player box, one label ink', () => {
+  it('X40 + X43 (88.9-65): one New Player checkbox per row with no width-gated twin, its label a min-h-11 box on the Participant Name line, and the four labels share text-content-primary', () => {
+    const tokensOf = (el: Element) => el.className.split(/\s+/).filter((token) => token.length > 0);
+    const rows: Array<[string, Record<string, unknown>]> = [
+      ['a member row', { participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } }],
+      ['a custom row', {}],
+    ];
+    for (const [what, overrides] of rows) {
+      const { onParticipantChange } = renderRow(overrides);
+
+      // ONE checkbox, named by its label.
+      const boxes = screen.getAllByRole('checkbox');
+      expect(boxes, `${what}: one checkbox in the row`).toHaveLength(1);
+      const box = screen.getByRole('checkbox', { name: 'New Player' });
+      expect(box).toBe(boxes[0]);
+      expect(box.id, `${what}: the surviving box carries the row's own new-player id`).toMatch(/-new-player$/);
+
+      // No width-gated twin: nothing from the box up to the row hides or shows by breakpoint.
+      for (let el: Element | null = box; el; el = el.parentElement) {
+        const gated = tokensOf(el).filter((token) => token === 'hidden' || /^(sm|md|lg|xl):(hidden|flex|block|inline-flex)$/.test(token));
+        expect(gated, `${what}: ${el.tagName.toLowerCase()} carries a width-gated visibility class`).toEqual([]);
+        if (tokensOf(el).includes('border-line-strong')) break;
+      }
+
+      // Its label is a real box (the house 44px floor), on the Participant Name line.
+      const label = box.closest('label');
+      expect(label, `${what}: the checkbox sits inside its label`).not.toBeNull();
+      expect(tokensOf(label as Element)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'min-h-11', 'min-w-11']));
+      const line = (label as Element).parentElement as HTMLElement;
+      expect(tokensOf(line)).toEqual(expect.arrayContaining(['flex', 'items-baseline', 'justify-between']));
+      const nameLabel = screen.getByText('Participant Name', { exact: true });
+      expect(nameLabel.parentElement, `${what}: New Player shares the Participant Name line`).toBe(line);
+
+      // One ink on the four labels.
+      for (const text of ['Participant Name', 'New Player', 'Score', 'Faction']) {
+        const found = screen.getAllByText(text, { exact: true });
+        expect(found, `${what}: ${text} renders once`).toHaveLength(1);
+        expect(tokensOf(found[0]), `${what}: ${text}`).toContain('text-content-primary');
+        expect(tokensOf(found[0]), `${what}: ${text}`).not.toContain('text-content-secondary');
+      }
+
+      // It still writes the one value.
+      fireEvent.click(box);
+      expect(onParticipantChange).toHaveBeenCalledWith(2, 'is_new_player', true);
+      cleanup();
     }
   });
 });
