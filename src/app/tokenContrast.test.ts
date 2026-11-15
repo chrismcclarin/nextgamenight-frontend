@@ -808,6 +808,37 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expectRatioBelow('dark', '--color-status-warning-text', '--color-status-warning-subtle-hover', 4.5, 'Req 6 / OI-3 (deferred)');
   });
 
+  it('X21b (88.9): the light warning fill is amber-200 #fde68a and its hover amber-300 #fcd34d; the ink clears 4.5 on both, the hover is a real step, and dark is untouched', () => {
+    // DECISION Phase 88.9-58 (X21b, owner pick page 10a, 2026-11-14; hover Eh1, pick page 11,
+    // 2026-11-14). The owner on the shipped pale peach: "could be a little more warning colors.
+    // It's pretty similar to background". The pair is pinned as the PICKED hexes (D-03: a token
+    // that differs from the pick is a defect), and every WCAG floor on it is pinned beside them
+    // (D-07): the warning ink on the fill (5.5012) and on the hover (4.7514) at 4.5, and the
+    // focus ring on the fill, which is the halo of the controls that sit in a warning box
+    // (6.2589, floor 3.0). The hover must be a visible step of the same hue: 1.1578 from rest,
+    // where the old peach hover read 1.0438 from the new fill. Light only: the dark pair is
+    // pinned as untouched, and test 21 keeps the recorded dark hover deferral.
+    const rest = resolve('light', '--color-status-warning-subtle');
+    const hover = resolve('light', '--color-status-warning-subtle-hover');
+    expect(rest, 'X21b (88.9) — the light warning fill must be the picked amber-200').toBe('#fde68a');
+    expect(hover, 'X21b (88.9) — the light warning hover must be the picked Eh1, amber-300').toBe('#fcd34d');
+    expect(rest, 'X21b (88.9) — #fde68a is the palette step amber-200').toBe(resolve('light', '--amber-200'));
+    expect(hover, 'X21b (88.9) — #fcd34d is the palette step amber-300').toBe(resolve('light', '--amber-300'));
+
+    expectRatio('light', '--color-status-warning-text', '--color-status-warning-subtle', 4.5, 'X21b (88.9) ink on the fill');
+    expectRatio('light', '--color-status-warning-text', '--color-status-warning-subtle-hover', 4.5, 'X21b (88.9) ink on the hover');
+    expectRatio('light', '--color-focus-ring', '--color-status-warning-subtle', 3.0, 'X21b (88.9) focus ring on the box halo');
+
+    const step = ratioHex(hover, rest, 'X21b (88.9) hover vs rest');
+    expect(
+      step,
+      `X21b (88.9) — the light warning hover (${hover}) measures ${step.toFixed(4)}:1 from the fill (${rest}); a hover under 1.10 is not a step anyone sees`,
+    ).toBeGreaterThanOrEqual(1.1);
+
+    expect(resolve('dark', '--color-status-warning-subtle'), 'X21b (88.9) is light only — the dark warning fill must not move').toBe('#423e36');
+    expect(resolve('dark', '--color-status-warning-subtle-hover'), 'X21b (88.9) is light only — the dark warning hover must not move').toBe('#554832');
+  });
+
   it('22. Req 6 / OI-4 — light status text does not recreate the accent hex collision', () => {
     // `#92400e` amber-800 measures FINE as a light warning (6.05 on its own tint) and was
     // rejected anyway, because it is the same hex as `--color-accent-text` and would
