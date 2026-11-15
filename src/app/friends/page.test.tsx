@@ -2567,3 +2567,55 @@ describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
   });
 });
+
+// DECISION Phase 88.9-58 (X14 family, owner 2026-11-14 on the live page: "Why not just turn them
+// into white cards?"): the three bordered rows on the Friends page are card surfaces with no hover,
+// chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a
+// row that is not clickable). The controls inside a row therefore sit on a card, so their focus
+// halo names the card, not the page. The rendered half is e2e/friends-page.spec.ts ("X14 Friends rows (88.9): friend and request rows paint the card colour").
+describe('friends rows are cards (88.9-58: X14 family)', () => {
+  it('X14 Friends rows (88.9): the friend, received-request and sent-request rows are card surfaces with no hover, and their checkbox, Accept and Decline take the card as halo host', async () => {
+    providerCtx.receivedRequests = [SAM_REQUEST];
+    renderFriends({ sent: [ALEX_SENT] });
+    await screen.findByText('Dana');
+
+    const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+    const expectCardRow = (row: Element | null, what: string) => {
+      expect(row, `${what}: the row is not rendered`).not.toBeNull();
+      const tokens = classesOf(row as Element);
+      expect(tokens, `${what}: the row must paint the card colour`).toContain('bg-surface-card');
+      expect(tokens, `${what}: the row keeps its own border`).toContain('border-line');
+      expect(tokens, `${what}: the row is a list row, not the card utility (its p-4 is right for a list item)`).not.toContain('card');
+      expect(
+        tokens.filter((t) => t.split(':').includes('hover')),
+        `${what}: the row is not clickable, so it must not react to hover`,
+      ).toEqual([]);
+    };
+
+    const friendRow = document.querySelector('[data-friend-row]');
+    expectCardRow(friendRow, 'friend row');
+    const checkbox = within(friendRow as HTMLElement).getByRole('checkbox');
+    expect(classesOf(checkbox), 'the checkbox sits on a card, so its halo names the card').toContain('focus-visible:ring-offset-surface-card');
+    expect(classesOf(checkbox), 'the checkbox no longer sits on the page').not.toContain('focus-visible:ring-offset-surface-page');
+
+    fireEvent.click(requestsTab());
+    await screen.findByText('Sam');
+    const requestRowEl = document.querySelector('[data-request-row]');
+    expectCardRow(requestRowEl, 'received-request row');
+    for (const name of ['Accept', 'Decline']) {
+      const button = within(requestRowEl as HTMLElement).getByRole('button', { name });
+      expect(classesOf(button), `${name} sits on a card, so it must not carry the page halo`).not.toContain('focus-visible:ring-offset-surface-page');
+      expect(classesOf(button), `${name} keeps the Button default card halo`).toContain('focus-visible:ring-offset-surface-card');
+    }
+    // Decline is the ordinary secondary on the card: no page-ground fill override.
+    const decline = within(requestRowEl as HTMLElement).getByRole('button', { name: 'Decline' });
+    expect(classesOf(decline)).toContain('btn-secondary');
+    expect(decline.getAttribute('class') ?? '', 'Decline takes the ordinary secondary fill on its card').not.toContain('color-btn-secondary-page-bg');
+
+    fireEvent.click(sentTabButton());
+    const alex = await screen.findByText('Alex');
+    let sentRow: HTMLElement | null = alex.parentElement;
+    while (sentRow && !classesOf(sentRow).includes('justify-between')) sentRow = sentRow.parentElement;
+    expectCardRow(sentRow, 'sent-request row');
+  });
+});

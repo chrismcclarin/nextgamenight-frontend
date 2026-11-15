@@ -30,7 +30,7 @@ export const helpers = ['src/test-utils/sourceScan.ts'];
 
 export const gates = [
   { file: 'src/app/components/controlSizeFloor.test.tsx', min: 11, why: 'Phase 88 Req 1 — the 16px control floor' },
-  { file: 'src/app/cardPaddingIdiom.test.ts', min: 4, why: 'Phase 88 Req 2 — the card padding idiom' },
+  { file: 'src/app/cardPaddingIdiom.test.ts', min: 5, why: 'Phase 88 Req 2 — the card padding idiom' },
   { file: 'src/app/typeScaleTouchedSurfaces.test.ts', min: 24, why: 'Phase 88 CD-006 — the heading type scale; 88.9 K7 — one uppercase-label tracking' },
   { file: 'src/app/borderExplicitness.test.ts', min: 12, why: 'Phase 88 Req 16 — explicit border colours' },
   { file: 'src/app/tintTreatment.test.ts', min: 10, why: 'Phase 88 Req 17 — opaque tints' },

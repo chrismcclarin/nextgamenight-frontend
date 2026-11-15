@@ -657,19 +657,26 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(resolveShadow('light', '--shadow-lg'), 'Req 3 — light --shadow-lg must be byte-identical to its pre-phase text').toBe('0 10px 15px rgba(120, 80, 40, 0.10)');
   });
 
-  it('11. Req 3 / OI-2 + D-02 — the legacy `@utility card` rests on -sm and hovers to bg-hover', () => {
-    // The 43rd hover site and the only one that lives in CSS rather than a `className`,
-    // so the plan-06 JSX sweep can never reach it. Parsed from the MASKED source, so the
-    // `-md` mentioned inside the block's own DECISION marker is not read as code.
+  it('11. Req 3 / OI-2 + X14 — the legacy card utility rests on -sm and carries NO hover rule', () => {
+    // AMENDED Phase 88.9-58 (X14, owner at N13, 2026-11-11: yes, remove the hover from non-clickable
+    // cards). This test used to REQUIRE the utility's hover wash (the 43rd hover site, D-02); the
+    // wash is removed, so it now requires its absence. A card that reacts to the mouse but does
+    // nothing when pressed is a false affordance, and in dark the wash equalled the secondary
+    // button fill, which swallowed the Filters button and the month chevrons (52-X48, 52-X13).
+    // Whole-card controls carry their own hover utility at the call site; the pin for that is
+    // src/app/cardPaddingIdiom.test.ts ("X14 (88.9): a static card carries no hover utility").
+    // Parsed from the MASKED source, so the hover the block's own history marker describes is
+    // not read as code. A hover rule back in the utility is a decision, not a cleanup.
     const card = utilityCardBlock();
-    expect(card, 'Req 3 / OI-2 — `@utility card` must rest on var(--shadow-sm)').toMatch(/box-shadow:\s*var\(--shadow-sm\)/);
-    expect(card, 'Req 3 / OI-2 — `@utility card` must NOT rest on var(--shadow-md); that re-splits the two card idioms').not.toMatch(/box-shadow:\s*var\(--shadow-md\)/);
-    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must use var(--color-bg-hover)').toMatch(/background-color:\s*var\(--color-bg-hover\)/);
-    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): the message below quotes the PRE-ruling figures.
-    // `--color-bg-card-hover` is now the minted `--warm-250`, so pointing the legacy `.card` hover
-    // back at it would be a ΔL* 15.6274 wash from the white card (was 10.4) — a HEAVIER pill-weight
-    // jump, same rejection. `--color-bg-hover` (warm-50) gives ΔL* 2.35, the "S3 press" look chosen.
-    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must NOT use var(--color-bg-muted); after D-01 that is warm-200 and after 88.3-18 the minted warm-250 — a pill-weight ΔL* 15.63 wash from the card').not.toMatch(/background-color:\s*var\(--color-bg-muted\)/);
+    expect(card, 'Req 3 / OI-2 — the card utility must rest on var(--shadow-sm)').toMatch(/box-shadow:\s*var\(--shadow-sm\)/);
+    expect(card, 'Req 3 / OI-2 — the card utility must NOT rest on var(--shadow-md); that re-splits the two card idioms').not.toMatch(/box-shadow:\s*var\(--shadow-md\)/);
+    expect(card, 'X14 (88.9) — the card utility must keep its own card fill').toMatch(/background-color:\s*var\(--color-bg-card\)/);
+    expect(
+      card,
+      'X14 (88.9) — the card utility must carry NO hover rule (owner 2026-11-11). A static card that washes under the mouse ' +
+        'promises a press that does nothing; a whole-card link or button takes hover:bg-surface-hover at its call site instead.',
+    ).not.toMatch(/:hover/);
+    expect(card, 'X14 (88.9) — the card utility must not paint the hover token at all').not.toMatch(/var\(--color-bg-hover\)/);
   });
 
   // ===================================================================================
