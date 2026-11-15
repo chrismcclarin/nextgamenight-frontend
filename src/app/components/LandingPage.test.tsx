@@ -126,4 +126,22 @@ describe('Phase 88.9-33 — the landing hero (O01a, L1b, B4a)', () => {
     expect(getStarted.getAttribute('href')).toBe('/api/auth/login');
     expect(google.getAttribute('href')).toBe('/api/auth/login?connection=google-oauth2');
   });
+
+  // Phase 88.9-57 — 52-X18 (owner N05, 2026-11-11): the keyboard band showed on Get Started only.
+  // The rendered proof is Gate C's OI-7 test (ring shape, band and outside ground, both themes).
+  it("X18 (88.9-57): the Google sign-in link wears Get Started's ring — a 2px offset on the hero band, no inset", () => {
+    const { getStarted, google } = renderHero();
+    const g = tokensOf(google);
+    expect(g).toEqual(
+      expect.arrayContaining([
+        'focus-visible:ring-2',
+        'focus-visible:ring-focus-ring',
+        'focus-visible:ring-offset-2',
+        'focus-visible:ring-offset-surface-hero',
+      ]),
+    );
+    expect(g).not.toContain('focus-visible:ring-inset');
+    // The same band key Get Started carries, so the pair reads as one.
+    expect(tokensOf(getStarted)).toContain('focus-visible:ring-offset-surface-hero');
+  });
 });
