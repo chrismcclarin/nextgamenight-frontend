@@ -38,7 +38,7 @@ const isFuture = (date) => {
   return checkDate > today;
 };
 
-const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /*
  * The tile's text TREATMENT (shadow + stroke) for a given rendered ground.
@@ -286,11 +286,38 @@ export default function CalendarMonthView({
           88.9, not a cleanup — and it is disclosed as an open question in
           `88.6-27-SUMMARY.md` rather than taken silently.
           AMENDED Phase 88.9-28 (owner pick C8a, votes-b2 v11, 2026-11-06): folded to 12/700 — ruled,
-          chosen OVER the held 14/700; the compact grid at 375 moves with it (one element). */}
-      <div className="grid grid-cols-7 gap-1 mb-4">
+          chosen OVER the held 14/700; the compact grid at 375 moves with it (one element).
+          AMENDED Phase 88.9-62 (X28, weekday letters): 12/700 stands; under 14rem of width (about 200%
+          text at 375) each label shows its first letter only, and at every size each cell speaks its
+          full day name.
+          DECISION Phase 88.9-62 (X28, weekday letters): one letter per day at enlarged text, because
+          Wed needs 1.70rem and a column there is under 1rem, chosen OVER labels that overlap (52-X28),
+          OVER a grid wider than the card (sideways scroll) and OVER two-letter forms (Mo and We still
+          overflow). At 100% the row is unchanged (Sun to Sat). Spoken name (owner ruling M29, Q4 A
+          full, 2026-11-14): aria-label = the full day name and tabIndex -1 on the cell, both visible
+          spans aria-hidden, the labelled focusable leaf of
+          src/app/components/EventHeatmapBackground.js ("AMENDED quick-261020-tz3 (VO-P2-6"),
+          chosen OVER bare letters (the owner's iPhone heard a one-letter header as cap S, Saturday and
+          Sunday alike, Tuesday and Thursday alike, VO-P2-6) and OVER rebuilding the month as an ARIA
+          table (a rebuild; the grid pattern is rejected for this view,
+          this file ("The ARIA grid pattern (")); sr-only text stays rejected (VO-P2-4).
+          Trade-offs, named: (1) the cell has no role, and ARIA 1.2 prohibits naming a generic:
+          axe-core 4.12.1 reports aria-prohibited-attr on exactly this form (probed 2026-11-14), the
+          form src/app/components/createEvent.js ("fails this dialog's axe") rejected;
+          the month grid's only axe run,
+          src/app/components/keyboardOperability.test.tsx ("it('DC-11b. axe agrees"),
+          runs nested-interactive and aria-allowed-role only, so no gate catches it. A role was
+          weighed: columnheader needs a row inside a grid or table (aria-required-parent), heading
+          would add seven rotor headings, img passes axe but announces each day as an image and has no
+          device measurement; desktop screen readers may not speak a name on a generic. (2) The iPhone
+          result here is inferred (the chart header's owner re-check plus WebKit's Generic branch,
+          research APPENDIX-AT AT-1), not measured on this element: an owner iPhone VoiceOver re-check
+          after deploy is owed (88.9-53). Changing any of this is a decision, not a cleanup. */}
+      <div className="@container grid grid-cols-7 gap-1 mb-4">
         {dayNames.map(day => (
-          <div key={day} className="text-center font-bold text-content-secondary py-2 text-xs">
-            {day}
+          <div key={day} aria-label={day} tabIndex={-1} className="text-center font-bold text-content-secondary py-2 text-xs">
+            <span aria-hidden="true" className="@max-[14rem]:hidden">{day.slice(0, 3)}</span>
+            <span aria-hidden="true" className="hidden @max-[14rem]:inline">{day[0]}</span>
           </div>
         ))}
       </div>
