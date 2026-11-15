@@ -527,17 +527,26 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
     screen.getByRole('button', { name: 'Group settings' }),
   ];
 
-  it('T1 (88.9): the active group tab is rounded on top only and has no bottom radius', async () => {
+  // AMENDED Phase 88.9-64 (X37, owner at N18, 2026-11-13: "a brief flash of dark corners on the
+  // tabs"): the top radius is on BOTH tabs now, so the tab being left keeps its corners while its
+  // fill fades. Until this plan the test forbade the radius on the inactive tab. The fill, the
+  // underline and the no-bottom-radius rule still tell the two apart.
+  it('T1 + X37 (88.9): both group tabs carry the top radius; only the active one is filled and underlined, and neither has a bottom radius', async () => {
     await renderHeaderAt('owner');
     const overview = screen.getByRole('button', { name: 'Overview' });
     const library = screen.getByRole('button', { name: 'Library' });
+    const expectTopRadiusOnly = (el: HTMLElement, which: string) => {
+      expect(tokens(el), `the ${which} tab has no top radius`).toContain('rounded-t-btn');
+      expect(tokens(el), `the ${which} tab kept a four-corner radius`).not.toContain('rounded-btn');
+      expect(tokens(el).filter((t) => /^rounded-b/.test(t)), `the ${which} tab has a bottom radius`).toEqual([]);
+    };
     const expectActive = (el: HTMLElement) => {
-      expect(el).toHaveClass('rounded-t-btn', 'border-b-2', 'border-btn-primary');
-      expect(tokens(el), 'the active tab kept a four-corner radius').not.toContain('rounded-btn');
-      expect(tokens(el).filter((t) => /^rounded-b/.test(t)), 'the active tab has a bottom radius').toEqual([]);
+      expectTopRadiusOnly(el, 'active');
+      expect(el).toHaveClass('bg-btn-primary', 'border-b-2', 'border-btn-primary');
     };
     const expectInactive = (el: HTMLElement) => {
-      for (const t of ['rounded-t-btn', 'rounded-btn', 'border-b-2', 'border-btn-primary']) {
+      expectTopRadiusOnly(el, 'inactive');
+      for (const t of ['bg-btn-primary', 'rounded-btn', 'border-b-2', 'border-btn-primary']) {
         expect(tokens(el), `the inactive tab carries ${t}`).not.toContain(t);
       }
     };
