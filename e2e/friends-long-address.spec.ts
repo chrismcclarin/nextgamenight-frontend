@@ -34,10 +34,13 @@ const RECEIVED_REQUEST = {
   status: 'pending',
   Requester: { id: '88966a13-0000-4000-8000-0000000000c2', username: 'E2E Long Requester', email: LONG_EMAIL },
 };
+// The request and sent rows print the email on a second line whenever it differs from the name, so
+// a person with no name would show the address twice and a text lookup would match two nodes
+// (run 43767360823 failed its sent test that way, not on the layout). Each carries a short name.
 const SENT_REQUEST = {
   id: 'e2e-friends-x13-sent',
   status: 'pending',
-  Addressee: { id: '88966a13-0000-4000-8000-0000000000c3', username: null, email: LONG_EMAIL },
+  Addressee: { id: '88966a13-0000-4000-8000-0000000000c3', username: 'E2E Long Addressee', email: LONG_EMAIL },
 };
 const LONG_FRIEND = {
   id: 'e2e-friends-x13-friend',
