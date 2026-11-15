@@ -18,7 +18,7 @@ import {
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
-import { formatTime, formatWithTzAbbr } from '../../lib/datetime';
+import { formatTime, formatWithTzAbbr, withYearOutsideCurrent } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
@@ -91,8 +91,20 @@ import GuestPill, { GUEST_ROW_EDGE } from './GuestPill';
  *
  * TZ correctness: all date keying + display routes through tzUtils +
  * dateUtils helpers (Phase 62 single authority — no new TZ paths).
+ *
+ * AMENDED Phase 88.9-61 (X29 A): EVERY arm now renders the two-section order described just
+ * above (owner 2026-11-14, X29 option A with the 4:35 PM and 4:45 PM additions), so the
+ * chronological feed, the Today delineator, the mount-time centre-scroll (Scroll anchoring) and
+ * the top sentinel in the Layout list are history, and plan 10's "bit-for-bit unchanged" for the
+ * desktop arms was amended by that ruling. What still differs by arm is height (the two
+ * constants below against the sheet's flex fill) and the row's phone treatment (game name,
+ * guest cue, status tag). See the Req 12 DECISION marker in the render body.
  */
 const PAST_PAGE_SIZE = 30;
+
+// The day header's pattern — "Saturday, May 10". The year is never written here: the shared rule
+// in src/lib/datetime.ts appends it when the day is outside the viewer's current year (X29).
+const DAY_HEADER_FORMAT = 'EEEE, MMMM d';
 
 // Fixed scroll-container heights chosen to match CalendarMonthView's natural
 // rendered height for the same `variant`:
@@ -152,7 +164,12 @@ const CONTAINER_HEIGHT_FULL = 600;
    - the game IMAGE stays `sm:`-gated (i.e. hidden at 375px). At phone width the row's text column
      is ~300px; a 48px thumbnail plus the group avatar and gaps would take a third of it, and the
      NAME is what Req 11b's "readable game text" acceptance is about. If it is ever un-hidden it
-     MUST stay on `SafeImage` (untrusted remote URL, T-88.1-25) — never a bare <img>. */
+     MUST stay on `SafeImage` (untrusted remote URL, T-88.1-25) — never a bare <img>.
+
+   AMENDED Phase 88.9-61 (X29 A): the today-divider and empty-state bullets above are history —
+   the divider is deleted on every arm and ONE empty line serves every arm (see the Req 12 and
+   W18 / D2 markers in the render body). The arm itself stands: height, the game-name treatment
+   and the gated RSVP row still fork on it, and the two desktop constants are still untouched. */
 /* A shared, frozen empty set for the two id-set props below: a stable identity so callers
    that do not pass the props (both desktop arms) get the same default object every render.
    (The partition below is a plain compute, not a memo — ML8 — so this is about not
@@ -184,6 +201,13 @@ export default function CalendarListView({
      time or status comparison in this file. SHEET ARM ONLY: the desktop arms pass none of these
      props (src/app/components/EventCalendar.js ("<CalendarListView")) and are pixel-unchanged.
 
+     AMENDED Phase 88.9-61 (X29 A; owner 2026-11-14: 'Yes, live games should stay in upcoming'):
+     "sheet arm only" and "SHEET ARM ONLY ... pixel-unchanged" above are history. EVERY arm
+     partitions by these two sets now: the home sheet's are still computed in `UserHomePage`, and
+     the two desktop arms' in `EventCalendar` from the same shared predicates
+     (src/app/components/EventCalendar.js ("happeningNowIds={happeningNowIds}")), so a live game
+     begun before midnight is not folded away behind the Past header on the group page (W59).
+
      AMENDED Phase 88.9-61 (X11, owner L1): the split below is two-way; still pure set lookup.
      The this-week id set prop left with the Later subheader it existed to draw — the two sets
      that remain are the only inputs. */
@@ -201,18 +225,37 @@ export default function CalendarListView({
   // game-name treatment can never disagree about which surface they are on.
   const isSheet = variant === 'sheet';
 
-  // Req 12 (sheet arm only): ids for the upcoming section's heading and for the
-  // past disclosure's controlled region. `useId` so two mounted list views can
-  // never collide on the same `aria-controls` target.
+  // Req 12: ids for the two section headings and the regions their buttons control (every arm
+  // since 88.9-61). `useId` so two mounted list views can never collide on the same
+  // `aria-controls` target.
   const uid = useId();
   const upcomingHeadingId = `${uid}-upcoming`;
+  const upcomingPanelId = `${uid}-upcoming-panel`;
+  const pastHeadingId = `${uid}-past-heading`;
   const pastPanelId = `${uid}-past`;
   // 88.5-08 (D-04) derived the two sub-section heading ids from the SAME `useId` value for the
   // same collision reason. AMENDED Phase 88.9-39 (owner pick D6c): the This-week id went with its
   // heading. AMENDED Phase 88.9-61 (X11): the Later heading id went with its heading too; every
   // upcoming row shares the outer h3 and needs no id.
-  // COLLAPSED by default — see the Req 12 DECISION marker at the section fork.
+  // Upcoming OPEN, Past COLLAPSED by default — see the Req 12 DECISION marker in the render body
+  // (the owner's: X29 option A says "collapsed" and X25a's note "Upcoming open, Past closed").
+  const [upcomingExpanded, setUpcomingExpanded] = useState(true);
   const [pastExpanded, setPastExpanded] = useState(false);
+  const upcomingButtonRef = useRef(null);
+  const pastButtonRef = useRef(null);
+  const upcomingPanelRef = useRef(null);
+  const pastPanelRef = useRef(null);
+  /* Folding a section hides its region (and, for Past, unmounts its rows). If keyboard focus is
+     inside that region it would be dropped to the page body, so it moves to the section's own
+     header button FIRST — the control the person just used, or would use to reopen it
+     (T-88.9-262). `preventScroll` because the header is already where the eye is. Focus that is
+     anywhere else is left alone. */
+  const toggleSection = (expanded, setExpanded, panelRef, buttonRef) => {
+    if (expanded && panelRef.current && panelRef.current.contains(document.activeElement)) {
+      buttonRef.current?.focus({ preventScroll: true });
+    }
+    setExpanded(!expanded);
+  };
 
   const { timezone: ctxTimezone } = useTimezone();
   const timezone = timezoneProp || ctxTimezone || null;
@@ -238,7 +281,8 @@ export default function CalendarListView({
   // Today's local-calendar date key (in the user's effective TZ).
   const todayKey = useMemo(() => dateKey(new Date()), [timezone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Long, friendly date header — "Saturday, May 10". Rendered in the viewer's
+  // Long, friendly date header — "Saturday, May 10", or "Saturday, March 15, 2025" when the day
+  // is outside the viewer's current year (X29, 88.9-61: the one shared year rule). Rendered in the viewer's
   // timezone via the consolidated datetime layer; formatWithTzAbbr falls back to
   // UTC internally when timezone is unset (the provider already defaults it to
   // browser/UTC, so the bare-UTC branch is defensive only). The catch handles a
@@ -247,9 +291,9 @@ export default function CalendarListView({
     const d = new Date(utc);
     if (isNaN(d.getTime())) return '';
     try {
-      return formatWithTzAbbr(d, timezone, 'EEEE, MMMM d');
+      return formatWithTzAbbr(d, timezone, withYearOutsideCurrent(DAY_HEADER_FORMAT, d, timezone));
     } catch {
-      return formatWithTzAbbr(d, null, 'EEEE, MMMM d');
+      return formatWithTzAbbr(d, null, withYearOutsideCurrent(DAY_HEADER_FORMAT, d, null));
     }
   };
 
@@ -294,8 +338,7 @@ export default function CalendarListView({
 
   const allMorePastLoaded = visiblePast.length >= pastEvents.length;
 
-  // Group past + today/future into separate date-bucket arrays. We render
-  // them as two distinct sections sandwiching the always-on Today delineator.
+  // Group a list into date buckets (a day header and its rows).
   const groupByDate = (list) => {
     if (!list || list.length === 0) return [];
     const map = new Map();
@@ -307,10 +350,6 @@ export default function CalendarListView({
     return Array.from(map.values());
   };
 
-  const pastGroups = useMemo(
-    () => groupByDate(visiblePast),
-    [visiblePast, timezone] // eslint-disable-line react-hooks/exhaustive-deps
-  );
   const futureGroups = useMemo(
     () => groupByDate(todayAndFutureEvents),
     [todayAndFutureEvents, timezone] // eslint-disable-line react-hooks/exhaustive-deps
@@ -349,7 +388,7 @@ export default function CalendarListView({
      every render, so a memo still could not hit. Two things are added and one cost sentence is
      corrected.
 
-     ADDED (1): `sheetPastGroups` MOVED IN HERE from its own `useMemo`. It had to move, and
+     ADDED (1): `pastListGroups` MOVED IN HERE from its own `useMemo`. It had to move, and
      BOTH ways of leaving it a memo were silent. Adding the Set props to its dep array can never
      hit (fresh identities every render, by `UserHomePage.js`'s documented design), so it would
      recompute every render and buy nothing. OMITTING them computes ONCE for the session,
@@ -379,22 +418,18 @@ export default function CalendarListView({
      (unchanged) and EVERY other `futureGroups` row that is not started-not-live (those still go
      to Past). The third bucket — the next-7-day rows against a Later remainder — left with the
      Later subheader: "This week" and "Later" above are history, and a future-dated cancelled
-     night now sits in the one list in date order. */
+     night now sits in the one list in date order.
+
+     AMENDED Phase 88.9-61 (X29 A): this partition runs on EVERY arm (it returned empty lists off
+     the sheet), and its past outputs are named for the list, not the sheet. A host that passes no
+     sets gets the plain date-key split by construction: both sets are empty, so nothing is taken
+     out of either side. */
   const {
     happeningNowGroups,
     notStartedGroups,
-    sheetPastGroups,
-    sheetPastTotal,
+    pastListGroups,
+    pastListTotal,
   } = (() => {
-    if (!isSheet) {
-      return {
-        happeningNowGroups: [],
-        notStartedGroups: [],
-        sheetPastGroups: [],
-        sheetPastTotal: 0,
-      };
-    }
-
     /* 1. HAPPENING NOW — one ASCENDING pass over both buckets. `pastEvents` and
        `todayAndFutureEvents` are each ascending and the first is entirely before the second by
        date key, so the concatenation is ascending and date order is preserved. NOT
@@ -459,8 +494,8 @@ export default function CalendarListView({
     return {
       happeningNowGroups: happening,
       notStartedGroups: notStarted,
-      sheetPastGroups: groupByDate([...pastSource].reverse()),
-      sheetPastTotal: pastTotal,
+      pastListGroups: groupByDate([...pastSource].reverse()),
+      pastListTotal: pastTotal,
     };
   })();
 
@@ -482,42 +517,15 @@ export default function CalendarListView({
     return [...byKey.values()];
   })();
 
-  const hasAnyEvents = pastGroups.length > 0 || futureGroups.length > 0;
-
-  // Anchor on the always-on TODAY DELINEATOR after first render. We only do
-  // this once per mount — subsequent updates (RSVP refresh, more past loaded)
-  // shouldn't yank the user back. We scroll the SCROLL CONTAINER (not the
-  // page) and center the divider vertically so past context sits above and
-  // today/future context sits below. The divider always exists, so this
-  // anchor works for every shape of data: all-past, all-future, mixed,
-  // and even no-events.
+  // The scroll region. It is the IntersectionObserver root below; nothing scrolls it on mount —
+  // the list opens at its top on every arm (X29 A, 88.9-61: the mount-time centre-scroll on the
+  // Today delineator left with the delineator).
   const containerRef = useRef(null);
-  const todayDividerRef = useRef(null);
-  const hasAnchoredRef = useRef(false);
-  useEffect(() => {
-    // Req 12: the sheet arm renders no divider, so it MUST open at the top of the
-    // upcoming list. This early return is explicit rather than incidental — the
-    // effect would already no-op on a null ref, but stating it here stops a future
-    // reader from restoring mount-time anchoring by re-adding a divider.
-    if (isSheet) return;
-    if (hasAnchoredRef.current) return;
-    const container = containerRef.current;
-    const divider = todayDividerRef.current;
-    if (!container || !divider) return;
-    // Compute target so the divider sits at the vertical center of the scroll
-    // container. offsetTop is relative to the offsetParent — since the
-    // container is `position: relative` it serves as the offset parent for
-    // descendants, which is exactly what we want.
-    const target =
-      divider.offsetTop - container.clientHeight / 2 + divider.clientHeight / 2;
-    container.scrollTop = Math.max(0, target);
-    hasAnchoredRef.current = true;
-  }, [pastGroups, futureGroups, isSheet]);
 
-  // Top-sentinel IntersectionObserver: when the sentinel enters the SCROLL
-  // CONTAINER's viewport AND there are more past events to load, reveal
+  // Past-window IntersectionObserver: when the sentinel at the BOTTOM of the open Past region
+  // enters the SCROLL CONTAINER's viewport AND there are more past events to load, reveal
   // another page of them. We use the scroll container as the IO root so the
-  // sentinel triggers when scrolled to the top of the card, not the page.
+  // sentinel triggers inside the card, not the page.
   const sentinelRef = useRef(null);
   useEffect(() => {
     const node = sentinelRef.current;
@@ -540,38 +548,22 @@ export default function CalendarListView({
         // Trigger slightly before the sentinel is fully visible so the new
         // batch is ready by the time the user reaches it.
         //
-        // Req 12 forks the MARGIN because it forks the sentinel's POSITION. On the
-        // desktop arms history runs upward and the sentinel sits above the past
-        // groups, so the pre-load margin is on the TOP edge. On the sheet arm the
-        // expanded past panel runs newest-to-oldest DOWNWARD and the sentinel sits
-        // after the last group, so the margin has to be on the BOTTOM edge — the
-        // desktop value would pre-load nothing there. Root, threshold, page size and
-        // the `allMorePastLoaded` guard stay shared.
-        rootMargin: isSheet ? '0px 0px 200px 0px' : '200px 0px 0px 0px',
+        // Req 12 forked the MARGIN with the sentinel's POSITION (top edge on the desktop
+        // feed, bottom edge on the sheet). AMENDED Phase 88.9-61 (X29 A): one bottom margin —
+        // every arm's open Past region runs newest-to-oldest DOWNWARD with the sentinel after
+        // its last group, so the pre-load margin is on the BOTTOM edge everywhere. Root,
+        // threshold, page size and the `allMorePastLoaded` guard are unchanged.
+        rootMargin: '0px 0px 200px 0px',
         threshold: 0.01,
       }
     );
 
     observer.observe(node);
     return () => observer.disconnect();
-    // `pastExpanded` is load-bearing on the sheet arm: the sentinel node does not
-    // exist until the panel expands, so without it the observer would be set up
-    // against a null ref once and never re-attach. Constant on the desktop arms.
-  }, [allMorePastLoaded, pastEvents.length, isSheet, pastExpanded]);
-
-  // Today delineator label — TZ-aware, short. e.g. "Today, May 4". Rendered via
-  // the consolidated datetime layer (UTC fallback handled internally / in catch).
-  const todayLabel = useMemo(() => {
-    const now = new Date();
-    try {
-      return `Today, ${formatWithTzAbbr(now, timezone, 'MMM d')}`;
-    } catch {
-      return `Today, ${formatWithTzAbbr(now, null, 'MMM d')}`;
-    }
-    // todayKey included so the label re-renders if the calendar day rolls
-    // over while the component is mounted.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timezone, todayKey]);
+    // `pastExpanded` is load-bearing: the sentinel node does not exist until the
+    // panel expands, so without it the observer would be set up against a null ref
+    // once and never re-attach.
+  }, [allMorePastLoaded, pastEvents.length, pastExpanded]);
 
   // Fixed scroll-container height matched to month-view's natural height for
   // this variant. Inline style (vs Tailwind arbitrary class) so the value
@@ -617,23 +609,34 @@ export default function CalendarListView({
   // loading. Empty state is the right answer once data has resolved. The
   // skeleton renders inside the same fixed-height shell so the card doesn't
   // reflow between loading and loaded states.
+  //
+  // 88.9-61 (X25a + X29 A): the same shape as the loaded render — the tz caption band, then the
+  // Upcoming events heading INSIDE the scroll region, in the box SectionHeader gives its button
+  // (44px tall, same inset). A plain heading with no button: there is nothing to fold yet.
   if (loading && (!Array.isArray(events) || events.length === 0)) {
     return (
       <div className={shellClassName}>
-        <div className="flex items-baseline justify-between">
-          <Heading level={3} size="heading" className="text-content-primary">Upcoming events</Heading>
-        </div>
+        {tzAbbr && (
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <span className="text-xs text-content-muted">
+              Times shown in {tzAbbr}
+            </span>
+          </div>
+        )}
         <div
           className={scrollRegionClassName}
           style={scrollRegionStyle}
         >
-          <div className="space-y-3">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="border border-line rounded-lg p-4 animate-pulse">
-                <div className="h-4 w-1/3 bg-surface-elevated rounded-sm mb-2" />
-                <div className="h-3 w-1/4 bg-surface-elevated rounded-sm" />
-              </div>
-            ))}
+          <div className="space-y-4">
+            <Heading level={3} size="heading" className="min-h-11 flex items-center px-4 text-content-primary">Upcoming events</Heading>
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="border border-line rounded-lg p-4 animate-pulse">
+                  <div className="h-4 w-1/3 bg-surface-elevated rounded-sm mb-2" />
+                  <div className="h-3 w-1/4 bg-surface-elevated rounded-sm" />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -642,26 +645,17 @@ export default function CalendarListView({
 
   return (
     <div className={shellClassName}>
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        {/* Req 12: on the sheet arm this heading IS the upcoming section's heading — it is
-            referenced by `aria-labelledby` rather than duplicated inside the section, because
-            a second "Upcoming events" heading inside the Calendar dialog is exactly the
-            strict-mode collision the 11a sheet already has to disambiguate. `undefined` on the
-            desktop arms emits no attribute, so their DOM is unchanged. */}
-        <Heading
-          level={3}
-          size="heading"
-          id={isSheet ? upcomingHeadingId : undefined}
-          className="text-content-primary"
-        >
-          Upcoming events
-        </Heading>
-        {tzAbbr && (
+      {/* The fixed band above the scroll region holds ONLY the timezone caption, and renders only
+          when there is one (88.9-61, X25a: the Upcoming events heading moved inside the region,
+          where it can stick over its own rows and fold; the caption stays at the start edge, as
+          the picked frame shows it). */}
+      {tzAbbr && (
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
           <span className="text-xs text-content-muted">
             Times shown in {tzAbbr}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       <div
         ref={containerRef}
@@ -774,158 +768,44 @@ export default function CalendarListView({
               construction above the scroll region exists to avoid.
               AMENDED Phase 88.9-39 (owner pick D6c): only Later demotes now; the folded
               happening-now + next-7-day list renders at the default levels under the `<h3>`.
-              AMENDED Phase 88.9-61 (X11): no caller demotes; the seam stays. */}
-          {isSheet ? (
-            <>
-              {/* Section 1 — upcoming, now subdivided (see the AMENDED paragraph above). Labelled
-                  by the `<h3>` above rather than by a heading of its own; `futureGroups` is
-                  already soonest-first and includes TODAY's events (the split is
-                  `k >= todayKey`). */}
-              <section aria-labelledby={upcomingHeadingId} className="space-y-6">
-                {/* EVERY UPCOMING ROW — deliberately NO subheader, not even plain text (the THIS
-                    WEEK eyebrow, its pill and its sr-only count left with D6c, 88.9-39; the Later
-                    subheader left with X11, 88.9-61). These rows sit directly under the outer
-                    `<h3>`, which is their only heading, so their `DateGroup` keeps the DEFAULT
-                    heading levels (h4 day header, h5 row title): there is no intervening
-                    sub-section heading to demote beneath. ONE map over `upcomingGroups` (the D6c
-                    marker above): the partition buckets fold back by date key so a live game and
-                    a later game on the same day share one day header, live first. This is the
-                    only map whose rows may carry the status tag (F2c), so it is the one that
-                    passes `statusTagEligible`. */}
-                {upcomingGroups.map((group) => (
-                  <DateGroup
-                    key={group.key}
-                    group={group}
-                    formatDayHeader={formatDayHeader}
-                    timezone={timezone}
-                    onEventClick={onEventClick}
-                    isSheet={isSheet}
-                    viewerDbUserId={viewerDbUserId}
-                    statusTagEligible
-                  />
-                ))}
+              AMENDED Phase 88.9-61 (X11): no caller demotes; the seam stays.
 
-                {/* Section-scoped, NOT the shared "No events" line: with past events collapsed
-                    below, "No events" would be false whenever the group has history. Gated on
-                    the whole upcoming list being empty (D-04; one list since X11, 88.9-61) —
-                    the partition covers `futureGroups` exhaustively, so an event anywhere in
-                    the future range keeps this line off. */}
-                {upcomingGroups.length === 0 && (
-                    <div className="flex items-center justify-center pt-4">
-                      {/* DECISION Phase 88.6-27 (W18 / D2): this SECTION-level empty takes D2's
-                          recorded section MINI-FORMULA — one line of prose at
-                          `text-content-muted text-sm` — and the string is byte-unchanged (P1).
+              AMENDED Phase 88.9-61 (X25a + X29 A; owner 4:35 PM 'two separate headers, and then
+              something to denote a separation'): EVERY arm renders two sections headed by
+              h3-wrapped buttons; Upcoming open, Past closed; the heading moved INSIDE the scroll
+              region (still one Upcoming events heading); a rule above Past; the Today delineator
+              DELETED (it carried DECISION Phase 88-27 (D-32 bucket B)) — chosen OVER X250's fixed
+              heading over past rows and OVER the feed. Back to one feed re-opens N40 and X05.
+              Both headers fold (owner 4:45 PM: 'maybe we make both upcoming and past events drop
+              downs?'). Everything above that says "the sheet arm" and "desktop arms untouched"
+              is history from here: the same render serves the phone sheet, the home List view
+              and the group page List view. */}
+          {/* Section 1 — upcoming. Named by its own header (the id still ends in the upcoming
+              suffix); `futureGroups` is already soonest-first and includes TODAY's events (the
+              split is `k >= todayKey`). The same 16px sits under each header, so the two
+              sections are equal by construction. */}
+          <section aria-labelledby={upcomingHeadingId} className="space-y-4">
+            <SectionHeader
+              headingId={upcomingHeadingId}
+              panelId={upcomingPanelId}
+              expanded={upcomingExpanded}
+              onToggle={() => toggleSection(upcomingExpanded, setUpcomingExpanded, upcomingPanelRef, upcomingButtonRef)}
+              buttonRef={upcomingButtonRef}
+            >
+              Upcoming events
+            </SectionHeader>
 
-                          REJECTED: `<EmptyState>`. Its own `DECISION Phase 88-18 (D2)` marker
-                          (src/components/ui/EmptyState.tsx ("DECISION Phase 88-33 Task 7 (D2, owner-ruled 2026-08-15)"), owner ruling 2026-08-15, planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-UAT.md ("D2 RULED 2026-08-15 (owner, packet review)")) (AMENDED 2026-10-24, 88.6.2-34: the D2 marker is the Phase 88-33 Task 7 one anchored here; 88-18 is that file's heading-level marker)
-                          makes the full icon+heading+body formula PAGE-LEVEL ONLY and says in
-                          terms not to upgrade section empties as a cleanup. It is also
-                          unsatisfiable here: the component REQUIRES `icon`, `heading` and `body`
-                          while this site is a single `<p>`, and it would introduce an `h3` that
-                          this file's `EXPECTED_LEVELS` entry does not carry.
-
-                          GROUND: the sheet is `bg-surface-card` (src/components/ui/BottomSheet.tsx ("rounded-t-[12px] border-t border-line bg-surface-card")), and
-                          `tokenContrast.test.ts` pins `--color-text-muted` on `--color-bg-card`
-                          at >= 4.5 in BOTH themes. Upgrading this to the full formula is a
-                          decision, not a cleanup. */}
-                      <p className="text-content-muted text-sm">No upcoming events</p>
-                    </div>
-                  )}
-              </section>
-
-              {/* Section 2 — the past disclosure. Renders only when there IS history.
-                  Phase 88.6-27: gated on `sheetPastTotal`, the sheet's own all-history total,
-                  not on `pastEvents.length` — a row that is happening NOW has left this bucket
-                  and a row that started earlier today has joined it. */}
-              {sheetPastTotal > 0 && (
-                <div className="space-y-4">
-                  {/* A real <button> via the shipped Button primitive, carrying the
-                      aria-expanded / aria-controls pair (the idiom at `gameDetail/page.js`'s
-                      description toggle). The role-button DIV next door in
-                      `PromptScheduleSection.js` is NOT the pattern to copy: its own marker says
-                      it exists because its label is a <p>, and `<button><p>` breaks hydration.
-                      This label is phrasing content, so the real button is available.
-
-                      LAYOUT LIVES ON THE INNER SPAN, deliberately: `.btn` is UNLAYERED
-                      (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and sets `justify-content: center`, so a
-                      `justify-between` utility on the button itself would be dead on arrival —
-                      the failure mode the Button primitive's own marker records eight times over.
-
-                      `min-h-11` is the 44px floor stated at the CALL SITE. `.btn`'s own floor is
-                      phone-only and unlayered; pinning it here makes the e2e measurement a
-                      property of this control rather than of a global rule.
-
-                      The count is `pastEvents.length` (ALL history), not the rendered window —
-                      it is telling the user how much there is, not how much is mounted.
-
-                      AMENDED Phase 88.6-27 (W58 + W59): the ALL-HISTORY stance above is
-                      PRESERVED exactly; only the BUCKET MEMBERSHIP changed. The number is now
-                      `sheetPastTotal` — all of `pastEvents` minus its happening-now members,
-                      plus the `futureGroups` rows that started today and are no longer running
-                      — which is still every past row that exists, not the rendered window. Two
-                      consequences, both reasons NOT to "simplify" this onto the window list:
-                      a window-derived count would read "Past events (30)" on any group with
-                      more than `PAST_PAGE_SIZE` past rows, and gating the disclosure on a
-                      FILTERED window would unmount the rolling sentinel and its observer
-                      whenever every windowed row happened to be filtered out, making further
-                      paging impossible. */}
-                  <Button
-                    variant="ghost"
-                    onClick={() => setPastExpanded((v) => !v)}
-                    aria-expanded={pastExpanded}
-                    aria-controls={pastPanelId}
-                    className="w-full min-h-11"
-                  >
-                    <span className="flex w-full items-center justify-between gap-2">
-                      <span>Past events ({sheetPastTotal})</span>
-                      <Icon
-                        name="ChevronDown"
-                        size={18}
-                        className={`transition-transform ${pastExpanded ? 'rotate-180' : ''}`}
-                      />
-                    </span>
-                  </Button>
-
-                  {/* The region is ALWAYS rendered so `aria-controls` always resolves to a real
-                      element; only its CHILDREN are conditional, so a collapsed panel mounts no
-                      rows. */}
-                  <div id={pastPanelId} hidden={!pastExpanded} className="space-y-6">
-                    {pastExpanded && (
-                      <>
-                        {sheetPastGroups.map((group) => (
-                          <DateGroup
-                            key={group.key}
-                            group={group}
-                            formatDayHeader={formatDayHeader}
-                            timezone={timezone}
-                            onEventClick={onEventClick}
-                            isSheet={isSheet}
-                            viewerDbUserId={viewerDbUserId}
-                          />
-                        ))}
-
-                        {/* Same rolling loader, at the BOTTOM: history runs downward here.
-                            See the forked `rootMargin` in the observer effect above. */}
-                        {!allMorePastLoaded && (
-                          <div ref={sentinelRef} className="h-1" aria-hidden="true" />
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Top sentinel — fires the rolling past-event load when scrolled
-                  into view of the scroll container. Hidden when all past events
-                  are already loaded (or there are no past events at all). */}
-              {!allMorePastLoaded && pastEvents.length > 0 && (
-                <div ref={sentinelRef} className="h-1" aria-hidden="true" />
-              )}
-
-              {/* Past date-groups (events strictly before today's TZ-keyed date) */}
-              {pastGroups.map((group) => (
+            <div id={upcomingPanelId} ref={upcomingPanelRef} hidden={!upcomingExpanded} className="space-y-6">
+              {/* EVERY UPCOMING ROW — deliberately NO subheader, not even plain text (the THIS
+                  WEEK eyebrow, its pill and its sr-only count left with D6c, 88.9-39; the Later
+                  subheader left with X11, 88.9-61). These rows sit directly under the section's
+                  `<h3>`, which is their only heading, so their `DateGroup` keeps the DEFAULT
+                  heading levels (h4 day header, h5 row title). ONE map over `upcomingGroups`
+                  (the D6c marker above): the partition buckets fold back by date key so a live
+                  game and a later game on the same day share one day header, live first. This is
+                  the only map whose rows may carry the status tag (F2c), so it is the one that
+                  passes `statusTagEligible` (the tag itself stays sheet-only inside EventRow). */}
+              {upcomingGroups.map((group) => (
                 <DateGroup
                   key={group.key}
                   group={group}
@@ -933,51 +813,104 @@ export default function CalendarListView({
                   timezone={timezone}
                   onEventClick={onEventClick}
                   isSheet={isSheet}
+                  viewerDbUserId={viewerDbUserId}
+                  statusTagEligible
                 />
               ))}
 
-              {/* Always-on TODAY delineator. Centered chip over a horizontal rule.
-                  This is the scroll anchor regardless of where today falls in the
-                  data (or whether it falls anywhere at all). */}
-              <TodayDivider ref={todayDividerRef} label={todayLabel} />
-
-              {/* Today + future date-groups. The first group below the divider
-                  IS today's date-group when today has events; otherwise it's the
-                  next future date-group; otherwise nothing. */}
-              {futureGroups.map((group) => (
-                <DateGroup
-                  key={group.key}
-                  group={group}
-                  formatDayHeader={formatDayHeader}
-                  timezone={timezone}
-                  onEventClick={onEventClick}
-                  isSheet={isSheet}
-                />
-              ))}
-
-              {/* Empty-state hint: only when there are NO events at all. The
-                  divider still renders above; this just labels the empty card. */}
-              {!hasAnyEvents && (
+              {/* The ONE empty line, inside the open Upcoming section. Gated on the whole
+                  upcoming list being empty — the partition covers `futureGroups` exhaustively,
+                  so an event anywhere in the future range keeps this line off. */}
+              {upcomingGroups.length === 0 && (
                 <div className="flex items-center justify-center pt-4">
-                  {/* DECISION Phase 88.6-27 (W18 / D2): the desktop twin of the sheet's
-                      section empty above, on the same recorded MINI-FORMULA
-                      (`text-content-muted text-sm`), string byte-unchanged (P1).
+                  {/* DECISION Phase 88.6-27 (W18 / D2): this SECTION-level empty takes D2's
+                      recorded section MINI-FORMULA — one line of prose at
+                      `text-content-muted text-sm` — and the string is byte-unchanged (P1).
 
-                      REJECTED: `<EmptyState>` — same reasoning as the sheet site; see the
-                      marker there rather than a second copy of it here.
+                      REJECTED: `<EmptyState>`. Its own `DECISION Phase 88-18 (D2)` marker
+                      (src/components/ui/EmptyState.tsx ("DECISION Phase 88-33 Task 7 (D2, owner-ruled 2026-08-15)"), owner ruling 2026-08-15, planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-UAT.md ("D2 RULED 2026-08-15 (owner, packet review)")) (AMENDED 2026-10-24, 88.6.2-34: the D2 marker is the Phase 88-33 Task 7 one anchored here; 88-18 is that file's heading-level marker)
+                      makes the full icon+heading+body formula PAGE-LEVEL ONLY and says in
+                      terms not to upgrade section empties as a cleanup. It is also
+                      unsatisfiable here: the component REQUIRES `icon`, `heading` and `body`
+                      while this site is a single `<p>`, and it would introduce an `h3` that
+                      this file's `EXPECTED_LEVELS` entry does not carry.
 
-                      GROUND, VERIFIED rather than assumed: both desktop hosts wrap this
-                      component in `.card` (src/app/components/EventCalendar.js ("<CalendarListView")), whose `@utility card` rule
-                      is `background-color: var(--color-bg-card)` — the same ground
-                      `bg-surface-card` paints. `tokenContrast.test.ts` pins
-                      `--color-text-muted` on `--color-bg-card` at >= 4.5 in BOTH themes, so the
-                      muted rung is safe here too. It is NOT on a hover or sunken ground; if a
-                      future host changes that, this site goes back to
-                      `text-content-secondary`. */}
-                  <p className="text-content-muted text-sm">No events</p>
+                      GROUND: the sheet is `bg-surface-card` (src/components/ui/BottomSheet.tsx ("rounded-t-[12px] border-t border-line bg-surface-card")), and
+                      `tokenContrast.test.ts` pins `--color-text-muted` on `--color-bg-card`
+                      at >= 4.5 in BOTH themes. Upgrading this to the full formula is a
+                      decision, not a cleanup.
+
+                      AMENDED Phase 88.9-61 (X29 A; owner 2026-11-14 'It should just say no
+                      events'): one line, every arm — No events with no nights, No upcoming
+                      events only when past nights exist, nothing under Past; same card ground on
+                      every host (the sheet is the card surface, and both desktop hosts wrap this
+                      component in the card utility, src/app/components/EventCalendar.js ("<CalendarListView"),
+                      which paints the same token; the muted rung is pinned on it at 4.5 or more
+                      in both themes). The desktop twin of this marker folded into this one. */}
+                  <p className="text-content-muted text-sm">{pastListTotal > 0 ? 'No upcoming events' : 'No events'}</p>
                 </div>
               )}
-            </>
+            </div>
+          </section>
+
+          {/* Section 2 — past. Renders only when there IS history. Phase 88.6-27: gated on
+              `pastListTotal`, the list's own all-history total, not on `pastEvents.length` —
+              a row that is happening NOW has left this bucket and a row that started earlier
+              today has joined it. The rule above it is the owner's separation (4:35 PM, X25a:
+              1px in the border-line colour, 12px under it; the list's 24px gap sits above). */}
+          {pastListTotal > 0 && (
+            <section aria-labelledby={pastHeadingId} className="border-t border-line pt-3 space-y-4">
+              {/* The count is `pastEvents.length` (ALL history), not the rendered window —
+                it is telling the user how much there is, not how much is mounted.
+
+                AMENDED Phase 88.6-27 (W58 + W59): the ALL-HISTORY stance above is
+                PRESERVED exactly; only the BUCKET MEMBERSHIP changed. The number is now
+                `pastListTotal` — all of `pastEvents` minus its happening-now members,
+                plus the `futureGroups` rows that started today and are no longer running
+                — which is still every past row that exists, not the rendered window. Two
+                consequences, both reasons NOT to "simplify" this onto the window list:
+                a window-derived count would read "Past events (30)" on any group with
+                more than `PAST_PAGE_SIZE` past rows, and gating the disclosure on a
+                FILTERED window would unmount the rolling sentinel and its observer
+                whenever every windowed row happened to be filtered out, making further
+                paging impossible. */}
+              <SectionHeader
+                headingId={pastHeadingId}
+                panelId={pastPanelId}
+                expanded={pastExpanded}
+                onToggle={() => toggleSection(pastExpanded, setPastExpanded, pastPanelRef, pastButtonRef)}
+                buttonRef={pastButtonRef}
+              >
+                Past events ({pastListTotal})
+              </SectionHeader>
+
+              {/* The region is ALWAYS rendered so `aria-controls` always resolves to a real
+                  element; only its CHILDREN are conditional, so a collapsed panel mounts no
+                  rows. */}
+              <div id={pastPanelId} ref={pastPanelRef} hidden={!pastExpanded} className="space-y-6">
+                {pastExpanded && (
+                  <>
+                    {pastListGroups.map((group) => (
+                      <DateGroup
+                        key={group.key}
+                        group={group}
+                        formatDayHeader={formatDayHeader}
+                        timezone={timezone}
+                        onEventClick={onEventClick}
+                        isSheet={isSheet}
+                        viewerDbUserId={viewerDbUserId}
+                      />
+                    ))}
+
+                    {/* The rolling loader, at the BOTTOM: history runs downward here. See the
+                        bottom `rootMargin` in the observer effect above. */}
+                    {!allMorePastLoaded && (
+                      <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+                    )}
+                  </>
+                )}
+              </div>
+            </section>
           )}
         </div>
       </div>
@@ -986,39 +919,56 @@ export default function CalendarListView({
 }
 
 /**
- * Today delineator — full-width horizontal rule with a centered "Today, MMM d"
- * chip. Always rendered. Visually distinct from date-group headers (which are
- * left-aligned uppercase text underlined by a thin border).
+ * One section header: an `<h3>` WRAPPING the button that folds its section. Both sections use
+ * this one component, so the two headers are equal by construction (owner 4:35 PM, 2026-11-14:
+ * "two separate headers"; 4:45 PM: both fold).
  *
- * Forwards a ref so CalendarListView can center-scroll to it on first paint.
+ * The heading wraps the button, never the reverse: a heading inside a button would lose its
+ * heading role for assistive tech, and the Calendar sheet's e2e reads "a heading inside a row
+ * button" as a row title.
+ *
+ * A real <button> via the shipped Button primitive, carrying the aria-expanded / aria-controls
+ * pair (the idiom at `gameDetail/page.js`'s description toggle). The role-button DIV next door in
+ * `PromptScheduleSection.js` is NOT the pattern to copy: its own marker says it exists because
+ * its label is a <p>, and `<button><p>` breaks hydration. This label is phrasing content, so the
+ * real button is available.
+ *
+ * LAYOUT LIVES ON THE INNER SPAN, deliberately: `.btn` is UNLAYERED
+ * (src/app/globals.css ("UNLAYERED with every other declaration it has today")) and sets `justify-content: center`, so a
+ * `justify-between` utility on the button itself would be dead on arrival — the failure mode
+ * the Button primitive's own marker records eight times over.
+ *
+ * `min-h-11` is the 44px floor stated at the CALL SITE. `.btn`'s own floor is phone-only and
+ * unlayered; pinning it here makes the e2e measurement a property of this control rather than of
+ * a global rule.
+ *
+ * THE LABEL SPAN CARRIES THE TYPE, for the same unlayered reason: `.btn` sets 14px / 600 on the
+ * button, which would win over the `<h3>`'s own 20 / 700 for the text inside it. The span's own
+ * classes put the heading rung back on the words (X25a: the Past label at the h3's 20px / 700).
  */
-const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
+function SectionHeader({ headingId, panelId, expanded, onToggle, buttonRef, children }) {
   return (
-    <div
-      ref={ref}
-      role="separator"
-      aria-label={label}
-      className="relative flex items-center justify-center py-2"
-    >
-      {/* DECISION Phase 88-27 (D-32 bucket B): the rule takes the NEUTRAL, chosen OVER
-          `border-content-link` at full strength (which is what 87.7 stripped from here, at 40%).
-          It is `aria-hidden` decoration and the pill beside it is already `bg-content-link` at
-          full strength — a 2px link-coloured line across the whole viewport would compete with the
-          thing it exists to frame. This is D-32's own "or `border-line` where the tint was purely
-          decorative" exception. It also closes a shim dependency 88-26's census could not see:
-          its lexer fires on a BARE border token, so `border-t-2` with no colour was invisible to
-          it, and 88-31 deletes that shim. Removing the colour re-opens both. */}
-      <div className="absolute inset-x-0 top-1/2 border-t-2 border-line" aria-hidden="true" />
-      {/* UI-SPEC §4.5, the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking):
-          `text-xs` STAYS — 12px is this role's rung, not a miss — and only the WEIGHT moves,
-          600 -> 700. It remains a `<span>`: an eyebrow is not a heading, and making it one
-          would put a level into an outline that deliberately has none here. */}
-      <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-content-link text-white shadow-theme-sm">
-        {label}
-      </span>
-    </div>
+    <Heading level={3} size="heading" id={headingId}>
+      <Button
+        ref={buttonRef}
+        variant="ghost"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        className="w-full min-h-11"
+      >
+        <span className="flex w-full items-center justify-between gap-2">
+          <span className="text-xl leading-tight font-bold text-content-primary">{children}</span>
+          <Icon
+            name="ChevronDown"
+            size={18}
+            className={`transition-transform ${expanded ? 'rotate-180' : ''}`}
+          />
+        </span>
+      </Button>
+    </Heading>
   );
-});
+}
 
 /**
  * One date-group section (date header + its event rows). Extracted so the

@@ -791,7 +791,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                 tracking. `font-bold` ADDED; the tracking spelling is `tracking-wider`
                                 per K7 (plan 88.9-47, owner pick C3b) — the ONE spelling every uppercase
                                 letter-spaced label takes, the nearest shipped eyebrow included
-                                (src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)")). See the
+                                (src/app/components/NextGameNightCard.tsx ("DECISION Phase 88.6-28 (D-03/W36, UI-SPEC §4.5 Eyebrow row)"); AMENDED Phase 88.9-61: this cited the Calendar list's Today chip, deleted with the Today delineator under X29 A). See the
                                 DECISION marker on the second eyebrow below. */}
                             <span className="text-xs font-bold text-content-muted uppercase tracking-wider">or</span>
                             <div className="flex-1 border-t border-line" />
@@ -1010,7 +1010,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                         exactly one home, the Button primitive, so copying any of
                                         them would import a prohibited weight; their own sweeps move
                                         them to 700 later. TRACKING is matched to
-                                        the `tracking-wide` of src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)"), which is also the
+                                        the `tracking-wide` the Calendar list's Today chip carried then (AMENDED Phase 88.9-61: that chip left with the Today delineator under X29 A; the surviving record of the role is src/app/components/NextGameNightCard.tsx ("DECISION Phase 88.6-28 (D-03/W36, UI-SPEC §4.5 Eyebrow row)")), which is also the
                                         value these two already carried, so no tracking changes here.
 
                                         NOT a `Heading`: these are `<span>`s inside a divider rule,

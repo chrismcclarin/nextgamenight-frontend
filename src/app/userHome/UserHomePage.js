@@ -520,6 +520,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        SCOPE: this governs the SHEET arm only. The desktop calendar arms pass no id sets
        (`EventCalendar.js:233-239`) and keep their date-key split, so >= 768px is
        pixel-unchanged.
+       AMENDED Phase 88.9-61 (X29 A): the desktop arms get the same sets, computed in
+       EventCalendar. The SCOPE sentence above is history — every arm of the list now partitions
+       by the two sets, and pixel-unchanged was amended by the owner's X29 ruling.
 
        (3) THE STATUS TEST MOVED. The sentence above reading "`hasLiveStatus` is the NAMED
        import from the shared module and is the ONLY status test in this file" recorded a true

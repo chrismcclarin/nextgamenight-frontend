@@ -1,10 +1,11 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { eventsAPI } from '../../lib/api';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { getDaysInMonth } from '../../lib/calendarUtils';
 import { eventDetailHref } from '../../lib/eventDetailHref';
+import { hasStartedRecently, isStillRunning } from '../../lib/upcomingEvents';
 import { loadCalendarPrefs, saveCalendarPrefs } from '../../lib/calendarViewPrefs';
 import CalendarMonthView from './CalendarMonthView';
 import CalendarListView from './CalendarListView';
@@ -482,9 +483,34 @@ export default function EventCalendar({
   // events array — the list view component handles past-event windowing
   // internally (initial 30 past + all future, expand on scroll). Past events are
   // no longer dropped at this layer.
-  const chronologicalEvents = [...activeEvents]
+  // AMENDED Phase 88.9-61 (X29 A; owner 2026-11-14: 'Yes, live games should stay in upcoming'):
+  // two sections opening at the top, with the sheet's two sets so a live game begun before
+  // midnight is Upcoming (W59); routing stays on eventDetailHref. "Anchored at the next upcoming
+  // event" above is history: the list opens at its top with Past folded.
+  /* DECISION Phase 88.9-61 (X29): the sorted list is memoized on activeEvents so a host re-render
+     keeps the list's past window, chosen OVER memoizing the two id sets too, which would freeze
+     nowMs and stale the live / started classification (ML8). Removing the memo is a decision,
+     not a cleanup. (Unmemoized it was a fresh array on every render, and the list resets its
+     past window whenever the events array changes identity — so any host re-render, an RSVP on
+     the group page for one, dropped a scrolled-open Past back to its first page.) */
+  const chronologicalEvents = useMemo(() => [...activeEvents]
     .filter(event => !!event?.start_date)
-    .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+    .sort((a, b) => new Date(a.start_date) - new Date(b.start_date)), [activeEvents]);
+
+  /* The two id sets the list partitions by (88.9-61, X29 A), from the SAME shared predicates the
+     home sheet's host uses (src/lib/upcomingEvents.ts) and ONE clock per render. Plain compute on
+     purpose — see the DECISION above. Disjoint by construction (the has-check below), so the list
+     can never claim one row for both sections. This file still compares no status and no time of
+     its own. */
+  const nowMs = Date.now();
+  const happeningNowIds = new Set(
+    chronologicalEvents.filter((event) => isStillRunning(event, nowMs)).map((event) => event.id)
+  );
+  const startedNotLiveIds = new Set(
+    chronologicalEvents
+      .filter((event) => hasStartedRecently(event, nowMs) && !happeningNowIds.has(event.id))
+      .map((event) => event.id)
+  );
 
   // WR-03: in self-fetch mode (externalEvents === null) the calendar gates its
   // fetch on selfUuid; fetchEvents early-returns on `!selfUuid` before its
@@ -630,6 +656,8 @@ export default function EventCalendar({
             timezone={timezone}
             loading={loading && !retained}
             variant={variant}
+            happeningNowIds={happeningNowIds}
+            startedNotLiveIds={startedNotLiveIds}
           />
         </>
       )}

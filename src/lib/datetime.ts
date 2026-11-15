@@ -168,6 +168,41 @@ export function formatWithTzAbbr(
   return formatInTimeZone(d, tz, formatStr);
 }
 
+/**
+ * The year rule for a date heading: hand back `pattern` as it is when `date` falls in the
+ * viewer's current calendar year (read in `timezone`), else the same pattern with the year
+ * appended (`, yyyy`). It returns a date-fns PATTERN, not a formatted string, so each caller
+ * keeps its own shape (long month on the Calendar list's day headers, short month on the Next
+ * game night card) and formats with `formatWithTzAbbr` as before.
+ *
+ * DECISION Phase 88.9-61 (X29 years; owner 2026-11-14 'Yes' for the Next game night card): ONE
+ * rule for every date heading, chosen OVER a per-surface copy; a second year check is a
+ * decision, not a cleanup.
+ *
+ * A malformed IANA zone falls back to UTC for the comparison rather than throwing, the same
+ * fallback its callers already apply when they format.
+ *
+ * @param pattern - date-fns-tz format tokens with no year in them (e.g. 'EEEE, MMMM d').
+ * @param date - the instant the heading names.
+ * @param timezone - the viewer's IANA zone; null or empty reads UTC.
+ * @param now - the viewer's current instant (defaults to the real clock).
+ */
+export function withYearOutsideCurrent(
+  pattern: string,
+  date: Date,
+  timezone: string | null,
+  now: Date = new Date()
+): string {
+  const yearOf = (instant: Date): string => {
+    try {
+      return formatWithTzAbbr(instant, timezone, 'yyyy');
+    } catch {
+      return formatWithTzAbbr(instant, null, 'yyyy');
+    }
+  };
+  return yearOf(date) === yearOf(now) ? pattern : `${pattern}, yyyy`;
+}
+
 // ============================================================================
 // Casual date/time/duration formatters (ported verbatim from dateUtils.js)
 //

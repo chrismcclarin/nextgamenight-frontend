@@ -1200,7 +1200,7 @@ export default function EventScheduler({
            - the paired ternary survives INTACT, at full measured strength, on a clean surface.
          THE ALTERNATIVE, if the owner wants column-wide at the 88.1-15 checkpoint: a 2px
          `--color-line-accent` column EDGE RULE, never a fill. That re-opens
-         `DECISION Phase 88-27 D-32 bucket B` (src/app/components/CalendarListView.js ("DECISION Phase 88-27 (D-32 bucket B)"), which ruled a NEUTRAL
+         `DECISION Phase 88-27 D-32 bucket B` (planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-27-SUMMARY.md ("## Task 2 — buckets A and B"); AMENDED Phase 88.9-61: its Calendar list site, the Today delineator's rule, was deleted under X29 A, and the ruling stands at its other sites — it ruled a NEUTRAL
          rule OVER a coloured one), so it is a decision to raise, not a tweak to apply.
 
      (2) THE TWO TERNARIES ARE PAIRED AND MUTUALLY EXCLUSIVE — surface and day text switch together

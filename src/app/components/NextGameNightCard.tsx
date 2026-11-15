@@ -22,7 +22,7 @@ import { StatusRegion } from '@/components/ui/StatusRegion';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { rsvpAPI } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { formatTime, formatWithTzAbbr } from '@/lib/datetime';
+import { formatTime, formatWithTzAbbr, withYearOutsideCurrent } from '@/lib/datetime';
 import { logger } from '@/lib/logger';
 
 import { statusConfig, type RsvpStatusKey } from './rsvpStatusConfig';
@@ -110,6 +110,10 @@ export interface NextGameNightCardProps {
   onEventClick: (event: NextGameNightEvent) => void;
 }
 
+// The when-line's day pattern (SHORT month, the ruled copy). The year is never written here: it
+// is appended by the shared rule in src/lib/datetime.ts when the night is outside the current year.
+const WHEN_DAY_FORMAT = 'EEEE, MMM d';
+
 const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProps>(
   function NextGameNightCard({ event, selfUuid, onEventClick }, ref) {
     const { timezone: ctxTimezone } = useTimezone();
@@ -142,6 +146,8 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
 
     // The when-line, composed from the SHARED formatters the list rows below already
     // use. There is deliberately no second date formatter in this file.
+    // AMENDED Phase 88.9-61 (owner 2026-11-14 'Yes'): the year shows outside the current year via
+    // the shared rule; still no second formatter here.
     //
     // RULED COPY DELTA: `formatTime(date, tz)` APPENDS the timezone abbreviation
     // (src/lib/datetime.ts ("Format a time in 12-hour format") says so in as many words), so this renders
@@ -156,13 +162,13 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
       let day: string;
       try {
         // SHORT month: the ruled copy is "Friday, Sep 4", not "Friday, September 4".
-        // src/app/components/CalendarListView.js ("formatWithTzAbbr(d, timezone, 'EEEE, MMMM d')") uses the LONG-month variant of this same token for
+        // src/app/components/CalendarListView.js ("const DAY_HEADER_FORMAT = 'EEEE, MMMM d';") is the LONG-month variant of this same token for
         // its day headers — that difference is intentional, not drift.
-        day = formatWithTzAbbr(d, timezone, 'EEEE, MMM d');
+        day = formatWithTzAbbr(d, timezone, withYearOutsideCurrent(WHEN_DAY_FORMAT, d, timezone));
       } catch {
-        // Copied from src/app/components/CalendarListView.js ("formatWithTzAbbr(d, null, 'EEEE, MMMM d')"): a malformed IANA string renders
+        // Copied from src/app/components/CalendarListView.js ("return formatWithTzAbbr(d, null, withYearOutsideCurrent(DAY_HEADER_FORMAT, d, null));"): a malformed IANA string renders
         // in UTC rather than crashing the sheet.
-        day = formatWithTzAbbr(d, null, 'EEEE, MMM d');
+        day = formatWithTzAbbr(d, null, withYearOutsideCurrent(WHEN_DAY_FORMAT, d, null));
       }
       const time = formatTime(startDate, timezone);
       return time ? `${day} · ${time}` : day;
@@ -372,8 +378,9 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             DECISION Phase 88.6-28 (D-03/W36, UI-SPEC §4.5 Eyebrow row): this converges on the
             ratified EYEBROW role — Caption 12 / 700 / uppercase / tracking — by moving the
             WEIGHT ONLY, 600 -> 700. The named shipped eyebrow whose treatment decision this
-            matches is src/app/components/CalendarListView.js ("the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking)"), and specifically the ruling in its own marker
-            at src/app/components/CalendarListView.js ("STAYS — 12px is this role's rung, not a miss"): "`text-xs` STAYS — 12px is this role's rung, not a miss — and only
+            matches is the role defined at planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 4.5 Weights")
+            (AMENDED Phase 88.9-61: when this was written it matched the Calendar list's Today chip, which 88.9-61 deleted with the Today
+            delineator under X29 A; that chip's marker read): "`text-xs` STAYS — 12px is this role's rung, not a miss — and only
             the WEIGHT moves, 600 -> 700. It remains a `<span>`: an eyebrow is not a heading."
             All four of those hold here: 12px stays, the element stays a span, uppercase stays,
             700 lands.
