@@ -3234,14 +3234,18 @@ describe('K7 (88.9) / C3b: one tracking spelling for uppercase labels', () => {
     // RsvpStatusPill (2), the chip's Owner, Admin and Guest (3), and the See-all row's You,
     // Friend, Owner, Admin and Guest (5). A pill is not a label, so it leaves this census; the
     // rule above (one spelling for every letter-spaced uppercase LABEL) is unchanged.
+    // Then 18 -> 15 in the same plan's Task 2: the ClickableMemberName pair (the popover's Friend
+    // and You pills) and the shared Guest pill in GuestPill.tsx leave the same way. What is left
+    // is labels only.
     expect(
       total,
       'the census floor: letter-spaced uppercase chunks tree-wide, on OR off (30 measured at ' +
         'plan 88.9-47, 2026-11-10: 28 on tracking-wider + the 2 exempt tutorial eyebrows; 28 ' +
         'in all after 88.9-61, by its own count; 18 after 88.9-63 took the ' +
         'ten game-page pills to sentence case: RsvpStatusPill 2, the chip Owner / Admin / Guest 3, ' +
-        'the See-all You / Friend / Owner / Admin / Guest 5). A total under the floor means the ' +
-        'scan has gone blind, not that the tree got tidier.',
-    ).toBeGreaterThanOrEqual(18);
+        'the See-all You / Friend / Owner / Admin / Guest 5; 15 after its Task 2 did the same for ' +
+        'the ClickableMemberName pair, Friend and You, and the Guest pill in GuestPill.tsx). ' +
+        'A total under the floor means the scan has gone blind, not that the tree got tidier.',
+    ).toBeGreaterThanOrEqual(15);
   });
 });

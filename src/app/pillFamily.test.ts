@@ -68,7 +68,24 @@ const PILL_FILES: Record<string, PillFile> = {
     },
     why: 'the game page: RSVP, role, You, Friend and Guest pills on the Participants chip and the See-all row',
   },
+  'app/components/ClickableMemberName.js': {
+    // The name popover's two informational pills: Friend (one helper, used by the accepted
+    // return and by the success region) and You.
+    families: { emerald: 1, blue: 1 },
+    exemptLiterals: {},
+    why: 'the member-name popover: the Friend pill and the You pill',
+  },
+  'app/components/GuestPill.tsx': {
+    // The one Guest pill the Calendar rows, the upcoming card and the sheet render. The guest
+    // EDGE in the same file is a border, which this scan does not count.
+    families: { amber: 1 },
+    exemptLiterals: {},
+    why: 'the shared Guest pill',
+  },
 };
+
+// A pill fill with an opacity modifier, in any rostered file.
+const PILL_FILL_ALPHA = /bg-surface-pill-[a-z]+\/\d/;
 
 interface Scan {
   fills: Record<string, number>;
@@ -159,6 +176,27 @@ describe('Phase 88.9-63 (X16 / X17a): one pill family, sentence case, names 600'
         `${rel}: a raw palette fill or ink on a pill is light-only or off the family (X17a). Left on purpose: ${JSON.stringify(entry.exemptLiterals)}`,
       ).toEqual([]);
       expect(got.exemptSeen, `${rel}: the raw palette strings left on purpose, counted exactly`).toEqual(entry.exemptLiterals);
+
+      expect(
+        got.chunkTexts.filter((t) => PILL_FILL_ALPHA.test(t)),
+        `${rel}: a pill fill carries no opacity modifier`,
+      ).toEqual([]);
+    }
+
+    // The Guest pill's ground is OPAQUE in both themes, asserted. Since 88.9-60 (X23a) a picture
+    // row has no wash under its text, and 88.9-60 passes this pill no className (owner Q3 A), so
+    // on a guest's picture row the pill's own fill is the only thing between its word and the
+    // photo. The class has no opacity modifier (above), and the runtime fill is a 6-digit hex in
+    // the light block and in the dark block. The same holds for every family, so it is asserted
+    // for all six: an alpha fill on any of them lets whatever is behind the pill through its word.
+    expect(PILL_FILL_ALPHA.test('ml-2 bg-surface-pill-amber/80 text-content-pill-amber'), 'an opacity modifier is seen').toBe(true);
+    const css = withoutComments(GLOBALS_CSS);
+    for (const family of FAMILIES) {
+      const fillDecls = [...css.matchAll(new RegExp(`--color-pill-${family}-bg\\s*:\\s*([^;]+);`, 'g'))].map((m) => m[1].trim());
+      expect(fillDecls, `--color-pill-${family}-bg is declared once per theme`).toHaveLength(2);
+      for (const value of fillDecls) {
+        expect(value, `--color-pill-${family}-bg is an opaque 6-digit hex in both themes (the Guest pill sits on unwashed photo rows)`).toMatch(/^#[0-9a-f]{6}$/i);
+      }
     }
 
     // Owner ruling Q1 A1 (2026-11-14): the game page's Maybe pill is the amber pair, exactly, and
