@@ -435,6 +435,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
        The array is held, not just its length: plan 88.5-08 needs the id set to decide
        which rows belong to "This week".
+       AMENDED Phase 88.9-61 (X11): no This week split; the array serves the count only.
 
        ACCEPTED LAG, carried verbatim from the deleted phone bottom bar (88.1 plan 08; the
        code is in git history, the record is in `88.5-07-SUMMARY.md`): the window is
@@ -513,6 +514,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        two sides, and it is decided ONCE, in `upcomingEvents.ts`, never here and never in the
        view. It is BOUNDED by that module's recency floor (`hasStartedRecently`) so it cannot
        span all history by construction.
+       AMENDED Phase 88.9-61 (X11): two sets now. The third (the next-7-day id set that split
+       the sheet's upcoming rows from a Later subheader) left with that subheader.
 
        SCOPE: this governs the SHEET arm only. The desktop calendar arms pass no id sets
        (`EventCalendar.js:233-239`) and keep their date-key split, so >= 768px is
@@ -533,7 +536,6 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        fresh `Date`, fresh Sets, a memo could not hit — but the reason is "a memo cannot help
        here", not "it is only a handful of rows". */
     const nowMs = now.getTime();
-    const thisWeekIds = new Set(upcomingWithin7Days.map((event) => event.id));
     const allEventsForClassification = Array.isArray(upcomingEvents) ? upcomingEvents : [];
     const happeningNowIds = new Set(
         allEventsForClassification
@@ -1030,10 +1032,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                             /* The id sets — see the OWNER RULING 2a marker above (AMENDED
                                88.6-27, which added the third set). The sheet partitions by
                                membership only; the twin count left the sheet with D6c
-                               (88.9-39). viewerDbUserId feeds the row's guest cue (D5a). */
+                               (88.9-39). viewerDbUserId feeds the row's guest cue (D5a).
+                               AMENDED Phase 88.9-61 (X11): two sets now. */
                             happeningNowIds={happeningNowIds}
                             startedNotLiveIds={startedNotLiveIds}
-                            thisWeekIds={thisWeekIds}
                             viewerDbUserId={selfUuid ?? null}
                         />
                     </>

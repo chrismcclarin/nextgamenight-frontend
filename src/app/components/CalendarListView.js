@@ -182,10 +182,13 @@ export default function CalendarListView({
      started earlier today used to sit under "Later" (W58). The boundary is still decided
      entirely in `upcomingEvents.ts` and still travels here as membership only — there is no new
      time or status comparison in this file. SHEET ARM ONLY: the desktop arms pass none of these
-     props (src/app/components/EventCalendar.js ("<CalendarListView")) and are pixel-unchanged. */
+     props (src/app/components/EventCalendar.js ("<CalendarListView")) and are pixel-unchanged.
+
+     AMENDED Phase 88.9-61 (X11, owner L1): the split below is two-way; still pure set lookup.
+     The this-week id set prop left with the Later subheader it existed to draw — the two sets
+     that remain are the only inputs. */
   happeningNowIds = EMPTY_ID_SET,
   startedNotLiveIds = EMPTY_ID_SET,
-  thisWeekIds = EMPTY_ID_SET,
   // 88.9-39 D5a (R2-27), sheet arm only, threaded by UserHomePage: the viewer's own Users.id
   // UUID, compared in memory by isGuestEvent to mark a guest night's row. Never rendered.
   viewerDbUserId = null,
@@ -204,10 +207,10 @@ export default function CalendarListView({
   const uid = useId();
   const upcomingHeadingId = `${uid}-upcoming`;
   const pastPanelId = `${uid}-past`;
-  // 88.5-08 (D-04): the Later sub-section heading, derived from the SAME `useId` value for
-  // the same collision reason. AMENDED Phase 88.9-39 (owner pick D6c): the This-week id went
-  // with its heading; the happening-now and next-7-day rows share the outer h3 and need no id.
-  const laterId = `${uid}-later`;
+  // 88.5-08 (D-04) derived the two sub-section heading ids from the SAME `useId` value for the
+  // same collision reason. AMENDED Phase 88.9-39 (owner pick D6c): the This-week id went with its
+  // heading. AMENDED Phase 88.9-61 (X11): the Later heading id went with its heading too; every
+  // upcoming row shares the outer h3 and needs no id.
   // COLLAPSED by default — see the Req 12 DECISION marker at the section fork.
   const [pastExpanded, setPastExpanded] = useState(false);
 
@@ -369,19 +372,24 @@ export default function CalendarListView({
      full-history pass, and `pastEvents` derives from the RAW, unfiltered `getUserEvents` payload
      (src/app/userHome/UserHomePage.js ("eventsAPI.getUserEvents(selfUuid).then(evts => {") / src/app/userHome/UserHomePage.js ("UpcomingEventsCard does its own filter+sort; pass the raw list.")) — the user's whole history, with no backend date filter. The
      decision stands; the premise behind it is restated here rather than left pointing at a cost
-     profile this block no longer has. */
+     profile this block no longer has.
+
+     AMENDED Phase 88.9-61 (X11, owner L1): the partition of the upcoming section is two-way;
+     still pure set lookup, still no `.status` read here. The buckets are happening-now
+     (unchanged) and EVERY other `futureGroups` row that is not started-not-live (those still go
+     to Past). The third bucket — the next-7-day rows against a Later remainder — left with the
+     Later subheader: "This week" and "Later" above are history, and a future-dated cancelled
+     night now sits in the one list in date order. */
   const {
     happeningNowGroups,
-    thisWeekGroups,
-    laterGroups,
+    notStartedGroups,
     sheetPastGroups,
     sheetPastTotal,
   } = (() => {
     if (!isSheet) {
       return {
         happeningNowGroups: [],
-        thisWeekGroups: [],
-        laterGroups: [],
+        notStartedGroups: [],
         sheetPastGroups: [],
         sheetPastTotal: 0,
       };
@@ -396,28 +404,25 @@ export default function CalendarListView({
     for (const ev of todayAndFutureEvents) if (happeningNowIds.has(ev.id)) happeningRows.push(ev);
     const happening = groupByDate(happeningRows);
 
-    /* 2/3. THIS WEEK and LATER, over `futureGroups` as before. Two exclusions are new: a
-       happening-now row has already been taken above, and a started-not-live row is routed to
-       the past list below. Later remains everything left over BY ELIMINATION. */
-    const week = [];
-    const later = [];
+    /* 2. EVERY OTHER UPCOMING ROW, over `futureGroups` as before (X11, 88.9-61: one bucket
+       where there were two). Two exclusions: a happening-now row has already been taken above,
+       and a started-not-live row is routed to the past list below. What is left is the rest of
+       the future range BY ELIMINATION, in date order. */
+    const notStarted = [];
     const startedNotLiveFromFuture = [];
     for (const group of futureGroups) {
-      const weekItems = [];
-      const laterItems = [];
+      const items = [];
       for (const ev of group.items) {
         if (happeningNowIds.has(ev.id)) continue;
         if (startedNotLiveIds.has(ev.id)) {
           startedNotLiveFromFuture.push(ev);
           continue;
         }
-        if (thisWeekIds.has(ev.id)) weekItems.push(ev);
-        else laterItems.push(ev);
+        items.push(ev);
       }
-      // Each bucket keeps the group's own key/sample, so `formatDayHeader`, ordering and
+      // The bucket keeps the group's own key/sample, so `formatDayHeader`, ordering and
       // timezone handling are byte-identical to the undivided render.
-      if (weekItems.length > 0) week.push({ ...group, items: weekItems });
-      if (laterItems.length > 0) later.push({ ...group, items: laterItems });
+      if (items.length > 0) notStarted.push({ ...group, items });
     }
 
     /* 4. THE SHEET'S PAST LIST. Source = the rendered window `visiblePast`, minus every
@@ -453,8 +458,7 @@ export default function CalendarListView({
 
     return {
       happeningNowGroups: happening,
-      thisWeekGroups: week,
-      laterGroups: later,
+      notStartedGroups: notStarted,
       sheetPastGroups: groupByDate([...pastSource].reverse()),
       sheetPastTotal: pastTotal,
     };
@@ -464,10 +468,13 @@ export default function CalendarListView({
      chosen OVER two sibling maps; with no subheader between them a live game and a later game on
      the same day would render two identical day headers. Changing this is a decision, not a
      cleanup. A NEW object per key, never a source array mutated; happening-now rows first within
-     a day. The empty-state gate below still reads the three partition lists. */
+     a day. The empty-state gate below still reads the three partition lists.
+     AMENDED Phase 88.9-61 (X11): the fold now takes happening-now and EVERY other upcoming row,
+     so this is the whole upcoming list and only day headers separate rows; the empty-state gate
+     reads this one list. */
   const upcomingGroups = (() => {
     const byKey = new Map();
-    for (const group of [...happeningNowGroups, ...thisWeekGroups]) {
+    for (const group of [...happeningNowGroups, ...notStartedGroups]) {
       const folded = byKey.get(group.key);
       if (folded) folded.items.push(...group.items);
       else byKey.set(group.key, { ...group, items: [...group.items] });
@@ -739,6 +746,15 @@ export default function CalendarListView({
                    Later section. The W58 visual half is settled by placement: an already-started
                    cancelled / completed row is in Past, and F2c tags the future ones.
 
+                   AMENDED Phase 88.9-61 (X26): only a cancelled row reaches the status arm;
+                   (X11) gated on the upcoming section, sheet-only, dormant.
+
+                   AMENDED Phase 88.9-61 (X11, owner L1): the Later subheader is REMOVED, chosen
+                   OVER a label that could sit over an already-started row
+                   (planning:.planning/deferred/phase-88.6.md) and that split one list. Items 2
+                   and 3 above are history: every upcoming row that is not happening now sits in
+                   ONE date-ordered list under the Upcoming events heading.
+
               REJECTED, each a real defect avoided:
                 (a) WORDING-ONLY SCOPING of the single existing section — retitle it and leave one
                     list. The count and the list then still disagree about which events the number
@@ -757,7 +773,8 @@ export default function CalendarListView({
               string inside the Calendar dialog is the strict-mode collision the `aria-labelledby`
               construction above the scroll region exists to avoid.
               AMENDED Phase 88.9-39 (owner pick D6c): only Later demotes now; the folded
-              happening-now + next-7-day list renders at the default levels under the `<h3>`. */}
+              happening-now + next-7-day list renders at the default levels under the `<h3>`.
+              AMENDED Phase 88.9-61 (X11): no caller demotes; the seam stays. */}
           {isSheet ? (
             <>
               {/* Section 1 — upcoming, now subdivided (see the AMENDED paragraph above). Labelled
@@ -765,14 +782,16 @@ export default function CalendarListView({
                   already soonest-first and includes TODAY's events (the split is
                   `k >= todayKey`). */}
               <section aria-labelledby={upcomingHeadingId} className="space-y-6">
-                {/* 1 + 2. HAPPENING NOW and the NEXT-7-DAY rows — deliberately NO subheader, not
-                    even plain text (the THIS WEEK eyebrow, its pill and its sr-only count left
-                    with D6c, 88.9-39). These rows sit directly under the outer `<h3>`, which is
-                    their only heading, so their `DateGroup` keeps the DEFAULT heading levels (h4
-                    day header, h5 row title): there is no intervening sub-section heading to
-                    demote beneath. ONE map over `upcomingGroups` (the D6c marker above): the two
-                    partition buckets fold back by date key so a live game and a later game on the
-                    same day share one day header, live first. */}
+                {/* EVERY UPCOMING ROW — deliberately NO subheader, not even plain text (the THIS
+                    WEEK eyebrow, its pill and its sr-only count left with D6c, 88.9-39; the Later
+                    subheader left with X11, 88.9-61). These rows sit directly under the outer
+                    `<h3>`, which is their only heading, so their `DateGroup` keeps the DEFAULT
+                    heading levels (h4 day header, h5 row title): there is no intervening
+                    sub-section heading to demote beneath. ONE map over `upcomingGroups` (the D6c
+                    marker above): the partition buckets fold back by date key so a live game and
+                    a later game on the same day share one day header, live first. This is the
+                    only map whose rows may carry the status tag (F2c), so it is the one that
+                    passes `statusTagEligible`. */}
                 {upcomingGroups.map((group) => (
                   <DateGroup
                     key={group.key}
@@ -782,44 +801,16 @@ export default function CalendarListView({
                     onEventClick={onEventClick}
                     isSheet={isSheet}
                     viewerDbUserId={viewerDbUserId}
+                    statusTagEligible
                   />
                 ))}
 
-                {/* 3. LATER — the only sub-section whose rows may carry a status tag (F2c). */}
-                {laterGroups.length > 0 && (
-                  <div className="space-y-3">
-                    {/* Deliberately on ONE line: this plan's acceptance gate greps for the
-                        literal `>Later<`, and a heading split across lines to satisfy a
-                        formatter reads as absent to it. Single-text-child JSX on one line is
-                        the shipped idiom in this file anyway. */}
-                    <Heading level={4} size="label" id={laterId} className="uppercase tracking-wider text-content-secondary">Later</Heading>
-                    <section aria-labelledby={laterId} className="space-y-6">
-                      {laterGroups.map((group) => (
-                        <DateGroup
-                          key={group.key}
-                          group={group}
-                          formatDayHeader={formatDayHeader}
-                          timezone={timezone}
-                          onEventClick={onEventClick}
-                          isSheet={isSheet}
-                          headingLevel="h5"
-                          rowHeadingLevel="h6"
-                          viewerDbUserId={viewerDbUserId}
-                          statusTagEligible
-                        />
-                      ))}
-                    </section>
-                  </div>
-                )}
-
                 {/* Section-scoped, NOT the shared "No events" line: with past events collapsed
                     below, "No events" would be false whenever the group has history. Gated on
-                    ALL THREE sub-sections being empty (D-04) — the three partition
-                    `futureGroups` exhaustively, so an event anywhere in the future range keeps
-                    this line off. */}
-                {happeningNowGroups.length === 0 &&
-                  thisWeekGroups.length === 0 &&
-                  laterGroups.length === 0 && (
+                    the whole upcoming list being empty (D-04; one list since X11, 88.9-61) —
+                    the partition covers `futureGroups` exhaustively, so an event anywhere in
+                    the future range keeps this line off. */}
+                {upcomingGroups.length === 0 && (
                     <div className="flex items-center justify-center pt-4">
                       {/* DECISION Phase 88.6-27 (W18 / D2): this SECTION-level empty takes D2's
                           recorded section MINI-FORMULA — one line of prose at
@@ -1041,6 +1032,8 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
  * sheet's This-week/Later groups, which now nest one level below an `<h4>` sub-section
  * heading, demote to `h5`/`h6` so no two structurally-nested headings share a level.
  * Hard-coding either level back is a decision, not a cleanup: it flattens the outline.
+ * AMENDED Phase 88.9-61 (X11): no caller demotes; the seam stays. The This-week pair left with
+ * 88.9-39 D6c and the Later pair with the Later subheader, so every call renders the defaults.
  *
  * Phase 88.6-27 (D-05) — a note, not an amendment: every sentence above stands and the four
  * `headingLevel="h5"` / `rowHeadingLevel="h6"` call sites are unchanged by this plan's sweep.
@@ -1059,7 +1052,8 @@ function DateGroup({
   isSheet = false,
   headingLevel = 'h4',
   rowHeadingLevel = 'h5',
-  // 88.9-39: forwarded to EventRow. `statusTagEligible` is passed by the Later group ONLY (F2c).
+  // 88.9-39: forwarded to EventRow. `statusTagEligible` is passed by the sheet's upcoming list
+  // ONLY (F2c; the Later group until X11, 88.9-61, folded it into that list).
   viewerDbUserId = null,
   statusTagEligible = false,
 }) {
@@ -1151,7 +1145,9 @@ const EventRow = forwardRef(function EventRow(
      user-chosen tint it is unbounded. The label comes from statusTagLabel; this file still
      compares no status itself. The tag is gated on the Later section (statusTagEligible), chosen
      OVER isSheet alone — the past list holds every after-the-fact log, which the backend writes
-     as completed (backend:Sonnet/routes/events.js ("status: new Date(start_date) > new Date() ? 'scheduled' : 'completed',")). */
+     as completed (backend:Sonnet/routes/events.js ("status: new Date(start_date) > new Date() ? 'scheduled' : 'completed',")).
+     AMENDED Phase 88.9-61 (X26): only a cancelled row reaches the status arm; (X11) gated on the
+     upcoming section, sheet-only, dormant. */
   const statusTag = isSheet && statusTagEligible ? statusTagLabel(event) : null;
   const bgImageStyle = safeBgImageStyle(groupBgImage);
   const hasBgImage = !!bgImageStyle && !statusTag && !bgImageFailed(bgImageStyle);

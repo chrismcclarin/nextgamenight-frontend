@@ -207,7 +207,9 @@ export default function EventDayModal({
                    Completed on the muted pair from statusTagLabel, chosen OVER the Upcoming tag keyed on
                    the date alone. The Share Game QR gate is unchanged (look-only phase). The tag, whichever
                    renders, carries an id the row names through aria-describedby (MED-80) — a description
-                   ADDS to the computed name and never replaces it (the NO aria-label note below stands). */
+                   ADDS to the computed name and never replaces it (the NO aria-label note below stands).
+                   AMENDED Phase 88.9-61 (X26): only Cancelled reaches the muted arm; a future completed
+                   night reads Upcoming, chosen OVER a Completed tag on an unreachable state. */
                 const statusTag = statusTagLabel(event);
                 const dayTagId = `day-tag-${event.id}`;
                 const groupProfilePic = event.Group?.profile_picture_url;
