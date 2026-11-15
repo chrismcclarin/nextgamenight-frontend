@@ -329,15 +329,19 @@ describe('friends render harness', () => {
     window.sessionStorage.setItem(signInLatchKey(window.location), '1');
     try {
       render(<FriendsPage />);
-      const login = await screen.findByRole('link', { name: 'Log In' });
-      expect(login).toHaveAttribute('href', '/api/auth/login?returnTo=%2Ffriends');
+      // AMENDED Phase 88.9-66 (X70b, owner 2026-11-14): the declined return is the shared banner in
+      // the centred frame, so the hard-navigation anchor this test guards is the banner's own Sign
+      // in. It is a plain link, not a slotted Button, so the btn class read is gone; the 44px floor
+      // and the exact href stay.
+      const signInLink = await screen.findByRole('link', { name: 'Sign in' });
+      expect(signInLink).toHaveAttribute('href', '/api/auth/login?returnTo=%2Ffriends');
       expect(replace).not.toHaveBeenCalled();
-      expect(login.tagName).toBe('A');
-      // The primitive's own classes reached the slotted child (the `Slot` contract).
-      expect(login.className).toContain('btn');
-      expect(login.className).toContain('min-h-11');
-      // `type` is meaningless on an anchor and `Button` omits it when slotted.
-      expect(login).not.toHaveAttribute('type');
+      expect(signInLink.tagName).toBe('A');
+      expect(signInLink.className).toContain('min-h-11');
+      expect(signInLink).not.toHaveAttribute('type');
+      expect(signInLink.closest('[data-slot="page-frame"]'), 'the banner sits in the shared centred frame').not.toBeNull();
+      expect(screen.getByText("Couldn't load your friends")).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Log In' })).toBeNull();
     } finally {
       auth.user = saved;
       restoreLocation();
@@ -2525,7 +2529,8 @@ describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)'
 // straight to sign-in and back here (the shared guard,
 // src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling"))); the
 // prompt remains for a return with the latch set, its Log In link now carrying returnTo; a
-// useUser() error is the Reload fallback, not the prompt.
+// useUser() error is the Reload fallback, not the prompt. AMENDED Phase 88.9-66 (X70b, owner
+// 2026-11-14): the return with the latch set now shows the shared banner with Sign in.
 describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
   let savedUser: typeof auth.user;
   beforeEach(() => {
@@ -2537,7 +2542,7 @@ describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
     restoreLocation();
   });
 
-  it("SESSION-01 (88.9): a signed-out friends visit is sent to sign-in once with /friends as returnTo; back with the latch set the prompt's Log In link carries returnTo", async () => {
+  it("SESSION-01 (88.9): a signed-out friends visit is sent to sign-in once with /friends as returnTo; back with the latch set the banner's Sign in link carries returnTo", async () => {
     const replace = stubLocation('/friends');
     auth.user = null as unknown as typeof auth.user;
     render(<FriendsPage />);
@@ -2546,27 +2551,31 @@ describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
     // The redirect frame is the auth hold, never the prompt. AMENDED Phase 88.9-66 (X35): the hold is
     // recognised by the words its polite region takes after the dwell.
     expect(await screen.findByText('Signing you in')).toHaveAttribute('role', 'status');
-    expect(screen.queryByText('Please log in to view your friends.')).toBeNull();
+    // AMENDED Phase 88.9-66 (X70b): no Sign in paints during the redirect frame.
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
     cleanup();
 
-    // Back in the same tab without signing in: the prompt, its link carrying returnTo, no redirect.
+    // Back in the same tab without signing in: the shared banner, its Sign in carrying returnTo, no
+    // redirect (AMENDED Phase 88.9-66, X70b: the older log-in prompt is gone).
     render(<FriendsPage />);
-    const login = await screen.findByRole('link', { name: 'Log In' });
-    expect(login).toHaveAttribute('href', '/api/auth/login?returnTo=%2Ffriends');
-    expect(screen.getByText('Please log in to view your friends.')).toBeInTheDocument();
+    const signInLink = await screen.findByRole('link', { name: 'Sign in' });
+    expect(signInLink).toHaveAttribute('href', '/api/auth/login?returnTo=%2Ffriends');
+    expect(screen.getByText("Couldn't load your friends")).toBeInTheDocument();
+    expect(screen.queryByText('Please log in to view your friends.')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Log In' })).toBeNull();
     expect(screen.queryByText('Signing you in')).toBeNull();
     expect(replace).toHaveBeenCalledTimes(1);
   });
 
-  it('SESSION-01 (88.9): a useUser error on friends shows Reload, not the log-in prompt, and never redirects', async () => {
+  it('SESSION-01 (88.9): a useUser error on friends shows Reload, not the signed-out banner, and never redirects', async () => {
     const replace = stubLocation('/friends');
     auth.user = null as unknown as typeof auth.user;
     auth.error = Object.assign(new Error('me failed'), { status: 500 });
     render(<FriendsPage />);
     expect(await screen.findByRole('button', { name: 'Reload page' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: "Couldn't load your friends" })).toBeInTheDocument();
-    expect(screen.queryByText('Please log in to view your friends.')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
     expect(replace).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
   });

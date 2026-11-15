@@ -6086,7 +6086,8 @@ describe('userProfile sign-in guard (88.9-40: SESSION-01)', () => {
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
     expect(document.body.textContent).not.toBe('');
     // First commit, focus on body: the banner wrapper takes focus once.
-    const wrapper = title.closest('div.max-w-4xl') as HTMLElement | null;
+    // AMENDED Phase 88.9-66 (X70a): the wrapper is the shared centred frame's inner box.
+    const wrapper = title.closest('[data-slot="page-frame"]') as HTMLElement | null;
     expect(wrapper).not.toBeNull();
     expect(wrapper).toHaveAttribute('tabindex', '-1');
     await waitFor(() => expect(document.activeElement).toBe(wrapper));
