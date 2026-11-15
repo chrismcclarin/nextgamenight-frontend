@@ -246,4 +246,38 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
       clientHeight.mockRestore();
     }
   });
+
+  it('X25a (88.9): both headers stick on the card ground above the rows, the scroll region pads its top for them (WCAG 2.4.11), and each header button draws its focus ring inside itself (WCAG 2.4.7)', () => {
+    // jsdom lays nothing out, so this pins the CLASSES that carry the behaviour; the rendered
+    // proof (a header really stuck, a focused row really clear of it, the ring really inset) is
+    // e2e/calendar-list-sections.spec.ts in CI.
+    for (const arm of ARMS) {
+      const { container } = renderArm(arm);
+
+      for (const button of [upcomingButton(), pastButton()]) {
+        const heading = button.closest('h3') as HTMLElement;
+        const headingClasses = heading.className.split(/\s+/);
+        // Sticks at the top of the region, above the rows (they paint at z-index 1), on the card
+        // ground so a row scrolling under it does not show through.
+        expect(headingClasses, `${arm}: the header sticks on the card ground`).toEqual(
+          expect.arrayContaining(['sticky', 'top-0', 'z-10', 'bg-surface-card']),
+        );
+        const buttonClasses = button.className.split(/\s+/);
+        // The ring is drawn INSIDE the button: the scroll region clips an outside ring on the left
+        // and above a stuck header. The Button primitive's default offset pair must be gone, not
+        // merely joined by the inset pair.
+        expect(buttonClasses, `${arm}: the inset ring`).toEqual(
+          expect.arrayContaining(['focus-visible:ring-inset', 'focus-visible:ring-offset-0', 'focus-visible:ring-2']),
+        );
+        expect(buttonClasses, `${arm}: the default outside offset is dropped`).not.toContain('focus-visible:ring-offset-2');
+      }
+
+      // 3.5rem of scroll padding at the top of the region: the 44px header, the row's 4px of
+      // ring, and 8px of air. In rem so it grows with the text, like the header's own floor.
+      const region = container.querySelector('.overflow-y-auto') as HTMLElement | null;
+      expect(region, `${arm}: the scroll region`).not.toBeNull();
+      expect((region as HTMLElement).className.split(/\s+/), `${arm}: the region pads its top for a stuck header`).toContain('scroll-pt-14');
+      cleanup();
+    }
+  });
 });
