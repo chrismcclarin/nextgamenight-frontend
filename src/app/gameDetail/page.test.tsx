@@ -39,6 +39,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 
 const SELF_UUID = '11111111-1111-4111-8111-111111111111';
 const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
@@ -408,6 +409,18 @@ export function eventFixture(
     EventParticipations: participants,
     ...overrides,
   };
+}
+
+// X42 (88.9-65): Share Game QR renders only BEFORE the night starts, and the page reads the live
+// clock for that. A test that needs the button pins the clock to this instant, three days before
+// eventFixture's fixed start, so both sides of the comparison are fixed points: the W64 rule
+// recorded at TEST_NOW below (a bare future date read against the wall clock is refused there).
+// Each describe that calls it restores real timers in its own afterEach; shouldAdvanceTime is
+// carried for the reason that marker gives.
+const BEFORE_THE_NIGHT = new Date('2026-02-26T18:00:00Z');
+function pinClockBeforeTheNight() {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(BEFORE_THE_NIGHT);
 }
 
 /**
@@ -1398,6 +1411,12 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
 // ---------------------------------------------------------------------------
 
 describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-50)', () => {
+  // AMENDED Phase 88.9-65 (X42): D6-5 and rule 1 read Share Game QR, so they pin the clock before
+  // the night (pinClockBeforeTheNight); this restores real timers after every test.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const GUEST = participantRow({
     user_id: 'guest-uuid',
     username: 'Visiting Pat',
@@ -1610,6 +1629,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
   });
 
   it('D6-5 (control): a user who moved focus elsewhere while sending is not moved when the chip renders', async () => {
+    pinClockBeforeTheNight();
     const user = userEvent.setup();
     const invite$ = deferredInvite();
     renderEventDetail({ role: 'owner', participants: [GUEST] });
@@ -1653,6 +1673,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
   // user PRESSED while sending (Invite to group from rest, Retry from the error state), and Share
   // Game QR keeps its label; each shows the one house spinner and is named label plus suffix.
   it('rule 1 (88.9): Invite to group and Share Game QR keep their labels and show the spinner while busy (B26, B29)', async () => {
+    pinClockBeforeTheNight();
     const user = userEvent.setup();
     const invite$ = deferredInvite();
     renderEventDetail({ role: 'owner', participants: [GUEST] });
@@ -2195,6 +2216,15 @@ describe('gameDetail Share Game QR in flight (88.6.1-47, D-35)', () => {
   // The busy NAME: the kept label plus the heard suffix (rule 1, 88.9-46; R-W4 ', loading').
   const LOADING = 'Share Game QR, loading';
 
+  // AMENDED Phase 88.9-65 (X42): the button renders only before the night starts, so every test
+  // here runs with the clock pinned before the event fixture's start.
+  beforeEach(() => {
+    pinClockBeforeTheNight();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('Q1: two presses with no render flush between them send ONE request, and the pressed node stays focusable', async () => {
     deferred(eventsAPI.getEventInviteToken as Mock);
     renderEventDetail({ role: 'member' });
@@ -2266,6 +2296,30 @@ describe('gameDetail Share Game QR in flight (88.6.1-47, D-35)', () => {
       idle.click();
     });
     expect(eventsAPI.getEventInviteToken).toHaveBeenCalledTimes(2);
+  });
+});
+
+// X42 (88.9-65, orchestrator decision, veto open): Share Game QR is offered only BEFORE the night
+// starts (the shared start test against the live clock, as the calendar popup and the RSVP
+// controls). Both sides of the comparison are fixed points: the event fixture's start and a
+// clock pinned on either side of it.
+describe('gameDetail Share Game QR only before the night starts (X42, 88.9-65)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('X42 (88.9-65): Share Game QR renders before the night starts and is absent once it has started', async () => {
+    pinClockBeforeTheNight();
+    renderEventDetail({ role: 'member' });
+    expect(await screen.findByRole('button', { name: 'Share Game QR' })).toBeInTheDocument();
+    cleanup();
+
+    // One minute after the fixture's start: the night has started. Heading and chips stay.
+    vi.setSystemTime(new Date('2026-03-01T18:01:00Z'));
+    renderEventDetail({ role: 'member' });
+    expect(await screen.findByRole('heading', { name: 'Participants (1)' })).toBeInTheDocument();
+    expect(screen.getAllByText('Someone Else').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Share Game QR' })).toBeNull();
   });
 });
 
@@ -2815,7 +2869,7 @@ async function expectGameNotFoundWithZeroRequests(search: string) {
   expect(await findTextOrFail('Game not found', search)).toBeInTheDocument();
   expect(screen.queryByText('No game selected')).toBeNull();
   expect(screen.queryByText('Event not found')).toBeNull();
-  expect(screen.queryByText('Loading game night...')).toBeNull();
+  expect(screen.queryByText('Loading game night...', { selector: 'p' })).toBeNull();
   expect(screen.queryByText(/^Loading game details/)).toBeNull();
   // Zero requests leave userScope at 'none', so the scope-aware link is the Home one.
   expect(screen.getByRole('link', { name: '← Back to Home' })).toHaveAttribute('href', '/');
@@ -2956,7 +3010,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
       '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}#vote`)
     );
     expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
-    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.getByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
     expect(screen.queryByText('Event not found')).toBeNull();
     // Prohibition 1: the redirect path paints no event detail.
     expect(document.body.textContent).not.toContain('The Group');
@@ -2996,7 +3050,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     const { rerender } = renderEventDetail({ getEventRejectsWith: UNAUTHORIZED() });
     await waitFor(() => expect(eventsAPI.getEvent).toHaveBeenCalledTimes(1));
     await flushMacrotask();
-    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.getByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
     expect(screen.queryByText('Event not found')).toBeNull();
     h.authLoading = false;
@@ -3006,12 +3060,55 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     expect(replace).toHaveBeenCalledTimes(1);
   });
 
-  it('L1: the shared loader reads copy row E4 and is a labelled status', async () => {
+  // AMENDED Phase 88.9-65 (X35): L1 reads the VISIBLE line only. The line is plain text outside
+  // any live region (a status mounted holding its words is not announced, and a status takes no
+  // name from its content); the words the loader SPEAKS are the X35 pin below, alone.
+  it('L1: the shared loader reads copy row E4 on its visible line', async () => {
     renderGameDetail();
-    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    const line = screen.getByText('Loading game night...', { selector: 'p' });
+    expect(line).toBeInTheDocument();
     expect(screen.queryByText(/^Loading game details/)).toBeNull();
-    expect(screen.getByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
+    expect(line.closest('[role="status"]'), 'the visible line is not inside a live region').toBeNull();
     // Settle, so the game's resolution does not land after cleanup.
+    expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+  });
+
+  // X35 (88.9-65, once-over R13): the loader is HEARD. Its polite region mounts empty and takes
+  // its words after the house dwell (StatusRegion settleOnMount), so they arrive as a change; the
+  // words are copy row E4's with ONE ellipsis character (VoiceOver reads three ASCII dots aloud,
+  // VO-P2-7), and the visible line keeps E4 byte-equal. The EV-18 shape holds the loader: an
+  // in-page key change whose game read stays in flight.
+  it('X35 (88.9-65): the page loader\'s polite region mounts empty and says the loader words with one ellipsis character after the dwell; the visible line keeps copy row E4', async () => {
+    (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValueOnce([{ id: GAME_ID, name: 'Azul' }]);
+    const r = renderEventDetail();
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    await screen.findByRole('button', { name: 'Azul' });
+    const held = deferred(gamesAPI.getGame as Mock);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+      r.rerender(<GameDetailPage />);
+      // The loader's first commit.
+      const line = screen.getByText('Loading game night...', { selector: 'p' });
+      const region = (line.parentElement as HTMLElement).querySelector('[role="status"]');
+      expect(region, 'the loader holds a polite region beside its visible line').not.toBeNull();
+      expect(region).toHaveAttribute('aria-live', 'polite');
+      expect(region).toHaveClass('sr-only');
+      expect(region).toHaveTextContent('');
+      expect(line.closest('[role="status"]'), 'the visible line is not inside the region').toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+      });
+      expect(region?.textContent).toBe('Loading game night…');
+      expect(region?.textContent).not.toContain('...');
+      // Copy row E4, byte-equal, on the visible line.
+      expect(line.textContent).toBe('Loading game night...');
+    } finally {
+      vi.useRealTimers();
+    }
+    await act(async () => held.settle(GAME));
     expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
   });
 
@@ -3085,7 +3182,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     const keyA = signInLatch();
     expect(window.sessionStorage.getItem(keyA)).toBe('1');
     // The redirect frame is the loader, never the banner (P-5).
-    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.getByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
     expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
     cleanup();
 
@@ -3265,7 +3362,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     renderEventDetail({ getEventRejectsWith: ACCOUNT_DELETED() });
     await waitFor(() => expect(h.selfRefetch).toHaveBeenCalled());
     await flushMacrotask();
-    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.getByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
     expect(screen.queryByText('Event not found')).toBeNull();
     expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
   });
@@ -3889,7 +3986,7 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     r.rerender(<GameDetailPage />);
     // The re-run starts in that commit: the event stays and the loader never replaces it.
     expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
-    expect(screen.queryByRole('status', { name: 'Loading game night...' })).toBeNull();
+    expect(screen.queryByText('Loading game night...', { selector: 'p' })).toBeNull();
     await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
     expect(screen.getByRole('heading', { name: 'Game Night' })).toBeInTheDocument();
     expect(screen.queryByText(EVENT_LOAD_FAILED)).toBeNull();
@@ -3961,7 +4058,7 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     (eventsAPI.getEvent as Mock).mockRejectedValue(UNAUTHORIZED());
     forceRefresh(r.rerender);
     await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+    expect(screen.getByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
     expect(screen.queryByText('Game Night')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
@@ -3981,7 +4078,7 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     await screen.findByRole('heading', { name: 'Game Night' });
     (eventsAPI.getEvent as Mock).mockRejectedValue(ACCOUNT_DELETED());
     forceRefresh(r.rerender);
-    expect(await screen.findByText('Loading game night...')).toBeInTheDocument();
+    expect(await screen.findByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
     expect(screen.queryByText('Game Night')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
     expect(screen.queryByText('Event not found')).toBeNull();
@@ -4120,7 +4217,7 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
     observer.observe(document.body, { childList: true, subtree: true });
     h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
     r.rerender(<GameDetailPage />);
-    expect(await screen.findByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
+    expect(await screen.findByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
     for (const rec of observer.takeRecords()) rec.addedNodes.forEach((n) => added.push(n));
     expect(added.some((n) => (n.textContent ?? '').includes('Game not found'))).toBe(false);
     expect(screen.queryByText('Game not found')).toBeNull();
@@ -4157,7 +4254,7 @@ describe('gameDetail retained-content notice, event view — RF1 (88.6.1-74)', (
       );
     h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
     r.rerender(<GameDetailPage />);
-    expect(await screen.findByRole('status', { name: 'Loading game night...' })).toBeInTheDocument();
+    expect(await screen.findByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
     for (const rec of observer.takeRecords()) rec.addedNodes.forEach((n) => added.push(n));
     expect(added.some(isStaleTitle)).toBe(false);
     expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
@@ -4795,7 +4892,7 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
         '/api/auth/login?returnTo=' + encodeURIComponent(`/gameDetail${search}`)
       );
       expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
-      expect(screen.getByText('Loading game night...')).toBeInTheDocument();
+      expect(screen.getByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });

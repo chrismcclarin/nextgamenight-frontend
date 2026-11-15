@@ -21,13 +21,18 @@
 // error, warn and info. The ruled method must count 1 and the other two 0, and the three
 // counts must sum to 1 — so a renamed or deleted message reds instead of passing quietly.
 // The message openings for F1-1, F1-2 and F1-3 end at the closing quote of the message, so
-// the gameDetail page's two twins (the same words followed by a colon) are NOT F1 sites and
-// never match; F1 did not name them (hand-off to plan 88.9-51).
+// the gameDetail page's two twins (the same words followed by a colon) never match those rows.
+// AMENDED Phase 88.9-65 (X34): the two twins are pinned here as their own rows, X34-1 and X34-2,
+// at warn like their Home twins (their openings end at the colon and the closing quote, so the
+// Home files never match them either). F1 did not name them; X34 applies F1's level to them.
+//
+//   X34-1 gameDetail/page.js game-invite-token catch -> warn
+//   X34-2 gameDetail/page.js group-events catch       -> warn
 //
 // Phase 89 rewires the home page's events fetch: the F1-1 / F1-3 rows move to whichever catch
 // survives that rewire, and the level travels with it.
 //
-// The shared source-scan test helper is NOT imported, by design: this file reads four named
+// The shared source-scan test helper is NOT imported, by design: this file reads five named
 // files directly, so it carries no drift-gate-registry row.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -79,6 +84,18 @@ const SITES: Site[] = [
     opening: BACKTICK + 'API Error (',
     ruled: 'info',
   },
+  {
+    id: 'X34-1',
+    file: 'src/app/gameDetail/page.js',
+    opening: "'Failed to get game invite token:'",
+    ruled: 'warn',
+  },
+  {
+    id: 'X34-2',
+    file: 'src/app/gameDetail/page.js',
+    opening: "'Error fetching events:'",
+    ruled: 'warn',
+  },
 ];
 
 const METHODS: Method[] = ['error', 'warn', 'info'];
@@ -95,7 +112,7 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 
 describe('88.9-38 F1 / O-05 — the four quiet-failure sites log at the owner-ruled level', () => {
-  it('F1 (88.9): F1-1/F1-2/F1-3/F1-4a/F1-4b use the ruled method', () => {
+  it("F1 (88.9) + X34 (88.9-65): the quiet-failure sites and the game page's two twins use the ruled method", () => {
     const problems: string[] = [];
     for (const site of SITES) {
       const source = fs.readFileSync(path.join(FE_ROOT, site.file), 'utf8');

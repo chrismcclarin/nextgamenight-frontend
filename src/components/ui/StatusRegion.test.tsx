@@ -8,9 +8,9 @@
 // still mounts empty-first: node identity is assertable, and a clear-then-set
 // makes an identical repeat re-announce.
 import * as React from 'react';
-import { describe, it, expect, afterEach, beforeAll, afterAll, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
-import { StatusRegion } from './StatusRegion';
+import { describe, it, expect, afterEach, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { render, screen, cleanup, act } from '@testing-library/react';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from './StatusRegion';
 
 afterEach(cleanup);
 
@@ -45,6 +45,60 @@ describe('StatusRegion aria-live contract', () => {
     const region = screen.getByRole('alert');
     expect(region).toHaveAttribute('aria-live', 'assertive');
     expect(region).toHaveTextContent('Request failed');
+  });
+});
+
+// X35 (Phase 88.9-65, once-over R13): the opt-in settleOnMount prop. A polite region that is
+// MOUNTED holding its words is not announced (screen readers announce changes to a live region,
+// not its arrival), so a host that mounts the region busy asks for the dwell: the region is empty
+// on its first commit and takes its words REGION_EMPTY_DWELL_MS later, as a change. Default off:
+// without the prop the words render at once, as every earlier consumer expects.
+describe('settleOnMount (88.9-65): first words wait for the empty dwell', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('settleOnMount (88.9-65): a region mounted holding words is empty on its first commit and says them after REGION_EMPTY_DWELL_MS; without the prop they render at once', () => {
+    const { rerender, unmount } = render(
+      <StatusRegion settleOnMount className="sr-only" message="Loading" />
+    );
+    const region = screen.getByRole('status');
+    // First commit: the node, its role and its live attributes are there; the words are not.
+    expect(region).toHaveTextContent('');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+    const attrNames = Array.from(region.attributes).map((a) => a.name.toLowerCase());
+    expect(attrNames).not.toContain('settleonmount');
+
+    act(() => {
+      vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS - 1);
+    });
+    expect(region).toHaveTextContent('');
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    // The same node takes the words as a change.
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region).toHaveTextContent('Loading');
+
+    // After the dwell the region is an ordinary one: a new message lands at once.
+    rerender(<StatusRegion settleOnMount className="sr-only" message="Still loading" />);
+    expect(region).toHaveTextContent('Still loading');
+    unmount();
+
+    // Children take the same dwell, and an unmount before it ends leaves no timer behind.
+    const early = render(<StatusRegion settleOnMount>Loading</StatusRegion>);
+    expect(screen.getByRole('status')).toHaveTextContent('');
+    early.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+
+    // Without the prop (the default) the words render at once.
+    render(<StatusRegion message="Loading" />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading');
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

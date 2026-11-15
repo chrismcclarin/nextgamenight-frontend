@@ -237,7 +237,9 @@ test('event page: a failed background refresh keeps the event and shows the noti
     w.__rf1Trail = trailInPage;
     const t0 = performance.now();
     const sample = () => {
-      const loader = Boolean(document.querySelector(`[role="status"][aria-label="${loaderLabel}"]`));
+      // 88.9-65 (X35): the loader is read by its VISIBLE line (a paragraph holding the passed
+      // words); its live region mounts empty and carries no label any more.
+      const loader = Array.from(document.querySelectorAll('p')).some((p) => p.textContent === loaderLabel);
       const h1 = Boolean(document.querySelector('main h1'));
       const state = `loader=${loader} h1=${h1}`;
       if (!trailInPage.length || !trailInPage[trailInPage.length - 1].endsWith(state)) {
