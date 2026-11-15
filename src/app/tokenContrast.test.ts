@@ -2616,6 +2616,47 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(failures, `X30 (88.9) — Manage Members must visibly react to the pointer on every header arm:\n${failures.join('\n')}`).toEqual([]);
     expect(measured, 'anti-vacuity: 2 themes x (1 photo arm + the uncoloured ground + 8 preset grounds)').toBe(20);
   });
+
+  it('X49 (88.9-65): the ghostDanger ink clears 4.5 on the card and on the hover wash in both themes', () => {
+    // Owner 2026-11-13, on the desktop session Delete ("Do you think there is an issue that on the
+    // phone the delete in the kebab menu is red, but on the pc it isn't red?", then "Yes, That is
+    // fine."): Button gains a ghost-weight variant with the danger ink.
+    //
+    // THE CLASSES ARE READ FROM THE VARIANT STRING in Button.tsx (comments stripped, the way test
+    // 53 reads ghost's): the ink utility and the hover utility are each resolved through the
+    // @theme inline key they name, so editing the variant moves the numbers here. The resting
+    // ground is the card (a ghost paints no fill of its own); the hovered ground is the wash.
+    // Measured with src/lib/wcag.ts: light 8.3101 on the card and 7.8393 on the wash; dark 7.2966
+    // and 5.9413.
+    const buttonSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, '..', 'components', 'ui', 'Button.tsx'), 'utf8'),
+    );
+    const variant = /ghostDanger:\s*'([^']*)'/.exec(buttonSrc);
+    expect(variant, 'LOCATOR: no ghostDanger variant string in Button.tsx').not.toBeNull();
+    const tokens = variant![1].split(/\s+/).filter((token) => token.length > 0);
+    const inkKey = tokens.map((token) => /^text-([a-z0-9-]+)$/.exec(token)?.[1]).find((key) => key !== undefined);
+    const washKey = tokens.map((token) => /^enabled-hover:bg-([a-z0-9-]+)$/.exec(token)?.[1]).find((key) => key !== undefined);
+    expect(inkKey, 'the variant names an ink utility').toBe('content-status-error');
+    expect(washKey, 'the variant names an enabled-hover wash utility').toBe('surface-hover');
+    expect(tokens, 'a ghost paints no fill at rest').toContain('bg-transparent');
+
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    const ink = runtimeProp(inkKey as string);
+    const wash = runtimeProp(washKey as string);
+    const card = runtimeProp('surface-card');
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, ink, card, 4.5, 'the ghostDanger ink on the card');
+      expectRatio(theme, ink, wash, 4.5, 'the ghostDanger ink on the hover wash');
+      measured += 2;
+    }
+    expect(measured, 'anti-vacuity: 2 themes x (card + wash)').toBe(4);
+  });
 });
 
 // =====================================================================================

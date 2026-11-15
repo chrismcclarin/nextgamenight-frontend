@@ -37,7 +37,7 @@ import * as React from 'react';
 import { render, screen, within, cleanup, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
+import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 
@@ -813,6 +813,23 @@ describe('gameDetail sessions header (D-39)', () => {
 // it proves the role gate covers both layouts, not just the one a desktop
 // walkthrough would look at.
 describe('gameDetail role-gated session affordances', () => {
+  // X49 (88.9-65, owner 2026-11-13): the phone kebab paints Delete in the danger ink; the desktop
+  // button now does too, at ghost WEIGHT (no fill, so F-6c's demotion holds). Edit is unchanged.
+  it('X49 (88.9-65): the desktop session Delete wears ghostDanger, Edit stays ghost', async () => {
+    renderGameDetail({ role: 'owner' });
+    const sessions = await sessionsSection();
+    const edit = await within(sessions).findByRole('button', { name: 'Edit' });
+    const del = within(sessions).getByRole('button', { name: 'Delete' });
+    const classes = (el: HTMLElement) => el.className.split(/\s+/);
+    expect(classes(del)).toContain('text-content-status-error');
+    expect(classes(del)).toContain('bg-transparent');
+    expect(classes(del)).toContain('enabled-hover:bg-surface-hover');
+    expect(classes(del)).not.toContain('text-content-secondary');
+    expect(classes(del)).not.toContain('btn-danger');
+    expect(classes(edit)).toContain('text-content-secondary');
+    expect(classes(edit)).not.toContain('text-content-status-error');
+  });
+
   it.each(['owner', 'admin'] as const)(
     'shows the per-session Edit and Delete affordances to a group %s, in both layouts',
     async (role) => {
@@ -1265,6 +1282,49 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
       vi.useRealTimers();
     }
   });
+
+  // X36a (88.9-65, once-over R3): the commit is SEEN and HEARD. While the DELETE is out the pressed
+  // Remove stays focusable (aria-disabled, never the native attribute), keeps its word, is named
+  // with the removing suffix and shows the delayed house spinner; the gate's latch sends one DELETE
+  // for two taps. When the row leaves, focus lands on the See-all dialog's title (owner 2026-11-14,
+  // Q6 A), never on the dialog container or the body. The arm is read by aria-pressed, never by
+  // the countdown words (another plan rewords them).
+  it('X36a (88.9-65): a committing Participants Remove is aria-disabled, named with the removing suffix, shows the house spinner after 200 ms, two taps send one DELETE, and focus lands on the dialog title when the row leaves', async () => {
+    const user = userEvent.setup();
+    const del = deferred(eventsAPI.removeParticipation as Mock);
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+
+    const dialog = await openParticipantsModal(user);
+    const remove = within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0];
+    await user.click(remove);
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    // The committing tap, then one more while the DELETE is held.
+    await user.click(remove);
+    await user.click(remove);
+    expect(eventsAPI.removeParticipation).toHaveBeenCalledTimes(1);
+    expect(eventsAPI.removeParticipation).toHaveBeenCalledWith(EVENT_ID, 'p-0');
+
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(remove.hasAttribute('disabled')).toBe(false);
+    expect(remove).toHaveAccessibleName('Remove Player 0 from this event, removing');
+    expect(remove).toHaveTextContent(/^Remove/);
+    // The house spinner is delayed: it is there once SPINNER_DELAY_MS has passed.
+    act(() => {
+      vi.advanceTimersByTime(SPINNER_DELAY_MS);
+    });
+    expect(remove.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+
+    // The DELETE resolves and the row leaves: focus goes to the dialog's title.
+    const title = within(dialog).getByRole('heading', { name: /^Participants \(/ });
+    await act(async () => {
+      del.settle({});
+    });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    expect(within(dialog).queryByRole('button', { name: /^Remove Player 0 / })).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1280,7 +1340,11 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
 // plain member must see nothing (T-88-20-01).
 // ---------------------------------------------------------------------------
 
-const INVITE = 'Invite to group';
+// AMENDED Phase 88.9-65 (X63): the visible word is Invite and the NAME carries the person, from an
+// sr-only span inside the button; every guest in these describes is Visiting Pat. The error arm
+// keeps the visible word Retry and is named for the person too (owner 2026-11-14, Q7 B).
+const INVITE = 'Invite Visiting Pat to the group';
+const RETRY_INVITE = 'Retry inviting Visiting Pat to the group';
 
 describe('gameDetail guest invite from the event view (Req 15)', () => {
   const GUEST_WITH_ACCOUNT = participantRow({
@@ -1359,7 +1423,7 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     // 409 is "already a member or already invited" — not a failure to retry.
     expect(await screen.findByText('Already invited')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Already invited' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByRole('button', { name: RETRY_INVITE })).toBeNull();
   });
 
   // 88-33 Task 2 step 4b (UAT row 614, Fork F): the two 409 outcomes are told
@@ -1376,7 +1440,7 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     await user.click(await screen.findByRole('button', { name: INVITE }));
     expect(await screen.findByText('Invite pending')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Invite pending' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByRole('button', { name: RETRY_INVITE })).toBeNull();
   });
 
   it('renders "Already a member" for the already_member envelope code', async () => {
@@ -1469,12 +1533,12 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
       invite.click();
     });
 
-    const sending = screen.getByRole('button', { name: 'Invite to group, sending' });
+    const sending = screen.getByRole('button', { name: INVITE + ', sending' });
     expect(sending).toHaveAttribute('aria-disabled', 'true');
     expect(sending.hasAttribute('disabled')).toBe(false);
     // The visible in-flight cue that replaces the `.btn:disabled` wash (V-17): since rule 1
     // (88.9-46 B26) the kept label plus the house spinner, never a label swap.
-    expect(sending).toHaveTextContent(/^Invite to group/);
+    expect(sending).toHaveTextContent(/^Invite/);
     // No `disabled:opacity-*` utility was added at the call site — it keys on
     // the native attribute this control no longer carries.
     expect(sending.className).not.toMatch(/(^|[\s:])disabled:opacity-/);
@@ -1489,7 +1553,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     await user.click(invite);
     // The whole point of the 2026-09-14 amendment: a natively-disabled element
     // leaves the focus order and focus drops to <body> mid-submit.
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Invite to group, sending' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: INVITE + ', sending' }));
 
     await act(async () => {
       invite$.settle({});
@@ -1514,7 +1578,7 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
       first.fail(new Error('network'));
     });
 
-    const retry = await screen.findByRole('button', { name: 'Retry' });
+    const retry = await screen.findByRole('button', { name: RETRY_INVITE });
     expect(retry.hasAttribute('disabled')).toBe(false);
     expect(retry).not.toHaveAttribute('aria-disabled');
 
@@ -1650,29 +1714,29 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     expect(document.activeElement).toBe(share);
   });
 
-  it('D6-6 (control): an error outcome keeps focus on the same node, now named Retry', async () => {
+  it('D6-6 (control): an error outcome keeps focus on the same node, now named Retry inviting the guest to the group', async () => {
     const user = userEvent.setup();
     const invite$ = deferredInvite();
     renderEventDetail({ role: 'owner', participants: [GUEST] });
     const invite = await screen.findByRole('button', { name: INVITE });
 
     await user.click(invite);
-    const sending = screen.getByRole('button', { name: 'Invite to group, sending' });
+    const sending = screen.getByRole('button', { name: INVITE + ', sending' });
     expect(sending).toBe(invite);
 
     await act(async () => {
       invite$.fail(new Error('network'));
     });
 
-    const retry = await screen.findByRole('button', { name: 'Retry' });
+    const retry = await screen.findByRole('button', { name: RETRY_INVITE });
     expect(retry).toBe(invite);
     expect(document.activeElement).toBe(retry);
   });
 
   // Rule 1 (88.9-46 B26 / B29, owner pick O16a + the Q3 ruling): the invite keeps the label the
-  // user PRESSED while sending (Invite to group from rest, Retry from the error state), and Share
+  // user PRESSED while sending (Invite from rest, Retry from the error state; 88.9-65 X63), and Share
   // Game QR keeps its label; each shows the one house spinner and is named label plus suffix.
-  it('rule 1 (88.9): Invite to group and Share Game QR keep their labels and show the spinner while busy (B26, B29)', async () => {
+  it('rule 1 (88.9): the guest invite and Share Game QR keep their labels and show the spinner while busy (B26, B29)', async () => {
     pinClockBeforeTheNight();
     const user = userEvent.setup();
     const invite$ = deferredInvite();
@@ -1680,8 +1744,8 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     const invite = await screen.findByRole('button', { name: INVITE });
 
     await user.click(invite);
-    expect(invite).toHaveAccessibleName('Invite to group, sending');
-    expect(invite).toHaveTextContent(/^Invite to group/);
+    expect(invite).toHaveAccessibleName(INVITE + ', sending');
+    expect(invite).toHaveTextContent(/^Invite/);
     await waitFor(() => expect(invite.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(invite).toHaveAttribute('aria-disabled', 'true');
     expect(invite.hasAttribute('disabled')).toBe(false);
@@ -1691,14 +1755,14 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     await act(async () => {
       invite$.fail(new Error('network'));
     });
-    const retry = await screen.findByRole('button', { name: 'Retry' });
+    const retry = await screen.findByRole('button', { name: RETRY_INVITE });
     expect(retry).toBe(invite);
     await waitFor(() => expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
 
     // Pressed from the error state: Retry is the label under the user's finger, so Retry stays.
     const retry$ = deferredInvite();
     await user.click(retry);
-    expect(retry).toHaveAccessibleName('Retry, sending');
+    expect(retry).toHaveAccessibleName(RETRY_INVITE + ', sending');
     expect(retry).toHaveTextContent(/^Retry/);
     await waitFor(() => expect(retry.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(retry).toHaveAttribute('aria-disabled', 'true');
@@ -1729,6 +1793,45 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     const idle = await screen.findByRole('button', { name: 'Share Game QR' });
     expect(idle).toBe(share);
     await waitFor(() => expect(idle.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
+  });
+
+  // X63 (88.9-65, owner at N43): the strip chip grew three lines thick at 375 because the invite
+  // sat INSIDE it under a long label. The visible word is now Invite, the name says who (an
+  // sr-only span inside the button, so the name lives on the focusable control itself), the
+  // error arm keeps the word Retry and says what is retried and for whom (owner 2026-11-14,
+  // Q7 B), and the button sits BESIDE its chip, as at its other two sites.
+  it('X63 (88.9-65): the guest invite reads Invite, is named Invite <name> to the group, after an error reads Retry named Retry inviting <name> to the group, renders beside the strip chip, and shows the house spinner while held', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: 'Invite Visiting Pat to the group' });
+    // The visible word is the button's first text; the rest of the name is visually hidden.
+    expect(invite.firstChild?.textContent).toBe('Invite');
+    expect(invite.querySelector('.sr-only')?.textContent).toBe(' Visiting Pat to the group');
+
+    // Beside the chip: the chip is the bordered box holding the name, and it does not hold the button.
+    const chip = screen.getByText('Visiting Pat').parentElement as HTMLElement;
+    expect(chip.className).toContain('border-line');
+    expect(chip.contains(invite), 'the invite sits beside the chip, not inside it').toBe(false);
+    const group = chip.parentElement as HTMLElement;
+    expect(group.contains(invite)).toBe(true);
+    expect(group.className.split(/\s+/)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'max-w-full']));
+    expect(chip.className.split(/\s+/)).toContain('min-w-0');
+
+    // Held: the kept word, the name with the suffix, and the house spinner.
+    await user.click(invite);
+    expect(invite).toHaveAccessibleName('Invite Visiting Pat to the group, sending');
+    await waitFor(() => expect(invite.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+
+    // The send fails once: the visible word is Retry and the name says what is retried, for whom.
+    await act(async () => {
+      invite$.fail(new Error('network'));
+    });
+    const retry = await screen.findByRole('button', { name: 'Retry inviting Visiting Pat to the group' });
+    expect(retry).toBe(invite);
+    expect(retry).toHaveAccessibleName('Retry inviting Visiting Pat to the group');
+    expect(retry).toHaveTextContent(/^Retry/);
+    expect(retry.firstChild?.textContent).toBe('Retry');
   });
 });
 

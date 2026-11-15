@@ -165,6 +165,25 @@ describe('Button', () => {
     expect(btn).toHaveClass('bg-transparent');
   });
 
+  // X49 (88.9-65, owner 2026-11-13): a destructive action at ghost WEIGHT. The phone kebab paints
+  // its Delete item in the danger ink; the desktop button takes the same ink without the danger
+  // variant's fill, so the demotion a ghost carries is kept.
+  it('X49 (88.9-65): ghostDanger is ghost weight with the danger ink, and no .btn-* background class', () => {
+    render(<Button variant="ghostDanger">Delete</Button>);
+    const btn = screen.getByRole('button');
+    expect(btn).toHaveClass('btn');
+    expect(btn).toHaveClass(
+      'bg-transparent',
+      'text-content-status-error',
+      'enabled-hover:bg-surface-hover',
+      'aria-disabled:text-content-muted'
+    );
+    for (const filled of ['btn-primary', 'btn-secondary', 'btn-danger', 'btn-accent']) {
+      expect(btn).not.toHaveClass(filled);
+    }
+    expect(btn).not.toHaveClass('text-content-secondary');
+  });
+
   it('gives size="icon" a 44x44 floor', () => {
     render(
       <Button variant="ghost" size="icon" aria-label="Open menu">
@@ -371,7 +390,7 @@ describe('Button', () => {
       expect(link).not.toHaveAttribute('type');
     });
 
-    it('the derived key list really is the whole 5 x 4 surface', () => {
+    it('the derived key list really is the whole 6 x 4 surface', () => {
       // A derivation that silently returns [] makes every matrix assertion
       // vacuous, so the anti-vacuity check comes first and names the mechanism.
       expect(
@@ -383,6 +402,7 @@ describe('Button', () => {
         'accent',
         'danger',
         'ghost',
+        'ghostDanger',
         'primary',
         'secondary',
       ]);
@@ -392,7 +412,10 @@ describe('Button', () => {
       expect([...ALL_SIZES].sort()).toEqual(['default', 'icon', 'iconSquare', 'sm']);
       // The stated expectation, kept beside the derivation rather than instead
       // of it: 15 combinations after plan 88.6-06, 20 after 88.9-28.
-      expect(ALL_VARIANTS.length * ALL_SIZES.length).toBe(20);
+      // AMENDED Phase 88.9-65 (X49): the variant map gained ghostDanger (ghost weight, danger ink),
+      // so the surface is 6 x 4 = 24, chosen OVER leaving the 5 x 4 expectation, which the new
+      // variant makes false. The title moved with it.
+      expect(ALL_VARIANTS.length * ALL_SIZES.length).toBe(24);
     });
 
     it('SOURCE SCAN: no unprefixed hover token in the cva base or the variant map', () => {
