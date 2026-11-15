@@ -149,7 +149,7 @@ test.describe('Create Event — late success and the ordinary close at the other
 
     await page.keyboard.press('Escape');
     await expect(createHeading(page)).toBeHidden();
-    await page.getByRole('button', { name: /add new game event/i }).click();
+    await page.getByRole('button', { name: 'Create Event', exact: true }).click();
     await expect(createHeading(page)).toBeVisible();
     const submit = page.getByTestId('create-event-submit');
     await expect(submit).toBeVisible();

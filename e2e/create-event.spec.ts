@@ -11,7 +11,7 @@ import { fillCreateEventManualEntry } from './support/createEvent';
  *
  * E2E_GROUP_ID points at the seeded group (minted by the backend's
  * scripts/e2e-fixtures.js in CI). The create-event button lives on the GROUP
- * HOME page (`/groupHomePage?id=...`, button "Add New Game Event") — NOT on
+ * HOME page (`/groupHomePage?id=...`, button "Create Event") — NOT on
  * /groupPlanning, whose CreateEvent mount only opens via email-CTA prefill
  * params (run 27318208981).
  *
@@ -21,7 +21,7 @@ import { fillCreateEventManualEntry } from './support/createEvent';
 test('user can create an event', async ({ page }) => {
   const groupId = process.env.E2E_GROUP_ID ?? '1';
 
-  // Group home hosts the "Add New Game Event" button (param is `id`).
+  // Group home hosts the "Create Event" button (param is `id`).
   await page.goto(`/groupHomePage?id=${groupId}`);
 
   // Open the create-event modal and fill it by manual entry (the shared drive, not submitted).

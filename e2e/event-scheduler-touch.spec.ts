@@ -72,7 +72,7 @@ declare global {
  * range-select is the phase's only analog-free mechanism and nothing else drives it end to end.
  *
  * SELECTOR NOTE: every interactive control is located by ROLE / LABEL / TEXT
- * ("Add New Game Event", "Switch to Manual Entry", `role=tab`, `role=columnheader`,
+ * ("Create Event", "Switch to Manual Entry", `role=tab`, `role=columnheader`,
  * the verbatim "Selected Time:" panel). `[data-coord]` appears ONLY in the
  * geometry/painted-state probes — it is WeekGrid's own paint-resolution attribute
  * (src/app/components/heatmap/WeekGrid.tsx ("data-coord={coordKey(row, col)}"), the same test-plumbing class as WriteCell's data-slot-id),
@@ -153,12 +153,12 @@ const selectedTimeValue = (page: Page) =>
 /**
  * Open the create-event modal and STAY in visual-calendar mode.
  *
- * The "Add New Game Event" button lives on the GROUP HOME page, not on
+ * The "Create Event" button lives on the GROUP HOME page, not on
  * /groupPlanning — e2e/create-event.spec.ts ("whose CreateEvent mount only opens via email-CTA prefill") records why.
  */
 async function openVisualScheduler(page: Page): Promise<void> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
-  await page.getByRole('button', { name: /add new game event/i }).click();
+  await page.getByRole('button', { name: 'Create Event', exact: true }).click();
   await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
 
   // Visual mode is the default; the toggle OFFERING manual entry is the proof we
@@ -1850,7 +1850,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
       sample();
     });
 
-    await page.getByRole('button', { name: /add new game event/i }).click();
+    await page.getByRole('button', { name: 'Create Event', exact: true }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
     // Settle on the phone arm before reading the trace.
     await expect(dialog(page).getByRole('tab')).toHaveCount(7);

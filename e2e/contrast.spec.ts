@@ -247,7 +247,7 @@ function headerControls(page: Page): { label: string; locator: Locator }[] {
   return [
     { label: 'Manage Members', locator: page.getByRole('button', { name: 'Manage Members' }) },
     { label: 'Plan Game Session', locator: page.getByRole('link', { name: 'Plan Game Session' }) },
-    { label: 'Add New Game Event', locator: page.getByRole('button', { name: 'Add New Game Event' }) },
+    { label: 'Create Event', locator: page.getByRole('button', { name: 'Create Event', exact: true }) },
   ];
 }
 
@@ -382,7 +382,7 @@ function expectRatio(label: string, m: Measurement, floor: number): void {
 /** The journey to the create-event scheduler: the page, then the same open step as e2e/support/createEvent.ts ("export async function openCreateEventDialog("). */
 async function openCreateEvent(page: Page): Promise<void> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
-  await page.getByRole('button', { name: /add new game event/i }).click();
+  await page.getByRole('button', { name: 'Create Event', exact: true }).click();
   await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible({ timeout: 15_000 });
   // Deliberately NOT followed by "Switch to Manual Entry": the scheduler assertions below
   // are VISUAL-mode assertions (Req 5's today tint only exists there). The toggle is
@@ -1119,7 +1119,7 @@ function answerSuggestions(url: URL): unknown {
 
 async function openBrowseGames(page: Page): Promise<Locator> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
-  await page.getByRole('button', { name: /add new game event/i }).click();
+  await page.getByRole('button', { name: 'Create Event', exact: true }).click();
   await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible({ timeout: 15_000 });
   const browseMore = page.getByTestId('quick-suggestions-slot').getByRole('button', { name: 'Browse more' });
   await expect(

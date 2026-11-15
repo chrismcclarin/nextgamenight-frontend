@@ -667,9 +667,11 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
     // Census row 7: the Create Event modal's submit. Reached the same way the green
     // create-event journey reaches it: e2e/support/createEvent.ts ("export async function openCreateEventDialog(").
-    await page.getByRole('button', { name: /add new game event/i }).click();
+    await page.getByRole('button', { name: 'Create Event', exact: true }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
-    const submit = page.getByRole('button', { name: /^(create|update) event$/i });
+    // AMENDED Phase 88.9-64 (X32A): scoped to the dialog. The header button that opens it now carries
+    // the same words as this submit, so the lookup names which of the two it means.
+    const submit = page.getByRole('dialog').getByRole('button', { name: /^(create|update) event$/i });
     await guardResolved(submit, 'the Create Event submit CTA (createEvent.js census row 7)');
 
     // The dialog is VISIBLE at this point but not yet settled — `toBeVisible()` above resolves
@@ -1203,7 +1205,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       // arithmetic rather than preference: `.btn` is `font-size: .875rem` / `font-weight: 600`
       // with `padding: .5rem 1rem` (globals.css `.btn` rule), so a 375px column leaves 343px of
       // text width, and the longest labels in the shipped census ("Switch to Manual Entry",
-      // "Add New Game Event") sit well inside that — a real label could not exercise the wrap
+      // "Plan Game Session") sit well inside that — a real label could not exercise the wrap
       // this row asserts. The synthetic one is 66 characters.
       // IT IS NOT ASSUMED TO WRAP: the assertion below is that the long probe is TALLER than
       // its short sibling, which is precisely a runtime verification that it exceeded one line.

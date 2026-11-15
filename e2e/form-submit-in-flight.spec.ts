@@ -204,7 +204,7 @@ test.describe('Create Event — closing mid-create and reopening (88.6.1-81)', (
     const create = await holdRequests(page, { method: 'POST', match: (url) => url.pathname === '/api/events' });
 
     await page.goto(`/groupHomePage?id=${groupId}`);
-    const openDialog = page.getByRole('button', { name: /add new game event/i });
+    const openDialog = page.getByRole('button', { name: 'Create Event', exact: true });
     const heading = page.getByRole('heading', { name: /create event/i });
     await openCreateEventDialog(page);
     await fillCreateEventFields(page);

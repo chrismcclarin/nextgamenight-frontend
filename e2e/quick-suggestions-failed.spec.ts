@@ -54,7 +54,7 @@ test('a failed suggestions load shows the H4 line and a Try again link inside th
   const suggestionsRequest = page.waitForRequest(SUGGESTIONS_REQUEST);
 
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
-  await page.getByRole('button', { name: /add new game event/i }).click();
+  await page.getByRole('button', { name: 'Create Event', exact: true }).click();
   await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
 
   // The participant list is auto-filled with the group's members, so the participant count

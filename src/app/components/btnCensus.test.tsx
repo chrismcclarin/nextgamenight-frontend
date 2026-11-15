@@ -346,7 +346,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // in `controlSizeFloor.test.tsx`'s D13_FLOOR_ROSTER with that owner named.
   // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 task 2 (wave 7, 2026-09-16): all three
   // header CTAs are on the primitive — Manage Members `<Button variant="ghost">`, Plan Game
-  // Session `<Button asChild variant="primary">`, Add New Game Event `<Button variant="accent">`
+  // Session `<Button asChild variant="primary">`, Create Event `<Button variant="accent">`
   // with its inline amber `style` deleted. Entry DELETED rather than zeroed; the roster is exact
   // in both directions.
   //

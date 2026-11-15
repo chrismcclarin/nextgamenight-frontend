@@ -66,7 +66,7 @@ test.describe('Tailwind v4 migration — computed-style spot checks (D-10 layer 
     // 1. Group home hosts the create-event entry point (param is `id`, not `groupId`).
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
-    // 2. "Add New Game Event" opens the modal (groupHomePage surface).
+    // 2. "Create Event" opens the modal (groupHomePage surface).
     // 3. The "Create Event" heading confirms createEvent.js is mounted (its h2 at L666).
     await openCreateEventDialog(page);
 

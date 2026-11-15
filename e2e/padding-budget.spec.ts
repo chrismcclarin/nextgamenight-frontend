@@ -237,7 +237,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
 
   test('Create Event modal: padding chain stays within budget', async ({ page }) => {
     // The shared drive e2e/support/createEvent.ts ("export async function openCreateEventDialog("):
-    // group home → "Add New Game Event" → "Create Event" heading → manual entry
+    // group home → the "Create Event" button → "Create Event" heading → manual entry
     // (the start_date label renders only on the manual-entry branch).
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await openCreateEventDialog(page);

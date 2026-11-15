@@ -11,7 +11,7 @@ import { test, expect } from '@playwright/test';
 // HOW IT RUNS. Phone project only (the iPhone SE preset, 375 x 667), CI only (the phone project
 // needs the setup project's login state, which exists only in CI). It reaches the row the way
 // e2e/empty-status-region-idle.spec.ts ("const add = page.getByRole('button', { name: /add participant/i });") does:
-// group page, Add New Game Event, one + Add Participant tap. NO WRITES: the form is never
+// group page, Create Event, one + Add Participant tap. NO WRITES: the form is never
 // submitted, and the dialog is closed with Escape. No capture option is set here; messages print
 // px values only.
 
@@ -23,7 +23,7 @@ test.describe('Phase 88.9-21 C5a — the participant row at 375 (phone project)'
   }) => {
     const groupId = process.env.E2E_GROUP_ID ?? '1';
     await page.goto(`/groupHomePage?id=${groupId}`);
-    await page.getByRole('button', { name: /add new game event/i }).click();
+    await page.getByRole('button', { name: 'Create Event', exact: true }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
 
     await page.getByRole('button', { name: /add participant/i }).click();

@@ -165,7 +165,7 @@ test.describe('Phase 88.6.1-06 D-22 — an empty status region costs no idle spa
   }) => {
     const groupId = process.env.E2E_GROUP_ID ?? '1';
     await page.goto(`/groupHomePage?id=${groupId}`);
-    await page.getByRole('button', { name: /add new game event/i }).click();
+    await page.getByRole('button', { name: 'Create Event', exact: true }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
 
     const add = page.getByRole('button', { name: /add participant/i });

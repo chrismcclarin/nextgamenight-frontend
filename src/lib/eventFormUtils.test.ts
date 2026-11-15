@@ -77,7 +77,7 @@ describe('resolveInitialHeatmapWeek — clamping (must not send an out-of-range 
 });
 
 describe('resolveInitialHeatmapWeek — paths that must keep returning null', () => {
-  it('returns null with no prefillDate (the plain "add new game event" path)', () => {
+  it('returns null with no prefillDate (the plain "Create Event" path)', () => {
     // This is the path that always worked; it must keep working.
     expect(resolve(null)).toBeNull();
   });

@@ -362,7 +362,7 @@ const RING_SCAN_FILES: { file: string; count: number }[] = [
 const RING_BEARING_PRIMITIVES = new Set(['Button', 'SelectControl', 'KebabMenu', 'SegmentedToggle']);
 
 /**
- * The three groupHomePage header controls — Manage Members, Plan Game Session, Add New Game Event.
+ * The three groupHomePage header controls — Manage Members, Plan Game Session, Create Event.
  *
  * RE-POINTED by plan 88.6-21 (wave 7, 2026-09-16). Tests 15, 16 and 19 located them with
  * `attrExprs(src, 'className').filter((e) => /'btn[ ']/.test(e.text))`, which stopped matching the

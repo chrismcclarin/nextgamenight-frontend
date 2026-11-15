@@ -152,7 +152,7 @@ const browseDialog = (page: Page) => page.getByRole('dialog', { name: 'Browse ga
  *  settled: its first card is visible and every running animation in it has finished. */
 async function openBrowseGames(page: Page): Promise<Locator> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
-  await page.getByRole('button', { name: /add new game event/i }).click();
+  await page.getByRole('button', { name: 'Create Event', exact: true }).click();
   await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
   const browseMore = page
     .getByTestId('quick-suggestions-slot')

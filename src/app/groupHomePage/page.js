@@ -136,7 +136,7 @@ function GroupHomePage(){
     // react-big-calendar's; the rebuilt scheduler's week and day arms are the same code
     // path parameterized by `days` (7 vs 1) — SPEC Req 2 — so 'day view' is now a prop
     // value on one component, not a second library view.)
-    // The "Add New Game Event" header button leaves this at 'week'.
+    // The "Create Event" header button leaves this at 'week'.
     const [calendarEntryMode, setCalendarEntryMode] = useState('week');
     // Defensive cache-bust key — bumped after a fresh fetch so EventCalendar
     // re-renders even if React batches/dedupes the state update by accident.
@@ -1771,7 +1771,16 @@ function GroupHomePage(){
                            rule today, so the base's `enabled-hover:shadow-theme-md` would have
                            SHRUNK it. The spelling is plan 05's `enabled-hover` variant, never a
                            bare `hover:` — plan 12's hover-pin gate rejects the bare form because it
-                           re-lifts the gated controls the variant exists to exclude. */
+                           re-lifts the gated controls the variant exists to exclude.
+
+                           DECISION Phase 88.9-64 (X32A, owner 2026-11-13: Create event.): the label
+                           matches its dialog's title and submit, chosen OVER the shipped four-word
+                           label (N14: it read like Plan Game Session) and OVER GH-02 / T1's New event
+                           (superseded; copy row amended by 88.9-52). X31a, owner-accepted 2026-11-12:
+                           in dark this button darkens on hover (amber-700 to amber-800, white 7.09)
+                           while its neighbours lighten, chosen OVER lightening with them: white on
+                           amber-600 is 3.19:1, failing WCAG 1.4.3. Making it lighten is a decision,
+                           not a cleanup. */
                         <Button
                             variant="accent"
                             onClick={toggleEventModal}
@@ -1785,7 +1794,7 @@ function GroupHomePage(){
                                 (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                             }
                         >
-                            Add New Game Event
+                            Create Event
                         </Button>
                     )}
                 </div>
