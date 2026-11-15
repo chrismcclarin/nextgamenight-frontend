@@ -167,13 +167,13 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             )}
         </span>
             {canInvite && (
-                <GuestInviteButton groupId={groupId} userId={participant.user_id} name={participant.username} />
+                <GuestInviteButton groupId={groupId} userId={participant.user_id} guestName={participant.username} />
             )}
         </span>
     );
 }
 
-function GuestInviteButton({ groupId, userId, name }) {
+function GuestInviteButton({ groupId, userId, guestName }) {
     // null | 'sending' | 'sent' | 'pending' | 'member' | 'already' | 'error'
     const [status, setStatus] = useState(null);
     const settled = status === 'sent' || status === 'pending' || status === 'member' || status === 'already';
@@ -212,7 +212,8 @@ function GuestInviteButton({ groupId, userId, name }) {
        AMENDED Phase 88.9-65 (X63): the rest label is Invite (was the longer three-word label) and the name adds the person from an sr-only span inside the button; Retry's name adds inviting <name> to the group (owner 2026-11-14, Q7 B). The kept-label rule is unchanged. */
     const pressedLabelRef = useRef('Invite');
     // 88.9-65 (X63): who the name says. The same fallback at every arm.
-    const who = name || 'this guest';
+    // DECISION Phase 88.9-65 (X63, P-09): the prop is guestName, chosen OVER name. Sentry builds an element selector from the id, name, type, class and test-id attributes, and the P-09 invariant (the Sentry scrub suite) reads every such attribute expression in source, per line, without telling a component prop from a DOM attribute; a prop spelled name that carries a username reds it. This prop never reaches the DOM. Renaming it back is a decision, not a cleanup.
+    const who = guestName || 'this guest';
     // 88.6.1-47 (D-06): the settled chip's node, and the shared focus-recovery instance that
     // lands focus on it. Above the settled early return below (hooks order).
     const chipRef = useRef(null);
@@ -2492,7 +2493,7 @@ export default function GameDetailPage() {
                                                         )}
                                                     </span>
                                                     {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.user_id && (
-                                                        <GuestInviteButton groupId={group_id} userId={participation.user_id} name={participation.username} />
+                                                        <GuestInviteButton groupId={group_id} userId={participation.user_id} guestName={participation.username} />
                                                     )}
                                                 </div>
                                             ))}
@@ -3373,7 +3374,7 @@ export default function GameDetailPage() {
                                             it — swapping them puts "Remove" under the thumb
                                             that was reaching for "Invite". */}
                                         {canInvite && (
-                                            <GuestInviteButton groupId={effectiveGroupId} userId={p.user_id} name={p.username} />
+                                            <GuestInviteButton groupId={effectiveGroupId} userId={p.user_id} guestName={p.username} />
                                         )}
                                         {canRemove && (
                                             /* 88-33 Task 5 (fork 7): converged onto the gate —
