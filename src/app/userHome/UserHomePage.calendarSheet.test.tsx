@@ -981,7 +981,10 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
     expect(wingspanRow.className.split(/\s+/)).toContain('bg-[var(--group-ground-light)]');
   });
 
-  it("D5a (88.9): a guest night's sheet row carries the dashed amber edge and the Guest pill", async () => {
+  // AMENDED Phase 88.9-63 (X27, owner at N41, 2026-11-12: yes, wrap the whole row): the left-only
+  // amber-400 edge (1.67 on white) became the month tile's full dashed outline, so this pin now
+  // reads all four of its tokens and forbids the left-only width.
+  it("D5a / X27 (88.9): a guest night's sheet row carries the dashed amber outline on all four sides and the Guest pill", async () => {
     // The viewer (SELF_UUID) joined Cascadia as a guest; Catan is an ordinary membership row.
     const guestNight = {
       ...FUTURE_LATER,
@@ -995,8 +998,11 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
 
     const guestRow = sheetRow(dialog, 'Cascadia');
     const classes = guestRow.className.split(/\s+/);
+    expect(classes, 'a 1px border on all four sides').toContain('border');
     expect(classes).toContain('border-dashed');
-    expect(classes).toContain('border-amber-400');
+    expect(classes, 'the light edge is amber-700').toContain('border-amber-700');
+    expect(classes, 'the dark edge is amber-500 at 70%').toContain('dark:border-amber-500/70');
+    expect(classes, 'the outline wraps the row: no left-only width').not.toContain('border-l-2');
     expect(classes, 'the edge is an exclusive arm, never stacked on the hairline').not.toContain('border-line');
     expect(within(guestRow).getByText('Guest')).toBeInTheDocument();
     // NEW-1: no inline borderColor — an inline declaration would beat both border arms.

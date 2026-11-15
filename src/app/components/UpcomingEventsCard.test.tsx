@@ -361,20 +361,36 @@ describe('UpcomingEventsCard — guest rows (Phase 71.1 GAMP-09, 88.9-25 lift)',
     { ...ev('member', '2026-08-24T23:00:00.000Z', 'Member Night Game'), EventParticipations: [{ user_id: VIEWER, is_guest: false }] },
   ];
 
-  it('GAMP-09 (88.9-25 lift): a guest row carries the dashed edge and the Guest pill; a member row and a viewer-less render carry neither', () => {
+  // AMENDED Phase 88.9-63 (X27, owner at N41, 2026-11-12: yes, wrap the whole row): the guest row's
+  // left-only edge and its extra left padding became a 1px dashed outline on all four sides, and a
+  // member row carries a transparent border of the same width so the outline moves no text.
+  it('GAMP-09 / X27 (88.9): a guest row carries the dashed outline and the Guest pill, a member row a transparent edge of the same width, a viewer-less render neither cue', () => {
     renderCard({ events: GUEST_AND_MEMBER, viewerDbUserId: VIEWER });
     const guestRow = screen.getByRole('button', { name: /^Guest Night Game/ });
     const memberRow = screen.getByRole('button', { name: /^Member Night Game/ });
-    expect(guestRow.className, 'the guest row carries the dashed edge').toContain('border-dashed');
+    const guestClasses = guestRow.className.split(/\s+/);
+    const memberClasses = memberRow.className.split(/\s+/);
+    for (const token of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500/70']) {
+      expect(guestClasses, `the guest row carries the outline token ${token}`).toContain(token);
+    }
+    expect(guestClasses, 'the outline wraps the row: no left-only width').not.toContain('border-l-2');
+    expect(guestClasses, 'the outline needs no extra left padding').not.toContain('pl-3');
+    expect(guestClasses, 'the guest arm is exclusive: no transparent edge under the outline').not.toContain('border-transparent');
     expect(within(guestRow).queryByText('Guest'), 'the guest row carries the Guest pill').not.toBeNull();
-    expect(memberRow.className, 'the member row carries no dashed edge').not.toContain('border-dashed');
+
+    expect(memberClasses, 'the member row carries no dashed edge').not.toContain('border-dashed');
+    expect(memberClasses, 'the member row carries a 1px border, so a guest row is the same size').toContain('border');
+    expect(memberClasses, 'the member row border is transparent').toContain('border-transparent');
+    expect(memberClasses, 'no extra left padding on a member row either').not.toContain('pl-3');
     expect(within(memberRow).queryByText('Guest'), 'the member row carries no Guest pill').toBeNull();
 
     cleanup();
     renderCard({ events: GUEST_AND_MEMBER, viewerDbUserId: null });
     for (const name of [/^Guest Night Game/, /^Member Night Game/]) {
       const row = screen.getByRole('button', { name });
-      expect(row.className, 'no viewer id: no dashed edge').not.toContain('border-dashed');
+      const classes = row.className.split(/\s+/);
+      expect(classes, 'no viewer id: no dashed edge').not.toContain('border-dashed');
+      expect(classes, 'no viewer id: the transparent edge of every non-guest row').toContain('border-transparent');
       expect(within(row).queryByText('Guest'), 'no viewer id: no Guest pill').toBeNull();
     }
   });

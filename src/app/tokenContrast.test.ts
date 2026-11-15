@@ -52,6 +52,7 @@ import { withoutComments } from '../test-utils/sourceScan';
 import { CALENDAR_WASH_RAMP } from '../lib/availabilityColor';
 import { GROUP_COLOUR_PRESETS } from '../lib/groupColourPresets';
 import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../lib/wcag';
+import { GUEST_ROW_EDGE } from './components/GuestPill';
 
 const GLOBALS = path.join(__dirname, 'globals.css');
 
@@ -2426,6 +2427,84 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       }
     }
     expect(measured, 'anti-vacuity: 6 families x 2 themes x (word + fill)').toBe(24);
+  });
+
+  it('X27 (88.9): the guest edge is one dashed amber outline that clears 3:1 against the card, its hover and every preset tint in both themes', () => {
+    // 88.9-63 (X27, owner at N41, 2026-11-12: "yes, wrap the whole row"). One export draws the
+    // guest outline on every list row, the upcoming card and the month tile, so it is measured
+    // here on every ground one of those rows can have: the card, the upcoming card's hover and
+    // the eight preset tints, in both themes (20 grounds), plus the two extremes of a picture
+    // row's card side (2). The colours are READ FROM THE EXPORTED CLASS STRING and resolved
+    // through the stock palette in globals.css, so a change to the export moves the numbers
+    // measured here; nothing in this test restates the colour.
+    //
+    // Non-text floor 3:1 (WCAG 1.4.11): the outline is how a guest night differs from a member
+    // night at a glance. In light the edge is opaque. In dark it carries an alpha, so each row is
+    // the edge COMPOSITED over that row's own fill (the row's background paints under its border
+    // box), measured against that fill (the inner side) and against the dark card (the outer
+    // side).
+    //
+    // PICTURE ROWS: since 88.9-60 (X23a) a list row with a picture has no wash, so the inner side
+    // of the outline meets the raw photo. An arbitrary photo has no ratio to measure, so the
+    // inner side is NOT asserted here and no number is quoted for it; it is an owner look in the
+    // after-build pictures, and the Guest pill's word carries the meaning. What IS floored is
+    // the outer side against the card: the dark composite over the darkest and the lightest
+    // pixel a photo can hold (the light edge is opaque, so its card ratio is the card row above).
+    const stockTheme = braceBlock(uniqueMatch(/^@theme[ \t]*\{/gm, '@theme {'), 'stock theme');
+    const tokens = GUEST_ROW_EDGE.split(/\s+/);
+    const readEdge = (pattern: RegExp, what: string): { hex: string; alpha: number; step: string } => {
+      const hits = tokens.map((t) => pattern.exec(t)).filter((m): m is RegExpExecArray => m !== null);
+      if (hits.length !== 1) throw new TokenContrastParseError(`GUEST_ROW_EDGE holds ${hits.length} ${what} edge colours, expected 1: "${GUEST_ROW_EDGE}"`);
+      const step = `amber-${hits[0][1]}`;
+      const literal = declIn(stockTheme, `--color-${step}`);
+      const rgb = literal === null ? null : parseHex(literal);
+      if (!rgb) throw new TokenContrastParseError(`--color-${step} is not a hex in the stock @theme block (${String(literal)})`);
+      return { hex: toHex6(rgb), alpha: hits[0][2] === undefined ? 1 : Number(hits[0][2]) / 100, step };
+    };
+    const edge = {
+      light: readEdge(/^border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'light'),
+      dark: readEdge(/^dark:border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'dark'),
+    } as const;
+
+    const failures: string[] = [];
+    let measured = 0;
+    const judge = (theme: Theme, ground: string, fill: string, against: string, side: string): void => {
+      const painted = blend(edge[theme].hex, edge[theme].alpha, fill);
+      if (painted === null) throw new TokenContrastParseError(`could not composite the ${theme} guest edge over ${fill}`);
+      const value = ratioHex(painted, against, `X27 guest edge on ${ground}`);
+      measured += 1;
+      if (value < 3.0) {
+        failures.push(
+          `[${theme}] the guest edge (${edge[theme].step}${edge[theme].alpha < 1 ? ` at ${edge[theme].alpha}` : ''}, painted ${painted}) on ${ground} measures ${value.toFixed(4)}:1 against ${side} (${against}), floor 3.00:1`,
+        );
+      }
+    };
+
+    for (const theme of ['light', 'dark'] as const) {
+      const card = resolve(theme, '--color-bg-card');
+      const grounds: { name: string; fill: string }[] = [
+        { name: 'the card', fill: card },
+        { name: 'the upcoming-card hover', fill: resolve(theme, '--color-bg-hover') },
+        ...GROUP_COLOUR_PRESETS.map((preset) => ({ name: `the ${preset.name} tint`, fill: preset[theme] })),
+      ];
+      for (const ground of grounds) {
+        judge(theme, ground.name, ground.fill, ground.fill, 'its own fill');
+        // The outer side: every one of these rows sits on the card.
+        if (ground.fill !== card) judge(theme, ground.name, ground.fill, card, 'the card outside the row');
+      }
+    }
+    const darkCard = resolve('dark', '--color-bg-card');
+    judge('dark', 'a picture row, darkest pixel', '#000000', darkCard, 'the card outside the row');
+    judge('dark', 'a picture row, lightest pixel', '#ffffff', darkCard, 'the card outside the row');
+
+    expect(failures, `X27 (88.9) — the guest edge must clear 3:1 on every ground:\n${failures.join('\n')}`).toEqual([]);
+    // 2 themes x (10 own-fill rows + 9 card-side rows) + 2 picture-row card sides.
+    expect(measured, 'anti-vacuity: 22 grounds, 40 measurements').toBe(40);
+
+    // D-03: the export IS the month tile's recipe (owner pick D5a / O18a), on all four sides.
+    expect(GUEST_ROW_EDGE, 'X27 (88.9) — the one guest edge is the tile recipe: a 1px dashed outline, amber-700 in light and amber-500 at 70% in dark').toBe(
+      'border border-dashed border-amber-700 dark:border-amber-500/70',
+    );
   });
 });
 
