@@ -60,17 +60,38 @@ async function transitionMs(locator: Locator): Promise<number> {
   });
 }
 
+// A viewport point on the card's own left padding where the card itself is the topmost element.
+// The card is centred first, then the 24px padding strip is walked downwards 6px in from the left
+// edge until the hit test returns the card: that skips the part a sticky header covers and any
+// child that reaches into the strip. AMENDED 88.9-58 after CI run 43693071548: the first shape
+// hovered a fixed point near the card's top, which sits under the sticky header on a card taller
+// than the viewport (the home calendar), so the hover never landed and the X13 read timed out
+// instead of measuring.
+async function paddingPoint(card: Locator): Promise<{ x: number; y: number } | null> {
+  return card.evaluate((el) => {
+    el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const box = el.getBoundingClientRect();
+    const x = box.left + 6;
+    const from = Math.max(box.top + 6, 0);
+    const to = Math.min(box.bottom - 6, window.innerHeight - 1);
+    for (let y = from; y <= to; y += 6) {
+      if (document.elementFromPoint(x, y) === el) return { x, y };
+    }
+    return null;
+  });
+}
+
 // Reads the card at rest (mouse parked in the page corner), then hovered on its own padding.
 async function restAndHover(page: Page, card: Locator, what: string): Promise<{ rest: string; hovered: string }> {
-  await card.scrollIntoViewIfNeeded();
   await page.mouse.move(0, 0);
+  const point = await paddingPoint(card);
+  expect(point, `${what}: no point on the card's left padding is uncovered, so it cannot be hovered`).not.toBeNull();
   const settle = (await transitionMs(card)) + 100;
   await page.waitForTimeout(settle);
   expect(await card.evaluate((el) => el.matches(':hover')), `${what}: the card reads as hovered with the mouse parked away`).toBe(false);
   const rest = await backgroundOf(card);
-  // 16px in and 6px down: inside the card's 24px desktop padding and clear of its rounded corner,
-  // so the pointer is over the card itself and over no control.
-  await card.hover({ position: { x: 16, y: 6 } });
+  // Over the card itself and over no control (the hit test above returned the card at this point).
+  await page.mouse.move(point!.x, point!.y);
   await page.waitForTimeout(settle);
   expect(await card.evaluate((el) => el.matches(':hover')), `${what}: the card never took the hover, so the read below would prove nothing`).toBe(true);
   const hovered = await backgroundOf(card);

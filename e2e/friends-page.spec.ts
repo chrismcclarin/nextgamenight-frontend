@@ -475,8 +475,19 @@ test.describe('friends page — what the Requests tab and the batch say (88.6.1-
       const rest = await background(row);
       expect(rest, `${what}: the row paints ${rest}, the Add Friend card paints ${card}`).toBe(card);
       if (project === 'journeys') {
-        // 8px in: inside the row's 16px padding, over no control.
-        await row.hover({ position: { x: 8, y: 8 } });
+        // A point on the row's own 16px left padding where the row itself is the topmost element
+        // (never under the sticky header, never over a control).
+        const point = await row.evaluate((el) => {
+          el.scrollIntoView({ block: 'center', behavior: 'instant' });
+          const box = el.getBoundingClientRect();
+          const x = box.left + 6;
+          for (let y = Math.max(box.top + 6, 0); y <= Math.min(box.bottom - 6, window.innerHeight - 1); y += 4) {
+            if (document.elementFromPoint(x, y) === el) return { x, y };
+          }
+          return null;
+        });
+        expect(point, `${what}: no point on the row's left padding is uncovered, so it cannot be hovered`).not.toBeNull();
+        await page.mouse.move(point!.x, point!.y);
         expect(await row.evaluate((el) => el.matches(':hover')), `${what}: the row never took the hover`).toBe(true);
         // Longer than the house 150ms colour transition, so a wash would have landed.
         await page.waitForTimeout(400);
