@@ -1379,7 +1379,10 @@ describe('RsvpSection — the RSVP name and the gameDetail mounts take their hos
 
   // Read with fs and a local comment strip, not the sourceScan import (that would register this
   // unit file as a drift gate). Every gameDetail mount is one self-closing line.
-  it("R012/R013 mount pin (88.9-50): gameDetail's participation chip passes its muted ground", () => {
+  // AMENDED Phase 88.9-65 (X47): the past-session chip moved from the muted ground to the card
+  // ground, so its name passes NO host ground (the default is the card). The pin now holds that
+  // all five mounts take the default; it fails on the old source, where the chip passed muted.
+  it("R012/R013 mount pin (88.9-50, amended 88.9-65): gameDetail's participation chip sits on the card and passes no host ground", () => {
     const stripComments = (src: string) =>
       src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/[^\n]*/g, (m, lead) =>
         m.startsWith('/*') ? m.replace(/[^\n]/g, ' ') : (lead ?? ''),
@@ -1391,9 +1394,13 @@ describe('RsvpSection — the RSVP name and the gameDetail mounts take their hos
     expect(mounts, 'gameDetail mounts five ClickableMemberName names').toHaveLength(5);
     const chip = mounts.filter((m) => m.includes('participation.User?.username || participation.username'));
     expect(chip, 'exactly one mount is the participation chip').toHaveLength(1);
-    expect(chip[0], 'the chip name sits on the bg-surface-muted chip').toContain('hostGround="muted"');
+    expect(chip[0], 'the chip name sits on a card-ground chip and takes the default').not.toMatch(/\bhostGround=/);
     const others = mounts.filter((m) => m !== chip[0]);
     expect(others).toHaveLength(4);
     for (const m of others) expect(m, 'card-ground mounts keep the default').not.toMatch(/\bhostGround=/);
+    // The chip's own class string names the card ground (the host the default halo matches).
+    expect(source, 'the participation chip paints the card ground').toContain(
+      'flex flex-wrap items-center gap-x-2 gap-y-1 max-w-full px-3 py-1 rounded-sm border border-line bg-surface-card text-content-primary',
+    );
   });
 });
