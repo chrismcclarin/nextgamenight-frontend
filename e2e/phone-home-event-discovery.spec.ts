@@ -750,12 +750,20 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
     await guardResolved(upcomingHeader, 'the "Upcoming events" folding header button (X25a)');
     await expect(upcomingHeader).toHaveAttribute('aria-expanded', 'true');
     await assertMin44(upcomingHeader, 'the Upcoming events header button');
+    // AMENDED Phase 88.9-61 (after CI run 43727692149 at FE bf7220d): the inner locator of a
+    // has-filter is resolved INSIDE each candidate heading, so it must not start at the dialog
+    // (a dialog is never inside an h3, and the first form of this read matched nothing on a
+    // correct build). The two buttons are named again here, rooted at the page.
     await expect(
-      calendarSheet(page).getByRole('heading', { level: 3 }).filter({ has: disclosure }),
+      calendarSheet(page)
+        .getByRole('heading', { level: 3 })
+        .filter({ has: page.getByRole('button', { name: /^past events \(\d+\)$/i }) }),
       'the Past events disclosure does not sit inside a level-3 heading (X25a: two equal headers)',
     ).toHaveCount(1);
     await expect(
-      calendarSheet(page).getByRole('heading', { level: 3 }).filter({ has: upcomingHeader }),
+      calendarSheet(page)
+        .getByRole('heading', { level: 3 })
+        .filter({ has: page.getByRole('button', { name: 'Upcoming events', exact: true }) }),
       'the Upcoming events header button does not sit inside a level-3 heading',
     ).toHaveCount(1);
   });
