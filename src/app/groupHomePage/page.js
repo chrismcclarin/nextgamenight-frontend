@@ -1856,14 +1856,18 @@ function GroupHomePage(){
                 active tab's radius moves to its two top corners (rounded-t-btn) so its flat bottom
                 fuses with the strip line, chosen OVER the shipped four-corner 8px pill; the Button /
                 Tabs migration and the ARIA tabs pattern stay REJECTED; the five-tab row is Phase
-                88.9.1's. */}
+                88.9.1's. AMENDED Phase 88.9-64 (X37, owner at N18, 2026-11-13: a brief flash of dark
+                corners on the tabs): the top radius sits on BOTH arms, so the tab being left keeps its
+                corners while its fill fades, chosen OVER dropping the fade (the switch would snap). An
+                inactive tab paints no fill, so its radius shows only mid-fade and on its inset focus
+                ring (now rounded like the active one's). Moving it back is a decision, not a cleanup. */}
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
                     aria-current={activeTab === 'home' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 rounded-t-btn ${
                         activeTab === 'home'
-                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-t-btn'
+                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary'
                             : 'text-content-secondary hover:text-content-primary'
                     }`}
                 >
@@ -1872,9 +1876,9 @@ function GroupHomePage(){
                 <button
                     onClick={() => setActiveTab('library')}
                     aria-current={activeTab === 'library' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 rounded-t-btn ${
                         activeTab === 'library'
-                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-t-btn'
+                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary'
                             : 'text-content-secondary hover:text-content-primary'
                     }`}
                 >
