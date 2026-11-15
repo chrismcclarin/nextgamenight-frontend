@@ -1210,6 +1210,14 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       expect(e.text, 'a stroke-carrying header element lost the dark paint-order utility').toContain(
         'dark:[paint-order:var(--t-paint,normal)]',
       );
+      // AMENDED Phase 88.9-60 (X7, owner T11): the photo set also spaces its letters, so every
+      // stroke carrier reads the tracking pair too; a no-image header reads it as normal.
+      expect(e.text, 'a stroke-carrying header element lost the light letter-spacing utility').toContain(
+        '[letter-spacing:var(--t-track-l,normal)]',
+      );
+      expect(e.text, 'a stroke-carrying header element lost the dark letter-spacing utility').toContain(
+        'dark:[letter-spacing:var(--t-track,normal)]',
+      );
     }
   });
 
@@ -1240,7 +1248,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     );
 
     // AMENDED Phase 88.9-27 (owner ruling O21b / pick O02d1): case (1) now paints NO dim; the
-    // photo shows at full strength and the title + stats carry their own 1.5px outline. So the
+    // photo shows at full strength and the title + stats carry their own outline (2px since X7). So the
     // inline 0.4 black is gone and the overlay carries no inline backgroundColor in ANY case. An
     // inline 'transparent' on the same property would still outrank the dark class and silently
     // delete the dark dim in both themes, so that negative stays.

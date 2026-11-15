@@ -16,6 +16,7 @@ import {
   groupInkVars,
   storedGroupColour,
   themedTextStyleVars,
+  PHOTO_TEXT_STYLE,
   SUBTEXT_MUTED_ON_DARK,
   SUBTEXT_MUTED_ON_LIGHT,
 } from './colorUtils';
@@ -77,34 +78,47 @@ describe('getTextStyle — no group colour (D-28)', () => {
     // round 2): the image arm is white + a 1.5px solid black outline painted BEFORE the fill, no shadow,
     // in place of white + heavy blurred shadow + 0.5px stroke. A photo and a failed image (#207) both
     // take it; the W50 F10 no-image arms are pinned byte-unchanged below.
-    const O02D1_TITLE = {
+    //
+    // AMENDED Phase 88.9-60 (X7, owner T11, 2026-11-11): over a photo every word, title AND
+    // subtitle, wears one set: white, a 2px black outline painted first, 700, 0.03em, no shadow.
+    // (Since X6 of the same plan a picture that fails to load reaches these functions as no image.)
+    const T11_SET = {
       color: '#ffffff',
       textShadow: 'none',
-      WebkitTextStroke: '1.5px #000000',
+      WebkitTextStroke: '2px #000000',
       paintOrder: 'stroke fill',
-      fontWeight: '600',
+      fontWeight: '700',
+      letterSpacing: '0.03em',
     };
-    const O02D1_SUBTITLE = {
-      color: '#ffffff',
-      textShadow: 'none',
-      WebkitTextStroke: '1.5px #000000',
-      paintOrder: 'stroke fill',
-    };
-    expect(getTextStyle(true, null)).toEqual(O02D1_TITLE);
-    expect(getTextStyle(true, '#00274d')).toEqual(O02D1_TITLE);
-    expect(getSubtitleStyle(true, '#c4e1ff')).toEqual(O02D1_SUBTITLE);
+    expect(getTextStyle(true, null)).toEqual(T11_SET);
+    expect(getTextStyle(true, '#00274d')).toEqual(T11_SET);
+    expect(getSubtitleStyle(true, '#c4e1ff')).toEqual(T11_SET);
+    expect(getSubtitleStyle(true, null)).toEqual(T11_SET);
+    // One exported set, and each arm hands out its own copy of it.
+    expect(PHOTO_TEXT_STYLE).toEqual(T11_SET);
+    expect(Object.isFrozen(PHOTO_TEXT_STYLE)).toBe(true);
+    expect(getTextStyle(true, null)).not.toBe(PHOTO_TEXT_STYLE);
+    expect(getSubtitleStyle(true, null)).not.toBe(getTextStyle(true, null));
 
-    // The paint-order pair reaches the cascade only on an O02d1 arm.
+    // The paint-order pair and the tracking pair reach the cascade only on a photo arm.
     const img = getTextStyle(true, '#00274d');
     const imgVars = themedTextStyleVars(img, img);
     expect(imgVars['--t-paint']).toBe('stroke fill');
     expect(imgVars['--t-paint-l']).toBe('stroke fill');
+    expect(imgVars['--t-track']).toBe('0.03em');
+    expect(imgVars['--t-track-l']).toBe('0.03em');
+    const subVars = themedTextStyleVars(getSubtitleStyle(true, '#00274d'), getSubtitleStyle(true, '#c4e1ff'));
+    expect(subVars['--t-track']).toBe('0.03em');
+    expect(subVars['--t-track-l']).toBe('0.03em');
+    // fontWeight still stays out of the channel (it is spread onto containers).
+    expect(Object.keys(imgVars).some((k) => k.includes('weight'))).toBe(false);
 
     // The W50 keep half: a no-image dark ground still gets the shipped 0.5px stroke and no
     // paint-order, and two no-image styles hand the cascade exactly the six shipped keys.
     const plainDark = getTextStyle(false, '#00274d');
     expect(plainDark.WebkitTextStroke).toBe('0.5px rgba(0, 0, 0, 0.9)');
     expect(plainDark).not.toHaveProperty('paintOrder');
+    expect(plainDark).not.toHaveProperty('letterSpacing');
     expect(Object.keys(themedTextStyleVars(plainDark, getTextStyle(false, '#c4e1ff'))).sort()).toEqual([
       '--t-color',
       '--t-color-l',

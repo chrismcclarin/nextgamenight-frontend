@@ -449,6 +449,16 @@ describe("R-P4 (88.9-27): a photo card's secondary row takes the title's outline
       expect(card.outerHTML, `${name}: the card root does not carry the O02d1 paint-order value`).toContain(
         '--t-paint-l: stroke fill',
       );
+      // AMENDED Phase 88.9-60 (X7, owner T11): the photo set spaces its letters, so the row and the
+      // date read the tracking pair and the card root hands them its value.
+      for (const [part, el] of [['row', row], ['date', date]] as const) {
+        for (const track of ['[letter-spacing:var(--t-track-l,normal)]', 'dark:[letter-spacing:var(--t-track,normal)]']) {
+          expect(el.className, `${name}: the ${part} lost the ${track} utility`).toContain(track);
+        }
+      }
+      expect(card.outerHTML, `${name}: the card root does not carry the photo set's letter-spacing`).toContain(
+        '--t-track-l: 0.03em',
+      );
     }
 
     const plain = partsOf('Plain Crew');
