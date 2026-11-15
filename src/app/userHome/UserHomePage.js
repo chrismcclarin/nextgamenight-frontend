@@ -786,8 +786,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     </Button>
                 </div>
 
-                {/* DECISION Phase 88.9-42 F4b (owner pick, 2026-11-07 1:08 AM Pacific): 460px (+15%), chosen OVER the shipped 400 and the rendered 440 / 500; phone untouched. */}
-                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_460px] md:relative">
+                {/* DECISION Phase 88.9-42 F4b (owner pick, 2026-11-07 1:08 AM Pacific): 460px (+15%), chosen OVER the shipped 400 and the rendered 440 / 500; phone untouched.
+                    AMENDED Phase 88.9-59 (X12 W2 + X5b, owner 2026-11-11: W2 is good; A, lets make the groups wider): the
+                    column is clamp(320px, 42vw, 460px), 460 as picked from about 1096 up, narrower windows give the
+                    calendar room; the list fills it. Chosen OVER the fixed 460 basis. */}
+                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_clamp(320px,42vw,460px)] md:relative">
                     <div className="md:absolute md:inset-0">
                     <GroupList
                         onGroupSelect={handleGroupSelect}

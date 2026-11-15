@@ -366,7 +366,7 @@ const GroupList = ({
   // lives in selfIdentityErrorSource.ts, so this condition reads the error state alone.
   if (selfIdentityErrorState.showError) {
     return (
-      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
+      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
           <Heading level={2} size="heading" className="text-content-primary">Your Groups</Heading>
           {onCreateGroup && (
@@ -395,7 +395,7 @@ const GroupList = ({
 
   if (!hasLoaded) {
     return (
-      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
+      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="text-center py-8 px-4 text-content-muted">Loading groups...</div>
       </div>
     );
@@ -415,7 +415,12 @@ const GroupList = ({
     // flatten is applied to the loading/error-state renders of this wrapper so the
     // surface does not jump 16px when it transitions states. That is a decision,
     // not a cleanup.
-    <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
+    //
+    // DECISION Phase 88.9-59 (X5b, owner 2026-11-11: A, lets make the groups wider): this root and
+    // the two early-return roots fill the home column, chosen OVER the 400px desktop cap (60px
+    // dead). Column width: src/app/userHome/UserHomePage.js ("DECISION Phase 88.9-42 F4b"). A cap
+    // back here is a decision, not a cleanup.
+    <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
         <Heading ref={groupsHeadingRef} level={2} size="heading" className="text-content-primary">Your Groups</Heading>
         {onCreateGroup && (
