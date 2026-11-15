@@ -280,4 +280,57 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
       cleanup();
     }
   });
+
+  it('X27 (88.9): a guest night carries the dashed amber outline and the Guest pill on the full and compact arms as on the sheet; a member row keeps its hairline', () => {
+    // 88.9-63 (X27 + orchestrator decision 3): the guest mark was sheet-only, so the same night
+    // was outlined on the phone and unmarked on its desktop twin. Every arm marks it now. The
+    // viewer joined Catan as a guest and is an ordinary participant of Gloomhaven.
+    const VIEWER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const guestNight = { ...SOON, EventParticipations: [{ user_id: VIEWER, is_guest: true }] };
+    const memberNight = { ...NEXT_WEEK, EventParticipations: [{ user_id: VIEWER, is_guest: false }] };
+    const rowOf = (title: string): HTMLElement => {
+      const heading = screen.getAllByRole('heading').find((el) => (el.textContent ?? '').trim() === title && el.closest('[role="button"]') !== null);
+      expect(heading, `no row titled ${title}`).toBeDefined();
+      return (heading as HTMLElement).closest('[role="button"]') as HTMLElement;
+    };
+
+    for (const arm of ARMS) {
+      render(
+        <CalendarListView
+          events={[guestNight, memberNight]}
+          onEventClick={vi.fn()}
+          timezone={TZ}
+          loading={false}
+          variant={arm}
+          viewerDbUserId={VIEWER}
+        />,
+      );
+
+      const guestRow = rowOf('Catan');
+      const guestClasses = guestRow.className.split(/\s+/);
+      for (const token of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500/70']) {
+        expect(guestClasses, `${arm}: the guest row carries the outline token ${token}`).toContain(token);
+      }
+      expect(guestClasses, `${arm}: the outline is an exclusive arm, never stacked on the hairline`).not.toContain('border-line');
+      expect(within(guestRow).queryByText('Guest'), `${arm}: the guest row carries the Guest pill`).not.toBeNull();
+      // No inline border colour: an inline declaration would beat both border arms.
+      expect(guestRow.style.borderColor, `${arm}: no inline border colour on the guest row`).toBe('');
+
+      const memberRow = rowOf('Gloomhaven');
+      const memberClasses = memberRow.className.split(/\s+/);
+      expect(memberClasses, `${arm}: the member row keeps its hairline`).toContain('border-line');
+      expect(memberClasses, `${arm}: the member row is not dashed`).not.toContain('border-dashed');
+      expect(within(memberRow).queryByText('Guest'), `${arm}: the member row carries no Guest pill`).toBeNull();
+      cleanup();
+    }
+
+    // With no viewer id nothing is a guest row, on any arm.
+    for (const arm of ARMS) {
+      renderArm(arm, [guestNight, memberNight]);
+      const row = rowOf('Catan');
+      expect(row.className.split(/\s+/), `${arm}: no viewer id, no outline`).not.toContain('border-dashed');
+      expect(within(row).queryByText('Guest'), `${arm}: no viewer id, no Guest pill`).toBeNull();
+      cleanup();
+    }
+  });
 });

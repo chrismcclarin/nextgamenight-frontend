@@ -125,7 +125,8 @@ export const gates = [
   { file: 'src/components/ui/Button.e2eReplica.test.ts', min: 5, why: 'Phase 88.6-58 H1 — the E10 planted-replica lockstep, its only durable guard' },
   // AMENDED Phase 88.9-61 (X25a + X29 A): emptyStates 1 -> 2 (the past-only empty case on every arm); the sections suite is new at 6, then 7 with the sticky / scroll-padding / inset-ring class pin.
   { file: 'src/app/components/CalendarListView.emptyStates.test.tsx', min: 2, why: 'Phase 88.6-60 — the desktop No events and loading arms of CalendarListView' },
-  { file: 'src/app/components/CalendarListView.sections.test.tsx', min: 7, why: 'Phase 88.9-61 X25a / X29 — the two-section Calendar list on every arm' },
+  // AMENDED Phase 88.9-63 (X27): sections 7 -> 8 (the guest outline on every list arm).
+  { file: 'src/app/components/CalendarListView.sections.test.tsx', min: 8, why: 'Phase 88.9-61 X25a / X29 — the two-section Calendar list on every arm; 88.9-63 X27 — the guest outline on every arm' },
 
   // AMENDMENT — Phase 88.6 gap plan 61 (review round 2 #18 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING).
   // Two rows added — the guards on the magic-link Sentry egress fixes:

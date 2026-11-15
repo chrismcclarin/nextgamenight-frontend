@@ -682,4 +682,21 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     expect(last().events, 'the same events array across the re-render').toBe(before);
     expect((last().events as Array<{ id: string }>).map((e) => e.id)).toEqual(['e-old', 'e-ended', 'e-live', 'e-ahead']);
   });
+
+  it("X27 (88.9): the List view hands the list the viewer's id, as the month view already gets it", async () => {
+    // 88.9-63 (X27 + orchestrator decision 3): a guest night is outlined on every list arm, and
+    // the list can only tell a guest night from the viewer's own Users.id. The month view has had
+    // it since 88.9-28; the List view on the same calendar did not, so the desktop lists marked
+    // nothing. The id is compared in memory by the list and never rendered.
+    h.selfUuid = SELF;
+    const user = userEvent.setup();
+    const ahead = { id: 'e-ahead', group_id: 'g1', game_id: 'game-3', status: 'scheduled', start_date: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() };
+    render(<Host events={[ahead]} />);
+    expect(await screen.findByTestId('month-view')).toBeInTheDocument();
+    await user.click(within(screen.getByRole('group', { name: 'Calendar view' })).getByRole('button', { name: 'List' }));
+    expect(screen.queryByTestId('month-view')).toBeNull();
+
+    expect(list.props.length, 'the List view rendered').toBeGreaterThan(0);
+    expect(list.props[list.props.length - 1].viewerDbUserId, "the viewer's own id reaches the list").toBe(SELF);
+  });
 });
