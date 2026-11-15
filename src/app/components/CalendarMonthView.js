@@ -8,6 +8,7 @@ import {
   resolveGroupGround,
   storedGroupColour,
   themedTextStyleVars,
+  PHOTO_TEXT_STYLE,
   SUBTEXT_MUTED_ON_DARK,
   SUBTEXT_MUTED_ON_LIGHT,
 } from '../../lib/colorUtils';
@@ -111,6 +112,11 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * read as an ink stain; the dark arm is byte-identical. The arm is a third ARGUMENT
  * ('dark' | 'light') from the two call sites, so this helper stays module-level and
  * argument-driven and the image flag still comes only from safeBgImageStyle.
+ * AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): an image tile wears the photo set
+ * in BOTH arms with no wash, chosen OVER F7a's dark ink on a 70% wash (it hid the photo, muddy in
+ * dark) and OVER X23b's 1px outline; fill vs outline 21:1. The compact fork stands. The set is a
+ * SPREAD of the one exported constant (colorUtils), never restated here, and since both arms are
+ * the same the third argument F7a added is gone again.
  *
  * The flag is passed as `false` for the COMPACT variant at the call site
  * (`tileHasBgImage`), because that tile deliberately paints no background image —
@@ -131,15 +137,10 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * `const X = safeBgImageStyle(…)` derivation scan. The cheap boolean already
  * exists at the call site.
  */
-const tileTextTreatment = (tileGround, hasBgImage, arm) => {
+const tileTextTreatment = (tileGround, hasBgImage) => {
   if (hasBgImage) {
-    // F7a (88.9-28): the LIGHT arm of an image tile carries no shadow and no stroke
-    // (themedTextStyleVars maps the missing keys to none); the DARK arm is unchanged.
-    if (arm === 'light') return {};
-    return {
-      textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
-      WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
-    };
+    // X23a (88.9-60): a picture tile wears the one photo text set, the same in both themes.
+    return { ...PHOTO_TEXT_STYLE };
   }
   // No group colour: the tile is on the themed month
   // cell, and a text shadow tuned for a coloured ground
@@ -781,22 +782,35 @@ export default function CalendarMonthView({
                          * why the old shape shipped; losing it loses the audit trail
                          * that shows this reversal was made knowingly.
                          */
+                        /*
+                         * DECISION Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): on a
+                         * PICTURE tile the ground-derived colour below is withheld, past or not,
+                         * so the photo set's white stands, chosen OVER letting the past-date or
+                         * tile pole override it (a muted or dark ink under a 2px black outline
+                         * fails the fill-vs-outline rule and reads as a different treatment from
+                         * the card and header). The past cue stays on the cell and its day number.
+                         * Every other tile computes its colour exactly as before.
+                         */
                         const tileTextVars = themedTextStyleVars(
                           {
-                            ...tileTextTreatment(ground, tileHasBgImage, 'dark'),
-                            color: isPastDate
-                              ? (tinted
-                                  ? (isDarkBackground(ground) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
-                                  : 'var(--color-content-muted)')
-                              : getEventTileTextColor(ground),
+                            ...tileTextTreatment(ground, tileHasBgImage),
+                            ...(!tileHasBgImage && {
+                              color: isPastDate
+                                ? (tinted
+                                    ? (isDarkBackground(ground) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
+                                    : 'var(--color-content-muted)')
+                                : getEventTileTextColor(ground),
+                            }),
                           },
                           {
-                            ...tileTextTreatment(tinted, tileHasBgImage, 'light'),
-                            color: isPastDate
-                              ? (tinted
-                                  ? (isDarkBackground(tinted) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
-                                  : 'var(--color-content-muted)')
-                              : getEventTileTextColor(tinted),
+                            ...tileTextTreatment(tinted, tileHasBgImage),
+                            ...(!tileHasBgImage && {
+                              color: isPastDate
+                                ? (tinted
+                                    ? (isDarkBackground(tinted) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
+                                    : 'var(--color-content-muted)')
+                                : getEventTileTextColor(tinted),
+                            }),
                           },
                         );
                         const tileLabel = `${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Group'}`;
@@ -1174,19 +1188,12 @@ export default function CalendarMonthView({
                                 no image, so washing that tile at 70% white dulled a
                                 plain coloured tile for nothing — and paired with the
                                 converged text treatment above it is the white-on-white
-                                case. The two convert together, never separately. */}
-                            {hasValidBgImage && (
-                              <div style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                                borderRadius: '0.25rem',
-                                zIndex: 0,
-                              }} />
-                            )}
+                                case. The two convert together, never separately.
+                                AMENDED Phase 88.9-60 (X23a): the 70% white wash that sat here
+                                is GONE, together with the dark-ink treatment it rescued — the
+                                pair changed as one, as the line above requires. A picture tile
+                                shows its photo unwashed under the photo text set. Re-adding a
+                                wash is a decision, not a cleanup. */}
                             <div className="flex items-center gap-1 relative z-10 flex-1 min-w-0">
                               {groupProfilePic && (
                                 <span className="shrink-0 text-xs leading-none">
@@ -1214,7 +1221,7 @@ export default function CalendarMonthView({
                               <span
                                 /* §4.5 HIERARCHY -> 700: the full tile's game name, the twin of
                                    the compact tile's above. One control, one weight. */
-                                className="truncate font-bold [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                                className="truncate font-bold [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                               >
                                 {event.Game?.name || 'Game Night'}
                               </span>

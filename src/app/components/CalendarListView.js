@@ -11,8 +11,8 @@ import {
   resolveGroupGround,
   storedGroupColour,
   themedTextStyleVars,
+  PHOTO_TEXT_STYLE,
   SUBTEXT_MUTED_ON_LIGHT,
-  SUBTEXT_ON_LIGHT,
   TEXT_ON_DARK,
   TEXT_ON_LIGHT,
 } from '../../lib/colorUtils';
@@ -1218,36 +1218,34 @@ const EventRow = forwardRef(function EventRow(
    * `WebkitTextStroke` keys and layering a `dark:` class over them — an inline
    * declaration beats any class, so the light arm would be inert (the plan-07
    * trap). Those keys are deleted, not overridden. A decision, not a cleanup.
+   *
+   * AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): on a PICTURE row both
+   * treatments return a copy of the one photo text set (colorUtils), in both themes, chosen
+   * OVER the dark-pole fallthrough this had (dark ink that only read because the row washed
+   * its picture white at 0.85). The wash and that fallthrough left together. The set is
+   * SPREAD, never restated at this site.
    */
   const titleTreatment = (rowGround) => {
+    if (hasBgImage) return { ...PHOTO_TEXT_STYLE };
     if (isThemed) return getTextStyle(false, null);
-    // `onDarkGround` already implies !hasBgImage, so the image case falls
-    // through to the dark pole: the row washes the image white at 0.85 below.
-    const onDarkGround = !hasBgImage && isDarkBackground(rowGround);
+    const onDarkGround = isDarkBackground(rowGround);
     return {
       color: onDarkGround ? TEXT_ON_DARK : TEXT_ON_LIGHT,
-      textShadow: hasBgImage
-        ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-        : onDarkGround
-          ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
-          : '1px 1px 2px rgba(255, 255, 255, 0.9)',
+      textShadow: onDarkGround
+        ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
+        : '1px 1px 2px rgba(255, 255, 255, 0.9)',
       WebkitTextStroke: onDarkGround ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
     };
   };
   const subtitleTreatment = (rowGround) => {
+    if (hasBgImage) return { ...PHOTO_TEXT_STYLE };
     if (isThemed) return getSubtitleStyle(false, null);
-    const onDarkGround = !hasBgImage && isDarkBackground(rowGround);
+    const onDarkGround = isDarkBackground(rowGround);
     return {
-      color: hasBgImage
-        ? SUBTEXT_ON_LIGHT
-        : onDarkGround
-          ? 'rgba(255,255,255,0.9)'
-          : SUBTEXT_MUTED_ON_LIGHT,
-      textShadow: hasBgImage
-        ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-        : onDarkGround
-          ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
-          : '1px 1px 2px rgba(255, 255, 255, 0.9)',
+      color: onDarkGround ? 'rgba(255,255,255,0.9)' : SUBTEXT_MUTED_ON_LIGHT,
+      textShadow: onDarkGround
+        ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
+        : '1px 1px 2px rgba(255, 255, 255, 0.9)',
       WebkitTextStroke: onDarkGround ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
     };
   };
@@ -1363,19 +1361,19 @@ const EventRow = forwardRef(function EventRow(
         zIndex: 1,
       }}
     >
-      {/* contrast wash for bg images.
+      {/* contrast wash for bg images (HISTORY: the element is gone, see the amendment).
           AMENDED Phase 88.6-41 (W49): gated on the VALIDATED flag, in the SAME
           commit as the text treatments above. An invalid URL paints no image, so
           this used to wash a plain coloured row white at 0.85 while the treatment
-          (now converged) assumed no image — white text on near-white. */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
-          borderRadius: '0.5rem',
-        }}
-      />
+          (now converged) assumed no image — white text on near-white.
+          AMENDED Phase 88.9-60 (X23a): the wash went with the dark-pole fallthrough —
+          the pair changed as one; a picture row wears the photo set. Words that keep
+          their own ink sit on their own opaque ground instead: the RSVP counts in the
+          chip below, the avatar disc and the status tag on theirs. The Guest pill gets
+          NO className override here: its ground over an unwashed photo is covered by
+          88.9-63 Task 2 (X17a, the opaque pill pair), and a call-site dark class would
+          beat that token through tailwind-merge. Re-adding a wash is a decision, not a
+          cleanup. */}
       <div className="relative z-10 flex items-center gap-3">
         {groupProfilePic && (
           <div className="w-10 h-10 rounded-full bg-surface-card flex items-center justify-center text-xl shrink-0 overflow-hidden border-2 border-line shadow-theme-sm">
@@ -1413,12 +1411,12 @@ const EventRow = forwardRef(function EventRow(
                 isSheet
                   ? 'font-bold text-base min-w-0 line-clamp-2'
                   : 'font-bold text-base truncate'
-              } ${statusInk ?? '[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]'}`}
+              } ${statusInk ?? '[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]'}`}
               style={statusInk ? undefined : titleVars}
             >
               {eventTitle}
             </TitleHeading>
-            <span className={`text-sm ${statusInk ?? '[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]'}`} style={statusInk ? undefined : subtitleVars}>
+            <span className={`text-sm ${hasBgImage ? 'font-bold' : ''} ${statusInk ?? '[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]'}`} style={statusInk ? undefined : subtitleVars}>
               {startTime}
             </span>
             {/* D5a (88.9-39): the shared Guest pill after the time, on a guest night's row only. */}
@@ -1449,7 +1447,7 @@ const EventRow = forwardRef(function EventRow(
                 isSheet
                   ? 'block text-base line-clamp-2 mt-0.5'
                   : 'hidden sm:block text-sm truncate mt-0.5'
-              } ${statusInk ?? '[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]'}`}
+              } ${hasBgImage ? 'font-bold' : ''} ${statusInk ?? '[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]'}`}
               style={statusInk ? undefined : subtitleVars}
             >
               {gameName}
@@ -1457,7 +1455,13 @@ const EventRow = forwardRef(function EventRow(
           )}
 
           {/* md: RSVP count (drops below 768px) */}
-          <div className="hidden md:flex mt-1.5">
+          {/* DECISION Phase 88.9-60 (X23a RSVP chip, owner ruling Q3 A, 2026-11-14): on a picture row the
+              RSVP count line sits in a small card-ground chip that hugs the text, colours kept, chosen OVER
+              re-styling the coloured status inks with the photo stroke set (the inks are pinned on the card
+              ground by tokenContrast test 19 and a coloured fill against the 2px black outline fails
+              fill-vs-outline) and OVER a ground on the full-width md:flex box (a card band across the photo,
+              the wash X23a removed). Changing this is a decision, not a cleanup. */}
+          <div className={hasBgImage ? 'hidden md:inline-flex w-fit mt-1.5 px-1.5 py-0.5 rounded-sm bg-surface-card' : 'hidden md:flex mt-1.5'}>
             <RsvpCount
               rsvpSummary={event.rsvp_summary}
               variant="full"

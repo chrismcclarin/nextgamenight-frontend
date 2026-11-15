@@ -9,8 +9,8 @@ import {
   resolveGroupGround,
   storedGroupColour,
   themedTextStyleVars,
+  PHOTO_TEXT_STYLE,
   SUBTEXT_MUTED_ON_LIGHT,
-  SUBTEXT_ON_LIGHT,
   TEXT_ON_DARK,
   TEXT_ON_LIGHT,
 } from '../../lib/colorUtils';
@@ -305,32 +305,35 @@ export default function EventDayModal({
                  * declaration beats any class — the plan-07 inert-override
                  * trap), which is why those keys are DELETED here, not
                  * overridden. A decision, not a cleanup.
+                 *
+                 * AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): on
+                 * a PICTURE row both treatments return a copy of the one photo text
+                 * set (colorUtils), in both themes, chosen OVER the dark-pole
+                 * fallthrough this had (dark ink that only read because the row
+                 * washed its picture white at 0.85). The wash and that fallthrough
+                 * left together. The set is SPREAD, never restated at this site.
                  */
                 const rowTitleTreatment = (rowGround) => {
+                  if (hasBgImage) return { ...PHOTO_TEXT_STYLE };
                   if (isThemedRow) return getTextStyle(false, null);
-                  const onDarkGround = !hasBgImage && isDarkBackground(rowGround);
+                  const onDarkGround = isDarkBackground(rowGround);
                   return {
                     color: onDarkGround ? TEXT_ON_DARK : TEXT_ON_LIGHT,
-                    textShadow: hasBgImage
-                      ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                      : (onDarkGround
-                        ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
-                        : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
+                    textShadow: onDarkGround
+                      ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
+                      : '1px 1px 2px rgba(255, 255, 255, 0.9)',
                     WebkitTextStroke: onDarkGround ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
                   };
                 };
                 const rowSubtitleTreatment = (rowGround) => {
+                  if (hasBgImage) return { ...PHOTO_TEXT_STYLE };
                   if (isThemedRow) return getSubtitleStyle(false, null);
-                  const onDarkGround = !hasBgImage && isDarkBackground(rowGround);
+                  const onDarkGround = isDarkBackground(rowGround);
                   return {
-                    color: hasBgImage
-                      ? SUBTEXT_ON_LIGHT
-                      : (onDarkGround ? 'rgba(255,255,255,0.9)' : SUBTEXT_MUTED_ON_LIGHT),
-                    textShadow: hasBgImage
-                      ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                      : (onDarkGround
-                        ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
-                        : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
+                    color: onDarkGround ? 'rgba(255,255,255,0.9)' : SUBTEXT_MUTED_ON_LIGHT,
+                    textShadow: onDarkGround
+                      ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
+                      : '1px 1px 2px rgba(255, 255, 255, 0.9)',
                     WebkitTextStroke: onDarkGround ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
                   };
                 };
@@ -492,16 +495,16 @@ export default function EventDayModal({
                     {/* AMENDED Phase 88.6-41 (W49): the contrast wash is gated on
                         the VALIDATED flag, in the SAME commit as the treatments
                         above — byte-identical change to `CalendarListView.js`'s
-                        twin wash, because it is the same designed pair. */}
-                    <div style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
-                      borderRadius: '0.5rem',
-                    }} />
+                        twin wash, because it is the same designed pair.
+                        AMENDED Phase 88.9-60 (X23a): the wash went with the dark-pole
+                        fallthrough — the pair changed as one; a picture row wears the
+                        photo set (the wash element is gone, in both files). The status
+                        tag, the avatar disc and the Share Game QR button keep their own
+                        opaque grounds. The Guest pill gets NO className override here:
+                        its ground over an unwashed photo is covered by 88.9-63 Task 2
+                        (X17a, the opaque pill pair), and a call-site dark class would
+                        beat that token through tailwind-merge. Re-adding a wash is a
+                        decision, not a cleanup. */}
                     {/* F3b (88.9-39, owner pick, votes-b5 v10): gap-2 — 8px between the tag column and the picture. */}
                     <div className="flex justify-between items-start gap-2 relative z-10">
                       <div className="flex-1">
@@ -593,13 +596,13 @@ export default function EventDayModal({
                             <Heading
                               level={3}
                               size="body"
-                              className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                              className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                               style={rowTitleVars}
                             >
                               {event.Game?.name || 'Game Night'}
                             </Heading>
                             <p
-                              className="text-sm [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                              className={`text-sm ${hasBgImage ? 'font-bold' : ''} [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]`}
                               style={rowSubtitleVars}
                             >
                               {event.Group?.name || 'Unknown Group'} - {formatTime(event.start_date, timezone)}
@@ -681,7 +684,12 @@ export default function EventDayModal({
                             tailwindcss@4.3.3 in this tree compiles the nested-fallback arbitrary
                             value and its `dark:` variant. Test 24 moves with this line. */}
                         <div
-                          className={`flex gap-4 mt-2 text-sm ${tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--group-ink-muted,var(--t-color))]' : 'text-content-muted'}`}
+                          /* AMENDED Phase 88.9-60 (X23a): on a PICTURE row this line takes a third
+                             arm, the photo text set off the row's own --t-* values and 700, chosen
+                             OVER the muted token (a grey painted straight onto the photo once the
+                             wash went) and OVER the tinted chain (it resolved to the same white but
+                             with no outline). The two no-picture arms are unchanged. */
+                          className={`flex gap-4 mt-2 text-sm ${hasBgImage ? 'font-bold [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]' : tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--group-ink-muted,var(--t-color))]' : 'text-content-muted'}`}
                           style={rowSubtitleVars}
                         >
                           {event.duration_minutes && (

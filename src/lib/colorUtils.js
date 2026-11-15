@@ -129,6 +129,11 @@ const CONTRAST_LIGHT = '#ffffff';
  * allowlisted file, which is what makes Req 2's grep gate meaningful: a hex
  * value appearing in a component file is then always a defect, never a copy of
  * a legitimate pole.
+ *
+ * AMENDED Phase 88.9-60 (X23a): SUBTEXT_ON_LIGHT lost its last production consumer, the
+ * picture-row subtitle that sat on the 0.85 white wash (both left with X23a). It stays exported
+ * and measured (groupColourPresets.test.ts test 8 still holds it to 4.5 on every light band)
+ * until its removal is ruled; do not read the export as proof that a row still paints it.
  */
 export const TEXT_ON_LIGHT = CONTRAST_DARK;
 export const TEXT_ON_DARK = CONTRAST_LIGHT;
