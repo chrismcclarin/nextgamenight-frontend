@@ -26,6 +26,7 @@ import { Button } from '../../components/ui/Button';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
 import { isUuid } from '../../lib/isUuid';
+import { formatScore } from '../../lib/formatScore';
 
 const REQUIRED_SR_LABEL = '(required)';
 // The two required section titles' visible words. One source for the visible text AND the
@@ -412,7 +413,8 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
           return {
             user_id: '',
             username: ep.username || '',
-            score: ep.score,
+            // 88.9-65 X50: the edit box shows 57, not 57.00; saving 57 stores the same value.
+            score: formatScore(ep.score),
             faction: ep.faction || '',
             is_new_player: ep.is_new_player || false,
             placement: ep.placement,
@@ -428,7 +430,8 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
           return {
             user_id: ep.user_id,
             username: ep.username || matchingGroupMember?.username || '',
-            score: ep.score,
+            // 88.9-65 X50: the edit box shows 57, not 57.00; saving 57 stores the same value.
+            score: formatScore(ep.score),
             faction: ep.faction || '',
             is_new_player: ep.is_new_player || false,
             placement: ep.placement,

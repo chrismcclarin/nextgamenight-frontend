@@ -8,6 +8,7 @@ import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI
 import { isUuid } from '../../lib/isUuid';
 import { collapseBlankLines } from '../../lib/collapseBlankLines';
 import { hasStarted } from '../../lib/upcomingEvents';
+import { formatScore } from '../../lib/formatScore';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
@@ -2476,9 +2477,12 @@ export default function GameDetailPage() {
                                                                 {participation.faction}
                                                             </span>
                                                         )}
-                                                        {participation.score !== null && (
+                                                        {/* 88.9-65 (X50): one formatter prints the score (57, not 57.00), and a
+                                                            participant with no score shows no Score piece (an absent score
+                                                            printed a bare label before). */}
+                                                        {formatScore(participation.score) !== null && (
                                                             <span className="text-xs text-content-secondary">
-                                                                Score: {participation.score}
+                                                                Score: {formatScore(participation.score)}
                                                             </span>
                                                         )}
                                                         {participation.placement && (
