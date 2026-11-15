@@ -768,6 +768,7 @@ const GroupList = ({
                    * black outline painted first via --t-paint, no shadow), chosen
                    * OVER the heavy blurred shadow + 0.5px stroke; the ink stays off
                    * on an image.
+                   * AMENDED Phase 88.9-60 (X7): the image arm is T11 (2px, 700, 0.03em).
                    */
                   ...groupInkVars(cardGround, {
                     surface: 'card',
@@ -782,7 +783,7 @@ const GroupList = ({
                 {/* DECISION Phase 88.9-27 (owner ruling O21b, chat 2026-11-07 6:18 PM Pacific; pick O02d1,
                     88.9-PICKS-B9.json): no photo dim on the home card, chosen OVER the overlay-token wash that
                     DECISION Phase 88-27 (D-32 bucket D) put here - the title and Last Game row carry O02d1's own
-                    1.5px outline, so the photo is shown undimmed. The bg-overlay token itself stays (the tutorial
+                    outline (2px since 88.9-60 X7), so the photo is shown undimmed. The bg-overlay token itself stays (the tutorial
                     scrim uses it). Re-adding a dim is a decision, not a cleanup. */}
                 <div className="relative z-1">
                   {/* 87.8-13 walkthrough F-8: single row at ALL widths — the old
@@ -864,7 +865,7 @@ const GroupList = ({
                         <Heading
                           level={3}
                           size="heading"
-                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]"
+                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                         >
                           {group.name}
                         </Heading>
@@ -1057,7 +1058,7 @@ const GroupList = ({
                       - IF YOU ARE HERE TO "RESTORE" `text-content-primary` ON THE
                         TINTED ARM: that is a decision requiring an owner ruling, not
                         a cleanup. See the DECISION marker directly below. */}
-                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] ${cardTextBold ? 'font-bold' : ''}`}>
+                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)] ${cardTextBold ? 'font-bold' : ''}`}>
                   {/* DECISION Phase 88.3.1 (SPEC Req 8, site 1 of 3 — UI-SPEC 3.5). This block
                       REPLACES the 88.3-cr M1 LIMIT block (2026-08-28), which is closed, not lost:
                       that LIMIT said these two rows take the THEME token on the tinted arm rather
@@ -1111,7 +1112,7 @@ const GroupList = ({
                       chosen OVER content tokens / preset inks under no dim (white on a white photo
                       measured 1.00:1); this is a third arm, not a convergence - the uncoloured
                       no-image arm keeps its content tokens. */}
-                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)]' : tinted ? '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-secondary'}`}>
+                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]' : tinted ? '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-secondary'}`}>
                     {/* DECISION Phase 88.3.1: the `Last Game:` LABEL moves WITH the row on the
                         tinted arm — it drops its class and inherits the row's ink — chosen so a
                         coloured card reads in ONE ink instead of two.
@@ -1130,7 +1131,7 @@ const GroupList = ({
                         outline treatment, chosen OVER the primary label under a black outline;
                         REJECTED (b) still holds for the uncoloured no-image card. */}
                     <span><strong className={hasBgImage || tinted ? undefined : 'text-content-primary'}>Last Game:</strong> {lastGame?.name || 'None'}</span>
-                    <span className={`text-xs ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)]' : tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-muted'}`}>
+                    <span className={`text-xs ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]' : tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-muted'}`}>
                       {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
                     </span>
                   </div>

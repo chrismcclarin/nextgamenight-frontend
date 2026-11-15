@@ -1172,6 +1172,7 @@ function GroupHomePage(){
                      * the --t-* channel's O02d1 values (white, 1.5px black outline
                      * painted first via --t-paint, no shadow), chosen OVER the heavy
                      * blurred shadow + 0.5px stroke; the ink stays off on an image.
+                     * AMENDED Phase 88.9-60 (X7): the image arm is T11 (2px, 700, 0.03em).
                      */
                     ...groupInkVars(headerGroundPair, {
                         surface: 'card',
@@ -1233,7 +1234,7 @@ function GroupHomePage(){
                     // Pacific, UI-SPEC round-2 (d) O-21; with pick O02d1,
                     // 88.9-PICKS-B9.json): case (1) paints NO dim, chosen OVER the
                     // shipped 0.4 black in both themes - the photo shows at full
-                    // strength and the title + stats carry their own 1.5px outline.
+                    // strength and the title + stats carry their own outline (2px since 88.9-60 X7).
                     // Cases (2) and (3) are unchanged; the 0.15 stays a dark-only class
                     // and is never inline.
                     className={
@@ -1293,13 +1294,13 @@ function GroupHomePage(){
                                later one wins. `wrap-break-word` is dropped for the primitive's
                                own `wrap-anywhere`, the same trade plans 17-19 made on every
                                migrated heading. */
-                            className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]"
+                            className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                             style={headerTitleVars}
                         >
                             {Group?.name || 'Group'}
                         </Heading>
                         <p
-                            className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]"
+                            className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                             style={headerSubtitleVars}
                         >
                             {gamesList.length} {gamesList.length === 1 ? 'game' : 'games'} played

@@ -661,19 +661,23 @@ export function resolveGroupGround(stored) {
  * replaces never did). Callers apply `font-semibold` at the text element.
  *
  * The paint-order pair (Phase 88.9-27, pick O02d1): `--t-paint` / `--t-paint-l` are added ONLY
- * when one of the two treatments carries `paintOrder`, which only the image arm of `getTextStyle`
- * / `getSubtitleStyle` does. Every tile and row caller (CalendarListView, CalendarMonthView,
- * EventDayModal) and every no-image host therefore gets the six shipped keys and renders a
- * byte-identical inline style; a consumer reads the pair as
- * `[paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]`, so an absent
- * pair falls back to `normal`.
+ * when one of the two treatments carries `paintOrder`, which only a photo arm does (the image arm
+ * of `getTextStyle` / `getSubtitleStyle`, i.e. a copy of `PHOTO_TEXT_STYLE`). Every no-image host
+ * therefore gets the six shipped keys and renders a byte-identical inline style; a consumer reads
+ * the pair as `[paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]`, so
+ * an absent pair falls back to `normal`.
  *
- * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string}} dark
+ * The tracking pair (Phase 88.9-60, X7, owner T11): `--t-track` / `--t-track-l` follow the same
+ * idiom, added ONLY when one of the two treatments carries `letterSpacing` (a photo arm), and read
+ * as `[letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]`.
+ * `fontWeight` still stays out, for the container reason above.
+ *
+ * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string, letterSpacing?: string}} dark
  *        the treatment computed against the STORED hex (what dark mode paints)
- * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string}} light
+ * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string, letterSpacing?: string}} light
  *        the treatment computed against the RENDERED tint (what light mode paints)
- * @returns {Record<string, string>} the six `--t-*` properties, plus the `--t-paint` pair on an
- *          O02d1 arm
+ * @returns {Record<string, string>} the six `--t-*` properties, plus the `--t-paint` and
+ *          `--t-track` pairs on a photo arm
  */
 export function themedTextStyleVars(dark, light) {
   return {
@@ -686,6 +690,10 @@ export function themedTextStyleVars(dark, light) {
     ...((dark.paintOrder || light.paintOrder) && {
       '--t-paint': dark.paintOrder || 'normal',
       '--t-paint-l': light.paintOrder || 'normal',
+    }),
+    ...((dark.letterSpacing || light.letterSpacing) && {
+      '--t-track': dark.letterSpacing || 'normal',
+      '--t-track-l': light.letterSpacing || 'normal',
     }),
   };
 }
@@ -878,9 +886,24 @@ const STROKE_DARK = '0.5px rgba(0, 0, 0, 0.9)';
  * picture (plain arm, preset inks, no outline), chosen OVER the one-treatment rule above, which
  * existed only because no failed load could be detected; the failed ground is the tint, whose inks
  * clear 4.5. Changing this back is a decision, not a cleanup.
+ *
+ * AMENDED Phase 88.9-60 (X7, owner T11, 2026-11-11): over a photo every word, title and subtitle,
+ * is white, 700, a 2px black outline painted first and 0.03em, from PHOTO_TEXT_STYLE, chosen OVER
+ * O02d1's 1.5px at 600 and OVER T9 (small text only). Sites spread the set, never restate it.
  */
-const STROKE_OUTLINE = '1.5px #000000';
+const STROKE_OUTLINE = '2px #000000';
 const PAINT_STROKE_FIRST = 'stroke fill';
+const PHOTO_TEXT_WEIGHT = '700';
+const PHOTO_TEXT_TRACKING = '0.03em';
+/** The ONE set every word over a loaded (or still loading) photo wears. Frozen: callers copy it. */
+export const PHOTO_TEXT_STYLE = Object.freeze({
+  color: TITLE_LIGHT,
+  textShadow: SHADOW_NONE,
+  WebkitTextStroke: STROKE_OUTLINE,
+  paintOrder: PAINT_STROKE_FIRST,
+  fontWeight: PHOTO_TEXT_WEIGHT,
+  letterSpacing: PHOTO_TEXT_TRACKING,
+});
 
 /**
  * Calculate perceived brightness of a hex color.
@@ -964,20 +987,14 @@ export function getEventTileTextColor(hexColor) {
  *
  * @param {boolean} hasBackgroundImage - Whether the element has a background image
  * @param {string|null|undefined} backgroundColor - Background hex color
- * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string }}
+ * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string, letterSpacing?: string }}
  */
 export function getTextStyle(hasBackgroundImage, backgroundColor) {
   // Background image (a photo that has not failed to load; since 88.9-60 X6 a picture that fails
-  // to load reaches this function as no image): O02d1, white text with a
-  // 1.5px black outline painted first, no shadow (see the O02d1 marker above STROKE_OUTLINE).
+  // to load reaches this function as no image): a copy of the one photo set, white, 700, a 2px
+  // black outline painted first, 0.03em, no shadow (see the markers above STROKE_OUTLINE).
   if (hasBackgroundImage) {
-    return {
-      color: TITLE_LIGHT,
-      textShadow: SHADOW_NONE,
-      WebkitTextStroke: STROKE_OUTLINE,
-      paintOrder: PAINT_STROKE_FIRST,
-      fontWeight: '600',
-    };
+    return { ...PHOTO_TEXT_STYLE };
   }
 
   // No group colour: the element sits on the app's themed surface, so the
@@ -1027,18 +1044,13 @@ export function getTextStyle(hasBackgroundImage, backgroundColor) {
  *
  * @param {boolean} hasBackgroundImage - Whether the element has a background image
  * @param {string|null|undefined} backgroundColor - Background hex color
- * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, paintOrder?: string }}
+ * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string, letterSpacing?: string }}
  */
 export function getSubtitleStyle(hasBackgroundImage, backgroundColor) {
-  // Background image: O02d1, the title's white + 1.5px black outline painted first, no shadow
-  // ("white title + stats", UI-SPEC round-2 (d) O-02).
+  // Background image: the same photo set as the title, weight and tracking included (88.9-60 X7,
+  // owner T11: small text and title alike; "white title + stats", UI-SPEC round-2 (d) O-02).
   if (hasBackgroundImage) {
-    return {
-      color: TITLE_LIGHT,
-      textShadow: SHADOW_NONE,
-      WebkitTextStroke: STROKE_OUTLINE,
-      paintOrder: PAINT_STROKE_FIRST,
-    };
+    return { ...PHOTO_TEXT_STYLE };
   }
 
   // No group colour: the secondary/muted line is HALF the D-28 defect — it
