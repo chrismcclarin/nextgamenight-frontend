@@ -95,7 +95,13 @@ export default function RootLayout({ children }) {
                           overlay or FAB (the D-09 constraint above). */}
                       <div className="min-h-screen flex flex-col">
                         <Header />
-                        <main className="flex-1">
+                        {/* DECISION Phase 88.9-58 (X20, owner at N09, 2026-11-11: yes hide it): main hides the
+                            browser outline because it is only a programmatic focus target (the page floor),
+                            never a Tab stop (2.4.7 reading in 88.9-58-SUMMARY; GOV.UK ships the same). Chosen
+                            OVER the frame round the page and OVER a global reset (heading floors keep their
+                            ring); outline-hidden over outline none for forced-colors. If main becomes a Tab
+                            stop, this must go. */}
+                        <main className="flex-1 focus:outline-hidden">
                           {children}
                         </main>
                         <Footer />
