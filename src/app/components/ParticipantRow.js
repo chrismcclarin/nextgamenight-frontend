@@ -49,24 +49,23 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
     // Demoting this to the neutral is a decision, not a consistency cleanup.
     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-2 border-b border-line-strong">
       <div className="sm:flex-1">
-        {/* Owner refinement 2026-08-04 (on F-3): at phone width "New Player"
-            rides the title line (right-aligned) instead of the controls row —
-            phone-only twin of the sm:+ checkbox below; same state, so the two
-            never disagree. */}
-        <div className="flex items-center justify-between mb-1">
+        {/* DECISION Phase 88.9-65 (X40, owner at N32: right justified on the participant name line): ONE New Player checkbox there at every width, its label a real 44px box (WCAG 2.5.8 floor 24, house floor 44), chosen OVER two width-gated twins (two controls for one value) and OVER an invisible extension (it would cover the name input). The line grows about 24px.
+            It replaces the owner refinement of 2026-08-04 on F-3, which put a phone-only twin on this line and kept a second checkbox in the controls row from the small breakpoint up. */}
+        {/* DECISION Phase 88.9-65 (X43): every label here reads text-content-primary, R2-14's measured ink (17.97 / 10.64), chosen OVER the lighter ink Participant Name alone carried. */}
+        <div className="flex items-baseline justify-between mb-1">
           {/* 88-33 Task 8 (census class B — the 3 red-tag broken label[for]): member rows
               render a read-only DIV, so a label[for] here pointed at a nonexistent form
               element — an actively wrong association. The <label> renders ONLY when the
               input it names actually exists (custom rows); member rows get a span. */}
           {participant.isFromGroup ? (
-            <span className="text-sm text-content-secondary block">Participant Name</span>
+            <span className="text-sm text-content-primary block">Participant Name</span>
           ) : (
-            <label htmlFor={nameId} className="text-sm text-content-secondary block">Participant Name</label>
+            <label htmlFor={nameId} className="text-sm text-content-primary block">Participant Name</label>
           )}
-          <label className="flex items-center gap-1 sm:hidden">
+          <label className="inline-flex min-h-11 min-w-11 items-center gap-2">
             <input
-              id={`${newPlayerId}-phone`}
-              name={`${newPlayerId}-phone`}
+              id={newPlayerId}
+              name={newPlayerId}
               type="checkbox"
               checked={participant.is_new_player || false}
               onChange={(e) => onParticipantChange(index, 'is_new_player', e.target.checked)}
@@ -210,25 +209,6 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             className="w-full sm:w-24 p-1"
             placeholder="Optional"
           />
-        </div>
-
-        {/* sm:+ only — the phone twin lives on the title line above. */}
-        <div className="hidden sm:flex items-center">
-          {/* [Rule 2 - a11y] This label followed the checkbox with no `htmlFor` and did not wrap
-              it, so the control shipped with NO accessible name (axe `label`, WCAG 4.1.2 A) — a
-              screen reader announced "checkbox, not checked" with no indication of what it does.
-              Its phone twin ~90 lines above was always fine because that one WRAPS its input.
-              DEF-88-10-01's sweep regex only matches label-BEFORE-control, which is why this
-              site is not on its list of 14. */}
-          <input
-            id={newPlayerId}
-            name={newPlayerId}
-            type="checkbox"
-            checked={participant.is_new_player || false}
-            onChange={(e) => onParticipantChange(index, 'is_new_player', e.target.checked)}
-            className="mr-1"
-          />
-          <label htmlFor={newPlayerId} className="text-sm text-content-primary">New Player</label>
         </div>
 
         {/*
