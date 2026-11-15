@@ -119,6 +119,38 @@ test.describe('page width at desktop — X5 (88.9-59)', () => {
       }
     }
   });
+
+  test('X5b + X12 (88.9): at 1024, 1280 and 1600 the home groups column is clamp(320px, 42vw, 460px) wide and the group list fills it', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: HEIGHT });
+    await page.goto(HOME);
+    const heading = page.getByRole('heading', { level: 2, name: 'Your Groups' });
+    await expect(heading).toBeVisible({ timeout: 15_000 });
+
+    for (const width of [1024, 1280, 1600]) {
+      await resizeTo(page, width);
+      await expect(async () => {
+        // The list is the heading's own card; the column is two levels up (the card sits in the
+        // column's absolutely positioned inner box). A vw unit counts any scrollbar, so the
+        // expected width is taken from the window's inner width, not the layout width.
+        const read = await heading.evaluate((el) => {
+          const list = el.closest('.rounded-card');
+          const column = list?.parentElement?.parentElement ?? null;
+          if (!list || !column) return null;
+          return {
+            list: list.getBoundingClientRect().width,
+            column: column.getBoundingClientRect().width,
+            inner: window.innerWidth,
+          };
+        });
+        expect(read, 'the group list card or its column was not found').not.toBeNull();
+        if (!read) return;
+        const expected = Math.min(Math.max(320, 0.42 * read.inner), 460);
+        const where = `at ${width}: column ${read.column.toFixed(2)}, list ${read.list.toFixed(2)}, expected ${expected.toFixed(2)} (42vw of ${read.inner})`;
+        expect(Math.abs(read.column - expected), where).toBeLessThanOrEqual(TOLERANCE);
+        expect(Math.abs(read.list - read.column), where).toBeLessThanOrEqual(TOLERANCE);
+      }).toPass({ timeout: 5_000 });
+    }
+  });
 });
 
 test.describe('page width on a phone — X5 (88.9-59)', () => {
