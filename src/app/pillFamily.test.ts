@@ -57,16 +57,17 @@ const PILL_FILES: Record<string, PillFile> = {
     // 12 pills: RsvpStatusPill's Going (green), Maybe (amber), No and No reply (neutral); the
     // Participants chip's Owner (violet), Admin (blue) and Guest (amber); the See-all row's You
     // (blue), Friend (emerald), Owner (violet), Admin (blue) and Guest (amber).
-    families: { green: 1, neutral: 2, violet: 2, blue: 3, amber: 3, emerald: 1 },
-    // The past-session chip is OUT of this plan (88.9-65 X47 rebuilds it): its Guest and faction
-    // badges sit on a muted chip, not on the card the X17a fills were measured against, so they
-    // keep their shipped raw classes until 65 measures fills on the rebuilt chip. Exempt BY NAME
-    // and counted: a third raw palette string in this file is a failure, not a rebase.
-    exemptLiterals: {
-      'bg-orange-100 text-orange-800': 1,
-      'bg-purple-100 text-purple-700': 1,
-    },
-    why: 'the game page: RSVP, role, You, Friend and Guest pills on the Participants chip and the See-all row',
+    // AMENDED Phase 88.9-65 (X47, 88.9-63 hand-off b): 12 -> 15. The past-session chip joins the
+    // family on its rebuilt card ground: Guest (amber), New Player (neutral) and the faction
+    // (violet). Measured on the card with src/lib/wcag.ts, word on fill / fill against the card:
+    // amber 5.6360 / 1.2580 light and 5.6471 / 1.9692 dark; violet 5.9744 / 1.4596 and
+    // 7.7691 / 1.5107; neutral 7.3453 / 1.4261 and 6.9642 / 1.5231.
+    families: { green: 1, neutral: 3, violet: 3, blue: 3, amber: 4, emerald: 1 },
+    // AMENDED Phase 88.9-65 (X47): the two raw palette strings 88.9-63 left on the past-session
+    // chip by name (its orange Guest and its purple faction) are gone with that chip's rebuild, so
+    // nothing is exempt here: any raw palette fill or ink in this file is a failure.
+    exemptLiterals: {},
+    why: 'the game page: RSVP, role, You, Friend and Guest pills on the Participants chip and the See-all row, and the Guest, New Player and faction pills on the past-session chip',
   },
   'app/components/ClickableMemberName.js': {
     // The name popover's two informational pills: Friend (one helper, used by the accepted
@@ -241,6 +242,44 @@ describe('Phase 88.9-63 (X16 / X17a): one pill family, sentence case, names 600'
     expect(
       gamePage.chunkTexts.filter((t) => t === 'text-content-primary font-semibold'),
       'the See-all row name is 600',
+    ).toHaveLength(1);
+  });
+
+  // 88.9-65 (owner fix row 52-X47). The past-session chip was a one-line flex row on the muted
+  // ground: a squeezed piece wrapped inside itself and kept its width, which is the gap the owner
+  // saw between a name and its score. It is now a WRAPPING row on the card ground (the strip
+  // chip's look, where the pill pairs keep their measured numbers), the Score and placement
+  // pieces never break, New Player keeps its no-break, and the name is 600. The browser half (no
+  // piece breaks inside itself at 375) is the phone spec e2e/session-chip-wrap.spec.ts.
+  it('X47 (88.9-65): the session chip is a wrapping row on the card ground and its score never breaks', () => {
+    const stripped = withoutComments(fs.readFileSync(path.join(SRC, 'app/gameDetail/page.js'), 'utf8'));
+    const chunks = [...stringChunks(stripped)].map((chunk) => chunk.text);
+    const tokensOf = (text: string) => text.split(/\s+/).filter((token) => token.length > 0);
+
+    // The chip itself, exactly once: flex, wrapping, on the card, with the line border.
+    const CHIP = 'flex flex-wrap items-center gap-x-2 gap-y-1 max-w-full px-3 py-1 rounded-sm border border-line bg-surface-card text-content-primary';
+    expect(chunks.filter((text) => text === CHIP), 'the past-session chip is a wrapping row on the card ground').toHaveLength(1);
+    // The retired shape is gone: no class string pairs the muted ground with the line border.
+    expect(
+      chunks.filter((text) => tokensOf(text).includes('bg-surface-muted') && tokensOf(text).includes('border-line')),
+      'no chip is left on the muted ground',
+    ).toEqual([]);
+
+    // The Score piece and the placement piece carry the no-break class.
+    const scoreClass = /className="([^"]*)">\s*Score: \{formatScore\(participation\.score\)\}/.exec(stripped);
+    expect(scoreClass, 'LOCATOR: the Score piece and its className').not.toBeNull();
+    expect(tokensOf(scoreClass![1]), 'Score never breaks between its word and its number').toContain('whitespace-nowrap');
+    const placementClass = /className="([^"]*)">\s*#\{participation\.placement\}/.exec(stripped);
+    expect(placementClass, 'LOCATOR: the placement piece and its className').not.toBeNull();
+    expect(tokensOf(placementClass![1]), 'the placement never breaks').toContain('whitespace-nowrap');
+
+    // New Player is the neutral pill and keeps its no-break; the chip name is 600 and may wrap.
+    // (No reply on the Participants chip is a neutral no-break pill too, so this one is read whole.)
+    const NEW_PLAYER = 'text-xs whitespace-nowrap bg-surface-pill-neutral text-content-pill-neutral px-1.5 py-0.5 rounded-sm font-bold';
+    expect(chunks.filter((text) => text === NEW_PLAYER), 'New Player is one neutral pill that never breaks').toHaveLength(1);
+    expect(
+      chunks.filter((text) => text === 'inline-flex items-center gap-1 min-w-0 font-semibold break-words'),
+      'the past-session chip name is 600 and wraps instead of being cut',
     ).toHaveLength(1);
   });
 });
