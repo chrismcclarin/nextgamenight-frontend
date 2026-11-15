@@ -18,7 +18,6 @@
 // exactly one reader). The ratified copy is asserted as a literal string instead.
 import * as React from 'react';
 import { render, screen, cleanup, waitFor, act, fireEvent, within } from '@testing-library/react';
-import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the hold budget
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -715,6 +714,9 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     return { promise, resolve, reject };
   }
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // 52-X44 (88.9-57): one turn of the Refresh glyph as the component reads it under jsdom, which
+  // computes no animation-duration, so the component falls back to 1000 ms.
+  const ONE_TURN_MS = 1000;
   // The house idiom (useFetchErrorState.test.tsx, function fireVisibility): the hook's tab-return
   // re-attempt, the refresh nobody pressed.
   function fireVisibility(state: 'visible' | 'hidden') {
@@ -851,15 +853,15 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     for (const name of THREE_NAMES) expect(screen.getByText(name)).toBeInTheDocument();
     expect(document.activeElement).toBe(button);
     const icon = button.querySelector('svg') as SVGElement;
-    await waitFor(() => expect(icon).toHaveClass('animate-spin')); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
+    expect(icon).toHaveClass('animate-spin'); // AMENDED Phase 88.9-57 (52-X44): the press-spin is there at once, read with no wait (it was the delayed spinner's 200 ms appear)
     expect(screen.getByRole('list')).toHaveAttribute('aria-busy', 'true');
 
     await act(async () => {
       held.resolve(THREE);
     });
     expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy');
-    expect(icon).toHaveClass('animate-spin'); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
-    await waitFor(() => expect(icon).not.toHaveClass('animate-spin'), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    expect(icon).toHaveClass('animate-spin'); // AMENDED Phase 88.9-57 (52-X44): the refresh landed inside the first turn, so the glyph is finishing that turn (it was the 500 ms hold)
+    await waitFor(() => expect(icon).not.toHaveClass('animate-spin'), { timeout: ONE_TURN_MS + 1500 }); // AMENDED Phase 88.9-57 (52-X44): it stops on the whole turn (jsdom reads no animation-duration, so one turn is the 1000 ms fallback)
     expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy');
     expect(document.activeElement).toBe(button);
   });
@@ -875,6 +877,106 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     expect(found).toHaveLength(1);
     return found[0];
   };
+
+  // 52-X44 (owner ruling 2026-11-13 3:44 PM Pacific; plan 88.9-57): the Refresh glyph is the
+  // clockwise lucide arrows and EVERY press turns them at once, for at least one whole turn; they
+  // keep turning while the request is out and stop on a whole turn. Fake timers from the press on
+  // (Date included, which is what the component reads); the first load runs on real timers.
+  it('X44 (88.9-57): every Refresh press spins the clockwise arrows at once for at least one whole turn and stops on a whole turn after the refresh lands', async () => {
+    api.getRespondents.mockResolvedValueOnce(THREE);
+    renderInMain();
+    await screen.findByText('Member One');
+    const button = refreshButton();
+    const glyph = () => button.querySelector('svg') as SVGElement;
+    const region = refreshRegion(statusNodes());
+    const list = () => screen.getByRole('list');
+
+    vi.useFakeTimers();
+    try {
+      const advance = (ms: number) =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(ms);
+        });
+
+      // (1) press, GET held: the clockwise glyph is turning in the same tick as the click.
+      const held1 = deferred();
+      api.getRespondents.mockImplementationOnce(() => held1.promise);
+      fireEvent.click(button);
+      expect(glyph(), '(1) the glyph is the clockwise lucide arrows').toHaveClass('lucide-refresh-cw');
+      expect(glyph(), '(1) the spin starts with the press, no delay').toHaveClass('animate-spin');
+      // (5) the spoken line is unchanged: Refreshing while it runs.
+      expect(region.textContent).toBe(REFRESHING);
+      expect(list()).toHaveAttribute('aria-busy', 'true');
+
+      // (2) released at +600: the turn in progress is finished, so it stops at +1000.
+      await advance(600);
+      await act(async () => {
+        held1.resolve(THREE);
+      });
+      expect(list()).not.toHaveAttribute('aria-busy');
+      // (5) ... and Refreshed when it lands, while the glyph is still finishing its turn.
+      expect(region.textContent).toBe(REFRESHED);
+      expect(glyph(), '(2) the class never drops between the press and the stop').toHaveClass('animate-spin');
+      await advance(399);
+      expect(glyph(), '(2) still turning at +999').toHaveClass('animate-spin');
+      await advance(2);
+      expect(glyph(), '(2) stopped at +1001').not.toHaveClass('animate-spin');
+
+      // (3) press, GET answers at once: one whole turn all the same.
+      api.getRespondents.mockResolvedValueOnce(THREE);
+      fireEvent.click(button);
+      expect(glyph(), '(3) the spin starts with the press').toHaveClass('animate-spin');
+      await advance(0);
+      expect(list(), '(3) the refresh has already landed').not.toHaveAttribute('aria-busy');
+      expect(glyph(), '(3) a refresh that lands at once still turns').toHaveClass('animate-spin');
+      await advance(999);
+      expect(glyph(), '(3) still turning at +999').toHaveClass('animate-spin');
+      await advance(2);
+      expect(glyph(), '(3) stopped at +1001').not.toHaveClass('animate-spin');
+
+      // (4) held 1500, then released: it kept turning the whole time and stops at +2000.
+      const held4 = deferred();
+      api.getRespondents.mockImplementationOnce(() => held4.promise);
+      fireEvent.click(button);
+      await advance(1500);
+      expect(glyph(), '(4) still turning at +1500, the request is out').toHaveClass('animate-spin');
+      await act(async () => {
+        held4.resolve(THREE);
+      });
+      await advance(499);
+      expect(glyph(), '(4) still turning at +1999').toHaveClass('animate-spin');
+      await advance(2);
+      expect(glyph(), '(4) stopped at +2001').not.toHaveClass('animate-spin');
+
+      // (6) a second press while the first is finishing its turn cancels that stop: the glyph
+      // keeps turning for the new request and stops on a whole turn of the SAME spin.
+      const held6a = deferred();
+      api.getRespondents.mockImplementationOnce(() => held6a.promise);
+      fireEvent.click(button);
+      await advance(300);
+      await act(async () => {
+        held6a.resolve(THREE);
+      });
+      const held6b = deferred();
+      api.getRespondents.mockImplementationOnce(() => held6b.promise);
+      await advance(300);
+      fireEvent.click(button);
+      await advance(500);
+      expect(glyph(), '(6) the first press\'s stop (due at +1000) was cancelled by the second press').toHaveClass('animate-spin');
+      await advance(600);
+      await act(async () => {
+        held6b.resolve(THREE);
+      });
+      expect(glyph(), '(6) finishing the turn at +1700').toHaveClass('animate-spin');
+      await advance(299);
+      expect(glyph(), '(6) still turning at +1999').toHaveClass('animate-spin');
+      await advance(2);
+      expect(glyph(), '(6) stopped at +2001').not.toHaveClass('animate-spin');
+      expect(region.textContent).toBe(REFRESHED);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('RD-RF-5b. a pressed Refresh announces Refreshing, then Refreshed, from the region present before the press; a repeat press re-announces', async () => {
     const user = userEvent.setup();

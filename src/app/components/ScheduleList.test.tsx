@@ -37,6 +37,73 @@ describe('ScheduleList — the in-flight Pause/Resume looks unavailable, not onl
   });
 });
 
+// 52-X46 (owner, 2026-11-13 5:26 PM Pacific, plus the focus-ring addendum; plan 88.9-57): the
+// desktop Pause/Resume sits between Edit and Delete and was a raw button with its own smaller box
+// and the browser's outline. It is the Button primitive now, on the ghost arm with its tint fills.
+describe('ScheduleList — 52-X46 Pause/Resume on the Button primitive (88.9-57)', () => {
+  it('X46 (88.9-57): Pause/Resume is the Button primitive beside Edit and Delete — the same .btn box and house offset ring, its tint kept, no hand-copied box', () => {
+    const tokens = (el: HTMLElement) => el.className.split(/\s+/);
+    const { unmount } = render(<ScheduleList schedules={[SCHEDULE]} onToggle={vi.fn()} />);
+
+    const pause = screen.getByRole('button', { name: 'Pause' });
+    for (const token of [
+      // The primitive's box, floor and house ring on the card halo.
+      'btn',
+      'min-h-11',
+      'focus-visible:ring-2',
+      'focus-visible:ring-offset-2',
+      'focus-visible:ring-offset-surface-card',
+      // Its own tint, and the in-flight muted ink (A-47 / O-17), which the ghost arm carries.
+      'bg-status-warning-subtle',
+      'text-content-status-warning',
+      'enabled-hover:bg-status-warning-subtle-hover',
+      'aria-disabled:text-content-muted',
+    ]) {
+      expect(tokens(pause), token).toContain(token);
+    }
+    for (const token of [
+      // The hand-copied box is gone ...
+      'px-3',
+      'py-1.5',
+      'text-sm',
+      // ... and the ghost arm's own ground, ink and hover lose to the tint.
+      'bg-transparent',
+      'text-content-secondary',
+      'enabled-hover:bg-surface-hover',
+    ]) {
+      expect(tokens(pause), token).not.toContain(token);
+    }
+
+    // Its two neighbours are the same primitive: the same box and both ring-offset tokens.
+    for (const name of ['Edit', 'Delete']) {
+      const neighbour = screen.getByRole('button', { name });
+      for (const token of ['btn', 'min-h-11', 'focus-visible:ring-offset-2', 'focus-visible:ring-offset-surface-card']) {
+        expect(tokens(neighbour), `${name}: ${token}`).toContain(token);
+      }
+    }
+    // Names unchanged.
+    expect(pause).toHaveTextContent(/^Pause$/);
+    expect(pause).toHaveAttribute('title', 'Pause schedule');
+    unmount();
+
+    // A paused row: Resume wears the success trio on the same primitive.
+    render(<ScheduleList schedules={[{ ...SCHEDULE, is_active: false }]} onToggle={vi.fn()} />);
+    const resume = screen.getByRole('button', { name: 'Resume' });
+    for (const token of [
+      'btn',
+      'min-h-11',
+      'bg-status-success-subtle',
+      'text-content-status-success',
+      'enabled-hover:bg-status-success-subtle-hover',
+      'aria-disabled:text-content-muted',
+    ]) {
+      expect(tokens(resume), token).toContain(token);
+    }
+    expect(resume).toHaveTextContent(/^Resume$/);
+    expect(resume).toHaveAttribute('title', 'Resume schedule');
+  });
+});
+
 describe('ScheduleList — opening the delete confirm moves focus into it (A-43)', () => {
   it('desktop Delete: focus lands on the confirm row\'s Cancel (the safe default; T3 in PromptScheduleManager.test.tsx pins Cancel\'s return)', () => {
     render(<ScheduleList schedules={[SCHEDULE]} onDelete={vi.fn()} />);
