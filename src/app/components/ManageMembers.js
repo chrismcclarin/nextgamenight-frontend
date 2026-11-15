@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
+import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, isAccessOrGoneError, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useInlineReceipt } from '../../components/ui/useInlineReceipt';
 import { announceStatus } from '@/components/ui/announcer';
@@ -32,13 +32,29 @@ const RESET_INVITE_LINK_LABEL = 'Reset invite link';
 // code review CR-5 / A-75 ratified 2026-10-19 as ConfirmDialog's pending text, and the Resetting,
 // Transferring and Leaving swaps). This suffix is the Make admin gate's busySuffix.
 // AMENDED Phase 88.9-56 (R-C3a): the Remove, Reject and Reset link confirms join the Make admin confirm, each with its own derived verb.
+// AMENDED Phase 88.9-64 (X13-8): the Reset invite link opener no longer shows the spinner; since 88.9-56 the dialog's Reset link
+// carries it and one reset showed two. Chosen OVER removing the confirm's (the pressed control, in view; R-C3a pins its name).
 const PROMOTE_ADMIN_BUSY_SUFFIX = ', promoting';
 
 // The outcome plan 21's `classifyRetryResult` reads from a retry's own result (plan 55's names and shape).
 const LOAD_OK = Object.freeze({ isError: false });
 const LOAD_FAILED = Object.freeze({ isError: true });
 
-function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
+/**
+ * The props as the type checker reads them. The first six are as loosely typed as the inference
+ * they replace; they are listed only because naming one prop here requires naming all of them.
+ * @param {object} props
+ * @param {any} props.group_id
+ * @param {any} props.user
+ * @param {any} props.modal
+ * @param {any} props.modaltoggle
+ * @param {any} props.onMembersUpdated
+ * @param {any} props.group_name
+ * @param {string | null} [props.viewerRole] the role the group page already holds for the viewer.
+ *   OPTIONAL, and a first-paint seed only: this dialog's own members read decides once it answers
+ *   (the X41 marker below the members error adapter).
+ */
+function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name, viewerRole }) {
     const router = useRouter();
     // Phase 87.3-05 (PR-B): resolve the caller's own Users.id UUID once via the
     // shared identity primitive. The self-badge, current-member role derive, and
@@ -113,7 +129,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             return null;
         };
     };
-    const [userRole, setUserRole] = useState(null);
+    // The role this dialog's own members read found for the viewer (null when the roster holds none),
+    // and the group that read answered for. What the gates read is derived below the members error
+    // adapter: see the X41 marker there (Phase 88.9-64).
+    const [fetchedRole, setFetchedRole] = useState(null);
+    const [roleAnsweredFor, setRoleAnsweredFor] = useState(null);
     /* DECISION Phase 88.6-19 (R1 / UI-SPEC §6.2 arm 1): the members LOAD failure holds the
        ERROR OBJECT, not a flattened "Failed to load members" string, and renders through the
        shared `useFetchErrorState` + `<FetchErrorBanner>` pair — chosen OVER keeping the bare
@@ -216,7 +236,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             setRequestedGroupId(group_id);
             setError(null);
             setPendingInvites([]);
-            setUserRole(null);
+            setFetchedRole(null);
         }
         setLoading(true);
         try {
@@ -253,7 +273,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             }
             const currentUserMember = data.find(m => m.id === selfUuid);
             const role = currentUserMember?.UserGroup?.role || null;
-            if (role) setUserRole(role);
+            // X41 (88.9-64): written whatever the role is, null included, so a loaded roster decides.
+            setFetchedRole(role);
+            setRoleAnsweredFor(group_id);
 
             // Pending invites endpoint is owner/admin-only — gate the call so non-admins
             // don't trigger a 403 + console error every time they open the modal.
@@ -302,6 +324,18 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         error,
         refetch: retryMembers,
     });
+    /* DECISION Phase 88.9-64 (X41, owner at N32, 2026-11-13: Members as the title for half a second):
+       the first paint takes the role the group page holds (viewerRole) until this group's read
+       answers; a loaded roster decides even when it holds no role for the viewer, and an access or
+       gone failure ends the seed; only a transient failure keeps it. Chosen OVER rendering no title
+       and no note until then (an empty heading, an unnamed dialog) and OVER fetchedRole ?? viewerRole
+       (a roster without the viewer kept a stale owner's Invite / Reset row, 88.6.1-78 rejection (h)).
+       Presentation only: every owner or admin write is refused server side (the isOwner /
+       isOwnerOrAdmin checks in the backend group and invite routes). Removing the seed is a decision,
+       not a cleanup. */
+    const userRole = roleAnsweredFor === group_id
+        ? fetchedRole
+        : (isAccessOrGoneError(membersErrorState) ? null : (viewerRole ?? null));
     /* DECISION Phase 88.6.1-78 (C10 access or gone, close reset):
        CHOSEN: (1) `rosterRetained` comes from plan 88.6.1-70's `useRetainedContent` on plan
        88.6.1-42's has-loaded flag for this group (a has-loaded flag, never a row count: a roster
@@ -721,8 +755,6 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     resetInviteGate.trigger();
                                 }}
                                 aria-disabled={resettingInvite || undefined}
-                                busy={resettingInvite}
-                                busySuffix=", resetting"
                                 className="text-content-status-error"
                                 title="Invalidate the current invite link and generate a new one"
                             >

@@ -2004,6 +2004,12 @@ function GroupHomePage(){
                 group_id={Router}
                 user={user}
                 modal={memberModal}
+                // X41 (88.9-64): the role this page already holds, for the dialog's first paint only; the
+                // dialog's own members read decides once it answers (the X41 marker in ManageMembers.js).
+                // The role above is written only for a viewer whose roster row carries a membership, and
+                // the loading return above unmounts this dialog until membership is checked for the
+                // current group, so another group's role never seeds it.
+                viewerRole={userRole}
                 /* DECISION Phase 88.6.1-71 (RF1 after the Manage Members dialog closes): CHOSEN — the
                    close re-presents NOTHING; the members notice keeps its one region across the
                    close. Five of this dialog's six member updates refresh the list while it is
