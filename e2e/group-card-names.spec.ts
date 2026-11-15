@@ -1,4 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+import { assertTheme, forceLightMode } from './support/contrast';
 
 // Phase 88.6.1-54 (D-19, D-52, copy rows H1/H2, AC-20) — every home group card names its gear
 // and its Invite button after THAT card's group. PHONE PROJECT ONLY (375 x 667).
@@ -19,8 +21,30 @@ import { test, expect } from '@playwright/test';
 // SELECTORS: role, name and text, plus the one contract attribute data-testid="group-card"
 // (DECISION Phase 88.6-47 in grouplist.js: it exists so tests address the CARD).
 //
+// 88.9-59 X8 (owner pick G2, 2026-11-11): the same fixture card's gear is also read for its PAINT,
+// in both themes: the darker blue fill and a white icon, the two computed colours a person sees.
+// The token floors (icon, hover, ring) are held at the token layer; this is the proof that the
+// utilities reach the element in a real browser at 375. Still read-only.
+//
 // CI-RUN ONLY: the phone project needs the .auth/user.json login state, which exists only in CI
 // (FE-TESTING-CONVENTIONS C-14). It was typechecked and listed locally, not run.
+
+const GEAR_FILL = 'rgb(66, 83, 110)'; // the gear token in both themes (G2 is theme-equal)
+const GEAR_ICON = 'rgb(255, 255, 255)';
+
+/** X8 G2: the fixture card's gear paints the darker blue with a white icon. The theme is checked before any colour is read. */
+async function gearPaint(page: Page, theme: 'dark' | 'light'): Promise<void> {
+  await page.goto('/');
+  await assertTheme(page, theme);
+  const cards = page.getByTestId('group-card');
+  await expect(cards.first()).toBeVisible({ timeout: 15_000 });
+  const fixtureCard = cards.filter({ has: page.getByText('Weekend Warriors', { exact: true }) });
+  await expect(fixtureCard).toHaveCount(1);
+  const gear = fixtureCard.getByRole('button', { name: 'Customize Weekend Warriors', exact: true });
+  await expect(gear).toHaveCount(1);
+  await expect(gear, `the gear fill (${theme})`).toHaveCSS('background-color', GEAR_FILL);
+  await expect(gear, `the gear icon colour (${theme})`).toHaveCSS('color', GEAR_ICON);
+}
 
 test.describe('Phase 88.6.1-54 — group card button names carry the group name (phone project)', () => {
   // Same phone-only guard idiom as touch-targets.spec.ts: both projects match every spec, and
@@ -81,5 +105,15 @@ test.describe('Phase 88.6.1-54 — group card button names carry the group name 
       if (asserted) checkedCards += 1;
     }
     expect(checkedCards, 'cards whose Invite or gear name was asserted').toBeGreaterThanOrEqual(1);
+  });
+
+  test("X8 G2 (88.9): the fixture card's gear is the darker blue with a white icon at 375, dark", async ({ page }) => {
+    await gearPaint(page, 'dark');
+  });
+
+  test("X8 G2 (88.9): the fixture card's gear is the darker blue with a white icon at 375, light", async ({ page }) => {
+    // Before any navigation: the init script lands at the first goto.
+    await forceLightMode(page);
+    await gearPaint(page, 'light');
   });
 });
