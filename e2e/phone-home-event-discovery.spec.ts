@@ -48,6 +48,11 @@ declare global {
  *      have measured a 14px date string in the readable-game-text case. Rows are located by
  *      STRUCTURE instead — a heading inside a row `role="button"` — which is level-agnostic
  *      and cannot drift with the outline again.
+ *      AMENDED Phase 88.9-61 (X11): the Later subheader left the sheet too, so no row demotes
+ *      any more: every day header is an h4 and every row title an h5, and the sheet has no h6.
+ *      The structural locator stands unchanged. X25a (88.9): the two section headers are h3
+ *      headings that WRAP their folding button (the heading is outside the button), so a
+ *      heading inside a button is still a row title and nothing else.
  *
  * WHY THIS FILE IS THE GATE AND THE VITEST PINS ARE NOT: `UserHomePage.phone.test.tsx` and
  * `UserHomePage.calendarSheet.test.tsx` pin every branch jsdom can see — count integrity,
@@ -736,6 +741,23 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
     // requirement, not a nice-to-have — the control is full-width, so height is the
     // dimension actually at risk.
     await assertMin44(disclosure, 'the Past events disclosure');
+
+    // X25a (88.9), owner pick page 10a: Upcoming and Past are two EQUAL folding headers. The
+    // Upcoming one is a real button named exactly "Upcoming events", open on arrival, and holds
+    // the same 44px floor as the Past one; each button sits inside a level-3 heading, so the
+    // outline still carries both section names.
+    const upcomingHeader = calendarSheet(page).getByRole('button', { name: 'Upcoming events', exact: true });
+    await guardResolved(upcomingHeader, 'the "Upcoming events" folding header button (X25a)');
+    await expect(upcomingHeader).toHaveAttribute('aria-expanded', 'true');
+    await assertMin44(upcomingHeader, 'the Upcoming events header button');
+    await expect(
+      calendarSheet(page).getByRole('heading', { level: 3 }).filter({ has: disclosure }),
+      'the Past events disclosure does not sit inside a level-3 heading (X25a: two equal headers)',
+    ).toHaveCount(1);
+    await expect(
+      calendarSheet(page).getByRole('heading', { level: 3 }).filter({ has: upcomingHeader }),
+      'the Upcoming events header button does not sit inside a level-3 heading',
+    ).toHaveCount(1);
   });
 
   test('Req 12: expanding Past events reveals rows and reports itself expanded', async ({
