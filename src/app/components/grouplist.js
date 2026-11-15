@@ -1324,12 +1324,30 @@ const GroupList = ({
 
                          AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json): the glyph is the
                          lucide Settings SVG, aria-hidden as required above, chosen OVER the emoji (it
-                         renders per-platform and is not stroke-controllable); the title stays the name. */
+                         renders per-platform and is not stroke-controllable); the title stays the name.
+
+                         AMENDED Phase 88.9-58 (X60 Sb + De3): fill now #e3dad1 (1.3802 on the card); edge
+                         warm-400 (1.6734 on the fill, 2.3096 on the card).
+                         The edge class is the secondary button's own (the line-btn-secondary border
+                         utility), no longer the shared control edge named in the paragraphs above:
+                         this control wears the secondary fill, so it takes the secondary edge. Dark is
+                         unchanged (that token is transparent there, like the shared one).
+                         ON A COLOURED CARD, measured 2026-11-15 with `src/lib/wcag.ts` against the
+                         eight preset light grounds the card paints today: the new fill reads
+                         **1.0191-1.0287** (warm-100 read 1.1842-1.1954), UNDER the 1.05 fill floor
+                         this marker names, on all eight. The fill is about as light as the tint and
+                         differs from it in hue only. The edge carries the boundary there: warm-400
+                         reads **1.7053-1.7214** on the tints (the shared warm-300 edge read
+                         1.1780-1.1891). The reserved white-wash substitution above was NOT taken here,
+                         on purpose: plan 88.9-59 (owner fix X8) repaints this gear's fill in both arms
+                         before this branch merges, and swapping the fill twice in two plans would be a
+                         look change with no ruling. If 88.9-59 does not land, this figure is an open
+                         look finding for the owner, not a settled state. */
                       <button
                         className={
                           tinted
-                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
-                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-btn-secondary text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-btn-secondary text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
                         }
                         onClick={(e) => {
                           e.stopPropagation();

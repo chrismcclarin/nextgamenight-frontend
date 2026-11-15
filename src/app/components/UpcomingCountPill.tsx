@@ -151,7 +151,10 @@ const UpcomingCountPill = React.forwardRef<HTMLSpanElement, UpcomingCountPillPro
            themes) are green before and after. The pins' own numbers are unchanged — ink on
            fill 5.0216 light / 8.3660 dark; fill on the Calendar button 4.4321 / 5.2506; fill
            on the sheet card 5.0216 / 6.4483 — and none was near its floor, so this is NOT a
-           case where 600->700 makes a marginal pairing merely LOOK safer than it measures. */
+           case where 600->700 makes a marginal pairing merely LOOK safer than it measures.
+           AMENDED Phase 88.9-58 (X60): the Calendar button is card-white in light; re-measured
+           5.0216 light, dark unchanged (the dark fill is still the dark secondary fill; test 51
+           reads 6.7549 there since the F4b amber-400 pill). */
         className={[
           'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5',
           'text-xs font-bold leading-none tabular-nums',

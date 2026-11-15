@@ -888,6 +888,16 @@ export default function AvailabilityGrid({
               light / 4.88 dark on its own fill), chosen OVER the ghost variant's muted ink on an
               unchanged card fill (8.68 dark, ink colour the only difference — register 46.3).
               Restoring the conditional mount is a decision, not a cleanup.
+              LOOK NOTE AMENDED Phase 88.9-58 (X60 Sb; orchestrator ruling 2026-11-15 on the O09a
+              pick): this button reads the house gated tokens by class, so when X60 moved the
+              light gated fill to follow the new secondary fill, gated Clear All moved with it.
+              Following the house token IS the O09a pick; pinning it to the old warm-100 would be
+              the departure. Light, measured 2026-11-15 with src/lib/wcag.ts: gated fill against
+              its card 1.3802 (was 1.1330), gated ink on the gated fill 4.7668 (was 5.81; the 4.5
+              floor holds), the border-line edge 1.6734 on the gated fill and 2.3096 on the card.
+              Dark unchanged (4.88). The ENABLED state stays card-white, so in light the button
+              darkens when it gates; that step was not ruled on a rendering and is on the owner's
+              after-build look list.
 
               DECISION Phase 88.9-41 O09a: ghost Button + two call-site aria-disabled utilities on
               the --color-btn-secondary-gated-* tokens, over variant="secondary" (it repaints the

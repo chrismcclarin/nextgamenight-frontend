@@ -199,10 +199,17 @@ export default function LandingPage() {
                 AMENDED Phase 88.9-57 (owner N05, 52-X18): the ring sits OUTSIDE on a 2px surface-hero
                 band like Get Started, chosen OVER the inset ring with no band; light 7.79, dark 10.13
                 against band and ground; the white/20 fill is no longer its neighbour; Gate C reads
-                shape, band and outside ground in both themes. */}
+                shape, band and outside ground in both themes.
+                AMENDED Phase 88.9-58 (X60 Sb + De3, owner pick pages 10b and 11, 2026-11-14): the light
+                arm wears the secondary fill without the button class, so it takes the secondary
+                button's own edge (the line-btn-secondary border utility), chosen OVER keeping the
+                shared control edge, which would leave this twin a lighter line than every secondary
+                Button beside it. Light, on the white hero: fill 1.3802 (was 1.1330), edge warm-400
+                1.6734 on the fill and 2.3096 on the hero. Dark arm (white/20 fill, white/30 border)
+                unchanged. */}
             <a
               href="/api/auth/login?connection=google-oauth2"
-              className="bg-btn-secondary hover:bg-btn-secondary-hover text-btn-secondary-text border border-line-control dark:bg-white/20 dark:hover:bg-white/30 dark:border-white/30 dark:text-white active:opacity-75 px-4 py-2 rounded-btn text-sm font-semibold transition-all w-full sm:w-80 min-h-11 text-center inline-flex items-center justify-center gap-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-hero"
+              className="bg-btn-secondary hover:bg-btn-secondary-hover text-btn-secondary-text border border-line-btn-secondary dark:bg-white/20 dark:hover:bg-white/30 dark:border-white/30 dark:text-white active:opacity-75 px-4 py-2 rounded-btn text-sm font-semibold transition-all w-full sm:w-80 min-h-11 text-center inline-flex items-center justify-center gap-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-hero"
             >
               {/* DECISION Phase 88-22 (Req 2): the four fills below stay RAW,
                   chosen OVER converting them to semantic tokens with the rest of

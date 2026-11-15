@@ -785,8 +785,8 @@ describe('Phase 88.9-58 — X60: the phone Calendar button on the page ground', 
   // census names it). The owner, 2026-11-14: "Make the calendar button White like the dialog's
   // and the cards". The unlayered secondary rule beats any background utility at the call site,
   // so the site re-points the two properties that rule reads (rest and gated) at the page-fill
-  // token. The token values and their contrast floors are pinned in tokenContrast.test.ts
-  // ("X60 Sb (88.9)" and test 51).
+  // token. The token values and their contrast floors are pinned in the tokenContrast suite
+  // (its X60 Sb test and its test 51).
   it('X60 (88.9): the phone Calendar button keeps the secondary variant and the page halo and takes the card-white fill through the page-fill token', async () => {
     await mockEvents(EVENTS);
     renderHome();

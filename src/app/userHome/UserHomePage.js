@@ -746,14 +746,31 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     amendment, not because the budget was ignored; a future reader who deletes it
                     "to restore the one-anchor rule" is undoing a ruling. The three design-document
                     halves of this amendment are plan 88.5-11's. The button itself stays
-                    `variant="secondary"` — "making it stand out more" is still rejected. */}
+                    `variant="secondary"` — "making it stand out more" is still rejected.
+
+                    AMENDED Phase 88.9-58 (X60, owner 2026-11-14: Make the calendar button White like
+                    the dialog's and the cards; I did say it shouldn't stand out more, but that was
+                    when it was like bright orange or something. I think white will be fine and not
+                    stand out too much.): the fill is card-white through the page-fill token. The
+                    variant, the accent budget and the page halo stand, and the stand-out rejection
+                    still binds accent fills. Measured: white vs page 1.3056, hover vs white 1.7672,
+                    edge vs white 2.3096 and vs page 1.7690, count pill on white 5.0216.
+                    DECISION Phase 88.9-58 (X60): secondary on the page ground takes the card-white
+                    fill, owner 2026-11-14, chosen OVER the Sb fill that reads as page-coloured there
+                    (1.0572 on the page). HOW: the two arbitrary-property classes below re-point the
+                    two properties the unlayered secondary rules read, rest and gated, at the
+                    page-fill token; chosen OVER a background utility (it loses to the unlayered
+                    rule) and OVER an important utility (it would also kill the hover fill). This is
+                    the only secondary on the page ground (halo census, 88.9-58); a new one takes the
+                    same two classes and its own pin. Dark is unchanged: the token is the dark
+                    secondary fill there. Removing either class is a decision, not a cleanup. */}
                 <div className="md:hidden">
                     <Button
                         variant="secondary"
                         onClick={() => setCalendarSheetOpen(true)}
                         aria-haspopup="dialog"
                         aria-label={calendarButtonLabel}
-                        className="min-h-11 min-w-11 gap-2 focus-visible:ring-offset-surface-page"
+                        className="min-h-11 min-w-11 gap-2 focus-visible:ring-offset-surface-page [--color-btn-secondary-bg:var(--color-btn-secondary-page-bg)] [--color-btn-secondary-gated-bg:var(--color-btn-secondary-page-bg)]"
                     >
                         {/* Decorative — the explicit aria-label above is the accessible name. */}
                         <Icon name="CalendarDays" size={20} />

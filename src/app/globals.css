@@ -507,6 +507,11 @@
      down and neither needs an alias. Full DECISION marker above the `.btn-secondary` rule. */
   --color-line-control: var(--color-border-control);
   --color-line-control-hover: var(--color-border-control-hover);
+  /* Phase 88.9-58 (X60 De3): the secondary button's OWN edge, bridged so a border utility exists
+     for the two raw twins that wear the secondary fill without the button class (the landing
+     Google light arm, the home-card gear). The key name differs from the runtime property, so it
+     joins no self-reference family. DECISION marker at the runtime property in the light block. */
+  --color-line-btn-secondary: var(--color-btn-secondary-border);
 
   /* btn       -- 4 collision keys, aliased */
   --color-btn-primary: var(--color-btn-primary-bg);
@@ -1638,10 +1643,57 @@
      `--color-btn-secondary-hover` DELIBERATELY DID NOT MOVE (warm-300). Moving it down to warm-200
      would make a HOVERED secondary button byte-equal to the page — the ruling-2 defect, relocated
      to the hover state. Held: hover fill vs resting fill **1.4081** / ΔL* 12.7446; hover ring
-     (warm-400) vs hover fill **1.4476**. Holding it is the measured answer, not an omission. */
-  --color-btn-secondary-bg: var(--warm-100);
-  --color-btn-secondary-hover: var(--warm-300);
+     (warm-400) vs hover fill **1.4476**. Holding it is the measured answer, not an omission.
+
+     ——— AMENDED Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14), above KEPT AS HISTORY ———
+
+     AMENDED Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14): fill #e3dad1, hover #cdc1b4,
+     rejected above on the 0.05-margin rule and ruled by the owner with that consequence shown
+     (fill vs page 1.0572). Card 1.3802 (was 1.1330), label 10.8910, hover vs rest 1.2805. Test 34
+     holds; the member-badge duplication is dissolved.
+     The owner on the shipped warm-100 fill: "I would prefer it doesn't match the background". On a
+     white card the old fill read 1.1330, which is what he saw as matching. The margin rule that
+     rejected this hex has no failure a person sees behind it (a 0.007 margin over a design band
+     floor, pinned by test 34, which reds if either side is nudged), so it gives way to the pick.
+     MEASURED 2026-11-15 with `src/lib/wcag.ts`: fill vs the page 1.0572, vs the white card 1.3802,
+     vs bg-muted 1.0902 (test 33's third ground, floor 1.05), vs the light warning fill 1.1082, vs
+     the light error box 1.0889; label on the fill 10.8910, on the hover fill 8.5056; hover vs rest
+     1.2805, vs the card 1.7672, vs the page 1.3536; the pressed Month | List segment against the
+     unpressed one 4.1021 (test 67).
+     The fill no longer equals the member badge (still warm-100): test 44's first pair now asserts
+     the split. The hover is the picked hex, no longer the warm-300 step held above; a hovered
+     button still differs from the page (1.3536).
+     ON THE PAGE GROUND this fill reads 1.0572, close to the page colour, which is why a secondary
+     button that sits on the page takes the page-fill token below, not this fill. */
+  --color-btn-secondary-bg: #e3dad1;
+  --color-btn-secondary-hover: #cdc1b4;
   --color-btn-secondary-text: var(--warm-800);
+  /* DECISION Phase 88.9-58 (X60 De3, owner pick page 11, 2026-11-14: I would like the line to be
+     bolder/heavier than the options presented to me): the secondary button's OWN edge is warm-400,
+     1px — fill 1.6734, card 2.3096, page 1.7690 — chosen OVER the lighter steps on the pick page
+     and OVER moving the shared control edge (group-header ring over groupColourPresets test 16's
+     1.57; EventDayModal's lighter step). Gate A caps for this edge amended by that ruling (35:
+     1.70; 36 card: 2.40); still under 3:1, so the border-strong rejection stands. Dark:
+     transparent.
+     Also measured 2026-11-15: on bg-muted 1.5350, on the light warning fill 1.8545, on the light
+     error box 1.8222. The hover edge is still the shared hover step (also warm-400), so on hover
+     only the fill moves; hover edge on the hover fill 1.3069 (test 38). Bridged in the theme block
+     as the line-btn-secondary key, for the two raw twins that wear the secondary fill (the landing
+     Google light arm and the home-card gear). */
+  --color-btn-secondary-border: var(--warm-400);
+  /* DECISION Phase 88.9-58 (X60, owner 2026-11-14: Make the calendar button White like the
+     dialog's and the cards; applied by the orchestrator to every page-ground secondary): a
+     secondary on the page ground fills with the card colour in light, chosen OVER Sb there (1.0572
+     on the page; white reads 1.3056). The 88.3-14 rejection of a fill that flips by ground is
+     narrowed to the census-named sites, each pinned. Dark equals the dark secondary fill.
+     HOW A SITE TAKES IT: the secondary rule is unlayered, so a background utility at the call
+     site loses to it. The site re-points the two properties the rules read, rest and gated, at
+     this token with two arbitrary-property classes (the gated one too: the light gated fill is
+     computed at the root, so a gated button would otherwise turn tan). Census at 88.9-58: ONE
+     site, the phone Calendar button on Home. Measured: label on white 15.0315, gated ink on white
+     6.5790, the De3 edge on white 2.3096 and on the page 1.7690, hover vs white 1.7672, the count
+     pill on white 5.0216 (test 51). */
+  --color-btn-secondary-page-bg: var(--color-bg-card);
   /* DECISION Phase 88.8 code review round 2 HIGH-A (owner ruling 2026-09-05): the GATED
      state of an `aria-disabled` `.btn` is expressed in COLOUR, on these tokens — chosen OVER
      the element `opacity: .5` dim that round 1 shipped, which composited the LABEL as well as
@@ -1685,12 +1737,29 @@
      pair forks per theme ON PURPOSE: a theme-equal light-amber fill would be the loudest thing
      on a dark card, louder than the resting button; the count pill already forks at its own
      state (tests 51-52). Measured 2026-10-16 with `src/lib/wcag.ts`. Consumers: plan
-     88.6.1-47's two Share Game QR buttons. */
+     88.6.1-47's two Share Game QR buttons.
+     AMENDED Phase 88.9-58 (X60 Sb): the light gated fill follows the rest (ink recedes, fill
+     stays); gated ink 4.7668. AMENDED Phase 88.9-58 (X60 gated edge, owner Q9 A, pick page Picks
+     12, 2026-11-14): the light gated edge is warm-300 #d6cbc0, one step lighter than the De3 rest
+     edge (warm-400 rest, warm-300 gated), keeping this marker's shape; chosen OVER no edge while
+     gated and OVER keeping warm-200 (1.06 against the new gated fill and lighter than it, 1.00
+     against the page). Measured: on the gated fill 1.16, on the card 1.60, on the page 1.22. A
+     design record, not a WCAG floor.
+     This amends the "ring stepping warm-300 -> warm-200" sentence above, kept as history: the
+     gated fill now points at the resting fill token, so the two cannot drift, and the secondary
+     gated ink on it is 4.7668 (was 5.8069 on warm-100; test 53 holds 4.5). Re-measured 2026-11-15
+     with `src/lib/wcag.ts`: gated edge on the gated fill 1.1559, on the card 1.5954, on the page
+     1.2220. The inactive-component exemption is not the reason no 1.4.11 claim is made for this
+     edge: DR-C keeps these controls active, as stated above. The rest edge (1.67) is a design
+     band in the same way. Every gated secondary at this commit sits on a card: the two email
+     panel buttons, Reset invite link, the two notification Declines and the friends request
+     Decline. The scheduler grid's Clear All (a ghost Button that reads these gated tokens by
+     class) moves with them: src/app/components/AvailabilityGrid.js ("LOOK NOTE AMENDED Phase 88.9-41 (owner pick O09a"). */
   --color-btn-primary-gated-bg: var(--purple-200);
   --color-btn-primary-gated-text: var(--purple-700);
-  --color-btn-secondary-gated-bg: var(--warm-100);
+  --color-btn-secondary-gated-bg: var(--color-btn-secondary-bg);
   --color-btn-secondary-gated-text: var(--warm-600);
-  --color-btn-secondary-gated-border: var(--warm-200);
+  --color-btn-secondary-gated-border: var(--warm-300);
   --color-btn-danger-gated-bg: #fecaca;
   --color-btn-danger-gated-text: #7f1d1d;
   --color-btn-danger-hover: #b91c1c;
@@ -1723,7 +1792,14 @@
      alternative reds something shipped. A future editor nudging warm-300 by a unit reds Gate A —
      that is the intended behaviour, and this sentence is the warning. It is also on the owner's
      final re-check list: if the secondary button's edge looks like it is disappearing on the page,
-     that is a real finding, not a nitpick. */
+     that is a real finding, not a nitpick.
+     AMENDED Phase 88.9-58 (X60 De3): this hold STANDS for the shared control edge, which is still
+     warm-300 and still bound by test 36's 1.20-2.00 rows. The secondary button no longer reads
+     this token at rest: it has its own edge token (warm-400, owner ruling De3, marker beside the
+     secondary fill above), with its own amended caps. The "ring vs fill" figures above describe
+     a pairing the button rule no longer paints. Four class-string uses still read the shared
+     edge (the past-event row, both group-page gear arms, the Manage Members ring), and the
+     secondary rule's hover step still reads the shared hover token. */
   --color-border-control: var(--warm-300);
   --color-border-control-hover: var(--warm-400);
 
@@ -2103,6 +2179,13 @@
   --color-btn-secondary-bg: var(--purple-800);
   --color-btn-secondary-hover: var(--purple-700);
   --color-btn-secondary-text: var(--warm-200);
+  /* Phase 88.9-58 (X60): both new secondary tokens are INERT in dark. The button's own edge is
+     transparent (declared, not omitted, so the 1px never shifts, like the shared control edge
+     below), and the page-fill token is purple-800, the dark secondary fill, so a page-ground
+     secondary looks exactly as before in dark. Gate A pins both (the X60 test and test 39).
+     Light markers carry the rulings. */
+  --color-btn-secondary-border: transparent;
+  --color-btn-secondary-page-bg: var(--purple-800);
   /* Phase 88.8 round 2 HIGH-A: the dark gated arms. Primary gated is purple-200 on purple-700
      (**5.4938**) — purple-700 rather than purple-800 ON PURPOSE: purple-800 is the dark
      `.btn-secondary` resting fill, and a gated Verify (primary) sits beside a promoted Resend
@@ -2999,11 +3082,23 @@ body {
 
    Everything else above stands unchanged: the mechanism, the `--color-border-strong` rejection, the
    flips-by-parent-surface rejection, the inset-shadow and border-utility rejections, the no-shadow
-   ruling, the 88.6 re-layering boundary, and the LIGHT-ONLY scope. */
+   ruling, the 88.6 re-layering boundary, and the LIGHT-ONLY scope.
+
+   AMENDED Phase 88.9-58 (X60 Sb + De3): the border reads the button's own edge; the shared
+   control edge stays warm-300 and its hold stands.
+   What changed, with the rulings quoted at the tokens in the light block: the fill is the
+   owner-picked #e3dad1 (1.3802 on a white card, was 1.1330; 1.0572 on the page), the hover fill
+   #cdc1b4, and the rest edge is the button's own token, warm-400 (1.6734 on the fill, 2.3096 on
+   the card, 1.7690 on the page). The hover edge still reads the shared hover step. Two
+   rejections above are NARROWED, not reopened: the border-strong rejection stands (warm-500
+   reads 2.9793 on the new fill, over the amended 1.70 cap, and the De3 edge is still under 3:1);
+   the flips-by-parent-surface rejection now has one named exception, a secondary on the PAGE
+   ground, which fills with the card colour through the page-fill token at its call site (one
+   site, pinned). Dark is unchanged throughout. */
 .btn-secondary {
   background-color: var(--color-btn-secondary-bg);
   color: var(--color-btn-secondary-text);
-  border: 1px solid var(--color-border-control);
+  border: 1px solid var(--color-btn-secondary-border);
 }
 
 .btn-secondary:hover:not(:disabled):not([aria-disabled='true']) {
