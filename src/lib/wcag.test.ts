@@ -39,7 +39,10 @@ const WHITE = '#ffffff'; // --color-bg-card, both the light card and the ledger'
 // The ASSERTIONS here are pure maths on the literals and are unchanged; only the roles they
 // annotate moved. That is exactly why these comments are amended by hand — nothing mechanical
 // would ever red on a stale role label in a green test.
-const WARM_100 = '#f5f0ea'; // --color-btn-secondary-bg (was --color-bg-page until 88.3-18)
+// AMENDED Phase 88.9-58 (X60 Sb, owner pick, 2026-11-14): the role moved again. The light secondary
+// button fill left warm-100 for its own hex, so warm-100 is the member-badge fill only. The maths
+// below is unchanged; row 1's delta is now the badge fill's distance from a white card.
+const WARM_100 = '#f5f0ea'; // --color-badge-member-bg (was the secondary button fill 88.3-18 to 88.9-58, the page before)
 const WARM_50 = '#faf8f5'; // --color-bg-hover / --color-bg-sunken (and Req 1's OLD page value)
 const WARM_200 = '#e8e0d8'; // --color-bg-page (was --color-bg-card-hover until 88.3-18; that
 // property was renamed --color-bg-muted in 88.6-02 (D-15) and now carries warm-250, not this hex)
@@ -102,7 +105,9 @@ describe('lStar / deltaLStar — Req 1 surface separation (UI-SPEC section 5.1, 
    * changes no conclusion in the ledger, only what a test may assert to 2dp.
    */
 
-  it('row 1: warm-100 sits the published 5.00 from the white card — now the secondary-button fill, was the page', () => {
+  it('row 1: warm-100 sits the published 5.00 from the white card — the member-badge fill now; was the page, then the secondary-button fill', () => {
+    // AMENDED Phase 88.9-58 (X60 Sb): retitled again by role. The secondary button fill is no
+    // longer warm-100 (Gate A's X60 test pins its hex), so the sentence below describes history.
     // Retitled by RAMP STEP rather than by role (88.3-18): warm-100 was `--color-bg-page` when this
     // row was written and is `--color-btn-secondary-bg` now. The three assertions are unchanged —
     // the maths never depended on the role — and 4.977 is now the FILL's delta from a white card,
