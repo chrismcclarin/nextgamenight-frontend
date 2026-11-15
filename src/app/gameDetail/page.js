@@ -128,10 +128,13 @@ function canInviteGuest(participant, viewerRole) {
 // Phase 88-20 (Req 15): `canInvite` / `groupId` carry the guest-invite affordance
 // onto the chip. The gate is computed by `canInviteGuest` at the call site rather
 // than re-derived here, so the chip and the See-all row cannot disagree.
+// AMENDED Phase 88.9-65 (X63): the invite sits beside the chip, not inside it; its rest label is Invite and its name adds the person; Retry's name adds inviting <name> to the group (owner 2026-11-14, Q7 B).
 function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId, rsvpUnavailable = false }) {
     const isCustom = !!participant.is_custom;
     return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
+        /* DECISION Phase 88.9-65 (X63, owner at N43: the chip grows too thick): the invite sits beside its chip, as at its other two sites, chosen OVER a sub-44 button inside it (the .btn phone floor is unlayered; .btn-compact is closed) and OVER a 44px box in a slim chip (its ring would cross the chip edge, as in X19). Heard name owner-ratified 2026-11-14. The error arm keeps the visible word Retry and its name adds inviting <name> to the group (owner 2026-11-14 Q7 B), chosen OVER a bare Retry (it does not say what is retried or for whom) and OVER Retry, invite <name> to the group. */
+        <span className="inline-flex items-center gap-1.5 max-w-full">
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full min-w-0">
             {/* 88.9-63 (X16 / X17a): the name is 600 and the pills below are sentence case on the pill
                 family; the marker is at the See-all row's name. */}
             <span className="text-content-primary truncate font-semibold">
@@ -161,14 +164,15 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             {isBringing && (
                 <span title="Bringing a game" aria-label="Bringing a game">🎲</span>
             )}
+        </span>
             {canInvite && (
-                <GuestInviteButton groupId={groupId} userId={participant.user_id} />
+                <GuestInviteButton groupId={groupId} userId={participant.user_id} name={participant.username} />
             )}
         </span>
     );
 }
 
-function GuestInviteButton({ groupId, userId }) {
+function GuestInviteButton({ groupId, userId, name }) {
     // null | 'sending' | 'sent' | 'pending' | 'member' | 'already' | 'error'
     const [status, setStatus] = useState(null);
     const settled = status === 'sent' || status === 'pending' || status === 'member' || status === 'already';
@@ -203,8 +207,11 @@ function GuestInviteButton({ groupId, userId }) {
        sending — Invite to group from rest, Retry after an error — held in this ref at the press,
        chosen OVER showing the rest label during a retry, which would change the text under the
        user's finger, and OVER the shipped swap to an in-flight word (the whole name changed). The
-       house Spinner and the heard ", sending" suffix ride Button's busy prop. */
-    const pressedLabelRef = useRef('Invite to group');
+       house Spinner and the heard ", sending" suffix ride Button's busy prop.
+       AMENDED Phase 88.9-65 (X63): the rest label is Invite (was the longer three-word label) and the name adds the person from an sr-only span inside the button; Retry's name adds inviting <name> to the group (owner 2026-11-14, Q7 B). The kept-label rule is unchanged. */
+    const pressedLabelRef = useRef('Invite');
+    // 88.9-65 (X63): who the name says. The same fallback at every arm.
+    const who = name || 'this guest';
     // 88.6.1-47 (D-06): the settled chip's node, and the shared focus-recovery instance that
     // lands focus on it. Above the settled early return below (hooks order).
     const chipRef = useRef(null);
@@ -228,7 +235,7 @@ function GuestInviteButton({ groupId, userId }) {
     const handleInvite = async (event) => {
         if (sendingRef.current || status === 'sending' || settled) return;
         const settle = inviteFocus.arm({ preferred: () => chipRef.current, from: event.currentTarget });
-        pressedLabelRef.current = status === 'error' ? 'Retry' : 'Invite to group';
+        pressedLabelRef.current = status === 'error' ? 'Retry' : 'Invite';
         sendingRef.current = true;
         setStatus('sending');
         try {
@@ -385,6 +392,9 @@ function GuestInviteButton({ groupId, userId }) {
         );
     }
 
+    // 88.9-65 (X63): the visible word. While sending it is the word the user pressed (rule 1 B26).
+    const shownWord = status === 'sending' ? pressedLabelRef.current : status === 'error' ? 'Retry' : 'Invite';
+
     return (
         <>
         <StatusRegion className="sr-only" message={outcomeMessage} />
@@ -414,9 +424,18 @@ function GuestInviteButton({ groupId, userId }) {
             busy={status === 'sending'}
             busySuffix=", sending"
         >
-            {status === 'sending' && pressedLabelRef.current}
-            {status === 'error' && 'Retry'}
-            {!status && 'Invite to group'}
+            {/* 88.9-65 (X63): the visible word, then the rest of the NAME in an sr-only span inside
+                the button itself (never on a wrapper, never its own stop: the iOS VoiceOver record).
+                Heard: Invite <name> to the group; Retry inviting <name> to the group; Button
+                appends the sending suffix after these children. The word break is written twice on
+                purpose, once as the button's own text and once inside the span: a name computed
+                without layout (the unit tests' library) trims an inline child's text, a browser
+                does not, and both must hear two words. */}
+            {shownWord === 'Retry' ? (
+                <>Retry{' '}<span className="sr-only"> inviting {who} to the group</span></>
+            ) : (
+                <>Invite{' '}<span className="sr-only"> {who} to the group</span></>
+            )}
         </Button>
         </>
     );
@@ -1440,11 +1459,14 @@ export default function GameDetailPage() {
        subsequent QR re-join is silent (no welcome email) per EVT-08."
        Re-hand-rolling this, or promoting it to a ConfirmDialog, is a decision, not a
        cleanup. */
-    const performRemoveParticipation = async (targetUserDbId) => {
+    const performRemoveParticipation = async (targetUserDbId, opts) => {
         // targetUserDbId is User.id (UUID) post-flatten — the value the DELETE
         // endpoint expects. Custom participants have user_id === null and the
         // Remove button is hidden for them at render time.
         if (!targetUserDbId) return;
+        // Runs synchronously inside the committing tap, so this arms before the await (X36a).
+        const settle = participantRemoveFocus.arm({ from: opts?.from ?? null });
+        setRemovingParticipantId(targetUserDbId);
         try {
             await eventsAPI.removeParticipation(singleEvent.id, targetUserDbId);
             // Optimistically drop the row. No toast (per CONTEXT decision).
@@ -1457,18 +1479,24 @@ export default function GameDetailPage() {
                     byCode: { forbidden: 'Only group owners and admins can remove someone.' },
                 })
             );
+        } finally {
+            setRemovingParticipantId(null);
+            settle();
         }
     };
 
     // Two-tap tier (fork 7): persistent inline row button, so D-07's auto-closing-menu
     // limit does not bite. Dialog-tier copy authored anyway (superset config) so a
     // retier stays the one-word edit.
+    /* DECISION Phase 88.9-65 (X36a, once-over R3, veto open): a committing Remove takes Button busy (gated ink, delayed held spinner) and its name gains , removing, chosen OVER no in-flight sign and OVER a label swap; the 65-02 EVT-08 two-tap is unchanged. Focus recovery is armed with the pressed Remove (from, 88.6.1 A-74) as the Friends Remove, landing on the dialog title, chosen OVER no arm (WebKit drops focus to body) and OVER a copy of the Friends neighbour resolver (duplication) and OVER landing on the next row's control through a shared helper lifted from the Friends page (owner 2026-11-14, Q6 A). */
+    const [removingParticipantId, setRemovingParticipantId] = useState(null);
+    const participantRemoveFocus = useFocusRecovery();
     const removeParticipantGate = useConfirmAction({
         tier: 'two-tap',
         title: 'Remove this participant?',
         body: 'They are removed from this event for everyone. A QR re-join is silent.',
         confirmLabel: 'Remove',
-        onConfirm: (targetUserDbId) => performRemoveParticipation(targetUserDbId),
+        onConfirm: (targetUserDbId, ctx) => performRemoveParticipation(targetUserDbId, ctx),
     });
 
     // 88.6.1-74 (contract C3): the game view's per-key reset — every value a game key owns, back to
@@ -2377,7 +2405,8 @@ export default function GameDetailPage() {
                                                 />
                                             </div>
                                             {/* Desktop: still visible, demoted to ghost so they stop
-                                                outranking the plain-text content they act on (F-6c). */}
+                                                outranking the plain-text content they act on (F-6c).
+                                                AMENDED Phase 88.9-65 (X49, owner 2026-11-13): Delete takes the danger ink, as its phone twin (the kebab item) already paints it; the ghost weight F-6c gave both is kept (no fill), through Button's ghost-danger variant, chosen OVER a per-site colour class. */}
                                             <div className="hidden md:flex gap-2 shrink-0">
                                                 {/* 88.6-18 (AC-3): `px-3 py-1 text-sm` DELETED from
                                                     both — every one of the three is dead against the
@@ -2395,7 +2424,7 @@ export default function GameDetailPage() {
                                                     Edit
                                                 </Button>
                                                 <Button
-                                                    variant="ghost"
+                                                    variant="ghostDanger"
                                                     onClick={() => handleDeleteEvent(event.id)}
                                                     title="Delete this session"
                                                 >
@@ -2459,7 +2488,7 @@ export default function GameDetailPage() {
                                                         )}
                                                     </span>
                                                     {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.user_id && (
-                                                        <GuestInviteButton groupId={group_id} userId={participation.user_id} />
+                                                        <GuestInviteButton groupId={group_id} userId={participation.user_id} name={participation.username} />
                                                     )}
                                                 </div>
                                             ))}
@@ -3340,7 +3369,7 @@ export default function GameDetailPage() {
                                             it — swapping them puts "Remove" under the thumb
                                             that was reaching for "Invite". */}
                                         {canInvite && (
-                                            <GuestInviteButton groupId={effectiveGroupId} userId={p.user_id} />
+                                            <GuestInviteButton groupId={effectiveGroupId} userId={p.user_id} name={p.username} />
                                         )}
                                         {canRemove && (
                                             /* 88-33 Task 5 (fork 7): converged onto the gate —
@@ -3383,6 +3412,15 @@ export default function GameDetailPage() {
                                                     p.username || 'this participant',
                                                     `Remove ${p.username || 'this participant'} from this event`
                                                 )}
+                                                /* 88.9-65 (X36a): while the DELETE is out the name keeps the
+                                                   person and gains the removing suffix (owner ratified
+                                                   2026-11-14). The aria-label above overrides Button's
+                                                   sr-only suffix, so the suffix is spelled here too. */
+                                                {...(removingParticipantId === p.user_id
+                                                    ? { 'aria-label': `Remove ${p.username || 'this participant'} from this event, removing` }
+                                                    : {})}
+                                                busy={removingParticipantId === p.user_id}
+                                                busySuffix=", removing"
                                                 className={`border shrink-0 ${
                                                     isConfirming
                                                         ? 'bg-status-error-subtle border-status-error text-content-status-error font-semibold'

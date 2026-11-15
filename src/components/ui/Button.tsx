@@ -3,7 +3,7 @@
 /**
  * Button — the one button primitive (PRIM-01 / D-01 elevation, D-02 variants).
  *
- * Five variants (`primary` / `secondary` / `danger` / `ghost` / `accent`) and
+ * Six variants (`primary` / `secondary` / `danger` / `ghost` / `ghostDanger` / `accent`) and
  * three sizes (`default` / `icon` / `sm`), on the repo's `cva` + `cn()` +
  * `forwardRef` + `displayName` idiom established by {@link Banner}. Names are
  * deliberately aligned with `Modal.tsx`'s `ModalActionVariant` so the later
@@ -224,6 +224,10 @@ const buttonVariants = cva(
         // this string.
         ghost:
           'bg-transparent text-content-secondary enabled-hover:bg-surface-hover aria-disabled:text-content-muted',
+        // DECISION Phase 88.9-65 (X49, owner 2026-11-13: Yes, That is fine.): ghost weight with the danger ink, composed like ghost, chosen OVER a per-site colour class (every future destructive ghost would copy it) and OVER the danger variant (its fill reverses F-6c).
+        // Measured with src/lib/wcag.ts, ink on the card / on the hover wash: light 8.3101 / 7.8393, dark 7.2966 / 5.9413 (Gate A's X49 test reads this string). The gated ink is ghost's.
+        ghostDanger:
+          'bg-transparent text-content-status-error enabled-hover:bg-surface-hover aria-disabled:text-content-muted',
       },
       /* DECISION Phase 88.6-06 (C.1 / D-09): three choices are recorded here,
          each with the alternative it was chosen over.
