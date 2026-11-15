@@ -84,7 +84,7 @@ export const floors = [
   { spec: 'e2e/padding-budget.spec.ts', project: 'phone', floor: 9, why: '9 of 10 listed run in phone; 1 skipped here by an isMobile predicate' },
   { spec: 'e2e/page-width.spec.ts', project: 'journeys', floor: 3, why: '3 of 4 listed run in journeys; 1 skipped here by an isMobile predicate' },
   { spec: 'e2e/page-width.spec.ts', project: 'phone', floor: 1, why: '1 of 4 listed run in phone; 3 skipped here by an isMobile predicate' },
-  { spec: 'e2e/participant-row-one-line.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/participant-row-one-line.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/phone-home-event-discovery.spec.ts', project: 'journeys', floor: 1, why: '1 of 9 listed run in journeys; 8 skipped here by an isMobile predicate' },
   { spec: 'e2e/phone-home-event-discovery.spec.ts', project: 'phone', floor: 8, why: '8 of 9 listed run in phone; 1 skipped here by an isMobile predicate' },
   { spec: 'e2e/profile-identity-refresh.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
