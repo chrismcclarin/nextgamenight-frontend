@@ -758,3 +758,46 @@ describe('Phase 88.9 — the halo contract (owner option (a))', () => {
     ).toBeGreaterThanOrEqual(HALO_POPULATION_FLOOR);
   });
 });
+
+// DECISION Phase 88.9-58 (X20, owner at N09, 2026-11-11: yes hide it): the page floor is the one
+// main element, focused only by script when the control that held focus has left the page
+// (src/components/ui/focusPageFloor.ts ("a look question for Phase 88.9, not this module's")). It is never a Tab stop,
+// so the browser outline it drew after keyboard use framed the whole page and pointed at nothing a
+// key can operate. The outline is hidden ON THE ELEMENT, with the house focus:outline-hidden,
+// chosen OVER a rule in globals.css: a global reset would be the first focus selector in that file
+// (the ARM A pin above holds it at zero) and would reach heading floors, which keep their ring.
+// outline-hidden over outline none, because the hidden form keeps an outline in forced-colors.
+// If main ever becomes a Tab stop, this pin and the utility must go together.
+describe('Phase 88.9 — the page floor shows no browser outline (X20)', () => {
+  it('13. X20 (88.9): the page floor main hides the browser outline with the house focus:outline-hidden, is never a Tab stop, and globals.css still declares no focus-visible selector', () => {
+    const mains: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const text = strip(fs.readFileSync(file, 'utf8'));
+      for (const m of text.matchAll(/<main\b[^>]*>/g)) mains.push(`${path.relative(SRC, file)} ${m[0]}`);
+    }
+    expect(mains.length, `the page floor is the ONE main element in src; found:\n${mains.join('\n')}`).toBe(1);
+    const [only] = mains;
+    expect(only.startsWith('app/layout.js '), `the one main element must be the root layout's; found ${only}`).toBe(true);
+
+    const className = /className="([^"]*)"/.exec(only);
+    expect(className, 'the main element must carry a literal className').not.toBeNull();
+    const tokens = (className as RegExpExecArray)[1].split(/\s+/).filter(Boolean);
+    expect(
+      tokens,
+      'X20 (88.9) — main must hide the browser outline with the house focus:outline-hidden. It takes focus only by script ' +
+        '(the page floor) and is never a Tab stop, so the outline framed the whole page (owner 2026-11-11: yes hide it).',
+    ).toContain('focus:outline-hidden');
+    expect(tokens, 'X20 (88.9) — outline-hidden, never outline-none: the hidden form keeps an outline in forced-colors').not.toContain('focus:outline-none');
+    expect(tokens, 'main keeps its layout class').toContain('flex-1');
+    expect(
+      /tabindex/i.test(only),
+      'X20 (88.9) — main must never author a tabindex: as a Tab stop it would need a visible focus indicator (WCAG 2.4.7), and this pin would be hiding it.',
+    ).toBe(false);
+
+    const globals = strip(readGlobals());
+    expect(
+      countOf(globals, ':focus-visible'),
+      'ARM A re-asserted: globals.css declares no focus-visible selector. The page-floor outline is hidden on the element, never by a global rule.',
+    ).toBe(0);
+  });
+});
