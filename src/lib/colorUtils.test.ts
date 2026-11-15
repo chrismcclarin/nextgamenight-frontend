@@ -17,6 +17,7 @@ import {
   storedGroupColour,
   themedTextStyleVars,
   PHOTO_TEXT_STYLE,
+  TEXT_ON_LIGHT,
   SUBTEXT_MUTED_ON_DARK,
   SUBTEXT_MUTED_ON_LIGHT,
 } from './colorUtils';
@@ -143,9 +144,30 @@ describe('getEventTileTextColor — no group colour', () => {
     expect(getEventTileTextColor(value)).toBe('var(--color-content-primary)');
   });
 
-  it('still returns tile blue on a light colour and white on a dark one', () => {
-    expect(getEventTileTextColor('#e5e7eb')).toBe('#1e40af');
+  // AMENDED Phase 88.9-60 (X24, owner 2026-11-12: drop the blue): a light tile used to take a
+  // tile-only blue; it takes the plain dark pole every other light ground takes.
+  it('still returns the dark pole on a light colour and white on a dark one', () => {
+    expect(getEventTileTextColor('#e5e7eb')).toBe(TEXT_ON_LIGHT);
     expect(getEventTileTextColor('#1e1e2e')).toBe('#ffffff');
+  });
+
+  it('X24 (88.9): a coloured light tile takes the plain dark ink, and it clears 4.5:1 on every preset light band', () => {
+    expect(TEXT_ON_LIGHT).toBe('#1f2937');
+    // Measured FIRST, on the pole itself, so the numbers are on record whatever the function returns.
+    const measured: string[] = [];
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      const ratio = contrastRatio(TEXT_ON_LIGHT, preset.light);
+      expect(ratio, `${preset.name}: the dark pole on ${preset.light} could not be measured`).not.toBeNull();
+      measured.push(`${preset.name} ${(ratio as number).toFixed(4)}`);
+      expect(ratio as number, `${preset.name}: the dark pole on the light band ${preset.light} is only ${(ratio as number).toFixed(4)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(measured, 'a preset was dropped from the measurement').toHaveLength(8);
+    // eslint-disable-next-line no-console -- the eight measured ratios are recorded from the run log
+    console.log(`X24 dark tile ink ${TEXT_ON_LIGHT} on the 8 preset light bands: ${measured.join(', ')}`);
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      expect(getEventTileTextColor(preset.light), `${preset.name}: a light tile does not take the plain dark ink`).toBe(TEXT_ON_LIGHT);
+      expect(getEventTileTextColor(preset.dark), `${preset.name}: a dark tile does not take white`).toBe('#ffffff');
+    }
   });
 });
 
@@ -719,7 +741,7 @@ describe('groupInkVars — Phase 88.3.1 D-04 / UI-SPEC 3.4', () => {
     const ground = resolveGroupGround('blue');
     expect(groupInkVars(ground, TILE)).toEqual({
       '--group-ink': '#ffffff',
-      '--group-ink-l': '#1e40af',
+      '--group-ink-l': TEXT_ON_LIGHT,
       '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
       '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
     });
@@ -730,7 +752,7 @@ describe('groupInkVars — Phase 88.3.1 D-04 / UI-SPEC 3.4', () => {
   it.each(GROUP_COLOUR_PRESETS)('$name — the TILE arm is the plain pole on both bands', (preset) => {
     expect(groupInkVars(resolveGroupGround(preset.name), TILE)).toEqual({
       '--group-ink': '#ffffff',
-      '--group-ink-l': '#1e40af',
+      '--group-ink-l': TEXT_ON_LIGHT,
       '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
       '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
     });
@@ -756,7 +778,7 @@ describe('groupInkVars — Phase 88.3.1 D-04 / UI-SPEC 3.4', () => {
     // The tile arm never reads the ink fields, so their absence changes nothing.
     expect(groupInkVars(resolveGroupGround('#1e1e2e'), TILE)).toEqual({
       '--group-ink': '#ffffff',
-      '--group-ink-l': '#1e40af',
+      '--group-ink-l': TEXT_ON_LIGHT,
       '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
       '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
     });

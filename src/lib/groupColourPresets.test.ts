@@ -3,7 +3,7 @@
  *
  * `88.3.1-UI-SPEC.md` §10.1 is a table of machine-checkable assertions and this file is that
  * table, executed. Every number the phase decided from — the ΔE2000 minima, the OKLCH hue gaps,
- * the two L* bands, the 104-cell contrast matrix, the 8:1 card ink and its 85% rung — is either
+ * the two L* bands, the 96-cell contrast matrix (104 until 88.9-60 X24 dropped the tile-only blue pole), the 8:1 card ink and its 85% rung — is either
  * asserted here or is not asserted anywhere.
  *
  * WHY IT EXISTS. The palette this set replaces measured ΔE2000 **1.62** apart in light mode —
@@ -333,8 +333,9 @@ describe('brightness tiers — the `getTextStyle` fork (UI-SPEC §10.1 test 11)'
 //
 // Four poles are IMPORTED from `colorUtils.js` rather than restated, because they are exported
 // and importing them is what keeps the matrix honest when one of them moves. The rest are
-// restated: `SUBTITLE_DARK_BG` and `TILE_TEXT_LIGHT_BG` are module-private, and a CSS custom
-// property cannot be imported into vitest at all.
+// restated: `SUBTITLE_DARK_BG` is module-private, and a CSS custom property cannot be imported
+// into vitest at all. (AMENDED Phase 88.9-60, X24: the tile-only blue pole that was restated here
+// is gone from colorUtils; a light tile takes TEXT_ON_LIGHT, which is imported and measured.)
 // ============================================================================================
 
 /** WCAG contrast, with `null` turned into a loud failure rather than a silent `NaN`. */
@@ -365,13 +366,11 @@ function compositeWhiteRgba(pole: string, bg: string): string {
   return composite('#ffffff', Number(m[1]), bg);
 }
 
-// --- The seven LIGHT-surface poles (UI-SPEC §2.4, first table) ------------------------------
+// --- The six LIGHT-surface poles (UI-SPEC §2.4, first table; seven until 88.9-60 X24) -------
 // Imported, because they are exported and must not be restated:
 //   TEXT_ON_LIGHT          `#1f2937`  src/lib/colorUtils.js ("const TITLE_DARK ="), src/lib/colorUtils.js ("const CONTRAST_DARK ="), src/lib/colorUtils.js ("export const TEXT_ON_LIGHT =")  (= TITLE_DARK / CONTRAST_DARK)
 //   SUBTEXT_MUTED_ON_LIGHT `#374151`  src/lib/colorUtils.js ("const SUBTITLE_VERY_LIGHT_BG ="), src/lib/colorUtils.js ("const TEXT_MUTED_ON_LIGHT_BG ="), src/lib/colorUtils.js ("export const SUBTEXT_MUTED_ON_LIGHT =")  (= SUBTITLE_VERY_LIGHT_BG)
 //   SUBTEXT_ON_LIGHT       `#4b5563`  src/lib/colorUtils.js ("const SUBTITLE_MEDIUM_LIGHT_BG ="), src/lib/colorUtils.js ("export const SUBTEXT_ON_LIGHT =")  (= SUBTITLE_MEDIUM_LIGHT_BG)
-/** `TILE_TEXT_LIGHT_BG`, src/lib/colorUtils.js ("const TILE_TEXT_LIGHT_BG =") — module-private, so restated. */
-const TILE_TEXT_LIGHT_BG = '#1e40af';
 /** token `--color-text-primary` light, src/app/globals.css ("--color-text-primary: var(--warm-900);") -> src/app/globals.css ("--warm-900: #1a1614;"). */
 const CONTENT_PRIMARY_LIGHT = '#1a1614';
 /** token `--color-text-secondary` light, src/app/globals.css ("--color-text-secondary: var(--warm-700);") -> src/app/globals.css ("--warm-700: #4a3d32;"). */
@@ -411,7 +410,7 @@ const BORDER_LIGHT = '#b8a898';
 const TEXT_FLOOR = 4.5;
 
 describe('text contrast on all 16 grounds — SPEC Req 3 (UI-SPEC §10.1 test 8)', () => {
-  it('8. every plain pole clears 4.5:1 on every ground it can meet — 56 light + 48 dark pairings', () => {
+  it('8. every plain pole clears 4.5:1 on every ground it can meet — 48 light + 48 dark pairings', () => {
     /*
      * THE TWO BINDING ROWS, and they pull in OPPOSITE directions (UI-SPEC §2.4):
      *
@@ -429,7 +428,6 @@ describe('text contrast on all 16 grounds — SPEC Req 3 (UI-SPEC §10.1 test 8)
       { name: 'TEXT_ON_LIGHT (src/lib/colorUtils.js ("export const TEXT_ON_LIGHT ="))', hex: TEXT_ON_LIGHT },
       { name: 'SUBTEXT_MUTED_ON_LIGHT (src/lib/colorUtils.js ("export const SUBTEXT_MUTED_ON_LIGHT ="))', hex: SUBTEXT_MUTED_ON_LIGHT },
       { name: 'SUBTEXT_ON_LIGHT (src/lib/colorUtils.js ("export const SUBTEXT_ON_LIGHT ="))', hex: SUBTEXT_ON_LIGHT },
-      { name: 'TILE_TEXT_LIGHT_BG (src/lib/colorUtils.js ("const TILE_TEXT_LIGHT_BG ="))', hex: TILE_TEXT_LIGHT_BG },
       { name: 'content-primary light (src/app/globals.css ("--color-text-primary: var(--warm-900);"))', hex: CONTENT_PRIMARY_LIGHT },
       { name: 'content-secondary light (src/app/globals.css ("--color-text-secondary: var(--warm-700);"))', hex: CONTENT_SECONDARY_LIGHT },
       { name: 'content-muted light (src/app/globals.css ("--color-text-muted: var(--warm-600);"))', hex: CONTENT_MUTED_LIGHT },
@@ -453,9 +451,16 @@ describe('text contrast on all 16 grounds — SPEC Req 3 (UI-SPEC §10.1 test 8)
         });
       }
     }
-    // ANTI-VACUITY: 7 poles x 8 surfaces. A filter bug that silently dropped a pole would leave
+    // ANTI-VACUITY: 6 poles x 8 surfaces. A filter bug that silently dropped a pole would leave
     // a green suite measuring less than it claims.
-    expect(lightRows).toHaveLength(56);
+    // AMENDED Phase 88.9-60 (X24, owner 2026-11-12: drop the blue): 7 poles, 56 rows, until the
+    // tile-only blue pole left colorUtils. Its row went with it, and the line below is what keeps
+    // that honest: a module-private light tile pole that came back would paint unmeasured.
+    expect(lightRows).toHaveLength(48);
+    expect(
+      fs.readFileSync(path.resolve(__dirname, 'colorUtils.js'), 'utf8'),
+      'colorUtils.js declares a tile-only light pole again; restate it above and give it its 8 rows, or route the tile through an exported pole',
+    ).not.toMatch(/const TILE_TEXT_LIGHT_BG\b/);
 
     const darkRows: { row: string; ratio: number }[] = [];
     for (const preset of GROUP_COLOUR_PRESETS) {
@@ -476,7 +481,7 @@ describe('text contrast on all 16 grounds — SPEC Req 3 (UI-SPEC §10.1 test 8)
         });
       }
     }
-    // ANTI-VACUITY: 6 poles x 8 bands. 56 + 48 = the 104 pairings SPEC Req 3 covers.
+    // ANTI-VACUITY: 6 poles x 8 bands. 48 + 48 = the 96 pairings SPEC Req 3 covers.
     expect(darkRows).toHaveLength(48);
 
     for (const { row, ratio } of [...lightRows, ...darkRows]) {
