@@ -14,6 +14,7 @@ import {
   themedTextStyleVars,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
@@ -102,6 +103,8 @@ const GroupList = ({
   // flips value at PR-C). selfUuid resolves ASYNC, so role derivation runs in its own effect
   // gated on resolution (D-04 async-resolution constraint).
   const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
+  // X6 (88.9-60): the shared picture-load probe, called once here; each card asks it below.
+  const bgImageFailed = useBgImageFailed();
   // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
   const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
   const [groups, setGroups] = useState([]);
@@ -617,9 +620,12 @@ const GroupList = ({
                allowlist rejects paints no image, so that card IS a plain coloured card and must
                get its colour-card ink; keying off the raw string renders the 0.7 dim and white
                text over nothing — a solid near-black card, which is the walkthrough's
-               /bgg-logo.png mystery. Copy the two lines below, not the intent. */
+               /bgg-logo.png mystery. Copy the two lines below, not the intent.
+               AMENDED Phase 88.9-60 (X6, owner F1): also false when the picture fails to load (src/lib/hooks/useBgImageFailed.ts); derivation unchanged.
+               The second copied line now carries the probe term: the flag reads this card paints
+               a picture that has not failed to load. */
             const bgImageStyle = safeBgImageStyle(bgImage);
-            const hasBgImage = !!bgImageStyle;
+            const hasBgImage = !!bgImageStyle && !bgImageFailed(bgImageStyle);
             // The text treatment forks in the CSS cascade, exactly like the
             // ground above: the DARK half is computed against the stored hex,
             // the LIGHT half against the rendered tint. No `useTheme` — see the
@@ -768,7 +774,7 @@ const GroupList = ({
                     hasBackgroundImage: hasBgImage,
                   }),
                   ...cardTextVars,
-                  ...bgImageStyle,
+                  ...(hasBgImage ? bgImageStyle : null),
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                 }}

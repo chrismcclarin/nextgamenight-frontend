@@ -8,6 +8,7 @@ import ManageMembers from '../components/ManageMembers';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
 import {
     getTextStyle,
     getSubtitleStyle,
@@ -56,6 +57,9 @@ const MEMBERS_SECTION_NAME = 'Members';
 function GroupHomePage(){
     const { user, error: authError, isLoading: authLoading } = Auth();
     const router = useRouter();
+    // X6 (88.9-60): the shared picture-load probe. Called here, above every early return (a hook
+    // cannot follow one); the header asks it where the validated style is computed, far below.
+    const bgImageFailed = useBgImageFailed();
     // Phase 87.3-05 (PR-B): resolve the caller's own Users.id UUID via the
     // shared identity primitive. The membership/removal gate keys on the nested
     // member.id (UUID) vs selfUuid. CRITICAL: selfUuid resolves ASYNC, so the
@@ -928,9 +932,11 @@ function GroupHomePage(){
      * (stored colour, no image -> transparent in light, 0.15 in dark, via the
      * class). The half that ARRIVES is `dark:`-only, which is why the rendered
      * check for it has to observe dark mode. A decision, not a cleanup.
+     *
+     * AMENDED Phase 88.9-60 (X6, owner F1): also false when the picture fails to load (src/lib/hooks/useBgImageFailed.ts); derivation unchanged.
      */
     const headerBgImageStyle = safeBgImageStyle(Group?.background_image_url);
-    const hasHeaderImage = !!headerBgImageStyle;
+    const hasHeaderImage = !!headerBgImageStyle && !bgImageFailed(headerBgImageStyle);
 
     /*
      * `darkArm` — the ground-brightness half of the three header controls' fork.
@@ -1171,7 +1177,7 @@ function GroupHomePage(){
                         surface: 'card',
                         hasBackgroundImage: hasHeaderImage,
                     }),
-                    ...headerBgImageStyle,
+                    ...(hasHeaderImage ? headerBgImageStyle : null),
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     minHeight: '120px',

@@ -17,6 +17,7 @@ import {
   TEXT_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
 import { formatTime, formatWithTzAbbr } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
@@ -1110,6 +1111,8 @@ const EventRow = forwardRef(function EventRow(
   // See the `headingLevel` DECISION on `DateGroup` above — the default IS the shipped
   // level, so every caller that passes nothing renders exactly what it rendered before.
   const TitleHeading = headingLevel;
+  // X6 (88.9-60): the shared picture-load probe; one row, one lookup, in the flag below.
+  const bgImageFailed = useBgImageFailed();
   const groupBgImage = event.Group?.background_image_url;
   const groupProfilePic = event.Group?.profile_picture_url;
 
@@ -1139,6 +1142,8 @@ const EventRow = forwardRef(function EventRow(
    * AMENDED Phase 88.9-39 F2c: the flag is also false on a status row — that row paints no
    * image, so the flag now reads 'this row paints an image'; the derivation from
    * safeBgImageStyle is unchanged.
+   *
+   * AMENDED Phase 88.9-60 (X6, owner F1): also false when the picture fails to load (src/lib/hooks/useBgImageFailed.ts); derivation unchanged.
    */
   /* DECISION Phase 88.9-39 F2c: a cancelled / completed sheet row takes the card ground and
      text-content-muted ink as its own arm of the ground ternary, chosen OVER keeping the group
@@ -1149,7 +1154,7 @@ const EventRow = forwardRef(function EventRow(
      as completed (backend:Sonnet/routes/events.js ("status: new Date(start_date) > new Date() ? 'scheduled' : 'completed',")). */
   const statusTag = isSheet && statusTagEligible ? statusTagLabel(event) : null;
   const bgImageStyle = safeBgImageStyle(groupBgImage);
-  const hasBgImage = !!bgImageStyle && !statusTag;
+  const hasBgImage = !!bgImageStyle && !statusTag && !bgImageFailed(bgImageStyle);
   /* DECISION Phase 88.9-39 D5a: a guest sheet row swaps its 1px line border for the dashed amber
      left edge as an exclusive border arm, chosen OVER stacking the edge on border-line —
      border-dashed and the amber colour apply to every side, so a stacked row would dash all four

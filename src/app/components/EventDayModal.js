@@ -15,6 +15,7 @@ import {
   TEXT_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
 import { statusTagLabel } from '../../lib/upcomingEvents';
 import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -35,6 +36,8 @@ export default function EventDayModal({
   onCreateEventOnDay = null, // CAL-04: optional "+ New event on this day" callback
 }) {
   const { timezone } = useTimezone();
+  // X6 (88.9-60): the shared picture-load probe, called once here; each row asks it in its flag.
+  const bgImageFailed = useBgImageFailed();
   const [showGameQR, setShowGameQR] = useState(false);
   const [gameInviteUrl, setGameInviteUrl] = useState('');
   const [gameQRLoading, setGameQRLoading] = useState(false);
@@ -267,9 +270,11 @@ export default function EventDayModal({
                  * flag converged without its wash leaves TEXT_ON_DARK under a
                  * still-raw white wash on an invalid-URL row over a dark preset:
                  * white on near-white. A decision, not a cleanup.
+                 *
+                 * AMENDED Phase 88.9-60 (X6, owner F1): also false when the picture fails to load (src/lib/hooks/useBgImageFailed.ts); derivation unchanged.
                  */
                 const bgImageStyle = safeBgImageStyle(groupBgImage);
-                const hasBgImage = !!bgImageStyle;
+                const hasBgImage = !!bgImageStyle && !bgImageFailed(bgImageStyle);
                 // No image and no group colour: the row is on the themed
                 // surface, so the shared fallback resolution owns its text.
                 // Keyed on `ground` (not the stored hex) and therefore declared
@@ -474,7 +479,7 @@ export default function EventDayModal({
                         surface: 'card',
                         hasBackgroundImage: hasBgImage,
                       }),
-                      ...bgImageStyle,
+                      ...(hasBgImage ? bgImageStyle : null),
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
                       position: 'relative',

@@ -782,6 +782,9 @@ export function groupInkVars(ground, options) {
    * AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json, 2026-11-07): the image branch it
    * defers to is now white + 1.5px black outline painted first, no shadow, chosen OVER white +
    * heavy blurred shadow + 0.5px stroke; returning no ink on an image is unchanged.
+   *
+   * AMENDED Phase 88.9-60 (X6, owner F1): callers pass false here for a picture that failed to
+   * load, so that group gets its ink back, exactly as a group with no picture does.
    */
   if (hasBackgroundImage) return {};
 
@@ -870,6 +873,11 @@ const STROKE_DARK = '0.5px rgba(0, 0, 0, 0.9)';
  * border is read as the letter, so on any fill one of the two colours clears 15:1 (black 15.56 on
  * #c4e1ff, white 15.03 on #00274d). No-image arms are W50 F10 as shipped (R2-02, owner keep
  * 2026-11-07). Changing this is a decision, not a cleanup.
+ *
+ * AMENDED Phase 88.9-60 (X6, owner F1, 2026-11-11): a picture that FAILS to load is treated as no
+ * picture (plain arm, preset inks, no outline), chosen OVER the one-treatment rule above, which
+ * existed only because no failed load could be detected; the failed ground is the tint, whose inks
+ * clear 4.5. Changing this back is a decision, not a cleanup.
  */
 const STROKE_OUTLINE = '1.5px #000000';
 const PAINT_STROKE_FIRST = 'stroke fill';
@@ -959,7 +967,8 @@ export function getEventTileTextColor(hexColor) {
  * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string }}
  */
 export function getTextStyle(hasBackgroundImage, backgroundColor) {
-  // Background image (a photo, or a stored URL that fails to load): O02d1, white text with a
+  // Background image (a photo that has not failed to load; since 88.9-60 X6 a picture that fails
+  // to load reaches this function as no image): O02d1, white text with a
   // 1.5px black outline painted first, no shadow (see the O02d1 marker above STROKE_OUTLINE).
   if (hasBackgroundImage) {
     return {

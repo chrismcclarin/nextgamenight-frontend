@@ -12,6 +12,7 @@ import {
   SUBTEXT_MUTED_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
 import { isGuestEvent } from '../../lib/eventClassification';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
@@ -185,6 +186,8 @@ export default function CalendarMonthView({
   // The JSDoc cast types the prop (a bare null default narrows it to null for TS consumers, 88.9-28 precedent).
   viewSwitch = /** @type {import('react').ReactNode} */ (null),
 }) {
+  // X6 (88.9-60): the shared picture-load probe, called once here; each tile asks it in its flag.
+  const bgImageFailed = useBgImageFailed();
   return (
     <>
       {/* Month Navigation.
@@ -634,9 +637,11 @@ export default function CalendarMonthView({
                          * the pixels do not move". The pixels moving IS the fix; a
                          * treatment computed for an image the renderer refused to
                          * apply is the defect. A decision, not a cleanup.
+                         *
+                         * AMENDED Phase 88.9-60 (X6, owner F1): also false when the picture fails to load (src/lib/hooks/useBgImageFailed.ts); derivation unchanged.
                          */
                         const bgImageStyle = safeBgImageStyle(groupBgImage);
-                        const hasValidBgImage = !!bgImageStyle;
+                        const hasValidBgImage = !!bgImageStyle && !bgImageFailed(bgImageStyle);
                         // CR-01 (88.3-cr): the COMPACT tile renders no image, so
                         // it must not take the image-tuned text treatment either.
                         // AMENDED Phase 88.6-41 (W49): the fork now carries the
@@ -1156,7 +1161,7 @@ export default function CalendarMonthView({
                                 hasBackgroundImage: hasValidBgImage,
                               }),
                               ...tileTextVars,
-                              ...bgImageStyle,
+                              ...(hasValidBgImage ? bgImageStyle : null),
                               backgroundSize: 'cover',
                               backgroundPosition: 'center',
                               position: 'relative',

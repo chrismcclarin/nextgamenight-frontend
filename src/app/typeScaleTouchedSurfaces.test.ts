@@ -1343,8 +1343,9 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // not "fix" that by resolving the expression (see `PROP_SEAM_EXPRESSION`).
       // AMENDED Phase 88.9-22 (owner pick F4b): the EmptyState entry moved 179 -> 182 because 88.9-22 added a three-line F4b AMENDED comment above the same Heading; the skipped element is unchanged.
       // AMENDED Phase 88.9-39 (owner picks F2c / D5a / D6c; then the 88.9-25 hand-off 4 heights marker): the CalendarListView entry (DateGroup's `<DayHeading`) moved 1069 -> 1071 -> 1082 because 88.9-39's OWNER RULING 2a sentence, the D6c fold and the heights DECISION block sit above it; the skipped element is unchanged.
+      // AMENDED Phase 88.9-60 (X6): the CalendarListView entry moved 1082 -> 1083 because 88.9-60 added the one-line useBgImageFailed import at the top of that file; the skipped element (DateGroup's DayHeading) is unchanged.
     ).toEqual([
-      'app/components/CalendarListView.js:1082',
+      'app/components/CalendarListView.js:1083',
       'components/ui/EmptyState.tsx:182',
     ]);
   });
