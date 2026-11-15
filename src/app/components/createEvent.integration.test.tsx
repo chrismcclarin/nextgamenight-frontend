@@ -439,6 +439,8 @@ describe('CreateEvent + real EventScheduler — the Phase 66-01 controlled round
     // AMENDED Phase 88.9-41 (S1a): the at-rest prompt is now the range caption above the grid
     // (desktop arm under jsdom's default matchMedia); with the field cleared it is VISIBLE
     // again — the p never unmounts, it drops its `invisible` arm (R-P5).
+    // AMENDED Phase 88.9-57 (owner ruling 52-X39): the hidden arm is gone; the caption is visible
+    // in every state, so this read now holds before and after a pick alike.
     const caption = screen.getByText(/pick a time range/i);
     expect(caption).toBeInTheDocument();
     expect(caption).not.toHaveClass('invisible');

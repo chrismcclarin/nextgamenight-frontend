@@ -1404,15 +1404,12 @@ export default function EventScheduler({
           handle and S2a's keyboard extend, both built with Phase 89's cell rework. Moving it
           back below the grid, boxing it again, or unmounting it on commit, is a decision, not a
           cleanup. The two class arms are whole literals (Tailwind v4 emits nothing for an
-          interpolated class). */}
-      <p
-        className={
-          selectedSlot
-            ? 'text-sm text-content-secondary invisible'
-            : 'text-sm text-content-secondary'
-        }
-        aria-hidden={selectedSlot ? 'true' : undefined}
-      >
+          interpolated class).
+          AMENDED Phase 88.9-57 (owner ruling 52-X39, 2026-11-13): the caption stays VISIBLE and
+          spoken after a commit, chosen OVER R-P5's hidden reserved line (it read as a wide empty
+          gap) and OVER an unmount (R-P5's ~36px jump); the grid still never moves; one class
+          literal now. */}
+      <p className="text-sm text-content-secondary">
         {isPhoneViewport
           ? 'Tap and hold a time, then drag to pick how long'
           : 'Click and drag to pick a time range'}
@@ -1432,8 +1429,15 @@ export default function EventScheduler({
             idPrefix={stripId}
           />
         )}
+        {/* DECISION Phase 88.9-57 (owner 52-X38): no text selection on the drag surface via a CSS
+            guard on THIS panel, chosen OVER a guard in the shared heatmap files (WeekGrid.tsx and
+            usePaintGesture.ts have one production consumer, this file) and OVER a pointerdown
+            preventDefault (it also cancels the mouse's focus move into the roving-tabindex grid;
+            on touch it is the Phase 87.8 scroll-killer). The availability grid (AvailabilityGrid.js
+            on WriteCell, guarded per cell) and the group heatmap (its own no-select wrapper) do
+            not change. Changing this is a decision, not a cleanup. */}
         <div
-          className="bg-surface-card rounded-card border border-line"
+          className="bg-surface-card rounded-card border border-line select-none"
           // The tab/tabpanel relationship is REAL, not decorative: the strip's tabs switch which
           // day this panel shows, and naming the panel from the selected tab is what stops the
           // strip being seven tabs pointing at nothing.
