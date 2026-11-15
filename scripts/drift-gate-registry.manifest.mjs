@@ -159,6 +159,7 @@ export const helperOnly = [
   { file: 'src/app/components/heatmap/usePaintGesture.test.ts', why: 'withoutComments over paintGestureActiveStore.ts only; no tree scan' },
   { file: 'src/app/goodbye/page.test.tsx', why: 'withoutComments over two named files; no tree scan' },
   { file: 'src/app/groupHomePage/groupHomePage.identity.test.tsx', why: 'readOpeningTag and withoutComments over its own page.js; no tree scan' },
+  { file: 'src/app/pageWidth.test.ts', why: 'withoutComments over seven named files (X5 page width, 88.9-59); no tree scan' },
   { file: 'src/components/ui/Button.test.tsx', why: 'withoutComments over Button.tsx only; no tree scan' },
   { file: 'src/lib/api.test.ts', why: 'withoutComments over the proxy route file only; no tree scan' },
   { file: 'src/lib/schemas/identity.contract.test.ts', why: 'withoutComments over three named schema files; no tree scan' },

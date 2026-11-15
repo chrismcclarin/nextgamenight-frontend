@@ -7,7 +7,8 @@ import { E2E_GROUP_ID } from './support/groupSettings';
 //
 // The owner looked at the built pages on a wide screen (the 88.9-51 glance, 2026-11-11) and ruled:
 // the header, the footer and the Home body widen toward 1600 (X5a); the group, game and planning
-// bodies read better at 1280 and stay there under the wider header (X5c). A class string proves
+// bodies read better at 1280 and stay there under the wider header (X5c). The class strings are
+// held by src/app/pageWidth.test.ts ("the header nav class string"); a class string proves
 // nothing about what a browser paints (a parent can cap or pad a box), so the boxes are measured
 // here, in Chromium, at the widths the owner looked at.
 //
