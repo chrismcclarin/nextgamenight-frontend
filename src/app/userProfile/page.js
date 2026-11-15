@@ -2416,7 +2416,9 @@ function Profile(){
                                halo 6.65 / 6.37, band 1.00 in both themes (UI-SPEC R2-69). The ink moved with the box (build
                                contract); the A10 marker's byte-unchanged sentence described plan 88.6-17's own edit and still
                                holds for the glyph size and the 44 floor. Putting a dark variant back on this halo is a
-                               decision, not a cleanup. */
+                               decision, not a cleanup.
+                               AMENDED Phase 88.9-58 (X21b): light box now amber-200 (the X21b pick); ring vs halo
+                               re-measured 6.26 light / 6.37 dark, band 1.00. */
                             className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-status-warning hover:text-content-primary text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
                             aria-label="Dismiss"
                         >

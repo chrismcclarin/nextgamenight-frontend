@@ -691,7 +691,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     now the opaque status-warning family and this halo is the ONE box key,
                     focus-visible:ring-offset-status-warning-subtle (ring vs halo 6.65 light / 6.37 dark, band 1.00),
                     chosen OVER the amber-50 light / page-colour dark pair over a 20% translucent box. It matches
-                    the R065 twin again. Changing it back is a decision, not a cleanup. */}
+                    the R065 twin again. Changing it back is a decision, not a cleanup.
+                    AMENDED Phase 88.9-58 (X21b): light box now amber-200 (the X21b pick); ring vs halo
+                    re-measured 6.26 light / 6.37 dark, band 1.00. */}
                 {removedNoticeShown && (
                     <button
                         onClick={dismissRemovedNotice}

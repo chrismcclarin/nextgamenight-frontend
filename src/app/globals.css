@@ -1038,7 +1038,8 @@
      into — because the warning tint is a STATUS colour: reusing it would say "something is wrong"
      on a surface whose whole message is "nothing here yet" (§9.2 forbids conflating empty with
      error). The values are UI-SPEC §9.1's: light amber-100, dark a warm amber-over-purple-900
-     literal with no palette step to point at. */
+     literal with no palette step to point at.
+     [AMENDED Phase 88.9-58 (X21b): light is now #fde68a; the rejection stands.] */
   --color-bg-accent-subtle: var(--amber-100);
   /* DECISION Phase 88.3-14 (owner ruling 3, 2026-08-27): the invite / empty-state circle PAIR gets
      its OWN token pair, one palette step darker each — ground `amber-200`, glyph `amber-900`
@@ -1865,8 +1866,13 @@
   --color-status-success-subtle-hover: #c7e9d4;
   --color-status-error-subtle: #fadede;
   --color-status-error-subtle-hover: #f7cbcb;
-  --color-status-warning-subtle: #f9ebda;
-  --color-status-warning-subtle-hover: #f6dec3;
+  /* DECISION Phase 88.9-58 (X21b, owner pick page 10a, 2026-11-14): light warning fill amber-200,
+     chosen OVER the shipped pale peach (read as page-coloured) and OVER X21a amber-100; ink and
+     border unchanged (5.50; light ring 6.26). Hover amber-300, owner pick Eh1 (page 11,
+     2026-11-14; ink 4.75, 1.16 from rest), chosen OVER the peach hover (1.04, a hue jump).
+     Light only. */
+  --color-status-warning-subtle: #fde68a;
+  --color-status-warning-subtle-hover: #fcd34d;
 
   /* Header (warm neutral, NOT purple) */
   --color-bg-header: var(--warm-800);
