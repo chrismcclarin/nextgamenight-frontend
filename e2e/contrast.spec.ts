@@ -2367,11 +2367,17 @@ async function assertAccentLabelRatio(page: Page, theme: 'light' | 'dark'): Prom
  * dark-only amber re-point in dark (owner pick B4a) and from the house purple-700 ring in light;
  * the button no longer re-points its own ring. The light arm also reads the hero root's painted
  * ground against the resolved card token, which is how this test proves O01a shipped.
+ *
+ * AMENDED Phase 88.9-57 (owner N05, 52-X18): the ring is no longer inset on the button's own fill.
+ * It sits OUTSIDE the button on a 2px band of the hero surface, the shape Get Started wears, so
+ * the composite above is no longer the ring's neighbour. Three reads per theme: the ring's shape
+ * (an offset ring, asserted hard), the ring against its band, the band against the surface under
+ * the control (equal), and the ring against that surface outside the band.
  */
 test.describe('Req 11 Gate C — OI-7, the logged-out landing hero (both themes, 88.9-33)', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test('OI-7 (88.9-33 O01a + B4a): the Google sign-in ring clears 3:1 on its ground in both themes, and the light hero is the card surface', async ({ page }) => {
+  test('OI-7 (88.9-33 O01a + B4a; 88.9-57 52-X18): the Google sign-in ring sits outside the button on the hero band like Get Started and clears 3:1 in both themes, and the light hero is the card surface', async ({ page }) => {
     test.slow();
     await inBothThemes(page, 'OI-7 landing hero Google sign-in (O01a + B4a)', async (theme) => {
       await page.goto('/');
@@ -2402,10 +2408,30 @@ test.describe('Req 11 Gate C — OI-7, the logged-out landing hero (both themes,
 
       const label =
         theme === 'light'
-          ? 'OI-7 — Google sign-in ring, light (O01a secondary tokens, house ring)'
-          : 'OI-7 — Google sign-in ring, dark (hero-root amber scope, B4a)';
+          ? 'OI-7 — Google sign-in ring, light (house ring on the hero band, 52-X18)'
+          : 'OI-7 — Google sign-in ring, dark (hero-root amber scope B4a, on the hero band, 52-X18)';
       const m = await focusRingMeasurement(page, google, label);
+      expect(
+        m.ringGroundKind,
+        `${label}: the ring is '${m.ringGroundKind}' (ring ${m.fg} on ${m.ground}); it must be an offset ring that ` +
+          'sits outside the button on a band of the hero surface, the shape Get Started wears.'
+      ).toBe('offset');
+      // Ring against its band.
       expectRatio(label, m, NON_TEXT);
+      // The band against the surface under the control: equal, so the band reads as the hero.
+      const h = await haloGroundRatio(m, google);
+      expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+      // Ring against the surface just outside the band.
+      const outside = contrastRatio(m.fg, h.behind);
+      if (outside === null) throw new Error(`${label}: could not compute the ring ${m.fg} against the surface ${h.behind}`);
+      // eslint-disable-next-line no-console -- the measured ratios are recorded from the CI log
+      console.log(
+        `${label}: ring ${m.fg} vs band ${m.ground} ${m.ratio.toFixed(2)}:1 (${m.ratio}); band vs surface ${h.behind} ` +
+          `${h.ratio.toFixed(3)}:1; ring vs surface outside ${outside.toFixed(2)}:1 (${outside})`
+      );
+      expect
+        .soft(outside, `${label}: the ring ${m.fg} on the surface outside the band ${h.behind} is ${outside.toFixed(2)}:1, floor ${NON_TEXT}:1`)
+        .toBeGreaterThanOrEqual(NON_TEXT);
     });
   });
 });

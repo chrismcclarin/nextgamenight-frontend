@@ -1,7 +1,16 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { holdWrites } from './support/inFlight';
 import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
-import { assertTheme, describeRatio, focusRingMeasurement, forceLightMode, haloGroundRatio } from './support/contrast';
+import {
+  assertTheme,
+  compositeGround,
+  contrastRatio,
+  describeRatio,
+  focusRingMeasurement,
+  forceLightMode,
+  haloGroundRatio,
+  probeElement,
+} from './support/contrast';
 
 // Phase 88.6.1-45 (AC-18 + D-08a, copy row H5) — the header's one Main navigation landmark and
 // the layered Escape, in a real browser.
@@ -56,6 +65,49 @@ async function desktopLinkRings(page: Page, theme: 'light' | 'dark'): Promise<vo
     const friends = main.getByRole('link', { name: 'Friends', exact: true });
     await expectHouseRing(page, friends, `desktop header Friends link focus ring (A10c, ${theme})`);
   });
+}
+
+// Phase 88.9-57 — 52-X15 (owner pick N03 B, 2026-11-11): the desktop theme toggle hovers like the
+// bell beside it. White glyph at rest, amber-400 on hover, and no wash behind it, in both themes.
+// Red by design before the fix: in dark the sun rests amber, and in light the moon's own white
+// class keeps it white under the pointer while a translucent wash paints behind it.
+// Colours are read through probeElement's normaliser, so the form Chromium serialises does not matter.
+const INK_WHITE = 'rgb(255, 255, 255)';
+const INK_AMBER_400 = 'rgb(251, 191, 36)';
+const GLYPH_FLOOR = 3;
+
+async function toggleHoversLikeTheBell(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const label = `desktop theme toggle hover (X15, ${theme})`;
+  const main = page.getByRole('navigation', { name: 'Main', exact: true });
+  const toggle = main.getByRole('button', { name: /^Switch to (light|dark) mode$/ });
+  await expect(toggle, `${label}: the Main landmark must hold exactly one visible theme toggle at 1280.`).toHaveCount(1);
+  const glyph = toggle.locator('svg');
+  const ink = async (): Promise<string | null> => (await probeElement(glyph, ['color'])).computed['color']?.css ?? null;
+  const fill = async (): Promise<string> =>
+    (await probeElement(toggle, ['background-color'])).computed['background-color']?.raw ?? '';
+
+  // The pointer is parked well below the sticky header, so the first read is the resting state.
+  await page.mouse.move(8, 600);
+  await expect.poll(ink, { message: `${label}: the glyph at rest must be white, the bell's resting ink.` }).toBe(INK_WHITE);
+  const restFill = await fill();
+
+  await toggle.hover();
+  await expect
+    .poll(ink, { message: `${label}: the glyph under the pointer must be amber-400, the bell's hover ink.` })
+    .toBe(INK_AMBER_400);
+  const hoverFill = await fill();
+  expect(hoverFill, `${label}: the button background changed on hover (${restFill} to ${hoverFill}); the pick is no wash.`).toBe(restFill);
+
+  const ground = compositeGround(await probeElement(toggle, []), 0);
+  expect(ground, `${label}: the ground walk under the toggle never reached an opaque surface.`).not.toBeNull();
+  const ratio = contrastRatio(INK_AMBER_400, ground);
+  expect(ratio, `${label}: no ratio from ${INK_AMBER_400} on ${ground}.`).not.toBeNull();
+  // eslint-disable-next-line no-console -- the measured ratio is recorded from the CI log
+  console.log(`${label}: hovered glyph ${INK_AMBER_400} on ${ground} ${ratio!.toFixed(2)}:1 (${ratio}); background ${hoverFill}`);
+  expect(
+    ratio!,
+    `${label}: the hovered glyph ${INK_AMBER_400} on the header ground ${ground} is ${ratio!.toFixed(2)}:1, floor ${GLYPH_FLOOR}:1.`
+  ).toBeGreaterThanOrEqual(GLYPH_FLOOR);
 }
 
 test.describe('header main nav — phone (375, the hamburger)', () => {
@@ -157,6 +209,9 @@ test.describe('header main nav — desktop (the inline list)', () => {
   test('A10c (88.9): the desktop brand link and a list link wear the house ring on a header halo, dark', async ({ page }) => {
     await desktopLinkRings(page, 'dark');
   });
+  test('X15 (88.9-57): the desktop theme toggle hovers like the bell — white at rest, amber-400 on hover, no wash, dark', async ({ page }) => {
+    await toggleHoversLikeTheBell(page, 'dark');
+  });
 });
 
 test.describe('header main nav — desktop, light (88.9)', () => {
@@ -173,5 +228,8 @@ test.describe('header main nav — desktop, light (88.9)', () => {
 
   test('A10c (88.9): the desktop brand link and a list link wear the house ring on a header halo, light', async ({ page }) => {
     await desktopLinkRings(page, 'light');
+  });
+  test('X15 (88.9-57): the desktop theme toggle hovers like the bell — white at rest, amber-400 on hover, no wash, light', async ({ page }) => {
+    await toggleHoversLikeTheBell(page, 'light');
   });
 });
