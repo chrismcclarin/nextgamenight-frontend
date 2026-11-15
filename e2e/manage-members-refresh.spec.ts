@@ -222,9 +222,14 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
     });
     await manage.tap();
 
-    // With no roster loaded the caller has no role yet, so the title is the plain one.
-    const dialog = page.getByRole('dialog', { name: 'Members', exact: true });
+    // AMENDED Phase 88.9-64 (X41, owner at N32, 2026-11-13): the dialog's first paint takes the role
+    // the group page already holds (the CI viewer owns this group), and a failure that is neither
+    // an access answer nor a gone one keeps it. So with no roster loaded the title is the managing
+    // one and the viewer note is absent. Until this plan the title here was the plain one, because
+    // the dialog knew no role before its own read answered.
+    const dialog = page.getByRole('dialog', { name: 'Manage Group Members', exact: true });
     await expect(dialog.getByText("Couldn't load members")).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByText("You're viewing the member list.")).toHaveCount(0);
     await expect(dialog.getByText('No members found.')).toHaveCount(0);
     await expect(dialog.getByText('Loading members...')).toHaveCount(0);
     expect(failures, 'the failure was served exactly once').toBe(1);
