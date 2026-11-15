@@ -97,7 +97,7 @@ const SUBTITLE_MEDIUM_LIGHT_BG = '#4b5563';
 const SUBTITLE_DARK_BG = 'rgba(255, 255, 255, 0.95)';
 
 // --- Calendar tile text color constants (computed poles) ---
-const TILE_TEXT_LIGHT_BG = '#1e40af'; // Blue text on light calendar tiles
+// The light-ground tile pole is the shared dark pole since 88.9-60 X24 (see getEventTileTextColor).
 const TILE_TEXT_DARK_BG = '#ffffff';
 /*
  * DECISION Phase 88.3 (R2-6): this pole is `#374151`, chosen OVER the `#6b7280`
@@ -966,20 +966,25 @@ export function isDarkBackground(hexColor) {
 
 /**
  * Calendar-tile text color variant.
- * Returns blue for light backgrounds (design choice for calendar event tiles),
- * white for dark backgrounds.
- * Intentionally different from getContrastColor.
+ * Returns the plain dark pole for light backgrounds, white for dark backgrounds.
+ *
+ * AMENDED Phase 88.9-60 (X24, owner 2026-11-12: drop the blue): a light tile takes the plain dark
+ * pole, chosen OVER a tile-only blue that read as a different colour on the one coloured group
+ * with future nights; 10.84–10.94 on the 8 light bands (blue 6.44–6.50). A different tile ink is a
+ * decision, not a cleanup. (History: this function was "intentionally different from
+ * getContrastColor" by that blue; the two now agree on a coloured ground and differ only in the
+ * no-colour arm below.)
  *
  * With no group colour the tile has no background of its own and sits on the
  * themed month cell, so the content token is returned instead of a pole (D-28).
  *
  * @param {string|null|undefined} hexColor - Background hex color
- * @returns {string} A content token (no colour), tile blue, or white
+ * @returns {string} A content token (no colour), the dark pole, or white
  */
 export function getEventTileTextColor(hexColor) {
   if (isUnsetBackgroundColor(hexColor)) return UNSET_BG_TILE_TEXT;
   const brightness = getBrightness(hexColor);
-  return brightness > 128 ? TILE_TEXT_LIGHT_BG : TILE_TEXT_DARK_BG;
+  return brightness > 128 ? TEXT_ON_LIGHT : TILE_TEXT_DARK_BG;
 }
 
 /**

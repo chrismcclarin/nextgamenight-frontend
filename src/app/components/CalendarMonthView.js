@@ -998,7 +998,7 @@ export default function CalendarMonthView({
                                  * MEASURED ON THE SHIPPED BANDS (2026-08-29, this tree's
                                  * `lib/wcag.ts`), not inherited — the figures in this phase's
                                  * own documents have been wrong twice:
-                                 *   `getEventTileTextColor` non-past  6.44-6.50:1 light
+                                 *   `getEventTileTextColor` non-past  6.44-6.50:1 light (10.84-10.94 since 88.9-60 X24: the dark pole)
                                  *                                     11.29-15.40:1 dark
                                  *   past-date muted poles             7.61-7.68:1 light
                                  *                                     6.33-8.10:1 dark
