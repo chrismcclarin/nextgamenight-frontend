@@ -52,6 +52,7 @@ export const floors = [
   { spec: 'e2e/feedback-stacking.spec.ts', project: 'phone', floor: 3, why: '3 of 6 listed run in phone; 3 skipped here by an isMobile predicate' },
   { spec: 'e2e/feedback-submit.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/friend-request-kept-on-failure.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/friends-long-address.spec.ts', project: 'phone', floor: 4, why: '4 of 4 listed run in phone; the other project is skipped by an isMobile predicate (a 375 layout defect)' },
   { spec: 'e2e/game-suggestion-card.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/gamedetail-refresh-failed.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/games-to-bring-picker-phone.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
