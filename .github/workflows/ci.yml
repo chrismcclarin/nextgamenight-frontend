@@ -100,6 +100,16 @@ jobs:
       - name: Typecheck e2e specs (DEF-88-30-02 — tsconfig.json excludes e2e/)
         run: npx tsc --noEmit -p tsconfig.e2e.json
 
+      # DECISION Phase 88.9-57 (52-X1): a SEPARATE step that runs eslint over e2e/, chosen OVER adding
+      # e2e to next lint's directories — next build (the Vercel deploy) would then lint the specs
+      # too and a spec-only lint error would fail a production deploy. Measured at FE 9b3d6bc: the
+      # package lint script is next lint, next.config.js has no eslint key, and next lint exits 0
+      # with zero e2e lines while eslint over e2e/ reported three no-console errors. The same hole
+      # DEF-88-30-02 closed for the typecheck: the ordinary step cannot fail on a Playwright spec.
+      # Pinned by name in src/lib/ci-grep-gate.fixture.test.ts.
+      - name: Lint e2e specs (52-X1 — next lint skips e2e/)
+        run: npx eslint e2e
+
       - name: Unit tests
         run: npx vitest run
 

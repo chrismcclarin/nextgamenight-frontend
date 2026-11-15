@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { scrubbedFetch } from './support/scrubbedFetch';
 import { advanceMonths, monthWithTrailingDays } from './support/calendarGrid';
+import { isGuestEvent } from '../src/lib/eventClassification';
 import {
   assertTheme,
   blend,
@@ -147,12 +148,12 @@ function viewerFromEventsUrl(url: string): string {
  * A real event a tile may be measured on or copy its shape from: a scheduled night, on an
  * uncoloured group, that the viewer does not join as a guest. The guest rule is the one the upcoming
  * list's Guest pill reads: the viewer's own participation, matched on User.id, with is_guest strictly
- * true. An unread viewer (empty) counts ANY guest row, so an unknown viewer never admits a guest night.
+ * true. An unread viewer (empty) admits NO night at all, so the picker's fixture error fires.
  */
 function isPlainScheduled(e: PlainCandidate, viewer: string): boolean {
   if (e.status !== 'scheduled' || !e.Group || !isUncolouredGroup(e.Group)) return false;
-  const participations = Array.isArray(e.EventParticipations) ? e.EventParticipations : [];
-  return !participations.some((p) => p.is_guest === true && (viewer === '' || p.user_id === viewer));
+  if (viewer === '') return false;
+  return !isGuestEvent(e, viewer);
 }
 
 // DECISION Phase 88.9 (quick 261110-ugi H-1): every synthetic tile below copies its shape from the
@@ -165,6 +166,10 @@ function isPlainScheduled(e: PlainCandidate, viewer: string): boolean {
 // exist yet, and both copies must stay textually identical so the phase merge is clean. Every
 // synthetic tile also sets its own EventParticipations (an empty list, unless it is a guest tile on
 // purpose), so a drift between the two rules can move only the real Scenario A/B target.
+// AMENDED Phase 88.9-57 (52-X3): the restatement is gone; isPlainScheduled calls the shared
+// isGuestEvent, chosen OVER keeping the copy, whose one reason (FE main lacked the module) ended
+// with PR #49 (b5adaed) merged into this branch (9b3d6bc). The empty-viewer arm stays local and
+// STRICTER: the shared rule admits a guest night with no viewer.
 function plainScheduledTemplate(real: unknown[], viewer: string): Record<string, unknown> | null {
   const found = (real as PlainCandidate[]).find((e) => isPlainScheduled(e, viewer));
   return (found as Record<string, unknown> | undefined) ?? null;
@@ -224,7 +229,8 @@ async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
     // renders), and none is a thrown fixture error, chosen OVER the old positional events[0]
     // fallback. Every seeded group stores background_color '#ffffff', so the old truthiness find
     // never matched and events[0], the NEWEST event, was measured whatever its colour; when BE PR 70
-    // made the newest event a green Strategy Squad night, Scenario B read a green tile's shadow.
+    // made the newest event a green Strategy Squad night,
+    // Scenario B read a green tile's stroke and shadow (red run 42981547899 stopped at the --t-stroke assertion).
     // Upcoming because tileFor walks forward only; the two-tile rule because the cell renders
     // dayEvents.slice(0, 2) in payload order (src/app/components/CalendarMonthView.js ("{dayEvents.slice(0, 2).map(event => {")).
     const nowMs = Date.now();

@@ -178,7 +178,7 @@ test.describe('tutorial gesture wording, phone arm (88.6.1-51, D-16)', () => {
     await expect(page.getByText(T4_DESKTOP, { exact: true })).toHaveCount(0);
     await expect(page.getByText(R4_DESKTOP, { exact: true })).toHaveCount(0);
 
-    // House logger rule applies to src/ only; this one line makes a red diagnosable from the CI log.
+    // eslint-disable-next-line no-console -- this one line makes a red diagnosable from the CI log
     console.log('[tutorial-wording-375]', JSON.stringify(rows));
 
     expect(counters.tutorialWrites, 'no tutorial write may leave the browser').toBe(0);

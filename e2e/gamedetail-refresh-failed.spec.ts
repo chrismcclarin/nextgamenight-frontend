@@ -258,6 +258,7 @@ test('event page: a failed background refresh keeps the event and shows the noti
     const inPage = await page
       .evaluate(() => (window as unknown as { __rf1Trail?: string[] }).__rf1Trail ?? ['no trail: a new document'])
       .catch(() => ['evaluate failed']);
+    // eslint-disable-next-line no-console -- the RF1 trail prints only on a red, for the CI log
     console.log(`[DIAG gamedetail-refresh-event] ${JSON.stringify({ trail, inPage })}`);
     throw error;
   }

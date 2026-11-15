@@ -715,6 +715,7 @@ async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<vo
     await expect(tile, `A4b (${theme}): no synthetic tile inside the populated cell`).toBeVisible();
     const tileLabel = `A4b (${theme}) adjacent-month event tile text through ancestor opacity`;
     const tileRead = await inkRatioThroughOpacity(tile, tileLabel);
+    // eslint-disable-next-line no-console -- the tile opacity product is recorded from the CI log, never asserted (plan 88.9-03)
     console.log(`${tileLabel}: opacity product ${tileRead.opacity} (diagnostic, not asserted)`);
     expectInk(tileLabel, tileRead, AA_TEXT, false);
 
