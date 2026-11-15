@@ -15,6 +15,8 @@ import {
   formatLongDate,
   toLocalDateString,
   formatDuration,
+  formatWithTzAbbr,
+  withYearOutsideCurrent,
 } from './datetime';
 
 const TZ = 'America/New_York';
@@ -142,5 +144,46 @@ describe('datetime — golden-string output pins (legacy dateUtils parity)', () 
       expect(formatDuration(0)).toBe('');
       expect(formatDuration(null)).toBe('');
     });
+  });
+});
+
+// 88.9-61 (X29 years; owner 2026-11-14 "Yes" for the Next game night card): the ONE year rule
+// behind every date heading. It returns a date-fns PATTERN, so each caller keeps its own shape
+// (long month on the list's day headers, short month on the hero) and only the year is shared.
+describe('withYearOutsideCurrent — the one year rule for date headings', () => {
+  it("X29 (88.9): withYearOutsideCurrent adds ', yyyy' only outside the viewer's current year (both directions; New Year's Eve in two zones; bad zone → UTC)", () => {
+    const PATTERN = 'EEEE, MMMM d';
+    const now = new Date('2026-09-04T18:00:00.000Z');
+
+    // Same year: the pattern comes back untouched.
+    expect(withYearOutsideCurrent(PATTERN, new Date('2026-12-01T18:00:00.000Z'), TZ, now)).toBe(PATTERN);
+    // Both directions outside it.
+    expect(withYearOutsideCurrent(PATTERN, new Date('2025-03-15T23:00:00.000Z'), TZ, now)).toBe('EEEE, MMMM d, yyyy');
+    expect(withYearOutsideCurrent(PATTERN, new Date('2027-01-09T00:00:00.000Z'), TZ, now)).toBe('EEEE, MMMM d, yyyy');
+    // The pattern is whatever the caller passed (the hero's short month), and it formats as a year.
+    const lastYear = new Date('2025-03-15T23:00:00.000Z');
+    expect(formatWithTzAbbr(lastYear, TZ, withYearOutsideCurrent('EEEE, MMM d', lastYear, TZ, now))).toBe(
+      'Saturday, Mar 15, 2025',
+    );
+
+    // New Year's Eve, two zones, one instant: 2027-01-01T03:00Z is still Dec 31, 2026 in New York
+    // (same year as a December 2026 now) and already Jan 1, 2027 in London (a different year).
+    const eve = new Date('2027-01-01T03:00:00.000Z');
+    const december = new Date('2026-12-20T17:00:00.000Z');
+    expect(withYearOutsideCurrent(PATTERN, eve, 'America/New_York', december)).toBe(PATTERN);
+    expect(withYearOutsideCurrent(PATTERN, eve, 'Europe/London', december)).toBe('EEEE, MMMM d, yyyy');
+    // ...and the viewer's NOW is read in the zone too: at that instant a New Yorker is in 2026 and
+    // a Londoner in 2027, so a January 2027 night is next year for one and this year for the other.
+    const january = new Date('2027-01-09T12:00:00.000Z');
+    expect(withYearOutsideCurrent(PATTERN, january, 'America/New_York', eve)).toBe('EEEE, MMMM d, yyyy');
+    expect(withYearOutsideCurrent(PATTERN, january, 'Europe/London', eve)).toBe(PATTERN);
+
+    // A malformed zone falls back to UTC rather than throwing, and a null zone is UTC already.
+    expect(withYearOutsideCurrent(PATTERN, eve, 'Not/AZone', december)).toBe('EEEE, MMMM d, yyyy');
+    expect(withYearOutsideCurrent(PATTERN, eve, null, december)).toBe('EEEE, MMMM d, yyyy');
+    expect(withYearOutsideCurrent(PATTERN, new Date('2026-12-31T23:00:00.000Z'), 'Not/AZone', december)).toBe(PATTERN);
+
+    // The default now is the real clock: a night a hundred years out always carries its year.
+    expect(withYearOutsideCurrent(PATTERN, new Date('2126-06-01T12:00:00.000Z'), TZ)).toBe('EEEE, MMMM d, yyyy');
   });
 });

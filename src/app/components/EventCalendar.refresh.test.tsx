@@ -79,12 +79,21 @@ vi.mock('@/app/components/CalendarMonthView', () => ({
     </div>
   ),
 }));
-vi.mock('@/app/components/CalendarListView', () => ({ default: () => null }));
+// 88.9-61 (X29): the list mock CAPTURES its props, so a test can read what EventCalendar hands
+// the List view (the two id sets and the identity of the events array) without mounting it.
+const list = vi.hoisted(() => ({ props: [] as Array<Record<string, unknown>> }));
+vi.mock('@/app/components/CalendarListView', () => ({
+  default: (props: Record<string, unknown>) => {
+    list.props.push(props);
+    return null;
+  },
+}));
 vi.mock('@/app/components/EventDayModal', () => ({ default: () => null }));
 
 import EventCalendarDefault from './EventCalendar';
 import { eventsAPI, ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { hasStartedRecently, isStillRunning } from '@/lib/upcomingEvents';
 
 // EventCalendar is a JS component whose inferred props are too narrow for a typed test; the same
 // cast idiom as ResponseDashboard.test.tsx.
@@ -107,6 +116,7 @@ const LOAD_TITLE = "Couldn't load your calendar";
 beforeEach(() => {
   vi.clearAllMocks();
   eventsMock().mockReset();
+  list.props.length = 0;
   h.selfUuid = undefined;
   h.identityError = false;
   // 88.9-39 N1: EventCalendar persists the view (CAL-03) in localStorage; a test that presses List
@@ -602,5 +612,48 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     await user.click(screen.getByRole('button', { name: 'open e-ended' }));
     expect(nav.push).toHaveBeenLastCalledWith('/gameDetail?game_id=game-2&group_id=g1');
     expect(nav.push).toHaveBeenCalledTimes(2);
+  });
+
+  it('X29 (88.9): the List view hands the list the happening-now and started-not-live sets from the shared predicates, and the same events array across a host re-render with the same events', async () => {
+    // Owner 2026-11-14: "Yes, live games should stay in upcoming". Under X29 A the List view folds
+    // Past, so a live game that began before midnight must reach the list as happening-now or it
+    // sits behind the folded header. The sets come from the ONE shared pair of predicates.
+    const user = userEvent.setup();
+    const now = Date.now();
+    const HOUR = 60 * 60 * 1000;
+    const live = { id: 'e-live', group_id: 'g1', game_id: 'game-1', status: 'scheduled', start_date: new Date(now - HOUR).toISOString(), duration_minutes: 180 };
+    const ended = { id: 'e-ended', group_id: 'g1', game_id: 'game-2', status: 'scheduled', start_date: new Date(now - 10 * HOUR).toISOString(), duration_minutes: 120 };
+    const ahead = { id: 'e-ahead', group_id: 'g1', game_id: 'game-3', status: 'scheduled', start_date: new Date(now + 48 * HOUR).toISOString() };
+    const longAgo = { id: 'e-old', group_id: 'g1', game_id: 'game-4', status: 'scheduled', start_date: new Date(now - 30 * 24 * HOUR).toISOString() };
+    // Scrambled on purpose; the SAME array object is handed to both renders.
+    const EVENTS = [ahead, longAgo, live, ended];
+    const view = render(<Host events={EVENTS} />);
+    expect(await screen.findByTestId('month-view')).toBeInTheDocument();
+    await user.click(within(screen.getByRole('group', { name: 'Calendar view' })).getByRole('button', { name: 'List' }));
+    expect(screen.queryByTestId('month-view')).toBeNull();
+
+    const last = () => list.props[list.props.length - 1];
+    expect(list.props.length, 'the List view rendered').toBeGreaterThan(0);
+    const happening = last().happeningNowIds as Set<string>;
+    const startedNotLive = last().startedNotLiveIds as Set<string>;
+    expect(happening, 'the happening-now set reaches the list').toBeInstanceOf(Set);
+    expect(startedNotLive, 'the started-not-live set reaches the list').toBeInstanceOf(Set);
+    // Exactly what the shared predicates say, read at the same kind of instant.
+    const nowMs = Date.now();
+    expect([...happening].sort()).toEqual(EVENTS.filter((e) => isStillRunning(e, nowMs)).map((e) => e.id).sort());
+    expect([...happening]).toEqual(['e-live']);
+    expect([...startedNotLive].sort()).toEqual(
+      EVENTS.filter((e) => hasStartedRecently(e, nowMs) && !isStillRunning(e, nowMs)).map((e) => e.id).sort(),
+    );
+    expect([...startedNotLive]).toEqual(['e-ended']);
+
+    // A host re-render with the SAME events prop hands the list the SAME sorted array, so the
+    // list's past window (reset on a new array identity) survives an unrelated re-render.
+    const before = last().events;
+    const rendersBefore = list.props.length;
+    view.rerender(<Host events={EVENTS} title="Game nights" />);
+    expect(list.props.length, 'the host re-render reached the list').toBeGreaterThan(rendersBefore);
+    expect(last().events, 'the same events array across the re-render').toBe(before);
+    expect((last().events as Array<{ id: string }>).map((e) => e.id)).toEqual(['e-old', 'e-ended', 'e-live', 'e-ahead']);
   });
 });

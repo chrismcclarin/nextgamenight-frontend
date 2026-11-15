@@ -122,7 +122,9 @@ export const gates = [
   // durable guard: unregistered, deleting it would have re-opened the stale-replica hole with a green build.
   // Floors since raised to live counts (Phase 88.6.2-26, C-10).
   { file: 'src/components/ui/Button.e2eReplica.test.ts', min: 5, why: 'Phase 88.6-58 H1 — the E10 planted-replica lockstep, its only durable guard' },
-  { file: 'src/app/components/CalendarListView.emptyStates.test.tsx', min: 1, why: 'Phase 88.6-60 — the desktop No events and loading arms of CalendarListView' },
+  // AMENDED Phase 88.9-61 (X25a + X29 A): emptyStates 1 -> 2 (the past-only empty case on every arm); the sections suite is new at 6.
+  { file: 'src/app/components/CalendarListView.emptyStates.test.tsx', min: 2, why: 'Phase 88.6-60 — the desktop No events and loading arms of CalendarListView' },
+  { file: 'src/app/components/CalendarListView.sections.test.tsx', min: 6, why: 'Phase 88.9-61 X25a / X29 — the two-section Calendar list on every arm' },
 
   // AMENDMENT — Phase 88.6 gap plan 61 (review round 2 #18 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING).
   // Two rows added — the guards on the magic-link Sentry egress fixes:

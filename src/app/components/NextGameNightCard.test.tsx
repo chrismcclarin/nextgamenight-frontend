@@ -148,7 +148,15 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+// 88.9-61 (X29 years): the when-line now shows the year outside the viewer's current year, so
+// WHEN_LINE (a 2026 date with no year) is only true while the clock reads 2026. The Date is
+// pinned for the WHOLE file — Date only, so timers, userEvent and waitFor stay real — instead of
+// leaving a suite that turns red on the first of January.
+const PINNED_NOW = new Date('2026-09-01T16:00:00.000Z');
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_NOW);
   getEventRsvps.mockReset();
   submitRsvp.mockReset();
   loggerError.mockClear();
@@ -156,7 +164,10 @@ beforeEach(() => {
   submitRsvp.mockResolvedValue({ id: 'rsvp-own', status: 'yes', note: null });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function renderCard(overrides: Record<string, unknown> = {}) {
   const onEventClick = vi.fn();
@@ -189,6 +200,29 @@ describe('NextGameNightCard — content and navigation (SPEC Req 3 / D-05, D-14)
     expect(screen.getByText('Next game night')).toBeInTheDocument();
     expect(screen.getByText(WHEN_LINE)).toBeInTheDocument();
     expect(screen.getByText('Navy Knights')).toBeInTheDocument();
+  });
+
+  it("X29 (88.9, owner 2026-11-14 'Yes'): a next game night outside the current year shows its year on the when-line", () => {
+    // Clock: 20 December 2026. Night: 2027-01-09T00:00Z, which is Friday, Jan 8, 2027, 7:00 PM EST
+    // in New York (checked with Intl before it was written down).
+    vi.setSystemTime(new Date('2026-12-20T17:00:00.000Z'));
+    const nextYear = { ...EVENT, id: 'evt-next-year', start_date: '2027-01-09T00:00:00Z' };
+    renderCard({ event: nextYear });
+
+    const NEXT_YEAR_LINE = 'Friday, Jan 8, 2027 · 7:00 PM EST';
+    expect(screen.getByText(NEXT_YEAR_LINE)).toBeInTheDocument();
+    // The accessible names are built from the same when-line, so they carry the year too.
+    expect(screen.getByRole('button', { name: /^Next game night, / })).toHaveAccessibleName(
+      expect.stringContaining(NEXT_YEAR_LINE),
+    );
+    expect(rsvpGroup()).toHaveAttribute('aria-label', expect.stringContaining(NEXT_YEAR_LINE));
+    cleanup();
+
+    // A night inside the current year still shows no year.
+    vi.setSystemTime(PINNED_NOW);
+    renderCard();
+    expect(screen.getByText(WHEN_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(/2026/)).toBeNull();
   });
 
   it('carries NO host text anywhere in the rendered output (D-14)', () => {
