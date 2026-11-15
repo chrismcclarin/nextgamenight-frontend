@@ -2442,8 +2442,10 @@ export default function GameDetailPage() {
                                         <div className="space-y-2">
                                             {event.EventParticipations.map((participation, idx) => (
                                                 <div key={idx} className="flex items-center gap-2 flex-wrap">
-                                                    <span className="bg-surface-muted text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
-                                                        <span>
+                                                    {/* DECISION Phase 88.9-65 (X47): the chip wraps by piece on the card ground, chosen OVER the one-line row (a squeezed piece wrapped inside itself and kept its width: the gap the owner saw) and OVER the muted ground; no new colour.
+                                                        Pills are the 88.9-63 family (Guest amber, New Player neutral, faction violet), measured on the card with src/lib/wcag.ts, word on fill / fill against the card: amber 5.6360 / 1.2580 light, 5.6471 / 1.9692 dark; violet 5.9744 / 1.4596, 7.7691 / 1.5107; neutral 7.3453 / 1.4261, 6.9642 / 1.5231. The name is 600 like the two names 63 moved, wraps and is never cut; Score and placement never break. */}
+                                                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 max-w-full px-3 py-1 rounded-sm border border-line bg-surface-card text-content-primary">
+                                                        <span className="inline-flex items-center gap-1 min-w-0 font-semibold break-words">
                                                             {participation.is_custom ? (
                                                                 <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-secondary ml-1">(Guest)</span></>
                                                             ) : (
@@ -2455,11 +2457,11 @@ export default function GameDetailPage() {
                                                                 // prefix is dropped; `participation.user_id` here is UUID-keyed
                                                                 // (unlike every other flat user_id site) and is allowlisted in the
                                                                 // plan-06 residue grep.
-                                                                <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} hostGround="muted" />
+                                                                <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
                                                             )}
                                                         </span>
                                                         {participation.is_guest && (
-                                                            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-bold">
+                                                            <span className="text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber px-1.5 py-0.5">
                                                                 Guest
                                                             </span>
                                                         )}
@@ -2467,14 +2469,15 @@ export default function GameDetailPage() {
                                                             measures 3.9909, below AA. As a BADGE the "New Player" chip
                                                             below takes `text-content-accent` (4.7121) rather than
                                                             `text-content-secondary` — D-16 distinguishes the two badges
-                                                            from its four other sites on exactly that basis. */}
+                                                            from its four other sites on exactly that basis.
+                                                            AMENDED Phase 88.9-65 (X47 + 63 hand-off b): on the card ground New Player takes the neutral pill pair; the accent ink was priced on the muted ground, where the X17a family melts. */}
                                                         {participation.is_new_player && (
-                                                            <span className="text-xs whitespace-nowrap bg-surface-muted text-content-accent px-1.5 py-0.5 rounded-sm font-bold">
+                                                            <span className="text-xs whitespace-nowrap bg-surface-pill-neutral text-content-pill-neutral px-1.5 py-0.5 rounded-sm font-bold">
                                                                 New Player
                                                             </span>
                                                         )}
                                                         {participation.faction && (
-                                                            <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">
+                                                            <span className="text-xs bg-surface-pill-violet text-content-pill-violet px-1.5 py-0.5 rounded-sm">
                                                                 {participation.faction}
                                                             </span>
                                                         )}
@@ -2482,12 +2485,12 @@ export default function GameDetailPage() {
                                                             participant with no score shows no Score piece (an absent score
                                                             printed a bare label before). */}
                                                         {formatScore(participation.score) !== null && (
-                                                            <span className="text-xs text-content-secondary">
+                                                            <span className="text-xs text-content-secondary whitespace-nowrap">
                                                                 Score: {formatScore(participation.score)}
                                                             </span>
                                                         )}
                                                         {participation.placement && (
-                                                            <span className="text-xs text-content-secondary">
+                                                            <span className="text-xs text-content-secondary whitespace-nowrap">
                                                                 #{participation.placement}
                                                             </span>
                                                         )}
