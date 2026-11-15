@@ -48,7 +48,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import { promptAPI, ApiError } from '@/lib/api';
 import { promptKeys } from '@/lib/queryKeys/promptKeys';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import OpenPollsList from './OpenPollsList';
 // A namespace import, so a missing label export fails the LBL tests alone and the rest of the
@@ -506,7 +509,7 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     const { client } = renderList();
     await failRefetchOverRows(client, e403);
 
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     expect(screen.queryByText('Started by Ana')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
 
@@ -514,7 +517,7 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     vi.mocked(promptAPI.getOpenPrompts).mockRejectedValue(later);
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
-    expect(await screen.findByText(getFetchErrorMessage(later))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(later)))).toBeInTheDocument();
     expect(screen.queryByText('Started by Ana')).toBeNull();
     expect(screen.queryByText('Started by Ben')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -548,7 +551,7 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     act(() => triggers()[0].focus());
     tabReturn();
 
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     await waitFor(() => expect(document.activeElement).toBe(expandControl()));
     expect(screen.queryByText('Started by Ana')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -587,14 +590,14 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     await act(async () => {
       await client.refetchQueries({ queryKey: key });
     });
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
 
     const later = e500();
     vi.mocked(promptAPI.getOpenPrompts).mockRejectedValue(later);
     await act(async () => {
       await client.refetchQueries({ queryKey: key });
     });
-    expect(await screen.findByText(getFetchErrorMessage(later))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(later)))).toBeInTheDocument();
     expect(screen.queryByText('Started by Ana')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
 

@@ -108,6 +108,10 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'L2', text: 'Checking your restore link...', site: 'app/restore/group/[token]/page.tsx', kind: 'chunk' },
   // Anywhere in the app
   { id: 'X1', text: 'Your session may have expired. Sign in again to continue.', site: 'components/ui/useFetchErrorState.ts', kind: 'chunk' },
+  // 88.9-66 (X68, owner ruled by chat 2026-11-14): the three lines shown beside Try again or Retry.
+  { id: 'X68a', text: "You don't have access to this.", site: 'components/ui/useFetchErrorState.ts', kind: 'chunk' },
+  { id: 'X68b', text: 'Something looks off with that request.', site: 'components/ui/useFetchErrorState.ts', kind: 'chunk' },
+  { id: 'X68c', text: "Something went wrong. If trying again doesn't help, refresh the page.", site: 'components/ui/useFetchErrorState.ts', kind: 'chunk' },
   { id: 'X3', text: "We couldn't send that request.", site: 'app/components/ClickableMemberName.js', kind: 'chunk' },
   // D-32 (R6 shares E9's row; R7 is P2's row; R8 is the U+2019 test below)
   { id: 'R1', text: "We couldn't start that check-in. Please try again.", site: 'app/components/StartPollModal.js', kind: 'chunk' },
@@ -202,6 +206,7 @@ const EXPECTED_IDS = [
   'A1', 'A2', 'A3', 'A4', 'C1', 'C2', 'E1', 'E2', 'E3', 'E4', 'E4b', 'E5',
   'E8', 'E9', 'E10', 'E11', 'E12', 'E13', 'E14', 'E15', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6',
   'G7', 'G8', 'P2', 'P8', 'F1', 'F2', 'F7', 'L1a', 'L1b', 'L1c', 'L2', 'X1',
+  'X68a', 'X68b', 'X68c',
   'X3', 'X3r', 'R1', 'R2', 'R3', 'R4', 'R5', 'R9', 'FR1', 'N7', 'N8a', 'N8b', 'N8c', 'N8d',
   'S1a', 'S1b', 'C7c', 'B1', 'RF1', 'Q1a', 'Q1b', 'NC-1', 'NC-2', 'NC-3', 'NC-4',
   // owner rulings 2026-10-13 to 2026-10-15
@@ -419,11 +424,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (118 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (121 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(118);
+    expect(ids).toHaveLength(121);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });

@@ -636,7 +636,8 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
   });
 
   it('M5. a 401 and a 403 refresh never keep the schedules: the full banner with the register line, no RF1 (C8 e)', async () => {
-    const { getFetchErrorMessage } = await import('@/components/ui/useFetchErrorState');
+    // AMENDED Phase 88.9-66 (X68): the full banner shows Try again, so its forbidden line is the beside-retry form.
+    const { getFetchErrorMessage, messageBesideRetry } = await import('@/components/ui/useFetchErrorState');
     for (const err of [
       new ApiError('Unauthorized', 'unauthorized', 401),
       new ApiError('Forbidden', 'forbidden', 403),
@@ -648,7 +649,7 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
       fireEvent.click(await screen.findByRole('button', { name: 'Pause' }));
 
       expect(await screen.findByText(FULL_TITLE)).toBeInTheDocument();
-      expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(err)))).toBeInTheDocument();
       expect(rowHeading()).toBeNull();
       expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();

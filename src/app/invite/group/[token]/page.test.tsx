@@ -56,7 +56,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import GroupInvitePage from './page';
 import { groupsAPI, ApiError } from '@/lib/api';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 
 type Mock = ReturnType<typeof vi.fn>;
 const preview = () => groupsAPI.getInvitePreview as unknown as Mock;
@@ -325,7 +325,9 @@ describe('invite/group/[token] — R8 page announcement, L1 and the preview fail
 describe('invite/group/[token] — D14a Try again on the preview failure (plan 88.9-43)', () => {
   const serverError = () => new ApiError('HTTP error! status: 500', 'unknown', 500, { error: 'boom' });
   const notFound = () => new ApiError('HTTP error! status: 404', 'not_found', 404, { error: 'Invalid invite link' });
-  const REGISTER_LINE = getFetchErrorMessage(serverError());
+  // AMENDED Phase 88.9-66 (X68): the preview failure shows Try again, so its line is the
+  // beside-retry form of the register line (every read below is of the preview failure).
+  const REGISTER_LINE = messageBesideRetry(getFetchErrorMessage(serverError()));
   const tryAgain = () => screen.queryByRole('button', { name: 'Try again' });
   const goHome = () => screen.getByRole('link', { name: 'Go Home' });
 
@@ -417,5 +419,40 @@ describe('invite/group/[token] — D14a Try again on the preview failure (plan 8
     expect(performance.now() - pressedAt).toBeGreaterThanOrEqual(100);
     expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
     expect(tryAgain()).not.toBeNull();
+  });
+});
+
+// Phase 88.9-66 (X68, owner ruled by chat 2026-11-14): a failed preview shows Try again, so its
+// line gives one remedy; a failed join has no Try again and keeps the full register sentence.
+describe('invite/group/[token] — the line beside Try again (88.9-66: X68)', () => {
+  it('X68 (88.9): a failed invite preview shows its ratified line beside Try again; a failed join keeps the full sentence', async () => {
+    const arms: Array<[ApiError, string]> = [
+      [new ApiError('HTTP error! status: 403', 'forbidden', 403, { error: 'nope' }), "You don't have access to this."],
+      [new ApiError('HTTP error! status: 400', 'validation', 400, { error: 'nope' }), 'Something looks off with that request.'],
+      [new ApiError('HTTP error! status: 500', 'unknown', 500, { error: 'boom' }), "Something went wrong. If trying again doesn't help, refresh the page."],
+    ];
+    for (const [err, line] of arms) {
+      preview().mockReset();
+      preview().mockRejectedValue(err);
+      render(<GroupInvitePage />);
+      expect(await screen.findByText(line), err.code).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Try again' }), err.code).toBeInTheDocument();
+      expect(screen.queryByText(/Refresh the page to try again/), `${err.code}: one remedy beside Try again`).toBeNull();
+      // Shown and announced: the page region carries the same line.
+      const region = screen.getByTestId(PAGE_STATUS_TESTID);
+      await waitFor(() => expect(region.textContent, err.code).toContain(line));
+      expect(region.textContent, err.code).not.toContain('Refresh the page to try again');
+      cleanup();
+    }
+
+    // A signed-in person whose JOIN is refused: no Try again, the full register sentence.
+    preview().mockReset();
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(PREVIEW_BODY);
+    join().mockRejectedValue(new ApiError('HTTP error! status: 403', 'forbidden', 403, { error: 'nope' }));
+    render(<GroupInvitePage />);
+    await screen.findByRole('heading', { name: 'Unable to join group' });
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByText("You don't have access to this. Refresh the page to try again.")).toBeInTheDocument();
   });
 });

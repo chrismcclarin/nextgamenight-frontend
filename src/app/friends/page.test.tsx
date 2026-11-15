@@ -159,7 +159,10 @@ import FriendsPage from './page';
 import { ApiError, friendshipsAPI, groupsAPI, invitesAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { queryCacheOnError } from '@/lib/queryClient';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
@@ -1930,7 +1933,7 @@ describe('friends — the Requests tab tells the truth (88.6.1-72, owner rulings
       expect(await screen.findByText(FR1)).toBeInTheDocument();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       expect(screen.queryByText('Sam')).toBeNull();
-      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(messageBesideRetry(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
       cleanup();
       providerCtx.error = null;
     }
@@ -2220,7 +2223,7 @@ describe('friends — one treatment per page: Friends and Sent keep their rows u
       expect(await screen.findByText(FRIENDS_TITLE)).toBeInTheDocument();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       expect(screen.queryByText('Dana')).toBeNull();
-      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(messageBesideRetry(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
       cleanup();
     }
 
@@ -2278,7 +2281,7 @@ describe('friends — one treatment per page: Friends and Sent keep their rows u
       expect(await screen.findByText(SENT_TITLE)).toBeInTheDocument();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       expect(screen.queryByText('Alex')).toBeNull();
-      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(messageBesideRetry(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
       cleanup();
     }
 

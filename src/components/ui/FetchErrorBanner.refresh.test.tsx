@@ -29,7 +29,7 @@ import {
   isAccessOrGoneError,
 } from './FetchErrorBanner';
 import { REGION_EMPTY_DWELL_MS } from './StatusRegion';
-import { getFetchErrorMessage, useFetchErrorState } from './useFetchErrorState';
+import { getFetchErrorMessage, messageBesideRetry, useFetchErrorState } from './useFetchErrorState';
 import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
 
@@ -933,6 +933,10 @@ function C10Host({ source, controls, guard = true, inDialog = false, targetInArm
 }
 
 /** Some `role="alert"` on the page holds `text`. */
+const besideRetryLine = (err: unknown) => messageBesideRetry(getFetchErrorMessage(err));
+// AMENDED Phase 88.9-66 (X68): a full banner shows Try again, so the line it holds for a forbidden,
+// validation or unknown failure is the beside-retry form; every read of a full line below passes
+// the register line through messageBesideRetry (identity for every other code).
 const alertHolding = (text: string) =>
   screen.getAllByRole('alert').some((el) => (el.textContent ?? '').includes(text));
 
@@ -1014,7 +1018,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
       await act(async () => {
         await controls.load?.();
       });
-      const line = getFetchErrorMessage(err);
+      const line = besideRetryLine(err);
       await waitFor(() => expect(alertHolding(line), err.code).toBe(true));
       expect(screen.queryByText(RF1), `${err.code}: never RF1`).toBeNull();
       expect(screen.queryByRole('button', { name: 'Ann' }), `${err.code}: rows withdrawn`).toBeNull();
@@ -1057,13 +1061,13 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
     await act(async () => {
       await controls.load?.();
     });
-    await waitFor(() => expect(alertHolding(getFetchErrorMessage(forbidden))).toBe(true));
+    await waitFor(() => expect(alertHolding(besideRetryLine(forbidden))).toBe(true));
 
     // The full banner's Try again answers 500.
     const internal = new ApiError('x', 'internal', 500);
     source.next = failLoad(internal);
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(alertHolding(getFetchErrorMessage(internal))).toBe(true));
+    await waitFor(() => expect(alertHolding(besideRetryLine(internal))).toBe(true));
     expect(screen.queryByRole('button', { name: 'Ann' }), 'the withdrawn rows stay withdrawn').toBeNull();
     expect(screen.queryByText(RF1)).toBeNull();
 
@@ -1142,7 +1146,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
       await act(async () => {
         await refetchRef.current?.();
       });
-      await waitFor(() => expect(alertHolding(getFetchErrorMessage(forbidden))).toBe(true));
+      await waitFor(() => expect(alertHolding(besideRetryLine(forbidden))).toBe(true));
       expect(screen.queryByText('Ann')).toBeNull();
 
       const internal = new ApiError('x', 'internal', 500);
@@ -1150,7 +1154,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
       await act(async () => {
         await refetchRef.current?.();
       });
-      await waitFor(() => expect(alertHolding(getFetchErrorMessage(internal))).toBe(true));
+      await waitFor(() => expect(alertHolding(besideRetryLine(internal))).toBe(true));
       expect(screen.queryByText('Ann')).toBeNull();
 
       // Unmount, then remount under the SAME client while the mount refetch is held.
@@ -1161,7 +1165,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
       // Not vacuous: the cache still holds the pre-403 rows and the 500.
       expect(client.getQueryData(key)).toEqual(['Ann']);
       expect((client.getQueryState(key)?.error as ApiError | null)?.code).toBe('internal');
-      await waitFor(() => expect(alertHolding(getFetchErrorMessage(internal))).toBe(true));
+      await waitFor(() => expect(alertHolding(besideRetryLine(internal))).toBe(true));
       expect(screen.queryByText('Ann'), 'no pre-403 rows after the remount').toBeNull();
       expect(screen.queryByText(RF1)).toBeNull();
 
@@ -1277,7 +1281,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
       await act(async () => {
         await refetchRef.current?.();
       });
-      await waitFor(() => expect(alertHolding(getFetchErrorMessage(forbidden))).toBe(true));
+      await waitFor(() => expect(alertHolding(besideRetryLine(forbidden))).toBe(true));
 
       rerender(shell(true));
       const b = within(screen.getByTestId('consumer-b'));
@@ -1315,7 +1319,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
     expect(screen.queryByText(RF1)).toBeNull();
     const alert = within(slot()).getByRole('alert');
     expect(alert.textContent).toContain('Something went wrong');
-    expect(alert.textContent).toContain(getFetchErrorMessage(err));
+    expect(alert.textContent).toContain(besideRetryLine(err));
     expect(slot().querySelectorAll('[role="status"][aria-live="polite"]'), 'one polite region, the banner one').toHaveLength(1);
   });
 
@@ -1340,7 +1344,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
       await act(async () => {
         fireVisible();
       });
-      await waitFor(() => expect(alertHolding(getFetchErrorMessage(err)), err.code).toBe(true));
+      await waitFor(() => expect(alertHolding(besideRetryLine(err)), err.code).toBe(true));
       expect(screen.queryByRole('button', { name: 'Ann' })).toBeNull();
       await waitFor(() => expect(document.activeElement, err.code).toBe(heading));
       cleanup();
@@ -1359,7 +1363,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
     await act(async () => {
       fireVisible();
     });
-    await waitFor(() => expect(alertHolding(getFetchErrorMessage(err))).toBe(true));
+    await waitFor(() => expect(alertHolding(besideRetryLine(err))).toBe(true));
     await act(async () => {});
     expect(document.activeElement).toBe(elsewhere);
     expect(headingFocus).not.toHaveBeenCalled();
@@ -1374,7 +1378,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
     await act(async () => {
       fireVisible();
     });
-    await waitFor(() => expect(alertHolding(getFetchErrorMessage(err))).toBe(true));
+    await waitFor(() => expect(alertHolding(besideRetryLine(err))).toBe(true));
     await waitFor(() => expect(document.activeElement).toBe(title));
     expect(document.activeElement).not.toBe(screen.getByRole('dialog'));
   });
@@ -1388,7 +1392,7 @@ describe('C10 — access or gone answers (plan 88.6.1-70, orchestrator F1)', () 
     await act(async () => {
       fireVisible();
     });
-    await waitFor(() => expect(alertHolding(getFetchErrorMessage(err))).toBe(true));
+    await waitFor(() => expect(alertHolding(besideRetryLine(err))).toBe(true));
     await waitFor(() => expect(document.activeElement).toBe(pageHeading));
   });
 

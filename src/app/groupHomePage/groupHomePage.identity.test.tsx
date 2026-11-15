@@ -154,7 +154,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import GroupHomePage from './page';
 import { groupsAPI, eventsAPI, listsAPI, ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 import { readOpeningTag, withoutComments } from '../../test-utils/sourceScan';
 
@@ -1117,7 +1120,7 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
         await h.createEventProps!.onEventCreated({ id: 'e-new' });
       });
       await screen.findAllByText(G8);
-      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(messageBesideRetry(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
       expect(screen.queryByTestId('calendar-stub')).toBeNull();
       // The events fetch has no removal arm: a 403 here is the banner, never a redirect.
       expect(pushSpy).not.toHaveBeenCalled();

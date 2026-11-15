@@ -28,7 +28,10 @@ vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
 
 import GroupGamesList from './GroupGamesList';
 import { ApiError } from '@/lib/api';
-import { getFetchErrorMessage, useFetchErrorState } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry, useFetchErrorState } from '@/components/ui/useFetchErrorState';
 import { RetainedContentFocusGuard, useRetainedContent } from '@/components/ui/FetchErrorBanner';
 
 // Untyped JS component: spread a typed-any bag so JSX does not demand the
@@ -429,7 +432,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     for (const error of [err401(), err403()]) {
       render(<Harness games={[WINGSPAN]} loaded error={error} />);
       expect(screen.getByText(BANNER_TITLE)).toBeInTheDocument();
-      expect(screen.getByText(getFetchErrorMessage(error))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(error)))).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       cleanup();

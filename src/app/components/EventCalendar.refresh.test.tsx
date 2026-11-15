@@ -92,7 +92,10 @@ vi.mock('@/app/components/EventDayModal', () => ({ default: () => null }));
 
 import EventCalendarDefault from './EventCalendar';
 import { eventsAPI, ApiError } from '@/lib/api';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { hasStartedRecently, isStillRunning } from '@/lib/upcomingEvents';
 
 // EventCalendar is a JS component whose inferred props are too narrow for a typed test; the same
@@ -412,14 +415,14 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     const user = userEvent.setup();
     const e403 = new ApiError('Access denied', 'forbidden', 403);
     await loadThenRefresh(e403);
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     expect(monthIds()).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
 
     const e500 = server500();
     eventsMock().mockRejectedValueOnce(e500);
     await user.click(screen.getByRole('button', { name: /try again/i }));
-    expect(await screen.findByText(getFetchErrorMessage(e500))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e500)))).toBeInTheDocument();
     expect(monthIds()).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
@@ -446,7 +449,7 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     await act(async () => {
       fireVisibility('visible');
     });
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     expect(monthIds()).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(ref.current));
     expect(ref.current?.tagName).toBe('H2');

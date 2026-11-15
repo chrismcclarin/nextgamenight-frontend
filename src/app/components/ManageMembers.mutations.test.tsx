@@ -101,7 +101,10 @@ import { logger } from '@/lib/logger';
 import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 // Plan 88.6.1-78 (C8 e): every expected register line is read through the shipped helper on the
 // SAME error object, never typed.
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { announceStatus } from '@/components/ui/announcer';
 
@@ -1858,7 +1861,7 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
     const err = new ApiError('Access denied', 'forbidden', 403);
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
     triggerRefresh();
-    await screen.findByText(getFetchErrorMessage(err));
+    await screen.findByText(messageBesideRetry(getFetchErrorMessage(err)));
 
     expect(screen.getByText("Couldn't load members")).toBeInTheDocument();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -1890,7 +1893,7 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    await screen.findByText(getFetchErrorMessage(err));
+    await screen.findByText(messageBesideRetry(getFetchErrorMessage(err)));
     await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
     expect(screen.queryByText('(You)')).toBeNull();
@@ -1979,7 +1982,7 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
       (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
       // No press and no onMemberAdded: the hook's tab-return re-attempt is the refresh.
       act(() => fireVisibility('visible'));
-      await screen.findByText(getFetchErrorMessage(err));
+      await screen.findByText(messageBesideRetry(getFetchErrorMessage(err)));
       await waitFor(() => expect(document.activeElement).toBe(heading));
       expect(kebab.isConnected).toBe(false);
       expect(screen.queryByText('(You)')).toBeNull();

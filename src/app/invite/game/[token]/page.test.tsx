@@ -482,3 +482,28 @@ describe('invite/game/[token] — R8 page announcement and Retry focus (plan 88.
     expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
   });
 });
+
+// Phase 88.9-66 (X68, owner ruled by chat 2026-11-14): a transient failure shows Retry, so the
+// unknown line gives one remedy there; the same holds for a transient JOIN failure.
+describe('invite/game/[token] — the line beside Retry (88.9-66: X68)', () => {
+  it('X68 (88.9): a transient failure shows the ratified unknown line beside Retry', async () => {
+    const RULED = "Something went wrong. If trying again doesn't help, refresh the page.";
+    // The preview fails with a code-less 500.
+    preview().mockRejectedValue(new ApiError('HTTP error! status: 500', 'unknown', 500, { error: 'boom' }));
+    render(<GameInvitePage />);
+    expect(await screen.findByText(RULED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.queryByText(/Refresh the page to try again/)).toBeNull();
+    cleanup();
+
+    // A signed-in person whose JOIN fails with a code-less 500: the same line beside Retry.
+    preview().mockReset();
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue({ game_name: 'Wingspan', event_date: '2030-01-01T00:00:00Z' });
+    join().mockRejectedValue(new ApiError('HTTP error! status: 500', 'unknown', 500, { error: 'boom' }));
+    render(<GameInvitePage />);
+    expect(await screen.findByText(RULED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.queryByText(/Refresh the page to try again/)).toBeNull();
+  });
+});

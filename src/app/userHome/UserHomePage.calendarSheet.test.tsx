@@ -310,7 +310,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import UserHome from './UserHomePage';
 import { ApiError } from '@/lib/api';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 
 /** UserHomePage is `.js`, so its inferred prop type has every prop REQUIRED. */
 function renderHome() {
@@ -1684,14 +1687,14 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     const err = new ApiError('Forbidden', 'forbidden', 403);
     const { user } = await loadPairThenFail(err);
 
-    expect(await within(card()).findByText(getFetchErrorMessage(err))).toBeInTheDocument();
+    expect(await within(card()).findByText(messageBesideRetry(getFetchErrorMessage(err)))).toBeInTheDocument();
     expect(within(card()).getByText(CARD_LOAD_TITLE)).toBeInTheDocument();
     expect(within(card()).queryByRole('button', { name: /Catan/ })).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
 
     const dialog = await openCalendarSheet(user);
     expect(within(dialog).getByText(SHEET_LOAD_TITLE)).toBeInTheDocument();
-    expect(within(dialog).getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+    expect(within(dialog).getByText(messageBesideRetry(getFetchErrorMessage(err)))).toBeInTheDocument();
     expect(within(dialog).queryByText('Catan')).toBeNull();
     expect(within(dialog).queryAllByText(RF1)).toHaveLength(0);
   });

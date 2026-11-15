@@ -257,7 +257,10 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { auditFormControls } from '../../test-utils/formControlAudit';
 import { ApiError } from '@/lib/api';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 import { availabilityKeys } from '@/lib/queryKeys/availabilityKeys';
 import { QueryClientContext, hashKey } from '@tanstack/react-query';
@@ -3620,7 +3623,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
       h.patternsError = error;
       renderProfile();
       await screen.findByText("Couldn't load your schedules");
-      expect(screen.getByText(getFetchErrorMessage(error))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(error)))).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       cleanup();
@@ -5281,7 +5284,7 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
 
       await twoTapRemove(user, 'Catan');
       await screen.findByText(P8);
-      expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(err)))).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Remove Brass' })).toBeNull();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       const text = screen.getByRole('heading', { name: /^My Game Collection/ }).textContent ?? '';
@@ -5795,7 +5798,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     h.selfError = err;
     await commit(view.rerender);
 
-    const line = (await within(headerCard()).findAllByText(getFetchErrorMessage(err)))[0];
+    const line = (await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(err))))[0];
     // BANNER-01 (88.9-49, F26): the withdrawn header banner names what failed.
     expect(within(headerCard()).getByText("Couldn't load your profile")).toBeInTheDocument();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -5837,7 +5840,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
       const forbidden = new ApiError('Forbidden', 'forbidden', 403);
       h.selfError = forbidden;
       await commit(view.rerender);
-      await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+      await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(forbidden)));
       const headings = screen.getAllByRole('heading', { level: 1 });
       expect(headings).toHaveLength(1);
       expect(headings[0]).toHaveAccessibleName('self');
@@ -5860,7 +5863,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const forbidden = new ApiError('Forbidden', 'forbidden', 403);
     h.selfError = forbidden;
     await commit(view.rerender);
-    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+    await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(forbidden)));
 
     h.selfError = new ApiError('Server error', 'internal', 500);
     await commit(view.rerender);
@@ -5931,7 +5934,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const forbidden = new ApiError('Forbidden', 'forbidden', 403);
     h.selfError = forbidden;
     await commit(view.rerender);
-    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+    await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(forbidden)));
 
     expect(within(emailRegion()).queryByText(ROW_ADDRESS)).toBeNull();
     expect(within(emailRegion()).queryByRole('button', { name: 'Change' })).toBeNull();
@@ -5969,7 +5972,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const forbidden = new ApiError('Forbidden', 'forbidden', 403);
     h.selfError = forbidden;
     await commit(first.rerender);
-    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+    await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(forbidden)));
     h.selfError = new ApiError('Server error', 'internal', 500);
     await commit(first.rerender);
     expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName('Self');

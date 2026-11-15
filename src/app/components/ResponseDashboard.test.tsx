@@ -25,7 +25,10 @@ import type { ComponentType } from 'react';
 import { formatDateTime } from '@/lib/datetime';
 import ResponseDashboardDefault from './ResponseDashboard';
 import { logger } from '@/lib/logger';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 
 // `ResponseDashboard` is a JS component; its inferred prop type marks every prop required and
 // mis-widens the destructured defaults. Cast to a permissive type so the suite can render with
@@ -73,6 +76,11 @@ async function codedError(code: string, status: number, details?: unknown) {
 /** The register's copy for `forbidden` and for `unknown`, asserted as literals (see header). */
 const FORBIDDEN_COPY = "You don't have access to this. Refresh the page to try again.";
 const UNKNOWN_COPY = 'Something went wrong. Refresh the page to try again.';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): the full banner shows Try again, so the
+// forbidden line ON THE BANNER is its beside-retry form; a toast has no retry beside it and keeps
+// FORBIDDEN_COPY. The unknown line's two forms are both read as absent where a coded line shows.
+const FORBIDDEN_BESIDE_RETRY = "You don't have access to this.";
+const UNKNOWN_BESIDE_RETRY = "Something went wrong. If trying again doesn't help, refresh the page.";
 
 beforeEach(() => {
   api.getRespondents.mockReset();
@@ -94,8 +102,9 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
     api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
     render(<ResponseDashboard {...baseProps} />);
 
-    expect(await screen.findByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(await screen.findByText(FORBIDDEN_BESIDE_RETRY)).toBeInTheDocument();
     expect(screen.queryByText(UNKNOWN_COPY)).toBeNull();
+    expect(screen.queryByText(UNKNOWN_BESIDE_RETRY)).toBeNull();
     // The raw upstream message must never reach the DOM (T-88.6-143 / ASVS V7).
     expect(screen.queryByText(/RAW UPSTREAM TEXT/)).toBeNull();
     // The retry affordance survives the swap onto FetchErrorBanner.
@@ -105,7 +114,7 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
   it('re-issues the fetch when the banner\'s Try again is activated', async () => {
     api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     expect(api.getRespondents).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -129,7 +138,7 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
     render(<ResponseDashboard {...baseProps} />);
     // POSITIVE settle signal first — an absence/persistence claim asserted off a bare
     // `waitFor(... toBeNull())` is satisfied on the first tick and observes nothing.
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     expect(screen.queryByTestId('response-dashboard-skeleton')).toBeNull();
 
     await act(async () => {
@@ -141,7 +150,7 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
     // WHILE THE RETRY IS PENDING: the banner is still mounted and the skeleton has NOT replaced
     // it. This is the pair — the fetch-start `setError(null)` being gone, and the error branch
     // being evaluated before the loading branch. Either half alone fails here.
-    expect(screen.getByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(screen.getByText(FORBIDDEN_BESIDE_RETRY)).toBeInTheDocument();
     expect(screen.queryByTestId('response-dashboard-skeleton')).toBeNull();
 
     await act(async () => { releaseSecond?.(); });
@@ -156,7 +165,7 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
       );
 
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
 
     for (let i = 0; i < 2; i += 1) {
       // eslint-disable-next-line no-await-in-loop
@@ -199,11 +208,11 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
       .mockResolvedValue([{ user_id: 'u2', username: 'Fresh member', has_responded: true, slot_count: 1 }]);
 
     const view = render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
 
     view.rerender(<ResponseDashboard {...baseProps} promptId="prompt-2" />);
     await screen.findByText('Fresh member');
-    expect(screen.queryByText(FORBIDDEN_COPY)).toBeNull();
+    expect(screen.queryByText(FORBIDDEN_BESIDE_RETRY)).toBeNull();
   });
 });
 
@@ -282,7 +291,7 @@ describe('ResponseDashboard — the §6.3 title on the respondents-fetch banner 
     expect(screen.queryByText('Something went wrong')).toBeNull();
     // …and the BODY copy is still code-derived, untouched by the title: a named heading must
     // not become a second place upstream text could enter.
-    expect(screen.getByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(screen.getByText(FORBIDDEN_BESIDE_RETRY)).toBeInTheDocument();
     expect(screen.queryByText(/RAW UPSTREAM TEXT/)).toBeNull();
   });
 });
@@ -346,7 +355,7 @@ describe('ResponseDashboard — a superseded failure is still REPORTED (review r
   it('a CURRENT failure is logged exactly once (the non-superseded baseline)', async () => {
     api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     expect(errorCalls()).toHaveLength(1);
   });
 });
@@ -379,7 +388,7 @@ describe('ResponseDashboard — W031: one Sentry event per failure episode, none
       .mockImplementationOnce(() => new Promise((_res, rej) => { rejectSecond = rej; }));
 
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     expect(respondentsCalls()).toHaveLength(1);
 
     await act(async () => {
@@ -394,7 +403,7 @@ describe('ResponseDashboard — W031: one Sentry event per failure episode, none
       await Promise.resolve();
     });
     // The banner is still the forbidden one, and the retry's failure filed nothing new.
-    expect(screen.getByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(screen.getByText(FORBIDDEN_BESIDE_RETRY)).toBeInTheDocument();
     expect(respondentsCalls()).toHaveLength(1);
     expect(respondentsCalls()[0][1]).toBe(first);
   });
@@ -408,7 +417,7 @@ describe('ResponseDashboard — W031: one Sentry event per failure episode, none
       .mockRejectedValueOnce(later);
 
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     await act(async () => {
       screen.getByRole('button', { name: /try again/i }).click();
     });
@@ -1192,7 +1201,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     const e403 = await codedError('forbidden', 403);
     await loadThenFailRefresh(user, e403);
 
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     expect(screen.getByText(LOAD_TITLE)).toBeInTheDocument();
     for (const name of THREE_NAMES) expect(screen.queryByText(name)).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -1202,7 +1211,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     const callsBefore = api.getRespondents.mock.calls.length;
     await user.click(screen.getByRole('button', { name: /try again/i }));
     await waitFor(() => expect(api.getRespondents).toHaveBeenCalledTimes(callsBefore + 1));
-    expect(await screen.findByText(getFetchErrorMessage(e500))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e500)))).toBeInTheDocument();
     // The hook keeps the access answer until a success: still withdrawn, still no RF1.
     for (const name of THREE_NAMES) expect(screen.queryByText(name)).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -1237,7 +1246,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     await act(async () => {
       fireVisibility('visible');
     });
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     for (const name of THREE_NAMES) expect(screen.queryByText(name)).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(planningH1()));
     expect(document.activeElement).not.toBe(document.body);

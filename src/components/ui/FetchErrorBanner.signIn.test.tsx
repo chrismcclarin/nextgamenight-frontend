@@ -16,6 +16,14 @@ import { join, relative, resolve } from 'node:path';
 import { act, render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+// 88.9-66 (X68): the report hook is replaced by a holder that is null unless a test sets it, so
+// every other test in this file still renders a banner with no report host.
+const reportHost = vi.hoisted(() => ({ open: null as null | ((request: { subject: string; description: string }) => void) }));
+vi.mock('@/app/components/FeedbackModalProvider', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/app/components/FeedbackModalProvider')>();
+  return { ...actual, useFeedbackReport: () => reportHost.open };
+});
+
 import { FetchErrorBanner } from './FetchErrorBanner';
 import { HOST_GROUND_HALO } from './hostGround';
 import { getFetchErrorMessage } from './useFetchErrorState';
@@ -24,6 +32,7 @@ import { ApiError } from '@/lib/api';
 
 afterEach(() => {
   cleanup();
+  reportHost.open = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -284,5 +293,56 @@ describe('FetchErrorBanner — R073 mount grounds (88.9-50)', () => {
       .map((f) => `${f}: src ${counts.get(f) ?? 0}, table ${expected.get(f) ?? 0}`);
     expect(differ, 'files whose compact mount count differs from MOUNT_GROUNDS').toEqual([]);
     expect([...counts.values()].reduce((a, b) => a + b, 0)).toBe(MOUNT_GROUNDS.length);
+  });
+});
+
+// Phase 88.9-66 (X68, owner ruled by chat 2026-11-14): the full banner renders Try again for every
+// code but unauthorized, so for the three codes whose register line says to refresh the page it
+// shows the beside-retry line instead. The 401 banner (Sign in, no retry) keeps its line, and the
+// report says what the person was actually shown.
+describe('FetchErrorBanner — the line beside Try again (88.9-66: X68)', () => {
+  const RULED = {
+    forbidden: "You don't have access to this.",
+    validation: 'Something looks off with that request.',
+    unknown: "Something went wrong. If trying again doesn't help, refresh the page.",
+  } as const;
+
+  it('X68 (88.9): beside Try again the forbidden, validation and unknown banners show their ratified lines; the 401 banner keeps its line; the report names what was shown', async () => {
+    for (const code of ['forbidden', 'validation', 'unknown'] as const) {
+      const utils = render(<FetchErrorBanner state={failed(code)} />);
+      const alert = screen.getByRole('alert');
+      expect(screen.getByRole('button', { name: 'Try again' }), code).toBeInTheDocument();
+      expect(alert.querySelector('p')?.textContent, code).toBe(RULED[code]);
+      expect(alert.textContent, `${code}: one remedy beside Try again`).not.toContain('Refresh the page to try again.');
+      utils.unmount();
+    }
+
+    // The 401 banner has no retry (Sign in takes its place) and keeps its own line.
+    let utils = render(<FetchErrorBanner state={failed('unauthorized')} />);
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByRole('alert').querySelector('p')?.textContent).toBe(X1);
+    utils.unmount();
+
+    // Every other code keeps its register line beside Try again.
+    for (const code of ALL_CODES) {
+      if (code === 'unauthorized' || code in RULED) continue;
+      const state = failed(code);
+      utils = render(<FetchErrorBanner state={state} />);
+      expect(screen.getByRole('alert').querySelector('p')?.textContent, code).toBe(state.message);
+      utils.unmount();
+    }
+
+    // The report (offered after a failed retry) carries the line that was on screen.
+    const open = vi.fn();
+    reportHost.open = open;
+    const user = userEvent.setup();
+    render(<FetchErrorBanner state={failed('forbidden', { retryFailed: true })} reportContext="X68 pin" />);
+    await user.click(screen.getByRole('button', { name: 'Report this' }));
+    expect(open).toHaveBeenCalledTimes(1);
+    const request = open.mock.calls[0][0] as { subject: string; description: string };
+    expect(request.subject).toBe(`Couldn't load: ${RULED.forbidden}`);
+    expect(request.description).toContain(`Message shown: ${RULED.forbidden}\n`);
+    expect(request.description).toContain('An error occurred (code: forbidden).');
+    expect(request.description).not.toContain('Refresh the page to try again.');
   });
 });

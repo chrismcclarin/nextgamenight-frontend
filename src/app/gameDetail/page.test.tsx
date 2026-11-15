@@ -2797,7 +2797,10 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 // ---------------------------------------------------------------------------
 import { axe } from 'vitest-axe';
 import { auditFormControls } from '../../test-utils/formControlAudit';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
@@ -4509,7 +4512,7 @@ describe('gameDetail retained-content notice, game view — RF1 (88.6.1-74)', ()
   it('GV-7. a 403 refresh drops the game to the full banner with its register line (C10, C8 e)', async () => {
     const e403 = new ApiError('Access denied', 'forbidden', 403);
     await refreshGameRejecting(e403);
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     expect(screen.getByText(GAME_LOAD_FAILED)).toBeInTheDocument();
     expect(screen.queryByText('Wingspan')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);

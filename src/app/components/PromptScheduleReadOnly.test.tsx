@@ -35,7 +35,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import { promptSettingsAPI, ApiError } from '@/lib/api';
 import { promptKeys } from '@/lib/queryKeys/promptKeys';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -170,7 +173,7 @@ describe('PromptScheduleReadOnly — a failed refresh keeps what loaded earlier 
       await refresh(client);
 
       expect(await screen.findByText(FULL_TITLE)).toBeInTheDocument();
-      expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(err)))).toBeInTheDocument();
       expect(screen.queryByText('Thursday check-in')).toBeNull();
       expect(screen.queryByText('Sunday check-in')).toBeNull();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);

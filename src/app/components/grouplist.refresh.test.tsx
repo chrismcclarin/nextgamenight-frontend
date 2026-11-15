@@ -56,7 +56,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import GroupList from './grouplist';
 import { ApiError } from '@/lib/api';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 
 // GroupList is untyped JS; a typed-any props bag keeps JSX from demanding unrelated props (the
 // grouplist.identity.test.tsx shape).
@@ -265,7 +268,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     h.getUserGroups.mockRejectedValueOnce(err);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    expect((await screen.findAllByText(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(messageBesideRetry(getFetchErrorMessage(err)))).length).toBeGreaterThan(0);
     await waitFor(() => expect(document.activeElement).toBe(yourGroups()));
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
     expect(screen.queryByRole('button', { name: 'Alpha Crew' })).toBeNull();
@@ -290,7 +293,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     h.getUserGroups.mockRejectedValueOnce(err);
     // No press and no rerender: the tab-return re-attempt is the only refresh.
     act(() => fireVisibility('visible'));
-    expect((await screen.findAllByText(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(messageBesideRetry(getFetchErrorMessage(err)))).length).toBeGreaterThan(0);
     await waitFor(() => expect(document.activeElement).toBe(yourGroups()));
     expect(cardTitle.isConnected).toBe(false);
     expect(document.activeElement).not.toBe(document.body);
