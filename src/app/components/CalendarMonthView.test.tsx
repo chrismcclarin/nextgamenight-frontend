@@ -506,6 +506,41 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     }
   });
 
+  // 88.9-62 (X28, WCAG 1.4.4, and owner ruling M29 of 2026-11-14): Wed needs 1.70rem and a column
+  // at 200% text on a 375 phone is under 1rem, so each label shows one letter there; and each cell
+  // speaks its full day name from the cell itself (the labelled focusable leaf the availability
+  // chart's header uses), never a spelled letter.
+  it('X28 (88.9): each weekday label shows its three-letter name or, under 14rem, its first letter, and speaks its full day name from the cell', () => {
+    const FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (const variant of ['full', 'compact'] as const) {
+      const { weekdays } = renderGrid({ variant });
+      expect(weekdays).toHaveLength(7);
+      expect(tokens(weekdays[0].parentElement as HTMLElement), `${variant}: the weekday row is not a size container`).toContain('@container');
+      weekdays.forEach((cell, i) => {
+        const day = FULL[i];
+        expect(tokens(cell), `${variant}: ${day} is not 12px`).toContain('text-xs');
+        expect(tokens(cell), `${variant}: ${day} is not 700`).toContain('font-bold');
+        expect(cell.hasAttribute('role'), `${variant}: the ${day} cell carries a role`).toBe(false);
+        expect(cell.getAttribute('tabindex'), `${variant}: the ${day} cell is not a focusable leaf outside the Tab order`).toBe('-1');
+        expect(cell.getAttribute('aria-label'), `${variant}: the ${day} cell does not speak its full day name`).toBe(day);
+        const parts = Array.from(cell.children);
+        expect(parts, `${variant}: the ${day} cell does not hold exactly two elements`).toHaveLength(2);
+        const [short, letter] = parts;
+        expect(short.tagName, `${variant}: ${day}'s three-letter form is not a span`).toBe('SPAN');
+        expect(short.textContent, `${variant}: ${day}'s three-letter form`).toBe(day.slice(0, 3));
+        expect(tokens(short), `${variant}: ${day}'s three-letter form stays under 14rem`).toContain('@max-[14rem]:hidden');
+        expect(letter.tagName, `${variant}: ${day}'s one-letter form is not a span`).toBe('SPAN');
+        expect(letter.textContent, `${variant}: ${day}'s one-letter form`).toBe(day[0]);
+        expect(tokens(letter), `${variant}: ${day}'s one-letter form shows at rest`).toContain('hidden');
+        expect(tokens(letter), `${variant}: ${day}'s one-letter form never shows`).toContain('@max-[14rem]:inline');
+        for (const part of parts) {
+          expect(part.getAttribute('aria-hidden'), `${variant}: a visible form of ${day} is not hidden from the accessibility tree`).toBe('true');
+        }
+      });
+      cleanup();
+    }
+  });
+
   const rsvpEvent = {
     id: 'evt-rsvp',
     start_date: '2031-09-20T19:00:00',
