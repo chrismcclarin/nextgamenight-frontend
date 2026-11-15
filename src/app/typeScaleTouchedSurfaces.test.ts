@@ -789,7 +789,10 @@ const EXPECTED_PROP_SEAMS = 1;
 // this suite's own failure message, "expected 135 to be 136".
 // AMENDED Phase 88.9-61 (X11): the Later h4 and its h5/h6 pair left. 135 -> 134: the Later
 // Heading level 4 left CalendarListView.js's sheet arm.
-const EXPECTED_PRIMITIVES = 134;
+// AMENDED Phase 88.9-66 (X70b, owner 2026-11-14): 134 -> 133. The Friends page's signed-out prompt
+// left with its h1 (the declined return is the shared banner, whose title is not a heading);
+// measured by this suite's own failure message, "expected 133 to be 134".
+const EXPECTED_PRIMITIVES = 133;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -1703,7 +1706,10 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/components/tutorial/WelcomeSlide.js': { 1: 1 },
   'app/components/tutorial/simulated/AvailabilityPromptDemo.js': { 3: 1 },
   'app/components/tutorial/simulated/ProblemSlide.js': { 2: 1 },
-  'app/friends/page.js': { 1: 4, 2: 1 },
+  // LOWERED { 1: 4, 2: 1 } -> { 1: 3, 2: 1 } by plan 88.9-66 (X70b, owner 2026-11-14): no level
+  // moved. The signed-out prompt's own h1 left with the prompt (the declined return is the shared
+  // banner); the three h1s that remain are the page title on the two error screens and the page.
+  'app/friends/page.js': { 1: 3, 2: 1 },
   // RAISED { 1: 3, 2: 5, 3: 1 } -> { 1: 3, 2: 6, 3: 1 } by plan 88.6.1-25 task 2 (2026-10-16,
   // review r2 #180): the event view's message-screen title ("Event not found" and the no-access
   // title share ONE render helper) is now a `<Heading level={2} size="heading">` instead of a

@@ -16,6 +16,7 @@ import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
@@ -621,9 +622,10 @@ export default function GroupPlanningPage() {
         return <ErrorFallback title="Couldn't load this group" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />;
     }
     if (!user) {
-        return <div className="flex items-center justify-center min-h-screen text-content-secondary">
+        // 88.9-66 (X64): the shared frame gives the banner its gutter and width.
+        return <CentredPageFrame>
             <FetchErrorBanner state={signIn.signedOutErrorState} thing="this group" reportContext="Group planning — signed out" />
-        </div>;
+        </CentredPageFrame>;
     }
 
     if (!groupId) {

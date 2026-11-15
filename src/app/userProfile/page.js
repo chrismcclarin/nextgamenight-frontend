@@ -48,6 +48,7 @@ import { useInlineReceipt } from '../../components/ui/useInlineReceipt';
 import { announceStatus } from '@/components/ui/announcer';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
@@ -2311,9 +2312,9 @@ function Profile(){
     // The title literal is the one this file already uses; plans 88.9-48 / 49 convert it to `thing=`.
     if (!user) {
         return (
-            <div className="p-3 md:p-6 max-w-4xl mx-auto">
+            <CentredPageFrame>
                 <FetchErrorBanner state={signIn.signedOutErrorState} thing="your profile" reportContext="Profile page — signed out" />
-            </div>
+            </CentredPageFrame>
         );
     }
 
@@ -2333,12 +2334,13 @@ function Profile(){
        is body or disconnected, the wrapper (tabIndex -1; its first text is the banner title) takes focus once
        per episode, chosen OVER leaving focus on body (the branch is reached on first load before any
        interaction, where R-C4's main landing — the home page's guard — does not apply). Changing this is a
-       decision, not a cleanup. */
+       decision, not a cleanup.
+       AMENDED Phase 88.9-66 (X70a): both page-replacing banners sit centred in CentredPageFrame, OVER the top of the page column; focus lands on the frame's inner box. */
     if (rc2Active) {
         return (
-            <div ref={sessionDeadRef} tabIndex={-1} className="p-3 md:p-6 max-w-4xl mx-auto">
+            <CentredPageFrame ref={sessionDeadRef} tabIndex={-1}>
                 <FetchErrorBanner state={sessionDeadBannerState} thing="your profile" reportContext="Profile page — session expired" />
-            </div>
+            </CentredPageFrame>
         );
     }
 

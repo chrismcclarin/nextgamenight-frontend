@@ -7,7 +7,6 @@ import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
-import { buildSignInUrl } from '@/lib/signIn';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import {
     FetchErrorBanner,
@@ -35,6 +34,7 @@ import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
@@ -431,6 +431,7 @@ function FriendsPage() {
     // In link now carrying returnTo. A 401 on identity or the friends / sent lists redirects once too
     // (SPEC A8). A useUser() error shows Reload, not the log-in prompt. See
     // src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling").
+    // AMENDED Phase 88.9-66 (X70b): the declined return is the shared banner with Sign in (returnTo kept).
     const signIn = useSignInRedirect({
         authLoading,
         signedOut: !user,
@@ -915,27 +916,12 @@ function FriendsPage() {
     }
 
     // Reached only on the DECLINED arm (back from sign-in with the latch set, or storage failed).
+    // DECISION Phase 88.9-66 (X70b, owner 2026-11-14: yes): the shared centred banner, chosen OVER the older prompt 88.9-40 kept with no recorded reason; 88.6-19's rule holds through the banner's own Sign in anchor.
     if (!user) {
         return (
-            <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div className="text-center">
-                    <Heading level={1} size="display" className="text-content-primary mb-4">Friends</Heading>
-                    <p className="text-content-secondary mb-6">Please log in to view your friends.</p>
-                    {/* DECISION Phase 88.6-19 (UI-SPEC §3.2 asChild row): the element stays an
-                        `<a>` and is NEVER rewritten to `<Link>`. Auth0's login handler needs a
-                        hard navigation; a client-router push to it is a behaviour change, not a
-                        cleanup, and the repo carries zero `<Link href="/api/auth…">`. Any
-                        surviving utility goes on `<Button className>` and not on the child,
-                        because Radix `Slot` concatenates the child's className WITHOUT
-                        tailwind-merge, so a utility left there cannot win a conflict. Here
-                        nothing survives: `px-6 py-2` and `inline-block` are all dead under
-                        unlayered `.btn` (its padding and `display: inline-flex`, both in the block marked at
-                        src/app/globals.css ("UNLAYERED with every other declaration it has today"); re-pointed 88.6.1-40). */}
-                    <Button asChild variant="primary" size="default" className="focus-visible:ring-offset-surface-page">
-                        <a href={buildSignInUrl()}>Log In</a>
-                    </Button>
-                </div>
-            </div>
+            <CentredPageFrame>
+                <FetchErrorBanner state={signIn.signedOutErrorState} thing="your friends" reportContext="Friends page — signed out" />
+            </CentredPageFrame>
         );
     }
 

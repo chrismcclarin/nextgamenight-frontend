@@ -35,6 +35,7 @@ import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 
 // The resolved outcome of one games load: the shape plan 88.6.1-21's banner reads
 // (`classifyRetryResult`) to announce a failed retry, and the shape plan 88.6.1-71 reuses for the
@@ -797,11 +798,10 @@ function GroupHomePage(){
     if (pageGateState.showError) {
         return (
             <>
-                <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
-                    <div className="w-full max-w-xl">
-                        <FetchErrorBanner state={pageGateState} thing={GROUP_LOAD_FAILED_THING} reportContext="Group home page — group and members fetch" />
-                    </div>
-                </div>
+                {/* 88.9-66 (X64 / X70): the shared frame; its marker is in src/components/ui/CentredPageFrame.tsx ("ONE frame for a page-replacing banner"). */}
+                <CentredPageFrame>
+                    <FetchErrorBanner state={pageGateState} thing={GROUP_LOAD_FAILED_THING} reportContext="Group home page — group and members fetch" />
+                </CentredPageFrame>
                 {membersFocusGuard}
                 {groupFocusGuard}
             </>
