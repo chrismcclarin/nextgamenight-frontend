@@ -973,6 +973,39 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
       await advance(2);
       expect(glyph(), '(6) stopped at +2001').not.toHaveClass('animate-spin');
       expect(region.textContent).toBe(REFRESHED);
+
+      // (7) a READABLE duration is the turn, in seconds or in ms. Every arm above ran on the
+      // 1000 ms fallback (jsdom computes no animation-duration); a browser always reports one, and
+      // under reduced motion the stylesheet makes it 1.5 s. Only the glyph's style is stubbed.
+      const realGetComputedStyle = window.getComputedStyle.bind(window);
+      let reported = '1.5s';
+      const styleSpy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) =>
+        el === glyph() ? ({ animationDuration: reported } as CSSStyleDeclaration) : realGetComputedStyle(el, pseudo)
+      );
+      try {
+        const held7 = deferred();
+        api.getRespondents.mockImplementationOnce(() => held7.promise);
+        fireEvent.click(button);
+        await advance(600);
+        await act(async () => {
+          held7.resolve(THREE);
+        });
+        await advance(899);
+        expect(glyph(), '(7) a 1.5 s turn: still turning at +1499').toHaveClass('animate-spin');
+        await advance(2);
+        expect(glyph(), '(7) a 1.5 s turn: stopped at +1501').not.toHaveClass('animate-spin');
+
+        reported = '250ms';
+        api.getRespondents.mockResolvedValueOnce(THREE);
+        fireEvent.click(button);
+        await advance(0);
+        await advance(249);
+        expect(glyph(), '(7) a 250 ms turn: still turning at +249').toHaveClass('animate-spin');
+        await advance(2);
+        expect(glyph(), '(7) a 250 ms turn: stopped at +251').not.toHaveClass('animate-spin');
+      } finally {
+        styleSpy.mockRestore();
+      }
     } finally {
       vi.useRealTimers();
     }
