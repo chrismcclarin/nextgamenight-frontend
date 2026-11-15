@@ -898,9 +898,10 @@ function FriendsPage() {
     if (authLoading || signIn.holding) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div role="status" aria-label="Signing you in" className="flex items-center gap-2 text-content-secondary">
+                {/* DECISION Phase 88.9-66 (X35, once-over R13): busy lines speak from always-mounted sr-only settleOnMount regions, the visible rows at 0 ms (the two-node shape of DECISION Phase 88.6-37 (W38), as 65's loader), chosen OVER labelled rows mounted with their words (not announced) and OVER the visible row as the region (its words would wait the dwell); words are the former aria-labels, OVER the visible ones (VoiceOver reads three dots aloud). */}
+                <StatusRegion settleOnMount className="sr-only" message="Signing you in" />
+                <div className="flex items-center gap-2 text-content-secondary">
                     <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
-                    <span className="sr-only">Signing you in...</span>
                 </div>
             </div>
         );
@@ -994,9 +995,10 @@ function FriendsPage() {
     if (!selfUuid) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary">
+                {/* X35: see the DECISION Phase 88.9-66 marker on the sign-in hold above. */}
+                <StatusRegion settleOnMount className="sr-only" message="Loading your friends" />
+                <div className="flex items-center gap-2 text-content-secondary">
                     <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
-                    <span className="sr-only">Loading your friends...</span>
                 </div>
             </div>
         );
@@ -1031,6 +1033,12 @@ function FriendsPage() {
 
     // The F7 region's subject: the name the result row shows, while a result is shown.
     const searchFoundName = searchResult && !searching ? searchResult.username || searchResult.email || '' : '';
+
+    // X35 (88.9-66): each tab's loading line is on screen exactly while this is true; the visible
+    // row and the tab's polite region both read it, so they cannot disagree.
+    const friendsListLoading = !(!friendsRetained && friendsErrorState.showError) && !friendsLoaded;
+    const requestsListLoading = friendshipCtxLoading;
+    const sentListLoading = !(!sentRetained && sentErrorState.showError) && !sentLoaded;
 
     const tabs = [
         { key: 'friends', label: 'Friends', count: friends.length },
@@ -1092,9 +1100,10 @@ function FriendsPage() {
                     </form>
 
                     {/* Search Result */}
-                    {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. */}
+                    <StatusRegion settleOnMount className="sr-only" message={searching ? 'Searching for that email address' : ''} />
+                    {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. AMENDED Phase 88.9-66 (X35): role and heard words moved to the region above; this row keeps its timing as plain text. */}
                     {searching && (
-                        <div role="status" aria-label="Searching for that email address" className="mt-4 flex items-center gap-2 text-content-secondary">
+                        <div className="mt-4 flex items-center gap-2 text-content-secondary">
                             <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-btn-primary" />
                             <span>Searching...</span>
                         </div>
@@ -1318,6 +1327,7 @@ function FriendsPage() {
                             banner above retained rows (two treatments on one page; the owner's
                             retained-content ruling gives a refresh failure the small notice) and a row count
                             as the retained flag (contract C3). */}
+                        <StatusRegion settleOnMount className="sr-only" message={friendsListLoading ? 'Loading your friends' : ''} />
                         {!friendsRetained && friendsErrorState.showError ? (
                             <FetchErrorBanner
                                 state={friendsErrorState}
@@ -1325,8 +1335,8 @@ function FriendsPage() {
                                 reportContext="friends page — friends list fetch"
                                 focusTarget={friendsTabRef}
                             />
-                        ) : !friendsLoaded ? (
-                            <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                        ) : friendsListLoading ? (
+                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading friends...</span>
                             </div>
@@ -1395,9 +1405,10 @@ function FriendsPage() {
                                                         </span>
                                                     )}
                                                 </div>
-                                                {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. */}
+                                                <StatusRegion settleOnMount className="sr-only" message={groupMembersLoading ? 'Loading group members' : ''} />
+                                                {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. AMENDED Phase 88.9-66 (X35): role and heard words moved to the region above; this row keeps its timing as plain text. */}
                                                 {groupMembersLoading && (
-                                                    <div role="status" aria-label="Loading group members" className="mt-2 flex items-center gap-2 text-xs text-content-muted">
+                                                    <div className="mt-2 flex items-center gap-2 text-xs text-content-muted">
                                                         <div aria-hidden="true" className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
                                                         <span>Loading group members...</span>
                                                     </div>
@@ -1618,8 +1629,9 @@ function FriendsPage() {
                                 receivedRequests.some((r) => r.id === requestActionError.id)) && (
                                 <p role="alert" className="text-content-status-error text-sm mb-4">{requestActionError.message}</p>
                             )}
-                        {friendshipCtxLoading ? (
-                            <div role="status" aria-label="Loading your friend requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                        <StatusRegion settleOnMount className="sr-only" message={requestsListLoading ? 'Loading your friend requests' : ''} />
+                        {requestsListLoading ? (
+                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading requests...</span>
                             </div>
@@ -1736,6 +1748,7 @@ function FriendsPage() {
                             banner above retained rows (two treatments on one page; the owner's
                             retained-content ruling gives a refresh failure the small notice) and a row count
                             as the retained flag (contract C3). */}
+                        <StatusRegion settleOnMount className="sr-only" message={sentListLoading ? 'Loading your sent requests' : ''} />
                         {!sentRetained && sentErrorState.showError ? (
                             <FetchErrorBanner
                                 state={sentErrorState}
@@ -1743,8 +1756,8 @@ function FriendsPage() {
                                 reportContext="friends page — sent requests fetch"
                                 focusTarget={sentTabRef}
                             />
-                        ) : !sentLoaded ? (
-                            <div role="status" aria-label="Loading your sent requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                        ) : sentListLoading ? (
+                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading sent requests...</span>
                             </div>

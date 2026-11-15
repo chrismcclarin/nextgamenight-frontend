@@ -629,11 +629,14 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             Your Friends
                         </Heading>
 
+                        {/* DECISION Phase 88.9-66 (X35, once-over R13): busy lines speak from always-mounted sr-only settleOnMount regions, the visible rows at 0 ms (the two-node shape of DECISION Phase 88.6-37 (W38), as 65's loader), chosen OVER labelled rows mounted with their words (not announced) and OVER the visible row as the region (its words would wait the dwell); words are the former aria-labels, OVER the visible ones (VoiceOver reads three dots aloud). */}
+                        <StatusRegion settleOnMount className="sr-only" message={loadingFriends || loadingMembers ? 'Loading your friends' : ''} />
                         {loadingFriends || loadingMembers ? (
                             /* 88-33 Task 1: generic "Loading..." named per the walk's
                                in-page-loading-states row — the heading above says what section
-                               this is, but the status itself said nothing to a screen reader. */
-                            <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-muted py-6 justify-center">
+                               this is, but the status itself said nothing to a screen reader.
+                               AMENDED Phase 88.9-66 (X35): role and heard words moved to the region above; this row keeps its timing as plain text. */
+                            <div className="flex items-center gap-2 text-content-muted py-6 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
                                 <span>Loading your friends...</span>
                             </div>
@@ -1030,8 +1033,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                 <Heading level={3} size="label" className="text-content-muted uppercase tracking-wider mb-3">
                                     Share QR Code
                                 </Heading>
+                                {/* X35: see the DECISION Phase 88.9-66 marker in the friends section above. */}
+                                <StatusRegion settleOnMount className="sr-only" message={tokenLoading ? 'Loading QR code' : ''} />
                                 {tokenLoading ? (
-                                    <div role="status" aria-label="Loading QR code" className="flex items-center gap-2 text-content-muted py-6 justify-center">
+                                    <div className="flex items-center gap-2 text-content-muted py-6 justify-center">
                                         <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
                                         <span>Loading QR code...</span>
                                     </div>
