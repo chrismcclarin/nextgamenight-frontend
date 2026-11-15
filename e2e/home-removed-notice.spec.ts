@@ -115,6 +115,11 @@ test.describe('Phase 88.6.1-82 — the removed-from-group notice (phone project)
     await expect
       .poll(() => page.evaluate(() => document.activeElement?.tagName ?? ''))
       .toBe('MAIN');
+    // X20 (88.9-58, owner 2026-11-11: yes hide it): focus arrived on main after a KEYBOARD press, so the
+    // browser would draw its focus-visible outline round the whole page. main is only a programmatic
+    // focus target, never a Tab stop, and hides that outline; the read is the computed style.
+    const outlineStyle = await page.evaluate(() => getComputedStyle(document.activeElement as Element).outlineStyle);
+    expect(outlineStyle, `X20: main is focused after a keyboard Dismiss and its computed outline-style read ${outlineStyle}`).toBe('none');
     expect(await wrapperHeight(page)).toBe(0);
   });
 
