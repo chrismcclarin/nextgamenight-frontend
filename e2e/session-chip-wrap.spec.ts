@@ -96,21 +96,29 @@ test('X47 (88.9-65): at 375 a session chip wraps by piece: no piece breaks insid
       if (!scope) return { error: 'no main element' as const };
       const squash = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim();
 
-      // The name's element: the parent of the text node that holds exactly the name.
+      // The chip: for every text node that holds exactly the name, the nearest ancestor that also
+      // holds the Score piece; the SMALLEST such ancestor is the chip (the name may also print
+      // elsewhere on the page). AMENDED 88.9-65 after CI runs 43760813851 and 43760817617: the first
+      // shape tested a word boundary before Score, but an element's text runs its pieces together
+      // with no space between them, so the chip was never found and the test failed on its own
+      // lookup instead of on the chip. A plain substring test has no such edge.
       const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
       let nameEl: HTMLElement | null = null;
+      let chip: HTMLElement | null = null;
+      let namesSeen = 0;
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (squash(node.nodeValue) === name) {
+        if (squash(node.nodeValue) !== name || !node.parentElement) continue;
+        namesSeen += 1;
+        let holder: HTMLElement | null = node.parentElement.parentElement;
+        while (holder && holder !== scope && !(holder.textContent ?? '').includes('Score:')) holder = holder.parentElement;
+        if (!holder || holder === scope) continue;
+        if (!chip || holder.querySelectorAll('*').length < chip.querySelectorAll('*').length) {
+          chip = holder;
           nameEl = node.parentElement;
-          break;
         }
       }
-      if (!nameEl) return { error: 'name not found' as const };
-
-      // The chip: the nearest ancestor of the name that also holds the Score piece.
-      let chip: HTMLElement | null = nameEl.parentElement;
-      while (chip && chip !== scope && !/\bScore:/.test(chip.textContent ?? '')) chip = chip.parentElement;
-      if (!chip || chip === scope) return { error: 'chip not found' as const };
+      if (namesSeen === 0) return { error: 'name not found' as const };
+      if (!chip || !nameEl) return { error: 'chip not found' as const };
       const chipEl = chip;
 
       // A piece: the DEEPEST element in the chip whose words match.
