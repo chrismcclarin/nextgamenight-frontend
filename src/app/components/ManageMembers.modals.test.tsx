@@ -104,7 +104,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import ManageMembers from './ManageMembers';
 import { CHIP_FILLS, chipFillIndex } from './MemberChipStack';
-import { groupsAPI, invitesAPI, friendshipsAPI } from '@/lib/api';
+import { ApiError, groupsAPI, invitesAPI, friendshipsAPI } from '@/lib/api';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -541,5 +541,75 @@ describe('Phase 88.9-30 — D4a row chips in Manage Members', () => {
     const pendBox = screen.getByText('Pend').closest('div.rounded-lg') as HTMLElement;
     expect(pendBox.querySelector('[class*="bg-chip-"]'), 'a pending row carries no chip').toBeNull();
     expect(await axe(dialog)).toHaveNoViolations();
+  });
+});
+
+// Phase 88.9-64 (X41, owner at N32, 2026-11-13: "It pops up and I see 'Members' as the title for
+// half a second before it loads with 'Manage Group Members'"). The group page already knows the
+// viewer's role when it opens this dialog and now hands it over (viewerRole), so the first paint
+// is right. The seed is a first paint only: once this group's own members read answers, the roster
+// decides, even when it holds no role for the viewer, and an access or gone failure ends the seed.
+describe('ManageMembers X41 (88.9) — the first paint takes the role the page holds, and the dialog\'s own read still decides', () => {
+  const VIEWER_NOTE = "You're viewing the member list. Only owners and admins can change roles or remove members.";
+
+  function renderSeeded(viewerRole: string) {
+    render(
+      <ManageMembers
+        group_id={GROUP_ID}
+        user={{ sub: 'auth0|self' }}
+        modal={true}
+        modaltoggle={vi.fn()}
+        onMembersUpdated={vi.fn()}
+        group_name="Tuesday Night Crew"
+        viewerRole={viewerRole}
+      />
+    );
+  }
+
+  it('X41 (88.9): with the role the page already knows, the dialog\'s first paint is Manage Group Members with no viewer note, before its own fetch returns', async () => {
+    // The members read never answers, so everything on screen is the first paint.
+    (groupsAPI.getGroupMembers as Mock).mockReturnValue(new Promise(() => {}));
+    renderSeeded('owner');
+    expect(screen.getByRole('dialog', { name: 'Manage Group Members' })).toBeInTheDocument();
+    expect(screen.queryByText(VIEWER_NOTE)).toBeNull();
+    // Anti-vacuity: the roster is still loading, so no read has decided anything yet.
+    expect(screen.getByText('Loading members...')).toBeInTheDocument();
+    expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('X41 (88.9): the dialog\'s own fetch still decides: a page-seeded owner whose roster says member reads Members with the note', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
+      { id: OWNER_UUID, user_id: 'auth0|self', username: 'Me', UserGroup: { role: 'member' } },
+      { id: TARGET_UUID, user_id: 'auth0|target', username: 'Target', UserGroup: { role: 'owner' } },
+    ]);
+    renderSeeded('owner');
+    await screen.findByText('Target');
+    expect(await screen.findByRole('dialog', { name: 'Members' })).toBeInTheDocument();
+    expect(screen.getByText(VIEWER_NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reset invite link' })).toBeNull();
+  });
+
+  it('X41 (88.9): a page-seeded owner whose loaded roster carries no role for them reads Members with the note and no Invite members button', async () => {
+    // The backend's game-only shape: a caller with only a night in the group gets their own row
+    // with no membership attached.
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
+      { id: OWNER_UUID, user_id: 'auth0|self', username: 'Me', UserGroup: null },
+    ]);
+    renderSeeded('owner');
+    await waitFor(() => expect(screen.queryByText('Loading members...')).toBeNull());
+    expect(await screen.findByRole('dialog', { name: 'Members' })).toBeInTheDocument();
+    expect(screen.getByText(VIEWER_NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Invite members' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset invite link' })).toBeNull();
+  });
+
+  it('X41 (88.9): a page-seeded owner whose first members read answers 403 reads Members with no Invite members button', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValue(new ApiError('Forbidden', 'forbidden', 403));
+    renderSeeded('owner');
+    await waitFor(() => expect(screen.queryByText('Loading members...')).toBeNull());
+    expect(await screen.findByRole('dialog', { name: 'Members' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Invite members' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset invite link' })).toBeNull();
+    expect(invitesAPI.getGroupPendingInvites as Mock).not.toHaveBeenCalled();
   });
 });

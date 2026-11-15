@@ -49,6 +49,8 @@ const h = vi.hoisted(() => ({
     modal: boolean;
     modaltoggle: () => void;
     onMembersUpdated: () => Promise<unknown>;
+    // 88.9-64 (X41): the role the page holds for the viewer, handed to the dialog for its first paint.
+    viewerRole?: string | null;
   },
   // What the GroupSettings stub last rendered with (88.6.1-89: its `onUpdate` is a group refresh).
   groupSettingsProps: null as null | { onUpdate: () => void },
@@ -489,6 +491,19 @@ describe('groupHomePage group-settings entry is owner/admin (88.6-21 D-31, owner
     await renderHeaderAt('admin');
     expect(await screen.findByRole('button', { name: 'Group settings' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull();
+  });
+
+  it('X41 (88.9): the group page hands the Members dialog the role it holds', async () => {
+    // 88.9-64 (owner at N32, 2026-11-13: "I see 'Members' as the title for half a second"). The
+    // dialog used to learn the viewer's role only from its own members read, so an owner's first
+    // frame was the plain member view. The page already holds that role and now passes it on.
+    for (const role of ['owner', 'admin', 'member']) {
+      await renderHeaderAt(role);
+      await waitFor(() => expect(h.manageMembersProps).not.toBeNull());
+      expect(h.manageMembersProps!.viewerRole, `the dialog was not handed the ${role} role`).toBe(role);
+      cleanup();
+      h.manageMembersProps = null;
+    }
   });
 
   it('a plain MEMBER sees NEITHER the gear nor a menu — and still reaches Manage Members', async () => {

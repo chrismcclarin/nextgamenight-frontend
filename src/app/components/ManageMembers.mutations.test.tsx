@@ -1618,7 +1618,10 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     expect(screen.queryByRole('button', { name: /QR link/ })).toBeNull();
   });
 
-  it('RS1 rule 1 (88.9): Reset invite link keeps its label + spinner while busy, aria-disabled and still focusable, then rests again', async () => {
+  // AMENDED Phase 88.9-64 (X13-8): the opener keeps its label, its aria-disabled state and its guard
+  // while a reset runs, but shows no spinner and speaks no busy word of its own. Since 88.9-56 the
+  // dialog's Reset link (the pressed control) carries both, and one reset showed two spinners.
+  it('RS1 rule 1 (88.9) + X13-8: Reset invite link keeps its label while busy, aria-disabled and still focusable, with no busy word of its own, then rests again', async () => {
     const held = deferred<unknown>();
     (groupsAPI.resetInviteToken as Mock).mockReturnValueOnce(held.promise);
     await openMembersModal();
@@ -1630,12 +1633,13 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     // on it) is CONFIRM-ONLY in jsdom.
     // The reset confirm stays open while the reset runs, and Radix's hideOthers marks the opener
     // ITSELF aria-hidden (data-aria-hidden), so no role query can read its name (it computes to
-    // "" for a hidden node; measured 2026-11-10). The pin reads the parts rule 1 composes: the
-    // kept label as the button's own text, one house spinner, the sr-only ", resetting" suffix.
+    // "" for a hidden node; measured 2026-11-10). The pin reads the button's own parts: the kept
+    // label as its whole text, and no sr-only busy suffix (the spinner's absence is pinned by the
+    // X13-8 test below, past the spinner's 200 ms appear delay).
     const opener = (await screen.findByText('Reset invite link', { selector: 'button' })) as HTMLElement;
     await waitFor(() => expect(opener).toHaveAttribute('aria-disabled', 'true'));
-    await waitFor(() => expect(opener.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
-    expect(opener.querySelector('.sr-only')).toHaveTextContent(', resetting');
+    expect(opener.textContent).toBe('Reset invite link');
+    expect(opener.querySelector('.sr-only')).toBeNull();
     expect(opener).not.toHaveAttribute('disabled');
 
     await act(async () => {
@@ -1646,6 +1650,42 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     await waitFor(() => expect(caption).toHaveTextContent('Invite link reset'));
     expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Reset invite link' })).not.toHaveAttribute('aria-disabled');
+  });
+
+  // 52-X13, the N-walk's "double spinner on Reset invite link", reproduced before this pin was
+  // written: 250 ms into a held reset the opener and the dialog's Reset link each held a spinner,
+  // and after the dialog closed the opener kept its one for the rest of the spinner's 500 ms hold.
+  it("X13-8 (88.9): one reset shows one spinner, on the dialog's Reset link; the opener behind it shows none, during the write or after the dialog closes", async () => {
+    const held = deferred<unknown>();
+    (groupsAPI.resetInviteToken as Mock).mockReturnValueOnce(held.promise);
+    await openMembersModal();
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset invite link' }));
+    const confirm = await liveConfirm('Reset link');
+    fireEvent.click(confirm);
+    const opener = (await screen.findByText('Reset invite link', { selector: 'button' })) as HTMLElement;
+    const spinnersIn = (el: ParentNode) => el.querySelectorAll('[data-slot="spinner"]').length;
+
+    // During the write: the pressed control carries the one spinner (R-C3a) once its 200 ms
+    // appear delay has passed; the opener, which would have appeared at the same moment, has none.
+    await waitFor(() => expect(spinnersIn(confirm)).toBe(1));
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(spinnersIn(opener), 'the opener behind the dialog shows a spinner during the write').toBe(0);
+    expect(spinnersIn(document), 'more than one spinner shows during one reset').toBe(1);
+    // The opener still refuses a second reset while this one runs.
+    expect(opener).toHaveAttribute('aria-disabled', 'true');
+
+    // After the write lands the dialog closes and takes its spinner with it; none is left behind.
+    await act(async () => {
+      held.resolve({});
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Reset the invite link?' })).not.toBeInTheDocument());
+    expect(spinnersIn(document), 'a spinner is left on screen after the dialog closed').toBe(0);
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(spinnersIn(document), 'a spinner is left on screen 100 ms after the dialog closed').toBe(0);
   });
 });
 
