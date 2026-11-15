@@ -19,6 +19,7 @@
 // It runs in CI only: both projects need the `.auth` storage state, which does not exist locally.
 // The jsdom pins in `src/app/friends/page.test.tsx` are the RED halves.
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { assertTheme, forceLightMode } from './support/contrast';
 import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 
 const INVITE_ROUTE = '**/invites/send';
@@ -443,5 +444,62 @@ test.describe('friends page — what the Requests tab and the batch say (88.6.1-
     await expect(line).toHaveCount(0, { timeout: 15_000 });
     await expect(row).toBeVisible();
     await expect(tab).toBeFocused();
+  });
+
+  // Plan 88.9-58 (owner 2026-11-14, on the live page: "Why not just turn them into white cards?").
+  // The friend row and the request row paint the card colour, read against the Add Friend card on
+  // the same page, in both themes and at both widths; with a fine pointer (journeys) the row is
+  // also hovered on its own padding and must not change. The row is found by its data attribute
+  // and the card by walking up from the email field, so no colour literal is pinned here: the two
+  // surfaces must simply agree. Both lists are answered in the browser; nothing is written.
+  test('X14 Friends rows (88.9): friend and request rows paint the card colour in both themes and do not react to hover', async ({ page }, testInfo) => {
+    const project = testInfo.project.name;
+    const friend = { id: 'e2e-friends-x14-f', friend: { id: '8861a072-0000-4000-8000-0000000000b1', username: 'E2E Card Friend' } };
+    const request = { id: 'e2e-friends-x14-r', Requester: { id: '8861a072-0000-4000-8000-0000000000b2', username: 'E2E Card Requester' } };
+    await page.route(
+      (url) => isFriendshipList(url, 'status', 'accepted'),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({ status: 200, json: [friend] });
+      },
+    );
+    await routeReceived(page, () => ({ status: 200, json: [request] }));
+
+    const background = (locator: Locator) => locator.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const readRow = async (row: Locator, card: string, what: string) => {
+      await expect(row, `${what}: the row never rendered`).toBeVisible({ timeout: 15_000 });
+      await page.mouse.move(0, 0);
+      const rest = await background(row);
+      expect(rest, `${what}: the row paints ${rest}, the Add Friend card paints ${card}`).toBe(card);
+      if (project === 'journeys') {
+        // 8px in: inside the row's 16px padding, over no control.
+        await row.hover({ position: { x: 8, y: 8 } });
+        expect(await row.evaluate((el) => el.matches(':hover')), `${what}: the row never took the hover`).toBe(true);
+        // Longer than the house 150ms colour transition, so a wash would have landed.
+        await page.waitForTimeout(400);
+        const hovered = await background(row);
+        expect(hovered, `${what}: the row went from ${rest} to ${hovered} under the mouse`).toBe(rest);
+        await page.mouse.move(0, 0);
+      }
+    };
+
+    for (const theme of ['dark', 'light'] as const) {
+      if (theme === 'light') await forceLightMode(page);
+      await page.goto('/friends');
+      await assertTheme(page, theme);
+      const email = page.getByLabel("Friend's email address");
+      await expect(email, `X14 (${theme}): the Add Friend card never rendered`).toBeVisible({ timeout: 15_000 });
+      const addFriendCard = email.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " card ")][1]');
+      await expect(addFriendCard, `X14 (${theme}): the email field does not sit on exactly one card`).toHaveCount(1);
+      const card = await background(addFriendCard);
+      expect(card, `X14 (${theme}): the Add Friend card reads ${card}, which is no fill to compare with`).not.toBe('rgba(0, 0, 0, 0)');
+
+      await readRow(page.locator(`[data-friend-row="${friend.id}"]`), card, `X14 (${theme}, ${project}) friend row`);
+      await requestsTab(page).click();
+      await readRow(page.locator(`[data-request-row="${request.id}"]`), card, `X14 (${theme}, ${project}) request row`);
+    }
   });
 });
