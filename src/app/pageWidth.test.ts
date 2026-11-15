@@ -6,6 +6,9 @@
 // X5c (owner, same glance: it looks better at 1280): the game view (two roots), the group page and
 // the planning page keep the 7xl (1280px) body under that wider header, and each page says so in
 // its own DECISION marker, so a later reader does not widen them to match the header.
+// X5b + X12 (owner, 2026-11-11: A, lets make the groups wider; W2 is good): the home groups column
+// is a clamp that narrows on small windows, and the group list's three roots (identity shell,
+// loading, main) carry no width cap of their own, so the list fills whatever the column gives.
 //
 // WHAT THIS IS NOT: a rendered proof. The widths a browser paints are read in
 // e2e/page-width.spec.ts ("X5a (88.9): at 1280, 1440, 1600 and 1920"); this file only holds the
@@ -41,6 +44,7 @@ const HOME = 'src/app/userHome/UserHomePage.js';
 const GAME = 'src/app/gameDetail/page.js';
 const GROUP = 'src/app/groupHomePage/page.js';
 const PLANNING = 'src/app/groupPlanning/page.js';
+const GROUP_LIST = 'src/app/components/grouplist.js';
 
 const WIDE_CAP = 'max-w-[100rem]';
 const READING_CAP = 'max-w-7xl';
@@ -81,5 +85,20 @@ describe('page width — X5 (88.9-59)', () => {
       expect(count(text, WIDE_CAP), `${name}: a 1600 cap on a reading page`).toBe(0);
       expect(count(raw(rel), X5C_MARKER), `${name}: the X5c marker`).toBe(1);
     }
+  });
+
+  it('X5b + X12 (88.9): the home column is md:flex-[0_0_clamp(320px,42vw,460px)] and no grouplist root keeps a 400px cap', () => {
+    const home = code(HOME);
+    expect(count(home, 'md:flex-[0_0_clamp(320px,42vw,460px)]'), 'the clamp column literal').toBe(1);
+    expect(count(home, 'md:flex-[0_0_460px]'), 'the fixed 460 basis').toBe(0);
+
+    const list = code(GROUP_LIST);
+    // Each of the three roots is a className that BEGINS with the uncapped run.
+    expect(
+      count(list, 'className="w-full bg-surface-page rounded-card surface-flat-phone'),
+      'grouplist roots that begin w-full with no cap',
+    ).toBe(3);
+    expect(count(list, '[400px]'), 'a 400px cap left in grouplist').toBe(0);
+    expect(count(list, 'max-md:max-w-full'), 'the phone override of the removed cap').toBe(0);
   });
 });
