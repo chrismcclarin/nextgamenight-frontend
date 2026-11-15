@@ -4,6 +4,7 @@ import {
   assertTheme,
   describeGround,
   describeRatio,
+  focusByKeyboard,
   forceLightMode,
   groundResolutionOf,
   probeElement,
@@ -14,7 +15,7 @@ import {
 import { openCreateEventDialog, switchToManualEntry } from './support/createEvent';
 import { E2E_GROUP_ID } from './support/groupSettings';
 import { holdWrites } from './support/inFlight';
-import { expectTouchTarget } from './support/touchTarget';
+import { expectTouchTarget, roundPx } from './support/touchTarget';
 
 // Phase 88.9 plan 04 (lane A, the 1280 twins): SPEC R4 / ROADMAP SC-2 verify every changed
 // surface at 375 AND at desktop, in both themes (AC-4: at least 44px in dark and in light). The
@@ -294,6 +295,76 @@ async function timezoneRowCue(page: Page, theme: Theme): Promise<void> {
   }
 }
 
+// X19 (88.9-59, owner at N09, 2026-11-11: the Dismiss ring band is larger than the warning box it
+// is in on 1280 and 1440, but fine in 375). On a phone the sentence wraps to two lines and the
+// notice is 66px tall, so the 48px Dismiss and its focus ring fit; from md up the sentence is one
+// line and the box shrank to 50px, leaving the ring 3px outside it top and bottom. The phone pin is
+// e2e/lane-a-tap-floors.spec.ts ("async function removedDismiss("); this is the desktop half, with
+// its own constants because a spec file cannot be imported from another spec.
+const REMOVED_REGION = '[data-testid="removed-from-group-status"]';
+const REMOVED_SENTENCE = "You're no longer a member of that group.";
+const REMOVED_PATH = '/?removedFrom=' + encodeURIComponent('E2E removed group');
+
+/** The largest spread among the non-inset layers of a computed box-shadow: how far the ring paints past the box. */
+function ringExtent(shadow: string): number {
+  let extent = 0;
+  for (const layer of shadowLayers(shadow)) {
+    if (/\binset\b/.test(layer)) continue;
+    const lengths = [...layer.matchAll(/(-?[\d.]+)px/g)].map((m) => Number(m[1]));
+    if (lengths.length >= 4 && lengths[3] > extent) extent = lengths[3];
+  }
+  return extent;
+}
+
+async function removedDismissRing(page: Page, theme: Theme): Promise<void> {
+  for (const width of [1280, 1440]) {
+    await page.setViewportSize({ width, height: 720 });
+    await openPage(page, REMOVED_PATH, theme);
+    const region = page.locator(REMOVED_REGION);
+    await expect(region, 'the removed-member notice arrived').toHaveText(REMOVED_SENTENCE, { timeout: 15_000 });
+
+    const dismiss = page.getByRole('button', { name: 'Dismiss', exact: true });
+    const notice = region.locator('xpath=..');
+    await focusByKeyboard(page, dismiss);
+
+    const read = async () => {
+      const shadow = await dismiss.evaluate((el) => getComputedStyle(el).boxShadow);
+      const box = await dismiss.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      });
+      const outer = await notice.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, height: r.height };
+      });
+      return { shadow, box, outer, extent: ringExtent(shadow) };
+    };
+
+    const label = `removed-notice Dismiss at ${width} (X19, ${theme})`;
+    // The ring is drawn (a vacuity guard: without it every containment check below passes on nothing).
+    await expect
+      .poll(async () => (await read()).extent, { message: `${label}: no focus ring was drawn (no outer box-shadow spread)` })
+      .toBeGreaterThan(0);
+
+    const { box, outer, extent } = await read();
+    const numbers =
+      `box ${box.width.toFixed(2)} x ${box.height.toFixed(2)}, ring extent ${extent}px, notice ${outer.height.toFixed(2)}px tall; ` +
+      `ring edges past the notice: top ${(outer.top - (box.top - extent)).toFixed(2)}, bottom ${(box.bottom + extent - outer.bottom).toFixed(2)}, ` +
+      `left ${(outer.left - (box.left - extent)).toFixed(2)}, right ${(box.right + extent - outer.right).toFixed(2)} (positive = outside)`;
+
+    expect(roundPx(box.width), `${label}: width is below 48px (${numbers})`).toBeGreaterThanOrEqual(48);
+    expect(roundPx(box.height), `${label}: height is below 48px (${numbers})`).toBeGreaterThanOrEqual(48);
+
+    expect(box.top - extent, `${label}: the ring paints above the notice (${numbers})`).toBeGreaterThanOrEqual(outer.top);
+    expect(box.bottom + extent, `${label}: the ring paints below the notice (${numbers})`).toBeLessThanOrEqual(outer.bottom);
+    expect(box.left - extent, `${label}: the ring paints left of the notice (${numbers})`).toBeGreaterThanOrEqual(outer.left);
+    expect(box.right + extent, `${label}: the ring paints right of the notice (${numbers})`).toBeLessThanOrEqual(outer.right);
+
+    expect(outer.height, `${label}: the notice is not 66px tall (${numbers})`).toBeGreaterThanOrEqual(65.5);
+    expect(outer.height, `${label}: the notice is not 66px tall (${numbers})`).toBeLessThanOrEqual(66.5);
+  }
+}
+
 test.describe('lane A twins at 1280 — dark (88.9)', () => {
   test('A7a + O3a (88.9): the three friends tabs are at least 44 x 44 at 1280, dark', async ({ page }) => {
     await friendsTabs(page, 'dark');
@@ -321,6 +392,12 @@ test.describe('lane A twins at 1280 — dark (88.9)', () => {
     page,
   }) => {
     await timezoneRowCue(page, 'dark');
+  });
+
+  test('X19 (88.9): the removed-member Dismiss ring stays inside the one-line notice at 1280 and 1440, the box stays 48 x 48 and the notice 66px tall, dark', async ({
+    page,
+  }) => {
+    await removedDismissRing(page, 'dark');
   });
 });
 
@@ -358,5 +435,11 @@ test.describe('lane A twins at 1280 — light (88.9)', () => {
     page,
   }) => {
     await timezoneRowCue(page, 'light');
+  });
+
+  test('X19 (88.9): the removed-member Dismiss ring stays inside the one-line notice at 1280 and 1440, the box stays 48 x 48 and the notice 66px tall, light', async ({
+    page,
+  }) => {
+    await removedDismissRing(page, 'light');
   });
 });
