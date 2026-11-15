@@ -428,7 +428,9 @@ export default function EventCalendar({
      new group's pressed segment, chosen OVER one stable parent for the switch (that is N2's own row
      above the chevrons, which the owner did not pick) and OVER a file-local isFocusLost effect
      (useFocusRecovery REJECTED (b); this file's C12 REJECTED (c)). Changing this is a decision, not
-     a cleanup. */
+     a cleanup.
+     AMENDED Phase 88.9-62 (X22): in month view that parent is the controls row under the caption;
+     still two parents, the recovery is unchanged. */
   const handleViewChange = (next, event) => {
     if (next === effectiveViewMode) return;
     const settle = viewSwitchRecovery.arm({
@@ -467,6 +469,11 @@ export default function EventCalendar({
       AMENDED Phase 88.9-39 (owner pick N1): the Button this note describes is gone; the segments are
       raw buttons that state the house ring string themselves (no .btn, so no cva base);
       groupColourRendering lists SegmentedToggle as a ring-bearing primitive. */
+  /* DECISION Phase 88.9-62 (X28, switch): under 14rem of width (about 200% text at 375) each
+     Month | List segment drops to px-2 side padding, because px-4 needs about 268px of a 263px row
+     there, chosen OVER letting the List half run past the card (52-X28) and OVER changing the
+     primitive's padding for every caller. Both parents of the switch are size containers (the month
+     nav block; the List-mode row). Changing this is a decision, not a cleanup. */
   const viewSwitch = showListView ? (
     <SegmentedToggle
       label="Calendar view"
@@ -475,6 +482,7 @@ export default function EventCalendar({
       value={effectiveViewMode}
       onChange={handleViewChange}
       groupRef={viewSwitchRef}
+      segmentClassName="@max-[14rem]:px-2"
     />
   ) : null;
 
@@ -648,8 +656,9 @@ export default function EventCalendar({
         />
       ) : (
         <>
-          {/* 88.9-39 N1: the switch above the list, so the List view always has a way back. */}
-          {viewSwitch && <div className="flex justify-center mb-4">{viewSwitch}</div>}
+          {/* 88.9-39 N1: the switch above the list, so the List view always has a way back.
+              88.9-62 (X28): a size container, so the segments narrow under 14rem. */}
+          {viewSwitch && <div className="@container flex justify-center mb-4">{viewSwitch}</div>}
           <CalendarListView
             events={chronologicalEvents}
             onEventClick={handleEventClick}

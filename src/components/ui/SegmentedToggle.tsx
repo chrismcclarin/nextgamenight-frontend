@@ -26,6 +26,7 @@ export interface SegmentedToggleOption<V extends string> {
   ariaLabel?: string;
 }
 
+/* DECISION Phase 88.9-62 (X28): an optional segmentClassName merged last into every segment, chosen OVER a child-selector variant on the group className (it styles a segment from its parent, out of sight at the segment) and OVER changing the base padding (the Browse More sort pair would move too). Unset, nothing changes. */
 export interface SegmentedToggleProps<V extends string> {
   /** The group's accessible name (e.g. "Calendar view"). */
   label: string;
@@ -34,6 +35,8 @@ export interface SegmentedToggleProps<V extends string> {
   onChange: (next: V, event: React.MouseEvent<HTMLButtonElement>) => void;
   groupRef?: React.Ref<HTMLDivElement>;
   className?: string;
+  /** Merged last into every segment's class list (e.g. a container-query padding step). */
+  segmentClassName?: string;
 }
 
 type SegmentPosition = 'only' | 'first' | 'middle' | 'last';
@@ -66,6 +69,7 @@ export function SegmentedToggle<V extends string>({
   onChange,
   groupRef,
   className,
+  segmentClassName,
 }: SegmentedToggleProps<V>) {
   return (
     <div ref={groupRef} role="group" aria-label={label} className={cn('inline-flex', className)}>
@@ -82,6 +86,7 @@ export function SegmentedToggle<V extends string>({
               'relative inline-flex items-center justify-center min-h-11 min-w-11 px-4 text-sm font-bold border border-line focus:outline-hidden focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
               SEGMENT_POSITION[positionOf(index, options.length)],
               SEGMENT_STATE[pressed ? 'pressed' : 'unpressed'],
+              segmentClassName,
             )}
           >
             {option.label}

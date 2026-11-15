@@ -215,8 +215,9 @@ export default function CalendarMonthView({
           `focus:` treatments — it never required a ring on every focusable.
           Task 2(B) of this plan adds that positive scan across the five
           group-page render-tree files. Removing a ring here reds it.
-          AMENDED Phase 88.9-28 (owner pick N1): the ring stays on all three controls; Go to Today is now the Today pill. */}
-      <div className="flex justify-between items-center mb-4">
+          AMENDED Phase 88.9-28 (owner pick N1): the ring stays on all three controls; Go to Today is now the Today pill.
+          AMENDED Phase 88.9-62 (X22, rings): the three controls no longer share one row — the chevrons sit on the month title's line and Today sits below the caption (owner pick C); every ring string above is unchanged. */}
+      <div className="@container mb-4">
         {/* Phase 88.6-27: both `.btn btn-primary` nav controls take the primitive, and their
             per-site focus-ring strings retire with the migration — the ring lives ONCE in the
             primitive's cva base (A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
@@ -230,33 +231,45 @@ export default function CalendarMonthView({
             aria-hidden): the accessible name is the button's own aria-label, a labelled focusable
             leaf, which is what VoiceOver on iPhone reads. The title keeps Heading's base
             wrap-anywhere and no nowrap, so it is one line whenever it fits and can still wrap at
-            enlarged text (WCAG 1.4.4). */}
-        <Button variant="secondary" size="iconSquare" aria-label="Previous month" onClick={() => onNavigateMonth(-1)}>
-          <Icon name="ChevronLeft" size={20} />
-        </Button>
-        <div className="text-center">
-          <Heading level={3} size="heading" className="text-content-primary">
+            enlarged text (WCAG 1.4.4).
+            AMENDED Phase 88.9-62 (X22, owner pick C at N13, 2026-11-12, 88.9-RULINGS.md N13 month grid):
+            the chevrons sit on the month title's line at the row's edges, with the time-zone caption and
+            the Today + Month | List row below, chosen OVER A (the shipped layout: chevrons centred on the
+            whole three-line block, level with the caption) and OVER B (chevrons in line with the buttons).
+            Tab and reading order follow the picture: Previous month, Next month, Today, the switch.
+            DECISION Phase 88.9-62 (X28, container query): the nav block is a size container and, under
+            14rem of width (about 200% text on a 375 phone), the title takes its own line below the arrows,
+            chosen OVER squeezing it between them, where a month name breaks mid-word (WCAG 1.4.4 asks for
+            no loss of content; its Understanding text lets the layout change with the scale). 14rem = two
+            2.75rem chevrons + two 0.5rem gaps + the widest month word (September, 6.9rem) + slack; rem in
+            a container query follows the root font size. Changing the threshold or the layout is a
+            decision, not a cleanup. */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Button variant="secondary" size="iconSquare" aria-label="Previous month" onClick={() => onNavigateMonth(-1)}>
+            <Icon name="ChevronLeft" size={20} />
+          </Button>
+          <Heading level={3} size="heading" className="text-content-primary min-w-0 flex-1 text-center @max-[14rem]:order-last @max-[14rem]:basis-full">
             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
           </Heading>
-          {tzLegend && (
-            <p className="text-xs text-content-muted mt-0.5">
-              Times shown in {tzLegend}
-            </p>
-          )}
-          {/* 88.9-39 N1: Today and the Month | List switch share one wrapping row (flex-wrap guards 375). */}
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <button
-              onClick={onGoToday}
-              className="mt-1 inline-flex items-center justify-center min-h-11 px-4 rounded-full border border-line bg-surface-card text-sm font-bold text-content-primary hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
-            >
-              Today
-            </button>
-            {viewSwitch}
-          </div>
+          <Button variant="secondary" size="iconSquare" aria-label="Next month" onClick={() => onNavigateMonth(1)}>
+            <Icon name="ChevronRight" size={20} />
+          </Button>
         </div>
-        <Button variant="secondary" size="iconSquare" aria-label="Next month" onClick={() => onNavigateMonth(1)}>
-          <Icon name="ChevronRight" size={20} />
-        </Button>
+        {tzLegend && (
+          <p className="text-xs text-content-muted mt-0.5 text-center">
+            Times shown in {tzLegend}
+          </p>
+        )}
+        {/* 88.9-39 N1, moved by 88.9-62 (X22): Today and the Month | List switch share one centred wrapping row below the caption. */}
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            onClick={onGoToday}
+            className="mt-1 inline-flex items-center justify-center min-h-11 px-4 rounded-full border border-line bg-surface-card text-sm font-bold text-content-primary hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+          >
+            Today
+          </button>
+          {viewSwitch}
+        </div>
       </div>
 
       {/* Calendar Grid */}
