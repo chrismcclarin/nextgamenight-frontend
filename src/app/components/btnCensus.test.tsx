@@ -784,49 +784,7 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
       'rgb(220,252,231) with the pin and becomes rgb(250,248,245) without it.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6-25' },
   },
-  // One site, the icon variant's bare button in
-  // src/app/components/ThemeToggle.js ("p-2 rounded-lg transition-colors hover:bg-white/10")
-  // (this scanner counts it on its OPENING-TAG line, a few lines above that className).
-  // SETTLED by plan 88.6-34 task 1 (wave 7, 2026-09-16) — the
-  // LAST of D-11's seven raw-palette dispositions, and the one that RESOLVES BARE rather than
-  // closing. The entry survives at 1 and is REWRITTEN as a reasoned exemption rather than
-  // deleted, because the site is not a debt awaiting a fix: it is a decision.
-  'app/components/ThemeToggle.js': {
-    sites: 1,
-    why:
-      'D-11 -> plan 88.6-34, re-derived and RESOLVED BARE (Path 3, D25). TWO reasons, and the ' +
-      'second is the one that decided it. (1) CHROME, NOT A PRIMARY ACTION: `hover:bg-white/10` ' +
-      'is a 10%-white HOVER overlay on an icon-only header toggle, not a resting fill on a CTA, ' +
-      'so the `btn-*` family is the wrong vocabulary for it. (2) GEOMETRY — the CONSEQUENCE ' +
-      'constraint: shipped it is `p-2` around a `w-5 h-5` icon (src/app/components/ThemeToggle.js ("p-2 rounded-lg transition-colors hover:bg-white/10"), src/app/components/ThemeToggle.js ("w-5 h-5 text-amber-400") / src/app/components/ThemeToggle.js ("w-5 h-5 text-white")) = 36x36, ' +
-      "while a `<Button>` renders against `.btn`'s unlayered `padding: .5rem 1rem` " +
-      '(src/app/globals.css ("UNLAYERED with every other declaration it has today")) plus the cva base\'s `min-h-11` and ' +
-      '`icon: min-h-11 min-w-11` = ~52x44. Its desktop-nav sibling, the bell button in ' +
-      'src/app/components/NotificationBell.js ("relative text-white hover:text-amber-400 transition-colors p-1") ' +
-      '(`p-1` around the `w-6 h-6` bell) is 32x32, wears no `btn`, and is migrated by NO plan — so migrating this ' +
-      'control alone would widen a 4px sibling difference into ~20px and CREATE a header ' +
-      'inconsistency rather than close one. All four box numbers are ARITHMETIC, NOT MEASURED: ' +
-      'the icon variant is emitted inside the `hidden md:flex` list in ' +
-      'src/app/Header.js ("hidden md:flex gap-x-6 items-center text-white text-sm"), so it is ' +
-      '`display:none` at 375px and the repo\'s only geometry harness is phone-only by design ' +
-      '(e2e/touch-targets.spec.ts ("and runs only at phone width")). Same shape and same outcome as the corner close in ' +
-      '`QRCodeModal.js` under `DECISION Phase 88.6-33 (D48)`. ' +
-      'COLOUR FINDING (PATH 2 — no shipped token reproduces it, so none is named): composited ' +
-      "with the same arithmetic `tokenContrast.test.ts`'s `resolveOver` applies, `bg-white/10` " +
-      'over `--color-bg-header` gives #423b36 in light (ground warm-800 #2d2520) and #312d2c in ' +
-      'dark (ground warm-900 #1a1614), against `--color-bg-header-hover` of #4a3d32 / #2d2520 — ' +
-      'EQUAL IN NEITHER THEME, and the deltas run in OPPOSITE DIRECTIONS (the shipped hover is ' +
-      'lighter than the composite in light and darker in dark), so no single flat step can be ' +
-      'picked to close both. A white overlay also DESATURATES the warm ground (composite channel ' +
-      'spread 12 vs warm-700\'s 24), so a flat token would be a different KIND of colour, not a ' +
-      'different step. Minting one is a LOOK decision and is Phase 88.9\'s; P6 forbids it here. ' +
-      'NOT PENDING WORK — this entry floors at 1 and its removal condition is a Phase 88.9 ruling ' +
-      'on the header icon-chrome pair, not a sweep. The 36-vs-32 residual is routed at ' +
-      '`.planning/deferred/phase-88.6.md` (`[look/consistency — OWNER DECISION REQUESTED]`). ' +
-      'AMENDED Phase 88.9-37 (owner pick O07a, chat 2026-11-07 6:18 PM Pacific): the Phase 88.9 ruling on the header icon-chrome pair is in — both 36x36 (the bell moved to 6px padding; this toggle unchanged), O07a chosen OVER O07b (both 44). It keeps this control bare, so this entry STAYS at 1 as the ruled state, not pending work; the overlay-colour finding is not ruled by it (handed to 88.9-51). ' +
-      'Migrating this control is a decision, not a cleanup.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-11' },
-  },
+  // DELETED by plan 88.9-57 (52-X15, owner pick N03 B): ThemeToggle.js has 0 raw-palette button sites; the stays-bare decision lives at its DECISION Phase 88.6-34 marker.
   // THE EIGHTH SITE, and the one entry here whose `why` records a SURVIVING fill rather than a
   // fix. The Manage Members header CTA in
   // src/app/groupHomePage/page.js ("bg-white/80 ring-1 ring-line-control") carries

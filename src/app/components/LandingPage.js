@@ -158,7 +158,10 @@ export default function LandingPage() {
                 the .btn rule's values) as live utilities, chosen OVER the shipped 18px text with 32px x
                 16px padding that made it the larger of the pair (L10) and over L1a (both at this
                 button's size). It is still not a .btn element and still not migrated to Button: its
-                dark white/20 composite needs utilities an unlayered .btn-secondary rule would beat. */}
+                dark white/20 composite needs utilities an unlayered .btn-secondary rule would beat.
+                AMENDED Phase 88.9-57 (owner N05, 52-X18): the inset is gone; this element wears Get
+                Started's offset ring (ring-offset-2 on the surface-hero band), so this clash cannot
+                arise; still an anchor, not a Button, for the 88.9-33 reason. */}
             {/* DECISION Phase 88.3 (Req 7 / UI-SPEC §11 OI-7): this ONE element re-points
                 `--ring` to amber-400 for itself, chosen OVER letting Req 7's global light
                 ring (`purple-700`) apply here.
@@ -192,10 +195,14 @@ export default function LandingPage() {
                 ROOT carries the amber re-point for its subtree, so this button still wears amber on
                 its white/20 composite. The ALSO REJECTED hero-container scope above is reversed for
                 dark only: its reason, Get Started inheriting the amber silently, is now the wanted
-                dark behaviour (B4a). Gate C's OI-7 test measures both themes. */}
+                dark behaviour (B4a). Gate C's OI-7 test measures both themes.
+                AMENDED Phase 88.9-57 (owner N05, 52-X18): the ring sits OUTSIDE on a 2px surface-hero
+                band like Get Started, chosen OVER the inset ring with no band; light 7.79, dark 10.13
+                against band and ground; the white/20 fill is no longer its neighbour; Gate C reads
+                shape, band and outside ground in both themes. */}
             <a
               href="/api/auth/login?connection=google-oauth2"
-              className="bg-btn-secondary hover:bg-btn-secondary-hover text-btn-secondary-text border border-line-control dark:bg-white/20 dark:hover:bg-white/30 dark:border-white/30 dark:text-white active:opacity-75 px-4 py-2 rounded-btn text-sm font-semibold transition-all w-full sm:w-80 min-h-11 text-center inline-flex items-center justify-center gap-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+              className="bg-btn-secondary hover:bg-btn-secondary-hover text-btn-secondary-text border border-line-control dark:bg-white/20 dark:hover:bg-white/30 dark:border-white/30 dark:text-white active:opacity-75 px-4 py-2 rounded-btn text-sm font-semibold transition-all w-full sm:w-80 min-h-11 text-center inline-flex items-center justify-center gap-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-hero"
             >
               {/* DECISION Phase 88-22 (Req 2): the four fills below stay RAW,
                   chosen OVER converting them to semantic tokens with the rest of
