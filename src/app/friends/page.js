@@ -1130,17 +1130,18 @@ function FriendsPage() {
                         message={searchFoundName ? foundAnnouncement(searchFoundName) : ''}
                     />
 
+                    {/* DECISION Phase 88.9-66 (X13-1, owner at the round-2 glance): a long address wraps (wrap-anywhere, the house rule for unbroken user text) and the action column never shrinks, chosen OVER truncating it (an ellipsis hides the address the person is checking); the same on the request, sent and friend rows. Matches FriendInvitePanel's found-person row. */}
                     {searchResult && !searching && (
-                        <div className="mt-4 p-4 border border-line rounded-lg flex items-center justify-between">
-                            <div>
-                                <p className="font-bold text-content-primary">
+                        <div className="mt-4 p-4 border border-line rounded-lg flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                                <p className="font-bold text-content-primary wrap-anywhere">
                                     {searchResult.username || searchResult.email}
                                 </p>
                                 {searchResult.username && searchResult.email && (
-                                    <p className="text-sm text-content-muted">{searchResult.email}</p>
+                                    <p className="text-sm text-content-muted wrap-anywhere">{searchResult.email}</p>
                                 )}
                             </div>
-                            <div>
+                            <div className="shrink-0">
                                 {(() => {
                                     const action = getSearchResultAction(searchResult);
                                     if (!action) return null;
@@ -1473,9 +1474,9 @@ function FriendsPage() {
                                                     <div
                                                         key={friendship.id}
                                                         data-friend-row={friendship.id}
-                                                        className="flex items-center justify-between p-4 bg-surface-card border border-line rounded-card"
+                                                        className="flex items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
                                                     >
-                                                        <div className="flex items-center gap-3 flex-1">
+                                                        <div className="flex items-center gap-3 flex-1 min-w-0">
                                                             <input
                                                                 id={`bulk-invite-${friendship.id}`}
                                                                 name={`bulk-invite-${friendship.id}`}
@@ -1486,17 +1487,17 @@ function FriendsPage() {
                                                                 checked={isInGroup || selectedFriends.has(friendUserId)}
                                                                 disabled={checkboxDisabled}
                                                                 onChange={() => toggleFriendSelection(friendUserId)}
-                                                                className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
+                                                                className={`h-4 w-4 shrink-0 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
                                                                     checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                                 }`}
                                                             />
-                                                            <div className="flex-1">
-                                                                <div className="flex items-center gap-2">
-                                                                    <p className="font-bold text-content-primary">
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <p className="font-bold text-content-primary min-w-0 wrap-anywhere">
                                                                         {friend.username}
                                                                     </p>
                                                                     {isInGroup && (
-                                                                        <span className="text-xs text-content-muted italic">(already in group)</span>
+                                                                        <span className="text-xs text-content-muted italic shrink-0">(already in group)</span>
                                                                     )}
                                                                 </div>
                                                                 {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
@@ -1538,7 +1539,7 @@ function FriendsPage() {
                                                                     // weight. Same treatment on the two delete-pattern gates in
                                                                     // userProfile and on ParticipantRow's Remove, which reaches
                                                                     // it by the ordinary bucket-C rule.
-                                                                    className={`min-h-11 px-3 rounded-btn border text-sm transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
+                                                                    className={`min-h-11 shrink-0 px-3 rounded-btn border text-sm transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
                                                                         armed
                                                                             ? 'border-status-error font-semibold'
                                                                             : 'border-transparent'
@@ -1657,17 +1658,17 @@ function FriendsPage() {
                                                 <div
                                                     key={request.id}
                                                     data-request-row={request.id}
-                                                    className="flex items-center justify-between p-4 bg-surface-card border border-line rounded-card"
+                                                    className="flex items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
                                                 >
-                                                    <div className="flex-1">
-                                                        <p className="font-bold text-content-primary">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-content-primary wrap-anywhere">
                                                             {requester.username || requester.email}
                                                         </p>
                                                         {requester.email && requester.email !== requester.username && (
-                                                            <p className="text-sm text-content-muted mt-0.5">{requester.email}</p>
+                                                            <p className="text-sm text-content-muted mt-0.5 wrap-anywhere">{requester.email}</p>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 shrink-0">
                                                         <Button
                                                             variant="primary"
                                                             size="default"
@@ -1771,17 +1772,17 @@ function FriendsPage() {
                                             return (
                                                 <div
                                                     key={request.id}
-                                                    className="flex items-center justify-between p-4 bg-surface-card border border-line rounded-card"
+                                                    className="flex items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
                                                 >
-                                                    <div className="flex-1">
-                                                        <p className="font-bold text-content-primary">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-content-primary wrap-anywhere">
                                                             {addressee.username || addressee.email}
                                                         </p>
                                                         {addressee.email && addressee.email !== addressee.username && (
-                                                            <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
+                                                            <p className="text-sm text-content-muted mt-0.5 wrap-anywhere">{addressee.email}</p>
                                                         )}
                                                     </div>
-                                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
+                                                    <span className="shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                                         Pending
                                                     </span>
                                                 </div>
