@@ -303,8 +303,8 @@ export interface RenderGameDetailOptions {
    */
   search?: string;
   /**
-   * 88.6.1-74: render inside a `<main>` container, the layout's shape (`layout.js`, the
-   * `<main className="flex-1">`), so plan 04's focus floor has a `main`. Default false.
+   * 88.6.1-74: render inside a `<main>` container, the layout's shape (`layout.js`, its one
+   * `<main>` element), so plan 04's focus floor has a `main`. Default false.
    */
   inMain?: boolean;
   /** 88.6.1-74: render with the self identity unresolved (`selfUuid` undefined). Default false. */
