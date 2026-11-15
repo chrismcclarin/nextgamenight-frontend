@@ -1489,8 +1489,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // survived every gate. Both files are read.
     //
     // ⚠️ THE NEGATIVE ASSERTIONS ARE SCOPED TO THE BUTTON'S SLICE ON PURPOSE — a file-level version
-    // reds on day one. src/app/components/EventDayModal.js ("hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'") already carries
-    // `backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'` — the
+    // reds on day one. EventDayModal.js already carried, on the event row, an inline
+    // backgroundColor keyed on hasBgImage (a 0.85 white wash, or transparent) — the
+    // [AMENDED Phase 88.9-60, X23a: that wash and its element were removed with the dark-ink
+    // treatment it rescued, so the former cite to it is gone. The slice scoping below stands on its
+    // own: it keeps this pin about the button, whatever else the row's markup carries.]
     // (RE-DERIVED plan 88.6-41: the cite read `:239` and the gate was spelled `groupBgImage`.
     // W49 moved that wash onto the VALIDATED flag and the line drifted. Same wash, same
     // rationale, same out-of-scope-ness for this button's slice — only the record was stale.)

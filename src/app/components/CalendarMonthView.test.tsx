@@ -478,19 +478,45 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     expect((tile.textContent ?? '').trim()).toBe('Catan');
   });
 
-  it("F7a (88.9): an image tile's light arm has no shadow and no stroke; its dark arm is unchanged", () => {
-    const imageEvent = {
-      ...rsvpEvent,
-      id: 'evt-image',
-      rsvp_summary: null,
-      Group: { name: 'Photo Crew', background_color: '#722f37', background_image_url: 'https://i.imgur.com/x.png' },
-    };
-    renderGrid({ variant: 'full', events: [imageEvent] });
-    const tile = screen.getByRole('button', { name: 'Catan - Photo Crew' });
-    expect(tile.style.getPropertyValue('--t-shadow-l'), 'light arm shadow').toBe('none');
-    expect(tile.style.getPropertyValue('--t-stroke-l'), 'light arm stroke').toBe('none');
-    expect(tile.style.getPropertyValue('--t-shadow'), 'dark arm shadow').toBe('2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)');
-    expect(tile.style.getPropertyValue('--t-stroke'), 'dark arm stroke').toBe('0.5px rgba(0, 0, 0, 0.9)');
+  // AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): this test pinned F7a (light arm
+  // with no shadow and no stroke, dark arm at the half-pixel stroke, both under a 70% white wash).
+  // A picture tile now takes the one photo text set in BOTH arms, past or not, with no wash.
+  it('X23a (88.9): an image tile takes the photo text set in both arms', () => {
+    const imageGroup = { name: 'Photo Crew', background_color: '#722f37', background_image_url: 'https://i.imgur.com/x.png' };
+    const cases = [
+      { when: 'upcoming', anchor: new Date(2031, 8, 1, 12, 0, 0, 0), start: '2031-09-20T19:00:00' },
+      { when: 'past', anchor: new Date(2020, 8, 1, 12, 0, 0, 0), start: '2020-09-20T19:00:00' },
+    ];
+    for (const { when, anchor, start } of cases) {
+      renderGrid({
+        anchor,
+        variant: 'full',
+        events: [{ ...rsvpEvent, id: `evt-image-${when}`, start_date: start, rsvp_summary: null, Group: imageGroup }],
+      });
+      const tile = screen.getByRole('button', { name: 'Catan - Photo Crew' });
+      expect(tile.style.backgroundImage, `${when}: the fixture tile paints no picture, so this pins nothing`).toContain('i.imgur.com/x.png');
+      for (const arm of ['', '-l']) {
+        const side = arm ? 'light' : 'dark';
+        expect(tile.style.getPropertyValue(`--t-color${arm}`), `${when} ${side} arm colour`).toBe('#ffffff');
+        expect(tile.style.getPropertyValue(`--t-stroke${arm}`), `${when} ${side} arm stroke`).toBe('2px #000000');
+        expect(tile.style.getPropertyValue(`--t-paint${arm}`), `${when} ${side} arm paint order`).toBe('stroke fill');
+        expect(tile.style.getPropertyValue(`--t-track${arm}`), `${when} ${side} arm letter-spacing`).toBe('0.03em');
+        expect(tile.style.getPropertyValue(`--t-shadow${arm}`), `${when} ${side} arm shadow`).toBe('none');
+      }
+      expect(tile.innerHTML, `${when}: the 70% white wash is still mounted over the tile photo`).not.toContain('rgba(255, 255, 255, 0.7)');
+      const name = within(tile).getByText('Catan');
+      for (const util of [
+        '[-webkit-text-stroke:var(--t-stroke-l)]',
+        'dark:[-webkit-text-stroke:var(--t-stroke)]',
+        '[paint-order:var(--t-paint-l,normal)]',
+        'dark:[paint-order:var(--t-paint,normal)]',
+        '[letter-spacing:var(--t-track-l,normal)]',
+        'dark:[letter-spacing:var(--t-track,normal)]',
+      ]) {
+        expect(tokens(name), `${when}: the game name does not read ${util}`).toContain(util);
+      }
+      cleanup();
+    }
   });
 
   it("D5a/O18a (88.9): a guest event's full tile carries the dashed amber edge, a member event's does not", () => {

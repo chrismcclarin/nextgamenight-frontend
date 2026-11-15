@@ -48,7 +48,7 @@ export const gates = [
   { file: 'src/app/statusTextSweep.test.ts', min: 6, why: 'Phase 88.3 Req 6 / OI-1 — the status text sweep' },
   { file: 'src/app/legacyOverlayClass.test.ts', min: 5, why: 'Phase 88 Req 9 — the legacy overlay class stays gone' },
   { file: 'src/app/nativeDialogs.test.ts', min: 8, why: 'Phase 88 Req 11 — no native browser dialogs' },
-  { file: 'src/app/groupColourRendering.test.ts', min: 35, why: 'Phase 88.3 Req 9 / D-09 — group-colour rendering; the tint never reaches the save path' },
+  { file: 'src/app/groupColourRendering.test.ts', min: 36, why: 'Phase 88.3 Req 9 / D-09 — group-colour rendering; the tint never reaches the save path' },
 
   // AMENDMENT Z — Phase 88.3.1 plan 01 (M21, owner-ruled 2026-08-29). Two rows added:
   // `src/lib/colourDistance.test.ts` and `src/lib/groupColourPresets.test.ts`. The first

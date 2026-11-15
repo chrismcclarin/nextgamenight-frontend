@@ -62,6 +62,7 @@ import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import CalendarMonthView from './components/CalendarMonthView';
+import CalendarListView from './components/CalendarListView';
 import { contrastRatio } from '../lib/wcag';
 import { lineAt, readOpeningTag, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
@@ -2025,9 +2026,15 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       tag,
       'EventDayModal.js: the Duration line must take the card ink muted rung on the tinted arm',
     ).toContain(
-      "${tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] " +
+      // AMENDED Phase 88.9-60 (X23a): the template now opens on the PICTURE arm (asserted next), so
+      // the tinted / uncoloured pair is pinned from its own condition to the closing brace.
+      ": tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] " +
         "dark:[color:var(--group-ink-muted,var(--t-color))]' : 'text-content-muted'}",
     );
+    expect(
+      tag,
+      'EventDayModal.js: on a picture row the Duration line must wear the photo text set (X23a), ahead of the tinted and uncoloured arms',
+    ).toContain("${hasBgImage ? 'font-bold [color:var(--t-color-l)] dark:[color:var(--t-color)] ");
     // the fallback is only reachable if this element actually carries `--t-*`
     expect(
       tag,
@@ -2767,5 +2774,149 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         'failure message then accuses the `--shadow-sm` token. That is the exact 2026-09-17 ' +
         'red (rows 4a/4b) this pin exists to prevent recurring.',
     ).toContain('shadow-theme-sm');
+  });
+
+  /*
+   * X7 + X23a (88.9-60; owner T11 and owner pick page 10a) and owner ruling Q3 A (2026-11-14).
+   *
+   * Over a group photo every word wears ONE set (white, a 2px black outline painted first, 700,
+   * 0.03em, no shadow), handed down the --t-* channel. A text element reads that set only when its
+   * className carries all three pairs, so the scan below holds every stroke carrier in the five
+   * picture files to the whole trio, and holds the three calendar files to no white wash (the
+   * wash and the dark-ink treatment it rescued left together).
+   *
+   * Words that keep their own ink on a picture list row (the RSVP counts, whose status inks are
+   * measured on the card ground) must therefore sit on an opaque ground of their own: the wrapper
+   * is a two-literal pair whose picture arm is a small card-ground chip. The rendered half walks
+   * every text node of a picture row and requires one of the two.
+   */
+  it('33. X7 + X23a (88.9): every photo-text carrier in the five picture files reads the stroke, paint-order and letter-spacing pairs, no row or tile keeps a white wash, and every other text leaf on a picture list row sits on an opaque ground', () => {
+    const PICTURE_FILES = [
+      'app/components/grouplist.js',
+      HEADER,
+      'app/components/CalendarListView.js',
+      'app/components/CalendarMonthView.js',
+      'app/components/EventDayModal.js',
+    ];
+    const STROKE_L = '[-webkit-text-stroke:var(--t-stroke-l)]';
+    const TRIO = [
+      STROKE_L,
+      'dark:[-webkit-text-stroke:var(--t-stroke)]',
+      '[paint-order:var(--t-paint-l,normal)]',
+      'dark:[paint-order:var(--t-paint,normal)]',
+      '[letter-spacing:var(--t-track-l,normal)]',
+      'dark:[letter-spacing:var(--t-track,normal)]',
+    ];
+    let carriers = 0;
+    for (const file of PICTURE_FILES) {
+      const exprs = attrExprs(code(file), 'className').filter((e) => e.text.includes(STROKE_L));
+      expect(exprs.length, file + ': no element reads the light stroke utility, so the photo set reaches no text here').toBeGreaterThan(0);
+      for (const e of exprs) {
+        carriers += 1;
+        for (const util of TRIO) {
+          expect(e.text, file + ': a photo-text carrier does not read ' + util + ' — ' + e.text.slice(0, 120)).toContain(util);
+        }
+      }
+    }
+    expect(carriers, 'fewer photo-text carriers than the five picture files hold; a surface lost its photo text').toBeGreaterThanOrEqual(12);
+
+    // No tile or row keeps a white wash under its picture text.
+    for (const file of ['app/components/CalendarListView.js', 'app/components/CalendarMonthView.js', 'app/components/EventDayModal.js']) {
+      const src = code(file);
+      for (const wash of ['rgba(255, 255, 255, 0.7)', 'rgba(255, 255, 255, 0.85)']) {
+        expect(src, file + ': a white wash (' + wash + ') still sits between a picture and its text').not.toContain(wash);
+      }
+    }
+
+    // (a) Owner ruling Q3 A, the source half: the md+ RSVP wrapper is two WHOLE literals keyed on
+    // the validated picture flag (an interpolated Tailwind class emits nothing).
+    const listSrc = code('app/components/CalendarListView.js');
+    const rsvpAt = listSrc.indexOf('<RsvpCount');
+    expect(rsvpAt, 'CalendarListView no longer renders RsvpCount').toBeGreaterThan(-1);
+    const wrapper = attrExprs(listSrc, 'className').filter((e) => e.end <= rsvpAt).pop();
+    expect(wrapper, 'no className precedes the RSVP count').toBeTruthy();
+    const arms = wrapper!.text.match(/hasBgImage\s*\?\s*'([^'${}]*)'\s*:\s*'([^'${}]*)'/);
+    expect(arms, 'the RSVP wrapper is not a whole-literal pair keyed on hasBgImage: ' + wrapper!.text).toBeTruthy();
+    const [, pictureArm, plainArm] = arms!;
+    const pictureTokens = pictureArm.split(/\s+/);
+    expect(pictureTokens.some((c) => c === 'inline-flex' || c.endsWith(':inline-flex')), 'the picture arm of the RSVP wrapper is not an inline-flex chip: ' + pictureArm).toBe(true);
+    // The ground must be the plain utility, in force at rest: a variant-prefixed one paints nothing until its state.
+    expect(pictureTokens, 'the picture arm of the RSVP wrapper lacks the card ground: ' + pictureArm).toContain('bg-surface-card');
+    for (const cls of ['inline-flex', 'bg-surface-card']) {
+      expect(plainArm, 'the no-picture arm of the RSVP wrapper carries ' + cls).not.toContain(cls);
+    }
+
+    // (b) The rendered half: a valid-picture row on the desktop arm (jsdom computes no Tailwind
+    // display rule, so the md+ leaves are in the DOM), with no RSVPs and with all three counts.
+    const PHOTO = 'https://example.test/photo.png';
+    const noop = () => {};
+    const rowWith = (rsvp_summary: unknown) => {
+      render(
+        createElement(CalendarListView, {
+          events: [
+            {
+              id: 'evt-33',
+              title: 'Friday Night',
+              start_date: '2099-06-15T19:00:00',
+              duration_minutes: 90,
+              Game: { name: 'Catan' },
+              // No stored colour: the row root then carries the card ground itself, the case the
+              // strictly-inside rule below exists for.
+              Group: { name: 'Tuesday Crew', background_color: null, background_image_url: PHOTO, profile_picture_url: '🎲' },
+              rsvp_summary,
+            },
+          ],
+          onEventClick: noop,
+          timezone: 'America/New_York',
+        }),
+      );
+      const row = Array.from(document.querySelectorAll<HTMLElement>('[role="button"]')).find((el) =>
+        el.style.backgroundImage.includes('photo.png'),
+      );
+      expect(row, 'no list row paints the planted picture, so the photo arm is not under test').toBeTruthy();
+      return row!;
+    };
+    const carriesTrio = (el: Element) => TRIO.every((util) => el.className.split(/\s+/).includes(util));
+    const ownsOpaqueGround = (el: Element) =>
+      el.className.split(/\s+/).some((c) => c === 'bg-surface-card' || c.startsWith('bg-surface-pill-'));
+    const cases: [string, unknown, string[]][] = [
+      ['no RSVPs', null, ['No RSVPs yet']],
+      ['going, maybe and cannot all non-zero', { yes: 2, maybe: 1, no: 3 }, ['2 going', '1 maybe', "3 can't"]],
+    ];
+    for (const [label, summary, mustSee] of cases) {
+      const row = rowWith(summary);
+      try {
+        expect(ownsOpaqueGround(row), 'the row root no longer carries the card ground; the strictly-inside rule below was written for that').toBe(true);
+        const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+        const seen: string[] = [];
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const text = (node.textContent ?? '').trim();
+          if (!text) continue;
+          seen.push(text);
+          let covered = false;
+          // Strictly INSIDE the row: the root itself carries the card ground and never counts.
+          for (let el = node.parentElement; el && el !== row; el = el.parentElement) {
+            if (carriesTrio(el) || ownsOpaqueGround(el)) {
+              covered = true;
+              break;
+            }
+          }
+          expect(
+            covered,
+            'picture list row (' + label + '): the text ' + JSON.stringify(text) + ' neither wears the photo text set nor sits on an opaque ground of its own, so it is painted straight onto the photo',
+          ).toBe(true);
+        }
+        // A count and its word are two text nodes, so the words are looked for in the row's text.
+        const rowText = (row.textContent ?? '').replace(/\s+/g, ' ');
+        for (const text of mustSee) {
+          expect(rowText, 'picture list row (' + label + '): ' + JSON.stringify(text) + ' was not rendered, so its leaf was never checked').toContain(text);
+        }
+        for (const text of ['Friday Night', 'Catan']) {
+          expect(seen, 'picture list row (' + label + '): the ' + text + ' leaf was not rendered').toContain(text);
+        }
+      } finally {
+        cleanup();
+      }
+    }
   });
 });

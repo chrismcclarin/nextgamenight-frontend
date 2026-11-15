@@ -216,7 +216,13 @@ describe('W49 rendered — CalendarMonthView month tile', () => {
     // absent-because-nothing-rendered.
     expect(cases.invalid, `the 0.7 overlay still paints on an invalid URL`).not.toContain(OVERLAY_07);
     expect(cases.none, 'the 0.7 overlay paints with no image at all').not.toContain(OVERLAY_07);
-    expect(cases.valid, 'the 0.7 overlay is gone from the VALID case too — that is a regression').toContain(OVERLAY_07);
+    // AMENDED Phase 88.9-60 (X23a, owner pick page 10a): the VALID case used to REQUIRE the white
+    // wash. A picture tile now shows the photo unwashed under the photo text set, so the valid
+    // case must carry no wash and must hand the cascade the set's paint order and letter-spacing.
+    expect(cases.valid, 'X23a: the 0.7 overlay still paints over a VALID tile picture').not.toContain(OVERLAY_07);
+    expect(cases.valid, 'X23a: the VALID tile does not carry the photo set paint order').toContain('--t-paint: stroke fill');
+    expect(cases.valid, 'X23a: the VALID tile does not carry the photo set letter-spacing').toContain('--t-track: 0.03em');
+    expect(cases.invalid, 'the photo set leaked onto an invalid URL').not.toContain('--t-paint: ');
   });
 
   it('X6 (88.9): a valid picture URL that FAILS to load paints what no picture paints (month tile)', async () => {
@@ -266,7 +272,13 @@ describe('W49 rendered — EventDayModal event row', () => {
 
     expect(cases.invalid, 'the 0.85 wash still paints on an invalid URL — white text under a near-white wash').not.toContain(WASH_085);
     expect(cases.none, 'the 0.85 wash paints with no image at all').not.toContain(WASH_085);
-    expect(cases.valid, 'the 0.85 wash is gone from the VALID case too — that is a regression').toContain(WASH_085);
+    // AMENDED Phase 88.9-60 (X23a, owner pick page 10a): the VALID case used to REQUIRE the white
+    // wash. A picture row now shows the photo unwashed under the photo text set, so the valid
+    // case must carry no wash and must hand the cascade the set's paint order and letter-spacing.
+    expect(cases.valid, 'X23a: the 0.85 wash still paints over a VALID row picture').not.toContain(WASH_085);
+    expect(cases.valid, 'X23a: the VALID row does not carry the photo set paint order').toContain('--t-paint: stroke fill');
+    expect(cases.valid, 'X23a: the VALID row does not carry the photo set letter-spacing').toContain('--t-track: 0.03em');
+    expect(cases.invalid, 'the photo set leaked onto an invalid URL').not.toContain('--t-paint: ');
   });
 
   it('X6 (88.9): a valid picture URL that FAILS to load paints what no picture paints (day-modal row)', async () => {
@@ -291,7 +303,13 @@ describe('W49 rendered — CalendarListView event row', () => {
 
     expect(cases.invalid, 'the 0.85 wash still paints on an invalid URL').not.toContain(WASH_085);
     expect(cases.none, 'the 0.85 wash paints with no image at all').not.toContain(WASH_085);
-    expect(cases.valid, 'the 0.85 wash is gone from the VALID case too — that is a regression').toContain(WASH_085);
+    // AMENDED Phase 88.9-60 (X23a, owner pick page 10a): the VALID case used to REQUIRE the white
+    // wash. A picture row now shows the photo unwashed under the photo text set, so the valid
+    // case must carry no wash and must hand the cascade the set's paint order and letter-spacing.
+    expect(cases.valid, 'X23a: the 0.85 wash still paints over a VALID row picture').not.toContain(WASH_085);
+    expect(cases.valid, 'X23a: the VALID row does not carry the photo set paint order').toContain('--t-paint: stroke fill');
+    expect(cases.valid, 'X23a: the VALID row does not carry the photo set letter-spacing').toContain('--t-track: 0.03em');
+    expect(cases.invalid, 'the photo set leaked onto an invalid URL').not.toContain('--t-paint: ');
   });
 
   it('X6 (88.9): a valid picture URL that FAILS to load paints what no picture paints (list row)', async () => {

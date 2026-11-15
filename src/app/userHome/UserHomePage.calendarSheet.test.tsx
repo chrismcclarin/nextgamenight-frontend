@@ -951,10 +951,18 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
     // A live row carries no tag (R2E3 zero-one-many).
     expect(within(sheetRow(dialog, 'Catan')).queryByText(/^(Cancelled|Completed)$/)).toBeNull();
 
-    // DEC-18: the status row paints no image and its wash is transparent; the live control does paint it.
-    expect(sheetRow(dialog, 'Gloomhaven').style.backgroundImage, 'positive control: the live row paints its image').toContain('example.com/eta.jpg');
+    // DEC-18: the status row paints no image and no white wash; the live control does paint its image.
+    // AMENDED Phase 88.9-60 (X23a): the wash ELEMENT is gone from every row (a picture row wears the
+    // photo text set over an unwashed photo), so this reads "no white inline ground anywhere in the
+    // row" where it used to read "the wash element is transparent"; the live picture row is held to
+    // the same.
+    const liveRow = sheetRow(dialog, 'Gloomhaven');
+    expect(liveRow.style.backgroundImage, 'positive control: the live row paints its image').toContain('example.com/eta.jpg');
     expect(tmRow.style.backgroundImage).toBe('');
-    expect((tmRow.querySelector(':scope > div') as HTMLElement).style.backgroundColor).toBe('transparent');
+    for (const [row, label] of [[tmRow, 'the cancelled row'], [liveRow, 'the live picture row']] as const) {
+      const washed = Array.from(row.querySelectorAll<HTMLElement>('*')).filter((el) => /rgba\(255, 255, 255/.test(el.style.backgroundColor));
+      expect(washed, `${label} still carries a white wash`).toHaveLength(0);
+    }
 
     // DEC-17: the past list — a night logged after the fact keeps its colour and gets no tag.
     await user.click(pastToggle(dialog));
