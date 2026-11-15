@@ -1156,6 +1156,77 @@ async function titleTreatment(el: Locator): Promise<Record<string, string>> {
   return Object.fromEntries(TITLE_TREATMENT_PROPS.map((prop) => [prop, (p.computed[prop]?.raw ?? '').trim()]));
 }
 
+const PHOTO_TEXT_PROPS = [...TITLE_TREATMENT_PROPS, 'font-weight', 'letter-spacing', 'font-size'];
+const PHOTO_OUTLINE_WIDTH = '2px';
+const PHOTO_TRACKING_EM = 0.03;
+const PHOTO_TRACKING_TOLERANCE_PX = 0.01;
+
+/**
+ * X7 (88.9-60, owner T11): one word-carrying element over a group photo wears the whole photo
+ * set: white fill, a 2px black outline painted before the fill, 700, 0.03em, no shadow. The
+ * outline is read as part of the letter (WCAG 1.4.3 Note 5), so the floor is fill against
+ * outline; no ratio is taken against the photo itself (the pick page's rule).
+ */
+async function photoTextSet(el: Locator, label: string): Promise<void> {
+  await expect(el, `${label}: the element is not visible`).toBeVisible({ timeout: 15_000 });
+  const p = await probeElement(el, PHOTO_TEXT_PROPS);
+  const raw = (prop: string): string => (p.computed[prop]?.raw ?? '').trim();
+  const fill = p.computed['color']?.css ?? null;
+  const outline = p.computed['-webkit-text-stroke-color']?.css ?? null;
+  const fontSize = Number.parseFloat(raw('font-size'));
+  const tracking = Number.parseFloat(raw('letter-spacing'));
+  const wanted = PHOTO_TRACKING_EM * fontSize;
+  const ratio = contrastRatio(fill, outline);
+  // eslint-disable-next-line no-console -- the measured photo text set is recorded from the CI log
+  console.log(
+    `${label}: fill ${fill}, outline ${raw('-webkit-text-stroke-width')} ${outline}, paint-order ${raw('paint-order')}, ` +
+      `weight ${raw('font-weight')}, letter-spacing ${raw('letter-spacing')} at ${raw('font-size')}, shadow ${raw('text-shadow')}, ` +
+      `fill vs outline ${ratio === null ? 'unmeasured' : ratio.toFixed(4)}:1`
+  );
+  expect.soft(fill, `${label}: the fill is ${JSON.stringify(raw('color'))}, not white`).toBe('rgb(255, 255, 255)');
+  expect
+    .soft(raw('-webkit-text-stroke-width'), `${label}: the outline is ${JSON.stringify(raw('-webkit-text-stroke-width'))} wide, not ${PHOTO_OUTLINE_WIDTH}`)
+    .toBe(PHOTO_OUTLINE_WIDTH);
+  expect.soft(outline, `${label}: the outline colour is ${JSON.stringify(raw('-webkit-text-stroke-color'))}, not black`).toBe('rgb(0, 0, 0)');
+  expect
+    .soft(raw('paint-order'), `${label}: paint-order is ${JSON.stringify(raw('paint-order'))}; the outline is not painted before the fill, so it eats into the letter`)
+    .toMatch(/^stroke\b/);
+  expect.soft(raw('font-weight'), `${label}: font-weight is ${JSON.stringify(raw('font-weight'))}, not 700`).toBe('700');
+  expect
+    .soft(
+      Number.isFinite(tracking) && Number.isFinite(fontSize) && Math.abs(tracking - wanted) <= PHOTO_TRACKING_TOLERANCE_PX,
+      `${label}: letter-spacing is ${JSON.stringify(raw('letter-spacing'))} at font-size ${JSON.stringify(raw('font-size'))}; ${PHOTO_TRACKING_EM}em is ${Number.isFinite(wanted) ? wanted.toFixed(2) : '?'}px`
+    )
+    .toBe(true);
+  expect.soft(raw('text-shadow'), `${label}: text-shadow is ${JSON.stringify(raw('text-shadow'))}; the photo set has no shadow`).toBe('none');
+  expect(ratio, `${label}: fill ${fill} against outline ${outline} could not be measured — a probe failure`).not.toBeNull();
+  expect
+    .soft(ratio as number, `${label}: fill ${fill} against its outline ${outline} is ${(ratio as number).toFixed(3)}:1, floor ${AA_TEXT}:1`)
+    .toBeGreaterThanOrEqual(AA_TEXT);
+}
+
+/**
+ * Anti-vacuity for a photo read: the ground element really paints this picture and the picture
+ * really loads in this browser (since X6 a picture that fails flips the surface to no picture).
+ */
+async function photoGroundLoaded(page: Page, ground: Locator, photoUrl: string, label: string): Promise<void> {
+  const p = await probeElement(ground, ['background-image']);
+  expect(p.computed['background-image']?.raw ?? '', `${label}: the ground paints no background-image for the planted picture`).toContain(
+    new URL(photoUrl).pathname
+  );
+  const loaded = await page.evaluate(
+    (src) =>
+      new Promise<boolean>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = src;
+      }),
+    photoUrl
+  );
+  expect(loaded, `${label}: the planted picture did not load, so the photo arm was never under test`).toBe(true);
+}
+
 /**
  * X6 (88.9-60, owner F1): a title over a group picture that FAILED to load paints what the same
  * title paints with no picture at all. reference is that title read on the same group, same theme,
@@ -2732,6 +2803,45 @@ test.describe('Req 11 Gate C — round 2 pins (88.9 R2), both themes per test', 
         photoRequests,
         `A7 #207 / X6 (${theme}): the dead picture was never requested, so its failure was never under test`
       ).toBeGreaterThan(requestsBefore);
+    });
+  });
+
+  // X7 (88.9-60, owner T11): the loaded-photo half of the pair A7 above names. The picture is the
+  // seed photo served by this app, so it really loads (a picture that fails takes the no-picture
+  // arm since X6); each word-carrying element is read for the whole photo set in both themes.
+  test('X7 (88.9): a loaded photo\'s header title, stats line, card title and Last Game row wear the 2px bold outline with 0.03em spacing, both themes', async ({ page, baseURL }) => {
+    test.slow();
+    await holdWrites(page, {});
+    const photoUrl = new URL('/seed/photo-club-table.jpg', baseURL ?? 'http://localhost:3000').href;
+    const coloured = await patchColouredGroup(page, { imageUrl: photoUrl });
+    const isGroupDetailRead = (r: { url(): string; request(): { method(): string } }): boolean =>
+      r.request().method() === 'GET' && new URL(r.url()).pathname.endsWith(`/groups/${E2E_COLOURED_GROUP_ID}`);
+    const headerTitle = page.getByRole('heading', { level: 1 });
+
+    await inBothThemes(page, 'X7 photo text set', async (theme) => {
+      const detailRead = page.waitForResponse(isGroupDetailRead);
+      await page.goto(`/groupHomePage?id=${E2E_COLOURED_GROUP_ID}`);
+      await detailRead;
+      await assertTheme(page, theme);
+      await expect(headerTitle, `X7 (${theme}): the group header title never showed the group's name`).toContainText(coloured.name(), { timeout: 15_000 });
+      await photoGroundLoaded(page, groupHeader(page), photoUrl, `X7 group header (${theme})`);
+      await photoTextSet(headerTitle, `X7 group header title (${theme})`);
+      await photoTextSet(headerTitle.locator('xpath=following-sibling::p[1]'), `X7 group header stats line (${theme})`);
+
+      const listRead = page.waitForResponse(isGroupListRead);
+      await page.goto('/');
+      await listRead;
+      await assertTheme(page, theme);
+      const name = coloured.name();
+      const card = colouredCard(page, name);
+      await photoGroundLoaded(page, card, photoUrl, `X7 home card (${theme})`);
+      await photoTextSet(card.getByRole('heading', { name, exact: true }), `X7 home card title (${theme})`);
+      // The row itself, not its label: the label is a strong (bolder than its 700 parent), so the
+      // row's own weight is read on the row div.
+      await photoTextSet(
+        card.getByText('Last Game:', { exact: true }).locator('xpath=ancestor::div[1]'),
+        `X7 home card Last Game row (${theme})`
+      );
     });
   });
 

@@ -85,6 +85,11 @@
  * accent ring on the event view's Share Game QR, both themes; the floor guards it being deleted or
  * skipped.
  *
+ * RAISED 42 -> 43, Phase 88.9-60, MEASURED 2026-11-15: npx playwright test --list --project=phone
+ * reports 43 tests in e2e/contrast.spec.ts, all of which execute in phone. The new one is the X7
+ * read (owner T11): a loaded group photo's header title, stats line, card title and Last Game row
+ * wear the photo text set in both themes; the floor guards it being deleted or skipped.
+ *
  * GENERALISED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4). DECISION Phase
  * 88.6-55: optional flags on THIS script, chosen OVER a second floor script — two copies of the
  * same report walk is the duplication the milestone tenet forbids, and they would drift. The
@@ -116,7 +121,7 @@ import { pathToFileURL } from 'node:url';
 const REPORT = process.argv[2] ?? 'playwright-results.json';
 const SPEC = 'e2e/contrast.spec.ts';
 const PROJECT = 'phone';
-const FLOOR = 42;
+const FLOOR = 43;
 
 // Optional overrides (see the GENERALISED note above). Parsed strictly: fail closed.
 const KNOWN_FLAGS = {
