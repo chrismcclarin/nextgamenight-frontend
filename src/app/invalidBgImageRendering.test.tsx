@@ -25,11 +25,15 @@
 // conversion (flag converged, wash left raw) in either direction. The specific
 // literals the acceptance names are asserted on top of it.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { firstDifference, installFakeImage, paintMarkup } from '@/test-utils/pictureProbe';
+import { bgImageProbeForTests } from '@/lib/hooks/useBgImageFailed';
 
 const INVALID_URL = '/uploads/x.png';
 const VALID_URL = 'https://example.test/photo.png';
+/** Allow-listed, so the validator passes it; the fake image constructor errors any URL holding the word fail. */
+const FAILING_URL = 'https://example.test/fail-photo.png';
 /** Dark enough that `isDarkBackground` is true — the case the wash would ruin. */
 const DARK_HEX = '#722f37';
 
@@ -132,6 +136,37 @@ async function threeCases(fn: (image: string | null) => Promise<string> | string
   return { none, invalid, valid };
 }
 
+/**
+ * X6 (88.9-60, owner F1): a picture whose URL is VALID but whose load FAILS. The surface first
+ * paints its photo arm (the picture is pending), then the probe records the failure and the surface
+ * must paint exactly what it paints with no picture. Same shape as the convergence claim below, one
+ * step later: the markup after the failure equals the no-image markup of the same group.
+ */
+async function expectFailedPictureBehavesAsNoImage(surface: string, fn: (image: string | null) => Promise<string> | string) {
+  bgImageProbeForTests.reset();
+  const images = installFakeImage();
+  try {
+    const none = paintMarkup(await fn(null));
+    cleanup();
+    const pending = paintMarkup(await fn(FAILING_URL));
+    expect(images.srcs(), `${surface}: the picture was never probed`).toContain(FAILING_URL);
+    expect(
+      pending,
+      `${surface}: while the picture is still loading the surface must paint its PHOTO arm, and it painted the no-picture markup — this check has gone vacuous`,
+    ).not.toBe(none);
+    act(() => images.settleAll());
+    const failed = paintMarkup(document.body.innerHTML);
+    expect(
+      failed === none,
+      `${surface}: a picture that FAILED to load does not paint what NO picture paints. The browser shows only the group's own ground there, so the photo text treatment, wash or scrim is styled for a picture that is not on screen (X6, owner F1). ${firstDifference(failed, none)}`,
+    ).toBe(true);
+    cleanup();
+  } finally {
+    vi.unstubAllGlobals();
+    bgImageProbeForTests.reset();
+  }
+}
+
 /** The convergence claim, asserted the same way on every surface. */
 function expectInvalidBehavesAsNoImage(
   surface: string,
@@ -154,8 +189,7 @@ function expectInvalidBehavesAsNoImage(
 // 1. The month tile — the surface whose own marker named this rendered check.
 // ===========================================================================
 describe('W49 rendered — CalendarMonthView month tile', () => {
-  const renderTile = (image: string | null) => {
-    render(
+  const tile = (image: string | null) => (
       <CalendarMonthView
         days={[{ date: future, isCurrentMonth: true }]}
         activeEvents={[eventWith(image)]}
@@ -167,8 +201,10 @@ describe('W49 rendered — CalendarMonthView month tile', () => {
         onGoToday={vi.fn()}
         monthNames={['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']}
         tzLegend={null}
-      />,
-    );
+      />
+  );
+  const renderTile = (image: string | null) => {
+    render(tile(image));
     return document.body.innerHTML;
   };
 
@@ -181,6 +217,27 @@ describe('W49 rendered — CalendarMonthView month tile', () => {
     expect(cases.invalid, `the 0.7 overlay still paints on an invalid URL`).not.toContain(OVERLAY_07);
     expect(cases.none, 'the 0.7 overlay paints with no image at all').not.toContain(OVERLAY_07);
     expect(cases.valid, 'the 0.7 overlay is gone from the VALID case too — that is a regression').toContain(OVERLAY_07);
+  });
+
+  it('X6 (88.9): a valid picture URL that FAILS to load paints what no picture paints (month tile)', async () => {
+    await expectFailedPictureBehavesAsNoImage('CalendarMonthView', renderTile);
+
+    // The same tile reached by a RE-RENDER: mounted with no picture, then handed the failing one
+    // (a month change or a refetch). The probe must start on the re-render, not only at mount.
+    bgImageProbeForTests.reset();
+    const images = installFakeImage();
+    try {
+      const view = render(tile(null));
+      const none = paintMarkup(document.body.innerHTML);
+      view.rerender(tile(FAILING_URL));
+      expect(images.srcs(), 'a picture first seen on a re-render was never probed').toContain(FAILING_URL);
+      expect(paintMarkup(document.body.innerHTML), 'the re-rendered tile did not paint its photo arm while the picture was loading').not.toBe(none);
+      act(() => images.settleAll());
+      expect(paintMarkup(document.body.innerHTML), 'CalendarMonthView (re-render): a picture that failed to load does not paint what no picture paints').toBe(none);
+    } finally {
+      vi.unstubAllGlobals();
+      bgImageProbeForTests.reset();
+    }
   });
 });
 
@@ -211,6 +268,10 @@ describe('W49 rendered — EventDayModal event row', () => {
     expect(cases.none, 'the 0.85 wash paints with no image at all').not.toContain(WASH_085);
     expect(cases.valid, 'the 0.85 wash is gone from the VALID case too — that is a regression').toContain(WASH_085);
   });
+
+  it('X6 (88.9): a valid picture URL that FAILS to load paints what no picture paints (day-modal row)', async () => {
+    await expectFailedPictureBehavesAsNoImage('EventDayModal', renderRow);
+  });
 });
 
 // ===========================================================================
@@ -231,6 +292,10 @@ describe('W49 rendered — CalendarListView event row', () => {
     expect(cases.invalid, 'the 0.85 wash still paints on an invalid URL').not.toContain(WASH_085);
     expect(cases.none, 'the 0.85 wash paints with no image at all').not.toContain(WASH_085);
     expect(cases.valid, 'the 0.85 wash is gone from the VALID case too — that is a regression').toContain(WASH_085);
+  });
+
+  it('X6 (88.9): a valid picture URL that FAILS to load paints what no picture paints (list row)', async () => {
+    await expectFailedPictureBehavesAsNoImage('CalendarListView', renderRow);
   });
 });
 
@@ -320,5 +385,9 @@ describe('W49 rendered — groupHomePage header scrim pair', () => {
 
     const invalid = await manageMembersClass(INVALID_URL);
     expect(invalid, 'an invalid URL does not style Manage Members as no image').toBe(none);
+  });
+
+  it('X6 (88.9): a valid picture URL that FAILS to load paints what no picture paints (header)', async () => {
+    await expectFailedPictureBehavesAsNoImage('groupHomePage header', renderHeader);
   });
 });

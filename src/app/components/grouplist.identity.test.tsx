@@ -84,6 +84,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import GroupList from './grouplist';
 import { groupsAPI } from '@/lib/api';
+import { installFakeImage, paintMarkup } from '@/test-utils/pictureProbe';
+import { bgImageProbeForTests } from '@/lib/hooks/useBgImageFailed';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -456,5 +458,60 @@ describe("R-P4 (88.9-27): a photo card's secondary row takes the title's outline
     for (const el of [plain.row, plain.date, plain.label]) {
       expect(el.className, 'Plain Crew picked up the photo-arm outline utilities').not.toContain(R_P4);
     }
+  });
+});
+
+// X6 (88.9-60, owner F1): a picture whose URL is valid but whose load fails. The card first paints
+// its photo arm (the picture is pending); once the probe records the failure the card must be the
+// card this group shows with no picture at all: its tint, its preset ink, no outline. The fake
+// image constructor errors any URL holding the word fail
+// (src/test-utils/pictureProbe.ts ("export function installFakeImage(")).
+describe('X6 (88.9-60): a home card whose picture fails to load', () => {
+  const FAILING = 'https://example.test/fail-photo.png';
+  const NAME = 'Dead Photo Crew';
+  const getUserGroups = () => groupsAPI.getUserGroups as Mock;
+
+  beforeEach(() => {
+    getUserGroups().mockReset();
+    h.selfUuid = SELF_UUID;
+    bgImageProbeForTests.reset();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    bgImageProbeForTests.reset();
+  });
+
+  const mountCard = async (image: string | null) => {
+    getUserGroups().mockResolvedValueOnce([{ ...crew('g-x6', NAME), color_preset: 'blue', background_image_url: image }]);
+    const view = render(<GroupList {...listProps} />);
+    await screen.findByRole('button', { name: NAME });
+    return view;
+  };
+  const cardHtml = () => {
+    const card = screen.getByRole('button', { name: NAME }).closest('[data-testid="group-card"]') as HTMLElement | null;
+    expect(card, 'no group card found').not.toBeNull();
+    return paintMarkup(card!.outerHTML);
+  };
+
+  it('X6 (88.9): a home card whose picture fails to load takes the no-picture arm', async () => {
+    const images = installFakeImage();
+
+    const reference = await mountCard(null);
+    const none = cardHtml();
+    reference.unmount();
+
+    await mountCard(FAILING);
+    // Pending: the photo arm, from the first paint.
+    expect(images.srcs(), 'the card picture was never probed').toEqual([FAILING]);
+    const pending = cardHtml();
+    expect(pending, 'the pending picture is not set as the card background').toContain('background-image');
+    expect(pending, 'the pending picture did not take the photo text treatment').toContain('--t-paint-l: stroke fill');
+
+    act(() => images.settleAll());
+    const failed = cardHtml();
+    expect(failed, 'a picture that failed to load is still set as the card background').not.toContain('background-image');
+    // The inline DECLARATION form: the title's class names the property in every arm.
+    expect(failed, 'a picture that failed to load kept the photo text treatment').not.toContain('--t-paint-l: ');
+    expect(failed, 'a card whose picture failed to load is not the card this group shows with no picture').toBe(none);
   });
 });
