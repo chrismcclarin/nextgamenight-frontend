@@ -682,7 +682,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 </StatusRegion>
                 {/* DECISION Phase 88.9-10 (owner pick A8b, 88.9-PICKS-A.json, 2026-10-31): a 48 x 48 minimum
                     box with negative margins so the 66px notice does not grow, chosen OVER the 44 box (A8a)
-                    and OVER the shipped 16px-tall text button. The negative margins are load-bearing. */}
+                    and OVER the shipped 16px-tall text button. The negative margins are load-bearing.
+                    AMENDED Phase 88.9-59 (X19, owner at N09 2026-11-11: Dismiss ring band is larger than the warning
+                    box it is in on 1280 and 1440, but fine in 375): from md up the negative margin is 4px, so the
+                    notice is 66px at every width and the ring sits inside it, chosen OVER an inset ring (it would
+                    meet the border) and OVER a shorter box (the 48 pick, the 44 desktop floor). Phone unchanged. */}
                 {/* DECISION Phase 88.9-CR m6: the focus treatment is the amber-box Dismiss idiom of
                     src/app/userProfile/page.js ("AMENDED Phase 88.9-32 (owner pick B3a")
                     (census R065; that twin moved to the B3a warning family in plan 88.9-32), chosen OVER the browser default outline that plan 88.9-10 left on this
@@ -700,7 +704,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 {removedNoticeShown && (
                     <button
                         onClick={dismissRemovedNotice}
-                        className="text-content-status-warning hover:text-content-primary hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 rounded-btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
+                        className="text-content-status-warning hover:text-content-primary hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 md:-my-1 rounded-btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
                         aria-label="Dismiss"
                     >
                         Dismiss
@@ -830,6 +834,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     being re-litigated AND to stop "deliberate and untouched" being read as
                     "measured". */}
                 <div className="hidden md:flex md:flex-col md:flex-1 md:min-w-0 md:gap-4">
+                    {/* DECISION Phase 88.9-59 (X65, owner at N09 part 2, 2026-11-11: fine): while the page-level
+                        session banner shows, this calendar keeps its own couldn't-load banner and Sign in, chosen
+                        OVER hiding it under O22d's one banner (the column would go blank). Hiding it is a
+                        decision, not a cleanup. */}
                     <EventCalendar refreshKey={refreshKey} />
                     {/* ML-17: the upcoming-events fetch gates on selfUuid, so on
                         TERMINAL identity failure it never fires — degrade with the
