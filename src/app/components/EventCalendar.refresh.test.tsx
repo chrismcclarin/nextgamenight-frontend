@@ -565,6 +565,32 @@ describe('EventCalendar RF1 — a failed refresh keeps the calendar (plan 88.6.1
     expect(screen.queryByRole('button', { name: /^(List|Month) View$/ })).toBeNull();
   });
 
+  // 88.9-62 (X28, WCAG 1.4.4): at 200% text on a 375 phone the px-4 switch is wider than the
+  // card's content, so each segment narrows under 14rem of container width. Both mounts go through
+  // this component; the month mount's container is the nav block, pinned in CalendarMonthView.test.
+  it('X28 (88.9): both switch mounts sit in a size container and every segment narrows to px-2 under 14rem', async () => {
+    const user = userEvent.setup();
+    render(<Host events={[]} />);
+    expect(await screen.findByTestId('month-view')).toBeInTheDocument();
+    const group = () => screen.getByRole('group', { name: 'Calendar view' });
+    const expectNarrowing = (mode: string) => {
+      const segments = within(group()).getAllByRole('button');
+      expect(segments, `${mode}: the switch does not hold two segments`).toHaveLength(2);
+      for (const seg of segments) {
+        const classes = seg.className.split(/\s+/);
+        expect(classes, `${mode}: a segment lost its resting px-4`).toContain('px-4');
+        expect(classes, `${mode}: a segment does not narrow under 14rem`).toContain('@max-[14rem]:px-2');
+      }
+    };
+    expectNarrowing('month view');
+
+    await user.click(within(group()).getByRole('button', { name: 'List' }));
+    expect(screen.queryByTestId('month-view')).toBeNull();
+    expectNarrowing('List view');
+    const parent = group().parentElement as HTMLElement;
+    expect(parent.className.split(/\s+/), 'List view: the row holding the switch is not a size container').toContain('@container');
+  });
+
   it('CS-01 (88.9): the calendar heading is in the DOM, sr-only, and still receives focus from RefreshFailedNotice', async () => {
     const user = userEvent.setup();
     await loadThenRefresh(server500());

@@ -347,8 +347,9 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     onNavigateMonth?: (delta: number) => void;
     onGoToday?: () => void;
     viewSwitch?: React.ReactNode;
+    tzLegend?: string | null;
   };
-  function renderGrid({ anchor = new Date(2031, 8, 1, 12, 0, 0, 0), variant, events = [], viewerDbUserId, onNavigateMonth = vi.fn(), onGoToday = vi.fn(), viewSwitch }: GridOpts) {
+  function renderGrid({ anchor = new Date(2031, 8, 1, 12, 0, 0, 0), variant, events = [], viewerDbUserId, onNavigateMonth = vi.fn(), onGoToday = vi.fn(), viewSwitch, tzLegend = null }: GridOpts) {
     const days = getDaysInMonth(anchor);
     const out = render(
       <CalendarMonthView
@@ -361,13 +362,14 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
         onNavigateMonth={onNavigateMonth}
         onGoToday={onGoToday}
         monthNames={MONTHS}
-        tzLegend={null}
+        tzLegend={tzLegend}
         viewerDbUserId={viewerDbUserId}
         viewSwitch={viewSwitch}
       />,
     );
     const grids = out.container.querySelectorAll('.grid.grid-cols-7');
     return {
+      container: out.container,
       days,
       weekdays: Array.from(grids[0].children) as HTMLElement[],
       cells: Array.from(grids[1].children) as HTMLElement[],
@@ -416,6 +418,49 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     renderGrid({ variant: 'full' });
     expect(screen.queryByTestId('slot')).toBeNull();
     expect(screen.getByRole('button', { name: 'Today' })).toBeTruthy();
+  });
+  // 88.9-62 (owner pick C at N13, 2026-11-12): the arrows sit on the month title's line. jsdom lays
+  // nothing out, so this pins the STRUCTURE the layout comes from; the boxes are read in a real
+  // engine by e2e/month-nav-row.spec.ts.
+  it("X22 (88.9): the chevrons share the title's row; the caption, then the Today pill with the switch, sit below it; Tab order is Previous month, Next month, Today, the switch", () => {
+    for (const variant of ['full', 'compact'] as const) {
+      const { container } = renderGrid({ variant, tzLegend: 'PST', viewSwitch: <button type="button">slot</button> });
+      const prev = screen.getByRole('button', { name: 'Previous month' });
+      const next = screen.getByRole('button', { name: 'Next month' });
+      const heading = screen.getByRole('heading', { level: 3, name: 'September 2031' });
+      const today = screen.getByRole('button', { name: 'Today' });
+      const slot = screen.getByRole('button', { name: 'slot' });
+      const caption = screen.getByText('Times shown in PST');
+      const titleRow = heading.parentElement as HTMLElement;
+      // One row holds the chevron, the title and the chevron, in that order (DOM order is the
+      // visual order of the wide arm).
+      expect(Array.from(titleRow.children), `${variant}: the title row is not chevron, title, chevron`).toEqual([prev, heading, next]);
+      expect(titleRow.contains(today), `${variant}: the title row holds the Today pill`).toBe(false);
+      expect(titleRow.contains(caption), `${variant}: the title row holds the caption`).toBe(false);
+      const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(follows(titleRow, caption), `${variant}: the caption does not follow the title row`).toBe(true);
+      expect(follows(caption, today), `${variant}: the Today pill does not follow the caption`).toBe(true);
+      expect(slot.parentElement, `${variant}: the switch and the Today pill do not share one row`).toBe(today.parentElement);
+      // Tab order is document order here (no positive tabindex anywhere in the nav block).
+      expect(Array.from(container.querySelectorAll('button')).slice(0, 4), `${variant}: the first four buttons are not Previous month, Next month, Today, the switch`).toEqual([prev, next, today, slot]);
+      cleanup();
+    }
+  });
+  it('X28 (88.9): the nav block is a size container and under 14rem the title takes its own line below the arrows', () => {
+    for (const variant of ['full', 'compact'] as const) {
+      renderGrid({ variant });
+      const heading = screen.getByRole('heading', { level: 3, name: 'September 2031' });
+      const navBlock = (heading.parentElement as HTMLElement).parentElement as HTMLElement;
+      expect(tokens(navBlock), `${variant}: the title row's parent is not a size container`).toContain('@container');
+      for (const t of ['min-w-0', 'flex-1', 'text-center', '@max-[14rem]:order-last', '@max-[14rem]:basis-full']) {
+        expect(tokens(heading), `${variant}: the month title lacks ${t}`).toContain(t);
+      }
+      for (const t of ['whitespace-nowrap', 'truncate', 'text-ellipsis']) {
+        expect(tokens(heading), `${variant}: the month title clips (${t})`).not.toContain(t);
+      }
+      expect(heading.className, `${variant}: the month title clips (line-clamp)`).not.toMatch(/line-clamp-/);
+      cleanup();
+    }
   });
   const cellOf = (days: { date: Date; isCurrentMonth: boolean }[], cells: HTMLElement[], month: number, date: number) => {
     const i = days.findIndex((c) => c.date.getMonth() === month && c.date.getDate() === date);
