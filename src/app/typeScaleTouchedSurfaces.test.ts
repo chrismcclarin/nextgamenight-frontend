@@ -2782,12 +2782,9 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     // (as heavy as the Owner pill, so the name would not lead) and OVER C (smaller pills). The
     // font loads with no weight list, so 600 renders from it as it does on every .btn. The dead
     // armed-state site and its Phase 92 routing are unchanged; this entry floors at 3 until then.
-    // AMENDED Phase 88.9-65 (X47, 88.9-63 hand-off b): 3 -> 4. The fourth site is the participant
-    // NAME on the past-session chip, which takes the same owner-ruled 600 as the two names 63
-    // moved (one name weight on this page), chosen OVER leaving it at 400 beside 12px pills.
-    sites: 4,
+    sites: 3,
     why:
-      '4 off-scale weight sites (the fourth, 88.9-65 X47: the 600 participant name on the past-session chip, the same owner-ruled weight as the two names below). One is the font-semibold on the ARMED branch of the two-tap participant Remove. It is DEAD: the control is a Button and .btn sets the weight unlayered, so rest and armed both render 600 and the weight carries no armed cue. Counted in ARMED_STATE_600_ROSTER too (88.6.2-15, W049); deleting it is a className edit routed to Phase 92, and that commit deletes the armed entry and lowers this one to 2. The other two are LIVE and stay: the 600 participant names on the Participants chip and the See-all row (88.9-63 X16, owner ruling D at N04, 2026-11-11), an owner-ruled exception to the two-weight rule. Owning plans: 88.6-18 (swept), 88.6-46 (closeout), 88.6.2-15 (W049), 88.9-63 (X16).',
+      '3 off-scale weight sites. One is the font-semibold on the ARMED branch of the two-tap participant Remove. It is DEAD: the control is a Button and .btn sets the weight unlayered, so rest and armed both render 600 and the weight carries no armed cue. Counted in ARMED_STATE_600_ROSTER too (88.6.2-15, W049); deleting it is a className edit routed to Phase 92, and that commit deletes the armed entry and lowers this one to 2. The other two are LIVE and stay: the 600 participant names on the Participants chip and the See-all row (88.9-63 X16, owner ruling D at N04, 2026-11-11), an owner-ruled exception to the two-weight rule. Owning plans: 88.6-18 (swept), 88.6-46 (closeout), 88.6.2-15 (W049), 88.9-63 (X16).',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6.2-15 (PC-2)' },
   },
   // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 (wave 7, 2026-09-16), all seven sites:
