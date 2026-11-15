@@ -1598,3 +1598,39 @@ describe('FriendInvitePanel — Add Friend tells the truth when the request fail
     expect(screen.queryByRole('button', { name: 'Add Friend' })).toBeNull();
   });
 });
+
+// Phase 88.9-66 (X35, once-over R13): the panel's two busy lines are HEARD. Each section keeps one
+// visually hidden polite region mounted (StatusRegion with settleOnMount, plan 88.9-65) that takes
+// the line's former accessible name after the dwell; the visible row is plain text, unchanged.
+describe('FriendInvitePanel busy lines are heard (88.9-66: X35)', () => {
+  it('X35 (88.9): Loading your friends and Loading QR code are spoken after the dwell from regions mounted with the panel; the visible rows keep their words', async () => {
+    // Both loads stay in flight for the whole test.
+    (friendshipsAPI.getFriends as Mock).mockReturnValue(new Promise<unknown[]>(() => {}));
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([]);
+    (groupsAPI.getInviteToken as Mock).mockReturnValue(new Promise<{ invite_url: string }>(() => {}));
+    render(
+      <FriendInvitePanel group={GROUP} open onClose={vi.fn()} onMemberAdded={vi.fn()} openedFrom="default" />,
+      { wrapper: FriendshipStatusProvider as React.ComponentType<{ children: React.ReactNode }> }
+    );
+
+    const statuses = () => screen.queryAllByRole('status');
+    const speaking = (words: string) => statuses().find((n) => n.textContent === words);
+    // The panel's first commit: both rows show at once; no polite region holds their words yet.
+    const mountedEmpty = statuses().filter((n) => n.textContent === '');
+    for (const visible of ['Loading your friends...', 'Loading QR code...']) {
+      const row = screen.getByText(visible);
+      expect(row.closest('[role="status"]'), `"${visible}" is still inside a status row`).toBeNull();
+      expect(row.closest('[aria-hidden="true"]'), `"${visible}" must stay readable in place`).toBeNull();
+    }
+    expect(speaking('Loading your friends')).toBeUndefined();
+    expect(speaking('Loading QR code')).toBeUndefined();
+
+    for (const words of ['Loading your friends', 'Loading QR code']) {
+      await waitFor(() => expect(speaking(words), `no polite region ever said "${words}"`).toBeDefined());
+      const region = speaking(words) as HTMLElement;
+      expect(mountedEmpty, `the region that says "${words}" was not in the panel, empty, before it spoke`).toContain(region);
+      expect(region).toHaveAttribute('aria-live', 'polite');
+      expect(region).toHaveClass('sr-only');
+    }
+  });
+});

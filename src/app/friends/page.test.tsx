@@ -21,6 +21,8 @@
 //   use `renderFriends({ friends: [] })` for the empty case and
 //   `renderFriends({ loadError: ... })` for the failed-fetch case. Those two are
 //   deliberately DIFFERENT surfaces; see the DECISION marker on the Friends tab.
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import * as React from 'react';
 import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -158,6 +160,7 @@ import { ApiError, friendshipsAPI, groupsAPI, invitesAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { queryCacheOnError } from '@/lib/queryClient';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 
@@ -872,7 +875,8 @@ async function renderWithGroups(
   });
   await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledWith(select));
   await flushMacrotask();
-  expect(screen.queryByRole('status', { name: 'Loading group members' })).toBeNull();
+  // AMENDED Phase 88.9-66 (X35): the members line is plain text now (its heard words moved to a region).
+  expect(screen.queryByText('Loading group members...')).toBeNull();
   return utils;
 }
 
@@ -1409,9 +1413,8 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     expect(search).toHaveAttribute('aria-disabled', 'true');
     expect(search).not.toHaveAttribute('disabled');
     // The status line below the form is a caption, not a button (census B note): it keeps its word.
-    expect(screen.getByRole('status', { name: 'Searching for that email address' })).toHaveTextContent(
-      'Searching...'
-    );
+    // AMENDED Phase 88.9-66 (X35): the caption is plain text; the words it is heard by are pinned in the X35 describe.
+    expect(screen.getByText('Searching...').closest('[role="status"]')).toBeNull();
     fireEvent.click(search);
     expect(friendshipsAPI.searchUserByEmail as Mock).toHaveBeenCalledTimes(1);
 
@@ -2540,8 +2543,9 @@ describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
     render(<FriendsPage />);
     await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
     expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2Ffriends');
-    // The redirect frame is the auth hold, never the prompt.
-    expect(screen.getByRole('status', { name: 'Signing you in' })).toBeInTheDocument();
+    // The redirect frame is the auth hold, never the prompt. AMENDED Phase 88.9-66 (X35): the hold is
+    // recognised by the words its polite region takes after the dwell.
+    expect(await screen.findByText('Signing you in')).toHaveAttribute('role', 'status');
     expect(screen.queryByText('Please log in to view your friends.')).toBeNull();
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
     cleanup();
@@ -2551,7 +2555,7 @@ describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
     const login = await screen.findByRole('link', { name: 'Log In' });
     expect(login).toHaveAttribute('href', '/api/auth/login?returnTo=%2Ffriends');
     expect(screen.getByText('Please log in to view your friends.')).toBeInTheDocument();
-    expect(screen.queryByRole('status', { name: 'Signing you in' })).toBeNull();
+    expect(screen.queryByText('Signing you in')).toBeNull();
     expect(replace).toHaveBeenCalledTimes(1);
   });
 
@@ -2617,5 +2621,136 @@ describe('friends rows are cards (88.9-58: X14 family)', () => {
     let sentRow: HTMLElement | null = alex.parentElement;
     while (sentRow && !classesOf(sentRow).includes('justify-between')) sentRow = sentRow.parentElement;
     expectCardRow(sentRow, 'sent-request row');
+  });
+});
+
+// Phase 88.9-66 (X35, once-over R13): the Friends busy lines are HEARD. Each line used to be a row
+// that mounted already holding its words with the status role, and a screen reader announces a
+// change to a live region, never the arrival of one, so none of them was spoken. Now each host
+// keeps ONE visually hidden polite region mounted (StatusRegion with settleOnMount, plan 88.9-65),
+// fed the line's former accessible name while the line shows; the visible row is plain text with
+// the same words, classes and timing as before. The shape every test here uses: capture the polite
+// regions while they are empty, wait for the words, and require the node that speaks to be one of
+// the captured ones.
+describe('friends busy lines are heard (88.9-66: X35)', () => {
+  const statuses = () => screen.queryAllByRole('status');
+  const emptyRegions = () => statuses().filter((n) => n.textContent === '');
+  const speaking = (words: string) => statuses().find((n) => n.textContent === words);
+
+  async function expectSpokenFrom(mountedEmpty: HTMLElement[], words: string) {
+    await waitFor(() => expect(speaking(words), `no polite region ever said "${words}"`).toBeDefined());
+    const region = speaking(words) as HTMLElement;
+    expect(mountedEmpty, `the region that says "${words}" was not on the page, empty, before it spoke`).toContain(region);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+    return region;
+  }
+
+  // A visible busy row: on screen with its words, and not itself a live region or hidden from one.
+  function expectPlainRow(words: string) {
+    const row = screen.getByText(words);
+    expect(row.closest('[role="status"]'), `"${words}" is still inside a status row`).toBeNull();
+    expect(row.closest('[aria-hidden="true"]'), `"${words}" must stay readable in place`).toBeNull();
+    return row;
+  }
+
+  it('X35 (88.9): Signing you in and Loading your friends are spoken from a region that was mounted empty', async () => {
+    const savedUser = auth.user;
+    stubLocation('/friends');
+    auth.user = null as unknown as typeof auth.user;
+    try {
+      render(<FriendsPage />);
+      // The redirect frame's first commit: one polite region, empty.
+      expect(statuses(), 'the sign-in hold mounts exactly one polite region').toHaveLength(1);
+      const mounted = emptyRegions();
+      expect(mounted, 'the sign-in hold mounted its region already holding words').toHaveLength(1);
+      await expectSpokenFrom(mounted, 'Signing you in');
+    } finally {
+      auth.user = savedUser;
+      restoreLocation();
+    }
+    cleanup();
+
+    renderFriends({ selfUuid: null });
+    expect(statuses(), 'the identity loader mounts exactly one polite region').toHaveLength(1);
+    const mounted = emptyRegions();
+    expect(mounted, 'the identity loader mounted its region already holding words').toHaveLength(1);
+    await expectSpokenFrom(mounted, 'Loading your friends');
+  });
+
+  it('X35 (88.9): Searching and Loading group members are spoken from a region that was already there, and the visible rows keep their words', async () => {
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([adminGroup('g-1', 'Tuesday Crew')]);
+    renderFriends();
+    const select = await screen.findByLabelText('Invite to group');
+    // Past the arrival dwell of every region mounted with the page and with the invite bar.
+    await act(() => new Promise<void>((r) => setTimeout(r, REGION_EMPTY_DWELL_MS + 20)));
+    const before = statuses();
+    expect(speaking('Searching for that email address')).toBeUndefined();
+
+    const heldSearch = deferred<unknown>();
+    (friendshipsAPI.searchUserByEmail as Mock).mockReturnValueOnce(heldSearch.promise);
+    fireEvent.change(emailField(), { target: { value: 'riley@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    const searchRegion = speaking('Searching for that email address') as HTMLElement;
+    expect(searchRegion, 'no polite region said the search words the moment the search started').toBeDefined();
+    expect(before, 'the search region was mounted with its words instead of being fed them').toContain(searchRegion);
+    expectPlainRow('Searching...');
+    await act(async () => {
+      heldSearch.resolve(null);
+    });
+    await waitFor(() => expect(screen.queryByText('Searching...')).toBeNull());
+    expect(searchRegion.textContent).toBe('');
+
+    const heldMembers = deferred<unknown[]>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(heldMembers.promise);
+    fireEvent.change(select, { target: { value: 'g-1' } });
+    const membersRegion = await waitFor(() => {
+      const region = speaking('Loading group members');
+      expect(region, 'no polite region said the members words').toBeDefined();
+      return region as HTMLElement;
+    });
+    expect(before, 'the members region was mounted with its words instead of being fed them').toContain(membersRegion);
+    expectPlainRow('Loading group members...');
+    await act(async () => {
+      heldMembers.resolve([]);
+    });
+    await waitFor(() => expect(screen.queryByText('Loading group members...')).toBeNull());
+    expect(membersRegion.textContent).toBe('');
+  });
+
+  it('X35 (88.9): the Friends, Requests and Sent loaders are spoken after the dwell from a region mounted with their tab', async () => {
+    h.selfUuid = SELF_UUID;
+    (friendshipsAPI.getFriends as Mock).mockReturnValue(deferred<unknown[]>().promise);
+    (friendshipsAPI.getSentRequests as Mock).mockReturnValue(deferred<unknown[]>().promise);
+    providerCtx.loading = true;
+    render(<FriendsPage />);
+
+    // The Friends tab's first commit: its row shows at once, its region is there and empty.
+    let mounted = emptyRegions();
+    expectPlainRow('Loading friends...');
+    expect(speaking('Loading your friends')).toBeUndefined();
+    await expectSpokenFrom(mounted, 'Loading your friends');
+
+    fireEvent.click(requestsTab());
+    mounted = emptyRegions();
+    expectPlainRow('Loading requests...');
+    expect(speaking('Loading your friend requests')).toBeUndefined();
+    await expectSpokenFrom(mounted, 'Loading your friend requests');
+
+    fireEvent.click(sentTabButton());
+    mounted = emptyRegions();
+    expectPlainRow('Loading sent requests...');
+    expect(speaking('Loading your sent requests')).toBeUndefined();
+    await expectSpokenFrom(mounted, 'Loading your sent requests');
+  });
+
+  it('X35 (88.9): this page and FriendInvitePanel hold no conditionally mounted labelled status row', () => {
+    // Read from disk with fs: every polite region in these two files is the StatusRegion primitive,
+    // so neither source writes the status role as an attribute any more.
+    for (const file of ['src/app/friends/page.js', 'src/app/components/FriendInvitePanel.js']) {
+      const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+      expect(source.split('role="status"').length - 1, `${file} still writes a status role by hand`).toBe(0);
+      expect(source, `${file} feeds no settle-on-mount region`).toContain('settleOnMount');
+    }
   });
 });
