@@ -1488,9 +1488,15 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // AMENDED Phase 88.9-58 (X60 De3): the cog wears the secondary fill, so its border is the
     // secondary button's own edge (warm-400 in light, transparent in dark), not the shared
     // control edge Manage Members keeps above.
-    for (const util of ['bg-btn-secondary', 'dark:bg-surface-elevated', 'border border-line-btn-secondary']) {
+    // AMENDED Phase 88.9-59 (X8, owner pick G2, 2026-11-11): the cog wears its OWN fill now, Invite's
+    // blue one step darker in both themes, with a white icon and the fill as its edge (a transparent
+    // border keeps the box size). The secondary recipe and its dark arm above are history: one token
+    // pair carries both themes, so a dark-scoped fill here would be a second recipe.
+    for (const util of ['bg-btn-gear', 'hover:bg-btn-gear-hover', 'text-btn-primary-text', 'border border-transparent']) {
       expect(cog!.text, `the cog lost its ${util}`).toContain(util);
     }
+    expect(cog!.text, 'the cog still wears the secondary fill').not.toContain('bg-btn-secondary');
+    expect(cog!.text.match(/dark:bg-/g) ?? [], 'the cog has a dark-scoped fill arm; G2 is one token pair for both themes').toHaveLength(0);
     // The dark arm must stay `dark:`-scoped. An un-prefixed `bg-surface-elevated`
     // is #ffffff in light and would emit AFTER `.bg-btn-secondary`, killing the
     // light fill outright — the exact state the owner reported.

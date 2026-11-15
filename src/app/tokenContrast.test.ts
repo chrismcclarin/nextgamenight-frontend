@@ -50,6 +50,7 @@ import { describe, expect, it } from 'vitest';
 import { FORBIDDEN_INK_ON_MUTED, MUTED_GROUND_TOKEN } from '../test-utils/inkRules';
 import { withoutComments } from '../test-utils/sourceScan';
 import { CALENDAR_WASH_RAMP } from '../lib/availabilityColor';
+import { GROUP_COLOUR_PRESETS } from '../lib/groupColourPresets';
 import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../lib/wcag';
 
 const GLOBALS = path.join(__dirname, 'globals.css');
@@ -2326,6 +2327,45 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(declIn(theme, '--color-toggle-on'), '@theme inline must expose --color-toggle-on').toBe('var(--color-toggle-pressed-bg)');
     expect(declIn(theme, '--color-toggle-on-text'), '@theme inline must expose --color-toggle-on-text').toBe('var(--color-toggle-pressed-text)');
     expect(declIn(theme, '--color-toggle-on-hover'), '@theme inline must expose --color-toggle-on-hover').toBe('var(--color-toggle-pressed-hover)');
+  });
+
+  it('X8 G2 (88.9): the home gear fill is purple-700 in both themes, its hover purple-800 light and purple-650 dark, the white icon clears 3:1 on fill and hover, and the ring clears 3:1 on the card and every preset halo', () => {
+    // 88.9-59 (owner pick G2, 2026-11-11): the home-card gear is Invite Member's blue one step darker,
+    // with a white icon. Values are pinned by PALETTE KEY, never by a colour literal, so the pick is
+    // the pin: light takes Invite's hover step, dark the same step (Invite's blue with a fifth of black
+    // lands on it), and each hover moves the way Invite's does in that theme. The floors: the icon is a
+    // non-text glyph (3:1, WCAG 1.4.11), the hover must be a visible step (1.10), the gear must read as
+    // darker than Invite beside it (1.20), and the focus ring must clear 3:1 on the card and on each of
+    // the eight preset halos a tinted card hands the gear.
+    const themeBlock = blockOf('theme');
+    expect(declIn(themeBlock, '--color-btn-gear'), 'X8 G2 — @theme inline must expose --color-btn-gear').toBe('var(--color-gear-bg)');
+    expect(declIn(themeBlock, '--color-btn-gear-hover'), 'X8 G2 — @theme inline must expose --color-btn-gear-hover').toBe('var(--color-gear-hover)');
+
+    const hoverKey = { light: '--purple-800', dark: '--purple-650' } as const;
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expect(resolve(theme, '--color-gear-bg'), `X8 G2 — [${theme}] the gear fill is the purple-700 step`).toBe(resolve(theme, '--purple-700'));
+      expect(resolve(theme, '--color-gear-hover'), `X8 G2 — [${theme}] the gear hover is ${hoverKey[theme]}`).toBe(resolve(theme, hoverKey[theme]));
+
+      expectRatio(theme, '--color-btn-primary-text', '--color-gear-bg', 3.0, 'X8 G2 icon on the gear fill');
+      expectRatio(theme, '--color-btn-primary-text', '--color-gear-hover', 3.0, 'X8 G2 icon on the gear hover');
+      expectRatio(theme, '--color-gear-hover', '--color-gear-bg', 1.1, 'X8 G2 hover against rest');
+      expectRatio(theme, '--color-gear-bg', '--color-btn-primary-bg', 1.2, 'X8 G2 gear against Invite');
+      expectRatio(theme, '--color-focus-ring', '--color-bg-card', 3.0, 'X8 G2 ring on the card');
+      measured += 5;
+
+      const ring = resolve(theme, '--color-focus-ring');
+      for (const preset of GROUP_COLOUR_PRESETS) {
+        const halo = preset[theme];
+        const value = ratioHex(ring, halo, `X8 G2 ring on the ${preset.name} halo`);
+        expect(
+          value,
+          `X8 G2 — [${theme}] the focus ring (${ring}) on the ${preset.name} halo (${halo}) measures ${value.toFixed(4)}:1, floor 3.00:1`,
+        ).toBeGreaterThanOrEqual(3.0);
+        measured += 1;
+      }
+    }
+    expect(measured, 'anti-vacuity: (5 pairs + 8 preset halos) x 2 themes').toBe(26);
   });
 });
 
