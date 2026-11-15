@@ -325,7 +325,7 @@ async function renderHeaderAt(role: string, opts: { inMain?: boolean } = {}) {
 describe('groupHomePage header CTAs on the Button primitive (88.6-21 D-09 / UI-SPEC §3.2)', () => {
   it('the Create-Event CTA is `variant="accent"` with its inline amber style DELETED', async () => {
     await renderHeaderAt('owner');
-    const cta = screen.getByRole('button', { name: 'Add New Game Event' });
+    const cta = screen.getByRole('button', { name: 'Create Event' });
 
     // The class is the whole point: `.btn-accent` paints the SAME `--amber-700` the inline pair
     // did, from the one place that owns it.
@@ -337,6 +337,29 @@ describe('groupHomePage header CTAs on the Button primitive (88.6-21 D-09 / UI-S
     // spelling is load-bearing — a bare `hover:` pin would not de-dupe against the base token.
     expect(cta).toHaveClass('shadow-theme-lg', 'enabled-hover:shadow-theme-lg');
     expect(cta.className).not.toContain('hover:shadow-xl');
+  });
+
+  it('X32A (88.9): the amber header button reads Create Event, its words are its accessible name, and Plan Game Session is unchanged', async () => {
+    // 88.9-64 (owner, 2026-11-13 1:44 PM Pacific: "Create event."). The button says what the dialog
+    // it opens says in its title and on its submit; the shipped four-word label read too much like
+    // Plan Game Session beside it (N14).
+    await renderHeaderAt('owner');
+    const cta = screen.getByRole('button', { name: 'Create Event' });
+    expect(cta).toHaveClass('btn-accent');
+    // The words ARE the name: no attribute renames the button for assistive technology.
+    expect(cta.textContent).toBe('Create Event');
+    for (const attr of ['aria-label', 'aria-labelledby', 'title']) {
+      expect(cta, `the Create Event button carries ${attr}`).not.toHaveAttribute(attr);
+    }
+    // It is the only button in the header whose name holds the word Event, so the retired label is gone.
+    expect(screen.getAllByRole('button', { name: /event/i })).toEqual([cta]);
+
+    const plan = screen.getByRole('link', { name: 'Plan Game Session' });
+    expect(plan.textContent).toBe('Plan Game Session');
+    expect(plan).toHaveClass('btn-primary');
+    // Reading order in the row is unchanged: Manage Members, Plan Game Session, then this button.
+    const row = cta.parentElement!;
+    expect(Array.from(row.children).map((el) => el.textContent)).toEqual(['Manage Members', 'Plan Game Session', 'Create Event']);
   });
 
   it('"Plan Game Session" is `asChild variant="primary"` — one anchor, no `type`', async () => {
@@ -443,7 +466,7 @@ describe('groupHomePage header CTAs on the Button primitive (88.6-21 D-09 / UI-S
     for (const el of [
       screen.getByRole('button', { name: 'Manage Members' }),
       screen.getByRole('link', { name: 'Plan Game Session' }),
-      screen.getByRole('button', { name: 'Add New Game Event' }),
+      screen.getByRole('button', { name: 'Create Event' }),
     ]) {
       // Present exactly ONCE. `cn`'s tailwind-merge would keep a duplicate call-site copy of a
       // ring token beside the base's, so "present" alone would not catch a second expression.
@@ -500,7 +523,7 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
   const headerControls = () => [
     screen.getByRole('button', { name: 'Manage Members' }),
     screen.getByRole('link', { name: 'Plan Game Session' }),
-    screen.getByRole('button', { name: 'Add New Game Event' }),
+    screen.getByRole('button', { name: 'Create Event' }),
     screen.getByRole('button', { name: 'Group settings' }),
   ];
 
