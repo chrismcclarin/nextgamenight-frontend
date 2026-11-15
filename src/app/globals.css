@@ -520,6 +520,10 @@
   --color-btn-secondary: var(--color-btn-secondary-bg);
   --color-btn-secondary-hover: var(--secondary-hover);
   --color-btn-secondary-text: var(--secondary-foreground);
+  /* 88.9-59 X8 (owner pick G2): the home-card gear's fill and hover. The key names differ from the
+     runtime properties (gear-bg, gear-hover), so neither self-references (the 87.7 rule above). */
+  --color-btn-gear: var(--color-gear-bg);
+  --color-btn-gear-hover: var(--color-gear-hover);
   /* 88.9-39 MED-78 (R-P3b): the pressed segment of the Month | List switch. The key names differ
      from the runtime properties (toggle-pressed-*), so none self-references (the 87.7 rule above). */
   --color-toggle-on: var(--color-toggle-pressed-bg);
@@ -1567,6 +1571,13 @@
   --color-btn-primary-bg: var(--purple-600);
   --color-btn-primary-hover: var(--purple-700);
   --color-btn-primary-text: #ffffff;
+  /* DECISION Phase 88.9-59 (X8, owner pick G2, 2026-11-11): the home gear's own fill, Invite Member's
+     blue one step darker (purple-700 both themes), chosen OVER the secondary recipe (a cream control
+     beside Invite) and OVER G3. Hover darkens in light, lightens in dark, as Invite's does. White icon
+     7.79. One consumer: the home-card gear in src/app/components/grouplist.js ("DECISION Phase 88.9-59 (X8").
+     Pinned by src/app/tokenContrast.test.ts ("anti-vacuity: (5 pairs + 8 preset halos) x 2 themes"). */
+  --color-gear-bg: var(--purple-700);
+  --color-gear-hover: var(--purple-800);
   /* 88.9-39 MED-78 (R-P3b): the pressed Month | List segment, light = the btn-primary values by
      reference (no light pixel moves). The dark arm is its own; marker in `.dark`. */
   --color-toggle-pressed-bg: var(--color-btn-primary-bg);
@@ -2159,6 +2170,11 @@
      Collapsing this back onto purple-500 is a decision, not a cleanup — it re-opens an AA failure. */
   --color-btn-primary-hover: var(--purple-550);
   --color-btn-primary-text: #ffffff;
+  /* 88.9-59 X8 (owner pick G2): the home gear, dark arm. The fill is byte-equal to the light block ON
+     PURPOSE (Invite's dark blue with a fifth of black lands on the same step); only the hover differs,
+     one step lighter, the way the dark Invite hover moves. Marker in the light block. */
+  --color-gear-bg: var(--purple-700);
+  --color-gear-hover: var(--purple-650);
   /* DECISION Phase 88.9-39 MED-78 (88.9-RULINGS.md R-P3b, 2026-11-08): the pressed Month | List
      segment has its own dark arm — purple-400 fill, warm-900 ink, purple-300 hover: 4.02:1 against
      the unpressed purple-800 segment, 4.93:1 against the purple-900 card, ink 6.40:1 — chosen OVER

@@ -1347,12 +1347,33 @@ const GroupList = ({
                          on purpose: plan 88.9-59 (owner fix X8) repaints this gear's fill in both arms
                          before this branch merges, and swapping the fill twice in two plans would be a
                          look change with no ruling. If 88.9-59 does not land, this figure is an open
-                         look finding for the owner, not a settled state. */
+                         look finding for the owner, not a settled state.
+
+                         DECISION Phase 88.9-59 (X8, owner pick G2): own token pair, white icon, the fill as
+                         its edge; AMENDS the 88.3-18 private-token rejection (an owner ruling now stands
+                         behind the gear's own token) and, for this ruling only, the 88.6-40 pin rule (the
+                         class pins moved with the pick, in the same plan). Chosen OVER the secondary recipe
+                         (a cream control beside Invite) and OVER G3. Ring and halos unchanged (computed
+                         numbers: ring 7.7948 on the white card and 5.7553-5.8098 on the eight light halos;
+                         8.2958 on the dark card and 6.7656-9.2279 on the eight dark halos). Glyph, hidden
+                         wrapper, title stay (F5b, D-52). The group-page gear is not ruled and stays
+                         neutral. Going back is a decision, not a cleanup.
+                         THE 88.9-58 SENTENCE ABOVE IS CLOSED: 88.9-59 landed. The repainted fill, measured
+                         2026-11-15 with `src/lib/wcag.ts` on every ground the card paints: **7.7948** on
+                         the white card and **5.7553-5.8098** on the eight preset light grounds; in dark
+                         **1.7767** on the card and **1.4490 (green) - 1.9763 (rose)** on the eight preset
+                         dark grounds. All eighteen clear the 1.05 fill floor this marker names, so the
+                         reserved white-wash substitution stays untaken and is no longer owed. The edge is
+                         the fill itself: the border is transparent, kept only so the box stays 46 x 44, and
+                         the fill paints under it. Hover: 1.4467 against rest in light (darker), 1.2981 in
+                         dark (lighter). These grounds are measured here, not pinned (the 88.3-18 NOT A GATE
+                         A ROW note above stands); the icon, hover and ring floors are pinned in
+                         src/app/tokenContrast.test.ts ("anti-vacuity: (5 pairs + 8 preset halos) x 2 themes"). */
                       <button
                         className={
                           tinted
-                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-btn-secondary text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
-                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-btn-secondary text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
                         }
                         onClick={(e) => {
                           e.stopPropagation();
