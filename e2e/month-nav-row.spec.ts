@@ -8,7 +8,9 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 // X28 (WCAG 1.4.4 Resize Text): with text at 200% on a 375 phone nothing in the nav row overlaps
 // or leaves the calendar card, both arrows stay on screen, no word of the month title is split,
 // and the List view's Month | List switch stays inside the card. jsdom lays nothing out, so the
-// unit pins can only read classes; this file reads the boxes.
+// unit pins can only read classes; this file reads the boxes. X28's weekday half (and 52-X13's
+// compact grid at 200%): the weekday row reads Sun to Sat at 100% and shows one whole letter per
+// day at 200% text on a phone, where a column is narrower than a three-letter name.
 //
 // HOW 200% IS PRODUCED. A style tag sets the root font size to 200%, the same injection the
 // capture that found X28 used. The app sets no root font size, so every rem doubles (the title
@@ -64,6 +66,8 @@ interface NavRead {
 
 interface WeekdayRead {
   error: string;
+  rowScrollWidth: number;
+  rowClientWidth: number;
   labels: string[];
   cells: Box[];
   texts: Array<Box | null>;
@@ -155,7 +159,7 @@ async function readNav(card: Locator): Promise<NavRead> {
 // over the cell: text that is not displayed has no client rects).
 async function readWeekdays(card: Locator): Promise<WeekdayRead> {
   return card.evaluate((el) => {
-    const out = { error: '', labels: [] as string[], cells: [] as Array<{ left: number; top: number; right: number; bottom: number; width: number; height: number }>, texts: [] as Array<{ left: number; top: number; right: number; bottom: number; width: number; height: number } | null> };
+    const out = { error: '', rowScrollWidth: 0, rowClientWidth: 0, labels: [] as string[], cells: [] as Array<{ left: number; top: number; right: number; bottom: number; width: number; height: number }>, texts: [] as Array<{ left: number; top: number; right: number; bottom: number; width: number; height: number } | null> };
     const rows = Array.from(el.querySelectorAll('div')).filter(
       (d) => d.children.length === 7 && (d.children[0].textContent ?? '').includes('Sun'),
     );
@@ -163,6 +167,8 @@ async function readWeekdays(card: Locator): Promise<WeekdayRead> {
       out.error = `expected one seven-cell weekday row under the card, found ${rows.length}`;
       return out;
     }
+    out.rowScrollWidth = rows[0].scrollWidth;
+    out.rowClientWidth = rows[0].clientWidth;
     for (const cell of Array.from(rows[0].children)) {
       const r = cell.getBoundingClientRect();
       out.cells.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height });
@@ -394,6 +400,99 @@ test.describe('the month nav row at phone width (88.9-62, X22 + X28)', () => {
       expect(part.left, `${label}: ${name} starts at ${part.left.toFixed(1)}px, left of the card's content edge at ${read.left.toFixed(1)}px (switch ${switchWidth.toFixed(1)}px in ${contentWidth.toFixed(1)}px)`).toBeGreaterThanOrEqual(read.left - 0.5);
       expect(part.right, `${label}: ${name} ends at ${part.right.toFixed(1)}px, past the card's content edge at ${read.right.toFixed(1)}px (switch ${switchWidth.toFixed(1)}px in ${contentWidth.toFixed(1)}px)`).toBeLessThanOrEqual(read.right + 0.5);
     });
+  });
+
+  test('X28 (88.9): at 375 the weekday row reads Sun to Sat at 100% and, with root text at 200%, shows seven whole one-letter labels side by side in their columns', async ({ page }) => {
+    const viewportWidth = page.viewportSize()?.width ?? 375;
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    const card = await calendarCard(page, 'Calendar', 'group page weekday row, 375');
+    await showMonth(page, card, 'group page weekday row, 375');
+
+    // Every weekday label is whole, inside its own column, on the screen, and clear of its neighbours.
+    const expectWholeLabels = (read: WeekdayRead, label: string): void => {
+      expect(read.error, `${label}: ${read.error}`).toBe('');
+      expect(read.cells.length, `${label}: the weekday row does not hold seven cells`).toBe(7);
+      const texts: Box[] = [];
+      read.texts.forEach((text, i) => {
+        const cell = read.cells[i];
+        expect(text, `${label}: weekday ${i + 1} shows no text`).not.toBeNull();
+        if (!text) return;
+        texts.push(text);
+        expect(
+          text.left >= cell.left - 0.5 && text.right <= cell.right + 0.5,
+          `${label}: weekday ${i + 1}'s text (x ${text.left.toFixed(1)}..${text.right.toFixed(1)}, ${text.width.toFixed(1)}px) leaves its column (x ${cell.left.toFixed(1)}..${cell.right.toFixed(1)}, ${cell.width.toFixed(1)}px)`,
+        ).toBe(true);
+        expect(text.left, `${label}: weekday ${i + 1}'s text starts at ${text.left.toFixed(1)}px, left of the screen`).toBeGreaterThanOrEqual(-0.5);
+        expect(text.right, `${label}: weekday ${i + 1}'s text ends at ${text.right.toFixed(1)}px, past the ${viewportWidth}px screen`).toBeLessThanOrEqual(viewportWidth + 0.5);
+      });
+      for (let i = 1; i < texts.length; i++) {
+        expect(texts[i].left, `${label}: weekday ${i + 1}'s text starts at ${texts[i].left.toFixed(1)}px, over weekday ${i}'s text, which ends at ${texts[i - 1].right.toFixed(1)}px`).toBeGreaterThanOrEqual(texts[i - 1].right - 0.5);
+      }
+    };
+    const logLabels = (read: WeekdayRead, label: string): void => {
+      const widths = read.texts.map((text) => (text ? text.width.toFixed(1) : 'none')).join(' ');
+      const column = read.cells.length > 0 ? read.cells[0].width.toFixed(1) : 'none';
+      // eslint-disable-next-line no-console -- the measured label widths are recorded from the CI log
+      console.log(`[88.9-62 weekday row] ${label}: label widths ${widths} px in ${column}px columns`);
+    };
+
+    const rest = await readWeekdays(card);
+    logLabels(rest, 'group page weekday row, 375');
+    expect(rest.labels, 'group page weekday row, 375: the weekday row does not read Sun to Sat at 100%').toEqual(WEEKDAYS_SHORT);
+    expectWholeLabels(rest, 'group page weekday row, 375');
+
+    const label = 'group page weekday row, 375, root text 200%';
+    await injectRoot200(page, label);
+    const big = await readWeekdays(card);
+    logLabels(big, label);
+    expect(big.labels, `${label}: the weekday row does not read S M T W T F S`).toEqual(WEEKDAYS_SHORT.map((day) => day[0]));
+    expectWholeLabels(big, label);
+    expect(big.rowScrollWidth, `${label}: the weekday row's content is ${big.rowScrollWidth}px wide in a ${big.rowClientWidth}px row`).toBeLessThanOrEqual(big.rowClientWidth + 1);
+
+    // DECISION Phase 88.9-62 (P4, card width): the card's own scrollWidth is LOGGED here, chosen
+    // OVER asserting it. The nav block (P2) and the weekday row (above) are asserted on their own
+    // boxes, which is what this plan fixes. The card also holds the day grid, where a day with
+    // more events than it shows prints a "+N more" label that is wider than a 200% column: in
+    // the Saturday column that label runs past the card, so a card-level check would go red or
+    // green with the seeded dates, for a defect this plan does not fix (recorded in the plan's
+    // SUMMARY for routing). Asserting the card here is a decision, not a cleanup.
+    const fit = await card.evaluate((el) => {
+      const out = { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, dayNumbers: 0, overlaps: 0, error: '' };
+      // The day grid, by structure: the one element under the card holding whole weeks of cells.
+      const grids = Array.from(el.querySelectorAll('div')).filter((d) => [28, 35, 42].includes(d.children.length));
+      if (grids.length !== 1) {
+        out.error = `expected one month grid of 28, 35 or 42 cells under the card, found ${grids.length}`;
+        return out;
+      }
+      // A day number is the first text in its cell that is one or two digits and nothing else.
+      const rects: DOMRect[] = [];
+      for (const cell of Array.from(grids[0].children)) {
+        const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (!/^\d{1,2}$/.test((node.textContent ?? '').trim())) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const rect = range.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) rects.push(rect);
+          break;
+        }
+      }
+      out.dayNumbers = rects.length;
+      for (let i = 0; i < rects.length; i++) {
+        for (let j = i + 1; j < rects.length; j++) {
+          const x = Math.min(rects[i].right, rects[j].right) - Math.max(rects[i].left, rects[j].left);
+          const y = Math.min(rects[i].bottom, rects[j].bottom) - Math.max(rects[i].top, rects[j].top);
+          if (x > 0.5 && y > 0.5) out.overlaps += 1;
+        }
+      }
+      return out;
+    });
+    // eslint-disable-next-line no-console -- the card's measured width is recorded from the CI log, not asserted (marker above)
+    console.log(`[88.9-62 weekday row] ${label}: card scrollWidth ${fit.scrollWidth}px in a ${fit.clientWidth}px card`);
+    // Guard: the day numbers under the letters do not run into each other either.
+    expect(fit.error, `${label}: ${fit.error}`).toBe('');
+    expect(fit.dayNumbers, `${label}: fewer than 28 day numbers were read from the month grid`).toBeGreaterThanOrEqual(28);
+    expect(fit.overlaps, `${label}: ${fit.overlaps} pairs of day numbers overlap`).toBe(0);
   });
 });
 
