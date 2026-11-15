@@ -181,7 +181,7 @@ function Header(){
                     halo (9.00 light / 10.76 dark), chosen OVER the UA outline (2.51:1 light at 1280)
                     and OVER the fleet no-offset ring-ring (A10a, not picked).
                     Splitting, moving or renaming this landmark is a decision, not a cleanup. */}
-                <nav aria-label={MAIN_NAV_LABEL} className="w-full max-w-7xl mx-auto px-4 h-full">
+                <nav aria-label={MAIN_NAV_LABEL} className="w-full max-w-[100rem] mx-auto px-4 h-full">
                     <div className="flex justify-between items-center h-full">
                         {/* Brand */}
                         <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-header">

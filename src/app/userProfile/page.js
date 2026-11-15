@@ -2350,7 +2350,9 @@ function Profile(){
                     group bodies (and gameDetail, 6xl to 7xl). NAV-01 fixed bodies that stretched PAST the 1280px
                     header and footer; this settings column is centred inside them and never reaches their edge,
                     and widening it to 1280 was never put to the owner. The owner confirms this at the 1280 / 1440
-                    glance (plan 88.9-51); widening it is a decision, not a cleanup. */}
+                    glance (plan 88.9-51); widening it is a decision, not a cleanup.
+                    AMENDED Phase 88.9-59 (X5a): header, footer and Home now cap at 1600; this column stays
+                    max-w-4xl (N10). */}
                 {/* SMS-disabled banner — gated on phoneJustRemoved (session flag
                     set by handleRemovePhone success) so it does NOT fire for users
                     who never had a phone. Also gated on sms_enabled per the

@@ -94,7 +94,7 @@ function PublicFooter() {
 
   return (
     <footer className="bg-surface-page border-t border-line">
-      <div className="max-w-7xl mx-auto px-4 py-4">
+      <div className="max-w-[100rem] mx-auto px-4 py-4">
         {/* DECISION Phase 88.6-34 (D-01 / UI-SPEC §4.2-§4.3): `text-xs` -> `text-sm`, chosen OVER
             leaving the strip at Caption 12 on the "fine print is conventionally small" convention
             — which is exactly the convention §4.2's CLOSED role list exists to close. Caption may
@@ -146,7 +146,7 @@ function AuthFooter() {
   return (
     <>
       <footer className="bg-surface-page border-t border-line">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-[100rem] mx-auto px-4 py-4">
           {/* Label 14, matching PublicFooter above — full reasoning at that site's marker. The two
               strips are the same surface in two auth states and must carry the same rung. */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-sm text-content-muted">

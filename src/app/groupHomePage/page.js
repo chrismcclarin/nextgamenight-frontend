@@ -1020,6 +1020,10 @@ function GroupHomePage(){
         // The group focus guard is its THIRD child, in every return (88.6.1-89).
         <>
         <div className="p-4 md:p-6 max-w-7xl mx-auto">
+            {/* DECISION Phase 88.9-59 (X5c, owner at the 88.9-51 glance 2026-11-11: it looks better at 1280; it should look
+                fine if the header is at 1600 and the page is 1280): this body stays max-w-7xl (1280) under the 1600 header and
+                footer, chosen OVER matching the header's 1600: a single-column page reads better at 1280. Widening it is a
+                decision, not a cleanup. Owner-ruled. */}
             {/* Breadcrumbs.
                 DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
                 the Home link gains the project focus ring, the same string the tab

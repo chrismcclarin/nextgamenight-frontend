@@ -3560,10 +3560,14 @@ export default function GameDetailPage() {
            two branches), not a cleanup.
 
            DECISION Phase 88.9-36 NAV-01 (owner ruling (a), chat 2026-11-07 1:08 PM Pacific): this
-           root and the event-view root cap at 7xl (1280px), centred, the same box as
-           src/app/Header.js ("w-full max-w-7xl mx-auto px-4 h-full"), chosen OVER the shipped 6xl
+           root and the event-view root cap at 7xl (1280px), centred, which WAS the same box as the header nav
+           (the nav is now src/app/Header.js ("w-full max-w-[100rem] mx-auto px-4 h-full"), see X5c below), chosen OVER the shipped 6xl
            (1152px) cap, which stopped 64px inside the header and footer box on each side at wide
-           screens. Narrowing it again is a decision, not a cleanup. */
+           screens. Narrowing it again is a decision, not a cleanup.
+           DECISION Phase 88.9-59 (X5c, owner at the 88.9-51 glance 2026-11-11: it looks better at 1280; it should look
+           fine if the header is at 1600 and the page is 1280): this body stays max-w-7xl (1280) under the 1600 header and
+           footer, chosen OVER matching the header's 1600: a single-column page reads better at 1280. Widening it is a
+           decision, not a cleanup. Orchestrator default; the owner may overrule from the 1600 picture. */
         <div className="p-3 md:p-6 max-w-7xl mx-auto">
             {/* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): the group-content guard. */}
             <RetainedContentFocusGuard retained={groupContentRetained} focusTarget={gameTitleRef} />

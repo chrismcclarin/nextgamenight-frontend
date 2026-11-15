@@ -640,8 +640,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
            shorthand, so a zeroed desktop override wins the cascade and silently drops desktop
            bottom padding from 1.5rem to 0, with no gate to catch it (padding-budget.spec.ts is
            phone-only).
-           DECISION Phase 88.9-42 NAV-01 (owner by chat 2026-11-07 1:08 PM Pacific, '(a)'): the home body caps at max-w-7xl mx-auto so it shares the header's edge, chosen OVER the full-bleed body; md:pb-6 stays (comment above). */
-        <div className="user-home-container max-w-7xl mx-auto w-full p-4 md:p-6 md:pb-6">
+           DECISION Phase 88.9-42 NAV-01 (owner by chat 2026-11-07 1:08 PM Pacific, '(a)'): the home body caps at max-w-7xl mx-auto so it shares the header's edge, chosen OVER the full-bleed body; md:pb-6 stays (comment above).
+           AMENDED Phase 88.9-59 (X5a, owner at the 88.9-51 glance 2026-11-11: can we make it closer to 1600?): the cap
+           moves to 1600 with the header and both footer strips; the body still shares the header's edge. Chosen OVER
+           the 1280 cap. */
+        <div className="user-home-container max-w-[100rem] mx-auto w-full p-4 md:p-6 md:pb-6">
             {/* Plan 88.6.1-62 (88.6.1-70 contract C12): ONE guard for the ONE `retained`, first in the
                 container and outside every arm a withdrawal swaps; it renders nothing. Its target
                 follows the sheet — see the DECISION Phase 88.6.1-62 marker above. */}

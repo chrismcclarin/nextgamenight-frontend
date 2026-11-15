@@ -655,6 +655,11 @@ export default function GroupPlanningPage() {
 
     return (
         <div className="p-4 md:p-6 max-w-7xl mx-auto">
+            {/* DECISION Phase 88.9-59 (X5c, owner at the 88.9-51 glance 2026-11-11: it looks better at 1280; it should look
+                fine if the header is at 1600 and the page is 1280): this body stays max-w-7xl (1280) under the 1600 header and
+                footer, chosen OVER matching the header's 1600: a single-column page reads better at 1280. Widening it is a
+                decision, not a cleanup. Orchestrator default; the owner may
+                overrule from the 1600 picture. */}
             {/* Breadcrumbs */}
             {/* DECISION Phase 88.6-21 (#175, owner ruling 2026-09-14, option 2 — label all five
                 breadcrumb navs). THIS ATTRIBUTE IS THE ONLY EDIT PLAN 21 MAKES TO THIS FILE. The
