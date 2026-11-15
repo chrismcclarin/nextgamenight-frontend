@@ -2,7 +2,7 @@
   "header": {
     "generated_by": "planning:.planning/phases/88.9-fe-look-decisions-design-phase-mockup-gated-split-from-88-6/halo-census-tooling/halo-census.cjs --render-fe-fixture",
     "fe_head_of_census": "b58735a",
-    "included": 30,
+    "included": 29,
     "excluded": {
       "card-default": 112,
       "inset": 0,
@@ -128,11 +128,6 @@
     {
       "file": "src/app/components/tutorial/WelcomeSlide.js",
       "anchor": "onClick={onStart}",
-      "utility": "focus-visible:ring-offset-surface-page"
-    },
-    {
-      "file": "src/app/friends/page.js",
-      "anchor": "<Button asChild variant=",
       "utility": "focus-visible:ring-offset-surface-page"
     },
     {
