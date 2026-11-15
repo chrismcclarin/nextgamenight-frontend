@@ -208,7 +208,7 @@ const AD_HOC_FAILURE_COPY = /['"`][^'"`]*\bFailed to \w+/i;
 //     CHANGES CHANNEL must not change its exemption status, or a correct conversion reds
 //     a gate it never touched. Three sites are known to cross while this gate is live:
 //     src/app/components/grouplist.js ("logger.info('Error fetching groups:'") (plan 21, wave 7) and
-//     src/app/gameDetail/page.js ("logger.info('Failed to get game invite token:'") with its
+//     src/app/gameDetail/page.js ("logger.warn('Failed to get game invite token:'") with its
 //     remove-participant sibling (plan 18,
 //     wave 7). This is test-local and has no runtime reach — measured 2026-09-15,
 //     `grep -rn DEVELOPER_LOG src/` returns 5 hits, ALL in this file, zero production
@@ -1068,7 +1068,7 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
     //    FOLLOWING line, which is why the sink guard is line-based and why `errCtx` exists.
     //    Verbatim from the pre-conversion tree (the console.* lines that became
     //    src/app/components/grouplist.js ("logger.info('Error fetching groups:'") and
-    //    src/app/gameDetail/page.js ("logger.info('Failed to get game invite token:'") with its
+    //    src/app/gameDetail/page.js ("logger.warn('Failed to get game invite token:'") with its
     //    remove-participant sibling), then the converted form.
     const channelChangers: Array<[string, string]> = [
       [

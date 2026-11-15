@@ -7,6 +7,7 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL, ApiError } from '../../lib/api';
 import { isUuid } from '../../lib/isUuid';
 import { collapseBlankLines } from '../../lib/collapseBlankLines';
+import { hasStarted } from '../../lib/upcomingEvents';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
@@ -427,6 +428,8 @@ function GuestInviteButton({ groupId, userId }) {
 const EVENT_NOT_FOUND_TITLE = 'Event not found';
 const EVENT_NOT_FOUND_DETAIL = 'This event no longer exists or has been cancelled.';
 const PAGE_LOADING_LABEL = 'Loading game night...';
+// DECISION Phase 88.9-65 (X35 heard words): the loader region speaks copy row E4's words with ONE U+2026, chosen OVER PAGE_LOADING_LABEL's three ASCII dots (VoiceOver reads them aloud, VO-P2-7, quick-261020-tz3) and OVER changing E4's visible glyph (E4, E4b and the route fallback share it; not this row). Same words, not new copy.
+const PAGE_LOADING_HEARD = 'Loading game night…';
 // Copy rows E1, E2 and E3 (88.6.1-COPY-TABLE.html, ratified 2026-10-04, D-30), shipped with the
 // straight apostrophe (D-32 R8). AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): E3 now composes Couldn't load this event through thing, chosen OVER the ratified We couldn't load this event (D-30, 2026-10-04).
 const EVENT_NO_ACCESS_TITLE = "You don't have access to this event";
@@ -1409,7 +1412,8 @@ export default function GameDetailPage() {
             setGameInviteUrl(data.invite_url);
             setShowGameQR(true);
         } catch (err) {
-            logger.info('Failed to get game invite token:', errCtx(err));
+            // AMENDED Phase 88.9-65 (X34): warn, matching its Home twin (owner F1, 2026-11-07); was info.
+            logger.warn('Failed to get game invite token:', errCtx(err));
             toast.error(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't build the share code. Please try again.",
@@ -1619,7 +1623,8 @@ export default function GameDetailPage() {
                 try {
                     eventsData = await eventsAPI.getGroupEvents(group_id);
                 } catch (error) {
-                    logger.info('Error fetching events:', errCtx(error));
+                    // AMENDED Phase 88.9-65 (X34): warn, matching its Home twin (owner F1, 2026-11-07); was info.
+                    logger.warn('Error fetching events:', errCtx(error));
                     if (!isCurrentRun()) return undefined;
                     // DECISION Phase 88.6.1-74 (C1, side reads): no empty-list write; the access
                     // answer first, then the failure is recorded and the fan-out skipped.
@@ -1643,7 +1648,8 @@ export default function GameDetailPage() {
                            Level is `logger.info` and NOT `logger.warn` for the reason AC-2's owner
                            amendment of 2026-09-13 records: `logger.warn` is `Sentry.captureMessage`,
                            an EVENT, and under `replaysOnErrorSampleRate: 1.0` an event flushes the
-                           Session Replay buffer. The severity lives in the message, not the channel. */
+                           Session Replay buffer. The severity lives in the message, not the channel.
+                           AMENDED Phase 88.9-65 (X34, from the owner's F1 ruling, veto open): the 1.0 premise is stale, the rate is 0.1 (sentry.client.config.js ("replaysOnErrorSampleRate: 0.1,")). This shape line stays info; the share-code and group-nights catches warn like their Home twins, chosen OVER breadcrumbs that reach Sentry only beside a later event. */
                         logger.info('Events data is not an array:', { received: eventsData === null ? 'null' : typeof eventsData });
                         eventsData = [];
                     }
@@ -2902,14 +2908,15 @@ export default function GameDetailPage() {
                     modal with the full list and the Remove control (admins
                     only). The Share Game QR button stays group-member-only
                     per CONTEXT (admin/owner-initiated invites only — not
-                    surfaced to game-only callers). */}
+                    surfaced to game-only callers).
+                    AMENDED Phase 88.9-65 (X42, orchestrator decision, veto open): Share Game QR only before the night starts (hasStarted, as the calendar popup and RSVP controls), chosen OVER an ungated button reachable from an old link; a started night shows heading and chips. */}
                 {(userScope === 'group-member' || userScope === 'game-only') && userRole !== 'pending' && participants.length > 0 && (
                     <div className="card p-3 md:p-6 mb-6">
                         <div className="flex items-center justify-between gap-3 mb-3">
                             <Heading level={2} size="heading" className="text-content-primary">
                                 Participants ({participants.length})
                             </Heading>
-                            {userScope === 'group-member' && (
+                            {userScope === 'group-member' && !hasStarted(singleEvent, Date.now()) && (
                                 <Button
                                     variant="accent"
                                     onClick={handleShowGameQR}
@@ -3471,6 +3478,7 @@ export default function GameDetailPage() {
 
     // The shared loader (both views) reads copy row E4 and is a labelled status, RouteFallback's
     // contract (role="status" + aria-label), so the loader that holds the redirect is announced.
+    // AMENDED Phase 88.9-65 (X35): a status mounted holding its words is not announced; the region below speaks them.
     // 88.6.1-74 (review r3 L-02, M2-01): the loader also covers a game key whose game read has not
     // answered in this visit's run, so an in-page key change never paints "Game not found" or a
     // stale game view for one commit. See the AMENDED line on the DECISION Phase 88-25 gate below.
@@ -3478,8 +3486,9 @@ export default function GameDetailPage() {
     // 88.9-40: `signIn.holding` is the game view's redirect frame (the event view's is holdEventLoader).
     if (loading || holdEventLoader || holdAccountDeletedLoader || gameKeyUnanswered || signIn.holding) {
         return (
-            <div className="flex items-center justify-center min-h-screen" role="status" aria-label={PAGE_LOADING_LABEL}>
+            <div className="flex items-center justify-center min-h-screen">
                 <p className="text-content-secondary">{PAGE_LOADING_LABEL}</p>
+                <StatusRegion settleOnMount className="sr-only" message={PAGE_LOADING_HEARD} />
                 {retainedFocusGuards}
             </div>
         );
