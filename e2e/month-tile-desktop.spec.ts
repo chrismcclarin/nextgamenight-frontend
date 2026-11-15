@@ -29,7 +29,8 @@ import {
  * `88-RESIDUAL-CENSUS.md` row 5.4 handed the rendered confirmation to 88.6 unconditionally.
  * Scenario A below asserts everything a browser CAN assert about that (the declaration is live,
  * carries the intended value, and the validated `hasBackgroundImage` derivation resolved TRUE)
- * and captures the screenshot. Whether the text is LEGIBLE over an arbitrary image has no
+ * and captures the screenshot. [AMENDED Phase 88.9-60, X23a: the intended value is now the photo
+ * text set, read off the text in dark here and in light in the describe further down.] Whether the text is LEGIBLE over an arbitrary image has no
  * oracle — that is the owner's judgement, priced as a `checkpoint:human-verify` in the plan.
  * Scenario B is the other direction of the same allow-list (`safeBgImageStyle.ts`): a URL it
  * REJECTS paints no image and gets the plain-coloured treatment. That one has a real oracle.
@@ -89,20 +90,11 @@ test.skip(
 /** The FSEC-03 motivating case, verbatim from src/lib/safeBgImageStyle.ts ("still parses with protocol"). */
 const REJECTED_URL = 'javascript:alert(1)';
 
-/** The overlay src/app/components/CalendarMonthView.js ("rgba(255, 255, 255, 0.7)") paints ONLY when `hasValidBgImage` is true. */
-const IMAGE_OVERLAY_RGBA = 'rgba(255, 255, 255, 0.7)';
-
 /**
- * `colorUtils.js`'s `STROKE_DARK` is a module-private constant, so it is READ FROM THE SOURCE at
- * run time rather than transcribed — the value under test is the one the app ships, and a
- * future re-tune moves this expectation with it (the plan-47 "derived, not guessed" shape).
+ * The 70% white wash an image tile carried until X23a (88.9-60, owner pick page 10a). No tile may
+ * paint it any more: a picture tile shows the photo unwashed under the photo text set.
  */
-function strokeDarkFromSource(): string {
-  const src = readFileSync(resolve(__dirname, '../src/lib/colorUtils.js'), 'utf8');
-  const m = src.match(/const STROKE_DARK = '([^']+)'/);
-  if (!m) throw new Error('colorUtils.js no longer declares `const STROKE_DARK = \'…\'` — re-derive this spec');
-  return m[1];
-}
+const IMAGE_OVERLAY_RGBA = 'rgba(255, 255, 255, 0.7)';
 
 /**
  * `colorUtils.js`'s white-is-unset rule is module-private too, so its pattern is READ FROM THE
@@ -328,6 +320,40 @@ async function tileVars(tile: Locator): Promise<{ stroke: string; strokeL: strin
   });
 }
 
+/**
+ * X23a (88.9-60, owner pick page 10a): the game name over a tile photo wears the photo text set,
+ * the one the home card and group header wear (X7): white, a 2px black outline painted before the
+ * fill, 700, 0.03em (0.36px at the tile's 12px), no shadow. Read off the rendered text, because a
+ * custom property that never reaches a declaration proves nothing (the CR-01 class).
+ */
+async function expectPhotoRule(tile: Locator, event: FixtureEvent, label: string): Promise<void> {
+  const read = await gameName(tile, event).evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return {
+      color: cs.color,
+      strokeWidth: cs.getPropertyValue('-webkit-text-stroke-width'),
+      strokeColor: cs.getPropertyValue('-webkit-text-stroke-color'),
+      paintOrder: cs.getPropertyValue('paint-order'),
+      weight: cs.fontWeight,
+      letterSpacing: cs.letterSpacing,
+      fontSize: cs.fontSize,
+      shadow: cs.textShadow,
+    };
+  });
+  // eslint-disable-next-line no-console -- the measured tile text set is recorded from the CI log
+  console.log(`${label}: ${JSON.stringify(read)}`);
+  expect.soft(read.color, `${label}: the game name is not white`).toBe('rgb(255, 255, 255)');
+  expect.soft(read.strokeWidth, `${label}: the outline is not 2px`).toBe('2px');
+  expect.soft(read.strokeColor, `${label}: the outline is not black`).toBe('rgb(0, 0, 0)');
+  expect.soft(read.paintOrder, `${label}: the outline is not painted before the fill`).toMatch(/^stroke\b/);
+  expect.soft(read.weight, `${label}: the game name is not 700`).toBe('700');
+  expect.soft(read.fontSize, `${label}: the game name is not the tile's 12px`).toBe('12px');
+  expect
+    .soft(Math.abs(Number.parseFloat(read.letterSpacing) - 0.36) <= 0.01, `${label}: letter-spacing is ${JSON.stringify(read.letterSpacing)}, not 0.36px (0.03em at 12px)`)
+    .toBe(true);
+  expect.soft(read.shadow, `${label}: the game name still carries a text shadow`).toBe('none');
+}
+
 async function overlayCount(tile: Locator, rgba: string): Promise<number> {
   return tile.evaluate(
     (el, colour) =>
@@ -351,10 +377,14 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
     expect(dialogsSeen, 'a browser dialog opened — a planted URL EXECUTED (FSEC-03)').toEqual([]);
   });
 
-  test('Scenario A — an ALLOWED image URL: the stroke pair is LIVE at STROKE_DARK, the validated flag resolved TRUE, and the tile is photographed', async ({ page, baseURL }) => {
-    // An app-origin asset, not a third-party host: the mechanical assertions do not depend on
-    // the bytes loading, and a CI run must not fail on someone else's CDN. `http(s):` is what the
-    // allow-list checks (src/lib/safeBgImageStyle.ts ("export const ALLOWED_IMAGE_PROTOCOLS")), and this is it.
+  // AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): this scenario used to pin the
+  // dark arm at STROKE_DARK under the 70% white wash (F7a kept it). A picture tile now wears the
+  // photo text set in both themes over an unwashed photo; this is the dark read, the light twin is
+  // in the light describe below.
+  test('Scenario A — X23a (88.9): an ALLOWED image URL paints an unwashed photo tile whose game name wears the photo rule in dark, and the tile is photographed', async ({ page, baseURL }) => {
+    // An app-origin asset, not a third-party host: a CI run must not fail on someone else's CDN,
+    // and since X6 the picture has to LOAD for the tile to stay on its photo arm. `http(s):` is what
+    // the allow-list checks (src/lib/safeBgImageStyle.ts ("export const ALLOWED_IMAGE_PROTOCOLS")), and this is it.
     const allowedUrl = new URL('/bgg-logo.png', baseURL ?? 'http://localhost:3000').href;
     const read = await seedGroupImage(page, allowedUrl);
 
@@ -364,26 +394,18 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
     const { event } = read();
     const tile = await tileFor(page, event);
 
-    await test.step('the validated derivation resolved TRUE: the image is painted and the 0.7 white overlay is mounted', async () => {
+    await assertTheme(page, 'dark');
+
+    await test.step('the validated derivation resolved TRUE: the image is painted and NO white wash is mounted over it', async () => {
       const vars = await tileVars(tile);
-      expect(vars.bgImage, 'the tile paints no background-image — safeBgImageStyle rejected an allow-listed URL').toContain('bgg-logo.png');
-      expect(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'the image overlay (src/app/components/CalendarMonthView.js ("rgba(255, 255, 255, 0.7)")) is gated on hasValidBgImage and did not mount').toBe(1);
+      expect(vars.bgImage, 'the tile paints no background-image — safeBgImageStyle rejected an allow-listed URL, or the picture did not load').toContain('bgg-logo.png');
+      expect.soft(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'X23a: the 70% white wash is still mounted over the tile photo').toBe(0);
     });
 
-    await test.step('the dark --t-stroke arm carries STROKE_DARK and the declaration is LIVE on the text; the light arm carries none (F7a)', async () => {
-      const strokeDark = strokeDarkFromSource();
-      const vars = await tileVars(tile);
-      expect(vars.stroke, '--t-stroke (dark arm) is not colorUtils.js STROKE_DARK').toBe(strokeDark);
-      // DECISION Phase 88.9-21 (owner pick F7a, votes-b5 v10): the light arm is expected empty or none, chosen over the both-arms STROKE_DARK pin of src/app/components/CalendarMonthView.js ("DECISION Phase 88.3-cr (CR-01, code-adversarial-review 2026-08-27)"); the dark arm and the computed 0.5px stay pinned. Reverting it is a decision.
-      expect(['', 'none'], 'F7a: the light arm (--t-stroke-l) carries no stroke').toContain(vars.strokeL);
-      // The original CR-01 bug was a VALUE browsers discarded — so the computed style on the text,
+    await test.step('the game name wears the photo rule in dark, LIVE on the text', async () => {
+      // The original CR-01 bug was a VALUE browsers discarded, so the computed style on the text,
       // not the custom property, is the assertion that would have caught it.
-      const [width, colour] = await gameName(tile, event).evaluate((el) => {
-        const cs = getComputedStyle(el);
-        return [cs.getPropertyValue('-webkit-text-stroke-width'), cs.getPropertyValue('-webkit-text-stroke-color')];
-      });
-      expect(width, 'the text-stroke width did not resolve — the declaration was dropped again (the CR-01 class)').toBe('0.5px');
-      expect(colour).toBe('rgba(0, 0, 0, 0.9)');
+      await expectPhotoRule(tile, event, 'X23a image tile (dark)');
     });
 
     await test.step('screenshot — the verification record for the owner legibility judgement', async () => {
@@ -969,14 +991,16 @@ test.describe('the guest edge on the FULL month tile at 1280 (88.9 D5a / O18a)',
   });
 });
 
-test.describe('the image-backed FULL month tile, light (88.9 F7a)', () => {
+// AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): F7a's light arm (dark ink, no
+// stroke, on the 70% white wash) is reversed. The light tile wears the same photo rule as dark.
+test.describe('the image-backed FULL month tile, light (88.9 X23a, was F7a)', () => {
   // Both projects bake dark; colorScheme alone does not set the class (the O4b light idiom above).
   test.use({ colorScheme: 'light' });
   test.beforeEach(async ({ page }) => {
     await forceLightMode(page);
   });
 
-  test('F7a (88.9): an image tile\'s light arm has no shadow and no stroke; the dark arm keeps STROKE_DARK', async ({ page, baseURL }) => {
+  test('X23a (88.9): an image tile\'s light arm wears the photo rule', async ({ page, baseURL }) => {
     const allowedUrl = new URL('/bgg-logo.png', baseURL ?? 'http://localhost:3000').href;
     const read = await seedGroupImage(page, allowedUrl);
     try {
@@ -988,16 +1012,15 @@ test.describe('the image-backed FULL month tile, light (88.9 F7a)', () => {
 
       // Anti-vacuity: the image branch is the one under test.
       const vars = await tileVars(tile);
-      expect(vars.bgImage, 'F7a: the tile paints no background-image — the image branch is not under test').toContain('bgg-logo.png');
-      expect(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'F7a: the 0.7 white image overlay did not mount').toBe(1);
+      expect(vars.bgImage, 'X23a: the tile paints no background-image — the image branch is not under test').toContain('bgg-logo.png');
+      expect.soft(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'X23a (light): the 70% white wash is still mounted over the tile photo').toBe(0);
 
-      const [shadow, strokeWidth] = await gameName(tile, event).evaluate((el) => {
-        const cs = getComputedStyle(el);
-        return [cs.getPropertyValue('text-shadow'), cs.getPropertyValue('-webkit-text-stroke-width')];
-      });
-      expect(shadow, 'F7a (light): the image tile game name still carries a text shadow').toBe('none');
-      expect(strokeWidth, 'F7a (light): the image tile game name still carries a text stroke').toBe('0px');
-      expect(vars.stroke, 'F7a: --t-stroke (dark arm) is not colorUtils.js STROKE_DARK').toBe(strokeDarkFromSource());
+      await expectPhotoRule(tile, event, 'X23a image tile (light)');
+
+      // The frame the owner judges (the light tile is the arm X23a reverses).
+      const tilePath = test.info().outputPath('month-tile-desktop-x23a-light-tile.png');
+      await tile.screenshot({ path: tilePath });
+      await test.info().attach('month-tile-desktop-x23a-light-tile', { path: tilePath, contentType: 'image/png' });
     } finally {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     }
