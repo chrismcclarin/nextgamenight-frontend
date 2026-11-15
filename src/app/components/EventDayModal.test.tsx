@@ -485,19 +485,26 @@ describe('EventDayModal — round-2 look (88.9-39)', () => {
     expect(document.querySelectorAll('.w-16.h-16'), 'no picture slot for a night with no picture').toHaveLength(0);
   });
 
-  it('W57 (88.9): a cancelled or completed night is tagged Cancelled / Completed, never Upcoming', () => {
+  // AMENDED Phase 88.9-61 (X26, owner 2026-11-12: yes, remove the completed tag): the Completed
+  // half of this pin left. A completed night that is still future-dated reads Upcoming like any
+  // other future night; only Cancelled reaches the muted pair.
+  it('W57 / X26 (88.9): a cancelled night is tagged Cancelled; a completed future night is tagged Upcoming like any future night', () => {
     const cancelled = { ...upcomingEvent, id: 'evt-cancelled', status: 'cancelled', Game: { name: 'Azul' } };
     const completed = { ...upcomingEvent, id: 'evt-completed', status: 'completed', Game: { name: 'Codenames' } };
     renderEvents([cancelled, completed]);
-    for (const label of ['Cancelled', 'Completed'] as const) {
-      const tag = screen.getByText(label);
-      expect(classesOf(tag), `${label}: the muted fill`).toContain('bg-surface-muted');
-      expect(classesOf(tag), `${label}: the secondary ink`).toContain('text-content-secondary');
-    }
-    expect(screen.queryByText('Upcoming')).toBeNull();
+    const cancelledTag = screen.getByText('Cancelled');
+    expect(classesOf(cancelledTag), 'Cancelled: the muted fill').toContain('bg-surface-muted');
+    expect(classesOf(cancelledTag), 'Cancelled: the secondary ink').toContain('text-content-secondary');
     // MED-80: the tag DESCRIBES the row (aria-describedby), adding to the computed name, never replacing it.
     expect(screen.getByRole('button', { name: /Azul.*Tuesday Crew/ })).toHaveAccessibleDescription('Cancelled');
-    expect(screen.getByRole('button', { name: /Codenames.*Tuesday Crew/ })).toHaveAccessibleDescription('Completed');
+    // X26: no surface says Completed. The completed future night wears the success Upcoming tag.
+    expect(screen.queryByText('Completed'), 'no Completed tag anywhere').toBeNull();
+    const codenamesRow = screen.getByRole('button', { name: /Codenames.*Tuesday Crew/ });
+    expect(codenamesRow).toHaveAccessibleDescription('Upcoming');
+    const upcomingTags = screen.getAllByText('Upcoming');
+    expect(upcomingTags, 'exactly the completed future night is tagged Upcoming').toHaveLength(1);
+    expect(classesOf(upcomingTags[0])).toContain('bg-status-success-subtle');
+    expect(classesOf(upcomingTags[0])).toContain('text-content-status-success');
     cleanup();
 
     // A scheduled night keeps the shipped Upcoming tag on the success pair (W31 honoured).

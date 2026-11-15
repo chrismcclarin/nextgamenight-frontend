@@ -188,10 +188,10 @@ const NAMED_SURFACES = [
  * §4.1's working set, as Tailwind utilities: 14 / 16 / 20 / 30.
  *
  * DO NOT ADD `xs` HERE. These assertions are HEADING-scoped, and admitting `text-xs`
- * would re-legalize the two text-xs h4s plan 88.6-27 retired — now the one surviving
- * src/app/components/CalendarListView.js ("id={laterId}") (the This-week h4 left the sheet with
- * 88.9-39 D6c), Heading level 4 size label at
- * 14 — the exact sites UI-SPEC §1.2 row V-5
+ * would re-legalize the two text-xs h4s plan 88.6-27 retired (the Calendar sheet's This-week
+ * and Later subheaders, each a Heading level 4 size label at 14; the first left the sheet with
+ * 88.9-39 D6c and the second with 88.9-61 X11, so neither is in the tree today) — the exact
+ * sites UI-SPEC §1.2 row V-5
  * (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 1.2 The sanctioned visible deltas"),
  * "h4 12px → 14px") exists to move UP. 12px is the tree-wide FLOOR (task 2's sub-12px
  * arbitrary-value fold enforces it) and the `caption` rung lives on NON-heading elements only —
@@ -311,7 +311,9 @@ const PROP_SEAM_LITERAL =
  * (src/app/components/CalendarListView.js ("isSheet = false, headingLevel = 'h5' }")) would record
  * an h5 while BOTH real call sites (the This week and Later DateGroup calls) pass
  * rowHeadingLevel h6 — a level the DOM never renders, double-counted onto a chain whose two
- * ends are already counted.
+ * ends are already counted. (AMENDED Phase 88.9-61, X11: both of those call sites have left, so
+ * no caller passes a literal today and the default h5 is what renders; the skip rule stands,
+ * because the seam is still an expression with no representable level.)
  *
  * Do not "improve" this into a resolver. Skipped sites are enumerated and asserted, so a
  * new one is visible rather than silent.
@@ -574,7 +576,9 @@ const REVIEWS_HEADING = (h: Heading) =>
 // AMENDED Phase 88.9-39 (owner pick D6c): 5 -> 3. The THIS WEEK DateGroup call site left
 // CalendarListView.js with its headingLevel="h5" / rowHeadingLevel="h6" pair (the next-7-day rows
 // fold into the default-level upcoming list); the Later pair and the EventRow seam remain.
-const EXPECTED_PROP_SEAMS = 3;
+// AMENDED Phase 88.9-61 (X11): the Later h4 and its h5/h6 pair left. 3 -> 1: the Later DateGroup
+// call site left CalendarListView.js with its literal pair; no caller demotes any more.
+const EXPECTED_PROP_SEAMS = 1;
 
 /**
  * The `heading-primitive` floor, asserted SEPARATELY from `prop-seam` so neither can be
@@ -783,7 +787,9 @@ const EXPECTED_PROP_SEAMS = 3;
 // AMENDED Phase 88.9-39 (owner pick D6c): 136 -> 135. The THIS WEEK `<Heading level={4}>` left
 // CalendarListView.js's sheet arm (its rows fold into the default-level upcoming list); measured by
 // this suite's own failure message, "expected 135 to be 136".
-const EXPECTED_PRIMITIVES = 135;
+// AMENDED Phase 88.9-61 (X11): the Later h4 and its h5/h6 pair left. 135 -> 134: the Later
+// Heading level 4 left CalendarListView.js's sheet arm.
+const EXPECTED_PRIMITIVES = 134;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -1628,7 +1634,8 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
  *    `rowHeadingLevel="h6"`. The number would be wrong in this map's own units. Nothing is
  *    lost by skipping it — BOTH of its ends (the This week and Later DateGroup calls) are
  *    counted as seams — so the
- *    gap is scoped, not open-ended.
+ *    gap is scoped, not open-ended. (AMENDED Phase 88.9-61, X11: both call sites left; every
+ *    DateGroup now renders the defaults named in gap 1, h4 and h5.)
  *
  * 3. A MULTISET-PRESERVING LEVEL SWAP. This is a per-file per-level COUNT, so any edit that
  *    preserves the multiset is invisible to it. Swapping an `<h2>` and an `<h3>` inside one
@@ -1658,7 +1665,9 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   // AMENDED Phase 88.9-39 (owner pick D6c): { 3: 2, 4: 2, 5: 2, 6: 2 } -> one level-4 `Heading` (the
   // THIS WEEK subheader left the sheet) and one h5 / h6 seam pair (Later's; the next-7-day rows
   // render at the default levels). Not an R7 outline violation: a level LEFT, none moved.
-  'app/components/CalendarListView.js': { 3: 2, 4: 1, 5: 1, 6: 1 },
+  // AMENDED Phase 88.9-61 (X11): the Later h4 and its h5/h6 pair left. { 3: 2, 4: 1, 5: 1, 6: 1 }
+  // -> { 3: 2 }: the two Upcoming events headings (loaded and loading) are the only literal levels.
+  'app/components/CalendarListView.js': { 3: 2 },
   'app/components/CalendarMonthView.js': { 3: 1 },
   'app/components/DangerZoneDeleteAccount.tsx': { 2: 1 },
   'app/components/EmailAddressSection.tsx': { 2: 3 },
