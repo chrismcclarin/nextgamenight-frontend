@@ -747,6 +747,25 @@ describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edi
     vi.mocked(eventsAPI.getEvent).mockReset();
   });
 
+  // X50 (88.9-65, owner 2026-11-13): the edit form's Score box shows what a person would type.
+  // The stored score arrives as two-decimal text; seeding it raw showed 57.00 in a number box.
+  // Saving 57 stores the same value, so nothing about storage, entry or the payload changes.
+  it('X50 (88.9-65): editing a session seeds 57.00 as 57 and 57.50 as 57.5', async () => {
+    const scored = {
+      ...v1,
+      EventParticipations: [
+        { user_id: null, username: 'Guest One', is_custom: true, score: '57.00', faction: '', is_new_player: false, placement: 1 },
+        { user_id: null, username: 'Guest Two', is_custom: true, score: '57.50', faction: '', is_new_player: false, placement: 2 },
+        { user_id: null, username: 'Guest Three', is_custom: true, score: null, faction: '', is_new_player: false, placement: null },
+      ],
+    };
+    vi.mocked(eventsAPI.getEvent).mockImplementation((async () => scored) as never);
+    render(<CreateEvent {...baseProps()} editingEvent={scored} />);
+    await screen.findByRole('button', { name: 'Update Event' });
+    const scores = screen.getAllByLabelText('Score') as HTMLInputElement[];
+    expect(scores.map((box) => box.value)).toEqual(['57', '57.5', '']);
+  });
+
   it('ED0: create mode keeps its own loading line, Loading group members... (confirm-only)', async () => {
     const members = deferred<unknown>();
     vi.mocked(groupsAPI.getGroupMembers).mockReturnValueOnce(members.promise as never);

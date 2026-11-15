@@ -540,6 +540,34 @@ describe('gameDetail render harness', () => {
   });
 });
 
+// X50 (88.9-65, owner 2026-11-13): a score prints without the zeros nobody typed. The backend
+// returns a stored score as two-decimal text; the session chip shows 57 and 57.5, and a
+// participant with no score shows no Score piece at all (an absent score printed a bare label).
+describe('gameDetail session chip score (X50, 88.9-65)', () => {
+  it('X50 (88.9-65): the session chip prints Score: 57 for 57.00, Score: 57.5 for 57.50, nothing for a null score', async () => {
+    renderGameDetail({
+      events: [
+        {
+          ...SESSION,
+          EventParticipations: [
+            { user_id: 'p-a', username: 'Ann', score: '57.00', placement: 1 },
+            { user_id: 'p-b', username: 'Bea', score: '57.50' },
+            { user_id: 'p-c', username: 'Cy', score: null },
+            { user_id: 'p-d', username: 'Dee' },
+          ],
+        },
+      ],
+    });
+    const sessions = await sessionsSection();
+    expect(await within(sessions).findByText('Score: 57')).toBeInTheDocument();
+    expect(within(sessions).getByText('Score: 57.5')).toBeInTheDocument();
+    expect(within(sessions).queryByText(/57\.00|57\.50/)).toBeNull();
+    // Four participants, two scores: the null and the absent score print no Score piece.
+    expect(within(sessions).getByText('Dee')).toBeInTheDocument();
+    expect(within(sessions).getAllByText(/^Score:/)).toHaveLength(2);
+  });
+});
+
 // D-39 / F-6b. The "of" is the ONLY signal that a filter is hiding sessions, so
 // the two states are pinned separately: its absence at rest is as load-bearing as
 // its presence while filtering.
