@@ -2504,13 +2504,15 @@ describe('gameDetail breadcrumb landmarks are named (#175)', () => {
 });
 
 // 88.9-36 NAV-01 (owner ruling (a), chat 2026-11-07 1:08 PM Pacific, register row 69.9): both
-// gameDetail page roots cap at the header's 1280px box, centred, so at wide screens the body box
-// and the header box share their edges. The padding stays (DEF-88-24-01); the two roots move
-// together. Each root is found as the Breadcrumb navigation's parent, checked to be the render
+// gameDetail page roots cap at 1280px, centred. The padding stays (DEF-88-24-01); the two roots
+// move together. Each root is found as the Breadcrumb navigation's parent, checked to be the render
 // container's first element child (one Breadcrumb navigation per view).
+// 88.9-59 X5c (owner at the 88.9-51 glance, 2026-11-11): the header and footer moved to a 1600 box
+// and these two bodies STAY at 1280 under it, so the cap is no longer "the header's box". The
+// assertions are unchanged (confirm-only); the title and the helper name say what they hold now.
 describe('gameDetail page width — NAV-01 (88.9-36)', () => {
-  it("NAV-01 cap (88.9): both gameDetail roots are max-w-7xl mx-auto, the header's box", async () => {
-    const expectHeaderBox = (container: HTMLElement) => {
+  it('NAV-01 + X5c cap (88.9): both gameDetail roots stay max-w-7xl mx-auto, a 1280 body under the 1600 header', async () => {
+    const expectBodyCap = (container: HTMLElement) => {
       const root = screen.getByRole('navigation', { name: 'Breadcrumb' }).parentElement as HTMLElement;
       expect(root).toBe(container.firstElementChild);
       for (const cls of ['max-w-7xl', 'mx-auto', 'p-3', 'md:p-6']) {
@@ -2521,12 +2523,12 @@ describe('gameDetail page width — NAV-01 (88.9-36)', () => {
 
     const event = renderEventDetail({ role: 'owner' });
     await screen.findByRole('heading', { name: 'Game Night' });
-    expectHeaderBox(event.container);
+    expectBodyCap(event.container);
     event.unmount();
 
     const game = renderGameDetail({ role: 'member' });
     await screen.findByRole('heading', { name: 'Wingspan' });
-    expectHeaderBox(game.container);
+    expectBodyCap(game.container);
   });
 });
 
