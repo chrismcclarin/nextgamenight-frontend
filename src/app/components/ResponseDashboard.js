@@ -10,7 +10,7 @@ import {
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
 import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
-import { useDelayedSpinner } from '../../components/ui/useDelayedSpinner';
+import { Icon } from '../../components/ui/Icon';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger } from '@/lib/logger';
@@ -39,11 +39,74 @@ const RESPONSES_REFRESHED_COPY = 'Responses refreshed.';
  * @param {boolean} blindVotingEnabled - Whether blind voting is enabled for this prompt
  * @param {boolean} pollClosed - Whether the poll has closed (deadline passed)
  */
-// R-C3b reach (88.9-56): the pressed Refresh's spinning icon on the delayed, held schedule — one
-// tiny component so the hook runs here and the dashboard itself calls no new hook.
+// One turn of the Refresh glyph when its animation-duration cannot be read (Tailwind's spin is 1 s).
+const REFRESH_TURN_FALLBACK_MS = 1000;
+
+// One turn of the glyph in ms, read from its computed animation-duration (seconds or ms; under
+// reduced motion the stylesheet makes it 1.5 s). Unreadable or zero (jsdom computes none) is 1 s.
+function readRefreshTurnMs(glyph) {
+  if (!glyph || typeof window === 'undefined') return REFRESH_TURN_FALLBACK_MS;
+  const first = (window.getComputedStyle(glyph).animationDuration || '').split(',')[0].trim();
+  const value = parseFloat(first);
+  if (!Number.isFinite(value) || value <= 0) return REFRESH_TURN_FALLBACK_MS;
+  return first.endsWith('ms') ? value : value * 1000;
+}
+
+/* DECISION Phase 88.9-57 (owner ruling 52-X44, 2026-11-13 3:44 PM Pacific): clockwise lucide
+   RefreshCw that spins on every press at once, at least one whole turn, keeps turning while the
+   refresh runs, stops on a whole turn; chosen OVER the shared delayed, held spinner (R-C3b: a fast
+   in-place refresh gave no sign) and OVER swapping to the house ring while busy (the RetrySlot pattern at
+   src/components/ui/FetchErrorBanner.tsx ("return shown ? <Spinner /> : <Icon name=");
+   owner: this refreshes one component, Try again the page). A deliberate R-C3b exception; reduced
+   motion keeps its 1.5 s turn even on a fast refresh where nothing is busy, so the spin exemption at
+   src/app/globals.css ("animation-duration: 1.5s !important;")
+   (kept for functional spinners) now also covers this press cue, chosen OVER stopping the spin
+   under reduced motion (the 52-X44 ruling entry's build note, the orchestrator's words and not the
+   owner's, records reduced motion unchanged; the owner was told on 2026-11-14 that it stays unless
+   he says otherwise and has not asked for a change; the spin is the only visible sign the press
+   landed; WCAG 2.3.3 is AAA). Changing this is a decision, not a cleanup.
+   How it holds: the class is on the glyph from the press (refreshing) until the stop timer fires
+   (spinning), so it never drops in between and the turn is never restarted. The start time is kept
+   for the whole spin; when the refresh lands the stop is set for the end of the turn in progress
+   (turn - elapsed % turn, so a refresh that lands at once still gets one whole turn and one that
+   lands on a turn boundary gets one more). A press during that last turn cancels the stop and keeps
+   the same start. The timer is cleared on unmount. */
 function RefreshSpinIcon({ refreshing }) {
-  const spin = useDelayedSpinner(refreshing);
-  return <RefreshIcon className={spin ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />;
+  const [spinning, setSpinning] = useState(false);
+  const glyphRef = useRef(null);
+  // Date.now() at the start of the spin in progress; null while the glyph is still.
+  const startedAtRef = useRef(null);
+  const stopTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (refreshing) {
+      if (stopTimerRef.current !== null) {
+        clearTimeout(stopTimerRef.current);
+        stopTimerRef.current = null;
+      }
+      if (startedAtRef.current === null) startedAtRef.current = Date.now();
+      setSpinning(true);
+      return;
+    }
+    // Not refreshing and never started: the mount pass, nothing to stop.
+    if (startedAtRef.current === null) return;
+    const turn = readRefreshTurnMs(glyphRef.current);
+    const elapsed = Math.max(0, Date.now() - startedAtRef.current);
+    stopTimerRef.current = setTimeout(() => {
+      stopTimerRef.current = null;
+      startedAtRef.current = null;
+      setSpinning(false);
+    }, turn - (elapsed % turn));
+  }, [refreshing]);
+
+  useEffect(
+    () => () => {
+      if (stopTimerRef.current !== null) clearTimeout(stopTimerRef.current);
+    },
+    []
+  );
+
+  return <Icon ref={glyphRef} name="RefreshCw" size={16} className={refreshing || spinning ? 'animate-spin' : undefined} />;
 }
 
 export default function ResponseDashboard({
@@ -68,6 +131,7 @@ export default function ResponseDashboard({
   // AMENDED Phase 88.9-56 (R-C3b reach): the word-free busy cue is now the delayed-spinner hook inside
   // RefreshSpinIcon keying the icon class (the spin appears after 200 ms and keeps 500 ms); the list's
   // aria-busy and the polite status stay keyed on refreshing, immediate.
+  // AMENDED Phase 88.9-57 (52-X44): the cue is RefreshSpinIcon's own press-spin, no longer the delayed hook.
   const [refreshing, setRefreshing] = useState(false);
   // CR-3 / A-42: the spoken line of a PRESSED Refresh (the marker at the region in the render).
   const [refreshStatus, setRefreshStatus] = useState('');
@@ -775,11 +839,5 @@ function ClockIcon({ className }) {
 // — `FetchErrorBanner` composes `Banner tone="warning"`, whose tone Icon supplies the leading
 // glyph. Keeping a dead local SVG beside a primitive that already draws one is the duplication
 // the adoption exists to remove.
-
-function RefreshIcon({ className }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
-  );
-}
+// The hand-drawn refresh glyph was deleted by plan 88.9-57 (52-X44): its arrows ran counter-clockwise
+// against a clockwise spin; RefreshSpinIcon above draws the house Icon instead.

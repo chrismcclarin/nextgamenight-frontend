@@ -239,19 +239,23 @@ export default function ScheduleList({
                     well as exposed — `aria-disabled:opacity-50`, the house raw-button wash
                     (ResponseDashboard's Remind, KebabMenu items), so a sighted user sees why a
                     second press does nothing.
-                    AMENDED Phase 88.9-23 (O-17): the in-flight look is muted ink, not an opacity wash, with the kebab items. */}
-                <button
+                    AMENDED Phase 88.9-23 (O-17): the in-flight look is muted ink, not an opacity wash, with the kebab items.
+                    DECISION Phase 88.9-57 (owner 52-X46): Button primitive on the ghost arm with its tint fills, sharing Edit's and Delete's .btn box, weight and house offset ring on the card halo, chosen OVER the raw button's smaller box and browser outline and OVER a secondary fill (the unlayered .btn-secondary beats a tint utility); muted in-flight ink kept. Changing this is a decision, not a cleanup.
+                    How it holds: the tint literal below is merged over the ghost arm, so the arm's own transparent ground, secondary ink and neutral hover drop out and its muted aria-disabled ink (the A-47 / O-17 look) stays; the primitive's busy prop is NOT used, chosen OVER it, because it adds a spinner and a spoken suffix that the phone kebab's Pause does not have. */}
+                <Button
+                  variant="ghost"
+                  size="default"
                   onClick={() => onToggle?.(schedule.id)}
                   aria-disabled={togglingIds?.[schedule.id] ? 'true' : undefined}
-                  className={`px-3 py-1.5 text-sm rounded-btn transition-colors aria-disabled:text-content-muted ${
+                  className={
                     isActive
                       ? 'bg-status-warning-subtle text-content-status-warning enabled-hover:bg-status-warning-subtle-hover'
                       : 'bg-status-success-subtle text-content-status-success enabled-hover:bg-status-success-subtle-hover'
-                  }`}
+                  }
                   title={isActive ? 'Pause schedule' : 'Resume schedule'}
                 >
                   {isActive ? 'Pause' : 'Resume'}
-                </button>
+                </Button>
 
                 {/* Delete button */}
                 <Button
