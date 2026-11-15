@@ -135,17 +135,19 @@ test.describe('Phase 88.6.1-82 — the removed-from-group notice (phone project)
   });
 
   // Phase 88.9-21 (X2, UI-SPEC row R2-49): the box moves from raw amber palette to the
-  // status-warning tokens (src/app/globals.css, light subtle #f9ebda with text and border #854d0e;
+  // status-warning tokens (src/app/globals.css, light subtle #fde68a with text and border #854d0e;
   // dark subtle #423e36 with text and border #f59e0b), and the Dismiss halo becomes the box itself
   // (band 1.00) instead of the page colour. RED until plan 88.9-42. Read-only, nothing is pressed,
   // no capture (the WR-02 rule above). Messages print colours and ratios only.
+  // AMENDED Phase 88.9-58 (X21b, owner pick page 10a, 2026-11-14): the light box is amber-200
+  // #fde68a, rgb(253, 230, 138), over the pale peach #f9ebda this arm pinned before; dark unchanged.
   test('X2 (88.9): the removed-member box paints the status-warning tokens and its Dismiss halo is the box, dark and light', async ({
     page,
   }) => {
     const url = '/?removedFrom=' + encodeURIComponent('Removed Check Group');
     const arms: Array<{ theme: 'dark' | 'light'; ground: string; ink: string }> = [
       { theme: 'dark', ground: 'rgb(66, 62, 54)', ink: 'rgb(245, 158, 11)' },
-      { theme: 'light', ground: 'rgb(249, 235, 218)', ink: 'rgb(133, 77, 14)' },
+      { theme: 'light', ground: 'rgb(253, 230, 138)', ink: 'rgb(133, 77, 14)' },
     ];
     for (const arm of arms) {
       if (arm.theme === 'light') {
