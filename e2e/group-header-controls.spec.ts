@@ -234,6 +234,97 @@ function expectVisibleStep(theme: Theme, reads: HoverReads, what: string, stored
   }
 }
 
+// X37 (owner at N18, 2026-11-13: "when I switch from overview to library, I see a brief flash of
+// dark corners on the tabs"). The tab being left fades its fill out; while it fades it must keep
+// the rounded top corners the active tab has, or the fading fill shows square corners for the
+// length of the fade. The fade is too short to catch by waiting, so ONE evaluate presses Library,
+// finds Overview's running background transition, pauses it at three points (a tenth, half and
+// nine tenths of its length) and reads Overview's computed top corners and fill at each: computed
+// style on a held frame, not a screenshot comparison. Runs in both projects (the tab strip is the
+// same markup at 375 and at 1280); pressing a tab sends no write.
+test('X37 (88.9): the group tab being left keeps its rounded top corners for the whole fade', async ({ page }) => {
+  hold = await holdWrites(page, {});
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+  const overview = page.getByRole('button', { name: 'Overview', exact: true });
+  await expect(overview, 'X37: the Overview tab never rendered').toBeVisible({ timeout: 15_000 });
+  await expect(overview, 'X37: Overview is not the active tab on load').toHaveAttribute('aria-current', 'true');
+  await settleAnimations(overview);
+
+  const read = await overview.evaluate(async (leaving) => {
+    const entering = leaving.nextElementSibling;
+    if (!(entering instanceof HTMLElement) || (entering.textContent ?? '').trim() !== 'Library') {
+      return { error: 'the Library tab is not the element after Overview' };
+    }
+    const alphaOf = (value: string): number | null => {
+      if (!CSS.supports('color', value)) return null;
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = value;
+      ctx.fillRect(0, 0, 1, 1);
+      return ctx.getImageData(0, 0, 1, 1).data[3] / 255;
+    };
+    const activeRadius = getComputedStyle(leaving).borderTopLeftRadius;
+    entering.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const fade = leaving
+      .getAnimations()
+      .find((animation) => animation instanceof CSSTransition && animation.transitionProperty === 'background-color');
+    if (!fade) return { error: 'no fade to observe: Overview runs no background-color transition after Library is pressed' };
+    const timing = fade.effect?.getComputedTiming();
+    const duration = typeof timing?.duration === 'number' ? timing.duration : 0;
+    const delay = timing?.delay ?? 0;
+    if (duration <= 0) return { error: 'no fade to observe: the background-color transition has no length' };
+    fade.pause();
+    const frames = [0.1, 0.5, 0.9].map((at) => {
+      fade.currentTime = delay + duration * at;
+      const style = getComputedStyle(leaving);
+      return {
+        at,
+        fill: style.backgroundColor,
+        alpha: alphaOf(style.backgroundColor),
+        topLeft: style.borderTopLeftRadius,
+        topRight: style.borderTopRightRadius,
+      };
+    });
+    const enteringStyle = getComputedStyle(entering);
+    const result = {
+      error: null,
+      duration,
+      activeRadius,
+      frames,
+      enteringTopLeft: enteringStyle.borderTopLeftRadius,
+      enteringTopRight: enteringStyle.borderTopRightRadius,
+      enteringCurrent: entering.getAttribute('aria-current'),
+    };
+    fade.finish();
+    return result;
+  });
+
+  expect('frames' in read ? null : read.error, 'X37: the fade could not be held').toBeNull();
+  if (!('frames' in read)) return;
+  const record =
+    `X37: fade ${read.duration}ms; active radius before the press ${read.activeRadius}; Library after the press ${read.enteringTopLeft} / ${read.enteringTopRight}; ` +
+    read.frames.map((f) => `at ${f.at}: fill ${f.fill} (alpha ${f.alpha === null ? 'unreadable' : f.alpha.toFixed(3)}), corners ${f.topLeft} / ${f.topRight}`).join('; ');
+  // eslint-disable-next-line no-console -- the held-frame values are recorded from the CI log
+  console.log(record);
+
+  expect(read.enteringCurrent, `${record}. Library did not become the active tab`).toBe('true');
+  expect(parseFloat(read.enteringTopLeft), `${record}. The active tab has no top radius to compare with`).toBeGreaterThan(0);
+  expect(read.enteringTopRight, `${record}. The active tab's two top corners differ`).toBe(read.enteringTopLeft);
+  for (const frame of read.frames) {
+    // Anti-vacuity: the frame is inside the fade, so there is still a fill to show corners.
+    expect(frame.alpha, `${record}. The frame at ${frame.at} holds no fill, so its corners would prove nothing`).not.toBeNull();
+    expect(frame.alpha!, `${record}. The frame at ${frame.at} holds no fill, so its corners would prove nothing`).toBeGreaterThan(0);
+    expect(frame.topLeft, `${record}. At ${frame.at} of the fade Overview's top-left corner is square while its fill is still showing`).toBe(read.enteringTopLeft);
+    expect(frame.topRight, `${record}. At ${frame.at} of the fade Overview's top-right corner is square while its fill is still showing`).toBe(read.enteringTopLeft);
+  }
+});
+
 test.describe('Manage Members under the pointer (88.9-64: X9, X30)', () => {
   test.skip(({ isMobile }) => isMobile, 'X30 (88.9): a hover needs a fine pointer; the desktop journeys project owns these reads');
 
