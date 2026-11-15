@@ -219,7 +219,7 @@ export default function CalendarListView({
   happeningNowIds = EMPTY_ID_SET,
   startedNotLiveIds = EMPTY_ID_SET,
   // 88.9-39 D5a (R2-27), sheet arm only, threaded by UserHomePage: the viewer's own Users.id
-  // UUID, compared in memory by isGuestEvent to mark a guest night's row. Never rendered.
+  // UUID, compared in memory by isGuestEvent to mark a guest night's row. Never rendered. AMENDED Phase 88.9-63 (X27): every arm; EventCalendar threads it for the desktop arms.
   viewerDbUserId = null,
   // Plan 88.6.1-62 (Req 9): sheet arm only, set by the home page while a refresh of an
   // already-loaded list runs; marks the list's scroll region busy in place. The desktop arms pass
@@ -1151,8 +1151,11 @@ const EventRow = forwardRef(function EventRow(
      border-dashed and the amber colour apply to every side, so a stacked row would dash all four
      edges. The inline borderColor key is deleted rather than overridden, as EventDayModal's W30
      did: an inline declaration beats any class, so the amber edge and border-line could not
-     paint. */
-  const guest = isSheet && isGuestEvent(event, viewerDbUserId);
+     paint.
+     AMENDED Phase 88.9-63 (X27 + orchestrator decision 3): a dashed outline on all four sides, on
+     every arm, chosen OVER sheet-only marking (guest on the phone, nothing on its desktop twin).
+     The exclusive arm and the inline borderColor deletion stand. */
+  const guest = isGuestEvent(event, viewerDbUserId);
   /*
    * DECISION Phase 88.3 (D-09, cascade fix): the row's ground is a MUTUALLY
    * EXCLUSIVE ternary gated on `tinted`, chosen OVER stacking the tint pair

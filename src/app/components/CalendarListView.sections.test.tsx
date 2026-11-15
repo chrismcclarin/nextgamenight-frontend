@@ -294,9 +294,12 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
       return (heading as HTMLElement).closest('[role="button"]') as HTMLElement;
     };
 
+    // CalendarListView is a JS component: its viewer id defaults to null, so its inferred prop
+    // type admits no string. The same cast idiom as the EventCalendar refresh suite.
+    const ListWithViewer = CalendarListView as unknown as React.ComponentType<Record<string, unknown>>;
     for (const arm of ARMS) {
       render(
-        <CalendarListView
+        <ListWithViewer
           events={[guestNight, memberNight]}
           onEventClick={vi.fn()}
           timezone={TZ}

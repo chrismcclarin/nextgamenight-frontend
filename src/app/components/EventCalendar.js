@@ -667,6 +667,10 @@ export default function EventCalendar({
             variant={variant}
             happeningNowIds={happeningNowIds}
             startedNotLiveIds={startedNotLiveIds}
+            /* DECISION Phase 88.9-63 (X27): the list gets the viewer id the month view already
+               gets, so a guest night is outlined on every arm; chosen OVER leaving the desktop
+               lists unmarked while the month grid and the phone sheet mark the same night. */
+            viewerDbUserId={selfUuid}
           />
         </>
       )}
