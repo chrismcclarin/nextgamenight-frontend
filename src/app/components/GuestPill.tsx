@@ -8,13 +8,18 @@
    AMENDED Phase 88.9-63 (X16 + X17a): sentence case on the amber pill pair, no edge, chosen OVER
    the shipped capitals and light-only amber. The pair is opaque in both themes on purpose: on a
    guest's picture row (no wash since 88.9-60 X23a) this fill is all that sits between the word
-   and the photo, and the callers pass no className to change it. */
+   and the photo, and the callers pass no className to change it.
+   AMENDED Phase 88.9-63 (X27, owner at N41, 2026-11-12: yes, wrap the whole row): the month tile's
+   full dashed outline, chosen OVER the left-only amber-400 edge (1.67 on white, under 3:1); one 1px
+   border, a same-width swap for a hairline. Every consumer imports this string. On a photo row (no
+   wash since 88.9-60 X23a) the inner side meets the raw photo, which has no fixed ratio; the outer
+   side against the card clears 3:1 in both themes and the Guest pill carries the meaning. */
 import * as React from 'react';
 
 import { cn } from '@/lib/cn';
 
-/** The dashed amber left edge a guest row swaps in for its hairline (D5a, R2-27). */
-export const GUEST_ROW_EDGE = 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70';
+/** The dashed amber outline a guest row or tile swaps in for its hairline (D5a, X27). */
+export const GUEST_ROW_EDGE = 'border border-dashed border-amber-700 dark:border-amber-500/70';
 
 export interface GuestPillProps {
   className?: string;

@@ -19,6 +19,7 @@ import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { Icon } from '../../components/ui/Icon';
 import SafeImage from './SafeImage';
+import { GUEST_ROW_EDGE } from './GuestPill';
 
 const isPast = (date) => {
   if (!date) return false;
@@ -1146,8 +1147,10 @@ export default function CalendarMonthView({
                                inline key wins and the edge never paints) and OVER omitting the inline key only for
                                guests (one property, two mechanisms); the rgba values are kept byte-equal, not
                                re-tokenised — that would be a look change. Literal class strings only: Tailwind v4
-                               emits nothing for an interpolated class. */
-                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''} ${guest ? 'border border-dashed border-amber-700 dark:border-amber-500/70' : isPastDate ? 'border border-[rgba(0,0,0,0.1)]' : 'border border-[rgba(0,0,0,0.2)]'}`}
+                               emits nothing for an interpolated class.
+                               AMENDED Phase 88.9-63 (X27): the list rows share this edge; the literal lives once in
+                               GuestPill.tsx; values and measurements above unchanged. */
+                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''} ${guest ? GUEST_ROW_EDGE : isPastDate ? 'border border-[rgba(0,0,0,0.1)]' : 'border border-[rgba(0,0,0,0.2)]'}`}
                             style={{
                               ...(tinted && {
                                 '--group-ground': ground,

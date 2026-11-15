@@ -313,12 +313,17 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                      is a bare `<button>` carrying no `.btn`, so the utility lands normally; a pin
                      in `UpcomingEventsCard.test.tsx` asserts that stays true.
                      Precedent for phone-scoped floors generally: `DECISION Phase 88-01 (D-36)` at
-                     `globals.css:1142-1160`. */
+                     `globals.css:1142-1160`.
+
+                     DECISION Phase 88.9-63 (X27): member rows carry a transparent 1px border so a guest
+                     row's outline moves no text, chosen OVER a guest-only border (1px jog, 2px taller
+                     row) and OVER the shipped extra left padding. Both arms are whole literal class
+                     strings (the guest arm is the one export in GuestPill.tsx). */
                   <button
                     key={event.id}
                     type="button"
                     onClick={() => handleEventClick(event)}
-                    className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${guest ? `${GUEST_ROW_EDGE} pl-3` : ''}`}
+                    className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${guest ? GUEST_ROW_EDGE : 'border border-transparent'}`}
                   >
                     {/* DECISION Phase 88.6-28 (R2 / UI-SPEC §4.3): every span in this row STAYS at
                         Label 14 (`text-sm`), chosen OVER promoting `{gameName}` to Body 16 under
