@@ -363,6 +363,9 @@ describe('groupHomePage header CTAs on the Button primitive (88.6-21 D-09 / UI-S
     // ghost, not secondary and not primary. `variant="secondary"` is the REJECTED arm of owner
     // ruling 2 (2026-08-27) — the marker prices the opaque fill at 1.1330 on the white header,
     // a WEAKER cue than the ring this control ships. `primary` is forbidden for a bare `.btn`.
+    // AMENDED Phase 88.9-64 (X9): that 1.1330 is the price of the opaque fill on a header with NO
+    // photo, which is this test's arm and still takes the wash and ring. On a PHOTO header the
+    // opaque secondary fill is now taken (the X9 + X30 test below); the variant stays ghost there too.
     //
     // The identity is asserted on the ghost variant's SURVIVING tokens, not on `bg-transparent`:
     // measured here, tailwind-merge DELETES `bg-transparent` (and the base's `shadow-theme-sm`,
@@ -370,10 +373,16 @@ describe('groupHomePage header CTAs on the Button primitive (88.6-21 D-09 / UI-S
     // `shadow-theme-md` and `text-content-primary`. That deletion IS the mechanism by which the
     // owner-ruled wash survives the migration, so asserting the token it removes would have
     // asserted the opposite of the contract.
-    expect(manage).toHaveClass('enabled-hover:bg-surface-hover', 'aria-disabled:text-content-muted');
-    expect(manage.className).not.toContain('btn-secondary');
-    expect(manage.className).not.toContain('btn-primary');
-    expect(manage.className).not.toContain('btn-accent');
+    // AMENDED Phase 88.9-64 (X30, owner 2026-11-12): the call site now names the hover itself (the
+    // secondary button's hover step), and tailwind-merge deletes the ghost variant's hover the same
+    // way; the ghost hover moved a light fill by 2.35 L* at most, which nobody could see.
+    expect(manage).toHaveClass('enabled-hover:bg-btn-secondary-hover', 'aria-disabled:text-content-muted');
+    // Read as whole class tokens: the hover class above holds the variant class's name inside it.
+    const classTokens = manage.className.split(/\s+/);
+    expect(classTokens, 'the ghost hover survived beside the call-site hover').not.toContain('enabled-hover:bg-surface-hover');
+    expect(classTokens).not.toContain('btn-secondary');
+    expect(classTokens).not.toContain('btn-primary');
+    expect(classTokens).not.toContain('btn-accent');
 
     // The owner-ruled edge treatment SURVIVES the migration, byte for byte.
     expect(manage).toHaveClass('bg-white/80', 'ring-1', 'ring-line-control', 'dark:ring-0');
@@ -387,6 +396,46 @@ describe('groupHomePage header CTAs on the Button primitive (88.6-21 D-09 / UI-S
     // Measured-safe elevation: rests at `md`, and the base's hover is also `md`. No pin, by design.
     expect(manage).toHaveClass('shadow-theme-md');
     expect(manage.className).not.toContain('enabled-hover:shadow-theme-lg');
+  });
+
+  it('X9 + X30 (88.9): on a photo header Manage Members is the opaque secondary pair with its own edge; without a photo it keeps the wash and ring, and every arm carries a visible hover', async () => {
+    // 88.9-64. Owner rulings: X9 (2026-11-11, solid over a photo), X30 (2026-11-12: "it doesn't
+    // darken on hover on light mode") and the X31 direction ("let manage members darken or lighten
+    // as needed"). jsdom paints nothing, so this reads the class tokens each arm ships after
+    // tailwind-merge; the numbers those tokens resolve to are pinned in the token contrast suite
+    // (its X30 test) and what a browser paints in the group header controls e2e spec.
+    const classTokens = (el: Element) => el.className.toString().split(/\s+/);
+    const HOVER = 'enabled-hover:bg-btn-secondary-hover';
+    const GHOST_HOVER = 'enabled-hover:bg-surface-hover';
+    const DARK_WASH = ['dark:text-white', 'dark:bg-white/10', 'dark:enabled-hover:bg-white/20', 'dark:backdrop-blur-xs'];
+
+    // A photo header. jsdom never settles a real image, so the picture stays loading, which is the
+    // photo arm (a picture that FAILS is the no-photo arm; the invalid-picture rendering suite pins that).
+    (groupsAPI.getGroup as Mock).mockResolvedValue({
+      id: 'GROUP1',
+      name: 'My Group',
+      background_image_url: 'https://e2e-x64.invalid/header-photo.png',
+    });
+    await renderHeaderAt('owner');
+    const onPhoto = classTokens(screen.getByRole('button', { name: 'Manage Members' }));
+    for (const t of ['bg-btn-secondary', HOVER, 'ring-1', 'ring-line-btn-secondary', 'dark:ring-0', 'text-content-primary', 'shadow-theme-md']) {
+      expect(onPhoto, `on a photo header Manage Members lacks ${t}`).toContain(t);
+    }
+    for (const t of ['bg-white/80', 'ring-line-control', 'dark:bg-surface-elevated', GHOST_HOVER, ...DARK_WASH]) {
+      expect(onPhoto, `on a photo header Manage Members still carries ${t}`).not.toContain(t);
+    }
+
+    // A tinted header with no photo: the resting look is unchanged, only the hover is new.
+    cleanup();
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group', background_color: '#722f37' });
+    await renderHeaderAt('owner');
+    const onTint = classTokens(screen.getByRole('button', { name: 'Manage Members' }));
+    for (const t of ['bg-white/80', 'ring-1', 'ring-line-control', 'dark:ring-0', 'text-content-primary', HOVER, ...DARK_WASH]) {
+      expect(onTint, `on a tinted header with no photo Manage Members lacks ${t}`).toContain(t);
+    }
+    for (const t of ['bg-btn-secondary', 'ring-line-btn-secondary', 'dark:bg-surface-elevated', GHOST_HOVER]) {
+      expect(onTint, `on a tinted header with no photo Manage Members carries ${t}`).not.toContain(t);
+    }
   });
 
   it('all three take the ring from the primitive, not from a per-site string (A-2 ARM A)', async () => {

@@ -2506,6 +2506,116 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       'border border-dashed border-amber-700 dark:border-amber-500/70',
     );
   });
+
+  it('X30 (88.9): Manage Members\' hover is a visible step on every header arm — ΔL* at least 4.0 from rest, label at least 4.5 at rest and hover, hover at least 1.20 from a flat header ground', () => {
+    // 88.9-64 (owner at the 88.9-52 glance, 2026-11-12: "we made that modification to Manage
+    // members button and now it doesn't darken on hover on light mode, works fine on dark mode";
+    // direction ruling the same day: "We should just let manage members darken or lighten as
+    // needed"; X9, ruled solid 2026-11-11: over a photo the button is opaque).
+    //
+    // THE CLASSES ARE READ FROM THE CALL SITE, not restated here: the button's className expression
+    // in the group page source is split at its picture test into the shared part, the photo arm and
+    // the no-photo arm, and each fill, hover and label class is resolved through the @theme inline
+    // key it names to that theme's token. So this test measures what the page ships: editing a
+    // class there moves the numbers here. A hover the call site does not name is the ghost
+    // variant's (the surface-hover key), which is what painted before this plan.
+    //
+    // 20 ARMS: a photo header in each theme (2), and a header with no photo over the uncoloured
+    // ground and each of the eight preset grounds in each theme (18). Three floors:
+    //   - the hover moves the fill by at least 4.0 in L*, the ladder step test 1 above pins as the
+    //     smallest visible surface step (no UI-SPEC row names a rest-to-hover number);
+    //   - the label clears 4.5:1 on the fill at rest and hovered (WCAG 1.4.3);
+    //   - with no photo, the hovered fill stands at least 1.20 off the flat header ground (test 36's
+    //     edge-against-ground floor), so a hovered button never sinks into a tint.
+    // On a photo there is no flat ground to measure against; there the resting fill must be opaque
+    // instead, because a translucent fill over an arbitrary picture has no ratio at all.
+    // Measured at 88.9-64 with src/lib/wcag.ts: the smallest step is 7.6246 (dark, green ground),
+    // the lowest label 6.1414 (dark, no colour, hovered), the lowest hover-against-ground 1.3049
+    // (light, orange ground).
+    const pageSrc = withoutComments(fs.readFileSync(path.join(__dirname, 'groupHomePage', 'page.js'), 'utf8'));
+    const opener = 'onClick={() => setMemberModal(true)}';
+    const at = pageSrc.indexOf(opener);
+    if (at < 0 || pageSrc.indexOf(opener, at + opener.length) >= 0) {
+      throw new TokenContrastParseError('the Manage Members opener is not in the group page source exactly once');
+    }
+    const end = pageSrc.indexOf('Manage Members', at);
+    if (end < 0) throw new TokenContrastParseError('the Manage Members label does not follow its opener');
+    const site = pageSrc.slice(at, end);
+    const fork = /hasHeaderImage\s*\?\s*'([^']*)'\s*:/.exec(site);
+    if (!fork) throw new TokenContrastParseError('the Manage Members className no longer forks on the header picture flag with a literal photo arm');
+    const literals = (text: string): string[] =>
+      [...text.matchAll(/'([^']*)'/g)].flatMap((m) => m[1].split(/\s+/)).filter((token) => token.length > 0);
+    const shared = literals(site.slice(0, fork.index));
+    const armTokens = {
+      photo: [...shared, ...fork[1].split(/\s+/).filter((token) => token.length > 0)],
+      // Every preset ground and the uncoloured one take the dark-ground branch of the no-photo arm,
+      // so all of its literals apply.
+      plain: [...shared, ...literals(site.slice(fork.index + fork[0].length))],
+    } as const;
+
+    type Paint = { key: string; alpha: number };
+    const SHAPE = /^(dark:)?(enabled-hover:)?(bg|text)-([a-z0-9-]+?)(?:\/(\d{1,3}))?$/;
+    const pick = (tokens: readonly string[], theme: Theme, util: 'bg' | 'text', hover: boolean): Paint | null => {
+      let light: Paint | null = null;
+      let dark: Paint | null = null;
+      for (const token of tokens) {
+        const m = SHAPE.exec(token);
+        if (!m || m[3] !== util || (m[2] !== undefined) !== hover) continue;
+        const paint = { key: m[4], alpha: m[5] === undefined ? 1 : Number(m[5]) / 100 };
+        if (m[1] !== undefined) dark = paint;
+        else light = paint;
+      }
+      return theme === 'dark' ? (dark ?? light) : light;
+    };
+    const themeBlock = blockOf('theme');
+    const colourOf = (theme: Theme, key: string): string => {
+      if (key === 'white') return '#ffffff';
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour, so the Manage Members class that carries it cannot be measured`);
+      return resolve(theme, ref[1]);
+    };
+    const GHOST_HOVER: Paint = { key: 'surface-hover', alpha: 1 };
+
+    const failures: string[] = [];
+    let measured = 0;
+    const judge = (theme: Theme, arm: 'photo' | 'plain', groundName: string, ground: string | null): void => {
+      const tokens = armTokens[arm];
+      const name = `[${theme}] ${arm === 'photo' ? 'photo header' : `no photo, ${groundName}`}`;
+      const rest = pick(tokens, theme, 'bg', false);
+      const hover = pick(tokens, theme, 'bg', true) ?? GHOST_HOVER;
+      const label = pick(tokens, theme, 'text', false);
+      if (!rest || !label) throw new TokenContrastParseError(`${name}: the call site names no ${rest ? 'label' : 'fill'} class`);
+      measured += 1;
+      if (ground === null && (rest.alpha < 1 || hover.alpha < 1)) {
+        failures.push(`${name}: over a photo the fill must be opaque at rest and hovered; the call site ships ${rest.key} at ${rest.alpha} and ${hover.key} at ${hover.alpha}`);
+        return;
+      }
+      const over = ground ?? '#000000';
+      const restHex = blend(colourOf(theme, rest.key), rest.alpha, over);
+      const hoverHex = blend(colourOf(theme, hover.key), hover.alpha, over);
+      if (restHex === null || hoverHex === null) throw new TokenContrastParseError(`${name}: could not composite the fill`);
+      const labelHex = colourOf(theme, label.key);
+      const step = deltaHex(restHex, hoverHex, `${name} rest to hover`);
+      if (step < 4.0) failures.push(`${name}: the hover moves the fill ${restHex} to ${hoverHex}, ΔL* ${step.toFixed(4)}, floor 4.00`);
+      for (const [state, fill] of [['at rest', restHex], ['hovered', hoverHex]] as const) {
+        const ratio = ratioHex(labelHex, fill, `${name} label ${state}`);
+        if (ratio < 4.5) failures.push(`${name}: the label (${labelHex}) on the fill ${state} (${fill}) measures ${ratio.toFixed(4)}:1, floor 4.50:1`);
+      }
+      if (ground !== null) {
+        const off = ratioHex(hoverHex, ground, `${name} hover against the ground`);
+        if (off < 1.2) failures.push(`${name}: the hovered fill (${hoverHex}) against the header ground (${ground}) measures ${off.toFixed(4)}:1, floor 1.20:1`);
+      }
+    };
+
+    for (const theme of ['light', 'dark'] as const) {
+      judge(theme, 'photo', 'a photo', null);
+      judge(theme, 'plain', 'no colour', resolve(theme, '--color-bg-elevated'));
+      for (const preset of GROUP_COLOUR_PRESETS) judge(theme, 'plain', `the ${preset.name} ground`, preset[theme]);
+    }
+
+    expect(failures, `X30 (88.9) — Manage Members must visibly react to the pointer on every header arm:\n${failures.join('\n')}`).toEqual([]);
+    expect(measured, 'anti-vacuity: 2 themes x (1 photo arm + the uncoloured ground + 8 preset grounds)').toBe(20);
+  });
 });
 
 // =====================================================================================

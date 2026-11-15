@@ -383,7 +383,11 @@ describe('W49 rendered — groupHomePage header scrim pair', () => {
   // photo. On a VALID image the control takes the opaque elevated surface in dark instead; the
   // owner-ruled wash stays byte for byte on every no-image header, and an invalid URL behaves
   // as no image.
-  it('R-P4 (88.9-27): on a VALID image Manage Members takes the opaque elevated ground in dark, not the 10% wash; no image keeps the wash', async () => {
+  // AMENDED Phase 88.9-64 (X9, owner RULED solid 2026-11-11): the opaque ground on a VALID image
+  // is now the secondary button's fill in BOTH themes (in dark that fill is the same purple-800
+  // the elevated surface was, so dark rest is unchanged), so this pin reads the secondary fill
+  // class where it read the dark elevated one. The no-image and invalid-URL halves are unchanged.
+  it('R-P4 (88.9-27) + X9 (88.9-64): on a VALID image Manage Members takes the opaque secondary fill in both themes, not the wash; no image keeps the wash', async () => {
     const manageMembersClass = async (image: string | null) => {
       await renderHeader(image);
       const cls = screen.getByRole('button', { name: 'Manage Members' }).getAttribute('class') ?? '';
@@ -391,15 +395,17 @@ describe('W49 rendered — groupHomePage header scrim pair', () => {
       return cls;
     };
     const valid = await manageMembersClass(VALID_URL);
-    expect(valid, 'Manage Members on a photo lost the opaque elevated dark ground').toContain('dark:bg-surface-elevated');
-    for (const wash of ['dark:bg-white/10', 'dark:text-white', 'dark:backdrop-blur-xs']) {
+    // Whole class tokens: the hover class on every arm holds the fill class's name inside it.
+    expect(valid.split(/\s+/), 'Manage Members on a photo lost its opaque fill').toContain('bg-btn-secondary');
+    for (const wash of ['bg-white/80', 'dark:bg-white/10', 'dark:text-white', 'dark:backdrop-blur-xs']) {
       expect(valid, `Manage Members on a photo still carries ${wash}`).not.toContain(wash);
     }
 
     const none = await manageMembersClass(null);
     expect(none, 'the owner-ruled no-image wash is gone').toContain('dark:bg-white/10');
     expect(none, 'the owner-ruled no-image blur is gone').toContain('dark:backdrop-blur-xs');
-    expect(none, 'the elevated photo ground leaked onto a no-image header').not.toContain('dark:bg-surface-elevated');
+    expect(none, 'the owner-ruled light no-image wash is gone').toContain('bg-white/80');
+    expect(none.split(/\s+/), 'the opaque photo fill leaked onto a no-image header').not.toContain('bg-btn-secondary');
 
     const invalid = await manageMembersClass(INVALID_URL);
     expect(invalid, 'an invalid URL does not style Manage Members as no image').toBe(none);
