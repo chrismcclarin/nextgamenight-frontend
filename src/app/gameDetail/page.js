@@ -55,30 +55,41 @@ import { toast } from 'sonner';
 // `#232d3e` in dark mode, i.e. already broken there. Warning is how every other surface in the app
 // renders an RSVP maybe (RsvpSection's statusConfig, rsvp/[token]'s config map). Reverting `maybe`
 // to raw amber is a decision, not a cleanup.
+// AMENDED Phase 88.9-63 (X17a + owner ruling Q1 A1, 2026-11-14): yes, no and maybe take the pill
+// family. Maybe LEAVES the warning family on this pill only, onto the amber pair it shares with
+// Guest, because the warning fill stands 1.30 off the dark card (family floor 1.50: the pill
+// blended into the card, 52-X17), chosen OVER keeping the pill on warning with the X21b box.
+// 'Warning is how every other surface in the app renders an RSVP maybe' still holds everywhere
+// else: the selected Maybe RSVP button (rsvpStatusConfig activeBg) and RsvpCount stay on warning,
+// so this pill and that button are two different yellows, and a person who is both Maybe and
+// Guest shows two same-coloured pills — both accepted by the owner. Putting this pill back on
+// warning is a decision, not a cleanup.
 function RsvpStatusPill({ status }) {
     const map = {
-        yes: { label: 'Going', cls: 'bg-status-success-subtle text-content-status-success' },
-        maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-content-status-warning' },
+        yes: { label: 'Going', cls: 'bg-surface-pill-green text-content-pill-green' },
+        maybe: { label: 'Maybe', cls: 'bg-surface-pill-amber text-content-pill-amber' },
         // D-15 (88.6-18): `text-content-muted` on `bg-surface-muted` measures 4.3725, below AA.
         // `text-content-secondary` measures 6.9620 on the same ground.
-        no: { label: 'No', cls: 'bg-surface-muted text-content-secondary' },
+        // AMENDED Phase 88.9-63 (X17a): No reads the neutral pair, 7.35 / 6.96.
+        no: { label: 'No', cls: 'bg-surface-pill-neutral text-content-pill-neutral' },
     };
     /* `whitespace-nowrap` below is a D-01 FOLD MITIGATION, not decoration. MEASURED in Chromium
        at 375px over the compiled stylesheet: at 10px "NO REPLY" fitted one line inside the
        width-capped chip; folded up to 12px it wrapped mid-phrase and took the chip from 27.33px
        to 46px tall. D-01 names a 375px screenshot check as a GATE on this fold, and this is what
        that gate found. The two-word badges — this one and "New Player" — are the only ones that
-       can wrap; every other badge on this surface is a single word. */
+       can wrap; every other badge on this surface is a single word.
+       AMENDED Phase 88.9-63 (X16): sentence case; nowrap kept; 375 re-measure at the capture. */
     if (!status) {
         return (
-            <span className="text-xs whitespace-nowrap uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-secondary">
+            <span className="text-xs whitespace-nowrap px-1.5 py-0.5 rounded-sm bg-surface-pill-neutral text-content-pill-neutral">
                 No reply
             </span>
         );
     }
     const m = map[status] || map.no;
     return (
-        <span className={`text-xs uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${m.cls}`}>
+        <span className={`text-xs px-1.5 py-0.5 rounded-sm ${m.cls}`}>
             {m.label}
         </span>
     );
@@ -120,7 +131,9 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
     const isCustom = !!participant.is_custom;
     return (
         <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
-            <span className="text-content-primary truncate">
+            {/* 88.9-63 (X16 / X17a): the name is 600 and the pills below are sentence case on the pill
+                family; the marker is at the See-all row's name. */}
+            <span className="text-content-primary truncate font-semibold">
                 {isCustom ? (
                     <>{participant.username || 'Guest'}<span className="text-content-muted ml-1">(Guest)</span></>
                 ) : (
@@ -131,14 +144,14 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
                 chip says "No reply" for a list that failed. */}
             {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} />}
             {role === 'owner' && (
-                <span className="text-xs uppercase tracking-wider bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
+                <span className="text-xs bg-surface-pill-violet text-content-pill-violet px-1 rounded-sm font-bold">Owner</span>
             )}
             {role === 'admin' && (
-                <span className="text-xs uppercase tracking-wider bg-blue-100 text-blue-700 px-1 rounded-sm font-bold">Admin</span>
+                <span className="text-xs bg-surface-pill-blue text-content-pill-blue px-1 rounded-sm font-bold">Admin</span>
             )}
             {participant.is_guest && viewerScope === 'group-member' && (
                 <span
-                    className="text-xs uppercase tracking-wider rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
+                    className="text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber px-1 py-0.5"
                     title="Joined via game-invite QR (not a group member)"
                 >
                     Guest
@@ -3229,7 +3242,16 @@ export default function GameDetailPage() {
                                         name like text; the name wraps IN FULL — display never
                                         truncates a person's name (fork 2's agreed direction). */}
                                     <div className="min-w-0 flex-1 basis-48 space-x-1.5 break-words">
-                                        <span className="text-content-primary">
+                                        {/* DECISION Phase 88.9-63 (X16, owner at N04, 2026-11-11: D): sentence-case
+                                            pills, no letter-spacing, and 600 names, chosen OVER C (smaller pills);
+                                            600 is an owner-ruled exception to UI-SPEC §4.5. It covers every person,
+                                            role and RSVP pill on this page (RsvpStatusPill, the Participants chip and
+                                            this row) and the two participant name spans; the pill weights are kept.
+                                            The fills are the X17a pill family (the marker is in globals.css at the
+                                            pill tokens), so no pill here carries a raw palette step, a dark arm of
+                                            its own or an edge. Bringing capitals back on one pill is a decision,
+                                            not a cleanup. */}
+                                        <span className="text-content-primary font-semibold">
                                             {p.is_custom ? (
                                                 <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                             ) : isSelfRow ? (
@@ -3261,7 +3283,7 @@ export default function GameDetailPage() {
                                             // (Owner=purple, Admin=blue) while staying distinguishable from
                                             // Owner's purple. Self is a viewer-perspective indicator, not a
                                             // role, but the visual family is the closest existing pattern.
-                                            <span className="align-middle text-xs uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
+                                            <span className="align-middle text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">
                                                 You
                                             </span>
                                         )}
@@ -3273,15 +3295,15 @@ export default function GameDetailPage() {
                                             // through ClickableMemberName above. Emerald color echoes the
                                             // text-status-success used by that mobile inline indicator for
                                             // visual continuity across viewports.
-                                            <span className="hidden md:inline-flex items-center align-middle text-xs uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
+                                            <span className="hidden md:inline-flex items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold">
                                                 Friend
                                             </span>
                                         )}
                                         {role === 'owner' && (
-                                            <span className="align-middle text-xs uppercase tracking-wider bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
+                                            <span className="align-middle text-xs bg-surface-pill-violet text-content-pill-violet px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
                                         )}
                                         {role === 'admin' && (
-                                            <span className="align-middle text-xs uppercase tracking-wider bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
+                                            <span className="align-middle text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
                                         )}
                                         {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                             when viewer is a full group member. Skips render for game-only
@@ -3291,7 +3313,7 @@ export default function GameDetailPage() {
                                             can decide who to onboard via admin-initiated invite. */}
                                         {p.is_guest && userScope === 'group-member' && (
                                             <span
-                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs uppercase tracking-wider rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber"
                                                 title="Joined via game-invite QR (not a group member)"
                                             >
                                                 Guest

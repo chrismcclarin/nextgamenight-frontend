@@ -549,6 +549,22 @@
   --color-status-error-subtle-hover: var(--status-error-subtle-hover);
   --color-status-warning-subtle: var(--status-warning-subtle);
   --color-status-warning-subtle-hover: var(--status-warning-subtle-hover);
+  /* 88.9-63 X17a: the pill family (person, role and RSVP pills), one fill key and one ink key
+     per hue: bg-surface-pill-<hue> and text-content-pill-<hue>. The key names differ from the
+     runtime properties (pill-<hue>-bg, pill-<hue>-text), so none self-references (the 87.7 rule
+     above). The X17a marker is at the light declarations of those properties. */
+  --color-surface-pill-green: var(--color-pill-green-bg);
+  --color-content-pill-green: var(--color-pill-green-text);
+  --color-surface-pill-neutral: var(--color-pill-neutral-bg);
+  --color-content-pill-neutral: var(--color-pill-neutral-text);
+  --color-surface-pill-violet: var(--color-pill-violet-bg);
+  --color-content-pill-violet: var(--color-pill-violet-text);
+  --color-surface-pill-blue: var(--color-pill-blue-bg);
+  --color-content-pill-blue: var(--color-pill-blue-text);
+  --color-surface-pill-amber: var(--color-pill-amber-bg);
+  --color-content-pill-amber: var(--color-pill-amber-text);
+  --color-surface-pill-emerald: var(--color-pill-emerald-bg);
+  --color-content-pill-emerald: var(--color-pill-emerald-text);
   /* Bell count badge (bg-badge-count) — see the DECISION Phase 88.9-01 (M3b) marker in the light block. */
   --color-badge-count: var(--color-badge-count-bg);
 
@@ -1961,6 +1977,30 @@
   --color-status-warning-subtle: #fde68a;
   --color-status-warning-subtle-hover: #fcd34d;
 
+  /* DECISION Phase 88.9-63 (X17a, owner pick page 10a, 2026-11-14): one pill family per hue
+     (hue-500 mixed 30% into the card in light, 35% in dark), chosen OVER the shipped mix (Owner
+     light-only, No reply melting into the dark card) and OVER X17b's outlined pills. Literals:
+     the root purple steps are slate. Emerald (Friend) is the same recipe, not on the pick page.
+     The game page's Maybe pill reuses the amber pair (owner Q1 A1, 2026-11-14): no Maybe token,
+     and page 10a's Maybe ink #854d0e is not used (5.45 vs 5.64, not visible) — chosen OVER Maybe
+     on the warning pair (dark 1.30 off the card, under 1.50); Maybe and Guest share one amber,
+     and the selected Maybe RSVP button stays on the warning family, both accepted by the owner.
+     Measured, word on its fill / fill against the card (floors 4.5 and 1.25 light, 1.50 dark):
+     light green 5.53 / 1.29, neutral 7.35 / 1.43, violet 5.97 / 1.46, blue 6.14 / 1.42,
+     amber 5.64 / 1.26, emerald 5.78 / 1.33; the dark values are beside their declarations. */
+  --color-pill-green-bg: #bdeecf;
+  --color-pill-green-text: #166534;
+  --color-pill-neutral-bg: #ddd7d2;
+  --color-pill-neutral-text: #4a3d32;
+  --color-pill-violet-bg: #e5ccfd;
+  --color-pill-violet-text: #6b21a8;
+  --color-pill-blue-bg: #c4dafc;
+  --color-pill-blue-text: #1e40af;
+  --color-pill-amber-bg: #fce2b6;
+  --color-pill-amber-text: #92400e;
+  --color-pill-emerald-bg: #b7ead9;
+  --color-pill-emerald-text: #065f46;
+
   /* Header (warm neutral, NOT purple) */
   --color-bg-header: var(--warm-800);
   --color-bg-header-hover: var(--warm-700);
@@ -2290,6 +2330,24 @@
   --color-status-error-subtle-hover: #5c1d1d;
   --color-status-warning-subtle: #423e36;
   --color-status-warning-subtle-hover: #554832;
+
+  /* The dark half of the 88.9-63 pill family (X17a; the marker is at the light declarations):
+     hue-500 mixed 35% into the dark card. Word on its fill / fill against the card: green
+     5.95 / 1.92, neutral 6.96 / 1.52, violet 7.77 / 1.51, blue 7.14 / 1.59, amber 5.65 / 1.97,
+     emerald 5.89 / 1.83. Every fill is opaque on purpose: the Guest pill sits on unwashed
+     photo rows (88.9-60 X23a), where an alpha fill would let the photo through its words. */
+  --color-pill-green-bg: #236249;
+  --color-pill-green-text: #bbf7d0;
+  --color-pill-neutral-bg: #48484d;
+  --color-pill-neutral-text: #e8e0d8;
+  --color-pill-violet-bg: #523b7f;
+  --color-pill-violet-text: #f3e8ff;
+  --color-pill-blue-bg: #2b4b7e;
+  --color-pill-blue-text: #dbeafe;
+  --color-pill-amber-bg: #6d552c;
+  --color-pill-amber-text: #fde68a;
+  --color-pill-emerald-bg: #1c5e55;
+  --color-pill-emerald-text: #a7f3d0;
 
   /* Header (warm neutral) */
   --color-bg-header: var(--warm-900);
