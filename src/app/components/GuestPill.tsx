@@ -4,7 +4,11 @@
    sheet row, chosen OVER a second copy of the pill classes in the sheet. The classes, the title and
    the word are byte-for-byte the pill UpcomingEventsCard shipped (Phase 71.1 GAMP-09, size 12 since
    88.6-28 D-01, tracking-wider since 88.9-47 K7); the edge string is the one the card's guest row painted inline. A VISUAL cue only
-   (isGuestEvent decides it; no route, request or permission reads either export). */
+   (isGuestEvent decides it; no route, request or permission reads either export).
+   AMENDED Phase 88.9-63 (X16 + X17a): sentence case on the amber pill pair, no edge, chosen OVER
+   the shipped capitals and light-only amber. The pair is opaque in both themes on purpose: on a
+   guest's picture row (no wash since 88.9-60 X23a) this fill is all that sits between the word
+   and the photo, and the callers pass no className to change it. */
 import * as React from 'react';
 
 import { cn } from '@/lib/cn';
@@ -16,12 +20,12 @@ export interface GuestPillProps {
   className?: string;
 }
 
-/** The 12px uppercase Guest pill, rendered after the time text of a guest row. */
+/** The 12px sentence-case Guest pill, rendered after the time text of a guest row. */
 export default function GuestPill({ className }: GuestPillProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center px-1.5 py-0.5 ml-2 text-xs uppercase tracking-wider rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50',
+        'inline-flex items-center px-1.5 py-0.5 ml-2 text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber',
         className,
       )}
       title="You joined this event as a guest (not a group member)"

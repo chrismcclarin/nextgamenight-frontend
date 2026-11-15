@@ -444,7 +444,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
 
   // The green "Friend" pill, in ONE place: the accepted return and the success region both use it.
   const renderFriendPill = () => (
-    <span className="text-xs uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
+    <span className="text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold">
       Friend
     </span>
   );
@@ -468,11 +468,12 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // view regardless. The 600 -> 700 step contributes only ~0.2px of that; the growth is the size
     // fold. Container box model reconstructed from the class values, not from compiled CSS.
     // AMENDED Phase 88.9-47 (owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): both pills move to tracking-wider, 0.05em, chosen OVER the shipped 0.025em step; that adds 0.3px per letter (about +0.9px for You, +1.8px for Friend) to the widths measured above, and shift({ padding: 8 }) still keeps the popover in view.
+    // AMENDED Phase 88.9-63 (X16 + X17a): both pills drop capitals and letter-spacing (12px, 700 kept), so the popover is narrower than measured above (not re-measured); fills are the emerald and blue pill pairs.
     //
     // Self → blue "You" pill. Informational only, no action.
     if (status === 'self') {
       return (
-        <span className="text-xs uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
+        <span className="text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">
           You
         </span>
       );

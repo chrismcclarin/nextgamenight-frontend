@@ -604,8 +604,10 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     };
 
     const getRoleBadge = (role) => {
+        /* DECISION Phase 88.9-63 (52-X13, N21): no owner entry — both callers exclude the owner,
+           who gets the inline Owner badge, so it could never render; chosen OVER keeping a
+           light-only pill. The 700 marker below stands. */
         const roleStyles = {
-            owner: 'bg-purple-100 text-purple-800 border-purple-300',
             admin: 'bg-surface-muted text-content-accent border-accent',
             member: 'bg-surface-muted text-content-secondary border-line',
             pending: 'bg-status-warning-subtle text-content-status-warning border-status-warning'

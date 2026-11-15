@@ -251,7 +251,7 @@ const PAIRED_ELSEWHERE: Record<string, string> = {
   // would red on a file that no longer exists. That coupling is deliberate and is exactly
   // what test 2 is for — a deletion cannot leave a widening exemption behind.
   'app/components/ManageMembers.js':
-    'role pill: all four roleStyles entries name a colour, and the `||` guarantees a fallback',
+    'role pill: all three roleStyles entries name a colour, and the `||` guarantees a fallback',
   'app/friends/page.js':
     'armed-remove ternary: both branches name a colour (status-error / transparent)',
   'app/gameDetail/page.js':
