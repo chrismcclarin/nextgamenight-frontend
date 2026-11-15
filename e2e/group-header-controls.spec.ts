@@ -239,8 +239,11 @@ function expectVisibleStep(theme: Theme, reads: HoverReads, what: string, stored
 // the rounded top corners the active tab has, or the fading fill shows square corners for the
 // length of the fade. The fade is too short to catch by waiting, so ONE evaluate presses Library,
 // finds Overview's running background transition, pauses it at three points (a tenth, half and
-// nine tenths of its length) and reads Overview's computed top corners and fill at each: computed
-// style on a held frame, not a screenshot comparison. Runs in both projects (the tab strip is the
+// three quarters of its length) and reads Overview's computed top corners and fill at each: computed
+// style on a held frame, not a screenshot comparison. AMENDED after the red run 43751458336: the
+// last frame was held at nine tenths, where the eased fill is down to 1/255 of its alpha (read
+// 0.004), one rounding step from failing the still-has-a-fill check on a correct build; three
+// quarters keeps a fill worth measuring. Runs in both projects (the tab strip is the
 // same markup at 375 and at 1280); pressing a tab sends no write.
 test('X37 (88.9): the group tab being left keeps its rounded top corners for the whole fade', async ({ page }) => {
   hold = await holdWrites(page, {});
@@ -280,7 +283,7 @@ test('X37 (88.9): the group tab being left keeps its rounded top corners for the
     const delay = timing?.delay ?? 0;
     if (duration <= 0) return { error: 'no fade to observe: the background-color transition has no length' };
     fade.pause();
-    const frames = [0.1, 0.5, 0.9].map((at) => {
+    const frames = [0.1, 0.5, 0.75].map((at) => {
       fade.currentTime = delay + duration * at;
       const style = getComputedStyle(leaving);
       return {
