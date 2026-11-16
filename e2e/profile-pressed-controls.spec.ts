@@ -10,6 +10,7 @@ import {
   type ReleasableHold,
   type WriteHold,
 } from './support/inFlight';
+import { describeSamples, paintedTexts, recordLabel, spread, stopLabelRecorder, valuesAt } from './support/labelRecorder';
 import { expectFocusRingClearOfText } from './support/ringGeometry';
 import { scrubbedFetch } from './support/scrubbedFetch';
 
@@ -1278,6 +1279,42 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await expect(collection.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);
     await expect(collection.getByRole('heading', { level: 2, name: 'My Game Collection (1)' })).toBeFocused();
   });
+  // Plan 88.9-67 (52-X69 widened, owner 2026-11-14). The collection x is recorded in the browser
+  // from rest to its live label: it reads x, Wait (3), Wait (2), Wait (1), then Remove, and its box
+  // keeps ONE width through all five, so arming never reflows the game title beside it (the
+  // 88.6-17 measurement). One tap only: nothing is removed, and the hold fails the test on a write.
+  test('X69 (88.9): the collection x reads Wait (3), (2), (1) then Remove in a box that never changes width, and sends nothing', async ({ page }, testInfo) => {
+    // One press only (it arms): nothing is removed, and afterEach fails the test on any write.
+    backstop = await holdWrites(page, {
+      answerGet: (url) => (OWNED_GAMES_PATH.test(url.pathname) ? [ONE, TWO] : undefined),
+    });
+    await page.goto('/userProfile');
+    const collection = collectionCard(page);
+    const remove = collection.getByRole('button', { name: 'Remove E2E Meeple One', exact: true });
+    await expect(remove, 'X69: the routed collection never rendered its x').toBeVisible({ timeout: 15_000 });
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    await focusByKeyboard(page, remove);
+    await recordLabel(remove);
+    await page.keyboard.press('Enter'); // arms
+    // The live label, after the 3 s gate: the x arms to Remove (fork 7) and is named by it.
+    await expect(collection.getByRole('button', { name: 'Remove', exact: true })).toBeVisible({ timeout: 10_000 });
+    const samples = await stopLabelRecorder(page);
+
+    const EVERY_STATE = ['×', 'Wait (3)', 'Wait (2)', 'Wait (1)', 'Remove'];
+    const trace = describeSamples(samples);
+    // eslint-disable-next-line no-console -- the measured widths are recorded from the CI log (plan 88.9-67)
+    console.log(`[88.9-67 X69 collection x] ${testInfo.project.name}: ${trace}`);
+    expect(paintedTexts(samples), `X69: the x did not run x, Wait (3), (2), (1), Remove (${trace})`).toEqual(EVERY_STATE);
+    expect(valuesAt(samples, 'Wait (3)', 'name')).toEqual(['Remove E2E Meeple One, wait 3 seconds']);
+    expect(valuesAt(samples, 'Wait (2)', 'name')).toEqual(['Remove E2E Meeple One, wait 2 seconds']);
+    expect(valuesAt(samples, 'Wait (1)', 'name')).toEqual(['Remove E2E Meeple One, wait 1 second']);
+    expect(valuesAt(samples, 'Remove', 'name')).toEqual(['Remove']);
+    const jump = spread(samples, EVERY_STATE, 'width');
+    expect(jump, `X69: the x changed width by ${jump}px between rest and its live label (${trace})`).toBeLessThanOrEqual(0.5);
+  });
+
   test('Add to Collection keeps its label with the spinner (rule 1), refuses a second press, then lands on + Add from BGG', async ({ page }) => {
     const THREE = { id: 'e2e-game-three', name: 'E2E Meeple Three', bgg_id: 990201, year_published: 2003, image_url: null };
     let owned: unknown[] = [ONE];

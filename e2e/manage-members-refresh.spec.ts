@@ -8,6 +8,14 @@ import {
   settleAnimations,
   type WriteHold,
 } from './support/inFlight';
+import {
+  describeSamples,
+  paintedTexts,
+  recordLabelWhenItAppears,
+  spread,
+  stopLabelRecorder,
+  valuesAt,
+} from './support/labelRecorder';
 import { scrubbedFetch } from './support/scrubbedFetch';
 
 /**
@@ -471,5 +479,86 @@ test.describe('Phase 88.6.1-50 — a pressed Transfer ownership keeps focus at 3
     expect(hold.count('POST', TRANSFER_PATH), 'a second Enter sends no second transfer').toBe(1);
     await expect(pressed).toBeFocused();
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+// Plan 88.9-67 (52-X69 widened, owner 2026-11-14: a waiting confirm says Wait, so a person can see
+// that pressing is not an option yet). PHONE PROJECT ONLY, like the rest of this file.
+// WHAT IT PROVES THAT JSDOM CANNOT: rendered widths. A gated confirm is recorded in the browser
+// (e2e/support/labelRecorder.ts) from the moment it appears to its live label, and its width must
+// not change on the way.
+// WHY IT IS SAFE: holdWrites is registered before navigation and holds every non-GET request in
+// the browser; the members are the synthetic rows; each test ends on Cancel or Escape and asserts
+// that no write was sent.
+test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone project)', () => {
+  test.skip(({ isMobile }) => !isMobile, 'X69 / X67 phone proof — phone project only');
+
+  let hold: WriteHold;
+
+  test.beforeEach(async ({ page }) => {
+    hold = await holdWrites(page);
+    await routeAugmentedRoster(page, () => [SYNTH, SYNTH_NEXT]);
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    const manage = page.getByRole('button', { name: 'Manage Members' });
+    await expect(manage).toBeVisible({ timeout: 15_000 });
+    await manage.tap();
+  });
+
+  // Same reason as the first describe (DECISION Phase 88.6.1-42 wave 5 CI gate).
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('X69 (88.9): the Make admin confirm reads Wait (3), (2), (1) then Make admin at one width at 375, named Make admin, wait N seconds while it waits', async ({
+    page,
+  }) => {
+    expect(page.viewportSize()?.width).toBe(375);
+    const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
+    await settleAnimations(dialog);
+
+    await dialog.getByRole('button', { name: 'Member actions for E2E Removable' }).tap();
+    const makeAdmin = dialog.getByRole('button', { name: 'Make admin', exact: true });
+    await expect(makeAdmin).toBeVisible();
+    // Installed BEFORE the tap that opens the confirm dialog, so Wait (3) is never missed. The
+    // kebab item named Make admin closes in the same commit that opens the dialog; while both
+    // exist the recorder takes the later one in the document, which is the stacked dialog's.
+    await recordLabelWhenItAppears(page, '[role="dialog"]', /^(Wait \(\d\)|Make admin)$/);
+    await makeAdmin.tap();
+
+    const promote = page.getByRole('dialog', { name: /Make E2E Removable an admin\?/ });
+    await expect(promote).toBeVisible();
+    // The live confirm, after the 3 s gate: named by its content again.
+    const confirm = promote.getByRole('button', { name: 'Make admin', exact: true });
+    await expect(confirm).toBeVisible({ timeout: 10_000 });
+    await expect(confirm).not.toHaveAttribute('aria-disabled', 'true');
+    const samples = await stopLabelRecorder(page);
+
+    const WAITING = ['Wait (3)', 'Wait (2)', 'Wait (1)'];
+    // The first sample is the kebab item (Make admin, in the menu) before the dialog exists.
+    const inDialog = samples.slice(samples.findIndex((sample) => sample.text === 'Wait (3)'));
+    const trace = describeSamples(inDialog);
+    // eslint-disable-next-line no-console -- the measured widths are recorded from the CI log (plan 88.9-67)
+    console.log(`[88.9-67 X69 Make admin confirm] phone: ${trace}`);
+    expect(paintedTexts(inDialog), `X69: the confirm did not run Wait (3), (2), (1), Make admin (${trace})`).toEqual([
+      ...WAITING,
+      'Make admin',
+    ]);
+    expect(valuesAt(inDialog, 'Wait (3)', 'name')).toEqual(['Make admin, wait 3 seconds']);
+    expect(valuesAt(inDialog, 'Wait (2)', 'name')).toEqual(['Make admin, wait 2 seconds']);
+    expect(valuesAt(inDialog, 'Wait (1)', 'name')).toEqual(['Make admin, wait 1 second']);
+    expect(valuesAt(inDialog, 'Make admin', 'name')).toEqual([null]);
+    const jump = spread(inDialog, [...WAITING, 'Make admin'], 'width');
+    expect(jump, `X69: the confirm changed width by ${jump}px between Wait (3) and Make admin (${trace})`).toBeLessThanOrEqual(0.5);
+
+    await promote.getByRole('button', { name: 'Cancel', exact: true }).tap();
+    await expect(promote).toHaveCount(0);
+    // The role change is a PUT on .../users/<id>/role (src/lib/api.ts, updateUserRole); no write
+    // of any method reached a member path.
+    const memberWrites = hold.held.filter((request) =>
+      new URL(request.url).pathname.includes(`/groups/${E2E_GROUP_ID}/users`),
+    );
+    expect(memberWrites, 'X69: Cancel sent no member write').toEqual([]);
   });
 });
