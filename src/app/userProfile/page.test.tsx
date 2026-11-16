@@ -42,6 +42,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner';
+import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { INLINE_RECEIPT_MS } from '@/components/ui/useInlineReceipt';
 import { axe } from 'vitest-axe';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -1464,7 +1466,9 @@ describe('userProfile type scale (Req 2)', () => {
     expect(raw.map((m) => m[0])).toEqual([]);
     // 14 -> 15 (Phase 88.6.1-79): the withdrawn identity arm's page heading, a second `level={1}`
     // TAG in source; only one of the two arms is ever mounted, so the page renders one h1.
-    expect(headingTags(source).length).toBe(15);
+    // AMENDED Phase 88.9-68 (X58, owner R2: It has no title): 15 -> 16, the search panel's title
+    // (Search BoardGameGeek, level 3 on the body rung, as the import box's title beside it).
+    expect(headingTags(source).length).toBe(16);
   });
 
   // §4.2 states 600 as a PROHIBITION, not a preference, and D-01 gives it exactly
@@ -1483,7 +1487,7 @@ describe('userProfile type scale (Req 2)', () => {
   it('keeps every heading inside the working set', async () => {
     const source = await pageSource();
     const tags = headingTags(source);
-    expect(tags.length).toBe(15);
+    expect(tags.length).toBe(16); // AMENDED Phase 88.9-68 (X58): 15 -> 16, the search panel's title
     const offenders = tags.filter((attrs) =>
       /\b(?:[a-z]+:)?text-(?:lg|2xl|4xl|5xl)\b/.test(attrs)
     );
@@ -1493,7 +1497,7 @@ describe('userProfile type scale (Req 2)', () => {
   it('gives every heading an explicit size and an explicit level', async () => {
     const source = await pageSource();
     const tags = headingTags(source);
-    expect(tags.length).toBe(15);
+    expect(tags.length).toBe(16); // AMENDED Phase 88.9-68 (X58): 15 -> 16, the search panel's title
     for (const attrs of tags) {
       // UI-SPEC §4.4: every migrated call site records its rung rather than
       // inheriting one from the level.
@@ -1512,7 +1516,8 @@ describe('userProfile type scale (Req 2)', () => {
       counts[lvl] = (counts[lvl] ?? 0) + 1;
     }
     // '1': 1 -> 2 (Phase 88.6.1-79): the withdrawn identity arm's heading; the two arms are exclusive.
-    expect(counts).toEqual({ '1': 2, '2': 7, '3': 4, '4': 2 });
+    // AMENDED Phase 88.9-68 (X58, owner R2: It has no title): '3': 4 -> 5, the search panel's title.
+    expect(counts).toEqual({ '1': 2, '2': 7, '3': 5, '4': 2 });
   });
 
   // The two h4s at 16 are the one judgement D-04's table does not make for us.
@@ -2396,9 +2401,11 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
       // AMENDED Phase 88.9-24 (save-feedback rules 2/3): the seven success strings left the toaster
       // (Username updated is an inline receipt; the other six are spoken by the root announcer).
       // Every error string and the neutral No games found line stay, in order.
+      // AMENDED Phase 88.9-68 (X58, owner R2: Line under the box.): the No games found sentence left
+      // the toaster too; it is a visible polite line under the search box now, pinned by the X58 test
+      // at the end of this file. Every error string stays, in order.
       "We couldn't connect Google Calendar. Please try again.",
       'Still loading your account — please try again in a moment.',
-      'No games found. Try a different search term.',
       'Still loading your account — please try again in a moment.',
       'Still loading your account — please try again in a moment.',
       // 88.6.1-61 (review 65): the two availability create guards reuse the page's existing
@@ -4398,7 +4405,8 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
     await waitFor(() => expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(2));
   });
 
-  it('S4: a search with results is announced once, screen-reader only; a zero result keeps the toast alone', async () => {
+  // AMENDED Phase 88.9-68 (X58): a zero result shows the line under the search box; the toast is gone.
+  it('S4: a search with results is announced once, screen-reader only; a zero result shows the line under the search box alone, with no toast', async () => {
     const { gamesAPI } = await import('@/lib/api');
     (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([
       { bgg_id: 1, name: 'Azul', year_published: 2017 },
@@ -4414,7 +4422,8 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
     expect(region).not.toBeNull();
     expect(region).toHaveAttribute('aria-live', 'polite');
     expect(region.classList).toContain('sr-only');
-    expect(toastMock()).not.toHaveBeenCalledWith('No games found. Try a different search term.');
+    expect(toastMock()).not.toHaveBeenCalled();
+    expect(screen.getByTestId('bgg-no-results').textContent).toBe('');
 
     await waitFor(() => expect(search.textContent).toBe('Search'));
     (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 3, name: 'Azul: Summer', year_published: 2019 }]);
@@ -4426,8 +4435,9 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
     (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([]);
     fireEvent.click(search);
     await waitFor(() =>
-      expect(toastMock()).toHaveBeenCalledWith('No games found. Try a different search term.')
+      expect(screen.getByTestId('bgg-no-results').textContent).toBe('No games found. Try a different search term.')
     );
+    expect(toastMock()).not.toHaveBeenCalled();
     expect(screen.queryByText(/^Found \d+ games?\.$/)).toBeNull();
   });
 });
@@ -4449,9 +4459,11 @@ describe('BGG search answer and result-count region (88.6.1 code review A-68 / A
     (gamesAPI.searchBGG as Mock).mockResolvedValueOnce(null);
     renderProfile();
     await openAndSearch('nothing');
+    // AMENDED Phase 88.9-68 (X58): the zero-result sentence is the line under the search box.
     await waitFor(() =>
-      expect(toastMock()).toHaveBeenCalledWith('No games found. Try a different search term.')
+      expect(screen.getByTestId('bgg-no-results').textContent).toBe('No games found. Try a different search term.')
     );
+    expect(toastMock()).not.toHaveBeenCalled();
     expect(toastMock().error).not.toHaveBeenCalled();
   });
 
@@ -6315,8 +6327,14 @@ describe('collection bar and dark card fill (88.9-68: X52d, X56c)', () => {
   afterEach(async () => {
     restoreMedia?.();
     restoreMedia = undefined;
-    const { userGamesAPI } = await import('@/lib/api');
+    vi.useRealTimers();
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
     (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+    // The Q2 tests script the search, the import, the add and the remove; back to the harness defaults.
+    (userGamesAPI.addOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (userGamesAPI.removeOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+    (gamesAPI.importFromBGG as Mock).mockReset().mockResolvedValue({ id: 'game-imported' });
   });
 
   it('X52d (88.9-68): on a phone with eight games the collection starts closed with three cards, the fourth peeks inert and hidden from assistive tech, and the Show all 8 games bar opens and closes the rest', async () => {
@@ -6437,6 +6455,163 @@ describe('collection bar and dark card fill (88.9-68: X52d, X56c)', () => {
     fireEvent.click(collectionBar());
     await waitFor(() => expect(reachableRemoves()).toHaveLength(9));
     NAMES.forEach(expectCardFill);
+  });
+
+  // Q2 (owner ruling 2026-11-14, "Q2-y-inline"): the bar never opens by itself; a plain visible
+  // Game added line shows under + Add from BGG. The owned-games read answers whatever `rows` holds,
+  // so a refresh after the add brings the new list.
+  const addFromBgg = () => screen.getByRole('button', { name: /^(\+ Add from BGG|Hide Search)$/ });
+  const addGameReceipt = () => screen.getByTestId('add-game-receipt');
+  const settle = async () => {
+    for (let i = 0; i < 3; i += 1) await act(async () => {});
+  };
+  async function serveRows(initial: ReturnType<typeof gamesNamed>) {
+    const { userGamesAPI } = await import('@/lib/api');
+    const shelf = { rows: initial };
+    (userGamesAPI.getOwnedGames as Mock).mockImplementation(async () => shelf.rows);
+    return shelf;
+  }
+  function searchAndPressAdd(query: string) {
+    fireEvent.click(addFromBgg());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: query } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+  }
+
+  it('Q2 (88.9-68): on a phone with eight games, adding a game that sorts last from an answer carrying its row shows Game added under + Add from BGG as plain text outside any status region, keeps the bar closed reading Show all 9 games, and the root announcer speaks Game added once', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    stubPhoneViewport(true);
+    const shelf = await serveRows(gamesNamed(8));
+    const inis = gamesNamed(9)[8];
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: 9009, name: 'Inis', year_published: 2009 }]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValue({ id: inis.id });
+    (userGamesAPI.addOwnedGame as Mock).mockImplementation(async () => {
+      shelf.rows = gamesNamed(9);
+      return { message: 'Game added to your collection', game: inis };
+    });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+
+    // The line: a paragraph directly after the header row that holds + Add from BGG, mounted empty,
+    // with its 16px always reserved in place of the header row's old bottom margin.
+    const receipt = addGameReceipt();
+    expect(receipt.tagName).toBe('P');
+    expect(receipt.textContent).toBe('');
+    expect(receipt.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['min-h-4', 'text-xs', 'text-content-status-success', 'sm:text-right'])
+    );
+    const headerRow = receipt.previousElementSibling as HTMLElement;
+    expect(headerRow).toContainElement(addFromBgg());
+    expect(headerRow.className.split(/\s+/)).not.toContain('mb-4');
+
+    searchAndPressAdd('inis');
+    fireEvent.click(await screen.findByRole('button', { name: /^Add to Collection(, adding)?$/ }));
+
+    await waitFor(() => expect(receipt.textContent).toBe('Game added'));
+    expect(addGameReceipt()).toBe(receipt);
+    // Plain text: no role, not live, not hidden, and inside no status region.
+    expect(receipt).not.toHaveAttribute('role');
+    expect(receipt).not.toHaveAttribute('aria-live');
+    expect(receipt).not.toHaveAttribute('aria-hidden');
+    expect(receipt.closest('[role="status"]')).toBeNull();
+    expect(receipt.closest('[aria-live]')).toBeNull();
+    expect(receipt.closest('[aria-hidden="true"]')).toBeNull();
+    // The bar stays closed and counts the new game; the new game is behind it.
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'false');
+    expect(collectionBar()).toHaveAccessibleName('Show all 9 games');
+    expect(screen.getByRole('heading', { level: 2, name: 'My Game Collection (9)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove Inis' })).toBeNull();
+    expect(reachableRemoves()).toHaveLength(3);
+    // Spoken once, by the root announcer; no toast of any kind.
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Game added');
+    expect(toastMock()).not.toHaveBeenCalled();
+    expect(toastMock().success).not.toHaveBeenCalled();
+  });
+
+  it('Q2 (88.9-68): with the no-row answer the refresh brings the ninth game and the same line shows with the bar closed; the line clears after INLINE_RECEIPT_MS and at the next + Add from BGG press; a list opened at four games and cut to three by a Remove starts closed when a fourth is added back', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    vi.useFakeTimers();
+    const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+    stubPhoneViewport(true);
+    const shelf = await serveRows(gamesNamed(8));
+    const jaipur = { id: 'shelf-10', name: 'Jaipur', year_published: 2010, image_url: null };
+    (gamesAPI.importFromBGG as Mock).mockResolvedValue({ id: 'game-imported' });
+    // The harness default answer: no `game` row, so only the refresh can bring the new game.
+    (userGamesAPI.addOwnedGame as Mock).mockImplementation(async () => {
+      shelf.rows = shelf.rows.length === 8 ? gamesNamed(9) : [...gamesNamed(9), jaipur];
+      return {};
+    });
+    const view = renderProfile();
+    await settle();
+    expect(reachableRemoves()).toHaveLength(3);
+    const receipt = addGameReceipt();
+
+    // The ninth game arrives with the refresh: the same line, the bar closed.
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: 9009, name: 'Inis', year_published: 2009 }]);
+    searchAndPressAdd('inis');
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: /^Add to Collection(, adding)?$/ }));
+    await settle();
+    expect(receipt.textContent).toBe('Game added');
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'false');
+    expect(collectionBar()).toHaveAccessibleName('Show all 9 games');
+    expect(screen.queryByRole('button', { name: 'Remove Inis' })).toBeNull();
+
+    // The next press of + Add from BGG clears it early.
+    fireEvent.click(addFromBgg());
+    expect(receipt.textContent).toBe('');
+    fireEvent.click(addFromBgg()); // Hide Search
+
+    // A second add: the line shows again and clears by itself after INLINE_RECEIPT_MS.
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: 9010, name: 'Jaipur', year_published: 2010 }]);
+    searchAndPressAdd('jaipur');
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: /^Add to Collection(, adding)?$/ }));
+    await settle();
+    expect(receipt.textContent).toBe('Game added');
+    expect(collectionBar()).toHaveAccessibleName('Show all 10 games');
+    advance(INLINE_RECEIPT_MS - 1);
+    expect(receipt.textContent).toBe('Game added');
+    advance(1);
+    expect(receipt.textContent).toBe('');
+    view.unmount();
+
+    // Four games, opened, cut to three by a Remove (no bar), then a fourth added back: closed.
+    shelf.rows = gamesNamed(4);
+    (userGamesAPI.removeOwnedGame as Mock).mockImplementation(async () => {
+      shelf.rows = gamesNamed(3);
+      return {};
+    });
+    (userGamesAPI.addOwnedGame as Mock).mockImplementation(async () => {
+      shelf.rows = gamesNamed(4);
+      return {};
+    });
+    renderProfile();
+    await settle();
+    expect(collectionBar()).toHaveAccessibleName('Show all 4 games');
+    fireEvent.click(collectionBar());
+    await settle();
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'true');
+    expect(reachableRemoves()).toHaveLength(4);
+    const x = screen.getByRole('button', { name: 'Remove Dominion' });
+    fireEvent.click(x);
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.click(x);
+    await settle();
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1);
+    expect(reachableRemoves()).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /^(Show all \d+ games|Show fewer)$/ })).toBeNull();
+
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: 9004, name: 'Dominion', year_published: 2004 }]);
+    searchAndPressAdd('dominion');
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: /^Add to Collection(, adding)?$/ }));
+    await settle();
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'false');
+    expect(collectionBar()).toHaveAccessibleName('Show all 4 games');
+    expect(reachableRemoves()).toHaveLength(3);
+    expect(addGameReceipt().textContent).toBe('Game added');
   });
 });
 
@@ -6696,5 +6871,165 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     await act(async () => { removal.resolve(REMOVED_USER); });
     await vi.waitFor(() => expect(screen.getByText(BANNER)).toBeInTheDocument());
     expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+  });
+});
+
+// 88.9-68 Task 4 (X58, X33b). X58: a search with no results says so in a visible polite line under
+// the search row (the toast is gone), and the search panel has a title and the import box's corners.
+// X33b: the timezone picker shows Saved beside it once the save has landed. The provider is mocked
+// in this file, so its save result is whatever `h.setTimezone` resolves.
+describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  const SENTENCE = 'No games found. Try a different search term.';
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+  const flush = () => act(async () => {});
+  const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    h.setTimezone.mockReset();
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+  });
+
+  it("X58 (88.9-68): a search with no results writes No games found. Try a different search term. into a polite line under the search box, never a toast; a new search empties it first and keeps it empty at least REGION_EMPTY_DWELL_MS; the search panel carries its title and the import box's corners", async () => {
+    vi.useFakeTimers();
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([]);
+    renderProfile();
+    await flush();
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add from BGG' }));
+    const field = screen.getByRole('textbox', { name: 'Search BoardGameGeek' });
+    const search = screen.getByRole('button', { name: 'Search' });
+
+    // The line is mounted EMPTY with the panel: polite, hidden from sight while it says nothing.
+    const line = screen.getByTestId('bgg-no-results');
+    expect(line.textContent).toBe('');
+    expect(line).toHaveAttribute('role', 'status');
+    expect(line).toHaveAttribute('aria-live', 'polite');
+    expect(line.classList).toContain('sr-only');
+
+    // The panel: its title, the import box's corners, and no gap under the search row.
+    const panel = line.parentElement as HTMLElement;
+    expect(panel).toContainElement(field);
+    expect(within(panel).getByRole('heading', { level: 3, name: 'Search BoardGameGeek' })).toBeInTheDocument();
+    const importBox = screen.getByRole('heading', { level: 3, name: 'Import Your Entire BGG Collection' }).parentElement as HTMLElement;
+    const corner = (el: HTMLElement) => el.className.split(/\s+/).filter((token) => token.startsWith('rounded'));
+    expect(corner(panel)).toEqual(['rounded-lg']);
+    expect(corner(panel)).toEqual(corner(importBox));
+    expect(line.previousElementSibling).toContainElement(field);
+    expect((line.previousElementSibling as HTMLElement).className.split(/\s+/).filter((token) => token.startsWith('mb-'))).toEqual([]);
+
+    // A search that finds nothing: the sentence in the line, in muted small type, and no toast.
+    fireEvent.change(field, { target: { value: 'nothing' } });
+    fireEvent.click(search);
+    await flush();
+    advance(REGION_EMPTY_DWELL_MS);
+    expect(line.textContent).toBe(SENTENCE);
+    expect(screen.getByTestId('bgg-no-results')).toBe(line);
+    expect(line.classList).not.toContain('sr-only');
+    expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(['mt-3', 'text-sm', 'text-content-muted']));
+    expect(toastMock()).not.toHaveBeenCalled();
+    expect(toastMock().error).not.toHaveBeenCalled();
+    // The found-count region stays empty on zero, so the outcome is announced once.
+    expect(screen.queryByText(/^Found \d+ games?\.$/)).toBeNull();
+
+    // The same search again, answered at once: the line empties at the press, is still empty one
+    // millisecond before the dwell ends, and holds the sentence when it ends.
+    fireEvent.click(search);
+    expect(line.textContent).toBe('');
+    await flush();
+    expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(2);
+    advance(REGION_EMPTY_DWELL_MS - 1);
+    expect(line.textContent).toBe('');
+    advance(1);
+    expect(line.textContent).toBe(SENTENCE);
+    expect(toastMock()).not.toHaveBeenCalled();
+
+    // Hiding the search and opening it again starts from an empty line.
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Search' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Add from BGG' }));
+    expect(screen.getByTestId('bgg-no-results').textContent).toBe('');
+  });
+
+  it("X33b (88.9-68): picking a timezone shows Saved beside the picker in success ink once the save lands, from a polite region mounted empty; a failed save shows nothing; reopening the picker clears it; the list closes at the pick, before the save lands; of two overlapping picks only the later one's landed save shows Saved", async () => {
+    renderProfile();
+    const field = await screen.findByRole('combobox', { name: 'Timezone' });
+    // Open the picker, narrow it to one zone and press that option.
+    const pickZone = (zone: string) => {
+      fireEvent.click(field);
+      fireEvent.change(field, { target: { value: zone } });
+      fireEvent.click(within(screen.getByRole('listbox')).getAllByRole('option')[0]);
+    };
+
+    // The caption's region: mounted empty, polite, in the success ink at the caption size.
+    const receipt = screen.getByTestId('timezone-receipt');
+    expect(receipt.textContent).toBe('');
+    expect(receipt).toHaveAttribute('role', 'status');
+    expect(receipt).toHaveAttribute('aria-live', 'polite');
+    expect(receipt.classList).toContain('sr-only');
+    expect(receipt.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-xs', 'text-content-status-success']));
+
+    // The list closes at the pick, before the save lands; Saved shows once it has landed.
+    const save = deferred<boolean>();
+    h.setTimezone.mockReturnValueOnce(save.promise);
+    pickZone('America/Chicago');
+    expect(h.setTimezone).toHaveBeenCalledWith('America/Chicago');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(receipt.textContent).toBe('');
+    await act(async () => { save.resolve(true); });
+    await waitFor(() => expect(receipt.textContent).toBe('Saved'));
+    expect(screen.getByTestId('timezone-receipt')).toBe(receipt);
+    expect(receipt.classList).not.toContain('sr-only');
+    // The region is the caption's only speaker: no toast, nothing through the root announcer.
+    expect(toastMock().success).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
+
+    // Reopening the picker clears it.
+    fireEvent.click(field);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(receipt.textContent).toBe('');
+
+    // A failed save shows nothing.
+    h.setTimezone.mockResolvedValueOnce(false);
+    fireEvent.change(field, { target: { value: 'America/Denver' } });
+    fireEvent.click(within(screen.getByRole('listbox')).getAllByRole('option')[0]);
+    await flush();
+    await flush();
+    expect(h.setTimezone).toHaveBeenLastCalledWith('America/Denver');
+    expect(receipt.textContent).toBe('');
+
+    // Two overlapping picks, the later one FAILS: the earlier one landing shows nothing, and
+    // neither does the later one's failure.
+    let earlier = deferred<boolean>();
+    let later = deferred<boolean>();
+    h.setTimezone.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(later.promise);
+    pickZone('Asia/Tokyo');
+    pickZone('Europe/Berlin');
+    await act(async () => { earlier.resolve(true); });
+    await flush();
+    expect(receipt.textContent).toBe('');
+    await act(async () => { later.resolve(false); });
+    await flush();
+    expect(receipt.textContent).toBe('');
+
+    // Two overlapping picks, the later one LANDS: Saved shows once, only after the later one.
+    earlier = deferred<boolean>();
+    later = deferred<boolean>();
+    h.setTimezone.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(later.promise);
+    pickZone('Asia/Tokyo');
+    pickZone('Europe/Berlin');
+    await act(async () => { earlier.resolve(true); });
+    await flush();
+    expect(receipt.textContent).toBe('');
+    await act(async () => { later.resolve(true); });
+    await waitFor(() => expect(receipt.textContent).toBe('Saved'));
+    expect(h.setTimezone).toHaveBeenLastCalledWith('Europe/Berlin');
   });
 });

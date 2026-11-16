@@ -792,7 +792,10 @@ const EXPECTED_PROP_SEAMS = 1;
 // AMENDED Phase 88.9-66 (X70b, owner 2026-11-14): 134 -> 133. The Friends page's signed-out prompt
 // left with its h1 (the declined return is the shared banner, whose title is not a heading);
 // measured by this suite's own failure message, "expected 133 to be 134".
-const EXPECTED_PRIMITIVES = 133;
+// AMENDED Phase 88.9-68 (X58, owner R2: "It has no title"): 133 -> 134. The Profile BGG search
+// panel takes a level-3 title on the body rung (Search BoardGameGeek), beside the import box's;
+// measured by this suite's own failure message, "expected 134 to be 133".
+const EXPECTED_PRIMITIVES = 134;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -1742,7 +1745,11 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   // row) renders its own `<Heading level={1} size="display">` with the session name in place of the
   // healthy one. Mutually exclusive with the healthy heading, so the page still renders exactly ONE
   // h1 at a time; no existing heading moved level or size. Not an R7 heading-order finding.
-  'app/userProfile/page.js': { 1: 2, 2: 7, 3: 4, 4: 2 },
+  // RAISED { ..., 3: 4, ... } -> { ..., 3: 5, ... } by plan 88.9-68 task 4 (2026-11-15, X58, owner R2:
+  // "It has no title"): the BGG search panel takes a level-3 title on the body rung, Search
+  // BoardGameGeek, the same level and rung as the import box's title beside it under the card's h2.
+  // No existing heading moved level or size. Not an R7 heading-order finding.
+  'app/userProfile/page.js': { 1: 2, 2: 7, 3: 5, 4: 2 },
   'components/ui/ErrorFallback.tsx': { 1: 1 },
 };
 

@@ -9,24 +9,71 @@
 //      "no auto-sync from mount-time browser detection" policy: a mount-fire
 //      send here would reintroduce the silent profile-TZ-overwrite bug.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-const h = vi.hoisted(() => ({ selfUuid: undefined as string | undefined }));
+// AMENDED Phase 88.9-68 (X33b / Q8 harness): the mock now models the real self cache. It used
+// to build a NEW self object on every render with the stored zone always null, and
+// patchSelfCache was a bare spy, so the provider's read effect re-ran on every render and
+// nothing a save wrote could be read back. Now: ONE stable self object per (selfUuid, stored
+// zone), read through useSyncExternalStore, and the patchSelfCache mock writes the stored zone
+// and notifies, which forces the re-render the real setQueriesData causes.
+type SelfRow = { id: string; user_id: string; timezone: string | null };
+const h = vi.hoisted(() => ({
+  selfUuid: undefined as string | undefined,
+  storedTz: null as string | null,
+  listeners: new Set<() => void>(),
+  snapshot: null as { key: string; self: SelfRow } | null,
+}));
 
-vi.mock('@/lib/hooks/useSelfIdentity', () => ({
-  SELF_IDENTITY_KEY: ['users', 'self'],
-  useSelfIdentity: () => ({
-    selfUuid: h.selfUuid,
-    self: h.selfUuid ? { id: h.selfUuid, user_id: 'auth0|self', timezone: null } : undefined,
-    query: { isError: false, error: null, isPending: !h.selfUuid, refetch: vi.fn() },
-    isPending: !h.selfUuid,
+vi.mock('@/lib/hooks/useSelfIdentity', () => {
+  const subscribe = (listener: () => void) => {
+    h.listeners.add(listener);
+    return () => {
+      h.listeners.delete(listener);
+    };
+  };
+  const readSelf = (): SelfRow | undefined => {
+    if (!h.selfUuid) return undefined;
+    const key = `${h.selfUuid}|${h.storedTz ?? ''}`;
+    if (!h.snapshot || h.snapshot.key !== key) {
+      h.snapshot = {
+        key,
+        self: { id: h.selfUuid, user_id: 'auth0|self', timezone: h.storedTz },
+      };
+    }
+    return h.snapshot.self;
+  };
+  return {
+    SELF_IDENTITY_KEY: ['users', 'self'],
+    useSelfIdentity: () => {
+      const self = React.useSyncExternalStore(subscribe, readSelf, readSelf);
+      return {
+        selfUuid: h.selfUuid,
+        self,
+        query: { isError: false, error: null, isPending: !h.selfUuid, refetch: vi.fn() },
+        isPending: !h.selfUuid,
+      };
+    },
+  };
+});
+
+vi.mock('@/lib/hooks/selfIdentityCache', () => ({
+  patchSelfCache: vi.fn((_queryClient: unknown, patch: { timezone?: string | null }) => {
+    if (patch && 'timezone' in patch) {
+      h.storedTz = patch.timezone ?? null;
+      h.listeners.forEach((listener) => listener());
+    }
   }),
 }));
 
-vi.mock('@/lib/hooks/selfIdentityCache', () => ({ patchSelfCache: vi.fn() }));
+// The provider reports a failed save once through logger.error (X33b); a spy so the X33b and
+// Q8 arms can count it and nothing reaches Sentry.
+vi.mock('@/lib/logger', () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}));
 
 // ML-02 (87.5 review): the pre-resolution guard surfaces via toast, not throw —
 // mock sonner so the guard test can assert the user actually gets feedback.
@@ -49,8 +96,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import { TimezoneProvider, useTimezone } from './TimezoneProvider';
-import { usersAPI } from '@/lib/api';
+import { ApiError, usersAPI } from '@/lib/api';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
+import { patchSelfCache } from '@/lib/hooks/selfIdentityCache';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -68,6 +117,9 @@ function TZConsumer() {
 beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
+  h.storedTz = null;
+  h.snapshot = null;
+  h.listeners.clear();
 });
 
 afterEach(cleanup);
@@ -123,5 +175,220 @@ describe('TimezoneProvider identity flip (Plan 09 Task 2)', () => {
 
     await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
     expect(usersAPI.updateTimezone as Mock).not.toHaveBeenCalled();
+  });
+});
+
+// 88.9-68 (X33b and owner ruling Q8 b). setTimezone now answers whether the save landed, sends
+// saves one at a time in pick order, and puts the last SAVED zone back on screen when a save
+// fails with no later pick pending. The probe prints the provider's value and records what each
+// pick resolved to; the stored zone is the harness's model of the self cache (see the mock above).
+type TzValue = {
+  timezone: string;
+  isProfileTimezoneSet: boolean;
+  setTimezone: (tz: string) => Promise<unknown>;
+};
+
+const picked: Array<{ tz: string; ok: unknown }> = [];
+
+function TZProbe({ zones }: { zones: string[] }) {
+  const { timezone, isProfileTimezoneSet, setTimezone } = useTimezone() as unknown as TzValue;
+  return (
+    <div>
+      <output data-testid="tz">{timezone}</output>
+      <output data-testid="tz-set">{String(isProfileTimezoneSet)}</output>
+      {zones.map((zone) => (
+        <button
+          key={zone}
+          onClick={() => {
+            void setTimezone(zone).then((ok) => {
+              picked.push({ tz: zone, ok });
+            });
+          }}
+        >
+          {`pick ${zone}`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function deferred<T = unknown>() {
+  let resolve: (value: T) => void = () => {};
+  let reject: (reason: unknown) => void = () => {};
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe('TimezoneProvider save result, pick order and revert (88.9-68: X33b, Q8)', () => {
+  const TOKYO = 'Asia/Tokyo';
+  const BERLIN = 'Europe/Berlin';
+  const PARIS = 'Europe/Paris';
+  const DENVER = 'America/Denver';
+  const update = () => usersAPI.updateTimezone as Mock;
+  const onScreen = () => screen.getByTestId('tz').textContent;
+  const isSet = () => screen.getByTestId('tz-set').textContent;
+  const pick = (zone: string) => fireEvent.click(screen.getByText(`pick ${zone}`));
+  const mountProbe = (zones: string[]) =>
+    render(
+      <TimezoneProvider>
+        <TZProbe zones={zones} />
+      </TimezoneProvider>
+    );
+
+  beforeEach(() => {
+    picked.length = 0;
+    // clearAllMocks keeps queued once-values; start every test from the harness default.
+    update().mockReset().mockResolvedValue({});
+  });
+
+  it('X33b (88.9-68): setTimezone resolves true once the save lands and false after a failed save or the identity guard; a failed save reports once through logger.error and a 401 shows the session-expired line; saves reach the server in pick order', async () => {
+    // The identity guard: signed in, identity not resolved. Nothing is sent, and it resolves false.
+    h.selfUuid = undefined;
+    const guarded = mountProbe([TOKYO]);
+    pick(TOKYO);
+    await waitFor(() => expect(picked).toEqual([{ tz: TOKYO, ok: false }]));
+    expect(update()).not.toHaveBeenCalled();
+    guarded.unmount();
+    picked.length = 0;
+    vi.mocked(toast.error).mockClear();
+
+    h.selfUuid = SELF_UUID;
+    mountProbe([TOKYO, BERLIN]);
+
+    // A save that lands: true, after the PATCH and the cache patch; nothing logged, no toast.
+    pick(TOKYO);
+    await waitFor(() => expect(picked).toEqual([{ tz: TOKYO, ok: true }]));
+    expect(update()).toHaveBeenCalledWith(SELF_UUID, TOKYO);
+    expect(vi.mocked(patchSelfCache)).toHaveBeenCalledWith(expect.anything(), { timezone: TOKYO });
+    expect(vi.mocked(logger.error)).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+
+    // A save that fails for an unknown cause: false, logged once, the shipped sentence.
+    const boom = new Error('boom');
+    update().mockRejectedValueOnce(boom);
+    pick(BERLIN);
+    await waitFor(() => expect(picked).toHaveLength(2));
+    expect(picked[1]).toEqual({ tz: BERLIN, ok: false });
+    expect(vi.mocked(logger.error)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith('Failed to update timezone', boom);
+    expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith('Failed to save your timezone — please try again.');
+
+    // A 401: the register's session-expired line, never the fallback.
+    update().mockRejectedValueOnce(new ApiError('Unauthorized', 'unauthorized', 401));
+    pick(BERLIN);
+    await waitFor(() => expect(picked).toHaveLength(3));
+    expect(picked[2]).toEqual({ tz: BERLIN, ok: false });
+    expect(vi.mocked(logger.error)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(toast.error)).toHaveBeenLastCalledWith('Your session may have expired. Sign in again to continue.');
+
+    // Pick order: with the first PATCH still out, the second is not sent until the first settles.
+    const first = deferred();
+    update().mockReturnValueOnce(first.promise);
+    const sentBefore = update().mock.calls.length;
+    pick(TOKYO);
+    pick(BERLIN);
+    await act(async () => {});
+    expect(update().mock.calls.length).toBe(sentBefore + 1);
+    expect(update()).toHaveBeenLastCalledWith(SELF_UUID, TOKYO);
+    await act(async () => {
+      first.resolve({});
+    });
+    await waitFor(() => expect(update().mock.calls.length).toBe(sentBefore + 2));
+    expect(update()).toHaveBeenLastCalledWith(SELF_UUID, BERLIN);
+    await waitFor(() => expect(picked).toHaveLength(5));
+    expect(picked.slice(3)).toEqual([
+      { tz: TOKYO, ok: true },
+      { tz: BERLIN, ok: true },
+    ]);
+  });
+
+  it('Q8 (88.9-68): a failed save puts the last saved zone back on screen with the error toast, and a failed earlier pick never reverts a later pick and shows no toast', async () => {
+    // Stored Europe/Paris against the mocked browser zone UTC, so a revert to the SAVED zone is
+    // told apart from a fall back to the browser's.
+    h.selfUuid = SELF_UUID;
+    h.storedTz = PARIS;
+    mountProbe([TOKYO, BERLIN, DENVER]);
+    await waitFor(() => expect(onScreen()).toBe(PARIS));
+    expect(isSet()).toBe('true');
+
+    // One pick, its save fails: the pick shows at once, then the saved zone is back, one toast.
+    const lone = deferred();
+    update().mockReturnValueOnce(lone.promise);
+    pick(TOKYO);
+    expect(onScreen()).toBe(TOKYO);
+    await act(async () => {
+      lone.reject(new Error('lone'));
+    });
+    await waitFor(() => expect(onScreen()).toBe(PARIS));
+    expect(isSet()).toBe('true');
+    expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.error)).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(picked).toEqual([{ tz: TOKYO, ok: false }]));
+
+    // Two picks, the EARLIER one fails while the later is still saving: logged, no toast, and the
+    // later pick stays on screen; when it lands it is still there.
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(logger.error).mockClear();
+    let a = deferred();
+    let b = deferred();
+    update().mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    pick(TOKYO);
+    pick(BERLIN);
+    expect(onScreen()).toBe(BERLIN);
+    await act(async () => {
+      a.reject(new Error('earlier'));
+    });
+    await waitFor(() => expect(vi.mocked(logger.error)).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(update()).toHaveBeenLastCalledWith(SELF_UUID, BERLIN)); // the later PATCH is out
+    expect(onScreen()).toBe(BERLIN);
+    expect(isSet()).toBe('true');
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+    await act(async () => {
+      b.resolve({});
+    });
+    await waitFor(() => expect(picked).toHaveLength(3));
+    expect(picked.slice(1)).toEqual([
+      { tz: TOKYO, ok: false },
+      { tz: BERLIN, ok: true },
+    ]);
+    expect(onScreen()).toBe(BERLIN);
+    expect(h.storedTz).toBe(BERLIN);
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.error)).toHaveBeenCalledTimes(1);
+
+    // The earlier pick LANDS while the later is still saving: its cache patch re-renders the
+    // provider with a new self row, and the later pick is still on screen.
+    a = deferred();
+    b = deferred();
+    update().mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    pick(DENVER);
+    pick(TOKYO);
+    expect(onScreen()).toBe(TOKYO);
+    await act(async () => {
+      a.resolve({});
+    });
+    await waitFor(() => expect(h.storedTz).toBe(DENVER)); // the earlier save landed and patched the cache
+    await waitFor(() => expect(update()).toHaveBeenLastCalledWith(SELF_UUID, TOKYO));
+    await act(async () => {});
+    expect(onScreen()).toBe(TOKYO);
+
+    // ...and then the later pick FAILS: the screen shows the earlier pick (the zone the server
+    // now holds), with one toast.
+    await act(async () => {
+      b.reject(new Error('later'));
+    });
+    await waitFor(() => expect(onScreen()).toBe(DENVER));
+    expect(isSet()).toBe('true');
+    expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(picked).toHaveLength(5));
+    expect(picked.slice(3)).toEqual([
+      { tz: DENVER, ok: true },
+      { tz: TOKYO, ok: false },
+    ]);
   });
 });
