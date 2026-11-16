@@ -27,7 +27,10 @@ const JOIN_ERROR_HEADLINE = 'Unable to join group';
    a PREVIEW failure (any kind) takes the load headline and a JOIN failure keeps the join headline,
    chosen OVER the shipped single headline for both (it said "join" when nobody had tried to join).
    The red error glyph stays: the D14a pick was rendered on it; the AMBER-vs-RED colour half was not
-   rendered for this card (hand-off to 88.9-51). ASCII apostrophe, house punctuation. */
+   rendered for this card (hand-off to 88.9-51). ASCII apostrophe, house punctuation.
+   AMENDED Phase 88.9-69 (N36, owner: Follow recommendation): a preview failure's X is amber (5.50 / 4.95), a join failure's red, chosen OVER one red X; keyed on previewFailed.
+   The two numbers are the warning ink on the warning circle, light then dark (wcag.ts). One
+   literal class string per arm at the glyph, because a class built from pieces emits nothing. */
 const PREVIEW_ERROR_HEADLINE = "Couldn't load this invite";
 const INVALID_LINK_DETAIL = 'This invite link is no longer valid.';
 
@@ -408,8 +411,24 @@ function GroupInvitePage() {
           {/* Error state */}
           {status === 'error' && (
             <div className="text-center">
-              <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              {/* N36 (88.9-69): the circle and the X by cause, amber for a failed load, red for a
+                  refused join. See the K11(c) marker above the headline constants. */}
+              <div
+                className={
+                  previewFailed
+                    ? 'mx-auto mb-4 w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center'
+                    : 'mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center'
+                }
+              >
+                <svg
+                  className={previewFailed ? 'w-8 h-8 text-content-status-warning' : 'w-8 h-8 text-content-status-error'}
+                  aria-hidden="true"
+                  focusable="false"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>

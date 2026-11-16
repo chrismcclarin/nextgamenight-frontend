@@ -556,8 +556,12 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
           twice). The sr-only regions stay the single announcement. Making this line live is a
           decision, not a cleanup. Ink: #991b1b on the card #ffffff 8.31 light, #fca5a5 on #232d3e
           7.30 dark (wcag.ts formula, both over 4.50). */}
+      {/* DECISION Phase 88.9-69 (X62, owner at N27): 12px under the last row and over the footer rule, chosen OVER the shipped 20 / 0.
+          The list box above ends in 8px of its own bottom padding, so 4px here makes the 12 under
+          the last row; the 12px below keeps the sentence off the footer's top rule. Measured at
+          375 in e2e/games-to-bring-picker-phone.spec.ts ("X62 (88.9-69): after a failed save the line sits midway"). */}
       {saveFailureLine ? (
-        <p className="text-sm text-content-status-error px-4 pt-3">{saveFailureLine}</p>
+        <p className="text-sm text-content-status-error px-4 pt-1 pb-3">{saveFailureLine}</p>
       ) : null}
 
       {/* Footer */}
