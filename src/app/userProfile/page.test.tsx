@@ -6473,6 +6473,11 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     const box = x.firstElementChild as HTMLElement;
     const boxClasses = box.className.split(/\s+/);
     for (const cls of ['h-8', 'min-w-8', 'border', 'border-status-error']) expect(boxClasses).toContain(cls);
+    // The box is 32px SQUARE at rest: its padding must leave the 32px minimum in charge. The 20px
+    // icon with 6px of padding each side and the 1px border measured 34px wide in CI (runs
+    // 43796833042 and 43796838489), so the padding is 4px each side (20 + 8 + 2 = 30, under 32).
+    expect(boxClasses).toContain('px-1');
+    expect(boxClasses.filter((c) => /^p[xlr]?-/.test(c))).toEqual(['px-1']);
     const icon = box.querySelector('svg');
     expect(icon, 'the box holds no icon').not.toBeNull();
     expect(icon).toHaveAttribute('width', '20');
