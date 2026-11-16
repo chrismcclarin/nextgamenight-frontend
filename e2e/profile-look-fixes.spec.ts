@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 
 import { assertTheme, contrastRatio, focusByKeyboard, forceLightMode } from './support/contrast';
-import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
+import { expectNoApiWrites, holdUntilReleased, holdWrites, type WriteHold } from './support/inFlight';
 
 // Phase 88.9 plan 68: the owner's Profile look fixes, read in a real browser. jsdom applies no
 // stylesheet and performs no layout, so src/app/userProfile/page.test.tsx pins the DOM contract
@@ -53,6 +53,86 @@ async function openProfileWithEightGames(page: Page): Promise<WriteHold> {
   });
   await page.goto('/userProfile');
   return hold;
+}
+
+// One game card's x, found by its place (the button in the title row of that game's card), never
+// by its words: its name changes while it counts down, while it is live and while it removes.
+function removeIn(page: Page, gameName: string): Locator {
+  return collectionCard(page)
+    .getByRole('heading', { level: 3, name: gameName, exact: true })
+    .locator('xpath=../..')
+    .getByRole('button');
+}
+
+interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
+interface XRead {
+  button: Box;
+  /** The one visible bordered box inside the button, or null when the button has no element child. */
+  box: (Box & { scrollWidth: number; clientWidth: number; edge: string }) | null;
+  /** The X icon inside the box, or null. */
+  icon: { width: number; height: number } | null;
+  /** The slot around the button (the grid that holds the armed width), or null. */
+  slot: Box | null;
+  /** The game's title beside the x. */
+  title: Box | null;
+  /** The spinner's untransformed box (it rotates, so its centre and layout size are read), or null. */
+  spinner: Box | null;
+}
+
+// Every box of one x, read in ONE evaluate so they belong to one layout.
+function readX(remove: Locator): Promise<XRead> {
+  return remove.evaluate((el) => {
+    const rect = (node: Element) => {
+      const r = node.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+    };
+    const boxEl = el.firstElementChild as HTMLElement | null;
+    const iconEl = boxEl?.querySelector('svg') ?? null;
+    const slotEl = el.closest('span.inline-grid');
+    const titleEl = el.parentElement?.closest('div.border')?.querySelector('h3') ?? null;
+    const spinEl = el.querySelector<HTMLElement>('[data-slot="spinner"]');
+    let spinner = null;
+    if (spinEl) {
+      const r = spinEl.getBoundingClientRect();
+      const cx = (r.left + r.right) / 2;
+      const cy = (r.top + r.bottom) / 2;
+      const w = spinEl.offsetWidth;
+      const h = spinEl.offsetHeight;
+      spinner = { left: cx - w / 2, top: cy - h / 2, right: cx + w / 2, bottom: cy + h / 2, width: w, height: h };
+    }
+    return {
+      button: rect(el),
+      box: boxEl
+        ? {
+            ...rect(boxEl),
+            scrollWidth: boxEl.scrollWidth,
+            clientWidth: boxEl.clientWidth,
+            edge: getComputedStyle(boxEl).borderTopWidth,
+          }
+        : null,
+      icon: iconEl ? { width: iconEl.getBoundingClientRect().width, height: iconEl.getBoundingClientRect().height } : null,
+      slot: slotEl && !el.contains(slotEl) ? rect(slotEl) : null,
+      title: titleEl ? rect(titleEl) : null,
+      spinner,
+    };
+  });
+}
+
+function expectSameBox(now: Box | null, before: Box | null, what: string): void {
+  expect(now && before, `${what}: a box could not be read`).toBeTruthy();
+  if (!now || !before) return;
+  const read = `${JSON.stringify(before)} then ${JSON.stringify(now)}`;
+  for (const side of ['left', 'top', 'right', 'bottom'] as const) {
+    expect(Math.abs(now[side] - before[side]), `${what}: its ${side} edge moved (${read})`).toBeLessThanOrEqual(0.5);
+  }
 }
 
 function ratio(a: string, b: string, what: string): number {
@@ -160,6 +240,81 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
 
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(fits, 'X52d: horizontal overflow on the collection card').toBe(true);
+  });
+
+  // X53 (owner at N37): the x was a large box with a small glyph. Now the BUTTON is the 44px hit
+  // area and holds one small bordered box with the dialog's 20px X; the armed width is reserved on
+  // a slot around the button, so the title beside it never moves. Then X36a: with the removal held,
+  // the spinner sits inside that box. The DELETE is held in the browser and answered in the browser
+  // in finally (a held request is sent on when the routes are removed).
+  test('X53 (88.9-68): at rest the x is a small box with a 20px X in a 44px hit area, and arming it leaves the game title where it was', async ({ page }, testInfo) => {
+    backstop = await openProfileWithEightGames(page);
+    const del = await holdUntilReleased(page, 'DELETE', /\/user-games\/user\/[^/]+\/game\/e2e-shelf-a$/);
+    try {
+      if (testInfo.project.name === 'phone') expect(page.viewportSize()?.width).toBe(375);
+      const remove = removeIn(page, NAMES[0]);
+      await expect(remove, 'X53: the first game card never rendered its x').toBeVisible({ timeout: 15_000 });
+      await expect(remove).toHaveAccessibleName(`Remove ${NAMES[0]}`);
+
+      // At rest.
+      const rest = await readX(remove);
+      const restRead = JSON.stringify(rest);
+      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
+      console.log(`[88.9-68 X53] ${testInfo.project.name} rest: ${restRead}`);
+      expect(rest.button.width, `X53: the hit area is under 44px wide (${restRead})`).toBeGreaterThanOrEqual(44);
+      expect(rest.button.height, `X53: the hit area is under 44px tall (${restRead})`).toBeGreaterThanOrEqual(44);
+      expect(rest.icon, `X53: the x holds no X icon (${restRead})`).not.toBeNull();
+      expect(rest.icon?.width, `X53: the X icon is not 20px wide (${restRead})`).toBe(20);
+      expect(rest.icon?.height, `X53: the X icon is not 20px tall (${restRead})`).toBe(20);
+      expect(rest.box, `X53: the x holds no visible box (${restRead})`).not.toBeNull();
+      expect(rest.box?.edge, `X53: the box has no 1px border (${restRead})`).toBe('1px');
+      expect(rest.box?.width ?? 99, `X53: the resting box is wider than 32px (${restRead})`).toBeLessThanOrEqual(32.5);
+      expect(rest.box?.height ?? 99, `X53: the resting box is taller than 32px (${restRead})`).toBeLessThanOrEqual(32.5);
+      expect(rest.slot, `X53: no slot around the button holds the armed width (${restRead})`).not.toBeNull();
+      if (rest.slot) {
+        expect(Math.abs(rest.slot.right - rest.button.right), `X53: the button is not at its slot's right edge (${restRead})`).toBeLessThanOrEqual(1);
+      }
+
+      // One press arms it: the title stays where it was, and nothing is sent.
+      await focusByKeyboard(page, remove);
+      await page.keyboard.press('Enter');
+      await expect(remove).toHaveAttribute('aria-pressed', 'true');
+      const armed = await readX(remove);
+      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
+      console.log(`[88.9-68 X53] ${testInfo.project.name} armed: ${JSON.stringify(armed)}`);
+      expectSameBox(armed.title, rest.title, 'X53: the game title after arming');
+      expectSameBox(armed.slot, rest.slot, 'X53: the slot after arming');
+      expect(del.count(), 'X53: one press sent a removal').toBe(0);
+
+      // The second live press commits; the DELETE is held. X36a: the spinner shows inside the box.
+      await expect(remove, 'X53: the armed x never went live').toHaveAccessibleName('Remove', { timeout: 10_000 });
+      await page.keyboard.press('Enter');
+      await del.arrived;
+      await expect(remove.locator('[data-slot="spinner"]'), 'X36a: no spinner showed while the removal was held').toBeVisible({ timeout: 5_000 });
+      await expect(remove).toHaveAttribute('aria-disabled', 'true');
+      await expect(remove).toHaveAccessibleName(`Remove ${NAMES[0]}, removing`);
+      const held = await readX(remove);
+      const heldRead = JSON.stringify(held);
+      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
+      console.log(`[88.9-68 X36a] ${testInfo.project.name} held: ${heldRead}`);
+      expect(held.box && held.spinner, `X36a: the held x has no box or no spinner (${heldRead})`).toBeTruthy();
+      if (held.box && held.spinner) {
+        expect(held.spinner.left, `X36a: the spinner starts left of the box (${heldRead})`).toBeGreaterThanOrEqual(held.box.left - 0.5);
+        expect(held.spinner.right, `X36a: the spinner ends right of the box (${heldRead})`).toBeLessThanOrEqual(held.box.right + 0.5);
+        expect(held.spinner.top, `X36a: the spinner starts above the box (${heldRead})`).toBeGreaterThanOrEqual(held.box.top - 0.5);
+        expect(held.spinner.bottom, `X36a: the spinner ends below the box (${heldRead})`).toBeLessThanOrEqual(held.box.bottom + 0.5);
+        expect(held.box.scrollWidth, `X36a: the box's content overflows it (${heldRead})`).toBeLessThanOrEqual(held.box.clientWidth);
+      }
+      expectSameBox(held.title, rest.title, 'X36a: the game title while the removal is held');
+      expectSameBox(held.slot, rest.slot, 'X36a: the slot while the removal is held');
+      expect(del.count(), 'X36a: two live presses sent more than one removal').toBe(1);
+
+      const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      expect(fits, 'X53: horizontal overflow on the collection card').toBe(true);
+    } finally {
+      // Answered in the browser, never handed on.
+      await del.release({ message: 'Game removed from your collection' });
+    }
   });
 
   test('X56c + X52d (88.9-68): in dark each card takes the raised fill, the bar and the cards stay at least 1.20 from the card ground, and the bar keeps its 1px top rule; light cards stay unfilled', async ({ page }, testInfo) => {

@@ -348,30 +348,44 @@ test.describe('Profile phone block focus and Remove in flight (plan 88.6.1-53)',
     const removal = await holdUntilReleased(page, 'DELETE', /\/phone$/);
     await page.goto('/userProfile');
 
-    // Its name changes while armed, so the locator follows both labels of the one control.
-    const remove = page.getByRole('button', { name: /^(Remove|Tap again to remove)$/ });
-    await expect(remove).toBeVisible({ timeout: 15_000 });
-    await expect(remove).toHaveText('Remove');
-    await focusByKeyboard(page, remove);
-    await page.keyboard.press('Enter');
-    await expect(remove).toHaveText('Tap again to remove');
-    await page.keyboard.press('Enter');
-    await removal.arrived;
+    // AMENDED Phase 88.9-68 (X36b): the phone Remove is the shared gated two-tap. It is found by
+    // its place (the last button in the Phone verified row), never by its words: its name changes
+    // while it counts down, while it is live and while it removes. The held DELETE is answered in
+    // the browser in finally, so a failure above the release never lets it reach the backend.
+    const remove = page.getByText('Phone verified', { exact: true }).locator('xpath=..').getByRole('button').last();
+    try {
+      await expect(remove).toBeVisible({ timeout: 15_000 });
+      await expect(remove).toHaveText('Remove');
+      await focusByKeyboard(page, remove);
+      await page.keyboard.press('Enter');
+      // Armed and gated: a press while it counts down sends nothing.
+      await expect(remove).toHaveAttribute('aria-pressed', 'true');
+      await expect(remove).toHaveAttribute('aria-disabled', 'true');
+      await page.keyboard.press('Enter');
+      expect(removal.count(), 'a press while the Remove counted down sent a removal').toBe(0);
+      // The live label (the 10 s timeout covers the 3 s gate), then the committing press.
+      await expect(remove).toHaveText('Tap again to remove', { timeout: 10_000 });
+      await page.keyboard.press('Enter');
+      await removal.arrived;
 
-    // While the removal is held: the pressed control keeps focus and is aria-disabled (Req 4).
-    await expect(remove).toBeFocused();
-    await expect(remove).toHaveAttribute('aria-disabled', 'true');
-    await expect(remove).toHaveText('Remove');
+      // While the removal is held: the pressed control keeps focus and is aria-disabled (Req 4).
+      await expect(remove).toBeFocused();
+      await expect(remove).toHaveAttribute('aria-disabled', 'true');
+      await expect(remove).toHaveText('Remove');
 
-    // The latch refuses further presses: no re-arm, no second request.
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Enter');
-    await expect(remove).toHaveText('Remove');
-    expect(removal.count()).toBe(1);
+      // The latch refuses further presses: no re-arm, no second request.
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Enter');
+      await expect(remove).toHaveText('Remove');
+      expect(removal.count()).toBe(1);
 
-    const body = self.lastBody();
-    expect(body, 'the self row was never fetched, so the DELETE has nothing to answer with').not.toBeNull();
-    await removal.release({ ...body, phone: null, phone_verified: false, sms_enabled: true });
+      const body = self.lastBody();
+      expect(body, 'the self row was never fetched, so the DELETE has nothing to answer with').not.toBeNull();
+      await removal.release({ ...body, phone: null, phone_verified: false, sms_enabled: true });
+    } finally {
+      // A second call after the release above answers nothing new.
+      await removal.release({ ...(self.lastBody() ?? {}), phone: null, phone_verified: false, sms_enabled: true });
+    }
 
     // Requirement 5: the success removes the button; focus lands on the settled statement.
     const statement = page.getByText(BANNER, { exact: true });
@@ -549,7 +563,8 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await page.goto('/userProfile');
 
     // Arm 1 (Requirement 5): a committed Delete keeps focus while held, then lands on the toggle.
-    const monday = page.getByRole('button', { name: /^(Delete Monday schedule|Tap again to confirm)$/ });
+    // AMENDED Phase 88.9-68 (X36a): while its DELETE runs the control is named with the deleting suffix.
+    const monday = page.getByRole('button', { name: /^(Delete Monday schedule(, deleting)?|Tap again to confirm)$/ });
     await expect(monday).toBeVisible({ timeout: 15_000 });
     await focusByKeyboard(page, monday);
     await page.keyboard.press('Enter');
@@ -567,7 +582,7 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // Arm 2 (AC-29 / RF1, contract C8 a + d): the re-read after the next delete answers 500.
     patterns.status = 500;
     patterns.body = { error: 'boom' };
-    const tuesday = page.getByRole('button', { name: /^(Delete Tuesday schedule|Tap again to confirm)$/ });
+    const tuesday = page.getByRole('button', { name: /^(Delete Tuesday schedule(, deleting)?|Tap again to confirm)$/ });
     await focusByKeyboard(page, tuesday);
     await page.keyboard.press('Enter');
     // F9b (88.9-23): as above, wait for the live label before the committing press.
@@ -1195,7 +1210,8 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await expect(page.getByRole('button', { name: 'Remove E2E Meeple One' })).toBeVisible({ timeout: 15_000 });
     const refresh = await holdUntilReleased(page, 'GET', OWNED_GAMES_PATH);
 
-    const remove = page.getByRole('button', { name: /^(Remove E2E Meeple One|Remove)$/ });
+    // AMENDED Phase 88.9-68 (X36a): while its DELETE runs the x is named with the removing suffix.
+    const remove = page.getByRole('button', { name: /^(Remove E2E Meeple One(, removing)?|Remove)$/ });
     await focusByKeyboard(page, remove);
     await page.keyboard.press('Enter'); // arms
     // F9b (88.9-23): the second press is refused for 3 s after arming (the label counts
@@ -1283,6 +1299,10 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
   // from rest to its live label: it reads x, Wait (3), Wait (2), Wait (1), then Remove, and its box
   // keeps ONE width through all five, so arming never reflows the game title beside it (the
   // 88.6-17 measurement). One tap only: nothing is removed, and the hold fails the test on a write.
+  // AMENDED Phase 88.9-68 (X53): at rest the x paints an icon and no text, in a small box inside a
+  // 44px button, so the ONE width is now held in two places: by the slot around the button from
+  // rest to live (which is what keeps the title still), and by the armed box through its four
+  // labels. The resting button is narrower than the armed one by design.
   test('X69 (88.9): the collection x reads Wait (3), (2), (1) then Remove in a box that never changes width, and sends nothing', async ({ page }, testInfo) => {
     // One press only (it arms): nothing is removed, and afterEach fails the test on any write.
     backstop = await holdWrites(page, {
@@ -1295,14 +1315,24 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     if (testInfo.project.name === 'phone') {
       expect(page.viewportSize()?.width).toBe(375);
     }
+    const slotWidth = () =>
+      collection
+        .getByRole('heading', { level: 3, name: 'E2E Meeple One', exact: true })
+        .locator('xpath=../..')
+        .locator('span.inline-grid')
+        .first()
+        .evaluate((el) => parseFloat(getComputedStyle(el).width));
+    const slotAtRest = await slotWidth();
     await focusByKeyboard(page, remove);
     await recordLabel(remove);
     await page.keyboard.press('Enter'); // arms
     // The live label, after the 3 s gate: the x arms to Remove (fork 7) and is named by it.
     await expect(collection.getByRole('button', { name: 'Remove', exact: true })).toBeVisible({ timeout: 10_000 });
+    const slotLive = await slotWidth();
     const samples = await stopLabelRecorder(page);
 
-    const EVERY_STATE = ['×', 'Wait (3)', 'Wait (2)', 'Wait (1)', 'Remove'];
+    const ARMED_STATES = ['Wait (3)', 'Wait (2)', 'Wait (1)', 'Remove'];
+    const EVERY_STATE = ['', ...ARMED_STATES];
     const trace = describeSamples(samples);
     // eslint-disable-next-line no-console -- the measured widths are recorded from the CI log (plan 88.9-67)
     console.log(`[88.9-67 X69 collection x] ${testInfo.project.name}: ${trace}`);
@@ -1311,8 +1341,16 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     expect(valuesAt(samples, 'Wait (2)', 'name')).toEqual(['Remove E2E Meeple One, wait 2 seconds']);
     expect(valuesAt(samples, 'Wait (1)', 'name')).toEqual(['Remove E2E Meeple One, wait 1 second']);
     expect(valuesAt(samples, 'Remove', 'name')).toEqual(['Remove']);
-    const jump = spread(samples, EVERY_STATE, 'width');
-    expect(jump, `X69: the x changed width by ${jump}px between rest and its live label (${trace})`).toBeLessThanOrEqual(0.5);
+    const jump = spread(samples, ARMED_STATES, 'width');
+    expect(jump, `X69: the armed x changed width by ${jump}px between its labels (${trace})`).toBeLessThanOrEqual(0.5);
+    expect(
+      Math.abs(slotLive - slotAtRest),
+      `X69: the slot around the x changed width between rest (${slotAtRest}) and its live label (${slotLive}) (${trace})`,
+    ).toBeLessThanOrEqual(0.5);
+    // The slot is the armed width from rest: never narrower than the armed button it holds.
+    const armedWidths = valuesAt(samples, 'Remove', 'width');
+    expect(armedWidths.length, `X69: the live x was never sampled (${trace})`).toBeGreaterThan(0);
+    expect(slotAtRest, `X69: the resting slot (${slotAtRest}) is narrower than the armed x (${trace})`).toBeGreaterThanOrEqual(Math.max(...armedWidths) - 0.5);
   });
 
   test('Add to Collection keeps its label with the spinner (rule 1), refuses a second press, then lands on + Add from BGG', async ({ page }) => {
