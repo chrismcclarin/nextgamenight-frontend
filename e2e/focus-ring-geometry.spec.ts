@@ -1,8 +1,9 @@
 import { writeFile } from 'node:fs/promises';
 
-import { test, expect, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Route, type TestInfo } from '@playwright/test';
 
 import { assertTheme, focusByKeyboard, focusRingMeasurement, forceLightMode, haloGroundRatio } from './support/contrast';
+import { E2E_FAKE_GAME_ID, E2E_GAME_PATH, routeFakeGameSuccess } from './support/fakeGame';
 import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 
 // Phase 88.9 plan 66 (X61, owner remarks at round-2 row N22) — keyboard focus rings as NUMBERS.
@@ -33,6 +34,14 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 // programmatic focus, which presses nothing.
 //
 // CI ONLY: both projects need the signed-in storage state, which does not exist locally.
+//
+// Phase 88.9 plan 69 (X61 beyond Friends) adds five surfaces the same remarks named, on the same
+// helpers and under the same rule (recorded, and only the house ring asserted): the Home small
+// notice's Retry, the event view's group breadcrumb link and its Retry, a name in the RSVP list of
+// the game page's upcoming event card, the group page's Loading group gate Retry and the Plan Game
+// Session Retry. Each small notice is staged by answering the self-identity read with a 500 in the
+// browser (the state the captured frames were in); the game page's upcoming night and its two
+// replies are made up and answered in the browser. Nothing is written and no control is pressed.
 
 const HALO_EQUAL = 1.01;
 const RING_SPREAD = 4;
@@ -367,6 +376,80 @@ async function openInTheme(page: Page, path: string, theme: 'dark' | 'light') {
 
 const THEMES = ['dark', 'light'] as const;
 
+// ---- Plan 88.9-69: the five surfaces outside Friends ----
+
+// Seeded fixtures minted by the backend's scripts/e2e-fixtures.js in CI (the padding-budget idiom).
+const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
+const E2E_EVENT_DETAIL_PATH = process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${E2E_GROUP_ID}`;
+const GROUP_EVENTS_PATH = new RegExp(`^/api/events/group/${E2E_GROUP_ID}$`);
+
+// The self-identity read: GET /api/users/<one segment> (the read e2e/support/viewerRsvp.ts passes through).
+const isIdentityRead = (url: URL) => /\/api\/users\/[^/]+$/.test(url.pathname);
+
+// A made-up upcoming night of the fake custom game, with two made-up replies. Every id is synthetic.
+const RING_NIGHT_ID = '0e2e0000-0000-4000-8000-000000000069';
+const RING_REPLY_NAME = 'E2E Ring Reply';
+const RING_REPLIES = {
+  rsvps: [
+    {
+      id: '0e2e0000-0000-4000-8000-0000000069c1',
+      status: 'yes',
+      note: null,
+      user_id: '0e2e0000-0000-4000-8000-0000000069d1',
+      User: { id: '0e2e0000-0000-4000-8000-0000000069d1', username: RING_REPLY_NAME },
+    },
+    {
+      id: '0e2e0000-0000-4000-8000-0000000069c2',
+      status: 'maybe',
+      note: null,
+      user_id: '0e2e0000-0000-4000-8000-0000000069d2',
+      User: { id: '0e2e0000-0000-4000-8000-0000000069d2', username: 'E2E Ring Maybe' },
+    },
+  ],
+  summary: { yes: 1, maybe: 1, no: 0 },
+};
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// An answer made up in the browser names the asking origin, so it is readable whether the page
+// reaches the API on its own origin or on the backend's.
+function allowOrigin(route: Route): Record<string, string> {
+  const origin = route.request().headers()['origin'];
+  return origin ? { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' } : {};
+}
+
+// Answers the self-identity read with a 500 while `failing()` holds; every other request, and every
+// request once it stops holding, falls back unchanged. With no identity a page shows the shared
+// small notice ("Some personal controls are unavailable.") with its Retry. No write follows.
+async function failIdentityRead(page: Page, failing: () => boolean = () => true): Promise<void> {
+  await page.route(isIdentityRead, async (route) => {
+    if (route.request().method() !== 'GET' || !failing()) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ status: 500, json: { error: 'e2e forced failure (88.9-69 X61)' }, headers: allowOrigin(route) });
+  });
+}
+
+// Measures every visible small-notice Retry on the page. A page can mount the notice more than
+// once at a width (Home at 1280: the Your Groups panel and the desktop column beside it), so each
+// one is measured and the caller is told whether it sat inside the Your Groups panel, which is the
+// one ancestor carrying the phone-flat surface class.
+async function measureVisibleRetries(ctx: Context, surface: string, nameMount?: (inGroupsPanel: boolean) => string): Promise<boolean[]> {
+  const { page, theme } = ctx;
+  const retries = page.getByRole('button', { name: 'Retry', exact: true }).filter({ visible: true });
+  await expect(retries.first(), `X61 (${theme}): ${surface}: the small notice with Retry never rendered`).toBeVisible({ timeout: 30_000 });
+  const total = await retries.count();
+  const mounts: boolean[] = [];
+  for (let i = 0; i < total; i += 1) {
+    const retry = retries.nth(i);
+    const inGroupsPanel = await retry.evaluate((el) => el.closest('[class*="surface-flat-phone"]') !== null);
+    mounts.push(inGroupsPanel);
+    const mount = nameMount ? `, ${nameMount(inGroupsPanel)}` : total > 1 ? `, ${i + 1} of ${total}` : '';
+    await measure(ctx, retry, `${surface}: the Retry${mount}`, true);
+  }
+  return mounts;
+}
+
 test.describe('focus ring geometry, measured (plan 88.9-66, X61)', () => {
   let hold: WriteHold | undefined;
   test.beforeEach(async ({ page }) => {
@@ -478,6 +561,131 @@ test.describe('focus ring geometry, measured (plan 88.9-66, X61)', () => {
       const title = fixtureCard.getByRole('button', { name: 'Weekend Warriors', exact: true });
       await expect(title).toHaveCount(1);
       await measure(ctx, title, 'the group card title', true);
+    }
+    await publish(testInfo, records);
+  });
+
+  test('X61 (88.9-69): Home — the Your Groups Retry records its ring against its ink', async ({ page, isMobile }, testInfo) => {
+    const records: RingRecord[] = [];
+    await failIdentityRead(page);
+
+    for (const theme of THEMES) {
+      const ctx: Context = { page, testInfo, theme, records };
+      await openInTheme(page, '/', theme);
+      const mounts = await measureVisibleRetries(ctx, 'Home', (inGroupsPanel) =>
+        inGroupsPanel ? 'the Your Groups notice' : 'the desktop column notice',
+      );
+      if (isMobile) {
+        // At 375 the one visible notice is the Your Groups one; the desktop column is not shown.
+        expect(mounts, `X61 (${theme}): Home at 375 shows one small notice, in Your Groups`).toEqual([true]);
+      } else {
+        // At 1280 the desktop column beside the calendar shows its own copy of the notice.
+        expect(mounts, `X61 (${theme}): Home at 1280 never showed the desktop column notice`).toContain(false);
+      }
+    }
+    await publish(testInfo, records);
+  });
+
+  test('X61 (88.9-69): event view — the group breadcrumb and the Retry record their rings against their ink', async ({ page }, testInfo) => {
+    const records: RingRecord[] = [];
+    // Two loads per theme. With no identity the page cannot tell the viewer is a member and shows
+    // the group's name as plain text, not a link; so the breadcrumb link is read on a normal load
+    // and the Retry on a load whose identity read fails.
+    let failing = false;
+    await failIdentityRead(page, () => failing);
+
+    for (const theme of THEMES) {
+      const ctx: Context = { page, testInfo, theme, records };
+      failing = false;
+      await openInTheme(page, E2E_EVENT_DETAIL_PATH, theme);
+      const crumb = page.getByRole('navigation', { name: 'Breadcrumb' }).locator('a[href^="/groupHomePage"]');
+      await expect(crumb, `X61 (${theme}): the event view never rendered its group breadcrumb link`).toBeVisible({ timeout: 20_000 });
+      await expect(crumb).toHaveCount(1);
+      await measure(ctx, crumb, 'event view: the group breadcrumb link', true);
+
+      failing = true;
+      await openInTheme(page, E2E_EVENT_DETAIL_PATH, theme);
+      await measureVisibleRetries(ctx, 'event view');
+    }
+    await publish(testInfo, records);
+  });
+
+  test("X61 (88.9-69): game page — a name in the upcoming event card's RSVP list records its ring against its ink", async ({ page }, testInfo) => {
+    const records: RingRecord[] = [];
+    await routeFakeGameSuccess(page);
+    // The group's events read answers one made-up night a week ahead, so the game page shows one
+    // upcoming event card; its RSVP list read answers two made-up replies.
+    await page.route('**/api/events/group/**', async (route) => {
+      const request = route.request();
+      if (request.method() === 'GET' && GROUP_EVENTS_PATH.test(new URL(request.url()).pathname)) {
+        await route.fulfill({
+          json: [
+            {
+              id: RING_NIGHT_ID,
+              game_id: E2E_FAKE_GAME_ID,
+              group_id: E2E_GROUP_ID,
+              start_date: new Date(Date.now() + 7 * DAY_MS).toISOString(),
+              duration_minutes: 90,
+              status: 'scheduled',
+              comments: 'E2E staged night (88.9-69 X61)',
+              EventParticipations: [],
+            },
+          ],
+          headers: allowOrigin(route),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route('**/api/rsvp/event/**', async (route) => {
+      const request = route.request();
+      if (request.method() === 'GET' && new URL(request.url()).pathname.endsWith(`/rsvp/event/${RING_NIGHT_ID}`)) {
+        await route.fulfill({ json: RING_REPLIES, headers: allowOrigin(route) });
+        return;
+      }
+      await route.fallback();
+    });
+
+    for (const theme of THEMES) {
+      const ctx: Context = { page, testInfo, theme, records };
+      await openInTheme(page, E2E_GAME_PATH, theme);
+      // The name is a control (role button, named by the name alone) once the viewer's identity and
+      // friendships have loaded; until then it is plain text, which this wait outlasts.
+      const name = page.getByRole('main').getByRole('button', { name: RING_REPLY_NAME, exact: true });
+      await expect(name, `X61 (${theme}): the staged reply's name never became a control in the upcoming event card`).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(name).toHaveCount(1);
+      await measure(ctx, name, "game page: a name in the upcoming event card's RSVP list", true);
+    }
+    await publish(testInfo, records);
+  });
+
+  test('X61 (88.9-69): group page — the Loading group gate Retry records its ring against its ink', async ({ page }, testInfo) => {
+    const records: RingRecord[] = [];
+    await failIdentityRead(page);
+
+    for (const theme of THEMES) {
+      const ctx: Context = { page, testInfo, theme, records };
+      await openInTheme(page, `/groupHomePage?id=${E2E_GROUP_ID}`, theme);
+      // With no identity the membership check never completes, so the gate stays up.
+      await expect(
+        page.locator('p', { hasText: 'Loading group…' }).first(),
+        `X61 (${theme}): the group page is not on its Loading group gate`,
+      ).toBeVisible({ timeout: 30_000 });
+      await measureVisibleRetries(ctx, 'group page gate');
+    }
+    await publish(testInfo, records);
+  });
+
+  test('X61 (88.9-69): Plan Game Session — the Retry records its ring against its ink', async ({ page }, testInfo) => {
+    const records: RingRecord[] = [];
+    await failIdentityRead(page);
+
+    for (const theme of THEMES) {
+      const ctx: Context = { page, testInfo, theme, records };
+      await openInTheme(page, `/groupPlanning?group_id=${E2E_GROUP_ID}`, theme);
+      await measureVisibleRetries(ctx, 'Plan Game Session');
     }
     await publish(testInfo, records);
   });
