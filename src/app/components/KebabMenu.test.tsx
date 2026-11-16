@@ -167,6 +167,12 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
       'absolute',
     );
     expect(cls, 'a min-width FLOOR, not a fixed width').toContain('min-w-[160px]');
+    // X67 (88.9-67): the menu is content-sized, so its longest item sits on one line, and it is
+    // capped at the viewport, so a longer label still wraps inside it (the long-text half below).
+    // Without the content size an absolute right-0 box shrinks to its 44px trigger wrapper and the
+    // floor becomes the width of every menu.
+    expect(cls.split(/\s+/), 'content-sized: as wide as the longest item').toContain('w-max');
+    expect(cls.split(/\s+/), 'capped at the viewport less a margin').toContain('max-w-[calc(100vw-2rem)]');
     expect(
       cls,
       'a fixed `w-` or a `left-0` would pin the popover to a width or an edge it cannot grow away from at 375px — the geometry half in e2e/touch-targets.spec.ts is what would then red',
@@ -236,7 +242,7 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
     expect('w-full h-11 text-left px-3').toMatch(/(^|\s)h-\d/);
     // and the ones the shipped strings must NOT trip
     expect('w-full min-h-11 text-left px-3 py-2').not.toMatch(CLIPPERS);
-    expect('absolute right-0 top-full mt-1 z-20 min-w-[160px]').not.toMatch(
+    expect('absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)]').not.toMatch(
       /(^|\s)(w-\[|w-\d|left-0)/,
     );
     expect('w-full min-h-11 text-left px-3 py-2').not.toMatch(/(^|\s)h-\d/);
@@ -330,6 +336,77 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
     expectGatedLook(inFlight);
     fireEvent.click(twoTap);
     expectGatedLook(twoTap);
+  });
+
+  // X69 width (88.9-67): a twoTap item holds the widest of its countdown labels and its armed
+  // words from the moment the menu opens, so neither the item nor the menu changes size when it
+  // arms or goes live. The reserve is attribute text painted by a pseudo-element
+  // (src/components/ui/ReservedLabel.tsx ("DECISION Phase 88.9-67 (X69 width)")), so the item's own text stays its label.
+  it('X69 (88.9): a twoTap item reserves the countdown and its armed words from open; a plain item reserves nothing', () => {
+    const reserved = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll('[data-reserve]')).map((span) => span.getAttribute('data-reserve'));
+
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { list } = openMenu();
+    const remove = within(list).getByRole('button', { name: 'Remove' });
+    expect(reserved(remove)).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again to remove']);
+    expect(remove.textContent).toBe('Remove');
+    expect(reserved(within(list).getByRole('button', { name: 'Make admin' }))).toEqual([]);
+    expect(reserved(within(list).getByRole('button', { name: 'Transfer ownership to this member' }))).toEqual([]);
+    cleanup();
+
+    // No confirmLabel of its own: the menu's default armed words are the ones held.
+    render(
+      <KebabMenu
+        ariaLabel="Poll actions"
+        items={[{ label: 'Close poll', danger: true, twoTap: true, onClick: vi.fn() }]}
+      />
+    );
+    const poll = openMenu('Poll actions');
+    expect(reserved(within(poll.list).getByRole('button', { name: 'Close poll' }))).toEqual([
+      'Wait (3)',
+      'Wait (2)',
+      'Wait (1)',
+      'Tap again to confirm',
+    ]);
+  });
+
+  // X13-7 (88.9-67): a keepOpen activation closes nothing, so focus has to be ON the item — a
+  // host's focus recovery watches the focused control, and a tap does not focus a button on
+  // WebKit. fireEvent.click never focuses either, which is what makes this pin fail on the old
+  // code: focus stayed wherever it was.
+  it('X13-7 (88.9): a keepOpen twoTap commit leaves focus on the item it committed, even when the tap never focused it', () => {
+    vi.useFakeTimers();
+    const onRemove = vi.fn();
+    const onLeave = vi.fn();
+    render(
+      <KebabMenu
+        ariaLabel="Member actions"
+        items={[
+          { label: 'Remove', danger: true, twoTap: true, keepOpen: true, confirmLabel: 'Tap again to remove', onClick: onRemove },
+          { label: 'Leave event', keepOpen: true, onClick: onLeave },
+        ]}
+      />
+    );
+    const { list } = openMenu();
+    const remove = within(list).getByRole('button', { name: 'Remove' });
+    const leave = within(list).getByRole('button', { name: 'Leave event' });
+
+    fireEvent.click(remove);
+    expect(document.activeElement, 'arming does not move focus').not.toBe(remove);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    fireEvent.click(remove);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(list, 'keepOpen: the commit closes nothing').toBeInTheDocument();
+    expect(document.activeElement).toBe(remove);
+
+    // The single-tap keepOpen exit makes the same promise.
+    fireEvent.click(leave);
+    expect(onLeave).toHaveBeenCalledTimes(1);
+    expect(list).toBeInTheDocument();
+    expect(document.activeElement).toBe(leave);
   });
 });
 

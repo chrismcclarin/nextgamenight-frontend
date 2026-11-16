@@ -106,6 +106,7 @@ import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 // beside-retry form (messageBesideRetry over the register line).
 import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
+import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner'; // X13-7 (88.9-67): the spinner's appear delay
 import { announceStatus } from '@/components/ui/announcer';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -979,6 +980,68 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
     expect(groupsAPI.removeUserFromGroup as Mock).not.toHaveBeenCalled();
   });
 
+  // 52-X13 item 7 (owner at N50: after the committing tap "nothing on screen shows it is
+  // working"). The commit used to close the menu and leave a still roster until the refresh
+  // landed. The viewer here is the owner, so the member's menu also carries Transfer ownership.
+  it('X13-7 (88.9): a committed phone Remove keeps the menu open while the remove and its refresh run — the item keeps Remove, is aria-disabled, named Remove, removing, and focused, Make admin and Transfer ownership are aria-disabled — and a third tap sends no second DELETE', async () => {
+    const heldRemove = deferred<unknown>();
+    (groupsAPI.removeUserFromGroup as Mock).mockReturnValueOnce(heldRemove.promise);
+    await openMembersModal();
+    const menu = await openKebabList('Member actions for Target');
+    const removeItem = within(menu).getByRole('button', { name: 'Remove' });
+    fireEvent.click(removeItem);
+    passKebabGate();
+    fireEvent.click(removeItem);
+    await waitFor(() => expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1));
+
+    // The DELETE is out: the menu is still open and the SAME item shows the flight.
+    const inFlight = within(menu).getByRole('button', { name: 'Remove, removing' });
+    expect(inFlight).toBe(removeItem);
+    expect(inFlight.textContent).toBe('Remove, removing');
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight).not.toHaveAttribute('disabled');
+    expect(inFlight).not.toHaveAttribute('aria-pressed');
+    // fireEvent.click never focused it (the WebKit tap): KebabMenu's keepOpen exit did.
+    expect(document.activeElement).toBe(inFlight);
+    act(() => {
+      vi.advanceTimersByTime(SPINNER_DELAY_MS);
+    });
+    expect(inFlight.querySelector('[data-slot="spinner"]')).not.toBeNull();
+
+    // The member's other items stay on screen with the menu, so they are refused meanwhile: a
+    // live one would open a dialog on a member who is being removed.
+    const makeAdmin = within(menu).getByRole('button', { name: 'Make admin' });
+    const transfer = within(menu).getByRole('button', { name: 'Transfer ownership to this member' });
+    expect(makeAdmin).toHaveAttribute('aria-disabled', 'true');
+    expect(transfer).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(makeAdmin);
+    fireEvent.click(transfer);
+    expect(screen.queryByRole('dialog', { name: 'Make Target an admin?' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /Transfer ownership to Target/ })).not.toBeInTheDocument();
+    expect(menu).toBeInTheDocument();
+
+    // A third tap, and a fourth after a full gate: the in-flight item never re-arms or commits.
+    fireEvent.click(inFlight);
+    passKebabGate();
+    fireEvent.click(inFlight);
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1);
+    expect(inFlight).not.toHaveAttribute('aria-pressed');
+
+    // The remove lands and its refresh is held: still in flight until the roster answers.
+    const heldRefresh = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(heldRefresh.promise);
+    await act(async () => {
+      heldRemove.resolve({});
+    });
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+    expect(within(menu).getByRole('button', { name: 'Remove, removing' })).toBe(removeItem);
+    await act(async () => {
+      heldRefresh.resolve(ROSTER.filter((m) => m.id !== TARGET_UUID));
+    });
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Target')).not.toBeInTheDocument());
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1);
+  });
+
   it('"Make admin" from the kebab routes to the SAME escalation gate as the desktop select', async () => {
     await openMembersModal();
     const menu = await openKebabList('Member actions for Target');
@@ -1406,8 +1469,13 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
       expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledWith(GROUP_ID, TARGET_UUID)
     );
     await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
-    // The R5 ordering backstop: focus has not moved early; KebabMenu put it back on its trigger.
-    expect(document.activeElement).toBe(screen.getByLabelText('Member actions for Target'));
+    // The R5 ordering backstop: focus has not moved early.
+    // AMENDED Phase 88.9-67 (X13-7): the committed Remove keeps its menu open while the remove and
+    // its refresh run, so focus is on that item (named Remove, removing), where KebabMenu's
+    // keepOpen exit put it, and not yet on the next row's trigger. Before this plan the commit
+    // closed the menu and focus sat on the menu's own trigger.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove, removing' }));
+    expect(document.activeElement).not.toBe(next);
     await act(async () => {
       held.resolve([ROSTER[0], ROBIN]);
     });
