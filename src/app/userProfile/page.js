@@ -52,6 +52,8 @@ import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { Button } from '../../components/ui/Button';
 import { ReservedLabel } from '../../components/ui/ReservedLabel';
+import { Icon } from '../../components/ui/Icon';
+import { usePhoneViewport } from '../../lib/hooks/usePhoneViewport';
 import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { focusElement, focusPageFloor } from '../../components/ui/focusPageFloor';
@@ -465,6 +467,38 @@ function Profile(){
     const importPromptOpenRef = useRef(false);
     // D-44 (88.6.1-60): the search panel's id, named by its toggle's aria-controls while it exists.
     const bggSearchPanelId = useId();
+    // X52d (88.9-68): the collection bar. The marker above the collection grid carries the decision;
+    // this is its state. Closed every visit (no storage). `collectionBarPressRef` records a PRESS of
+    // the bar ('open' / 'close'), so focus and scroll follow a press and never a render.
+    const isPhone = usePhoneViewport();
+    const collectionGridId = useId();
+    const [collectionExpanded, setCollectionExpanded] = useState(false);
+    const collectionBarRef = useRef(null);
+    const firstRevealedTitleRef = useRef(null);
+    const collectionBarPressRef = useRef(null);
+    const collectionVisibleCount = isPhone ? 3 : 6;
+    const collectionPeekCount = isPhone ? 1 : 3;
+    const collectionOverflows = ownedGames.length > collectionVisibleCount;
+    const collectionOpen = collectionExpanded && collectionOverflows;
+    // Owner ruling Q2 y (2026-11-14): the list never opens by itself. Once the count falls to the
+    // visible count or below the bar is gone, and the open state goes with it, so a later add that
+    // brings the bar back finds it closed.
+    useEffect(() => {
+        if (!collectionOverflows) setCollectionExpanded(false);
+    }, [collectionOverflows]);
+    // After a press of the bar has committed. Opening: focus goes to the first revealed game's title
+    // (the revealed cards sit BEFORE the bar in the DOM, so focus left on the bar would skip them).
+    // Closing: focus stays on the bar (one node in both states), and the list above it just got
+    // shorter, so the bar is brought back on screen when the collapse moved it off.
+    useEffect(() => {
+        const press = collectionBarPressRef.current;
+        collectionBarPressRef.current = null;
+        if (press === 'open' && collectionOpen) {
+            focusElement(firstRevealedTitleRef.current);
+        } else if (press === 'close' && !collectionOpen) {
+            collectionBarRef.current?.scrollIntoView?.({ block: 'nearest' });
+        }
+    }, [collectionOpen]);
     // The import dialog's open state, readable from the timer. One effect rather than a write beside
     // each of the four open-state setter calls (four sites to keep in step; one effect cannot drift),
     // and not a document query for an open dialog (any dialog would match, not just this one).
@@ -4426,8 +4460,33 @@ function Profile(){
                         <>
                         <RefreshFailedNotice state={collectionErrorState} retained={collectionRetained} focusTarget={collectionHeadingRef} className="mb-4" />
                         {ownedGames.length > 0 ? (
-                        <div aria-busy={loadingGames || undefined} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {ownedGames.map((game) => (
+                        <>
+                        {/* DECISION Phase 88.9-68 (X52d, owner pick page 10c, 2026-11-14: lets try x56c and x52d):
+                            closed every visit, 3 cards on a phone and 6 from md, a peek under a fade, a 48px bar
+                            flush to the card's bottom edge, chosen OVER the full list (owner: otherwise people will
+                            have to scroll a ton to get past it), the plain bar X52c and the button X52b. Peek inert;
+                            nothing remembered; raw button; 400 over the mock's 500. Opening moves focus to the first
+                            revealed game's title OVER leaving it on the bar (the revealed cards sit before the bar,
+                            so Tab from the bar would skip them). Making the peek reachable is a decision, not a
+                            cleanup.
+                            How it is built: beyond the visible count the list mounts the visible cards and the peek
+                            row only (1 card on a phone, 3 from md, the third from lg only); the rest mount on expand.
+                            A peek card is clipped to 72px, inert (React 18.2 string form, as the mobile menu in
+                            Header.js), hidden from assistive tech as the fallback where inert is not supported, takes
+                            no pointer, and its Remove leaves the tab order. The bar is a raw button OVER the Button
+                            primitive: a full-bleed bar takes none of its radius, padding or weight. Six cards from
+                            md is two rows of three at lg and three rows of two at md. */}
+                        <div id={collectionGridId} aria-busy={loadingGames || undefined} className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {(collectionOverflows && !collectionOpen
+                                ? ownedGames.slice(0, collectionVisibleCount + collectionPeekCount)
+                                : ownedGames
+                            ).map((game, index) => {
+                                const isPeek = collectionOverflows && !collectionOpen && index >= collectionVisibleCount;
+                                // The third peek card exists for the three-column row only.
+                                const isThirdPeek = isPeek && index === collectionVisibleCount + 2;
+                                // The card that opening reveals first: its title takes the focus.
+                                const isFirstRevealed = collectionOverflows && index === collectionVisibleCount;
+                                return (
                                 // D49-b (owner ruling 2026-09-09, option i): the inlined built-in md hover shadow was
                                 // snapped to the theme tier in 88.6, D49-b (a plain hover variant, not plan 05's
                                 // enabled-hover one, because this is a card div and not a .btn; the snap changed hue).
@@ -4436,10 +4495,36 @@ function Profile(){
                                 // shipped — the card is not a control (no click target of its own), so a hover lift
                                 // promised an action that does not exist. Re-adding a hover shadow here is a decision,
                                 // not a cleanup.
-                                <div key={game.id} className="border border-line rounded-lg p-4">
+                                // DECISION Phase 88.9-68 (X56c, same pick): dark cards take the raised fill, border
+                                // unchanged, chosen OVER a stronger border (X56a 2.45, X56b 3.42); fill vs card ground
+                                // 1.2281. Light is unchanged (no fill).
+                                <div
+                                    key={game.id}
+                                    className={
+                                        isThirdPeek
+                                            ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none max-lg:hidden'
+                                            : isPeek
+                                                ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none'
+                                                : 'border border-line rounded-lg p-4 dark:bg-surface-elevated'
+                                    }
+                                    inert={isPeek ? '' : undefined}
+                                    aria-hidden={isPeek ? 'true' : undefined}
+                                >
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
-                                            <Heading level={3} size="body" className="text-content-primary">{game.name}</Heading>
+                                            <Heading
+                                                ref={isFirstRevealed ? firstRevealedTitleRef : undefined}
+                                                tabIndex={isFirstRevealed ? -1 : undefined}
+                                                level={3}
+                                                size="body"
+                                                className={
+                                                    isFirstRevealed
+                                                        ? 'text-content-primary scroll-mt-20 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring'
+                                                        : 'text-content-primary'
+                                                }
+                                            >
+                                                {game.name}
+                                            </Heading>
                                             {game.year_published && (
                                                 <p className="text-sm text-content-secondary">({game.year_published})</p>
                                             )}
@@ -4463,6 +4548,7 @@ function Profile(){
                                                 game.name,
                                                 `Remove ${game.name}`
                                             )}
+                                            {...(isPeek ? { tabIndex: -1 } : {})}
                                             className={`inline-grid min-h-11 min-w-11 place-items-center whitespace-nowrap rounded-btn border px-2 text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
                                                 removeGameGate.isArmed(game.id)
                                                     ? 'bg-status-error-subtle border-status-error font-semibold'
@@ -4506,8 +4592,37 @@ function Profile(){
                                         className="w-full h-32 object-cover rounded-sm mb-2"
                                     />
                                 </div>
-                            ))}
+                                );
+                            })}
+                            {collectionOverflows && !collectionOpen && (
+                                <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-[72px] bg-linear-to-b from-transparent to-surface-card" />
+                            )}
                         </div>
+                        {collectionOverflows && (
+                            <div
+                                className={
+                                    collectionOpen
+                                        ? '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-4 rounded-b-card overflow-hidden border-t border-line bg-surface-muted'
+                                        : '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-0 rounded-b-card overflow-hidden border-t border-line bg-surface-muted'
+                                }
+                            >
+                                <button
+                                    type="button"
+                                    ref={collectionBarRef}
+                                    onClick={() => {
+                                        collectionBarPressRef.current = collectionOpen ? 'close' : 'open';
+                                        setCollectionExpanded(!collectionOpen);
+                                    }}
+                                    aria-expanded={collectionOpen}
+                                    aria-controls={collectionGridId}
+                                    className="flex w-full min-h-12 items-center justify-center gap-2 text-sm text-content-primary rounded-b-card scroll-mt-20 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                                >
+                                    {collectionOpen ? 'Show fewer' : `Show all ${ownedGames.length} games`}
+                                    <Icon name={collectionOpen ? 'ChevronUp' : 'ChevronDown'} size={16} />
+                                </button>
+                            </div>
+                        )}
+                        </>
                     ) : (
                         // D2 mini-formula (ruled 2026-08-15): muted + sm, no "!".
                         <p className="text-content-muted text-sm">You don't have any games in your collection yet. Search BoardGameGeek to add games.</p>

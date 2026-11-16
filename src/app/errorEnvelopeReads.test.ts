@@ -212,7 +212,9 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // shared CentredPageFrame (X70a: the two page-replacing banners sit in it).
     // RE-DERIVED by plan 88.9-67 (Task 2, 2026-11-15): 267 -> 268. One import line above it, the
     // shared ReservedLabel (X69 width: the gated labels on this page hold one width).
-    declaredAt: 268,
+    // RE-DERIVED by plan 88.9-68 (Task 1, 2026-11-15): 268 -> 270. Two import lines above it, the
+    // shared Icon and usePhoneViewport (X52d: the collection bar and its phone card count).
+    declaredAt: 270,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +
