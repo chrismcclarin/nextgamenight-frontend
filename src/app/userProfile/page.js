@@ -4583,7 +4583,10 @@ function Profile(){
                                             The button is the 44px hit area and carries no border or
                                             fill; the one visible box inside it is 32px at rest (a
                                             minimum width, so the busy spinner fits inside the
-                                            border) and grows to its label when armed, where a second
+                                            border; its side padding is 4px so that minimum governs:
+                                            the 20px icon, 8px of padding and the 1px border come to
+                                            30, where 6px a side measured 34 wide in CI) and grows to
+                                            its label when armed, where a second
                                             reserve inside the box keeps it one width through
                                             Wait (3), (2), (1) and Remove (X69, 88.9-67). */}
                                         {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
@@ -4632,7 +4635,7 @@ function Profile(){
                                                     className={
                                                         removeGameGate.isArmed(game.id)
                                                             ? 'font-semibold inline-flex min-h-8 items-center justify-center rounded-btn border border-status-error bg-status-error-subtle px-2'
-                                                            : 'inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-status-error px-1.5 group-hover:bg-status-error-subtle'
+                                                            : 'inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-status-error px-1 group-hover:bg-status-error-subtle'
                                                     }
                                                 >
                                                     {removeGameGate.isArmed(game.id) ? (
