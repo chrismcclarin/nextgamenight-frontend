@@ -659,18 +659,27 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
   // shows the house spinner, is aria-disabled, named Remove, removing, and holds focus; the
   // member's other items are aria-disabled too; a further press sends nothing. When the remove
   // lands, focus moves to the next member's actions button.
-  // SAFE: the DELETE is for the synthetic member and is held, then FULFILLED in the browser by a
-  // route registered after the write hold (so it runs first for that one request); it is never
-  // continued to the server.
+  // SAFE: the DELETE is for the synthetic member and is ANSWERED IN THE BROWSER ON EVERY PATH by a
+  // route registered after the write hold (so it runs first for that one request): a 200 once the
+  // test releases it, a 503 if the test ends first. The finally block below settles it and waits
+  // for the answer before afterEach removes the routes.
+  // AMENDED Phase 88.9-67 (after the red run at 278f50b): the first form of this test parked the
+  // DELETE on a promise and answered it only on the passing path. On the old code the test failed
+  // first, afterEach removed the routes, and removing interception RESUMES a paused request, so the
+  // DELETE went to the CI backend (answered 404 there: the synthetic id has no user row). A request
+  // that must never land is answered with route.fulfill, never left paused. Chosen OVER a time
+  // limit inside the handler, which only helps when it is shorter than every assertion before it.
   test('X13-7 (88.9): a phone Remove keeps the menu open while it runs — Remove with the spinner, aria-disabled, named Remove, removing, focused — then focus lands on the next member', async ({
     page,
   }) => {
     let removed = false;
     let deletes = 0;
-    let releaseDelete!: () => void;
-    const deleteGate = new Promise<void>((resolve) => {
-      releaseDelete = resolve;
+    let settleDelete!: (outcome: 'removed' | 'abandoned') => void;
+    const deleteGate = new Promise<'removed' | 'abandoned'>((resolve) => {
+      settleDelete = resolve;
     });
+    // Every answer the route is still writing; the finally block waits for all of them.
+    const answers: Promise<void>[] = [];
     let markDeleteArrived!: () => void;
     const deleteArrived = new Promise<void>((resolve) => {
       markDeleteArrived = resolve;
@@ -683,52 +692,68 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
       }
       deletes += 1;
       markDeleteArrived();
-      await deleteGate;
-      removed = true;
-      await route.fulfill({ status: 200, json: {} });
+      const answer = (async () => {
+        const outcome = await deleteGate;
+        if (outcome === 'removed') {
+          removed = true;
+          await route.fulfill({ status: 200, json: {} });
+          return;
+        }
+        // The test ended with the remove still held: answer it here so nothing is left paused.
+        // The page may already be closing, and a refused answer then has nowhere to land.
+        await route.fulfill({ status: 503, json: { error: 'e2e: remove abandoned' } }).catch(() => undefined);
+      })();
+      answers.push(answer);
+      await answer;
     });
 
-    const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
-    await expect(dialog).toBeVisible({ timeout: 15_000 });
-    await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
-    const next = dialog.getByRole('button', { name: 'Member actions for E2E Neighbour' });
-    await expect(next, 'the fixed neighbour row renders its member-actions button').toBeVisible();
-    await settleAnimations(dialog);
+    try {
+      const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+      await expect(dialog).toBeVisible({ timeout: 15_000 });
+      await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
+      const next = dialog.getByRole('button', { name: 'Member actions for E2E Neighbour' });
+      await expect(next, 'the fixed neighbour row renders its member-actions button').toBeVisible();
+      await settleAnimations(dialog);
 
-    await dialog.getByRole('button', { name: 'Member actions for E2E Removable' }).tap();
-    await dialog.getByRole('button', { name: 'Remove', exact: true }).tap();
-    const confirmRemove = dialog.getByRole('button', { name: 'Tap again to remove' });
-    await expect(confirmRemove).toHaveText('Tap again to remove', { timeout: 10_000 });
-    await confirmRemove.tap();
+      await dialog.getByRole('button', { name: 'Member actions for E2E Removable' }).tap();
+      await dialog.getByRole('button', { name: 'Remove', exact: true }).tap();
+      const confirmRemove = dialog.getByRole('button', { name: 'Tap again to remove' });
+      await expect(confirmRemove).toHaveText('Tap again to remove', { timeout: 10_000 });
+      await confirmRemove.tap();
 
-    // POSITIVE signal: the DELETE reached the route and is held there.
-    await deleteArrived;
-    // The menu is still open and the item shows its flight. Chromium may put a space before the
-    // sr-only comma in the name (the same shape as the pressed Transfer ownership above).
-    const inFlight = dialog.getByRole('button', { name: /^Remove ?, removing$/ });
-    await expect(inFlight, 'X13-7: the committed Remove is gone from the screen while the remove runs').toBeVisible();
-    await expect(inFlight).toHaveText(/^Remove/);
-    // The house spinner appears after its 200 ms delay; the assertion waits for it.
-    await expect(inFlight.locator('[data-slot="spinner"]')).toHaveCount(1);
-    await expect(inFlight).toHaveAttribute('aria-disabled', 'true');
-    await expect(inFlight).not.toHaveAttribute('disabled');
-    await expect(inFlight).toBeFocused();
-    await expect(dialog.getByRole('button', { name: 'Make admin', exact: true })).toHaveAttribute('aria-disabled', 'true');
-    await expect(
-      dialog.getByRole('button', { name: 'Transfer ownership to this member', exact: true }),
-    ).toHaveAttribute('aria-disabled', 'true');
-    await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
+      // POSITIVE signal: the DELETE reached the route and is held there.
+      await deleteArrived;
+      // The menu is still open and the item shows its flight. Chromium may put a space before the
+      // sr-only comma in the name (the same shape as the pressed Transfer ownership above).
+      const inFlight = dialog.getByRole('button', { name: /^Remove ?, removing$/ });
+      await expect(inFlight, 'X13-7: the committed Remove is gone from the screen while the remove runs').toBeVisible();
+      await expect(inFlight).toHaveText(/^Remove/);
+      // The house spinner appears after its 200 ms delay; the assertion waits for it.
+      await expect(inFlight.locator('[data-slot="spinner"]')).toHaveCount(1);
+      await expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+      await expect(inFlight).not.toHaveAttribute('disabled');
+      await expect(inFlight).toBeFocused();
+      await expect(dialog.getByRole('button', { name: 'Make admin', exact: true })).toHaveAttribute('aria-disabled', 'true');
+      await expect(
+        dialog.getByRole('button', { name: 'Transfer ownership to this member', exact: true }),
+      ).toHaveAttribute('aria-disabled', 'true');
+      await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
 
-    // A further press on the focused item is refused. An ABSENCE check: there is no positive
-    // signal to wait for, so wait a fixed 500ms.
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(500);
-    expect(deletes, 'X13-7: a press while the remove runs sends no second DELETE').toBe(1);
+      // A further press on the focused item is refused. An ABSENCE check: there is no positive
+      // signal to wait for, so wait a fixed 500ms.
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(500);
+      expect(deletes, 'X13-7: a press while the remove runs sends no second DELETE').toBe(1);
 
-    releaseDelete();
-    await expect(next, "X13-7: focus lands on the next member's actions button").toBeFocused({ timeout: 15_000 });
-    await expect(dialog.getByText('E2E Removable', { exact: true })).toHaveCount(0);
-    expect(deletes, 'still exactly one DELETE').toBe(1);
-    expect(heldMemberWrites(), 'X13-7: no other member write was sent').toEqual([]);
+      settleDelete('removed');
+      await expect(next, "X13-7: focus lands on the next member's actions button").toBeFocused({ timeout: 15_000 });
+      await expect(dialog.getByText('E2E Removable', { exact: true })).toHaveCount(0);
+      expect(deletes, 'still exactly one DELETE').toBe(1);
+      expect(heldMemberWrites(), 'X13-7: no other member write was sent').toEqual([]);
+    } finally {
+      // A no-op after the release above; on any failure it answers the held DELETE in the browser.
+      settleDelete('abandoned');
+      await Promise.all(answers);
+    }
   });
 });
