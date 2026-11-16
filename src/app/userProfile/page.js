@@ -52,6 +52,7 @@ import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { Button } from '../../components/ui/Button';
 import { ReservedLabel } from '../../components/ui/ReservedLabel';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
 import { Icon } from '../../components/ui/Icon';
 import { usePhoneViewport } from '../../lib/hooks/usePhoneViewport';
 import { Heading } from '../../components/ui/Heading';
@@ -301,12 +302,13 @@ function Profile(){
     const verifyInFlightRef = useRef(false);
     // W016 / D-35 (88.6.1-18): Replay Tutorial's synchronous latch — see its marker at the button.
     const replayInFlightRef = useRef(false);
-    // Req 4 (88.6.1-53): Remove's synchronous latch, the same pair as the three senders above —
-    // see `DECISION Phase 88.6.1-53 (Req 4)` at the Remove button.
-    const removeInFlightRef = useRef(false);
+    // Req 4 (88.6.1-53): the phone Remove's refusal is no longer a latch of its own. Since
+    // 88.9-68 (X36b) it is useConfirmAction's pending latch — see the AMENDED line on
+    // `DECISION Phase 88.6.1-53 (Req 4)` at the Remove button.
     /* R2 #29, second defect: the cooldown ticker used to be a LOCAL `const timer`, cleared only
        by its own tick — nothing cancelled it on unmount. Held in a ref and cleared in the
-       existing unmount effect below, alongside removeArmedTimerRef. */
+       existing unmount effect below (the phone Remove's arm timer that used to sit beside it is
+       the shared hook's now, cleared by the hook's own unmount cleanup). */
     const resendTimerRef = useRef(null);
     // Req 5 (88.6.1-18): a successful check unmounts the focused Verify. The target is the
     // settled "Phone verified" text, the fallback the profile card's <h1> — see the marker in
@@ -506,15 +508,18 @@ function Profile(){
         importPromptOpenRef.current = bggImportPromptOpen;
     }, [bggImportPromptOpen]);
 
-    // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
-    // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
-    const [removeArmed, setRemoveArmed] = useState(false);
-    // True while a removal is in flight (Req 4, 88.6.1-53): drives Remove's `aria-disabled`.
+    // Two-tap remove confirmation (D-PHONE-01): since 88.9-68 (X36b) the arm is the shared gated
+    // two-tap (`removePhoneGate` below), not a flag and a timer of this page's own.
+    // True while a removal is in flight (Req 4, 88.6.1-53): drives Remove's `aria-disabled`, its
+    // busy name and its spinner.
     const [removingPhone, setRemovingPhone] = useState(false);
-    const removeArmedTimerRef = useRef(null);
+    // X36a (88.9-68): which collection game / which availability row has its DELETE in flight.
+    // One at a time each: the gate's pending latch refuses a second commit until the first settles.
+    const [removingGameId, setRemovingGameId] = useState(null);
+    const [deletingPatternId, setDeletingPatternId] = useState(null);
 
     // Phone-removal banner state (REVISION):
-    // - phoneJustRemoved: session-scoped flag set by handleRemovePhone success path so
+    // - phoneJustRemoved: session-scoped flag set by performRemovePhone success path so
     //   the amber banner only fires after a removal in this session — NOT for users
     //   who never had a phone (the unrevised `!userData.phone` gate fired equally for
     //   both, with tone-mismatched copy).
@@ -1086,10 +1091,6 @@ function Profile(){
                 importHoldObserverRef.current.disconnect();
                 importHoldObserverRef.current = null;
             }
-            if (removeArmedTimerRef.current) {
-                clearTimeout(removeArmedTimerRef.current);
-                removeArmedTimerRef.current = null;
-            }
             if (resendTimerRef.current) {
                 clearInterval(resendTimerRef.current);
                 resendTimerRef.current = null;
@@ -1097,38 +1098,17 @@ function Profile(){
         };
     }, []);
 
-    // Two-tap remove handler (D-PHONE-01): first tap arms a 3s revert timer + flips
-    // label to "Tap again to remove" (red). Second tap within 3s commits the removal
-    // via the cascade endpoint (Plan 70-01). Optimistically clears local state from
-    // the cascaded response and sets phoneJustRemoved so the amber banner fires.
-    const handleRemovePhone = async (event) => {
-        // Req 4 (88.6.1-53): the in-flight refusal, synchronous and FIRST — before the identity
-        // guards and the arm branch, so a tap mid-removal neither re-arms nor commits. The same
-        // pair as the senders' latches (see the `saveInFlightRef` marker, DECISION Phase 88.6-17).
-        if (removeInFlightRef.current) return;
-        // The pressed Remove, captured before any await (React clears `currentTarget` once the
-        // handler returns): it seeds the focus arm at success (Safari, plan 04's contract).
-        const pressed = event?.currentTarget ?? null;
-        if (!user?.sub) return;
-        if (!selfUuid) {
-            setPhoneError('Still loading your account — please try again in a moment.');
-            return;
-        }
-        if (!removeArmed) {
-            // First tap — arm.
-            if (removeArmedTimerRef.current) clearTimeout(removeArmedTimerRef.current);
-            setRemoveArmed(true);
-            removeArmedTimerRef.current = setTimeout(() => {
-                setRemoveArmed(false);
-                removeArmedTimerRef.current = null;
-            }, 3000);
-            return;
-        }
-        // Second tap — clear timer and commit.
-        clearTimeout(removeArmedTimerRef.current);
-        removeArmedTimerRef.current = null;
-        setRemoveArmed(false);
-        removeInFlightRef.current = true;
+    // The commit half of the phone Remove (D-PHONE-01): the cascade endpoint (Plan 70-01).
+    // Optimistically clears local state from the cascaded response and sets phoneJustRemoved so
+    // the amber banner fires. It runs only from `removePhoneGate` below, after two LIVE taps.
+    // Req 4 (88.6.1-53): the in-flight refusal is the gate's pending latch (useConfirmAction's
+    // `trigger` returns first while a commit runs), so a tap mid-removal neither re-arms nor commits.
+    const performRemovePhone = async (opts) => {
+        // The pressed Remove, handed over by the two-tap gate (`ctx.from`): it seeds the focus arm
+        // at success (Safari does not focus a tapped button, plan 04's contract).
+        const pressed = opts?.from ?? null;
+        // The identity guards ran on the tap (handleRemovePhone below); this is the backstop.
+        if (!user?.sub || !selfUuid) return;
         setRemovingPhone(true);
         try {
             const updatedUser = await usersAPI.removePhone(selfUuid);
@@ -1162,10 +1142,34 @@ function Profile(){
             );
             // NOTE: do NOT set phoneJustRemoved on failure — banner only fires on success.
         } finally {
-            // Released in `finally` so a FAILED removal does not strand the control.
-            removeInFlightRef.current = false;
+            // Cleared in `finally` so a FAILED removal does not strand the control (the gate's
+            // pending latch is released by the hook when this settles).
             setRemovingPhone(false);
         }
+    };
+
+    // X36b (88.9-68): the phone Remove is the shared gated two-tap, like every other remove. Its
+    // marker is the AMENDED line on `DECISION Phase 88.6.1-53 (Req 4)` at the button.
+    const removePhoneGate = useConfirmAction({
+        tier: 'two-tap',
+        // Dialog-tier copy, accepted and ignored by two-tap (superset config); dormant.
+        title: 'Remove your phone number?',
+        confirmLabel: 'Remove',
+        // The shipped live words of this control, kept (the hook's default reads as an instruction).
+        armedLabel: 'Tap again to remove',
+        onConfirm: (_targetId, ctx) => performRemovePhone(ctx),
+    });
+    // No id (one target) and no resting name: the visible label IS the name at rest and live. The
+    // target label makes the live-edge line name what is removed.
+    const removePhoneTriggerProps = removePhoneGate.triggerProps(undefined, 'your phone number');
+    // The identity guards stay on the tap, before the gate sees it.
+    const handleRemovePhone = (event) => {
+        if (!user?.sub) return;
+        if (!selfUuid) {
+            setPhoneError('Still loading your account — please try again in a moment.');
+            return;
+        }
+        removePhoneTriggerProps.onClick(event);
     };
 
     // Verify-CTA handler: smooth-scroll to + focus the phone input. Does NOT
@@ -1829,6 +1833,8 @@ function Profile(){
             setOwnedGames((games) => games.filter((game) => game.id !== game_id));
             return settle;
         };
+        // X36a (88.9-68): set before the DELETE's await, cleared in finally.
+        setRemovingGameId(game_id);
         try {
             await userGamesAPI.removeOwnedGame(selfUuid, game_id);
             const settle = dropRemovedGame();
@@ -1853,6 +1859,8 @@ function Profile(){
                     fallback: "We couldn't remove that game. Please try again.",
                 })
             );
+        } finally {
+            setRemovingGameId((current) => (current === game_id ? null : current));
         }
     };
 
@@ -2066,6 +2074,8 @@ function Profile(){
             preferred: () => (rowType === 'specific_override' ? addOverrideToggleRef.current : addScheduleToggleRef.current),
             from: opts?.from ?? null,
         });
+        // X36a (88.9-68): set at the start, cleared in finally.
+        setDeletingPatternId(patternId);
         try {
             await availabilityAPI.deleteAvailability(patternId);
             await patternsQuery.refetch();
@@ -2080,6 +2090,7 @@ function Profile(){
                 })
             );
         } finally {
+            setDeletingPatternId((current) => (current === patternId ? null : current));
             settle();
         }
     };
@@ -2391,7 +2402,7 @@ function Profile(){
                     AMENDED Phase 88.9-59 (X5a): header, footer and Home now cap at 1600; this column stays
                     max-w-4xl (N10). */}
                 {/* SMS-disabled banner — gated on phoneJustRemoved (session flag
-                    set by handleRemovePhone success) so it does NOT fire for users
+                    set by performRemovePhone success) so it does NOT fire for users
                     who never had a phone. Also gated on sms_enabled per the
                     admin-entitlement model: non-entitled users never see SMS UI,
                     including this banner. Banner clears automatically when user
@@ -3015,8 +3026,9 @@ function Profile(){
                                             >
                                                 Change number
                                             </button>
-                                            {/* Two-tap remove link (D-PHONE-01): first tap arms 3s revert timer
-                                                + flips label red; second tap commits via usersAPI.removePhone.
+                                            {/* Two-tap remove link (D-PHONE-01): the first tap arms it (it counts
+                                                down, then reads its live label in 600); a second live tap commits
+                                                via usersAPI.removePhone.
 
                                                 DECISION Phase 88.6-17 (A10 / T-88.6-43, with T-88.6-41):
                                                 this control is floored to 44px IN PLACE as a raw
@@ -3037,7 +3049,8 @@ function Profile(){
                                                 `Button` elements. The floor here is therefore held by
                                                 this marker and by the rendered 375px measurement recorded
                                                 in `88.6-17-SUMMARY.md`, not by a class-list pin. Removing
-                                                `min-h-11` is a decision, not a cleanup. */}
+                                                `min-h-11` is a decision, not a cleanup.
+                                                AMENDED Phase 88.9-68 (X36b): still raw for the same reason; the arm comes from the shared hook. */}
                                             {/* DECISION Phase 88.6.1-53 (Req 4): while a removal is in flight
                                                 Remove carries `aria-disabled` and `handleRemovePhone`'s first
                                                 line refuses every tap (`removeInFlightRef`, released in
@@ -3056,17 +3069,26 @@ function Profile(){
                                                 on a phone it raises the keyboard after a destructive action
                                                 and says nothing about what happened; (c) minting a heading or
                                                 text (D-05, D-31). Dropping either half of the pair is a
-                                                decision, not a cleanup. */}
+                                                decision, not a cleanup.
+                                                AMENDED Phase 88.9-68 (X36b, once-over R3, veto open): the arm is the shared two-tap (gated, then live), chosen OVER its own instant 3000 ms timer, which the 8 Nov list left out; the refusal now lives in useConfirmAction's pending latch; aria-disabled stays; rule 1's delayed spinner joins with , removing.
+                                                How it is spread: the hook's props first, then this page's guarded onClick, then the
+                                                in-flight pair as a CONDITIONAL spread (the Friends form) — a plain attribute that is
+                                                undefined at rest would overwrite the hook's own aria-disabled while it counts down. */}
                                             <button
+                                                {...removePhoneTriggerProps}
                                                 onClick={handleRemovePhone}
-                                                aria-disabled={removingPhone ? 'true' : undefined}
+                                                {...(removingPhone ? { 'aria-disabled': 'true', 'aria-label': 'Remove, removing' } : {})}
                                                 className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
-                                                    removeArmed
+                                                    removePhoneGate.isArmed()
                                                         ? 'text-content-status-error font-semibold'
                                                         : 'text-content-status-error hover:text-content-status-error'
                                                 }`}
                                             >
-                                                {removeArmed ? 'Tap again to remove' : 'Remove'}
+                                                {/* X69 width (88.9-67): held from the arm, nothing at rest. */}
+                                                <ReservedLabel reserve={removePhoneGate.reserveFor()}>
+                                                    {removePhoneGate.labelFor(undefined, 'Remove')}
+                                                </ReservedLabel>
+                                                <DelayedSpinner busy={removingPhone} className="ml-2 align-middle" />
                                             </button>
                                         </div>
                                     )}
@@ -3890,6 +3912,7 @@ function Profile(){
                                                 </div>
                                                 {(() => {
                                                     const patternLabel = `${getDayName(pattern.pattern_data.dayOfWeek)} schedule`;
+                                                    const deleting = deletingPatternId === pattern.id;
                                                     return (
                                                         <button
                                                             {...deletePatternGate.triggerProps(
@@ -3897,6 +3920,10 @@ function Profile(){
                                                                 patternLabel,
                                                                 `Delete ${patternLabel}`
                                                             )}
+                                                            // DECISION Phase 88.9-68 (X36a, once-over R3, veto open): a committing two-tap remove shows its flight like the Friends Remove — aria-disabled, the delayed held spinner, , removing / , deleting in the name — chosen OVER no in-flight sign; the F9b two-tap is unchanged.
+                                                            // A conditional spread AFTER the hook's props (the Friends form), so the hook's
+                                                            // own aria-disabled is never overwritten by an undefined while it counts down.
+                                                            {...(deleting ? { 'aria-disabled': 'true', 'aria-label': `Delete ${patternLabel}, deleting` } : {})}
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
@@ -3908,6 +3935,7 @@ function Profile(){
                                                             <ReservedLabel reserve={deletePatternGate.reserveFor(pattern.id)}>
                                                                 {deletePatternGate.labelFor(pattern.id, 'Delete')}
                                                             </ReservedLabel>
+                                                            <DelayedSpinner busy={deleting} className="ml-2 align-middle" />
                                                         </button>
                                                     );
                                                 })()}
@@ -4052,6 +4080,7 @@ function Profile(){
                                                 </div>
                                                 {(() => {
                                                     const patternLabel = `${formatDate(pattern.pattern_data.date)} override`;
+                                                    const deleting = deletingPatternId === pattern.id;
                                                     return (
                                                         <button
                                                             {...deletePatternGate.triggerProps(
@@ -4059,6 +4088,9 @@ function Profile(){
                                                                 patternLabel,
                                                                 `Delete ${patternLabel}`
                                                             )}
+                                                            // X36a (88.9-68): the in-flight pair, as on the schedule Delete — see the
+                                                            // X36a marker of plan 88.9-68 there.
+                                                            {...(deleting ? { 'aria-disabled': 'true', 'aria-label': `Delete ${patternLabel}, deleting` } : {})}
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
@@ -4070,6 +4102,7 @@ function Profile(){
                                                             <ReservedLabel reserve={deletePatternGate.reserveFor(pattern.id)}>
                                                                 {deletePatternGate.labelFor(pattern.id, 'Delete')}
                                                             </ReservedLabel>
+                                                            <DelayedSpinner busy={deleting} className="ml-2 align-middle" />
                                                         </button>
                                                     );
                                                 })()}
@@ -4541,21 +4574,19 @@ function Profile(){
                                             the error-subtle treatment. The invisible sizer span
                                             reserves the ARMED label's width at rest so arming
                                             never reflows the title next to it (walk row 573's
-                                            squeeze class). */}
-                                        <button
-                                            {...removeGameGate.triggerProps(
-                                                game.id,
-                                                game.name,
-                                                `Remove ${game.name}`
-                                            )}
-                                            {...(isPeek ? { tabIndex: -1 } : {})}
-                                            className={`inline-grid min-h-11 min-w-11 place-items-center whitespace-nowrap rounded-btn border px-2 text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                                                removeGameGate.isArmed(game.id)
-                                                    ? 'bg-status-error-subtle border-status-error font-semibold'
-                                                    : 'border-status-error hover:bg-status-error-subtle'
-                                            }`}
-                                        >
-                                            {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
+                                            squeeze class).
+                                            AMENDED Phase 88.9-68 (X53): still a real bordered box (fork 7), now 32px with the dialog's 20px X; the 44px hit area is the button.
+                                            How it is built: the slot is the reserve's one-cell grid
+                                            AROUND the button, holding the armed box's width from
+                                            rest (label at the armed weight and size, plus the box's
+                                            padding and border), with the button at its right edge.
+                                            The button is the 44px hit area and carries no border or
+                                            fill; the one visible box inside it is 32px at rest (a
+                                            minimum width, so the busy spinner fits inside the
+                                            border) and grows to its label when armed, where a second
+                                            reserve inside the box keeps it one width through
+                                            Wait (3), (2), (1) and Remove (X69, 88.9-67). */}
+                                        {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
                                                 `font-semibold` STAYS, and it is deliberately NOT one of
                                                 the 600s the weight sweep converted. It is not emphasis —
                                                 it is a MEASUREMENT. The span reserves the width of the
@@ -4577,14 +4608,44 @@ function Profile(){
                                                 AMENDED Phase 88.9-67 (X69 width): the measurement lives in ReservedLabel's reserve (Wait (3), (2), (1), Remove), still 600 through reserveClassName.
                                                 AMENDED Phase 88.9-23 (F9b): the sizer reserves the countdown label, the widest armed state.
                                                 AMENDED Phase 88.9-67 (X69): the sizer reserves Remove, wider than Wait (n), until Task 2's shared reserve.
-                                                AMENDED Phase 88.9-67 (X69 width): the x reserves through ReservedLabel. */}
-                                            <ReservedLabel
-                                                reserve={removeGameGate.reserveFor(game.id, { atRest: true })}
-                                                reserveClassName="font-semibold"
+                                                AMENDED Phase 88.9-67 (X69 width): the x reserves through ReservedLabel.
+                                                AMENDED Phase 88.9-68 (X53, owner at N37, 2026-11-13: a very large box and a very small x … Make it similar to the dialog boxes x): the sizer reserves the armed width on the slot around the button, not inside the visible box, chosen OVER the reservation inside the box (the large resting box); weight 600 and the measurement stand. */}
+                                        <ReservedLabel
+                                            className="justify-items-end"
+                                            reserve={removeGameGate.reserveFor(game.id, { atRest: true })}
+                                            reserveClassName="font-semibold whitespace-nowrap border border-transparent px-2 text-sm"
+                                        >
+                                            <button
+                                                {...removeGameGate.triggerProps(
+                                                    game.id,
+                                                    game.name,
+                                                    `Remove ${game.name}`
+                                                )}
+                                                {...(isPeek ? { tabIndex: -1 } : {})}
+                                                // DECISION Phase 88.9-68 (X36a, once-over R3, veto open): a committing two-tap remove shows its flight like the Friends Remove — aria-disabled, the delayed held spinner, , removing / , deleting in the name — chosen OVER no in-flight sign; the F9b two-tap is unchanged.
+                                                // A conditional spread AFTER the hook's props (the Friends form). The gate is
+                                                // disarmed while the DELETE runs, so the spinner joins the RESTING box.
+                                                {...(removingGameId === game.id ? { 'aria-disabled': 'true', 'aria-label': `Remove ${game.name}, removing` } : {})}
+                                                className="group inline-flex min-h-11 min-w-11 items-center justify-center whitespace-nowrap rounded-btn text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
                                             >
-                                                {removeGameGate.labelFor(game.id, '×')}
-                                            </ReservedLabel>
-                                        </button>
+                                                <span
+                                                    className={
+                                                        removeGameGate.isArmed(game.id)
+                                                            ? 'font-semibold inline-flex min-h-8 items-center justify-center rounded-btn border border-status-error bg-status-error-subtle px-2'
+                                                            : 'inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-status-error px-1.5 group-hover:bg-status-error-subtle'
+                                                    }
+                                                >
+                                                    {removeGameGate.isArmed(game.id) ? (
+                                                        <ReservedLabel reserve={removeGameGate.reserveFor(game.id)}>
+                                                            {removeGameGate.labelFor(game.id, 'Remove')}
+                                                        </ReservedLabel>
+                                                    ) : (
+                                                        <Icon name="X" size={20} strokeWidth={2} />
+                                                    )}
+                                                    <DelayedSpinner busy={removingGameId === game.id} />
+                                                </span>
+                                            </button>
+                                        </ReservedLabel>
                                     </div>
                                     <SafeImage
                                         src={game.image_url}
@@ -4638,11 +4699,11 @@ function Profile(){
                     <DangerZoneDeleteAccount />
                 </div>
 
-                {/* The three tiered gates, mounted ONCE at page level rather than per
+                {/* The four tiered gates (the phone Remove's joined in 88.9-68, X36b), mounted ONCE at page level rather than per
                     row: the hook holds the target id, so one dialog serves every row.
                     Each `statusNode` is likewise mounted unconditionally and always —
                     a live region that is conditionally mounted announces nothing. The
-                    two two-tap gates render a null dialog by design (88-05), and they
+                    three two-tap gates render a null dialog by design (88-05), and they
                     are mounted anyway so retiering stays the one-word edit. */}
                 <ConfirmDialog {...disconnectCalendarGate.dialogProps} />
                 {disconnectCalendarGate.statusNode}
@@ -4650,6 +4711,8 @@ function Profile(){
                 {removeGameGate.statusNode}
                 <ConfirmDialog {...deletePatternGate.dialogProps} />
                 {deletePatternGate.statusNode}
+                <ConfirmDialog {...removePhoneGate.dialogProps} />
+                {removePhoneGate.statusNode}
 
                 {/* Slow-operation warning, NOT a destructive gate (D-10) — see the
                     marker on `handleImportCollectionClick`. Dismissable, and its

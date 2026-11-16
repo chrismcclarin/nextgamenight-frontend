@@ -2861,7 +2861,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   'app/userProfile/page.js': {
     sites: 5,
     why:
-      'FLOORED at 5, not pending. Four are the armed-state 600s on this file\'s two-tap destructive gates (see ARMED_STATE_600_ROSTER) and the fifth is the invisible armed-label sizer span in the collection Remove control, whose 600 is a width MEASUREMENT of the armed label rather than emphasis — see the `DECISION Phase 88.6-17` marker at that site. The other 30 were converted by plan 88.6-17: emphasis sites to 400 plus a colour token, form labels and matrix header cells to the Label rung\'s 400, the theme toggles\' 600 deleted as dead on a `.btn`, and the TCPA disclosure dispositioned span by span.',
+      'FLOORED at 5, not pending. Four are the armed-state 600s on this file\'s two-tap destructive gates (see ARMED_STATE_600_ROSTER) and the fifth is the invisible armed-label sizer span in the collection Remove control, whose 600 is a width MEASUREMENT of the armed label rather than emphasis — see the `DECISION Phase 88.6-17` marker at that site. The other 30 were converted by plan 88.6-17: emphasis sites to 400 plus a colour token, form labels and matrix header cells to the Label rung\'s 400, the theme toggles\' 600 deleted as dead on a `.btn`, and the TCPA disclosure dispositioned span by span. AMENDED Phase 88.9-68 (X53): the fifth 600 is still that measurement, now on the slot AROUND the collection x (the reserve that wraps the button, holding the armed box\'s width from rest), no longer inside the visible box.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6-17' },
   },
   // DELETED by plan 88.6-36 task 3 (wave 7, 2026-09-16): `components/ui/Banner.tsx` carried
@@ -2950,7 +2950,7 @@ const ARMED_STATE_600_ROSTER: ExemptionRoster = {
   'app/userProfile/page.js': {
     sites: 4,
     why:
-      'four armed-state 600s, each the ARMED cue of a two-tap DESTRUCTIVE gate: the hand-rolled D-PHONE-01 Remove-phone control (not a useConfirmAction consumer — it is owned by no primitive), the two deletePatternGate triggers, and the collection removeGameGate trigger. Legitimate 600 under D-03, not §4.5 debt. A FIFTH permanent 600 in this file — the invisible armed-label sizer span — is outside this predicate\'s reach and is carried in WEIGHT_ROSTER instead.',
+      'four armed-state 600s, each the ARMED cue of a two-tap DESTRUCTIVE gate: the D-PHONE-01 Remove-phone control (AMENDED Phase 88.9-68, X36b: a useConfirmAction consumer now, removePhoneGate, and still a raw button so the 600 renders), the two deletePatternGate triggers, and the collection removeGameGate trigger (AMENDED Phase 88.9-68, X53: the 600 sits on its armed box inside the 44px button). Legitimate 600 under D-03, not §4.5 debt. A FIFTH permanent 600 in this file — the armed-label reserve on the slot around the collection x — is outside this predicate\'s reach and is carried in WEIGHT_ROSTER instead.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88-27 (D-32 bucket D)' },
   },
   'app/components/KebabMenu.js': {
