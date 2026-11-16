@@ -2726,7 +2726,11 @@ test.describe('Req 11 Gate C — round 2 pins (88.9 R2), both themes per test', 
       await field.press('ArrowDown');
       await expect(active, `O20c (${theme}): ArrowDown did not activate the filtered option`).toHaveCount(1);
       await field.press('Enter');
-      const toast = page.locator('[data-sonner-toast][data-type="error"]').filter({ hasText: 'Failed to save your timezone' });
+      // AMENDED Phase 88.9-68 (X33b / Q8): the provider's failed-save toast now reads the shared
+      // error register (the house error form), so a 500 shows the register's server-error line; the
+      // sentence Failed to save your timezone is kept only for a failure with no known cause. This
+      // test measures the toast's ink, so it follows the words the forced 500 now raises.
+      const toast = page.locator('[data-sonner-toast][data-type="error"]').filter({ hasText: 'Something went wrong on our end' });
       await expect(toast, `O20c (${theme}): the failed timezone save raised no error toast`).toBeVisible({ timeout: 15_000 });
       const title = toast.locator('[data-title]');
       const label = `O20c error toast title ink (${theme}, OS light)`;
