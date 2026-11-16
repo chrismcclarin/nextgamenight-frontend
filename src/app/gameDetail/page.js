@@ -3530,7 +3530,7 @@ export default function GameDetailPage() {
 
     // The shared loader (both views) reads copy row E4 and is a labelled status, RouteFallback's
     // contract (role="status" + aria-label), so the loader that holds the redirect is announced.
-    // AMENDED Phase 88.9-65 (X35): a status mounted holding its words is not announced; the region below speaks them.
+    // AMENDED Phase 88.9-65 (X35): a status mounted holding its words is not announced; the region below speaks them. AMENDED Phase 88.9-69 (X35): RouteFallback no longer carries that contract either.
     // 88.6.1-74 (review r3 L-02, M2-01): the loader also covers a game key whose game read has not
     // answered in this visit's run, so an in-page key change never paints "Game not found" or a
     // stale game view for one commit. See the AMENDED line on the DECISION Phase 88-25 gate below.

@@ -6,6 +6,7 @@ import { useTimezone } from '../components/TimezoneProvider';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Heading } from '../../components/ui/Heading';
 import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import { selectUpcomingWithin7Days } from '../../lib/upcomingEvents';
 import { isGuestEvent } from '../../lib/eventClassification';
 import GuestPill, { GUEST_ROW_EDGE } from './GuestPill';
@@ -205,14 +206,17 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
         /* 88-33 Task 1 (M1's in-page-spinner class, walk row "In-page loading states name
            what is loading"): a named status, not a bare "Loading..." — the accessible name
            is what a screen-reader user gets, and the walk's "empty main" readings came from
-           accessibility trees with nothing in them. */
-        <p
-          role="status"
-          aria-label="Loading your upcoming events"
-          className="text-sm text-content-muted mt-2"
-        >
-          Loading your upcoming events...
-        </p>
+           accessibility trees with nothing in them.
+           AMENDED Phase 88.9-69 (X35): a status mounted holding its words is not announced; the region beside it speaks them.
+           The visible line is a plain paragraph now, and the visually hidden region mounts empty
+           and takes the same words (the old label, no dots) after the house dwell, chosen OVER the
+           labelled paragraph. Veto open: the owner judges it by ear (listen LS-69). */
+        <>
+          <p className="text-sm text-content-muted mt-2">
+            Loading your upcoming events...
+          </p>
+          <StatusRegion settleOnMount className="sr-only" message="Loading your upcoming events" />
+        </>
       ) : errorState?.showError && !retained ? (
         /* DECISION Phase 88-18 (Req 6 / T-88-18-01): a failed events fetch renders the shared
            error treatment here, checked BEFORE the empty branch. The parent used to swallow the

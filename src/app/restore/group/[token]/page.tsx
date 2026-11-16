@@ -102,6 +102,8 @@ const CHECKING_LINK = 'Checking your restore link...';
  * constrain a page module's named exports. The test re-declares the literal.
  */
 const PAGE_STATUS_TESTID = 'restore-page-status';
+/** The first-load loading region's test handle (plan 88.9-69, X35). Not exported, as above. */
+const LOADING_STATUS_TESTID = 'restore-loading-status';
 
 // Strings this page already rendered before plan 88.6.1-36, hoisted so each branch's markup and the
 // screen-reader announcement read ONE source and cannot drift apart (no new words, D-31).
@@ -578,15 +580,22 @@ function RestoreGroupPage() {
     // DECISION Phase 88.6.1-36 (L2): the spinner's label and the visible line come from ONE
     // constant, so the two cannot drift. The accepting spinner is not named by it (its own
     // R3-A29 verdict, plan 88.6.1-36).
+    // AMENDED Phase 88.9-69 (X35): the spinner carries no label now. The one constant feeds the
+    // visible line and the first-load region below it; see the two amendments at the fragment.
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-6 sm:p-8 max-w-md w-full mx-4 text-center">
           <div
-            role="status"
-            aria-label={CHECKING_LINK}
+            aria-hidden="true"
             className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4"
           />
           <p ref={inFlightLineRef} className="text-content-secondary">{CHECKING_LINK}</p>
+          <StatusRegion
+            settleOnMount
+            className="sr-only"
+            data-testid={LOADING_STATUS_TESTID}
+            message={attempt === 0 ? CHECKING_LINK : ''}
+          />
         </div>
       </div>
     );
@@ -838,7 +847,12 @@ function RestoreGroupPage() {
      ACCEPTING spinner is CONVERTED: it mounts only after a tap, so its polite region was not
      reliably announced, and its "Loading" named nothing; it is now `aria-hidden`, and the
      accepting line beside it speaks by taking focus. Changing either verdict, or moving the
-     region into a branch, is a decision, not a cleanup. */
+     region into a branch, is a decision, not a cleanup.
+
+     AMENDED Phase 88.9-69 (X35, veto open): on FIRST load (attempt 0) the loading view hosts a second, settleOnMount region; REJECTED (1)'s reason does not reach it (it mounts empty). Chosen OVER settleOnMount on slot 0 (it would hold back outcomes landing in the first 100 ms). After a Try again it stays empty; focus speaks.
+     The slot-0 region is unchanged and still carries every outcome.
+     AMENDED Phase 88.9-69 (X35): the LOADING spinner is aria-hidden too; KEPT rested on 'present from the first paint', which EMPTY-FIRST says is not reliably announced.
+     EMPTY-FIRST is the rule in src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted"). */
   return (
     <>
       <StatusRegion
