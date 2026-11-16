@@ -20,6 +20,8 @@ import { expectNoApiWrites, holdUntilReleased, holdWrites, type WriteHold } from
 // are deliberately absent locally. Typecheck and listing are the local proof; CI is the proof.
 
 const OWNED_GAMES_PATH = /\/user-games\/user\/[^/]+$/;
+const BGG_SEARCH_PATH = /\/games\/bgg\/search$/;
+const NO_RESULTS = 'No games found. Try a different search term.';
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 const NAMES = LETTERS.map((letter) => `E2E Shelf ${letter}`);
 const EIGHT = NAMES.map((name, index) => ({
@@ -571,5 +573,284 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
 
     moved(switched, before, 'after the switch');
     moved(restored, before, 'after switching back');
+  });
+
+  // X58 (owner R2: "Line under the box."): a search with no results used to say so in a pop-up far
+  // above the box on a phone. Now the sentence shows in a line under the search row, and the search
+  // box has a title, the import box's corners and the same space above its first line as below its
+  // last. The search GET is answered in the browser, so BoardGameGeek is never called.
+  test("X58 (88.9-68): a search with no results shows the sentence under the search box with no pop-up, and the search box has its title, the import box's corner radius and even space above and below", async ({ page }, testInfo) => {
+    backstop = await holdWrites(page, {
+      answerGet: (url) => (BGG_SEARCH_PATH.test(url.pathname) ? [] : undefined),
+    });
+    await page.goto('/userProfile');
+    if (testInfo.project.name === 'phone') expect(page.viewportSize()?.width).toBe(375);
+    const collection = collectionCard(page);
+    const toggle = collection.getByRole('button', { name: /^(\+ Add from BGG|Hide Search)$/ });
+    await expect(toggle, 'X58: + Add from BGG never rendered').toBeVisible({ timeout: 15_000 });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const field = collection.getByRole('textbox', { name: 'Search BoardGameGeek' });
+    await expect(field).toBeVisible();
+
+    // Every box of the panel in ONE evaluate, measured from the panel's own corner. The space
+    // above is from the panel's inner top to its first child; the space below is from its last
+    // laid-out child (an empty status line is taken out of the layout) to its inner bottom.
+    const readPanel = () =>
+      toggle.evaluate((el) => {
+        const panel = document.getElementById(el.getAttribute('aria-controls') ?? '');
+        const row = panel ? Array.from(panel.children).find((child) => child.querySelector('input')) : undefined;
+        if (!panel || !row) return null;
+        const style = getComputedStyle(panel);
+        const box = panel.getBoundingClientRect();
+        const laidOut = Array.from(panel.children).filter((child) => getComputedStyle(child).position !== 'absolute');
+        const first = laidOut[0];
+        const last = laidOut[laidOut.length - 1];
+        const title = panel.querySelector('h3');
+        const line = panel.querySelector('[data-testid="bgg-no-results"]');
+        const importTitle = Array.from(panel.parentElement?.querySelectorAll('h3') ?? []).find(
+          (h) => (h.textContent ?? '').trim() === 'Import Your Entire BGG Collection',
+        );
+        const importBox = importTitle?.parentElement ?? null;
+        return {
+          title: title ? (title.textContent ?? '').trim() : null,
+          titleAboveRow: title ? title.getBoundingClientRect().bottom <= row.getBoundingClientRect().top + 0.5 : null,
+          radius: style.borderTopLeftRadius,
+          importRadius: importBox ? getComputedStyle(importBox).borderTopLeftRadius : null,
+          paddingTop: parseFloat(style.paddingTop),
+          paddingBottom: parseFloat(style.paddingBottom),
+          spaceAbove: first ? first.getBoundingClientRect().top - box.top - parseFloat(style.borderTopWidth) : null,
+          spaceBelow: last ? box.bottom - parseFloat(style.borderBottomWidth) - last.getBoundingClientRect().bottom : null,
+          lastMarginBottom: last ? parseFloat(getComputedStyle(last).marginBottom) : null,
+          rowBottom: row.getBoundingClientRect().bottom - box.top,
+          lineTop: line ? line.getBoundingClientRect().top - box.top : null,
+          lineWords: line ? (line.textContent ?? '').trim() : null,
+          lineSize: line ? getComputedStyle(line).fontSize : null,
+        };
+      });
+
+    const expectEvenBox = (read: Awaited<ReturnType<typeof readPanel>>, when: string) => {
+      expect(read, `X58: the search box could not be read ${when}`).not.toBeNull();
+      if (!read) return;
+      const seen = JSON.stringify(read);
+      // eslint-disable-next-line no-console -- the measured box is recorded from the CI log (plan 88.9-68)
+      console.log(`[88.9-68 X58] ${testInfo.project.name} ${when}: ${seen}`);
+      expect(read.title, `X58: the search box has no title ${when} (${seen})`).toBe('Search BoardGameGeek');
+      expect(read.titleAboveRow, `X58: the title is not above the search row ${when} (${seen})`).toBe(true);
+      expect(read.importRadius, `X58: the import box's radius could not be read ${when} (${seen})`).not.toBeNull();
+      expect(read.radius, `X58: the search box's corners differ from the import box's ${when} (${seen})`).toBe(read.importRadius);
+      expect(read.paddingTop, `X58: the padding above differs from the padding below ${when} (${seen})`).toBe(read.paddingBottom);
+      expect(read.lastMarginBottom, `X58: the last line of the box carries a bottom margin ${when} (${seen})`).toBe(0);
+      expect(Math.abs((read.spaceAbove ?? -99) - read.paddingTop), `X58: the space above the first line is not the padding ${when} (${seen})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs((read.spaceBelow ?? -99) - read.paddingBottom), `X58: the space below the last line is not the padding ${when} (${seen})`).toBeLessThanOrEqual(0.5);
+    };
+
+    // Before any search: titled, the import box's corners, even space, and the line holds nothing.
+    const before = await readPanel();
+    expectEvenBox(before, 'before a search');
+    expect(before?.lineWords, 'X58: the no-results line is not mounted empty with the panel').toBe('');
+
+    // A search that finds nothing: the sentence under the search row, and no pop-up carries it.
+    await field.fill('zzzz no such game');
+    await collection.getByRole('button', { name: 'Search', exact: true }).click();
+    const line = collection.getByTestId('bgg-no-results');
+    await expect(line, 'X58: the no-results sentence never showed under the search box').toHaveText(NO_RESULTS, { timeout: 10_000 });
+    await expect(line).toBeVisible();
+    await expect(line).toHaveAttribute('role', 'status');
+    await expect(line).toHaveAttribute('aria-live', 'polite');
+    await expect(
+      page.locator('[data-sonner-toast]').filter({ hasText: NO_RESULTS }),
+      'X58: a pop-up still carries the no-results sentence',
+    ).toHaveCount(0);
+
+    const after = await readPanel();
+    expectEvenBox(after, 'with the sentence showing');
+    if (after) {
+      const seen = JSON.stringify(after);
+      expect(after.lineTop ?? -1, `X58: the sentence is not below the search row (${seen})`).toBeGreaterThanOrEqual(after.rowBottom);
+      expect(after.lineSize, `X58: the sentence is not at 14px (${seen})`).toBe('14px');
+    }
+
+    // The sentence on the box's own ground, in the theme the run starts in.
+    const ink = await line.evaluate((el) => ({
+      words: getComputedStyle(el).color,
+      ground: el.parentElement ? getComputedStyle(el.parentElement).backgroundColor : '',
+    }));
+    const inkRatio = ratio(ink.words, ink.ground, 'X58 the no-results sentence on the search box');
+    // eslint-disable-next-line no-console -- the measured pair is recorded from the CI log (plan 88.9-68)
+    console.log(`[88.9-68 X58] ${testInfo.project.name}: sentence ${ink.words} on ${ink.ground} = ${inkRatio.toFixed(4)}`);
+    expect(inkRatio, `X58: the sentence reads ${inkRatio.toFixed(4)}, under ${TEXT_FLOOR}`).toBeGreaterThanOrEqual(TEXT_FLOOR);
+
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'X58: horizontal overflow with the search box open').toBe(true);
+  });
+
+  // Q2 (owner ruling 2026-11-14, "Q2-y-inline"): with the collection closed behind its bar, a game
+  // that sorts past the visible cards is added out of sight. The bar never opens by itself; a plain
+  // Game added line shows under + Add from BGG in a row whose height is always reserved, so nothing
+  // around it moves when the words come and go. Every request of the add (the search, the import,
+  // the add and the refresh) is answered in the browser; nothing is held and nothing is sent on.
+  test('Q2 (88.9-68): after an add that sorts behind the closed bar, Game added shows under + Add from BGG, nothing around it moves, and the bar stays closed', async ({ page }, testInfo) => {
+    const ADDED = { id: 'e2e-shelf-z', name: 'E2E Shelf Z', bgg_id: 990399, year_published: 2020, image_url: null };
+    let owned: unknown[] = EIGHT;
+    backstop = await holdWrites(page, {
+      answerGet: (url) => {
+        if (OWNED_GAMES_PATH.test(url.pathname)) return owned;
+        if (BGG_SEARCH_PATH.test(url.pathname)) return [{ bgg_id: ADDED.bgg_id, name: ADDED.name, year_published: ADDED.year_published }];
+        return undefined;
+      },
+    });
+    // Registered after the backstop, so these answer first. Both writes are answered at once in the
+    // browser (never held), and the add's answer is what flips the owned-games read to nine rows.
+    await page.route(/\/games\/import-bgg\/990399$/, async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      return route.fulfill({ status: 200, json: ADDED });
+    });
+    await page.route(/\/user-games\/user\/[^/]+\/game\/e2e-shelf-z$/, async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      owned = [...EIGHT, ADDED];
+      return route.fulfill({ status: 200, json: { message: 'Game added to your collection', game: ADDED } });
+    });
+    await page.goto('/userProfile');
+    const phone = testInfo.project.name === 'phone';
+    if (phone) expect(page.viewportSize()?.width).toBe(375);
+
+    const collection = collectionCard(page);
+    const bar = collection.getByRole('button', { name: /^(Show all \d+ games|Show fewer)$/ });
+    const toggle = collection.getByRole('button', { name: /^(\+ Add from BGG|Hide Search)$/ });
+    const receipt = collection.getByTestId('add-game-receipt');
+    await expect(bar, 'Q2: the collection bar never rendered over eight games').toBeVisible({ timeout: 15_000 });
+    await expect(bar).toHaveAccessibleName('Show all 8 games');
+    await expect(receipt, 'Q2: no Game added line is mounted under + Add from BGG').toHaveCount(1);
+    await expect(receipt).toHaveText('');
+
+    // Every box in ONE evaluate, measured from the collection card's own corner (a press or a
+    // focus can scroll the page, so nothing is read from the viewport).
+    const readLayout = () =>
+      bar.evaluate((el) => {
+        const card = el.closest('.card');
+        if (!card) return null;
+        const origin = card.getBoundingClientRect();
+        const rect = (node: Element | Range) => {
+          const r = node.getBoundingClientRect();
+          return { left: r.left - origin.left, top: r.top - origin.top, right: r.right - origin.left, bottom: r.bottom - origin.top, width: r.width, height: r.height };
+        };
+        const importTitle = Array.from(card.querySelectorAll('h3')).find(
+          (h) => (h.textContent ?? '').trim() === 'Import Your Entire BGG Collection',
+        );
+        const importBox = importTitle?.parentElement ?? null;
+        const line = card.querySelector('[data-testid="add-game-receipt"]');
+        // The line sits directly after the header row that holds + Add from BGG.
+        const button = line?.previousElementSibling?.querySelector('button') ?? null;
+        if (!importBox || !button || !line) return null;
+        let words = null;
+        if (line.firstChild) {
+          const range = document.createRange();
+          range.selectNodeContents(line);
+          words = rect(range);
+        }
+        const lineStyle = getComputedStyle(line);
+        return {
+          importBox: rect(importBox),
+          bar: rect(el),
+          button: rect(button),
+          line: rect(line),
+          words,
+          lineText: (line.textContent ?? '').trim(),
+          ink: lineStyle.color,
+          size: lineStyle.fontSize,
+          ground: getComputedStyle(card).backgroundColor,
+          role: line.getAttribute('role'),
+          live: line.getAttribute('aria-live'),
+          hidden: line.getAttribute('aria-hidden'),
+          inStatusRegion: line.closest('[role="status"], [aria-live]') !== null,
+        };
+      });
+
+    await assertTheme(page, 'dark');
+    const before = await readLayout();
+    expect(before, 'Q2: the collection card could not be read before the add').not.toBeNull();
+    // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
+    console.log(`[88.9-68 Q2] ${testInfo.project.name} before: ${JSON.stringify(before)}`);
+    expect(before?.line.height ?? 0, 'Q2: the empty line reserves less than 16px').toBeGreaterThanOrEqual(16);
+
+    // The add: open the search, find the game, add it. The panel closes and the list refreshes.
+    await toggle.click();
+    await collection.getByRole('textbox', { name: 'Search BoardGameGeek' }).fill('shelf z');
+    await collection.getByRole('button', { name: 'Search', exact: true }).click();
+    await collection.getByRole('button', { name: 'Add to Collection', exact: true }).click();
+
+    await expect(receipt, 'Q2: Game added never showed under + Add from BGG').toHaveText('Game added', { timeout: 10_000 });
+    await expect(collection.getByRole('heading', { level: 2, name: 'My Game Collection (9)' })).toBeVisible();
+    await expect(bar).toHaveAccessibleName('Show all 9 games');
+    await expect(bar, 'Q2: the bar opened by itself after the add').toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toHaveAccessibleName('+ Add from BGG');
+    await expect(
+      collection.getByRole('button', { name: `Remove ${ADDED.name}`, exact: true }),
+      'Q2: the added game is reachable although it sorts behind the closed bar',
+    ).toHaveCount(0);
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Game added' }), 'Q2: a pop-up carries Game added').toHaveCount(0);
+
+    const showing = await readLayout();
+    expect(showing, 'Q2: the collection card could not be read with the line showing').not.toBeNull();
+    // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
+    console.log(`[88.9-68 Q2] ${testInfo.project.name} showing: ${JSON.stringify(showing)}`);
+    if (before && showing) {
+      const seen = JSON.stringify(showing);
+      expect(showing.lineText).toBe('Game added');
+      expectSameBox(showing.importBox, before.importBox, 'Q2: the import box with the line showing');
+      expectSameBox(showing.bar, before.bar, 'Q2: the collection bar with the line showing');
+      expectSameBox(showing.line, before.line, 'Q2: the reserved row with the line showing');
+      expect(Math.abs(showing.button.height - before.button.height), `Q2: + Add from BGG changed height (${seen})`).toBeLessThanOrEqual(0.5);
+      expect(showing.button.height, `Q2: + Add from BGG is under 44px tall (${seen})`).toBeGreaterThanOrEqual(44);
+      // Plain text beside the root announcer: no role, not live, not hidden, in no status region.
+      expect(showing.role, `Q2: the line carries a role (${seen})`).toBeNull();
+      expect(showing.live, `Q2: the line is a live region (${seen})`).toBeNull();
+      expect(showing.hidden, `Q2: the line is hidden from assistive tech (${seen})`).toBeNull();
+      expect(showing.inStatusRegion, `Q2: the line sits inside a status region (${seen})`).toBe(false);
+      expect(showing.size, `Q2: the line is not at 12px (${seen})`).toBe('12px');
+      expect(showing.words, `Q2: the words have no box (${seen})`).not.toBeNull();
+      if (showing.words) {
+        // Under the button: below it, left-aligned with it on a phone, right-aligned from sm.
+        expect(showing.words.top, `Q2: the words are not below + Add from BGG (${seen})`).toBeGreaterThanOrEqual(showing.button.bottom - 0.5);
+        if (phone) {
+          expect(Math.abs(showing.words.left - showing.button.left), `Q2: on a phone the words do not start at the button's left edge (${seen})`).toBeLessThanOrEqual(1);
+        } else {
+          expect(Math.abs(showing.words.right - showing.button.right), `Q2: the words do not end at the button's right edge (${seen})`).toBeLessThanOrEqual(1);
+        }
+      }
+      const words = ratio(showing.ink, showing.ground, 'Q2 Game added on the card ground');
+      // eslint-disable-next-line no-console -- the measured pair is recorded from the CI log (plan 88.9-68)
+      console.log(`[88.9-68 Q2] ${testInfo.project.name} dark: Game added ${showing.ink} on ${showing.ground} = ${words.toFixed(4)}`);
+      expect(words, `Q2: Game added reads ${words.toFixed(4)} on the card, under ${TEXT_FLOOR} (${seen})`).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    }
+
+    // The words clear by themselves and the row keeps its height: nothing moves again.
+    await expect(receipt, 'Q2: Game added never cleared').toHaveText('', { timeout: 10_000 });
+    const cleared = await readLayout();
+    expect(cleared, 'Q2: the collection card could not be read after the line cleared').not.toBeNull();
+    if (before && cleared) {
+      expectSameBox(cleared.importBox, before.importBox, 'Q2: the import box after the line cleared');
+      expectSameBox(cleared.bar, before.bar, 'Q2: the collection bar after the line cleared');
+      expectSameBox(cleared.line, before.line, 'Q2: the reserved row after the line cleared');
+    }
+    await expect(bar).toHaveAttribute('aria-expanded', 'false');
+
+    // Light: the same ink on the light card (the row is always mounted, so its ink reads empty).
+    await forceLightMode(page);
+    await page.reload();
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+    await assertTheme(page, 'light');
+    const light = await readLayout();
+    expect(light, 'Q2: the light read found no card').not.toBeNull();
+    if (light) {
+      const words = ratio(light.ink, light.ground, 'Q2 Game added on the light card ground');
+      // eslint-disable-next-line no-console -- the measured pair is recorded from the CI log (plan 88.9-68)
+      console.log(`[88.9-68 Q2] ${testInfo.project.name} light: Game added ${light.ink} on ${light.ground} = ${words.toFixed(4)}`);
+      expect(words, `Q2: Game added reads ${words.toFixed(4)} on the light card, under ${TEXT_FLOOR}`).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    }
+
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(fits, 'Q2: horizontal overflow on the collection card').toBe(true);
   });
 });
