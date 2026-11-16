@@ -7,6 +7,7 @@ import {
   CONFIRM_DELAY_MS,
   CONFIRM_LIVE_MS,
   countdownLabel,
+  countdownName,
   useConfirmCountdown,
 } from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
@@ -31,6 +32,8 @@ import { cn } from '@/lib/cn';
  *   Tap again (3)…(1) and the second tap is refused for CONFIRM_DELAY_MS, then live for
  *   CONFIRM_LIVE_MS (6 s armed), chosen OVER the shipped immediately-live 3 s window; a keepOpen
  *   twoTap item stays open after its commit.
+ *   AMENDED Phase 88.9-67 (X69, owner 2026-11-14): the gated item reads Wait (3)…(1), named
+ *   <item>, wait n seconds; live words and the live-edge announcement unchanged.
  *
  * Dismissal (outside mousedown, container Escape, the non-null relatedTarget
  * `focusout` rule, and the guarded focus restore to the trigger) is owned by the
@@ -509,7 +512,7 @@ export default function KebabMenu({
             const isGated = isArmed && !armedLive;
             const label = isArmed
               ? isGated
-                ? countdownLabel('Tap again', secondsLeft)
+                ? countdownLabel(secondsLeft)
                 : item.confirmLabel || confirmLabel
               : item.label;
             const danger = item.danger || isArmed;
@@ -582,6 +585,9 @@ export default function KebabMenu({
                   /* F9b (88.9-23): an armed item inside its gate renders aria-disabled the same
                      way; the refusal is the isLive check in handleItemClick. */
                   {...(item.ariaDisabled || isGated ? { 'aria-disabled': true } : {})}
+                  /* X69 (88.9-67): only while gated the item carries a name of its own — its resting
+                     label, then the wait — because Wait (n) alone would not say what it does. */
+                  {...(isGated ? { 'aria-label': countdownName(item.label, secondsLeft) } : {})}
                   /* 88-CODE-REVIEW MED#13: min-h-11 — the 87.8-08 census FAIL row (~36px)
                      these items still carried after D-40 made this menu the SOLE phone
                      path to destructive row actions. The trigger was floored by 88-28;

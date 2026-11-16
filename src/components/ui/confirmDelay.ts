@@ -10,6 +10,17 @@
  * Consumers: src/components/ui/useConfirmAction.ts (the two-tap tier's countdown and the dialog
  * tier's wall-clock refusal), src/components/ui/ConfirmDialog.tsx (the dialog tier's visible
  * countdown) and src/app/components/KebabMenu.js (the kebab twoTap items).
+ *
+ * DECISION Phase 88.9-67 (X69, owner 2026-11-14: when a person sees a button and presses it, and
+ * then nothing happens, they wonder what went wrong and try to press it again and they might not
+ * notice the countdown or recognize that it's a countdown to begin with. Changing the wording to
+ * wait makes people realize that pressing the button isn't an option at the moment): every gated
+ * confirm reads Wait (n) in all three tiers, chosen OVER the action word with a number
+ * (Tap again (n), Delete (n), R-W1's Remove (n)); the word lives only here. While waiting the name
+ * is <action>, wait n seconds (owner 2026-11-14: first), chosen OVER Wait n seconds, then <action>
+ * (the W3C best practice puts the visible word first; rejected because the control refuses every
+ * press while waiting and the action tells a screen-reader user what it is); nothing is announced
+ * per second.
  */
 import * as React from 'react';
 
@@ -123,7 +134,28 @@ export function useConfirmCountdown(
   return { secondsLeft: view.secondsLeft, live: view.live, isLive };
 }
 
-/** The gated label: `${base} (${secondsLeft})`, e.g. "Tap again (3)" or "Delete (2)". */
-export function countdownLabel(base: string, secondsLeft: number): string {
-  return `${base} (${secondsLeft})`;
+/**
+ * The gated label, the same in every tier: "Wait (3)", "Wait (2)", "Wait (1)". It takes no base
+ * word on purpose, so no caller can count down on another word (the X69 marker above).
+ */
+export function countdownLabel(secondsLeft: number): string {
+  return `Wait (${secondsLeft})`;
 }
+
+/**
+ * The heard name of a gated confirm: "<action>, wait 3 seconds" ("second" at 1). `action` is the
+ * control's resting name, so the name says what the button does while pressing it does nothing,
+ * and it contains the visible word and number (Label in Name, WCAG 2.5.3).
+ */
+export function countdownName(action: string, secondsLeft: number): string {
+  return `${action}, wait ${secondsLeft} ${secondsLeft === 1 ? 'second' : 'seconds'}`;
+}
+
+/**
+ * Every label the countdown can paint, from the first number down to 1. Proportional digits make
+ * the three widths differ, so a width reserve holds all of them, not only the first.
+ */
+export const COUNTDOWN_LABELS: readonly string[] = Array.from(
+  { length: START_SECONDS },
+  (_, index) => countdownLabel(START_SECONDS - index)
+);

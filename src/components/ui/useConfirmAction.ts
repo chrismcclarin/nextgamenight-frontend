@@ -46,6 +46,7 @@ import {
   CONFIRM_DELAY_MS,
   CONFIRM_LIVE_MS,
   countdownLabel,
+  countdownName,
   useConfirmCountdown,
 } from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
@@ -129,7 +130,10 @@ export interface ConfirmTriggerProps {
    * CONFIRM_DELAY_MS. Never native `disabled` — the armed control keeps focus.
    */
   'aria-disabled'?: true;
-  /** Present only when the caller supplied a resting name; swaps with the visible label. */
+  /**
+   * Present when the caller supplied a resting name (it swaps with the visible label), and for
+   * every caller while armed AND gated: the resting name, then the wait (X69, 88.9-67).
+   */
   'aria-label'?: string;
 }
 
@@ -320,12 +324,11 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
   const countdown = useConfirmCountdown(tier === 'two-tap' ? armedId : null, announceLive);
   const { isLive, secondsLeft } = countdown;
   const gated = tier === 'two-tap' && !countdown.live;
-  // The armed label: counting down while gated, then the live label. A gate with a custom armed
-  // label counts down on that label (userProfile's fork-7 'Remove' reads 'Remove (3)', owner
-  // 2026-11-08, 88.9-RULINGS.md R-W1); the default reads 'Tap again (3)' (copy table).
-  const armedText = gated
-    ? countdownLabel(armedLabel === DEFAULT_ARMED_LABEL ? 'Tap again' : armedLabel, secondsLeft)
-    : armedLabel;
+  // The armed label: counting down while gated, then the live label.
+  // AMENDED Phase 88.9-67 (X69): every caller counts Wait (n), a custom armed label included —
+  // supersedes R-W1 (2026-11-08) for the gated half by the owner's widened 2026-11-14 ruling; the
+  // live label stays the caller's (fork 7).
+  const armedText = gated ? countdownLabel(secondsLeft) : armedLabel;
 
   const disarm = React.useCallback(() => {
     clearArmTimer();
@@ -479,9 +482,13 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       // label. A static aria-label sitting over a swapped visible label is the
       // failure this exists to prevent — so when armed, the name is the armed
       // label; when the caller supplies no name at all, none is invented.
-      // F9b (88.9-23, MED-61): "the armed label" is the string labelFor renders, countdown
-      // included — never the live label under a visible 'Tap again (3)'.
+      // F9b (88.9-23, MED-61): once live, "the armed label" is the string labelFor renders.
+      // AMENDED Phase 88.9-67 (X69): while gated the name is <resting name>, wait n seconds — it
+      // contains the visible word (W3C Understanding 2.5.3) and tracks every step; the only window
+      // in which the hook names a control itself, chosen OVER a name equal to Wait (n), which
+      // would not say what the button does.
       const accessibleName = armed ? armedText : restingAriaLabel;
+      const waiting = armed && gated;
       return {
         type: 'button',
         // DECISION 88.6.1 code review A-74: the click's `currentTarget` is threaded to `onConfirm`
@@ -492,12 +499,14 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
         onClick: (event) => trigger(targetId, targetLabel, event?.currentTarget ?? null),
         ...(armed ? { 'aria-pressed': true as const } : {}),
         ...(armed && gated ? { 'aria-disabled': true as const } : {}),
-        ...(restingAriaLabel !== undefined && accessibleName !== undefined
-          ? { 'aria-label': accessibleName }
-          : {}),
+        ...(waiting
+          ? { 'aria-label': countdownName(restingAriaLabel ?? confirmLabel, secondsLeft) }
+          : restingAriaLabel !== undefined && accessibleName !== undefined
+            ? { 'aria-label': accessibleName }
+            : {}),
       };
     },
-    [isArmed, armedText, gated, trigger]
+    [isArmed, armedText, gated, trigger, confirmLabel, secondsLeft]
   );
 
   const statusNode = React.useMemo(

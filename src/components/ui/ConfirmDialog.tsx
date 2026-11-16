@@ -41,7 +41,7 @@ import * as React from 'react';
 
 import { Modal } from '@/app/components/Modal';
 import { Button } from '@/components/ui/Button';
-import { countdownLabel, useConfirmCountdown } from '@/components/ui/confirmDelay';
+import { countdownLabel, countdownName, useConfirmCountdown } from '@/components/ui/confirmDelay';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/cn';
 import type { ConfirmTier } from '@/components/ui/useConfirmAction';
@@ -115,10 +115,12 @@ export interface ConfirmDialogProps {
   /** @default 'Cancel' */
   cancelLabel?: string;
   /**
-   * F9b (88.9-23): gate the confirm for CONFIRM_DELAY_MS from open — aria-disabled with the
-   * label `<confirmLabel> (n)` counting down, then live until the dialog closes. The hook's
-   * `dialogProps` sets it for the `dialog` tier only. Default false, so a standalone mount is
-   * unchanged.
+   * F9b (88.9-23): gate the confirm for CONFIRM_DELAY_MS from open — aria-disabled while it
+   * counts down, then live until the dialog closes. The hook's `dialogProps` sets it for the
+   * `dialog` tier only. Default false, so a standalone mount is unchanged.
+   * AMENDED Phase 88.9-67 (X69, owner 2026-11-14): the gated confirm reads Wait (3), (2), (1) and
+   * is named `<confirmLabel>, wait n seconds`, then reads `confirmLabel` with no name override,
+   * chosen OVER the shipped `<confirmLabel> (n)` (pressing it did nothing and it read as the action).
    */
   confirmDelay?: boolean;
   /** `typed` tier: the phrase that must be entered exactly. */
@@ -345,10 +347,11 @@ export function ConfirmDialog({
             }}
             disabled={!pending && confirmDisabled(committedValue)}
             aria-disabled={pending || gated || undefined}
+            {...(gated ? { 'aria-label': countdownName(confirmLabel, secondsLeft) } : {})}
             busy={pending && busySuffix !== undefined}
             busySuffix={busySuffix}
           >
-            {gated ? countdownLabel(confirmLabel, secondsLeft) : confirmLabel}
+            {gated ? countdownLabel(secondsLeft) : confirmLabel}
           </Button>
         ) : null}
       </Modal.Footer>
