@@ -41,6 +41,7 @@ import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testi
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner';
 import { axe } from 'vitest-axe';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -830,11 +831,15 @@ describe('userProfile destructive gates (Req 11)', () => {
     const trigger = await screen.findByRole('button', { name: 'Remove Catan' });
     expect(trigger.className).toContain('min-h-11');
     expect(trigger.className).toContain('min-w-11');
-    expect(trigger.className).toContain('border');
-    // X69 width (88.9-67): the box is armed-width at rest through the shared reserve — every
+    // AMENDED Phase 88.9-68 (X53): the border is the small box's inside the 44px button, and the
+    // armed-width reserve sits on the slot around the button, no longer inside it.
+    expect((trigger.firstElementChild as HTMLElement).className.split(/\s+/)).toContain('border');
+    // X69 width (88.9-67): the slot is armed-width at rest through the shared reserve — every
     // label the armed x can paint, each invisible and set in the armed 600 (the 88.6-17
     // measurement), as attribute text that never enters the button's own text.
-    const reserves = Array.from(trigger.querySelectorAll('[data-reserve]'));
+    const slot = trigger.closest('span.inline-grid') as HTMLElement;
+    expect(slot, 'the x has no slot around it').not.toBeNull();
+    const reserves = Array.from(slot.querySelectorAll(':scope > [data-reserve]'));
     expect(reserves.map((span) => span.getAttribute('data-reserve'))).toEqual([
       'Wait (3)',
       'Wait (2)',
@@ -847,18 +852,20 @@ describe('userProfile destructive gates (Req 11)', () => {
       expect(span.className.split(/\s+/)).toContain('font-semibold');
       expect(span.textContent).toBe('');
     }
-    expect(trigger.textContent).toBe('×');
+    // AMENDED Phase 88.9-68 (X53): at rest the x paints the dialog's X icon and no text.
+    expect(trigger.textContent).toBe('');
+    expect(trigger.querySelector('svg')).not.toBeNull();
 
     // Armed: the visible label counts Wait 3, 2, 1, then reads 'Remove', on the
-    // error-subtle treatment.
+    // error-subtle treatment (the box's, AMENDED Phase 88.9-68).
     fireEvent.click(trigger);
     const gated = screen.getByRole('button', { name: 'Remove Catan, wait 3 seconds' });
     expect(gated.textContent).toBe('Wait (3)');
-    expect(gated.className).toContain('bg-status-error-subtle');
+    expect((gated.firstElementChild as HTMLElement).className).toContain('bg-status-error-subtle');
     passGate();
     const armed = screen.getByRole('button', { name: 'Remove' });
     expect(armed.textContent).toBe('Remove');
-    expect(armed.className).toContain('bg-status-error-subtle');
+    expect((armed.firstElementChild as HTMLElement).className).toContain('bg-status-error-subtle');
   });
 
   // AR DEC-2: the armed state is keyed by TARGET, not a boolean. Without that,
@@ -2067,9 +2074,12 @@ describe('userProfile phone block (plan 88.6-17)', () => {
     }
     expect(remove.className).toMatch(/\btext-content-status-error\b/);
 
+    // AMENDED Phase 88.9-68 (X36b): the arm is the shared gated two-tap, so the armed state is read
+    // on the same node by aria-pressed and the 600 cue, not by a label that now counts down first.
+    expect(remove.className).not.toMatch(/\bfont-semibold\b/);
     fireEvent.click(remove);
-    const armed = screen.getByRole('button', { name: 'Tap again to remove' });
-    expect(armed.className).toMatch(/\bfont-semibold\b/);
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(remove.className).toMatch(/\bfont-semibold\b/);
     expect(usersAPI.removePhone).not.toHaveBeenCalled();
   });
 
@@ -2080,18 +2090,26 @@ describe('userProfile phone block (plan 88.6-17)', () => {
       phone: null,
       notification_preferences: DEFAULT_PREFS,
     });
-    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+    // AMENDED Phase 88.9-68 (X36b): the commit is two LIVE taps, so this test runs on the gate
+    // clock and steps past the wait between them.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+      passGate();
+      fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
 
-    const dismiss = await screen.findByRole('button', { name: 'Dismiss' });
-    const classes = dismiss.className.split(/\s+/);
-    expect(classes).toContain('min-h-11');
-    expect(classes).toContain('min-w-11');
-    expect(classes).toContain('focus-visible:ring-focus-ring');
-    // §4.3: a glyph-only control is ICON sizing, never a type rung — byte-unchanged.
-    expect(classes).toContain('text-lg');
+      const dismiss = await screen.findByRole('button', { name: 'Dismiss' });
+      const classes = dismiss.className.split(/\s+/);
+      expect(classes).toContain('min-h-11');
+      expect(classes).toContain('min-w-11');
+      expect(classes).toContain('focus-visible:ring-focus-ring');
+      // §4.3: a glyph-only control is ICON sizing, never a type rung — byte-unchanged.
+      expect(classes).toContain('text-lg');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -2309,11 +2327,20 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
     expect(sites.every((m) => m[0] === 'font-semibold')).toBe(true);
 
     // Each survivor sits within reach of the thing that justifies it.
-    const windows = sites.map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60));
-    const armed = windows.filter((w) => /isArmed|removeArmed/.test(w));
-    const sizer = windows.filter((w) => /<ReservedLabel[^>]*reserveClassName="font-semibold/.test(w));
-    expect(armed.length + sizer.length).toBe(5);
+    // AMENDED Phase 88.9-68 (X53, X36b): the sizer is the site whose 600 opens a reserveClassName
+    // (the slot's reserve now WRAPS the x, so a window around the x's armed 600 also reaches back to
+    // that tag); the other four are armed sites, and all four name a gate's isArmed call (the phone
+    // Remove's hand-rolled flag is gone).
+    const SIZER_OPEN = 'reserveClassName="';
+    const isSizer = (m: RegExpMatchArray) => stripped.slice(m.index! - SIZER_OPEN.length, m.index!) === SIZER_OPEN;
+    const sizer = sites.filter(isSizer);
+    const armed = sites
+      .filter((m) => !isSizer(m))
+      .map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60))
+      .filter((w) => /\.isArmed\(/.test(w));
     expect(sizer).toHaveLength(1);
+    expect(armed).toHaveLength(4);
+    expect(stripped).not.toMatch(/removeArmed/);
   });
 
   // P1 / 88-UI-SPEC §6.2 OI-5 / D-12: the existing toasts are OUT OF CONTRACT by decision and
@@ -2968,6 +2995,10 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
   const REMOVE_FAILED = "We couldn't remove your number. Please try again.";
   const REMOVED_USER = { sms_enabled: true, phone: null, phone_verified: false, notification_preferences: DEFAULT_PREFS };
 
+  // AMENDED Phase 88.9-68 (X36b): the phone Remove is the shared gated two-tap, so every commit in
+  // this describe is two LIVE taps with the wait stepped past between them (passGate).
+  installGateClock();
+
   function deferred<T = unknown>() {
     let resolve: (value: T) => void = () => {};
     const promise = new Promise<T>((r) => { resolve = r; });
@@ -3068,17 +3099,21 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     const remove = await screen.findByRole('button', { name: 'Remove' });
     fireEvent.click(remove);
-    // The SAME node is now armed.
+    // The SAME node is now armed, and live once the wait has passed.
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    passGate();
     expect(remove).toHaveTextContent('Tap again to remove');
     fireEvent.click(remove);
-    // POSITIVE settle on the same node.
-    await waitFor(() => expect(remove).toHaveAttribute('aria-disabled', 'true'));
+    // POSITIVE settle on the same node: the removal is running (no longer armed).
+    await waitFor(() => expect(remove).not.toHaveAttribute('aria-pressed'));
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(remove);
     fireEvent.click(remove);
 
     expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
     expect(remove).toHaveTextContent('Remove');
     expect(remove).not.toHaveTextContent('Tap again to remove');
+    expect(remove).not.toHaveAttribute('aria-pressed');
     expect(remove).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => { removal.resolve(REMOVED_USER); });
@@ -3095,6 +3130,7 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     const remove = await screen.findByRole('button', { name: 'Remove' });
     await user.click(remove);
+    passGate();
     await user.click(remove);
     // CONFIRM-ONLY in jsdom (C-11): the held removal leaves the pressed control focused. The R5
     // ordering is proven in the phone e2e spec in a real browser.
@@ -3115,12 +3151,14 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     const remove = await screen.findByRole('button', { name: 'Remove' });
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     await screen.findByText(REMOVE_FAILED);
     expect(loggerMock().info).toHaveBeenCalledWith('Error removing phone:', expect.any(Object));
-    expect(remove).not.toHaveAttribute('aria-disabled');
+    await waitFor(() => expect(remove).not.toHaveAttribute('aria-disabled'));
 
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     expect(usersAPI.removePhone).toHaveBeenCalledTimes(2);
     await screen.findByText(BANNER);
@@ -3134,6 +3172,7 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     const remove = await screen.findByRole('button', { name: 'Remove' });
     await user.click(remove);
+    passGate();
     await user.click(remove);
     await screen.findByText(BANNER);
 
@@ -3156,6 +3195,7 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     const remove = await screen.findByRole('button', { name: 'Remove' });
     await user.click(remove);
+    passGate();
     await user.click(remove);
     const sentence = await screen.findByText(BANNER);
     const box = sentence.parentElement as HTMLElement;
@@ -6363,5 +6403,259 @@ describe('collection bar and dark card fill (88.9-68: X52d, X56c)', () => {
     fireEvent.click(collectionBar());
     await waitFor(() => expect(reachableRemoves()).toHaveLength(9));
     NAMES.forEach(expectCardFill);
+  });
+});
+
+// 88.9-68 Task 2 (X53, X36a, X36b). X53: the collection x is a 44px button holding one small
+// bordered box with the dialog's X icon, and the armed width is reserved on a slot AROUND the
+// button. X36a: a committing collection Remove and a committing schedule or override Delete show
+// their flight like the Friends Remove (aria-disabled, the busy name, the delayed house spinner).
+// X36b: the phone Remove is the shared gated two-tap. An armed control is found by aria-pressed
+// and a refused tap by "nothing was sent", never by the countdown's words. Pure fake timers: the
+// 200 ms appear and the 3 s wait are stepped exactly, so nothing here races the real clock.
+describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X53, X36a, X36b)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  const VALID = '+1 415 555 2671';
+  const BANNER = 'SMS disabled — add a phone number to re-enable.';
+  const REMOVED_USER = { sms_enabled: true, phone: null, phone_verified: false, notification_preferences: DEFAULT_PREFS };
+  const OVERRIDE = {
+    id: 'override-1',
+    type: 'specific_override',
+    is_available: true,
+    pattern_data: { date: '2026-11-03', startTime: '18:00', endTime: '22:00' },
+  };
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+  const spinnersIn = (el: Element) => el.querySelectorAll('[data-slot="spinner"]');
+  const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+  const flush = () => act(async () => {});
+  const statusTexts = () => screen.getAllByRole('status').map((node) => node.textContent ?? '');
+
+  // The spinner is absent for the first SPINNER_DELAY_MS of a flight and present from then on.
+  function expectSpinnerAppearsAfterTheDelay(control: Element) {
+    expect(spinnersIn(control)).toHaveLength(0);
+    advance(SPINNER_DELAY_MS - 1);
+    expect(spinnersIn(control)).toHaveLength(0);
+    advance(1);
+    expect(spinnersIn(control)).toHaveLength(1);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    const { userGamesAPI, availabilityAPI, usersAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+    (userGamesAPI.removeOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (availabilityAPI.deleteAvailability as Mock).mockReset().mockResolvedValue({});
+    (usersAPI.removePhone as Mock).mockReset().mockResolvedValue({});
+  });
+
+  it("X53 (88.9-68): the collection x rests as a 32px bordered box holding the dialog's 20px X icon inside a 44px hit area, and the armed-width sizer sits on the slot outside the box", async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    renderProfile();
+    const x = await vi.waitFor(() => screen.getByRole('button', { name: 'Remove Catan' }));
+
+    // The button is the hit area: 44px floors, no border and no fill of its own.
+    const classes = x.className.split(/\s+/);
+    expect(classes).toContain('min-h-11');
+    expect(classes).toContain('min-w-11');
+    expect(classes.filter((c) => c === 'border' || c.startsWith('border-') || c.startsWith('bg-'))).toEqual([]);
+
+    // One visible box inside it: 32px, bordered in the error ink, holding the dialog's X.
+    const box = x.firstElementChild as HTMLElement;
+    const boxClasses = box.className.split(/\s+/);
+    for (const cls of ['h-8', 'min-w-8', 'border', 'border-status-error']) expect(boxClasses).toContain(cls);
+    const icon = box.querySelector('svg');
+    expect(icon, 'the box holds no icon').not.toBeNull();
+    expect(icon).toHaveAttribute('width', '20');
+    expect(icon).toHaveAttribute('height', '20');
+    expect(icon).toHaveAttribute('stroke-width', '2');
+    expect(icon).toHaveAttribute('aria-hidden', 'true');
+    expect(x.textContent).toBe('');
+
+    // The reserve wraps the BUTTON: nothing is reserved inside the box at rest, and the slot holds
+    // 67's reserve set unchanged, at the armed 600, with the button at the slot's right edge.
+    expect(x.querySelectorAll('[data-reserve]')).toHaveLength(0);
+    const slot = x.closest('span.inline-grid') as HTMLElement;
+    expect(slot, 'the x has no slot around it').not.toBeNull();
+    expect(slot.className.split(/\s+/)).toContain('justify-items-end');
+    const reserves = Array.from(slot.querySelectorAll(':scope > [data-reserve]'));
+    expect(reserves.map((span) => span.getAttribute('data-reserve'))).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Remove']);
+    for (const span of reserves) {
+      const reserveClasses = span.className.split(/\s+/);
+      expect(reserveClasses).toContain('invisible');
+      expect(reserveClasses).toContain('font-semibold');
+      expect(reserveClasses).toContain('px-2');
+    }
+    expect(x).toHaveAccessibleName('Remove Catan');
+  });
+
+  it('X36a (88.9-68): a committing collection Remove is aria-disabled, named with the removing suffix, shows the house spinner after 200 ms, and two taps send one DELETE', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    const removal = deferred();
+    (userGamesAPI.removeOwnedGame as Mock).mockImplementation(() => removal.promise);
+    renderProfile();
+    const x = await vi.waitFor(() => screen.getByRole('button', { name: 'Remove Catan' }));
+
+    fireEvent.click(x);
+    expect(x).toHaveAttribute('aria-pressed', 'true');
+    // A tap while it counts down sends nothing.
+    fireEvent.click(x);
+    expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.click(x);
+    await flush();
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1);
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-catan');
+
+    // In flight: no longer armed, aria-disabled, named with the suffix, the X still showing.
+    expect(x).not.toHaveAttribute('aria-pressed');
+    expect(x).toHaveAttribute('aria-disabled', 'true');
+    expect(x).toHaveAttribute('aria-label', 'Remove Catan, removing');
+    expect(x.querySelector('svg')).not.toBeNull();
+    expectSpinnerAppearsAfterTheDelay(x);
+    // The spinner sits in the bordered box, beside the X.
+    expect((x.firstElementChild as HTMLElement).querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    // The other card's x is untouched.
+    const other = screen.getByRole('button', { name: 'Remove Brass' });
+    expect(other).not.toHaveAttribute('aria-disabled');
+    expect(spinnersIn(other)).toHaveLength(0);
+
+    // Further taps send nothing and arm nothing.
+    fireEvent.click(x);
+    fireEvent.click(x);
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1);
+    expect(x).not.toHaveAttribute('aria-pressed');
+
+    // The refresh after the removal answers without the removed game.
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([OWNED_GAMES[1]]);
+    await act(async () => { removal.resolve({}); });
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: /^Remove Catan/ })).toBeNull());
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1);
+  });
+
+  it('X36a (88.9-68): a committing schedule Delete is aria-disabled, named with the deleting suffix, shows the house spinner after 200 ms, and two taps send one DELETE', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    h.patterns = [...PATTERNS, OVERRIDE];
+    const first = deferred();
+    (availabilityAPI.deleteAvailability as Mock).mockImplementation(() => first.promise);
+    renderProfile();
+    const del = await vi.waitFor(() => screen.getByRole('button', { name: 'Delete Monday schedule' }));
+
+    fireEvent.click(del);
+    expect(del).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(del);
+    expect(availabilityAPI.deleteAvailability).not.toHaveBeenCalled();
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.click(del);
+    await flush();
+    expect(availabilityAPI.deleteAvailability).toHaveBeenCalledTimes(1);
+    expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon');
+
+    expect(del).not.toHaveAttribute('aria-pressed');
+    expect(del).toHaveAttribute('aria-disabled', 'true');
+    expect(del).toHaveAttribute('aria-label', 'Delete Monday schedule, deleting');
+    expect(del).toHaveTextContent('Delete');
+    expectSpinnerAppearsAfterTheDelay(del);
+    const tuesday = screen.getByRole('button', { name: 'Delete Tuesday schedule' });
+    expect(tuesday).not.toHaveAttribute('aria-disabled');
+    expect(spinnersIn(tuesday)).toHaveLength(0);
+
+    fireEvent.click(del);
+    fireEvent.click(del);
+    expect(availabilityAPI.deleteAvailability).toHaveBeenCalledTimes(1);
+
+    await act(async () => { first.resolve({}); });
+    // The harness keeps the row (its query answers the same rows), so the same node settles.
+    await vi.waitFor(() => expect(del).not.toHaveAttribute('aria-disabled'));
+    expect(del).toHaveAttribute('aria-label', 'Delete Monday schedule');
+
+    // The override Delete is the same gate with the same suffix.
+    const second = deferred();
+    (availabilityAPI.deleteAvailability as Mock).mockImplementation(() => second.promise);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
+    const overrideDelete = await vi.waitFor(() => screen.getByRole('button', { name: /^Delete .+ override$/ }));
+    const overrideName = overrideDelete.getAttribute('aria-label');
+    fireEvent.click(overrideDelete);
+    expect(overrideDelete).toHaveAttribute('aria-pressed', 'true');
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.click(overrideDelete);
+    await flush();
+    expect(availabilityAPI.deleteAvailability).toHaveBeenCalledTimes(2);
+    expect(availabilityAPI.deleteAvailability).toHaveBeenLastCalledWith('override-1');
+    expect(overrideDelete).toHaveAttribute('aria-disabled', 'true');
+    expect(overrideDelete).toHaveAttribute('aria-label', `${overrideName}, deleting`);
+    expectSpinnerAppearsAfterTheDelay(overrideDelete);
+    await act(async () => { second.resolve({}); });
+    await vi.waitFor(() => expect(overrideDelete).not.toHaveAttribute('aria-disabled'));
+  });
+
+  it('X36b (88.9-68): the phone Remove is the shared gated two-tap: a tap while it counts down sends nothing, the live label is Tap again to remove, two live taps send one removePhone, and while it runs it is aria-disabled, named Remove, removing, with the house spinner', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const removal = deferred();
+    (usersAPI.removePhone as Mock).mockImplementation(() => removal.promise);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+    // Found by its place: the last button in the Phone verified row.
+    const row = (await vi.waitFor(() => screen.getByText('Phone verified'))).parentElement as HTMLElement;
+    const remove = within(row).getAllByRole('button').at(-1) as HTMLElement;
+    expect(remove).toHaveTextContent('Remove');
+    expect(remove).not.toHaveAttribute('aria-label');
+    expect(remove).not.toHaveAttribute('aria-pressed');
+    expect(remove.className.split(/\s+/)).not.toContain('btn');
+    expect(remove.className.split(/\s+/)).not.toContain('font-semibold');
+
+    // First tap: armed and gated; nothing is said yet (the instruction would be false).
+    fireEvent.click(remove);
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(remove.className.split(/\s+/)).toContain('font-semibold');
+    expect(statusTexts().filter((text) => text.startsWith('Press again'))).toEqual([]);
+    // A tap while it counts down sends nothing.
+    fireEvent.click(remove);
+    expect(usersAPI.removePhone).not.toHaveBeenCalled();
+    advance(CONFIRM_DELAY_MS - 1);
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(statusTexts().filter((text) => text.startsWith('Press again'))).toEqual([]);
+
+    // Live: the shipped words, named by them, and the gate's region says what to do, once.
+    advance(1);
+    expect(remove).toHaveTextContent('Tap again to remove');
+    expect(remove).toHaveAccessibleName('Tap again to remove');
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(remove).not.toHaveAttribute('aria-disabled');
+    expect(statusTexts().filter((text) => text.startsWith('Press again'))).toEqual([
+      'Press again to confirm: Remove your phone number',
+    ]);
+
+    // Second live tap commits: one removePhone.
+    fireEvent.click(remove);
+    await flush();
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+    expect(usersAPI.removePhone).toHaveBeenCalledWith(SELF_UUID);
+    expect(remove).not.toHaveAttribute('aria-pressed');
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(remove).toHaveAttribute('aria-label', 'Remove, removing');
+    expect(remove).toHaveTextContent('Remove');
+    expect(remove).not.toHaveTextContent('Tap again to remove');
+    expectSpinnerAppearsAfterTheDelay(remove);
+
+    // Taps while it runs send nothing and arm nothing.
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+    expect(remove).not.toHaveAttribute('aria-pressed');
+
+    await act(async () => { removal.resolve(REMOVED_USER); });
+    await vi.waitFor(() => expect(screen.getByText(BANNER)).toBeInTheDocument());
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
   });
 });

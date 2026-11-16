@@ -566,6 +566,18 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // AMENDED Phase 88.9-68 (X36a): while its DELETE runs the control is named with the deleting suffix.
     const monday = page.getByRole('button', { name: /^(Delete Monday schedule(, deleting)?|Tap again to confirm)$/ });
     await expect(monday).toBeVisible({ timeout: 15_000 });
+    // X36a (88.9-68): the row's boxes at rest and with the DELETE held, read in one evaluate each.
+    const readRow = () =>
+      monday.evaluate((el) => {
+        const row = el.parentElement;
+        const words = row?.firstElementChild;
+        if (!row || !words) return null;
+        const r = row.getBoundingClientRect();
+        const w = words.getBoundingClientRect();
+        const b = el.getBoundingClientRect();
+        return { rowHeight: r.height, rowRight: r.right, wordsWidth: w.width, wordsHeight: w.height, buttonWidth: b.width, buttonRight: b.right };
+      });
+    const rowAtRest = await readRow();
     await focusByKeyboard(page, monday);
     await page.keyboard.press('Enter');
     // F9b (88.9-23): the second press is refused for 3 s after arming; wait for the live label
@@ -574,6 +586,17 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await page.keyboard.press('Enter');
     await removal.arrived;
     await expect(monday).toBeFocused();
+    // X36a (88.9-68): while the DELETE is held the pressed Delete is aria-disabled and shows the
+    // house spinner inside the row. The measured boxes go to the CI log (the 375 fit numbers).
+    await expect(monday).toHaveAttribute('aria-disabled', 'true');
+    await expect(monday.locator('[data-slot="spinner"]'), 'X36a: no spinner showed while the delete was held').toBeVisible({ timeout: 5_000 });
+    const rowHeld = await readRow();
+    // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
+    console.log(`[88.9-68 X36a Delete] ${testInfo.project.name}: rest ${JSON.stringify(rowAtRest)} held ${JSON.stringify(rowHeld)}`);
+    expect(rowAtRest && rowHeld, 'X36a: the schedule row could not be read').toBeTruthy();
+    if (rowHeld) {
+      expect(rowHeld.buttonRight, `X36a: the held Delete runs past its row (${JSON.stringify(rowHeld)})`).toBeLessThanOrEqual(rowHeld.rowRight + 0.5);
+    }
     patterns.body = [patternRow('e2e-tue', 2)];
     await removal.release({});
     await expect(page.getByRole('button', { name: '+ Add Schedule' })).toBeFocused();
