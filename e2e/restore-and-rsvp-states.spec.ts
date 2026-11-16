@@ -268,6 +268,63 @@ test.describe('RSVP and restore token pages — failure states at phone width (8
     await expectNoHorizontalScroll(page);
   });
 
+  test('A6. RSVP X13-5 + X59b (88.9-69): the success card shows Go to Home under Go to the event, both 44 tall and inside the screen, and has no top line', async ({
+    page,
+  }) => {
+    // 88.9-69, owner rows 52-X13 (N35, Go to Home on the success card) and 52-X59 (b) Ta (no
+    // coloured line on the card top). RSVP_PATH carries the event id, so both links render. The
+    // body is synthesized in the shape of the unit file's BODY_SUCCESS; nothing reaches the backend.
+    await routeRespond(page, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ success: true, status: 'yes', event_name: 'E2E Event', event_date: 'March 3' }),
+      }),
+    );
+
+    await page.goto(RSVP_PATH);
+
+    const heading = page.getByRole('heading', { level: 1, name: "You're in!", exact: true });
+    await expect(heading).toBeVisible({ timeout: 15_000 });
+    const eventLink = page.getByRole('link', { name: 'Go to the event', exact: true });
+    const home = page.getByRole('link', { name: 'Go to Home', exact: true });
+    await expect(eventLink).toBeVisible();
+    await expect(home, 'the success card offers no Go to Home link').toBeVisible();
+    await expect(home).toHaveAttribute('href', '/');
+
+    // Both boxes and the card's top border are read in ONE evaluate, so no layout shift can sit
+    // between two reads. Numbers only.
+    const read = await heading.evaluate((h1) => {
+      const card = h1.closest('.max-w-md');
+      const links = Array.from(card?.querySelectorAll('a') ?? []);
+      const byText = (words: string) => links.find((a) => (a.textContent ?? '').trim() === words);
+      const box = (el: Element | undefined) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height };
+      };
+      return {
+        borderTopWidth: card ? getComputedStyle(card).borderTopWidth : null,
+        event: box(byText('Go to the event')),
+        home: box(byText('Go to Home')),
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    expect(read.borderTopWidth, 'the success card still carries a top line').toBe('0px');
+    expect(read.event, 'the Go to the event link has no layout box').not.toBeNull();
+    expect(read.home, 'the Go to Home link has no layout box').not.toBeNull();
+    expect(read.event!.height, 'Go to the event is shorter than 44px').toBeGreaterThanOrEqual(44);
+    expect(read.home!.height, 'Go to Home is shorter than 44px').toBeGreaterThanOrEqual(44);
+    expect(read.event!.bottom, 'Go to the event does not sit above Go to Home').toBeLessThanOrEqual(read.home!.top);
+    for (const link of [read.event!, read.home!]) {
+      expect(link.left, 'a link starts left of the screen').toBeGreaterThanOrEqual(0);
+      expect(link.right, 'a link runs past the right edge of the screen').toBeLessThanOrEqual(read.viewportWidth);
+    }
+    await expectNoHorizontalScroll(page);
+  });
+
   test('B. restore: the L2 loading line and the error state fit, and a keyboard Try again lands focus on the settled heading (88.6.1-36)', async ({
     page,
   }) => {
