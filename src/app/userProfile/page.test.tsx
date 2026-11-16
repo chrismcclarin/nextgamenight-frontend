@@ -6191,3 +6191,177 @@ describe('Import Collection opener waits for identity (88.9-55: R-C8)', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
+
+// Plan 88.9-68 (52-X52 ruled X52d, 52-X56 ruled X56c; owner pick page 10c, 2026-11-14). A long
+// collection starts closed every visit: three cards on a phone and six from md, the next row
+// peeking inert under a fade, and one bar that opens and closes the rest. In dark every card takes
+// the raised fill. jsdom applies no stylesheet, so these read the DOM contract (which cards mount,
+// what is inert, where focus lands, the classes); the rendered geometry and colours are read in
+// e2e/profile-look-fixes.spec.ts.
+describe('collection bar and dark card fill (88.9-68: X52d, X56c)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  const NAMES = ['Azul', 'Brass', 'Catan', 'Dominion', 'Everdell', 'Faiyum', 'Gloomhaven', 'Hanabi', 'Inis'];
+  const gamesNamed = (count: number) =>
+    NAMES.slice(0, count).map((name, index) => ({ id: `shelf-${index + 1}`, name, year_published: 2001 + index, image_url: null }));
+
+  // The usePhoneViewport query answers true (a phone) or false; every other query answers false.
+  let restoreMedia: (() => void) | undefined;
+  function stubPhoneViewport(isPhone: boolean) {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: isPhone && query.includes('max-width: 767px'),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    restoreMedia = () => {
+      window.matchMedia = original;
+    };
+  }
+
+  // Role queries skip an aria-hidden subtree, so a peeked card's Remove is not in this list.
+  const reachableRemoves = () => screen.queryAllByRole('button', { name: /^Remove / });
+  const gameTitle = (name: string) => screen.getByRole('heading', { level: 3, name, hidden: true });
+  function gameCard(name: string): HTMLElement {
+    const card = gameTitle(name).closest('div.border.border-line');
+    if (!(card instanceof HTMLElement)) throw new Error(`no collection card around ${name}`);
+    return card;
+  }
+  const collectionBar = () => screen.getByRole('button', { name: /^(Show all \d+ games|Show fewer)$/ });
+
+  async function ownGames(count: number) {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(gamesNamed(count));
+  }
+
+  afterEach(async () => {
+    restoreMedia?.();
+    restoreMedia = undefined;
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+  });
+
+  it('X52d (88.9-68): on a phone with eight games the collection starts closed with three cards, the fourth peeks inert and hidden from assistive tech, and the Show all 8 games bar opens and closes the rest', async () => {
+    stubPhoneViewport(true);
+    await ownGames(8);
+    const view = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+
+    // Closed: three reachable cards, the fourth mounted as the peek, the rest not mounted.
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+    const peek = gameCard('Dominion');
+    expect(peek).toHaveAttribute('inert');
+    expect(peek).toHaveAttribute('aria-hidden', 'true');
+    expect(within(peek).getByRole('button', { hidden: true })).toHaveAttribute('tabindex', '-1');
+    expect(screen.queryByText('Everdell')).toBeNull();
+    expect(gameCard('Catan')).not.toHaveAttribute('inert');
+
+    const bar = collectionBar();
+    expect(bar).toHaveAccessibleName('Show all 8 games');
+    expect(bar).toHaveAttribute('aria-expanded', 'false');
+    const grid = document.getElementById(bar.getAttribute('aria-controls') ?? '');
+    expect(grid).not.toBeNull();
+    expect(grid).toContainElement(peek);
+
+    // Open: every card, nothing inert, focus on the first revealed game's title.
+    bar.focus();
+    fireEvent.click(bar);
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(8));
+    expect(collectionBar()).toBe(bar);
+    expect(bar).toHaveAttribute('aria-expanded', 'true');
+    expect(bar).toHaveAccessibleName('Show fewer');
+    expect(document.querySelector('[inert]')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(gameTitle('Dominion')));
+
+    // Closed again: three cards, focus kept on the bar.
+    bar.focus();
+    fireEvent.click(bar);
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+    expect(bar).toHaveAttribute('aria-expanded', 'false');
+    expect(bar).toHaveAccessibleName('Show all 8 games');
+    expect(document.activeElement).toBe(bar);
+
+    // A fresh visit starts closed and moves no focus.
+    fireEvent.click(bar);
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(8));
+    view.unmount();
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('X52d (88.9-68): off the phone six cards show before the bar, three peek, and with the visible count or fewer there is no bar', async () => {
+    // Nine games off the phone: six reachable, the next three peek, the third only from lg.
+    await ownGames(9);
+    const view = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(6));
+    const peeks = Array.from(document.querySelectorAll('[inert]'));
+    expect(peeks).toEqual([gameCard('Gloomhaven'), gameCard('Hanabi'), gameCard('Inis')]);
+    peeks.forEach((card) => expect(card).toHaveAttribute('aria-hidden', 'true'));
+    expect(gameCard('Inis').className.split(/\s+/)).toContain('max-lg:hidden');
+    expect(gameCard('Hanabi').className.split(/\s+/)).not.toContain('max-lg:hidden');
+    const bar = collectionBar();
+    expect(bar).toHaveAccessibleName('Show all 9 games');
+
+    bar.focus();
+    fireEvent.click(bar);
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(9));
+    await waitFor(() => expect(document.activeElement).toBe(gameTitle('Gloomhaven')));
+    expect(gameCard('Inis').className.split(/\s+/)).not.toContain('max-lg:hidden');
+    view.unmount();
+
+    // Eight games off the phone: the two past the sixth peek.
+    await ownGames(8);
+    const eight = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(6));
+    expect(document.querySelectorAll('[inert]')).toHaveLength(2);
+    expect(collectionBar()).toHaveAccessibleName('Show all 8 games');
+    eight.unmount();
+
+    // Six games off the phone: the whole list, no bar, nothing inert.
+    await ownGames(6);
+    const six = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(6));
+    expect(screen.queryByRole('button', { name: /^(Show all \d+ games|Show fewer)$/ })).toBeNull();
+    expect(document.querySelector('[inert]')).toBeNull();
+    six.unmount();
+
+    // Three games on a phone: the whole list, no bar.
+    stubPhoneViewport(true);
+    await ownGames(3);
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+    expect(screen.queryByRole('button', { name: /^(Show all \d+ games|Show fewer)$/ })).toBeNull();
+    expect(document.querySelector('[inert]')).toBeNull();
+  });
+
+  it('X56c (88.9-68): every collection card carries the dark raised fill and keeps its border; light is unchanged', async () => {
+    await ownGames(9);
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+
+    const expectCardFill = (name: string) => {
+      const tokens = gameCard(name).className.split(/\s+/);
+      expect(tokens, `${name}: the dark raised fill`).toContain('dark:bg-surface-elevated');
+      expect(tokens, `${name}: the border`).toEqual(expect.arrayContaining(['border', 'border-line']));
+      // Light is unchanged: no fill of its own outside the dark variant.
+      expect(tokens.filter((token) => token.startsWith('bg-')), `${name}: no light fill`).toEqual([]);
+    };
+    // Ordinary cards and the peeked ones alike.
+    NAMES.forEach(expectCardFill);
+
+    fireEvent.click(collectionBar());
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(9));
+    NAMES.forEach(expectCardFill);
+  });
+});
