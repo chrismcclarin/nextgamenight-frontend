@@ -442,6 +442,33 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     });
   });
 
+  it('X62 (88.9-69): the failed-save line carries pt-1 and pb-3, so it sits 12px under the list and 12px over the footer rule', async () => {
+    // Owner row 52-X62 ("There's a gap between the games list and the warning and the warning is
+    // sitting too close to the line."). The list box ends in 8px of its own bottom padding, so
+    // 4px above the line makes 12 under the last row, and 12px below it keeps it off the footer
+    // rule. The rendered gaps are measured at 375 in e2e/games-to-bring-picker-phone.spec.ts.
+    const user = userEvent.setup();
+    api.updateMyBrings.mockImplementation(() => Promise.reject(new Error(SENTINEL)));
+    render(<Host initiallyOpen closeFlipsOpen={false} />);
+    await settleOnRows();
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(assertiveRegion()).toHaveTextContent(RATIFIED_UNKNOWN_COPY));
+    const lines = screen
+      .queryAllByText(RATIFIED_UNKNOWN_COPY)
+      .filter((node) => node.tagName === 'P' && !node.className.includes('sr-only'));
+    expect(lines).toHaveLength(1);
+    const tokens = Array.from(lines[0].classList);
+    expect(tokens, 'the line still sits 12px below the list box (20 under the last row)').toContain('pt-1');
+    expect(tokens, 'the line still touches the footer rule').toContain('pb-3');
+    expect(tokens).not.toContain('pt-3');
+    expect(tokens).toContain('px-4');
+    // The list box above it keeps its 8px bottom padding: 8 + 4 is the 12 under the last row.
+    const listBox = lines[0].previousElementSibling?.querySelector('.overflow-y-auto');
+    expect(listBox, 'the list box is not the line\'s previous neighbour').not.toBeNull();
+    expect(listBox).toHaveClass('pb-2');
+  });
+
   it('D12b (88.9): a failed save shows the visible line above the footer', async () => {
     // 88.9 D12b (owner pick, 88.9-PICKS-B3.json item D12, 2026-11-05): the assertive region's
     // sentence is ALSO painted as a visible, NON-live <p> between the body and the footer — no

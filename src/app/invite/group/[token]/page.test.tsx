@@ -456,3 +456,49 @@ describe('invite/group/[token] — the line beside Try again (88.9-66: X68)', ()
     expect(screen.getByText("You don't have access to this. Refresh the page to try again.")).toBeInTheDocument();
   });
 });
+
+// Plan 88.9-69 — N36 (owner 2026-11-13, "Follow recommendation"): the X on a failed invite LOAD
+// turns amber; the X on a refused JOIN keeps red. One literal class pair per arm, keyed on
+// previewFailed.
+describe('invite/group/[token] — N36 the error glyph by cause (plan 88.9-69)', () => {
+  const X_PATH = 'M6 18L18 6M6 6l12 12';
+  const errorGlyph = (container: HTMLElement) => {
+    const path = container.querySelector(`path[d="${X_PATH}"]`);
+    expect(path, 'the error card draws no X').not.toBeNull();
+    const svg = path!.closest('svg')!;
+    return { svg, circle: svg.parentElement! };
+  };
+
+  it('N36 (88.9-69): a preview failure shows the X on the amber warning circle; a failed join keeps the red error circle', async () => {
+    const previewFailures: ApiError[] = [
+      new ApiError('Network error: Could not connect to the server.', 'network', 0),
+      new ApiError('HTTP error! status: 404', 'not_found', 404, { error: 'Invalid invite link' }),
+    ];
+    for (const err of previewFailures) {
+      preview().mockReset();
+      preview().mockRejectedValue(err);
+      const { container } = render(<GroupInvitePage />);
+      await screen.findByRole('heading', { name: "Couldn't load this invite" });
+      const { svg, circle } = errorGlyph(container);
+      expect(circle, `${err.code}: the circle is not the warning fill`).toHaveClass('bg-status-warning-subtle');
+      expect(circle, err.code).not.toHaveClass('bg-status-error-subtle');
+      expect(svg, `${err.code}: the X is not the warning ink`).toHaveClass('text-content-status-warning');
+      expect(svg, err.code).not.toHaveClass('text-content-status-error');
+      expect(svg).toHaveAttribute('aria-hidden', 'true');
+      cleanup();
+    }
+
+    // A signed-in person whose JOIN is refused keeps the red pair.
+    preview().mockReset();
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(PREVIEW_BODY);
+    join().mockRejectedValue(new ApiError('HTTP error! status: 403', 'forbidden', 403, { error: 'nope' }));
+    const { container } = render(<GroupInvitePage />);
+    await screen.findByRole('heading', { name: 'Unable to join group' });
+    const { svg, circle } = errorGlyph(container);
+    expect(circle).toHaveClass('bg-status-error-subtle');
+    expect(circle).not.toHaveClass('bg-status-warning-subtle');
+    expect(svg).toHaveClass('text-content-status-error');
+    expect(svg).not.toHaveClass('text-content-status-warning');
+  });
+});
