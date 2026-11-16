@@ -393,4 +393,170 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
       expect(wordsOnBar, `X52d: the light bar's words read ${wordsOnBar.toFixed(4)}, under ${TEXT_FLOOR} (${read})`).toBeGreaterThanOrEqual(TEXT_FLOOR);
     }
   });
+
+  // X54 (owner at N37): the tab strip showed a scroll bar that could not scroll. The strip scrolls
+  // sideways by design (never wraps), and a box that scrolls on one axis scrolls on the other too,
+  // so anything taller than the strip's own box gives it a vertical range. Read here: no vertical
+  // range, one line, the active tab's 2px underline inside the strip, and the keyboard ring drawn
+  // inside the strip (an outset ring is clipped by the same box).
+  test("X54 (88.9-68): the Availability tab strip has nothing to scroll vertically, keeps one line with overflow-x auto, shows the active tab's whole 2px underline, and draws a keyboard-focused tab's ring inside the strip", async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    await page.goto('/userProfile');
+    if (testInfo.project.name === 'phone') expect(page.viewportSize()?.width).toBe(375);
+    const list = page.getByRole('tablist', { name: 'Availability settings' });
+    await expect(list, 'X54: the Availability tab strip never rendered').toBeVisible({ timeout: 15_000 });
+
+    const strip = await list.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const tabs = Array.from(el.querySelectorAll('[role="tab"]'));
+      const box = el.getBoundingClientRect();
+      const active = tabs.find((tab) => tab.getAttribute('aria-selected') === 'true');
+      return {
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        overflowX: style.overflowX,
+        tops: tabs.map((tab) => tab.getBoundingClientRect().top),
+        // The bottom of the strip's own content box: where a child stops being visible.
+        innerBottom: box.top + el.clientTop + el.clientHeight,
+        activeBottom: active ? active.getBoundingClientRect().bottom : null,
+        activeUnderline: active ? getComputedStyle(active).borderBottomWidth : null,
+      };
+    });
+    const read = JSON.stringify(strip);
+    // eslint-disable-next-line no-console -- the measured strip is recorded from the CI log (plan 88.9-68)
+    console.log(`[88.9-68 X54] ${testInfo.project.name}: ${read}`);
+    expect(strip.scrollHeight, `X54: the strip has a vertical scroll range (${read})`).toBe(strip.clientHeight);
+    expect(strip.overflowX, `X54: the strip no longer scrolls sideways (${read})`).toBe('auto');
+    expect(strip.tops.length, `X54: the strip has fewer than two tabs (${read})`).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...strip.tops) - Math.min(...strip.tops), `X54: the tabs are not on one line (${read})`).toBeLessThanOrEqual(0.5);
+    expect(strip.activeUnderline, `X54: the active tab's underline is not 2px (${read})`).toBe('2px');
+    expect(strip.activeBottom, `X54: no active tab was read (${read})`).not.toBeNull();
+    expect(strip.activeBottom ?? 0, `X54: the active tab's underline runs below the strip's box (${read})`).toBeLessThanOrEqual(strip.innerBottom + 0.5);
+
+    // A keyboard-focused tab draws its ring inside its own box, where the strip cannot clip it.
+    const first = list.getByRole('tab').first();
+    await focusByKeyboard(page, first);
+    await expect(first).toBeFocused();
+    const ring = await first.evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(ring, `X54: the focused tab's ring is not inset (${ring})`).toContain('inset');
+  });
+
+  // X55 (owner at N37): a small "Remind me:" beside a large select. The select cannot shrink on a
+  // phone (16px so iOS does not zoom, 44px to tap), so the label rises to the form-label size.
+  test('X55 (88.9-68): Remind me: reads at 14px beside the 16px select, centred on it, and on a phone the select keeps 44px', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    await page.goto('/userProfile');
+    const phone = testInfo.project.name === 'phone';
+    if (phone) expect(page.viewportSize()?.width).toBe(375);
+    const select = page.getByRole('combobox', { name: 'Remind me', exact: true });
+    await expect(select, 'X55: the reminder select never rendered').toBeVisible({ timeout: 15_000 });
+
+    const row = await select.evaluate((el) => {
+      const label = el.parentElement?.querySelector('span') ?? null;
+      if (!label) return null;
+      // Primary ink, resolved through a throwaway probe beside the label.
+      const probe = document.createElement('span');
+      probe.className = 'text-content-primary';
+      label.insertAdjacentElement('afterend', probe);
+      const primary = getComputedStyle(probe).color;
+      probe.remove();
+      const l = label.getBoundingClientRect();
+      const s = el.getBoundingClientRect();
+      const labelStyle = getComputedStyle(label);
+      return {
+        words: (label.textContent ?? '').trim(),
+        labelSize: labelStyle.fontSize,
+        labelInk: labelStyle.color,
+        primary,
+        selectSize: getComputedStyle(el).fontSize,
+        selectHeight: s.height,
+        centres: Math.abs((l.top + l.bottom) / 2 - (s.top + s.bottom) / 2),
+      };
+    });
+    expect(row, 'X55: no label sits beside the reminder select').not.toBeNull();
+    if (row) {
+      const read = JSON.stringify(row);
+      // eslint-disable-next-line no-console -- the measured row is recorded from the CI log (plan 88.9-68)
+      console.log(`[88.9-68 X55] ${testInfo.project.name}: ${read}`);
+      expect(row.words).toBe('Remind me:');
+      expect(row.labelSize, `X55: the label is not 14px (${read})`).toBe('14px');
+      expect(row.labelInk, `X55: the label is not in primary ink (${read})`).toBe(row.primary);
+      expect(row.selectSize, `X55: the select is not 16px (${read})`).toBe('16px');
+      expect(row.centres, `X55: the label is not centred on the select (${read})`).toBeLessThanOrEqual(1);
+      if (phone) {
+        expect(row.selectHeight, `X55: on a phone the select is under 44px tall (${read})`).toBeGreaterThanOrEqual(44);
+      }
+    }
+  });
+
+  // X57 (owner at N48): the check mark mounted only on the pressed Theme button, so both labels
+  // moved a little at every switch. Each label's place is read from its own text (a Range rect),
+  // relative to the pair's box so a scroll between reads changes nothing. The theme is stored on
+  // the device only (no request), and it is switched back before the test ends.
+  test('X57 (88.9-68): switching theme leaves both Theme button labels exactly where they were', async ({ page }, testInfo) => {
+    backstop = await holdWrites(page);
+    await page.goto('/userProfile');
+    if (testInfo.project.name === 'phone') expect(page.viewportSize()?.width).toBe(375);
+    const light = page.getByRole('button', { name: 'Light', exact: true });
+    const dark = page.getByRole('button', { name: 'Dark', exact: true });
+    await expect(light, 'X57: the Theme pair never rendered').toBeVisible({ timeout: 15_000 });
+    await light.scrollIntoViewIfNeeded();
+
+    const readLabels = () =>
+      light.evaluate((el) => {
+        const pair = el.parentElement;
+        if (!pair) return null;
+        const origin = pair.getBoundingClientRect();
+        const out: Record<string, { left: number; top: number; right: number; bottom: number }> = {};
+        for (const button of Array.from(pair.querySelectorAll('button'))) {
+          const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const words = (node.textContent ?? '').trim();
+            if (words !== 'Light' && words !== 'Dark') continue;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const r = range.getBoundingClientRect();
+            out[words] = { left: r.left - origin.left, top: r.top - origin.top, right: r.right - origin.left, bottom: r.bottom - origin.top };
+          }
+        }
+        return out;
+      });
+    const moved = (
+      now: Record<string, { left: number; top: number; right: number; bottom: number }> | null,
+      before: Record<string, { left: number; top: number; right: number; bottom: number }> | null,
+      when: string,
+    ) => {
+      expect(now && before, `X57: the labels could not be read ${when}`).toBeTruthy();
+      if (!now || !before) return;
+      const read = `${JSON.stringify(before)} then ${JSON.stringify(now)}`;
+      for (const name of ['Light', 'Dark']) {
+        expect(now[name] && before[name], `X57: no ${name} label was read ${when} (${read})`).toBeTruthy();
+        for (const side of ['left', 'top', 'right', 'bottom'] as const) {
+          expect(Math.abs(now[name][side] - before[name][side]), `X57: the ${name} label's ${side} edge moved ${when} (${read})`).toBeLessThanOrEqual(0.5);
+        }
+      }
+    };
+
+    const startedDark = (await dark.getAttribute('aria-pressed')) === 'true';
+    const other = startedDark ? light : dark;
+    const original = startedDark ? dark : light;
+    const before = await readLabels();
+    // eslint-disable-next-line no-console -- the measured labels are recorded from the CI log (plan 88.9-68)
+    console.log(`[88.9-68 X57] ${testInfo.project.name} before: ${JSON.stringify(before)}`);
+
+    await other.click();
+    await expect(other).toHaveAttribute('aria-pressed', 'true');
+    await expect(original).toHaveAttribute('aria-pressed', 'false');
+    const switched = await readLabels();
+    // eslint-disable-next-line no-console -- the measured labels are recorded from the CI log (plan 88.9-68)
+    console.log(`[88.9-68 X57] ${testInfo.project.name} switched: ${JSON.stringify(switched)}`);
+
+    // Back to the theme the test started in, before any assertion can end the test.
+    await original.click();
+    await expect(original).toHaveAttribute('aria-pressed', 'true');
+    const restored = await readLabels();
+
+    moved(switched, before, 'after the switch');
+    moved(restored, before, 'after switching back');
+  });
 });

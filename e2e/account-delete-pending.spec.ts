@@ -71,6 +71,36 @@ test.describe('Account deletion — the pressed danger action stays focusable at
     // A missing control or request is a failure, never a skip.
     await expect.poll(heldDeletes, { timeout: 15_000 }).toBe(1);
 
+    // AMENDED Phase 88.9-68 (X66): while the DELETE is held the typed phrase keeps its ink. The
+    // field is still natively disabled and still holds the phrase; it is no longer washed to half
+    // opacity, and its text paints in the same primary ink as the bold phrase in its label.
+    const typed = () =>
+      input.evaluate((el) => {
+        const field = el as HTMLInputElement;
+        const style = getComputedStyle(field);
+        const phrase = document.querySelector(`label[for="${field.id}"] span`);
+        return {
+          disabled: field.disabled,
+          value: field.value,
+          opacity: style.opacity,
+          ink: style.color,
+          fill: style.getPropertyValue('-webkit-text-fill-color'),
+          phraseInk: phrase ? getComputedStyle(phrase).color : null,
+        };
+      });
+    await expect
+      .poll(async () => (await typed()).opacity, { message: 'X66: the confirm field is washed while the delete is held', timeout: 5_000 })
+      .toBe('1');
+    const field = await typed();
+    const fieldRead = JSON.stringify(field);
+    // eslint-disable-next-line no-console -- the measured field is recorded from the CI log (plan 88.9-68)
+    console.log(`[88.9-68 X66] ${fieldRead}`);
+    expect(field.disabled, `X66: the confirm field is no longer disabled while deleting (${fieldRead})`).toBe(true);
+    expect(field.value, `X66: the confirm field lost the phrase (${fieldRead})`).toBe('delete my account');
+    expect(field.phraseInk, `X66: the label's bold phrase was not found (${fieldRead})`).not.toBeNull();
+    expect(field.ink, `X66: the typed phrase is not in the label phrase's ink (${fieldRead})`).toBe(field.phraseInk);
+    expect(field.fill, `X66: the typed phrase's text fill is not that ink (${fieldRead})`).toBe(field.phraseInk);
+
     // Rule 1 (88.9-45): the label stays; Chromium may insert a space before the sr-only suffix
     // (e2e/form-submit-in-flight.spec.ts ("the label is a flex item and the sr-only suffix its own out-of-flow")).
     const pressed = dialog.getByRole('button', { name: /^Delete my account ?, deleting$/ });
