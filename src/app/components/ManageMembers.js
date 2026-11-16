@@ -183,6 +183,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const [removeTarget, setRemoveTarget] = useState(null);
     const [rejectTarget, setRejectTarget] = useState(null);
     const [promoteTarget, setPromoteTarget] = useState(null);
+    // X13-7 (88.9-67): the member whose phone Remove is in flight (its DELETE and the refresh
+    // after it), or null. Drives the kebab item's busy look; see the marker at the kebab item.
+    const [removingMemberId, setRemovingMemberId] = useState(null);
 
     useEffect(() => {
         if (modal && group_id && user?.sub) {
@@ -473,6 +476,18 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             return false;
         } finally {
             settle();
+        }
+    };
+
+    // X13-7 (88.9-67): the phone kebab's commit. It wraps the shared commit path so the kebab item
+    // can show its flight; the desktop dialog path below calls handleRemoveMemberConfirmed directly
+    // and is untouched (its confirm already carries the spinner and the heard verb).
+    const commitPhoneRemove = async (target_user_id) => {
+        setRemovingMemberId(target_user_id);
+        try {
+            await handleRemoveMemberConfirmed(target_user_id);
+        } finally {
+            setRemovingMemberId(null);
         }
     };
 
@@ -1050,6 +1065,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                             member.username || member.email,
                                                                             memberRole
                                                                         ),
+                                                                        ariaDisabled: removingMemberId === member.id,
                                                                     },
                                                                     /* DECISION Phase 88 AR-DEC-3 (owner, 2026-08-05): keep
                                                                        KebabMenu-internal two-tap OVER routing through
@@ -1061,18 +1077,35 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                        committing (silently breaking mobile remove) or closes
                                                                        on the arming tap. UI-SPEC §11.2 lists this gate as
                                                                        already shipped and tier-correct. Changing this is a
-                                                                       decision, not a cleanup. */
+                                                                       decision, not a cleanup.
+                                                                       AMENDED Phase 88.9-67 (X13-7): the committing tap no longer
+                                                                       closes the menu (keepOpen); the arming-tap reason stands. */
+                                                                    /* DECISION Phase 88.9-67 (X13-7, N50 phone): a committed phone
+                                                                       Remove keeps the menu open with the house spinner,
+                                                                       aria-disabled and the heard , removing (R-C3a's verb) until
+                                                                       the remove and its refresh land — the 88.9-46 kebab busy
+                                                                       look — chosen OVER the shipped close-on-commit, which showed
+                                                                       nothing while the remove ran. The member's other items are
+                                                                       aria-disabled meanwhile, chosen OVER leaving them live under
+                                                                       the spinner (a dialog opened on a member being removed fails
+                                                                       with an error toast). On failure the menu stays open, item at
+                                                                       rest, error toast. */
                                                                     {
                                                                         label: 'Remove',
                                                                         danger: true,
                                                                         twoTap: true,
                                                                         confirmLabel: 'Tap again to remove',
-                                                                        onClick: () => handleRemoveMemberConfirmed(member.id),
+                                                                        keepOpen: true,
+                                                                        busy: removingMemberId === member.id,
+                                                                        busySuffix: ', removing',
+                                                                        ariaDisabled: removingMemberId === member.id,
+                                                                        onClick: () => commitPhoneRemove(member.id),
                                                                     },
                                                                     // Phase 69-02 GROUP-06: owner-only — admins don't see this item.
                                                                     ...(userRole === 'owner' ? [{
                                                                         label: 'Transfer ownership to this member',
                                                                         danger: true,
+                                                                        ariaDisabled: removingMemberId === member.id,
                                                                         onClick: () => setTransferTarget({
                                                                             id: member.id,
                                                                             name: member.username || member.email || 'this member',

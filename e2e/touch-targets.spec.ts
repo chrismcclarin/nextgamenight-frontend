@@ -1330,7 +1330,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      `jsdom measures NOTHING` guard in src/app/components/KebabMenu.test.tsx, which reds if jsdom
      ever grows layout. The SOURCE halves stay in that file and are the companions a red here
      should be read against:
-       - E6 overflow: the popover is `absolute right-0 min-w-[160px]` and carries no fixed width;
+       - E6 overflow: the popover is `absolute right-0`, content-sized (`w-max`) with the 160px
+         floor and a viewport cap, and carries no fixed width (AMENDED Phase 88.9-67, X67: the
+         replica's list class below follows the component's in lockstep);
        - E6 long-text: the item carries no clipping utility in EITHER state and `min-h-11` is a
          floor, not a fixed height.
 
@@ -1367,7 +1369,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       host.appendChild(anchor);
 
       const LIST_CLASS =
-        'absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-theme-lg py-1';
+        'absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg py-1';
       // AMENDED Phase 88.9-23 (O-17): the gated item's look is muted ink, transcribed in lockstep.
       const ITEM_CLASS =
         'w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';

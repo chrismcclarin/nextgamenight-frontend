@@ -6,12 +6,14 @@ import { createPortal } from 'react-dom';
 import {
   CONFIRM_DELAY_MS,
   CONFIRM_LIVE_MS,
+  COUNTDOWN_LABELS,
   countdownLabel,
   countdownName,
   useConfirmCountdown,
 } from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { DelayedSpinner } from '@/components/ui/DelayedSpinner';
+import { ReservedLabel } from '@/components/ui/ReservedLabel';
 import { useDismissal } from '@/components/ui/useDismissal';
 import { hostGroundHalo } from '@/components/ui/hostGround';
 import { cn } from '@/lib/cn';
@@ -262,7 +264,13 @@ export default function KebabMenu({
     };
   }, []);
 
-  const handleItemClick = (item, index) => {
+  // X13-7 (88.9-67): the keepOpen exits put focus on the item that was activated. A no-op when
+  // the press already focused it (a keyboard press, a Chromium click).
+  const focusActivatedItem = (target) => {
+    if (target && target.isConnected && document.activeElement !== target) target.focus();
+  };
+
+  const handleItemClick = (item, index, target) => {
     if (item.disabled) return;
     /* The `ariaDisabled` press is refused in the HANDLER, never by the platform —
        see the flag's DECISION marker at the item button below. */
@@ -319,7 +327,13 @@ export default function KebabMenu({
       item.onClick();
       // F9b: a keepOpen twoTap item stays open, mounted and focused after its commit — the
       // same promise the single-tap keep-open path makes (see that marker below).
-      if (item.keepOpen) return;
+      // AMENDED Phase 88.9-67 (X13-7): a keepOpen exit focuses the activated item, so focus stays
+      // on it where a tap does not focus (WebKit) and a host's focus recovery can watch it, chosen
+      // OVER threading the element into item.onClick (an items-API change on six sites).
+      if (item.keepOpen) {
+        focusActivatedItem(target);
+        return;
+      }
       setOpen(false);
       restoreFocusToTrigger();
       return;
@@ -342,6 +356,8 @@ export default function KebabMenu({
        and `ManageMembers.js` (anchor `DECISION Phase 88 AR-DEC-3`) reason
        from the CURRENT auto-close and
        are unchanged by a per-item opt-out.
+       AMENDED Phase 88.9-67 (X13-7): ManageMembers' phone Remove is now twoTap + keepOpen;
+       AR-DEC-3's arming-tap reason is unchanged; the session Delete stays on the dialog tier.
 
        The flag opts an item out of one close TRIGGER, never out of dismissal:
        outside-mousedown, Escape and the focusout rule all behave exactly as they do
@@ -353,8 +369,15 @@ export default function KebabMenu({
        also honoured on the twoTap commit, for gameDetail's Cancel event / Leave event, chosen
        OVER the single-tap-only flag (which would have closed the menu and hidden Cancelling…,
        D24 c). The Delete sentence above still stands: the session Delete stays on the dialog
-       tier. */
-    if (item.keepOpen) return;
+       tier.
+       AMENDED Phase 88.9-67 (X13-7): a keepOpen exit focuses the activated item, so focus stays
+       on it where a tap does not focus (WebKit) and a host's focus recovery can watch it, chosen
+       OVER threading the element into item.onClick (an items-API change on six sites). The
+       sentence above, that focus stays on the item, was untrue on WebKit until this. */
+    if (item.keepOpen) {
+      focusActivatedItem(target);
+      return;
+    }
 
     setOpen(false);
     restoreFocusToTrigger();
@@ -501,10 +524,16 @@ export default function KebabMenu({
            compensates for the PREFLIGHT, not for a utility a reader could simply
            drop. The axe audit cannot see this (it does not model the Safari quirk) —
            `keyboardOperability.test.tsx` is the only gate on it. */
+        /* DECISION Phase 88.9-67 (X67): the menu sizes to its longest item (w-max) with the 160px
+           floor and a viewport cap, chosen OVER raising the floor (252px to unwrap Transfer
+           ownership to this member, widening every short menu) and OVER shortening labels (no
+           owner word). An absolute right-0 box in the 44px trigger wrapper shrank to 44px, so the
+           floor fixed every menu at 160px and the armed lines wrapped. Long labels still wrap at
+           the cap (E6). */
         <ul
           id={listId}
           role="list"
-          className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-theme-lg py-1"
+          className="absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg py-1"
         >
           {items.map((item, index) => {
             const isArmed = item.twoTap && armedIndex === index;
@@ -542,7 +571,7 @@ export default function KebabMenu({
               <li key={index}>
                 <button
                   type="button"
-                  onClick={() => handleItemClick(item, index)}
+                  onClick={(event) => handleItemClick(item, index, event.currentTarget)}
                   disabled={item.disabled}
                   /* DECISION Phase 88.6-16 (D-12): `aria-pressed` is present ONLY
                      while armed and ABSENT (never "false") at rest — the
@@ -604,7 +633,16 @@ export default function KebabMenu({
                       : 'text-content-primary hover:bg-surface-hover'
                   }`}
                 >
-                  {label}
+                  {/* X69 width (88.9-67): a twoTap item holds the widest of Wait (3), (2), (1) and its
+                       armed words from the moment the menu opens, so the item and the menu keep their
+                       size when it arms and when it goes live; a plain item renders its bare label. */}
+                  {item.twoTap ? (
+                    <ReservedLabel reserve={[...COUNTDOWN_LABELS, item.confirmLabel || confirmLabel]}>
+                      {label}
+                    </ReservedLabel>
+                  ) : (
+                    label
+                  )}
                   {/* DECISION Phase 88.9-46 (rule 1 kebab busy): a busy item keeps its label and
                        shows the house spinner plus a heard suffix (the same sr-only span Button
                        renders), chosen OVER the caller swapping the label string (the shipped
