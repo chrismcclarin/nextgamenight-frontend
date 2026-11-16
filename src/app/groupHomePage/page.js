@@ -1367,7 +1367,12 @@ function GroupHomePage(){
                         .btn-secondary rules, Pitfall 2); the home cog is the same raw-button idiom, so both
                         gears are one look. The canEditGroup wrapper stays the gate, per the leaked-action
                         rule in src/app/gameDetail/page.js ("gate not written into the array is a LEAKED action").
-                        Changing either is a decision, not a cleanup. */}
+                        Changing either is a decision, not a cleanup.
+                        AMENDED Phase 88.9-69 (gear hover, 88.9-64 hand-off d): the hover is the secondary pair (light darkens to #cdc1b4, dark lightens to purple-700) by 64's rule, chosen OVER the surface-hover wash (2.35 light, 0 dark). The rest look stands; since 59 X8 the gears share shape, not colour.
+                        The two numbers are the old hover's step from rest in L*; the new step is 21.30
+                        in light and 10.27 in dark, the icon stays over 7:1 on the hovered fill, and the
+                        hovered fill stands at least 1.30 off every preset header ground (the token
+                        contrast suite's Gear hover test holds all 18 arms). */}
                     {canEditGroup && (
                         <div className="shrink-0 relative z-20">
                             <button
@@ -1379,8 +1384,8 @@ function GroupHomePage(){
                                 // header it sits on.
                                 className={
                                     tinted
-                                        ? 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
-                                        : 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated'
+                                        ? 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                                        : 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated'
                                 }
                             >
                                 <Icon name="Settings" size={20} />
