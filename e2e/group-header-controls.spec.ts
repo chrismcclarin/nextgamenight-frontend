@@ -31,11 +31,17 @@ import { scrubbedFetch } from './support/scrubbedFetch';
 // chosen OVER a phone arm. The hover rule sits behind a hover-capable-pointer media query, so on a
 // phone it never applies and there is nothing to read; the journeys floors row for this spec keeps
 // the four runs from being zeroed silently. Changing this is a decision, not a cleanup.
+//
+// Plan 88.9-69 (88.9-64 hand-off d) adds two reads of the group settings gear in the same describe
+// and on the same no-photo staging: the gear's fill at rest and under the pointer, and its icon
+// against the hovered fill. The icon is a graphic, so its floor is 3:1 (WCAG 1.4.11), not the
+// label's 4.5:1.
 
 type Theme = 'light' | 'dark';
 
 const HOVER_STEP_FLOOR = 4.0;
 const LABEL_FLOOR = 4.5;
+const ICON_FLOOR = 3.0;
 const PHOTO_URL = 'https://e2e-x64.invalid/white-photo.png';
 // A 1x1 opaque white PNG (69 bytes).
 const WHITE_PIXEL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC';
@@ -211,7 +217,7 @@ function need(value: number | null, what: string): number {
 
 // The three floors every arm shares, plus the ruled direction. Prints the measured values so the
 // run's log is the record of what rendered.
-function expectVisibleStep(theme: Theme, reads: HoverReads, what: string, stored: string): void {
+function expectVisibleStep(theme: Theme, reads: HoverReads, what: string, stored: string, inkFloor: number = LABEL_FLOOR): void {
   const { rest, hovered } = reads;
   const step = need(deltaLStar(rest.fill, hovered.fill), `${what} step`);
   const labelRest = need(contrastRatio(rest.ink, rest.fill), `${what} label at rest`);
@@ -225,8 +231,8 @@ function expectVisibleStep(theme: Theme, reads: HoverReads, what: string, stored
   console.log(record);
 
   expect(step, `${record}. The hover must move the fill by at least ${HOVER_STEP_FLOOR.toFixed(1)} L*`).toBeGreaterThanOrEqual(HOVER_STEP_FLOOR);
-  expect(labelRest, `${record}. The label must clear ${LABEL_FLOOR}:1 at rest`).toBeGreaterThanOrEqual(LABEL_FLOOR);
-  expect(labelHover, `${record}. The label must clear ${LABEL_FLOOR}:1 hovered`).toBeGreaterThanOrEqual(LABEL_FLOOR);
+  expect(labelRest, `${record}. The label must clear ${inkFloor}:1 at rest`).toBeGreaterThanOrEqual(inkFloor);
+  expect(labelHover, `${record}. The label must clear ${inkFloor}:1 hovered`).toBeGreaterThanOrEqual(inkFloor);
   if (theme === 'light') {
     expect(hoverL, `${record}. In light the hover must darken the fill`).toBeLessThan(restL);
   } else {
@@ -365,5 +371,27 @@ test.describe('Manage Members under the pointer (88.9-64: X9, X30)', () => {
     expect(reads.rest.ownAlpha, `${what}: the resting fill is no longer the 10% white wash (${staged.stored()})`).toBeCloseTo(0.1, 1);
     expect(reads.hovered.ownAlpha, `${what}: the hovered fill is not the 20% white wash, so another hover rule won (${staged.stored()})`).toBeCloseTo(0.2, 1);
     expectVisibleStep('dark', reads, what, staged.stored());
+  });
+
+  // 88.9-69 (88.9-64 hand-off d: "the group-page settings gear's hover is invisible the same way").
+  // The gear sits in the same header as Manage Members, so the header is opened by the same
+  // staging and the gear is then found by its own name. Its fill is opaque in both themes; the
+  // "label" in the shared record line is the gear icon, which inherits the button's colour.
+  const gearHover = async (page: Page, theme: Theme): Promise<void> => {
+    const what = `Gear hover no-photo header (${theme})`;
+    const { staged } = await openHeader(page, theme, null, what);
+    const gear = page.getByRole('button', { name: 'Group settings', exact: true });
+    await expect(gear, `${what}: the Group settings gear never rendered (it shows only to someone who can edit the group)`).toBeVisible();
+    const reads = await restAndHover(page, gear, what, true);
+    expect(reads.hovered.ownAlpha, `${what}: the hovered gear fill must be fully opaque too`).toBe(1);
+    expectVisibleStep(theme, reads, what, staged.stored(), ICON_FLOOR);
+  };
+
+  test('Gear hover (88.9-69): the group settings gear visibly changes under the pointer, light', async ({ page }) => {
+    await gearHover(page, 'light');
+  });
+
+  test('Gear hover (88.9-69): the group settings gear visibly changes under the pointer, dark', async ({ page }) => {
+    await gearHover(page, 'dark');
   });
 });
