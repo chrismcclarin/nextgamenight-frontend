@@ -863,6 +863,46 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
     mockDeleteAccount.mockReset();
   });
 
+  // 88.9-68 (X66): the Input primitive has no disabled styling, so the field's own half-opacity
+  // wash greyed the typed phrase while the delete ran and the field looked emptied. The wash stays
+  // for the pre-flight (an EMPTY field that cannot be typed in yet); while deleting the phrase
+  // keeps its ink. The field stays natively disabled in both (DECISION Phase 88.6-30).
+  it('X66 (88.9-68): while deleting, the confirm field stays natively disabled, drops the half-opacity wash and resets its text fill to currentColor; the pre-flight arm keeps the wash', async () => {
+    const blockers = deferred<{ groups: never[] }>();
+    mockGetBlockers.mockReturnValueOnce(blockers.promise);
+    const inFlight = deferred<{ message: string }>();
+    mockDeleteAccount.mockReturnValue(inFlight.promise);
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+
+    // Pre-flight: disabled, empty, washed.
+    await waitFor(() => expect(confirmInput()).toBeDisabled());
+    const preflight = confirmInput().className.split(/\s+/);
+    expect(preflight).toContain('border-status-error');
+    expect(preflight).toContain('disabled:opacity-50');
+    expect(preflight).not.toContain('disabled:opacity-100');
+    expect(confirmInput()).toHaveValue('');
+
+    await act(async () => { blockers.resolve({ groups: [] }); });
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.type(confirmInput(), 'delete my account');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument()
+    );
+
+    // Deleting: still natively disabled, still holding the phrase, no wash, text fill reset.
+    const held = confirmInput();
+    expect(held).toBeDisabled();
+    expect(held).toHaveValue('delete my account');
+    const deletingClasses = held.className.split(/\s+/);
+    expect(deletingClasses).toContain('border-status-error');
+    expect(deletingClasses).toContain('disabled:opacity-100');
+    expect(deletingClasses).toContain('disabled:[-webkit-text-fill-color:currentColor]');
+    expect(deletingClasses).not.toContain('disabled:opacity-50');
+  });
+
   it('DZ1: the pressed danger action stays in the document with aria-disabled and NO native disabled', async () => {
     const user = userEvent.setup();
     await enterDeletingState(user);

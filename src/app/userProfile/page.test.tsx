@@ -2241,17 +2241,51 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     expect(source).not.toContain('bg-purple-900 enabled-hover:bg-purple-900');
     expect(source).not.toContain("'border-amber-500");
 
-    // MED-74: the glyph leads the pressed button (the M5a shape) and is absent from the unpressed one.
+    // MED-74: the glyph leads the pressed button (the M5a shape).
+    // AMENDED Phase 88.9-68 (X57, owner at N48: adding the checkmark makes the text move a little):
+    // BOTH buttons lead with the aria-hidden glyph, and the unpressed one's is invisible, so its
+    // space is held in both states and neither label moves at a switch.
     const first = light.firstElementChild as HTMLElement | null;
     expect(first?.tagName).toBe('SPAN');
     expect(first).toHaveAttribute('aria-hidden', 'true');
     expect(first?.textContent).toBe('\u2713');
-    expect(dark.textContent ?? '').not.toContain('\u2713');
-    // The glyph is outside the accessible name, which is still exactly the label.
+    expect(first?.className.split(/\s+/) ?? []).not.toContain('invisible');
+    const unpressedFirst = dark.firstElementChild as HTMLElement | null;
+    expect(unpressedFirst?.tagName).toBe('SPAN');
+    expect(unpressedFirst).toHaveAttribute('aria-hidden', 'true');
+    expect(unpressedFirst?.textContent).toBe('\u2713');
+    expect(unpressedFirst?.className.split(/\s+/) ?? []).toContain('invisible');
+    // The glyph is outside the accessible name, which is still exactly the label, on both.
     expect(screen.getByRole('button', { name: 'Light' })).toBe(light);
+    expect(screen.getByRole('button', { name: 'Dark' })).toBe(dark);
     // One shared width floor, so the pair does not shift when the glyph moves.
     expect(lightClasses).toContain('min-w-32');
     expect(darkClasses).toContain('min-w-32');
+  });
+
+  // 88.9-68 (X55, owner at N37: a small "remind me" text next to a large drop down menu). The
+  // select cannot shrink (16px so iOS does not zoom, 44px on phones, DECISION Phase 88-03), so the
+  // label rises to the form-label rung: Label 14 in primary ink.
+  it("X55 (88.9-68): Remind me: is a 14px label in primary ink, and the select keeps the primitive's size with w-auto its only override", async () => {
+    renderProfile();
+    const select = await screen.findByRole('combobox', { name: 'Remind me' });
+    const row = select.parentElement as HTMLElement;
+    const label = within(row).getByText('Remind me:');
+    const labelClasses = label.className.split(/\s+/);
+    expect(labelClasses).toContain('text-sm');
+    expect(labelClasses).toContain('text-content-primary');
+    expect(labelClasses).not.toContain('text-xs');
+    expect(labelClasses).not.toContain('text-content-muted');
+    expect(row.className.split(/\s+/)).toContain('items-center');
+
+    // The select: the primitive's 16px and its 44px phone floor, with w-auto the one override.
+    const selectClasses = select.className.split(/\s+/);
+    expect(selectClasses).toContain('text-base');
+    expect(selectClasses).toContain('max-md:min-h-11');
+    expect(selectClasses).toContain('w-auto');
+    expect(selectClasses.filter((c) => /^text-(xs|sm|lg|xl)$/.test(c))).toEqual([]);
+    const source = await pageSource();
+    expect(source).toMatch(/<SelectControl\s+id="reminder-window"[\s\S]{0,400}?className="w-auto"\s*>/);
   });
 
   // D-01 / T-88.6-42: legal text is never caption-sized.
