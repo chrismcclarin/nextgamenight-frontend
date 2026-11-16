@@ -582,11 +582,26 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
     expect(gears).toHaveLength(1);
     const gear = gears[0];
     expect(gear).toHaveClass('min-h-11', 'min-w-11', 'border', 'border-line-control', 'bg-surface-elevated');
+    // AMENDED Phase 88.9-69 (gear hover, 88.9-64 hand-off d): the hover is the secondary pair's
+    // hover fill, a visible step in both themes, and no longer the surface wash (2.35 L* in light,
+    // none in dark). The numbers are pinned in the token contrast suite's Gear hover test.
+    expect(gear, 'the gear still hovers on the surface wash').toHaveClass('hover:bg-btn-secondary-hover');
+    expect(gear).not.toHaveClass('hover:bg-surface-hover');
     expect(gear.querySelector('svg[aria-hidden="true"]'), 'the gear has no hidden svg glyph').not.toBeNull();
     expect(gear.textContent ?? '', 'the gear carries a text glyph').not.toMatch(/[⋮⚙]/);
     expect(h.groupSettingsProps).toBeNull();
     await userEvent.setup().click(gear);
     await waitFor(() => expect(h.groupSettingsProps).not.toBeNull());
+
+    // The tinted header's gear is a second whole literal: the same hover on it.
+    cleanup();
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group', background_color: '#722f37' });
+    await renderHeaderAt('owner');
+    const tintedGear = screen.getByRole('button', { name: 'Group settings' });
+    expect(tintedGear).toHaveClass(GROUP_HALO);
+    expect(tintedGear, 'the tinted gear still hovers on the surface wash').toHaveClass('hover:bg-btn-secondary-hover');
+    expect(tintedGear).not.toHaveClass('hover:bg-surface-hover');
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
   });
 
   it('G halo (88.9): on a tinted header the four header controls take the group halo; untinted keep the elevated halo', async () => {

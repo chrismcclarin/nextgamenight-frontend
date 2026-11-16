@@ -2617,6 +2617,95 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(measured, 'anti-vacuity: 2 themes x (1 photo arm + the uncoloured ground + 8 preset grounds)').toBe(20);
   });
 
+  it('Gear hover (88.9-69): the group settings gear\'s hover is a visible step on every header arm — delta L* at least 4.0 from rest, the icon at least 3.0 at rest and on hover, hover at least 1.20 from a flat header ground', () => {
+    // 88.9-69, from the 88.9-64 hand-off (d): "the group-page settings gear's hover is invisible
+    // the same way", under the owner's direction for Manage Members (2026-11-12: "We should just
+    // let manage members darken or lighten as needed").
+    //
+    // THE CLASSES ARE READ FROM THE CALL SITE, as the X30 test above reads its button: the gear's
+    // className expression in the group page source forks on the tinted flag into two whole
+    // literals, and each literal's fill, hover fill and ink class is resolved through the @theme
+    // inline key it names to that theme's token. Editing a class there moves the numbers here.
+    //
+    // 18 ARMS: in each theme the untinted literal on the uncoloured header ground (1) and the
+    // tinted literal on each of the eight preset grounds (8). The gear's fill is opaque, so the
+    // rest-to-hover step is the same on every ground; what changes per ground is how far the
+    // hovered fill stands off it. Three floors:
+    //   - the hover moves the fill by at least 4.0 in L* (test 1's smallest visible surface step);
+    //   - the icon, a graphic, clears 3.0:1 on the fill at rest and hovered (WCAG 1.4.11);
+    //   - the hovered fill stands at least 1.20 off the flat header ground (test 36's floor).
+    // Over a photo there is no flat ground to measure against, so that arm is not judged here (the
+    // step and the icon floors do not depend on the ground and are covered by the 18).
+    // Measured at 88.9-69 with src/lib/wcag.ts: the step is 21.2973 in light and 10.2688 in dark,
+    // the lowest icon ratio 7.3532 (dark, hovered), the lowest hover-against-ground 1.3049 (light,
+    // orange ground). Before this plan the step was 2.3473 in light and 0 in dark.
+    const pageSrc = withoutComments(fs.readFileSync(path.join(__dirname, 'groupHomePage', 'page.js'), 'utf8'));
+    const opener = 'onClick={() => setShowGroupSettings(true)}';
+    const at = pageSrc.indexOf(opener);
+    if (at < 0 || pageSrc.indexOf(opener, at + opener.length) >= 0) {
+      throw new TokenContrastParseError('the Group settings opener is not in the group page source exactly once');
+    }
+    const end = pageSrc.indexOf('<Icon name="Settings"', at);
+    if (end < 0) throw new TokenContrastParseError('the gear icon does not follow the Group settings opener');
+    const fork = /tinted\s*\?\s*'([^']*)'\s*:\s*'([^']*)'/.exec(pageSrc.slice(at, end));
+    if (!fork) throw new TokenContrastParseError('the gear className no longer forks on the tinted flag into two whole literals');
+    const armTokens = {
+      tinted: fork[1].split(/\s+/).filter((token) => token.length > 0),
+      plain: fork[2].split(/\s+/).filter((token) => token.length > 0),
+    } as const;
+
+    const SHAPE = /^(hover:)?(bg|text)-([a-z0-9-]+)$/;
+    const pick = (tokens: readonly string[], util: 'bg' | 'text', hover: boolean): string | null => {
+      const keys = tokens.flatMap((token) => {
+        const m = SHAPE.exec(token);
+        return m && m[2] === util && (m[1] !== undefined) === hover ? [m[3]] : [];
+      });
+      if (keys.length > 1) throw new TokenContrastParseError(`the gear literal names ${keys.length} ${hover ? 'hover ' : ''}${util} classes (${keys.join(', ')}); one is measurable`);
+      return keys[0] ?? null;
+    };
+    const themeBlock = blockOf('theme');
+    const colourOf = (theme: Theme, key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour, so the gear class that carries it cannot be measured`);
+      return resolve(theme, ref[1]);
+    };
+
+    const failures: string[] = [];
+    let measured = 0;
+    const judge = (theme: Theme, arm: 'tinted' | 'plain', groundName: string, ground: string): void => {
+      const tokens = armTokens[arm];
+      const name = `[${theme}] ${groundName}`;
+      const restKey = pick(tokens, 'bg', false);
+      const hoverKey = pick(tokens, 'bg', true);
+      const inkKey = pick(tokens, 'text', false);
+      if (!restKey || !inkKey) throw new TokenContrastParseError(`${name}: the gear literal names no ${restKey ? 'ink' : 'fill'} class`);
+      measured += 1;
+      if (!hoverKey) {
+        failures.push(`${name}: the gear literal names no hover fill at all`);
+        return;
+      }
+      const restHex = colourOf(theme, restKey);
+      const hoverHex = colourOf(theme, hoverKey);
+      const inkHex = colourOf(theme, inkKey);
+      const step = deltaHex(restHex, hoverHex, `${name} rest to hover`);
+      if (step < 4.0) failures.push(`${name}: the hover moves the fill ${restHex} to ${hoverHex}, delta L* ${step.toFixed(4)}, floor 4.00`);
+      for (const [state, fill] of [['at rest', restHex], ['hovered', hoverHex]] as const) {
+        const ratio = ratioHex(inkHex, fill, `${name} icon ${state}`);
+        if (ratio < 3.0) failures.push(`${name}: the icon (${inkHex}) on the fill ${state} (${fill}) measures ${ratio.toFixed(4)}:1, floor 3.00:1`);
+      }
+      const off = ratioHex(hoverHex, ground, `${name} hover against the ground`);
+      if (off < 1.2) failures.push(`${name}: the hovered fill (${hoverHex}) against the header ground (${ground}) measures ${off.toFixed(4)}:1, floor 1.20:1`);
+    };
+
+    for (const theme of ['light', 'dark'] as const) {
+      judge(theme, 'plain', 'no colour', resolve(theme, '--color-bg-elevated'));
+      for (const preset of GROUP_COLOUR_PRESETS) judge(theme, 'tinted', `the ${preset.name} ground`, preset[theme]);
+    }
+
+    expect(failures, `Gear hover (88.9-69) — the group settings gear must visibly react to the pointer on every header arm:\n${failures.join('\n')}`).toEqual([]);
+    expect(measured, 'anti-vacuity: 2 themes x (the uncoloured ground + 8 preset grounds)').toBe(18);
+  });
+
   it('X49 (88.9-65): the ghostDanger ink clears 4.5 on the card and on the hover wash in both themes', () => {
     // Owner 2026-11-13, on the desktop session Delete ("Do you think there is an issue that on the
     // phone the delete in the kebab menu is red, but on the pc it isn't red?", then "Yes, That is
