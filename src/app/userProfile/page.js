@@ -43,7 +43,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Modal } from '../components/Modal';
 import { Combobox } from '../../components/ui/Combobox';
-import { StatusRegion } from '../../components/ui/StatusRegion';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '../../components/ui/StatusRegion';
 import { useInlineReceipt } from '../../components/ui/useInlineReceipt';
 import { announceStatus } from '@/components/ui/announcer';
 import { Input, SelectControl } from '../../components/ui/Input';
@@ -443,6 +443,27 @@ function Profile(){
     // Review 221 (88.6.1-60): the screen-reader-only result count. See `DECISION Phase 88.6.1-60 (review 221,
     // owner 2026-10-13)` in `searchBGG`.
     const [bggFoundAnnouncement, setBggFoundAnnouncement] = useState('');
+    // X58 (88.9-68): the visible no-results line under the search row. See the AMENDED Phase 88.9-68
+    // lines on the review-221 marker in `searchBGG`. `bggNoResults` is true while the last search
+    // landed with nothing; the two refs hold when a search start last emptied the line and the timer
+    // that fills it no sooner than REGION_EMPTY_DWELL_MS after that (AT-4: WebKit re-announces an
+    // identical sentence only after the region has stayed empty that long).
+    const [bggNoResults, setBggNoResults] = useState(false);
+    const bggNoResultsClearedAtRef = useRef(0);
+    const bggNoResultsTimerRef = useRef(null);
+    const clearBggNoResults = useCallback(() => {
+        if (bggNoResultsTimerRef.current !== null) {
+            clearTimeout(bggNoResultsTimerRef.current);
+            bggNoResultsTimerRef.current = null;
+        }
+        setBggNoResults(false);
+    }, []);
+    useEffect(() => () => {
+        if (bggNoResultsTimerRef.current !== null) clearTimeout(bggNoResultsTimerRef.current);
+    }, []);
+    // Q2 (88.9-68): the Game added line under + Add from BGG. The same hook, words-and-timer rule as
+    // the Saved caption (a third instance, no second implementation); the DECISION is at the line.
+    const { receipt: addGameReceipt, showReceipt: showAddGameReceipt, clearReceipt: clearAddGameReceipt } = useInlineReceipt();
     // Req 11 / Req 5 (88.6.1-60): the import's 5-second result timer, and what its callback reads to
     // decide whether to empty the username and where focus goes first. `addFromBggToggleRef` and
     // `collectionHeadingRef` are SHARED: plan 88.6.1-67 lands Remove and Add on the same two
@@ -696,11 +717,22 @@ function Profile(){
         });
     }, [allTimezones, tzSearch]);
 
-    const handleTimezoneSelect = useCallback((tz) => {
-        setTimezone(tz);
+    // X33b (88.9-68): the Saved caption beside the picker (the DECISION is at its region). The page's
+    // `tzSaveSeqRef` decides ONE thing: whether "Saved" shows, so that of two overlapping picks only
+    // the later one's result is shown. Ordering the saves and reverting a failed one are the
+    // provider's (src/app/components/TimezoneProvider.js ("const saveChainRef = useRef(Promise.resolve());")).
+    const { receipt: timezoneReceipt, showReceipt: showTimezoneReceipt, clearReceipt: clearTimezoneReceipt } = useInlineReceipt();
+    const tzSaveSeqRef = useRef(0);
+    const handleTimezoneSelect = useCallback(async (tz) => {
+        clearTimezoneReceipt();
+        const seq = ++tzSaveSeqRef.current;
+        // The list closes at the pick, before the save lands (as it always did).
         setTzPickerOpen(false);
         setTzSearch('');
-    }, [setTimezone]);
+        const ok = await setTimezone(tz);
+        // A stale result, success or failure, changes nothing.
+        if (ok && seq === tzSaveSeqRef.current) showTimezoneReceipt('Saved');
+    }, [setTimezone, clearTimezoneReceipt, showTimezoneReceipt]);
 
     /* DECISION Phase 88-10 (F-359): the option list is built ONLY while the picker is
        open, chosen OVER the obvious `useMemo` keyed on the search text alone. Building
@@ -797,9 +829,11 @@ function Profile(){
     // merely re-focuses an ALREADY-open field does not wipe what was typed.
     const openTimezonePicker = useCallback(() => {
         if (tzPickerOpen) return;
+        // X33b (88.9-68): reopening the picker clears the Saved caption (the next press clears a receipt).
+        clearTimezoneReceipt();
         setTzSearch('');
         setTzPickerOpen(true);
-    }, [tzPickerOpen]);
+    }, [tzPickerOpen, clearTimezoneReceipt]);
 
     // Closing (Esc, outside press, selection) drops the search text so the field falls
     // back to displaying the current selection rather than a stale query.
@@ -1548,7 +1582,10 @@ function Profile(){
                (88-UI-SPEC §6.2) these lines carried: rule 4 keeps a toast only for an outcome the person
                cannot see. The call keeps the toast's place, before any close or settle. Every error toast
                stays (rule 5). Username updated is the seventh profile receipt and goes inline instead (rule
-               3). Restoring a toast here is a decision, not a cleanup. */
+               3). Restoring a toast here is a decision, not a cleanup.
+               AMENDED Phase 88.9-68 (owner ruling Q2, 2026-11-14): Game added also shows a plain visible
+               line under + Add from BGG, not a live region, because with X52d the added row can land
+               behind the closed bar; still no toast, still spoken once by the root announcer. */
             announceStatus('Google Calendar disconnected');
         } catch (error) {
             logger.info('Error disconnecting Google Calendar:', errCtx(error));
@@ -1645,6 +1682,9 @@ function Profile(){
         setBggSearching(true);
         // Emptied as the search starts, so the same count twice is a DOM change and is spoken twice.
         setBggFoundAnnouncement('');
+        // X58: the no-results line empties with it, and the moment is kept for the dwell below.
+        clearBggNoResults();
+        bggNoResultsClearedAtRef.current = Date.now();
         try {
             const results = await gamesAPI.searchBGG(bggSearchQuery);
             setBggSearchResults(results || []);
@@ -1663,7 +1703,13 @@ function Profile(){
                writes nothing (its toast speaks). REJECTED: a visible results line (a look change,
                not ruled); speaking zero through the region too (two announcements of one outcome);
                reusing a region that fails the test above; naming the games (a long list read aloud,
-               and the list is on screen). Written only here, never from a render or an effect. */
+               and the list is on screen). Written only here, never from a render or an effect.
+               AMENDED Phase 88.9-68 (52-X58, owner R2, 2026-11-13: Line under the box.): zero results show
+               the sentence in a visible polite line under the search box, chosen OVER the toast (on a
+               phone it showed far above the box); this region stays empty on zero, so one announcement.
+               The line takes its sentence no sooner than REGION_EMPTY_DWELL_MS after the search start
+               emptied it, through one timer cleared by the next search and on unmount, so a fast
+               identical repeat is announced again on WebKit (AT-4). */
             const found = (results || []).length;
             if (found === 1) {
                 setBggFoundAnnouncement(BGG_FOUND_ONE_LABEL);
@@ -1672,7 +1718,11 @@ function Profile(){
             }
             // 88.6.1 code review A-68: the computed count — `results` may be null (guarded above).
             if (found === 0) {
-                toast('No games found. Try a different search term.');
+                const wait = Math.max(0, bggNoResultsClearedAtRef.current + REGION_EMPTY_DWELL_MS - Date.now());
+                bggNoResultsTimerRef.current = setTimeout(() => {
+                    bggNoResultsTimerRef.current = null;
+                    setBggNoResults(true);
+                }, wait);
             }
         } catch (error) {
             logger.info('Error searching BGG:', errCtx(error));
@@ -1758,6 +1808,7 @@ function Profile(){
             setShowBggSearch(false);
             // 88.6.1 code review A-76: the result count leaves with the panel it counted.
             setBggFoundAnnouncement('');
+            clearBggNoResults();
             setBggSearchQuery('');
             setBggSearchResults([]);
             addGameInFlightRef.current = false;
@@ -1770,7 +1821,12 @@ function Profile(){
             // collection list and focus lands on + Add from BGG, which answers the panel-vanishing concern
             // above; chosen OVER keeping this Req 12 toast. Spoken once by the root announcer: see the
             // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            // AMENDED Phase 88.9-68 (owner ruling Q2, 2026-11-14): with X52d the new game can sort behind
+            // the closed bar, so the 'appears in the collection list' premise no longer holds; a visible
+            // inline 'Game added' line under + Add from BGG, chosen OVER opening the bar automatically,
+            // OVER the pop-up toast and OVER pinning the card out of name order.
             announceStatus('Game added');
+            showAddGameReceipt('Game added');
             settle();
         } catch (error) {
             logger.info('Error adding game to collection:', errCtx(error));
@@ -3357,7 +3413,10 @@ function Profile(){
                         value={tzPickerOpen ? tzSearch : currentTimezoneLabel()}
                         onValueChange={(next) => {
                             setTzSearch(next);
-                            if (!tzPickerOpen) setTzPickerOpen(true);
+                            if (!tzPickerOpen) {
+                                clearTimezoneReceipt();
+                                setTzPickerOpen(true);
+                            }
                         }}
                         open={tzPickerOpen}
                         onOpenChange={handleTimezonePickerOpenChange}
@@ -3366,6 +3425,20 @@ function Profile(){
                         items={timezoneItems}
                         listLabel="Timezones"
                         emptyLabel="No timezones match your search"
+                    />
+                    {/* DECISION Phase 88.9-68 (52-X33 b, owner at N15: we don't have anything to say that the
+                        change is saved on that spot of the profile): the auto-saving picker shows the
+                        save-feedback rule 3 caption (UI-SPEC O-16), chosen OVER silence; a small Saved beside
+                        the picker, announced once, ruled by the owner 2026-11-14 (Yes, small saved besides
+                        picker); 4000 ms, polite, mounted empty. It shows only after the save has LANDED
+                        (setTimezone resolved true) and only for the latest pick; a failed save shows the
+                        provider's error toast and the saved zone back in the field instead (owner ruling Q8 b). */}
+                    <StatusRegion
+                        data-testid="timezone-receipt"
+                        politeness="polite"
+                        srOnlyWhenEmpty
+                        message={timezoneReceipt}
+                        className="mt-2 text-xs text-content-status-success"
                     />
                 </div>
 
@@ -4166,7 +4239,7 @@ function Profile(){
 
                 {/* Owned Games Section */}
                 <div className="card p-3 md:p-6">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                         {/* 88-33 Task 7 step 2 (UAT row 272): the count renders only after the
                             owned-games fetch resolves — "(0)" mid-fetch is an empty-vs-loading
                             conflation on the count itself; an em-dash holds the slot meanwhile.
@@ -4181,8 +4254,12 @@ function Profile(){
                                 ref={addFromBggToggleRef}
                                 variant="primary"
                                 onClick={() => {
+                                    // Q2 (88.9-68): the next press of this button clears the Game added line.
+                                    clearAddGameReceipt();
                                     // 88.6.1 code review A-76: Hide Search empties the result count too.
                                     if (showBggSearch) setBggFoundAnnouncement('');
+                                    // X58 (88.9-68): and the no-results line, so a reopened box starts empty.
+                                    clearBggNoResults();
                                     setShowBggSearch(!showBggSearch);
                                 }}
                                 aria-expanded={showBggSearch}
@@ -4193,6 +4270,14 @@ function Profile(){
                             </Button>
                         </div>
                     </div>
+                    {/* DECISION Phase 88.9-68 (owner ruling Q2): visible text only, NOT a live region, chosen
+                        OVER a polite StatusRegion like Saved (the root announcer already speaks Game added;
+                        two speakers say it twice) and OVER aria-hidden (W38: hidden from browse mode); the
+                        min-h-4 row replaces the header's mb-4 so the words never move the page. Under the
+                        button: left at 375 (the header row stacks), right-aligned from sm. Shown beside the
+                        announcer call in the add path, cleared after the receipt hook's 4000 ms and at the
+                        next press of + Add from BGG. The bar is never opened for the new game. */}
+                    <p data-testid="add-game-receipt" className="min-h-4 text-xs text-content-status-success sm:text-right">{addGameReceipt}</p>
 
                     {/* BGG Collection Import */}
                     <div className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
@@ -4318,8 +4403,15 @@ function Profile(){
 
                     {/* BGG Search */}
                     {showBggSearch && (
-                        <div id={bggSearchPanelId} className="mb-6 p-3 md:p-4 border border-line rounded-sm bg-surface-page">
-                            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                        <div id={bggSearchPanelId} className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
+                            {/* DECISION Phase 88.9-68 (X58, owner R2: It has no title … bottom heavy): the search
+                                panel takes a title, the import box's radius and no trailing gap; title Search
+                                BoardGameGeek ruled by the owner 2026-11-14 (yes). The title is the field's own
+                                shipped name. The search row carries no bottom margin; the no-results line and
+                                the results list each bring their own top margin, so an empty box has the same
+                                space above its title as below its search row. */}
+                            <Heading level={3} size="body" className="mb-2 text-content-primary">Search BoardGameGeek</Heading>
+                            <div className="flex flex-col sm:flex-row gap-2">
                                 <Input
                                     id="bgg-search"
                                     name="bgg-search"
@@ -4357,9 +4449,20 @@ function Profile(){
                                     Search
                                 </Button>
                             </div>
-                            
+                            {/* X58 (88.9-68): the no-results line. Mounted empty with the panel (a polite region
+                                that mounts holding text is not announced), sr-only while empty so its margin
+                                costs nothing, D2's muted + sm when it speaks. See the AMENDED Phase 88.9-68
+                                lines on the review-221 marker in `searchBGG`. */}
+                            <StatusRegion
+                                data-testid="bgg-no-results"
+                                politeness="polite"
+                                srOnlyWhenEmpty
+                                message={bggNoResults ? 'No games found. Try a different search term.' : ''}
+                                className="mt-3 text-sm text-content-muted"
+                            />
+
                             {bggSearchResults.length > 0 && (
-                                <div className="max-h-60 overflow-y-auto space-y-2">
+                                <div className="mt-3 max-h-60 overflow-y-auto space-y-2">
                                     {bggSearchResults.map((result) => {
                                         const isAlreadyOwned = ownedGames.some(g => g.bgg_id === result.bgg_id);
                                         const isAddingThis = addingBggId === result.bgg_id;

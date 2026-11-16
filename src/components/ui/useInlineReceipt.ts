@@ -27,7 +27,10 @@ function cancelTimer(timer: TimerRef): void {
    person cannot see) and OVER a caption that stays until navigation (stale after the next edit).
    Sites render it in an always-mounted polite StatusRegion so it is announced once, except
    EmailAddressSection, which speaks it through its existing always-mounted announce() lane.
-   RESIDUAL, stated: the same receipt twice inside one window is announced once. */
+   RESIDUAL, stated: the same receipt twice inside one window is announced once.
+   AMENDED Phase 88.9-68 (owner ruling Q2): a second exception, the Profile Game added line under
+   + Add from BGG, is visible text only and spoken once by the root announcer (announceStatus),
+   which already owned that outcome. */
 export function useInlineReceipt(clearAfterMs: number = INLINE_RECEIPT_MS) {
   const [receipt, setReceipt] = React.useState('');
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
