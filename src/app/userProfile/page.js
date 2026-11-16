@@ -3286,6 +3286,7 @@ function Profile(){
                         on the pressed arm (option b, a 1px-vs-2px step that may not read at phone size) and OVER
                         font-bold (option a, dead under the unlayered .btn font-weight). Removing the glyph or the
                         shared width is a decision, not a cleanup. DECISION Phase 88-10 (aria-pressed) is unchanged.
+                        AMENDED Phase 88.9-68 (X57, owner at N48: the overall text is centered, so adding the checkmark makes the text move a little): the glyph's space is reserved in both states (invisible, not absent), chosen OVER mounting it only when pressed; the shared min width stands.
 
                         `enabled-hover:bg-*` pins the SELECTED arm's fill through hover: ghost's base
                         carries `enabled-hover:bg-surface-hover`, which would otherwise wash the amber
@@ -3302,7 +3303,7 @@ function Profile(){
                                         : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
-                                {resolvedTheme === 'light' && <span aria-hidden="true">{'\u2713'}</span>}
+                                <span aria-hidden="true" className={resolvedTheme === 'light' ? undefined : 'invisible'}>{'\u2713'}</span>
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                                 </svg>
@@ -3318,7 +3319,7 @@ function Profile(){
                                         : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
-                                {resolvedTheme === 'dark' && <span aria-hidden="true">{'\u2713'}</span>}
+                                <span aria-hidden="true" className={resolvedTheme === 'dark' ? undefined : 'invisible'}>{'\u2713'}</span>
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                                 </svg>
@@ -3514,7 +3515,8 @@ function Profile(){
                                 {/* Reminder timing dropdown */}
                                 {type.key === 'reminder' && (
                                     <div className="mt-2 ml-0 sm:ml-4 flex items-center gap-2">
-                                        <span className="text-xs text-content-muted">Remind me:</span>
+                                        {/* DECISION Phase 88.9-68 (X55, owner at N37: Probably reduce button and text size?): the label rises to Label 14 in primary ink, chosen OVER shrinking the select (16px so iOS does not zoom, DECISION Phase 88-03; 44px on phones; no compact select exists) and OVER Body 16 (UI-SPEC's type roles put field labels at Label 14, R2-14). Owner look owed. */}
+                                        <span className="text-sm text-content-primary">Remind me:</span>
                                         {/* The adjacent "Remind me:" span is NOT associated with
                                             this control, so the select shipped with no accessible
                                             name (axe select-name, WCAG 4.1.2 A) — the same

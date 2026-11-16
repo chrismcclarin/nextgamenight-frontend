@@ -620,7 +620,12 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                     is NOT re-authored to a red token — it goes to the primitive's
                     `focus-visible:ring-focus-ring`, because focus indication is a system-wide
                     affordance and a per-surface focus colour is exactly the drift this phase's
-                    §7.2 contract exists to stop. Behaviour is unchanged either way. */}
+                    §7.2 contract exists to stop. Behaviour is unchanged either way.
+
+                    DECISION Phase 88.9-68 (X66): while deleting the typed phrase keeps its ink, chosen OVER the 50% wash that greyed it so the field looked emptied; the field stays natively disabled (DECISION Phase 88.6-30). The text-fill reset covers WebKit's own disabled dimming (assumed; owner phone check after deploy).
+                    Two COMPLETE literal class strings, picked on the deleting flag (Tailwind v4 emits
+                    literals only): the pre-flight arm keeps the wash, because that field is empty and
+                    cannot be typed in yet. */}
                 <Input
                   ref={confirmInputRef}
                   id="delete-account-confirm"
@@ -635,7 +640,11 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                   disabled={preflightPending || deleting}
                   placeholder={CONFIRM_PHRASE}
                   autoComplete="off"
-                  className="border-status-error disabled:opacity-50"
+                  className={
+                    deleting
+                      ? 'border-status-error disabled:opacity-100 disabled:[-webkit-text-fill-color:currentColor]'
+                      : 'border-status-error disabled:opacity-50'
+                  }
                 />
               </div>
               {/* DECISION Phase 88.6-30 (D28, round-3 verdict): the failure region is an
