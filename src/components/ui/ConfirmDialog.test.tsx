@@ -1144,6 +1144,45 @@ describe('ConfirmDialog — F9b delayed enable through the real hook (88.9-23)',
     });
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
+
+  // X69 width (88.9-67): the confirm holds the widest of its countdown labels and its action, so
+  // the button keeps one width when Wait (1) gives way to the action. The reserve is attribute
+  // text painted by a pseudo-element (src/components/ui/ReservedLabel.tsx ("DECISION Phase 88.9-67 (X69 width)")),
+  // so the button's text is the visible label alone. Rendered widths: the e2e title
+  // "X69 (88.9): the Make admin confirm reads Wait (3), (2), (1) then Make admin at one width at 375, named Make admin, wait N seconds while it waits".
+  it('X69 (88.9): a gated dialog confirm reserves Wait (3), (2), (1) and its action; the typed tier renders the bare label', () => {
+    const { unmount } = render(<PendingDialogHarness onConfirm={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    const confirm = screen.getByRole('button', { name: 'Delete, wait 3 seconds' });
+    const reserved = () =>
+      Array.from(confirm.querySelectorAll('[data-reserve]')).map((span) => span.getAttribute('data-reserve'));
+    expect(reserved()).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Delete']);
+    expect(confirm.textContent).toBe('Wait (3)');
+
+    // Live: the same reserve, so the width cannot change at the edge.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(confirm.textContent).toBe('Delete');
+    expect(reserved()).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Delete']);
+    unmount();
+
+    // The typed tier has no countdown: its confirm renders the bare label, no wrapper.
+    renderConfirmDialog({
+      tier: 'typed',
+      title: 'Delete Tuesday Crew?',
+      confirmLabel: 'Delete group',
+      expectedPhrase: 'Tuesday Crew',
+      confirmDisabled: () => true,
+    });
+    const typed = screen.getByRole('button', { name: 'Delete group' });
+    expect(typed.querySelectorAll('[data-reserve]')).toHaveLength(0);
+    expect(typed.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+    expect(typed.firstChild?.textContent).toBe('Delete group');
+  });
 });
 
 describe('ConfirmDialog — two-tap tier', () => {

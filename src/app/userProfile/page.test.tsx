@@ -831,20 +831,33 @@ describe('userProfile destructive gates (Req 11)', () => {
     expect(trigger.className).toContain('min-h-11');
     expect(trigger.className).toContain('min-w-11');
     expect(trigger.className).toContain('border');
-    // The invisible sizer carries the armed label so the box is armed-width at rest.
-    const sizer = trigger.querySelector('[aria-hidden="true"]');
-    // X69 (88.9-67): the sizer reserves Remove, the widest armed state (Wait (n) is narrower).
-    expect(sizer?.textContent).toBe('Remove');
-    expect(sizer?.className).toContain('invisible');
+    // X69 width (88.9-67): the box is armed-width at rest through the shared reserve — every
+    // label the armed x can paint, each invisible and set in the armed 600 (the 88.6-17
+    // measurement), as attribute text that never enters the button's own text.
+    const reserves = Array.from(trigger.querySelectorAll('[data-reserve]'));
+    expect(reserves.map((span) => span.getAttribute('data-reserve'))).toEqual([
+      'Wait (3)',
+      'Wait (2)',
+      'Wait (1)',
+      'Remove',
+    ]);
+    for (const span of reserves) {
+      expect(span.getAttribute('aria-hidden')).toBe('true');
+      expect(span.className.split(/\s+/)).toContain('invisible');
+      expect(span.className.split(/\s+/)).toContain('font-semibold');
+      expect(span.textContent).toBe('');
+    }
+    expect(trigger.textContent).toBe('×');
 
     // Armed: the visible label counts Wait 3, 2, 1, then reads 'Remove', on the
     // error-subtle treatment.
     fireEvent.click(trigger);
     const gated = screen.getByRole('button', { name: 'Remove Catan, wait 3 seconds' });
-    expect(gated).toHaveTextContent('Wait (3)');
+    expect(gated.textContent).toBe('Wait (3)');
     expect(gated.className).toContain('bg-status-error-subtle');
     passGate();
     const armed = screen.getByRole('button', { name: 'Remove' });
+    expect(armed.textContent).toBe('Remove');
     expect(armed.className).toContain('bg-status-error-subtle');
   });
 
@@ -2284,6 +2297,8 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
 
   // D-03's floor for this file, held as an ENUMERATION rather than a count: the five 600s that
   // survive are named, so a sixth is a decision and not a rebase.
+  // AMENDED Phase 88.9-67 (X69 width): the fifth 600 is no longer a sizer span's className; it is
+  // the collection x's reserveClassName on ReservedLabel, the same measurement in the shared reserve.
   it('leaves exactly five 600 weights, all of them armed-state or the armed-label sizer', async () => {
     const source = await pageSource();
     const stripped = source
@@ -2296,7 +2311,7 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
     // Each survivor sits within reach of the thing that justifies it.
     const windows = sites.map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60));
     const armed = windows.filter((w) => /isArmed|removeArmed/.test(w));
-    const sizer = windows.filter((w) => /aria-hidden="true"[^>]*invisible/.test(w));
+    const sizer = windows.filter((w) => /<ReservedLabel[^>]*reserveClassName="font-semibold/.test(w));
     expect(armed.length + sizer.length).toBe(5);
     expect(sizer).toHaveLength(1);
   });

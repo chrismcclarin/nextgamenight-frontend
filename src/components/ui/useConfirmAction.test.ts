@@ -12,6 +12,8 @@
 //      then commits, and never auto-closes.
 //   4. The typed tier carries no countdown.
 //   5. Unmounting mid-countdown leaves no timer behind.
+//   6. reserveFor hands a caller the strings whose width its label must hold (X69 width,
+//      88.9-67): the three countdown labels and the armed label, as strings, never markup.
 // The numbers are imported from src/components/ui/confirmDelay.ts ("export const CONFIRM_DELAY_MS = 3000;"),
 // never written here as literals.
 import * as React from 'react';
@@ -248,6 +250,38 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     advance(CONFIRM_DELAY_MS);
     expect(bare).toHaveTextContent('Remove');
     expect(bare).not.toHaveAttribute('aria-label');
+  });
+
+  it('X69 (88.9): reserveFor returns the three countdown labels and the armed label while armed, or at rest when asked, and nothing otherwise', () => {
+    renderHost('two-tap');
+    const trigger = screen.getByTestId('trigger');
+    const HELD = ['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again to confirm'];
+
+    // At rest: nothing, unless the caller asks for the reserve at rest (the Profile collection x,
+    // whose arming must not reflow the title beside it).
+    expect(current().reserveFor('sam')).toEqual([]);
+    expect(current().reserveFor('sam', { atRest: true })).toEqual(HELD);
+
+    // Armed: through the gate and the live window, for the armed target only.
+    fireEvent.click(trigger);
+    expect(current().reserveFor('sam')).toEqual(HELD);
+    expect(current().reserveFor('alex')).toEqual([]);
+    advance(CONFIRM_DELAY_MS);
+    expect(current().reserveFor('sam')).toEqual(HELD);
+    advance(CONFIRM_LIVE_MS);
+    expect(current().reserveFor('sam')).toEqual([]);
+
+    // Strings, never markup (the hook's No markup contract).
+    expect(current().reserveFor('sam', { atRest: true }).every((entry) => typeof entry === 'string')).toBe(true);
+
+    // The dialog and typed tiers render no row label, so they reserve nothing here; the dialog
+    // tier's confirm reserves inside ConfirmDialog.
+    cleanup();
+    renderHost('dialog');
+    expect(current().reserveFor('sam', { atRest: true })).toEqual([]);
+    cleanup();
+    renderHost('typed');
+    expect(current().reserveFor('sam', { atRest: true })).toEqual([]);
   });
 
   it('F9b (88.9): unmount mid-countdown clears every timer', () => {
