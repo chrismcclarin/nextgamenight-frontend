@@ -17,6 +17,7 @@ import { injectViewerYesRsvp } from './support/viewerRsvp';
 // the afterEach fails the test naming any /api write it caught. The owned-games and brings reads
 // are answered in the browser by that hold; the viewer's RSVP is injected into two passed-through
 // reads (injectViewerYesRsvp in e2e/support/viewerRsvp.ts). Save is never pressed.
+// AMENDED Phase 88.9-69 (X62): one test presses Save, its PUT answered 500 in the browser; nothing is sent.
 //
 // DECISION Phase 88.6.2-22 (picker-entry): entry through the Bringing section's control, the
 // shipped way back in, src/app/components/BringSummary.js ("const showControl = Boolean(self?.id) && Boolean(onEditClick) && ("),
@@ -25,6 +26,10 @@ import { injectViewerYesRsvp } from './support/viewerRsvp';
 // browser, so the row and the Add games label (no brings yet) are deterministic. Save is never
 // pressed: it is a full replace of the viewer's brings. Changing this is a decision, not a
 // cleanup.
+// AMENDED Phase 88.9-69 (X62): one test presses Save, its PUT answered 500 in the browser; nothing is sent.
+// The reason above stands: the full replace never reaches the backend, because the test's own
+// route answers the PUT before the write hold sees it, and the afterEach still fails the test on
+// any other write.
 //
 // CI ONLY: the phone project needs the .auth storage state and the E2E login secrets, which
 // exist only in CI (FE-TESTING-CONVENTIONS C-14). Locators are role, name and text only.
@@ -34,6 +39,14 @@ const E2E_EVENT_DETAIL_PATH =
   process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${E2E_GROUP_ID}`;
 
 const OWNED_GAME = { id: 'e2e-bring-game-1', name: 'E2E Bring Game' };
+
+// The register sentence a 500 resolves to (src/components/ui/useFetchErrorState.ts, the internal
+// row of its message table). A fixed string, never a fixture value.
+const SAVE_FAILED_LINE = 'Something went wrong on our end. Please try again shortly.';
+
+// CI serves the backend on another origin than the app, so an answer made up in the browser needs
+// an allow-origin header or the browser blocks it and the page reads a network failure instead.
+const CORS_HEADERS = { 'access-control-allow-origin': '*' };
 
 function answerGet(url: URL): unknown {
   if (url.pathname.startsWith('/api/user-games/user/')) return [OWNED_GAME];
@@ -118,6 +131,92 @@ test.describe('Games to Bring at 375px (88.6.2-22)', () => {
 
     await row.tap();
     await expect(row, 'a tap on the game row did not check it').toHaveAttribute('aria-checked', 'true');
+
+    await dialog.getByRole('button', { name: 'Skip for now', exact: true }).tap();
+    await expect(dialog, 'Skip for now did not close the Games to Bring dialog').toHaveCount(0);
+  });
+
+  test('X62 (88.9-69): after a failed save the line sits midway between the last game row and the footer rule at 375', async ({
+    page,
+  }) => {
+    // Owner row 52-X62: "There's a gap between the games list and the warning and the warning is
+    // sitting too close to the line." Registered AFTER the write hold, so it runs BEFORE it: the
+    // brings PUT is answered 500 here, in the browser, the moment it arrives. It is never held and
+    // never sent, so nothing is left to resume when the routes are removed.
+    let puts = 0;
+    await page.route(
+      (url) => url.pathname.endsWith('/my-brings'),
+      async (route) => {
+        if (route.request().method() !== 'PUT') {
+          await route.fallback();
+          return;
+        }
+        puts += 1;
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          headers: CORS_HEADERS,
+          body: JSON.stringify({ error: 'synthetic (88.9-69 e2e)' }),
+        });
+      },
+    );
+
+    await injectViewerYesRsvp(page);
+    await page.goto(E2E_EVENT_DETAIL_PATH);
+
+    const heading = page.getByRole('heading', { name: 'Bringing', exact: true });
+    await expect(heading, 'the Bringing section never rendered').toBeVisible({ timeout: 15_000 });
+    const control = heading.locator('xpath=..').getByRole('button', { name: 'Add games', exact: true });
+    await expect(control, 'no Add games control in the Bringing section').toBeVisible();
+    await control.tap();
+
+    const dialog = page.getByRole('dialog', { name: 'Games to Bring', exact: true });
+    await expect(dialog, 'the Add games control did not open the Games to Bring dialog').toBeVisible({
+      timeout: 10_000,
+    });
+    const row = dialog.getByRole('checkbox', { name: 'E2E Bring Game', exact: true });
+    await expect(row, 'the owned game row never rendered').toBeVisible({ timeout: 10_000 });
+    await row.tap();
+    await expect(row, 'a tap on the game row did not check it').toHaveAttribute('aria-checked', 'true');
+
+    await dialog.getByRole('button', { name: 'Save', exact: true }).tap();
+
+    // The visible line: the dialog's paragraph with the register sentence (the announcement lives
+    // in a visually hidden region, which this lookup leaves out).
+    const line = dialog.locator('p:not(.sr-only)').filter({ hasText: SAVE_FAILED_LINE });
+    await expect(line, 'the failed save painted no visible line in the dialog').toHaveCount(1, {
+      timeout: 10_000,
+    });
+    expect(puts, 'the save PUT never reached the route that answers it').toBeGreaterThanOrEqual(1);
+
+    await settleAnimations(dialog);
+
+    // Every box in ONE evaluate. The line's CONTENT box (its box minus its own padding) against
+    // the bottom of the last game row and the top edge of the footer, whose top border is the rule.
+    const read = await line.evaluate((p) => {
+      const dialogRoot = p.closest('[role="dialog"]');
+      const rows = Array.from(dialogRoot?.querySelectorAll('[role="checkbox"]') ?? []);
+      const lastRow = rows[rows.length - 1];
+      const footer = p.nextElementSibling;
+      const style = getComputedStyle(p);
+      const box = p.getBoundingClientRect();
+      const contentTop = box.top + parseFloat(style.paddingTop);
+      const contentBottom = box.bottom - parseFloat(style.paddingBottom);
+      return {
+        hasRow: Boolean(lastRow),
+        hasFooter: Boolean(footer),
+        footerRule: footer ? parseFloat(getComputedStyle(footer).borderTopWidth) : 0,
+        under: lastRow ? contentTop - lastRow.getBoundingClientRect().bottom : null,
+        over: footer ? footer.getBoundingClientRect().top - contentBottom : null,
+      };
+    });
+
+    expect(read.hasRow, 'the dialog holds no game row to measure from').toBe(true);
+    expect(read.hasFooter, 'nothing follows the failed-save line, so there is no footer to measure to').toBe(true);
+    expect(read.footerRule, 'the element after the line carries no top rule').toBeGreaterThan(0);
+    const where = `line content box ${read.under}px under the last game row and ${read.over}px over the footer rule`;
+    expect(Math.abs((read.under ?? 0) - 12), `the line is not 12px under the last game row (${where})`).toBeLessThanOrEqual(1);
+    expect(Math.abs((read.over ?? 0) - 12), `the line is not 12px over the footer rule (${where})`).toBeLessThanOrEqual(1);
 
     await dialog.getByRole('button', { name: 'Skip for now', exact: true }).tap();
     await expect(dialog, 'Skip for now did not close the Games to Bring dialog').toHaveCount(0);
