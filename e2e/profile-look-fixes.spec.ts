@@ -87,23 +87,36 @@ interface XRead {
   spinner: Box | null;
 }
 
-// Every box of one x, read in ONE evaluate so they belong to one layout.
+// Every box of one x, read in ONE evaluate so they belong to one layout. Every edge is measured
+// from the game card's own top left corner, never from the viewport: focusing the x scrolls it
+// into view, so two reads of one unmoved title differ by the scroll when read from the viewport
+// (runs 43798941226 and 43798948160: the title's top read 2813.5 at rest and 337.5 armed, with
+// its left and right edges unchanged).
 function readX(remove: Locator): Promise<XRead> {
   return remove.evaluate((el) => {
+    const cardEl = el.parentElement?.closest('div.border') ?? null;
+    const origin = cardEl ? cardEl.getBoundingClientRect() : { left: 0, top: 0 };
     const rect = (node: Element) => {
       const r = node.getBoundingClientRect();
-      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      return {
+        left: r.left - origin.left,
+        top: r.top - origin.top,
+        right: r.right - origin.left,
+        bottom: r.bottom - origin.top,
+        width: r.width,
+        height: r.height,
+      };
     };
     const boxEl = el.firstElementChild as HTMLElement | null;
     const iconEl = boxEl?.querySelector('svg') ?? null;
     const slotEl = el.closest('span.inline-grid');
-    const titleEl = el.parentElement?.closest('div.border')?.querySelector('h3') ?? null;
+    const titleEl = cardEl?.querySelector('h3') ?? null;
     const spinEl = el.querySelector<HTMLElement>('[data-slot="spinner"]');
     let spinner = null;
     if (spinEl) {
       const r = spinEl.getBoundingClientRect();
-      const cx = (r.left + r.right) / 2;
-      const cy = (r.top + r.bottom) / 2;
+      const cx = (r.left + r.right) / 2 - origin.left;
+      const cy = (r.top + r.bottom) / 2 - origin.top;
       const w = spinEl.offsetWidth;
       const h = spinEl.offsetHeight;
       spinner = { left: cx - w / 2, top: cy - h / 2, right: cx + w / 2, bottom: cy + h / 2, width: w, height: h };
