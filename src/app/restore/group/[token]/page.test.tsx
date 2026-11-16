@@ -66,6 +66,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import RestoreGroupPage from './page';
 import { groupsAPI, ApiError } from '@/lib/api';
+import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -140,7 +141,11 @@ function renderPage(strict = false) {
 // Plan 88.6.1-36: the page's slot-0 status region repeats on-screen text by design, so a text
 // query aimed at what a sighted user sees must skip it; the region's own text is asserted through
 // its test id.
-const VISIBLE_ONLY = { ignore: 'script, style, [data-testid="restore-page-status"]' };
+// AMENDED Phase 88.9-69 (X35): the first-load loading view hosts a second visually hidden region
+// that takes the loading words after a short dwell; it is skipped here the same way.
+const VISIBLE_ONLY = {
+  ignore: 'script, style, [data-testid="restore-page-status"], [data-testid="restore-loading-status"]',
+};
 
 /** The three strings SPEC-REQ-7 forbids anywhere in the group-delete flow. */
 const FORBIDDEN = ['cannot be undone', 'permanently remove', 'permanently delete'];
@@ -276,7 +281,8 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     // spinner is the half that would have stayed green without this line.
     // Plan 88.6.1-36: narrowed to the loading spinner by its name. The page now carries an
     // always-mounted slot-0 status region, so a bare role query would find that region instead.
-    expect(screen.queryByRole('status', { name: 'Checking your restore link...' })).toBeNull();
+    // AMENDED Phase 88.9-69 (X35): the spinner has no name now; absence is read on the loading line.
+    expect(screen.queryByText('Checking your restore link...')).toBeNull();
     expect(accept()).not.toHaveBeenCalled();
   });
 
@@ -821,12 +827,18 @@ describe('restore/group/[token] — R112, D-24 and L2 (plan 88.6.1-36)', () => {
     });
   }, 10000);
 
-  it('L1 (L2). the loading line names what is loading, and the spinner carries the same name', async () => {
+  it('L1 (L2). the loading line names what is loading, and the spinner is hidden from the accessibility tree', async () => {
     getPreview().mockImplementation(() => new Promise(() => {}));
-    renderPage();
+    const { container } = renderPage();
 
-    expect(await screen.findByText('Checking your restore link...')).toBeInTheDocument();
-    expect(screen.getByRole('status', { name: 'Checking your restore link...' })).toBeInTheDocument();
+    expect(await screen.findByText('Checking your restore link...', VISIBLE_ONLY)).toBeInTheDocument();
+    // AMENDED Phase 88.9-69 (X35): the spinner is decoration now (no role, no name); the words are
+    // spoken by the first-load region the X35 test below pins.
+    const spinner = container.querySelector('.animate-spin');
+    expect(spinner, 'the loading view draws no spinner').not.toBeNull();
+    expect(spinner).toHaveAttribute('aria-hidden', 'true');
+    expect(spinner).not.toHaveAttribute('role');
+    expect(spinner).not.toHaveAttribute('aria-label');
     expect(screen.queryByText('Loading...')).toBeNull();
   });
 });
@@ -835,6 +847,8 @@ describe('restore/group/[token] — R112, D-24 and L2 (plan 88.6.1-36)', () => {
 // describe passes VISIBLE_ONLY; the region is read only through its test id (re-declared here:
 // a page module cannot export it).
 const PAGE_STATUS_TESTID = 'restore-page-status';
+// Plan 88.9-69 (X35): the first-load loading region's handle, re-declared for the same reason.
+const LOADING_STATUS_TESTID = 'restore-loading-status';
 const CHECKING = 'Checking your restore link...';
 
 describe('restore/group/[token] — slot-0 region and outcome focus (plan 88.6.1-36)', () => {
@@ -1068,6 +1082,55 @@ describe('restore/group/[token] — slot-0 region and outcome focus (plan 88.6.1
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: GROUP_NAME }))
     );
+  });
+
+  it('X35 (88.9-69): on first load the loading words arrive in a region that mounts empty and fills after the dwell; the spinner is hidden; after a preview Try again that region stays empty while the focused line speaks', async () => {
+    // 52-X35 (once-over R13), routed here by 88.9-66 hand-off (c). On FIRST load nothing was
+    // pressed and nothing takes focus, so the words need a live region, and a region that mounts
+    // already holding them is not announced. After a Try again the in-flight line takes focus and
+    // focus speaks it, so the region must then stay empty or VoiceOver would say the line twice.
+    let rejectFirst: (e: unknown) => void = () => {};
+    // An implementation with a counter, not a once-queue: an unconsumed once value survives
+    // vi.clearAllMocks, so a red run of this test would hand its held promise to the next test.
+    let previews = 0;
+    getPreview().mockImplementation(() => {
+      previews += 1;
+      return previews === 1
+        ? new Promise((_resolve, reject) => {
+            rejectFirst = reject;
+          })
+        : new Promise(() => {});
+    });
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    await screen.findByText(CHECKING, VISIBLE_ONLY);
+    const firstLoad = screen.getByTestId(LOADING_STATUS_TESTID);
+    expect(firstLoad).toHaveAttribute('role', 'status');
+    expect(firstLoad).toHaveAttribute('aria-live', 'polite');
+    expect(firstLoad).toHaveClass('sr-only');
+    expect(firstLoad.textContent, 'the first-load region mounted already holding its words').toBe('');
+    expect(screen.getByTestId(PAGE_STATUS_TESTID).textContent).toBe('');
+    expect(container.querySelector('.animate-spin')).toHaveAttribute('aria-hidden', 'true');
+    // The same node takes the words once the dwell has passed.
+    await waitFor(() => expect(firstLoad.textContent).toBe(CHECKING));
+    expect(screen.getByTestId(LOADING_STATUS_TESTID)).toBe(firstLoad);
+
+    // The preview fails; Try again brings the loading view back with the line focused.
+    await act(async () => {
+      rejectFirst(new ApiError('down', 'network', 0));
+    });
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    const line = await screen.findByText(CHECKING, VISIBLE_ONLY);
+    await waitFor(() => expect(document.activeElement).toBe(line));
+    const afterRetry = screen.getByTestId(LOADING_STATUS_TESTID);
+    expect(afterRetry.textContent).toBe('');
+    // Well past the dwell it is still empty: one voice, the focused line.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, REGION_EMPTY_DWELL_MS * 3));
+    });
+    expect(screen.getByTestId(LOADING_STATUS_TESTID).textContent).toBe('');
+    expect(document.activeElement).toBe(line);
   });
 
   it('F4 (pin). the first load moves nothing', async () => {

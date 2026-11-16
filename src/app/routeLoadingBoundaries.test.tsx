@@ -20,8 +20,10 @@
 // role, 16px secondary label, reduced-motion-exempt spinner, page ground) stays
 // pinned in RouteFallback.test.tsx; this file only proves the fleet wires it.
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { render, screen, cleanup, act } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 
 // Vite resolves the glob at transform time from the real tree — the population
 // is source-derived, never a hand-list that drifts (the 17-defective-gates
@@ -44,19 +46,31 @@ describe('route loading.tsx fleet — every boundary renders the shared RouteFal
 
   for (const [path, mod] of Object.entries(boundaries)) {
     it(`${path} renders an announced RouteFallback (AR R1-M18 — never silent)`, () => {
-      render(React.createElement(mod.default));
-      // Announced live region with a real, human accessible name…
-      const region = screen.getByRole('status');
-      const name = region.getAttribute('aria-label') ?? '';
-      expect(
-        name.length,
-        `${path}'s status region has no accessible name — a silent boundary reads as a hang to a screen reader`,
-      ).toBeGreaterThan(3);
-      // …and the shared primitive's spinner, not bespoke markup: the arc is the
-      // aria-hidden animate-spin element RouteFallback renders beside the label.
-      const spinner = region.querySelector('[aria-hidden="true"]');
-      expect(spinner, `${path} rendered no spinner element — is it still on RouteFallback?`).not.toBeNull();
-      expect(spinner!).toHaveClass('animate-spin');
+      // AMENDED Phase 88.9-69 (X35): the boundary is announced by a region that mounts EMPTY and
+      // takes a real, human label after the dwell (a status that arrives already holding its
+      // words is not spoken), so the label is read as the region's text after the dwell and no
+      // longer as an attribute of the root.
+      vi.useFakeTimers();
+      try {
+        const { container } = render(React.createElement(mod.default));
+        const region = screen.getByRole('status');
+        expect(region.textContent, `${path}'s status region mounted already holding its words`).toBe('');
+        act(() => {
+          vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+        });
+        expect(
+          (region.textContent ?? '').length,
+          `${path}'s status region says nothing after the dwell — a silent boundary reads as a hang to a screen reader`,
+        ).toBeGreaterThan(3);
+        // …and the shared primitive's spinner, not bespoke markup: the arc is the
+        // aria-hidden animate-spin element RouteFallback renders under its root, beside the label.
+        const root = container.firstElementChild;
+        const spinner = root?.querySelector('[aria-hidden="true"]') ?? null;
+        expect(spinner, `${path} rendered no spinner element — is it still on RouteFallback?`).not.toBeNull();
+        expect(spinner!).toHaveClass('animate-spin');
+      } finally {
+        vi.useRealTimers();
+      }
     });
   }
 });

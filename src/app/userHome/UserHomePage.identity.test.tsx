@@ -156,8 +156,13 @@ describe('M2 — Upcoming Events while identity is still resolving', () => {
     h.isError = false;
     renderHome();
 
-    expect(await screen.findByRole('status', { name: /loading your upcoming events/i }))
-      .toBeInTheDocument();
+    // AMENDED Phase 88.9-69 (X35): the visible line is plain text, and the words are spoken by a
+    // status region beside it that mounts empty and takes them (without the dots) after a short
+    // dwell. Before that plan the status was the line itself, named by an attribute, so no node
+    // held the dot-less words as text.
+    expect(await screen.findByText('Loading your upcoming events...')).toBeInTheDocument();
+    const spoken = await screen.findByText('Loading your upcoming events');
+    expect(spoken.closest('[role="status"]'), 'the spoken loading words sit in no status region').not.toBeNull();
   });
 
   it('still degrades to the ML-17 banner on TERMINAL identity failure', async () => {

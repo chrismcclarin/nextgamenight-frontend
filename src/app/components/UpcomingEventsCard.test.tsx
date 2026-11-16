@@ -157,11 +157,44 @@ describe('UpcomingEventsCard — branch precedence (DECISION Phase 88-18)', () =
     expect(screen.queryByText(/Nothing scheduled in the next 7 days/)).not.toBeInTheDocument();
   });
 
+  it('X35 (88.9-69): the card\'s loading words arrive in a polite region that mounts empty and says Loading your upcoming events after the dwell; the visible line carries no role', () => {
+    // 88.9-69 (52-X35, once-over R13; routed here by 88.9-65 hand-off a and 88.9-66 hand-off c).
+    // A status that MOUNTS already holding its words is not announced: a screen reader speaks a
+    // change to a live region, not its arrival. So the visible line is a plain paragraph and the
+    // words are spoken by a visually hidden region beside it that starts empty.
+    vi.useFakeTimers();
+    try {
+      renderCard({ events: [], loading: true });
+
+      const line = screen.getByText('Loading your upcoming events...');
+      expect(line.tagName).toBe('P');
+      expect(line, 'the visible loading line is still a status').not.toHaveAttribute('role');
+      expect(line).not.toHaveAttribute('aria-label');
+
+      const regions = screen.getAllByRole('status');
+      expect(regions).toHaveLength(1);
+      const region = regions[0];
+      expect(region).not.toBe(line);
+      expect(region).toHaveAttribute('aria-live', 'polite');
+      expect(region).toHaveClass('sr-only');
+      expect(region.textContent, 'the region mounted already holding its words').toBe('');
+
+      act(() => {
+        vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+      });
+      expect(screen.getByRole('status')).toBe(region);
+      expect(region.textContent).toBe('Loading your upcoming events');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the loading branch ahead of the error branch', () => {
     renderCard({ events: [], errorState, loading: true });
 
-    const status = screen.getByRole('status', { name: /loading your upcoming events/i });
-    expect(within(status).getByText(/Loading your upcoming events/)).toBeInTheDocument();
+    // AMENDED Phase 88.9-69 (X35): the loading line is read by its text; it is no longer a named
+    // status (the X35 test above owns the region).
+    expect(screen.getByText('Loading your upcoming events...')).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load your upcoming events")).not.toBeInTheDocument();
     expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
   });

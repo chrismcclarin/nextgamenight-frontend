@@ -8,18 +8,41 @@
 // reads as a hung app), and no skeleton content creeps in (D-21 — Phase 89 owns
 // skeletons).
 import * as React from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { render, screen, cleanup, act } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { RouteFallback } from './RouteFallback';
+import { REGION_EMPTY_DWELL_MS } from './StatusRegion';
 
 afterEach(cleanup);
 
 describe('RouteFallback', () => {
-  it('is an announced live region with an accessible name (AR R1-M18)', () => {
-    render(<RouteFallback label="Getting your groups..." />);
-    const region = screen.getByRole('status', { name: 'Getting your groups...' });
-    expect(region).toBeInTheDocument();
+  it('X35 (88.9-69) + AR R1-M18: the route loading words arrive in a region that mounts empty and says the label after the dwell; the root carries no status role', () => {
+    // AR R1-M18 stands: a route loading state is announced, never silent. What changed in 88.9-69
+    // is HOW. A labelled status that mounts with the page is not announced (a screen reader speaks
+    // a change to a live region, not its arrival), so the root is a plain box and the label is
+    // spoken by a visually hidden region inside it that starts empty.
+    vi.useFakeTimers();
+    try {
+      const { container } = render(<RouteFallback label="Getting your groups..." />);
+      const root = container.firstElementChild as HTMLElement;
+      expect(root, 'the root is still a status region').not.toHaveAttribute('role');
+      expect(root).not.toHaveAttribute('aria-label');
+
+      const region = screen.getByRole('status');
+      expect(root.contains(region)).toBe(true);
+      expect(region).toHaveAttribute('aria-live', 'polite');
+      expect(region).toHaveClass('sr-only');
+      expect(region.textContent, 'the region mounted already holding the label').toBe('');
+
+      act(() => {
+        vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+      });
+      expect(screen.getByRole('status')).toBe(region);
+      expect(region.textContent).toBe('Getting your groups...');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('renders the label visibly at 16px secondary', () => {

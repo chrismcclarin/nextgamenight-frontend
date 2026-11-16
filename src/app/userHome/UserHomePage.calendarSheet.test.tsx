@@ -1546,7 +1546,7 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     expect(fn, 'the refresh started (vacuity guard)').toHaveBeenCalledTimes(2);
     expect(row.isConnected).toBe(true);
     expect(within(card()).getByRole('button', { name: /Catan/ })).toBe(row);
-    expect(screen.queryByRole('status', { name: /Loading your upcoming events/i })).toBeNull();
+    expect(screen.queryByText('Loading your upcoming events...')).toBeNull();
     expect(row.parentElement).toHaveAttribute('aria-busy', 'true');
     expect(calendarButton()).toHaveAccessibleName('Calendar, 2 upcoming games this week');
   });
@@ -1590,7 +1590,7 @@ describe('the upcoming list refreshes in place (88.6.1-62, D-09a / D-37 / D-41, 
     expect(tryAgain).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(tryAgain);
     expect(within(card()).queryByText('Nothing on the calendar')).toBeNull();
-    expect(screen.queryByRole('status', { name: /Loading your upcoming events/i })).toBeNull();
+    expect(screen.queryByText('Loading your upcoming events...')).toBeNull();
     expect(within(card()).queryAllByText(RF1)).toHaveLength(0);
   });
 
