@@ -6,6 +6,7 @@ import { ApiError, rsvpPublicAPI } from '@/lib/api';
 import { logger, errCtx } from '@/lib/logger';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
+import { Icon } from '@/components/ui/Icon';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 
 /**
@@ -115,24 +116,18 @@ const STATUS_CONFIG = {
   yes: {
     heading: "You're in!",
     messageTemplate: (name, date) => `See you at ${name} on ${date}.`,
-    accent: 'bg-status-success-subtle text-content-status-success',
-    border: 'border-status-success',
     iconBg: 'bg-status-success-subtle',
     iconColor: 'text-content-status-success',
   },
   maybe: {
     heading: 'Got it!',
     messageTemplate: (name, date) => `You're a maybe for ${name} on ${date}.`,
-    accent: 'bg-status-warning-subtle text-content-status-warning',
-    border: 'border-status-warning',
     iconBg: 'bg-status-warning-subtle',
     iconColor: 'text-content-status-warning',
   },
   no: {
     heading: 'Got it!',
     messageTemplate: (name, date) => `We'll miss you at ${name} on ${date}.`,
-    accent: 'bg-surface-elevated text-content-secondary',
-    border: 'border-line',
     iconBg: 'bg-surface-elevated',
     iconColor: 'text-content-muted',
   },
@@ -373,8 +368,9 @@ export default function RsvpPage() {
 
   /* The SUCCESS branch's display config, hoisted above the branch dispatch so the live
      announcement below can compose the heading and message this page already renders. The
-     `|| STATUS_CONFIG.yes` fallback is the shipped one, moved verbatim — `borderExplicitness`
-     relies on it for the card's `border-t-4` colour. */
+     `|| STATUS_CONFIG.yes` fallback is the shipped one, moved verbatim. Since plan 88.9-69 (X59b)
+     no border reads this config: the card's coloured top line is gone and the page has left the
+     border-explicitness exemption list. */
   const successConfig = responseData
     ? STATUS_CONFIG[responseData.status] || STATUS_CONFIG.yes
     : null;
@@ -437,7 +433,10 @@ export default function RsvpPage() {
 
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
-        <div className={`max-w-md w-full bg-surface-card rounded-card shadow-theme-lg overflow-hidden border-t-4 ${config.border}`}>
+        {/* DECISION Phase 88.9-69 (X59b, owner pick Ta): no coloured line on the card top, chosen
+            OVER the shipped stripe (it repeated icon and heading). Pick page 10b, 2026-11-14; the
+            status config's line colour and its unread accent pair left with it. */}
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg overflow-hidden">
           <div className="p-8 text-center">
             {/* Icon — r2 #180: all three status glyphs are decorative duplicates of the heading
                 beside them and carry `aria-hidden="true" focusable="false"`, the live house idiom
@@ -484,10 +483,23 @@ export default function RsvpPage() {
             <div className="border-t border-line pt-4">
               {/* O06c (88.9-43): the way to the event this page confirms — a centred row above the
                   close-this-tab line, primary. */}
-              {eventHref && (
-                <div className="flex justify-center mb-3">
+              {/* DECISION Phase 88.9-69 (X13-5, owner at N35): Go to Home, the page's own label,
+                  under Go to the event, chosen OVER the event link alone and OVER side by side
+                  (279px at 375). The same pair, in the same order and variants, as the used-link
+                  card below; with no event in the link Go to Home stands alone as the primary. */}
+              {eventHref ? (
+                <div className="flex flex-col items-center mb-3">
                   <Button asChild variant="primary" size="default">
                     <a href={eventHref}>Go to the event</a>
+                  </Button>
+                  <Button asChild variant="secondary" size="default" className="mt-3">
+                    <a href="/">Go to Home</a>
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex justify-center mb-3">
+                  <Button asChild variant="primary" size="default">
+                    <a href="/">Go to Home</a>
                   </Button>
                 </div>
               )}
@@ -562,9 +574,18 @@ export default function RsvpPage() {
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
           <div className="w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4">
             {/* Decorative — see the success branch. */}
-            <svg className="w-8 h-8 text-content-status-warning" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            {/* DECISION Phase 88.9-69 (X59a, owner pick Ga): link-2-off on the used-link card,
+                chosen OVER the clock and Gb's tick; EXPIRED_LINK only (P-77 rules the cancelled
+                clock); Icon OVER copied path data. 5.50 / 4.95. Those two numbers are the glyph
+                ink on the warning circle, light then dark; the account and cancelled-night cards
+                keep the clock below byte for byte. */}
+            {pageState === PAGE_STATES.EXPIRED_LINK ? (
+              <Icon name="Link2Off" size={32} strokeWidth={2} className="w-8 h-8 text-content-status-warning" />
+            ) : (
+              <svg className="w-8 h-8 text-content-status-warning" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
           </div>
           <Heading level={1} size="heading" className="text-content-primary mb-2">
             {copy.headline}
