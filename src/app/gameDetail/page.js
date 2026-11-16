@@ -39,6 +39,7 @@ import {
     isAccessOrGoneError,
 } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
+import { ReservedLabel } from '../../components/ui/ReservedLabel';
 import { Heading } from '../../components/ui/Heading';
 import { Input, Textarea, SelectControl } from '../../components/ui/Input';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -3435,7 +3436,12 @@ export default function GameDetailPage() {
                                                         : 'border-status-error text-content-status-error enabled-hover:bg-status-error-subtle'
                                                 }`}
                                             >
-                                                {removeParticipantGate.labelFor(p.user_id, 'Remove')}
+                                                {/* X69 width (88.9-67): from the arm the label holds the widest of
+                                                    Wait (3), (2), (1) and Tap again to confirm; at rest nothing
+                                                    is reserved. */}
+                                                <ReservedLabel reserve={removeParticipantGate.reserveFor(p.user_id)}>
+                                                    {removeParticipantGate.labelFor(p.user_id, 'Remove')}
+                                                </ReservedLabel>
                                             </Button>
                                         )}
                                     </div>

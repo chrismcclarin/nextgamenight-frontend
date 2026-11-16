@@ -41,8 +41,9 @@ import * as React from 'react';
 
 import { Modal } from '@/app/components/Modal';
 import { Button } from '@/components/ui/Button';
-import { countdownLabel, countdownName, useConfirmCountdown } from '@/components/ui/confirmDelay';
+import { COUNTDOWN_LABELS, countdownLabel, countdownName, useConfirmCountdown } from '@/components/ui/confirmDelay';
 import { Input } from '@/components/ui/Input';
+import { ReservedLabel } from '@/components/ui/ReservedLabel';
 import { cn } from '@/lib/cn';
 import type { ConfirmTier } from '@/components/ui/useConfirmAction';
 
@@ -121,6 +122,9 @@ export interface ConfirmDialogProps {
    * AMENDED Phase 88.9-67 (X69, owner 2026-11-14): the gated confirm reads Wait (3), (2), (1) and
    * is named `<confirmLabel>, wait n seconds`, then reads `confirmLabel` with no name override,
    * chosen OVER the shipped `<confirmLabel> (n)` (pressing it did nothing and it read as the action).
+   * AMENDED Phase 88.9-67 (X69 width): a gated confirm holds the widest of Wait (3), (2), (1) and
+   * `confirmLabel` through the shared label reserve, so it keeps one width at the live edge; with
+   * this prop false the confirm renders the bare label, as before.
    */
   confirmDelay?: boolean;
   /** `typed` tier: the phrase that must be entered exactly. */
@@ -351,7 +355,13 @@ export function ConfirmDialog({
             busy={pending && busySuffix !== undefined}
             busySuffix={busySuffix}
           >
-            {gated ? countdownLabel(secondsLeft) : confirmLabel}
+            {confirmDelay ? (
+              <ReservedLabel reserve={[...COUNTDOWN_LABELS, confirmLabel]}>
+                {gated ? countdownLabel(secondsLeft) : confirmLabel}
+              </ReservedLabel>
+            ) : (
+              confirmLabel
+            )}
           </Button>
         ) : null}
       </Modal.Footer>

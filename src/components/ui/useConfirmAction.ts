@@ -24,6 +24,7 @@
  * - **No markup.** The one exception is `statusNode` (see below), which exists
  *   because a consumer obligation to hand-render a live region would defeat the
  *   one-word-tier-switch guarantee. Everything visible is `ConfirmDialog`'s.
+ *   `reserveFor` (88.9-67) hands back STRINGS for the caller's own label wrapper; it is not markup.
  * - **No typed-tier input state.** The type-to-confirm value lives in
  *   `ConfirmDialog` and is passed IN to `confirmDisabled`/`confirm`. If it lived
  *   here, every keystroke would re-render the host page (the adopter surfaces
@@ -45,6 +46,7 @@ import * as React from 'react';
 import {
   CONFIRM_DELAY_MS,
   CONFIRM_LIVE_MS,
+  COUNTDOWN_LABELS,
   countdownLabel,
   countdownName,
   useConfirmCountdown,
@@ -192,6 +194,13 @@ export interface ConfirmActionState {
   isArmed: (targetId?: string) => boolean;
   /** `two-tap`: the label to RENDER for this target. */
   labelFor: (targetId: string | undefined, restingLabel: string) => string;
+  /**
+   * `two-tap` (X69 width, 88.9-67): the strings whose width this target's label must hold, the
+   * three countdown labels and the armed label, while the target is armed; with `atRest` also at
+   * rest (a control whose arming must not reflow its neighbour). An empty list otherwise and in
+   * the other tiers. Strings, not markup: the caller hands them to `ReservedLabel`.
+   */
+  reserveFor: (targetId?: string, options?: { atRest?: boolean }) => readonly string[];
   /** `two-tap`: props for this target's row trigger. */
   triggerProps: (
     targetId?: string,
@@ -201,6 +210,9 @@ export interface ConfirmActionState {
   /** Spread onto `<ConfirmDialog>`. */
   dialogProps: ConfirmDialogState;
 }
+
+/** The empty reserve, one identity for every call that reserves nothing. */
+const NO_RESERVE: readonly string[] = Object.freeze([]);
 
 function defaultAnnouncement(
   targetLabel: string | undefined,
@@ -471,6 +483,20 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     [isArmed, armedText]
   );
 
+  // X69 width (88.9-67): every label an armed control can paint. The countdown labels differ in
+  // width (proportional digits), so all three are held, with the label that follows them.
+  const reserveLabels = React.useMemo<readonly string[]>(
+    () => [...COUNTDOWN_LABELS, armedLabel],
+    [armedLabel]
+  );
+  const reserveFor = React.useCallback(
+    (targetId?: string, options?: { atRest?: boolean }): readonly string[] =>
+      tier === 'two-tap' && (options?.atRest === true || isArmed(targetId))
+        ? reserveLabels
+        : NO_RESERVE,
+    [tier, isArmed, reserveLabels]
+  );
+
   const triggerProps = React.useCallback(
     (
       targetId?: string,
@@ -565,6 +591,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     matchesPhrase,
     isArmed,
     labelFor,
+    reserveFor,
     triggerProps,
     dialogProps,
   };

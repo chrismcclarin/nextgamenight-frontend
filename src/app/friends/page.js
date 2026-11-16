@@ -38,6 +38,7 @@ import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
+import { ReservedLabel } from '../../components/ui/ReservedLabel';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '../../lib/logger';
@@ -1542,7 +1543,12 @@ function FriendsPage() {
                                                                             : 'border-transparent'
                                                                     }`}
                                                                 >
-                                                                    {removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                                    {/* X69 width (88.9-67): from the arm the label holds the widest of
+                                                                        Wait (3), (2), (1) and Tap again to confirm, so the row does not
+                                                                        move when the wait ends; at rest nothing is reserved. */}
+                                                                    <ReservedLabel reserve={removeFriendGate.reserveFor(friendship.id)}>
+                                                                        {removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                                    </ReservedLabel>
                                                                     {/* Raw host (not Button, not flex): the house spinner with
                                                                         the same ml-2 spacing plan 88.9-45 gives AvailabilityForm's
                                                                         raw buttons; the suffix rides the aria-label above.

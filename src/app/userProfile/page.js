@@ -51,6 +51,7 @@ import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { Button } from '../../components/ui/Button';
+import { ReservedLabel } from '../../components/ui/ReservedLabel';
 import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { focusElement, focusPageFloor } from '../../components/ui/focusPageFloor';
@@ -3869,7 +3870,10 @@ function Profile(){
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
-                                                            {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                            {/* X69 width (88.9-67): held from the arm, nothing at rest. */}
+                                                            <ReservedLabel reserve={deletePatternGate.reserveFor(pattern.id)}>
+                                                                {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                            </ReservedLabel>
                                                         </button>
                                                     );
                                                 })()}
@@ -4028,7 +4032,10 @@ function Profile(){
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
-                                                            {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                            {/* X69 width (88.9-67): held from the arm, nothing at rest. */}
+                                                            <ReservedLabel reserve={deletePatternGate.reserveFor(pattern.id)}>
+                                                                {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                            </ReservedLabel>
                                                         </button>
                                                     );
                                                 })()}
@@ -4481,14 +4488,16 @@ function Profile(){
                                                 therefore carried in WEIGHT_ROSTER instead, which is why
                                                 that entry floors at FIVE and not at the armed roster's
                                                 four. Converting it is a decision, not a cleanup.
+                                                AMENDED Phase 88.9-67 (X69 width): the measurement lives in ReservedLabel's reserve (Wait (3), (2), (1), Remove), still 600 through reserveClassName.
                                                 AMENDED Phase 88.9-23 (F9b): the sizer reserves the countdown label, the widest armed state.
-                                                AMENDED Phase 88.9-67 (X69): the sizer reserves Remove, wider than Wait (n), until Task 2's shared reserve. */}
-                                            <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
-                                                Remove
-                                            </span>
-                                            <span className="col-start-1 row-start-1">
+                                                AMENDED Phase 88.9-67 (X69): the sizer reserves Remove, wider than Wait (n), until Task 2's shared reserve.
+                                                AMENDED Phase 88.9-67 (X69 width): the x reserves through ReservedLabel. */}
+                                            <ReservedLabel
+                                                reserve={removeGameGate.reserveFor(game.id, { atRest: true })}
+                                                reserveClassName="font-semibold"
+                                            >
                                                 {removeGameGate.labelFor(game.id, '×')}
-                                            </span>
+                                            </ReservedLabel>
                                         </button>
                                     </div>
                                     <SafeImage

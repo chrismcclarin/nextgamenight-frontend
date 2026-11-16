@@ -210,7 +210,9 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // RE-CHECKED by plan 88.9-46 (Task 2, 2026-11-10): 266 holds. The P1 / P7 constants named in the two notes above were renamed in place (VERIFY_CODE_BUSY_SUFFIX / ADDING_TO_COLLECTION_BUSY_SUFFIX, rule 1), one line for one line; nothing above the pin moved.
     // RE-DERIVED by plan 88.9-66 (Task 3, 2026-11-15): 266 -> 267. One import line above it, the
     // shared CentredPageFrame (X70a: the two page-replacing banners sit in it).
-    declaredAt: 267,
+    // RE-DERIVED by plan 88.9-67 (Task 2, 2026-11-15): 267 -> 268. One import line above it, the
+    // shared ReservedLabel (X69 width: the gated labels on this page hold one width).
+    declaredAt: 268,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +
