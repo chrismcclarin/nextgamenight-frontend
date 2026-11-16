@@ -345,9 +345,17 @@ test.describe('RSVP and restore token pages — failure states at phone width (8
     await page.goto('/restore/group/' + '0123456789abcdef'.repeat(4));
 
     // Call 1 held: the loading view.
-    const loading = page.getByText(CHECKING_LINK, { exact: true });
+    // AMENDED Phase 88.9-69 (X35): on first load the loading words are also spoken by a visually
+    // hidden region that mounts empty and takes them after a short dwell, so the visible line is
+    // looked up as the paragraph (the region is not one), and the spoken half is read as a status
+    // region HOLDING the words. The spinner no longer carries a name, so a lookup by name would
+    // find nothing on a correct build.
+    const loading = page.locator('p').filter({ hasText: CHECKING_LINK });
     await expect(loading).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('status', { name: CHECKING_LINK })).toHaveCount(1);
+    await expect(
+      page.getByRole('status').filter({ hasText: CHECKING_LINK }),
+      'no status region holds the loading words on first load',
+    ).toHaveCount(1);
     await expectInsideViewport(page, loading);
     await expectNoHorizontalScroll(page);
 

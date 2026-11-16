@@ -116,8 +116,14 @@ test.describe('Home — the loading line names what is loading (copy row H3)', (
     expect(viewport, 'no viewport size').not.toBeNull();
     expect(box!.x).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
-    // Home's own line, not the route boundary's RouteFallback (a named role="status").
-    await expect(page.getByRole('status', { name: HOME_LOADING_LABEL })).toHaveCount(0);
+    // Home's own line, not the route boundary's RouteFallback. RouteFallback speaks through an
+    // unnamed settle region since 88.9-69: its region mounts empty and takes the label after a
+    // short dwell, so the check waits well past that dwell first. Then no status region may hold
+    // the words, and the words must be on screen once (RouteFallback would show them twice: its
+    // visible line and its region).
+    await page.waitForTimeout(400);
+    await expect(page.getByRole('status').filter({ hasText: HOME_LOADING_LABEL })).toHaveCount(0);
+    await expect(line).toHaveCount(1);
 
     for (const route of held) await route.abort();
   });
