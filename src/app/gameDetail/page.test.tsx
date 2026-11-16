@@ -1210,8 +1210,9 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
 // 3s revert, never a modal — is unchanged and re-pinned below.
 const RESTING_REMOVE = /^Remove .+ from this event$/;
 const ARMED_REMOVE = 'Tap again to confirm';
-// F9b (88.9-23): the armed label while the gate runs (it counts 3, 2, 1, then ARMED_REMOVE).
-const GATED_REMOVE = /^Tap again \(\d\)$/;
+// F9b (88.9-23): the armed NAME while the gate runs (the label counts Wait 3, 2, 1, then
+// ARMED_REMOVE). X69 (88.9-67): the resting name, then the wait.
+const GATED_REMOVE = /^Remove .+ from this event, wait \d seconds?$/;
 
 describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)', () => {
   // F9b (88.9-23): the second click is refused for CONFIRM_DELAY_MS after arming; the commits
@@ -1233,7 +1234,7 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
     await user.click(removes[0]);
 
     // F9b: gated first (the countdown label), and the announcement lands at the live edge.
-    expect(within(dialog).getByRole('button', { name: GATED_REMOVE })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: GATED_REMOVE })).toHaveTextContent('Wait (3)');
     act(() => {
       vi.advanceTimersByTime(CONFIRM_DELAY_MS);
     });
@@ -2505,7 +2506,8 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
 
     await user.click(cancel);
     expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
-    expect(cancel).toHaveTextContent('Tap again (3)');
+    expect(cancel).toHaveTextContent('Wait (3)');
+    expect(cancel).toHaveAccessibleName('Cancel event, wait 3 seconds');
 
     act(() => {
       vi.advanceTimersByTime(1000);

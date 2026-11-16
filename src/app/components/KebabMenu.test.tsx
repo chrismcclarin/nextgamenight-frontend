@@ -98,7 +98,7 @@ describe('KebabMenu composed axe audit — the OPEN menu, where the ARIA change 
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
     const { list } = openMenu();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
-    const gated = within(list).getByRole('button', { name: 'Tap again (3)' });
+    const gated = within(list).getByRole('button', { name: 'Remove, wait 3 seconds' });
     expect(gated).toHaveAttribute('aria-pressed', 'true');
     expect(gated).toHaveAttribute('aria-disabled', 'true');
     expect(await axe(document.body, WCAG_412)).toHaveNoViolations();
@@ -262,7 +262,9 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
     const item = within(list).getByRole('button', { name: 'Close poll' });
 
     fireEvent.click(item);
-    expect(item).toHaveTextContent('Tap again (3)');
+    expect(item).toHaveTextContent('Wait (3)');
+    // X69 (88.9-67): the gated item is named for its action, then the wait.
+    expect(item).toHaveAccessibleName('Close poll, wait 3 seconds');
     expect(item).toHaveAttribute('aria-disabled', 'true');
     expect(item).toHaveAttribute('aria-pressed', 'true');
     // DEC-5: nothing is announced while pressing would do nothing.
@@ -273,7 +275,8 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
     });
     fireEvent.click(item);
     expect(onClose).not.toHaveBeenCalled();
-    expect(item).toHaveTextContent('Tap again (2)');
+    expect(item).toHaveTextContent('Wait (2)');
+    expect(item).toHaveAccessibleName('Close poll, wait 2 seconds');
     expect(item).toHaveAttribute('aria-pressed', 'true');
 
     act(() => {
@@ -288,6 +291,7 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
       vi.advanceTimersByTime(CONFIRM_DELAY_MS - 2500);
     });
     expect(item).toHaveTextContent('Tap again to confirm');
+    expect(item).toHaveAccessibleName('Tap again to confirm');
     expect(item).not.toHaveAttribute('aria-disabled');
     expect(screen.getByRole('status').textContent).toBe('Press again to confirm: Close poll');
 

@@ -189,7 +189,7 @@ function confirmButton(name: string) {
 
 /**
  * F9b (88.9-23): step the clock past the dialog tier's CONFIRM_DELAY_MS gate, then find
- * the now-live confirm by its bare verb (while gated it reads "<verb> (n)").
+ * the now-live confirm by its bare verb (while gated it reads Wait (n), named for the verb, then the wait).
  */
 async function liveConfirm(name: string): Promise<HTMLElement> {
   act(() => {
@@ -374,7 +374,7 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
       screen.getByText('Admins can edit events, manage members, and approve or remove people.')
     ).toBeInTheDocument();
     // F9b: the confirm opens gated with its countdown label, then reads the verb.
-    expect(confirmButton('Make admin (3)')).toBeInTheDocument();
+    expect(confirmButton('Make admin, wait 3 seconds')).toHaveTextContent('Wait (3)');
     expect(await liveConfirm('Make admin')).toBeInTheDocument();
     expect(groupsAPI.updateUserRole as Mock).not.toHaveBeenCalled();
   });

@@ -287,7 +287,7 @@ describe('useConfirmAction — two-tap tier', () => {
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('armed')).toHaveTextContent('alex');
     // F9b: the armed label counts down first, then reads the live label.
-    expect(screen.getByTestId('trigger-alex')).toHaveTextContent('Tap again (3)');
+    expect(screen.getByTestId('trigger-alex')).toHaveTextContent('Wait (3)');
     act(() => {
       vi.advanceTimersByTime(CONFIRM_DELAY_MS);
     });
@@ -352,7 +352,7 @@ describe('useConfirmAction — two-tap tier', () => {
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('armed')).toHaveTextContent('bo');
     // B starts its own gate: A's live state is never inherited by B.
-    expect(screen.getByTestId('trigger-bo')).toHaveTextContent('Tap again (3)');
+    expect(screen.getByTestId('trigger-bo')).toHaveTextContent('Wait (3)');
     act(() => {
       vi.advanceTimersByTime(CONFIRM_DELAY_MS);
     });
@@ -525,13 +525,20 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
 
     fireEvent.click(alex);
 
-    // Visible label and accessible name agree — a static aria-label over a
-    // changed visible label is the 2.5.3 failure this pin forbids. F9b: they agree
-    // through the countdown and again at the live label.
-    expect(alex).toHaveTextContent('Tap again (3)');
-    expect(alex).toHaveAttribute('aria-label', 'Tap again (3)');
+    // A static aria-label over a changed visible label is the 2.5.3 failure this pin
+    // forbids. X69 (88.9-67): while the gate runs the name is the resting name, then the
+    // wait — it holds the visible word and the number (W3C Understanding 2.5.3: case and
+    // punctuation are not relevant, parenthetical text may count as a description) and it
+    // changes with every step. At the live label the name is the visible label again.
+    expect(alex).toHaveTextContent('Wait (3)');
+    expect(alex).toHaveAttribute('aria-label', 'Remove Alex, wait 3 seconds');
     act(() => {
-      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+      vi.advanceTimersByTime(2000);
+    });
+    expect(alex).toHaveTextContent('Wait (1)');
+    expect(alex).toHaveAttribute('aria-label', 'Remove Alex, wait 1 second');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS - 2000);
     });
     expect(alex).toHaveTextContent(DEFAULT_ARMED_LABEL);
     expect(alex).toHaveAttribute('aria-label', DEFAULT_ARMED_LABEL);
@@ -551,7 +558,7 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
     expect(alex).toHaveAttribute('aria-label', 'Remove Alex');
   });
 
-  it('omits aria-label entirely when the caller supplies none (visible text wins)', () => {
+  it('names the action only while it waits when the caller supplies no name', () => {
     function NoAriaLabelHarness() {
       const confirm = useConfirmAction({
         tier: 'two-tap',
@@ -569,7 +576,10 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
 
     expect(screen.getByTestId('trigger')).not.toHaveAttribute('aria-label');
     fireEvent.click(screen.getByTestId('trigger'));
-    expect(screen.getByTestId('trigger')).not.toHaveAttribute('aria-label');
+    // X69 (88.9-67): the one window in which the hook names a control itself — Wait (3) alone
+    // would not say what the button does, so the name is confirmLabel, then the wait.
+    expect(screen.getByTestId('trigger')).toHaveTextContent('Wait (3)');
+    expect(screen.getByTestId('trigger')).toHaveAttribute('aria-label', 'Remove, wait 3 seconds');
     act(() => {
       vi.advanceTimersByTime(CONFIRM_DELAY_MS);
     });
@@ -1102,7 +1112,8 @@ describe('ConfirmDialog — F9b delayed enable through the real hook (88.9-23)',
     act(() => {
       vi.advanceTimersByTime(0);
     });
-    const gated = screen.getByRole('button', { name: 'Delete (3)' });
+    const gated = screen.getByRole('button', { name: 'Delete, wait 3 seconds' });
+    expect(gated).toHaveTextContent('Wait (3)');
     expect(gated).toHaveAttribute('aria-disabled', 'true');
     expect(gated).not.toHaveAttribute('disabled');
     expect(gated).toHaveClass('btn-danger');
@@ -1112,7 +1123,8 @@ describe('ConfirmDialog — F9b delayed enable through the real hook (88.9-23)',
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(gated).toHaveAccessibleName('Delete (1)');
+    expect(gated).toHaveAccessibleName('Delete, wait 1 second');
+    expect(gated).toHaveTextContent('Wait (1)');
     // Pointer and keyboard are both refused inside the gate.
     fireEvent.click(gated);
     gated.focus();
@@ -1124,6 +1136,8 @@ describe('ConfirmDialog — F9b delayed enable through the real hook (88.9-23)',
     });
     const live = screen.getByRole('button', { name: 'Delete' });
     expect(live).toBe(gated);
+    expect(live).toHaveTextContent('Delete');
+    expect(live).not.toHaveAttribute('aria-label');
     expect(live).not.toHaveAttribute('aria-disabled');
     await act(async () => {
       fireEvent.click(live);

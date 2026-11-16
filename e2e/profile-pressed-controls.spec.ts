@@ -1198,7 +1198,7 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await focusByKeyboard(page, remove);
     await page.keyboard.press('Enter'); // arms
     // F9b (88.9-23): the second press is refused for 3 s after arming (the label counts
-    // Remove (3)…(1)); wait for the live name (the 5 s expect timeout covers the gate).
+    // Wait (3)…(1), X69 88.9-67); wait for the live name (the 5 s expect timeout covers the gate).
     await expect(remove).toHaveAccessibleName('Remove');
     await page.keyboard.press('Enter'); // commits
     await del.arrived;

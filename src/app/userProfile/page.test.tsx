@@ -833,14 +833,15 @@ describe('userProfile destructive gates (Req 11)', () => {
     expect(trigger.className).toContain('border');
     // The invisible sizer carries the armed label so the box is armed-width at rest.
     const sizer = trigger.querySelector('[aria-hidden="true"]');
-    // F9b (MED-61): the sizer reserves the widest armed state, the countdown label.
-    expect(sizer?.textContent).toBe('Remove (3)');
+    // X69 (88.9-67): the sizer reserves Remove, the widest armed state (Wait (n) is narrower).
+    expect(sizer?.textContent).toBe('Remove');
     expect(sizer?.className).toContain('invisible');
 
-    // Armed: visible label swaps to 'Remove (3)' counting down, then 'Remove', on the
+    // Armed: the visible label counts Wait 3, 2, 1, then reads 'Remove', on the
     // error-subtle treatment.
     fireEvent.click(trigger);
-    const gated = screen.getByRole('button', { name: 'Remove (3)' });
+    const gated = screen.getByRole('button', { name: 'Remove Catan, wait 3 seconds' });
+    expect(gated).toHaveTextContent('Wait (3)');
     expect(gated.className).toContain('bg-status-error-subtle');
     passGate();
     const armed = screen.getByRole('button', { name: 'Remove' });
@@ -1050,8 +1051,8 @@ describe('userProfile two-tap armed state (F-357)', () => {
       );
 
       fireEvent.click(screen.getByRole('button', { name: 'Remove Catan' }));
-      // F9b: armed first as the countdown label 'Remove (3)'.
-      expect(screen.getByRole('button', { name: 'Remove (3)' })).toHaveAttribute(
+      // F9b: armed first inside its gate, named for the game, then the wait (X69, 88.9-67).
+      expect(screen.getByRole('button', { name: 'Remove Catan, wait 3 seconds' })).toHaveAttribute(
         'aria-pressed',
         'true'
       );

@@ -4,7 +4,8 @@
 //
 // What these lock:
 //   1. A second tap inside the gate is refused, and the armed label counts down
-//      Tap again (3), (2), (1) with the accessible name following the visible label.
+//      Wait (3), (2), (1) while the accessible name reads the resting name, then the wait
+//      (X69, 88.9-67: the name contains the visible word and changes with every step).
 //   2. The two-tap tier is live from CONFIRM_DELAY_MS to CONFIRM_DELAY_MS + CONFIRM_LIVE_MS,
 //      commits once, then reverts.
 //   3. The dialog tier refuses confirm() for CONFIRM_DELAY_MS after open (the Enter path),
@@ -83,34 +84,36 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     vi.useRealTimers();
   });
 
-  it('F9b (88.9): two-tap tier — a second tap inside 3 s is refused and the label counts Tap again (3), (2), (1)', () => {
+  it('F9b (88.9): two-tap tier — a second tap inside 3 s is refused and the label counts Wait (3), (2), (1)', () => {
     const onConfirm = vi.fn();
     renderHost('two-tap', onConfirm);
     const trigger = screen.getByTestId('trigger');
 
     fireEvent.click(trigger);
     expect(onConfirm).not.toHaveBeenCalled();
-    expect(trigger).toHaveTextContent('Tap again (3)');
-    // Label-in-Name (WCAG 2.5.3, MED-61): the name follows the visible countdown label.
-    expect(trigger).toHaveAttribute('aria-label', 'Tap again (3)');
+    expect(trigger).toHaveTextContent('Wait (3)');
+    // Label-in-Name (WCAG 2.5.3, MED-61; X69 88.9-67): the name holds the visible word and the
+    // number, after the resting name, so it says what the button does while it waits.
+    expect(trigger).toHaveAttribute('aria-label', 'Remove Sam, wait 3 seconds');
     // DEC-5: nothing is announced while pressing would do nothing.
     expect(screen.getByRole('status').textContent).toBe('');
 
     advance(1000);
-    expect(trigger).toHaveTextContent('Tap again (2)');
-    expect(trigger).toHaveAttribute('aria-label', 'Tap again (2)');
+    expect(trigger).toHaveTextContent('Wait (2)');
+    expect(trigger).toHaveAttribute('aria-label', 'Remove Sam, wait 2 seconds');
     // MED-62: the gated trigger is aria-disabled, never natively disabled.
     expect(trigger).toHaveAttribute('aria-disabled', 'true');
     expect(trigger).not.toHaveAttribute('disabled');
 
     advance(1000);
-    expect(trigger).toHaveTextContent('Tap again (1)');
+    expect(trigger).toHaveTextContent('Wait (1)');
+    expect(trigger).toHaveAttribute('aria-label', 'Remove Sam, wait 1 second');
 
     advance(500);
     fireEvent.click(trigger);
     expect(onConfirm).not.toHaveBeenCalled();
     expect(trigger).toHaveAttribute('aria-pressed', 'true');
-    expect(trigger).toHaveTextContent('Tap again (1)');
+    expect(trigger).toHaveTextContent('Wait (1)');
 
     advance(CONFIRM_DELAY_MS - 2500 - 1);
     expect(screen.getByRole('status').textContent).toBe('');
@@ -194,6 +197,59 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     expect(current().dialogProps.confirmDelay).toBe(false);
   });
 
+  it('X69 (88.9): a custom armed label counts Wait too, and the gated name names the resting action, or confirmLabel when the caller gives none', () => {
+    // The Profile collection shape: a glyph at rest that arms to the verb (fork 7). X69 widened
+    // (owner 2026-11-14) supersedes R-W1's countdown on the verb for the gated half; the live label stays.
+    function CustomHost() {
+      const gate = useConfirmAction({
+        tier: 'two-tap',
+        title: 'Remove this game?',
+        confirmLabel: 'Remove',
+        armedLabel: 'Remove',
+        onConfirm: vi.fn(),
+      });
+      return React.createElement(
+        'div',
+        null,
+        gate.statusNode,
+        React.createElement(
+          'button',
+          { ...gate.triggerProps('catan', 'Catan', 'Remove Catan'), 'data-testid': 'named' },
+          gate.labelFor('catan', '×')
+        ),
+        React.createElement(
+          'button',
+          { ...gate.triggerProps('brass', 'Brass'), 'data-testid': 'bare' },
+          gate.labelFor('brass', 'Remove')
+        )
+      );
+    }
+    render(React.createElement(CustomHost));
+    const named = screen.getByTestId('named');
+    const bare = screen.getByTestId('bare');
+
+    fireEvent.click(named);
+    expect(named).toHaveTextContent('Wait (3)');
+    expect(named).toHaveAttribute('aria-label', 'Remove Catan, wait 3 seconds');
+    advance(2000);
+    expect(named).toHaveTextContent('Wait (1)');
+    expect(named).toHaveAttribute('aria-label', 'Remove Catan, wait 1 second');
+    // DEC-5 (P2): nothing is written to the live region per second.
+    expect(screen.getByRole('status').textContent).toBe('');
+    advance(1000);
+    expect(named).toHaveTextContent('Remove');
+    expect(named).toHaveAttribute('aria-label', 'Remove');
+
+    // No resting name: the hook names the action from confirmLabel for the wait only.
+    expect(bare).not.toHaveAttribute('aria-label');
+    fireEvent.click(bare);
+    expect(bare).toHaveTextContent('Wait (3)');
+    expect(bare).toHaveAttribute('aria-label', 'Remove, wait 3 seconds');
+    advance(CONFIRM_DELAY_MS);
+    expect(bare).toHaveTextContent('Remove');
+    expect(bare).not.toHaveAttribute('aria-label');
+  });
+
   it('F9b (88.9): unmount mid-countdown clears every timer', () => {
     const { unmount } = renderHost('two-tap');
     const trigger = screen.getByTestId('trigger');
@@ -201,7 +257,7 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     fireEvent.click(trigger);
     advance(1500);
     // The countdown is running (so there is a tick timer to leak) ...
-    expect(trigger).toHaveTextContent('Tap again (2)');
+    expect(trigger).toHaveTextContent('Wait (2)');
 
     unmount();
     // ... and unmounting leaves neither the tick nor the revert timer behind.

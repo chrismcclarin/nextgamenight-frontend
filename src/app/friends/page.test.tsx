@@ -546,7 +546,8 @@ describe('remove friend (two-tap tier)', () => {
 
     // F9b (MED-62): inside the gate the armed Remove counts down and is aria-disabled, and
     // nothing is announced yet.
-    const gated = screen.getByRole('button', { name: 'Tap again (3)' });
+    const gated = screen.getByRole('button', { name: 'Remove Dana, wait 3 seconds' });
+    expect(gated).toHaveTextContent('Wait (3)');
     expect(gated).toHaveAttribute('aria-disabled', 'true');
     expect(gated).toHaveAttribute('aria-pressed', 'true');
     expect(gateStatus().textContent).toBe('');
@@ -588,7 +589,7 @@ describe('remove friend (two-tap tier)', () => {
     vi.useFakeTimers();
     fireEvent.click(button);
     // F9b: the armed label counts down first; the window is now gated + live.
-    expect(button).toHaveTextContent('Tap again (3)');
+    expect(button).toHaveTextContent('Wait (3)');
 
     act(() => {
       vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
