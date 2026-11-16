@@ -11,6 +11,7 @@ import {
 import {
   describeSamples,
   paintedTexts,
+  recordLabel,
   recordLabelWhenItAppears,
   spread,
   stopLabelRecorder,
@@ -196,8 +197,11 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
       await dialog.getByText('Loading members...').count(),
       'the refresh never puts the first-load line in the roster place',
     ).toBe(0);
-    // Focus has not moved early: KebabMenu put it back on its own trigger.
-    await expect(trigger).toBeFocused();
+    // AMENDED Phase 88.9-67 (X13-7): focus has not moved early. A committed phone Remove keeps
+    // its menu open while the remove and its refresh run, so focus is on that item (named Remove,
+    // removing), where KebabMenu left it. Before this plan the commit closed the menu and focus
+    // sat on the menu's trigger.
+    await expect(dialog.getByRole('button', { name: /^Remove ?, removing$/ })).toBeFocused();
 
     releasePostRemoval();
     await expect(next, "focus lands on the next member's actions button").toBeFocused();
@@ -494,10 +498,18 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
   test.skip(({ isMobile }) => !isMobile, 'X69 / X67 phone proof — phone project only');
 
   let hold: WriteHold;
+  // The synthetic rows every members read appends. A test that removes one swaps this.
+  let extraRows: () => unknown[];
+
+  // Every held write on a member path of the seeded group (the role change is a PUT on
+  // .../users/<id>/role and the remove a DELETE on .../users/<id>, src/lib/api.ts).
+  const heldMemberWrites = () =>
+    hold.held.filter((request) => new URL(request.url).pathname.includes(`/groups/${E2E_GROUP_ID}/users`));
 
   test.beforeEach(async ({ page }) => {
+    extraRows = () => [SYNTH, SYNTH_NEXT];
     hold = await holdWrites(page);
-    await routeAugmentedRoster(page, () => [SYNTH, SYNTH_NEXT]);
+    await routeAugmentedRoster(page, () => extraRows());
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     const manage = page.getByRole('button', { name: 'Manage Members' });
     await expect(manage).toBeVisible({ timeout: 15_000 });
@@ -554,11 +566,169 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
 
     await promote.getByRole('button', { name: 'Cancel', exact: true }).tap();
     await expect(promote).toHaveCount(0);
-    // The role change is a PUT on .../users/<id>/role (src/lib/api.ts, updateUserRole); no write
-    // of any method reached a member path.
-    const memberWrites = hold.held.filter((request) =>
-      new URL(request.url).pathname.includes(`/groups/${E2E_GROUP_ID}/users`),
-    );
-    expect(memberWrites, 'X69: Cancel sent no member write').toEqual([]);
+    expect(heldMemberWrites(), 'X69: Cancel sent no member write').toEqual([]);
+  });
+
+  // 52-X67 (owner at N50: the armed line wrapped, item 44 -> 56px) and the kebab half of 52-X69.
+  // The owner's member menu holds the largest shipped item set (Make admin, Remove, Transfer
+  // ownership to this member). Every item must sit on ONE line at 375 (each as tall as the
+  // one-word Make admin item), the menu must stay inside the viewport, and the armed Remove must
+  // read Wait (3), (2), (1) then Tap again to remove without the item or the menu changing size.
+  // One tap only: nothing is removed.
+  test('X69 + X67 (88.9): the member kebab Remove reads Wait (3), (2), (1) then Tap again to remove, every item on one line at 375 and the menu one width from the arm', async ({
+    page,
+  }) => {
+    expect(page.viewportSize()?.width).toBe(375);
+    const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
+    await settleAnimations(dialog);
+
+    await dialog.getByRole('button', { name: 'Member actions for E2E Removable' }).tap();
+    const remove = dialog.getByRole('button', { name: 'Remove', exact: true });
+    await expect(remove).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Transfer ownership to this member', exact: true })).toBeVisible();
+
+    // One read: every item's label and height, and the menu's box.
+    const rest = await remove.evaluate((el) => {
+      const list = el.closest('ul');
+      if (!list) return null;
+      const box = list.getBoundingClientRect();
+      const items = Array.from(list.querySelectorAll<HTMLElement>('button'));
+      return {
+        labels: items.map((item) => item.innerText.trim()),
+        heights: items.map((item) => parseFloat(getComputedStyle(item).height)),
+        menuLeft: box.left,
+        menuRight: box.right,
+        menuWidth: parseFloat(getComputedStyle(list).width),
+        viewport: window.innerWidth,
+      };
+    });
+    if (!rest) throw new Error('X67: the Remove item is not inside a list');
+    const restLine = JSON.stringify(rest);
+    // eslint-disable-next-line no-console -- the measured menu is recorded from the CI log (plan 88.9-67)
+    console.log(`[88.9-67 X67 member menu at rest] phone: ${restLine}`);
+    expect(rest.labels).toEqual(['Make admin', 'Remove', 'Transfer ownership to this member']);
+    const oneLine = rest.heights[0];
+    // Soft: a wrapped item fails the test, and the armed measures below are still taken and
+    // printed, so one red run records both halves.
+    for (const [index, height] of rest.heights.entries()) {
+      expect.soft(
+        Math.abs(height - oneLine),
+        `X67: item ${index} is ${height}px tall and the one-word item ${oneLine}px, so it wrapped at 375 (${restLine})`,
+      ).toBeLessThanOrEqual(0.5);
+    }
+    expect.soft(rest.menuLeft, `X67: the menu starts left of the viewport (${restLine})`).toBeGreaterThanOrEqual(0);
+    expect.soft(rest.menuRight, `X67: the menu ends right of the viewport (${restLine})`).toBeLessThanOrEqual(rest.viewport);
+
+    await recordLabel(remove);
+    await remove.tap();
+    // The live label, after the 3 s gate.
+    const armed = dialog.getByRole('button', { name: 'Tap again to remove' });
+    await expect(armed).toHaveText('Tap again to remove', { timeout: 10_000 });
+    const samples = await stopLabelRecorder(page);
+
+    const WAITING = ['Wait (3)', 'Wait (2)', 'Wait (1)'];
+    const FROM_THE_ARM = [...WAITING, 'Tap again to remove'];
+    const trace = describeSamples(samples);
+    // eslint-disable-next-line no-console -- the measured widths are recorded from the CI log (plan 88.9-67)
+    console.log(`[88.9-67 X69 kebab Remove] phone: ${trace}`);
+    expect(paintedTexts(samples), `X69: the item did not run Remove, Wait (3), (2), (1), Tap again to remove (${trace})`).toEqual([
+      'Remove',
+      ...FROM_THE_ARM,
+    ]);
+    expect(valuesAt(samples, 'Wait (3)', 'name')).toEqual(['Remove, wait 3 seconds']);
+    expect(valuesAt(samples, 'Wait (2)', 'name')).toEqual(['Remove, wait 2 seconds']);
+    expect(valuesAt(samples, 'Wait (1)', 'name')).toEqual(['Remove, wait 1 second']);
+    expect(valuesAt(samples, 'Tap again to remove', 'name')).toEqual([null]);
+    // One line through every state: the item never grows past the one-word height.
+    const tallest = Math.max(...samples.map((sample) => sample.height));
+    expect(tallest - oneLine, `X67: the armed item grew to ${tallest}px from ${oneLine}px, so a label wrapped (${trace})`).toBeLessThanOrEqual(0.5);
+    const itemJump = spread(samples, FROM_THE_ARM, 'width');
+    expect(itemJump, `X69: the armed item changed width by ${itemJump}px from the arm (${trace})`).toBeLessThanOrEqual(0.5);
+    const menuJump = spread(samples, FROM_THE_ARM, 'menuWidth');
+    expect(menuJump, `X69: the menu changed width by ${menuJump}px from the arm (${trace})`).toBeLessThanOrEqual(0.5);
+
+    await page.keyboard.press('Escape');
+    await expect(armed).toHaveCount(0);
+    expect(heldMemberWrites(), 'X69: one tap and Escape sent no member write').toEqual([]);
+  });
+
+  // 52-X13 item 7 (owner at N50, frame N50-p1-kebab-commit-held: "nothing on screen shows it is
+  // working"). The committing tap on the phone Remove keeps the menu open: the item keeps Remove,
+  // shows the house spinner, is aria-disabled, named Remove, removing, and holds focus; the
+  // member's other items are aria-disabled too; a further press sends nothing. When the remove
+  // lands, focus moves to the next member's actions button.
+  // SAFE: the DELETE is for the synthetic member and is held, then FULFILLED in the browser by a
+  // route registered after the write hold (so it runs first for that one request); it is never
+  // continued to the server.
+  test('X13-7 (88.9): a phone Remove keeps the menu open while it runs — Remove with the spinner, aria-disabled, named Remove, removing, focused — then focus lands on the next member', async ({
+    page,
+  }) => {
+    let removed = false;
+    let deletes = 0;
+    let releaseDelete!: () => void;
+    const deleteGate = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    let markDeleteArrived!: () => void;
+    const deleteArrived = new Promise<void>((resolve) => {
+      markDeleteArrived = resolve;
+    });
+    extraRows = () => (removed ? [SYNTH_NEXT] : [SYNTH, SYNTH_NEXT]);
+    await page.route(isSynthRemove, async (route) => {
+      if (route.request().method() !== 'DELETE') {
+        await route.fallback();
+        return;
+      }
+      deletes += 1;
+      markDeleteArrived();
+      await deleteGate;
+      removed = true;
+      await route.fulfill({ status: 200, json: {} });
+    });
+
+    const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
+    const next = dialog.getByRole('button', { name: 'Member actions for E2E Neighbour' });
+    await expect(next, 'the fixed neighbour row renders its member-actions button').toBeVisible();
+    await settleAnimations(dialog);
+
+    await dialog.getByRole('button', { name: 'Member actions for E2E Removable' }).tap();
+    await dialog.getByRole('button', { name: 'Remove', exact: true }).tap();
+    const confirmRemove = dialog.getByRole('button', { name: 'Tap again to remove' });
+    await expect(confirmRemove).toHaveText('Tap again to remove', { timeout: 10_000 });
+    await confirmRemove.tap();
+
+    // POSITIVE signal: the DELETE reached the route and is held there.
+    await deleteArrived;
+    // The menu is still open and the item shows its flight. Chromium may put a space before the
+    // sr-only comma in the name (the same shape as the pressed Transfer ownership above).
+    const inFlight = dialog.getByRole('button', { name: /^Remove ?, removing$/ });
+    await expect(inFlight, 'X13-7: the committed Remove is gone from the screen while the remove runs').toBeVisible();
+    await expect(inFlight).toHaveText(/^Remove/);
+    // The house spinner appears after its 200 ms delay; the assertion waits for it.
+    await expect(inFlight.locator('[data-slot="spinner"]')).toHaveCount(1);
+    await expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    await expect(inFlight).not.toHaveAttribute('disabled');
+    await expect(inFlight).toBeFocused();
+    await expect(dialog.getByRole('button', { name: 'Make admin', exact: true })).toHaveAttribute('aria-disabled', 'true');
+    await expect(
+      dialog.getByRole('button', { name: 'Transfer ownership to this member', exact: true }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
+
+    // A further press on the focused item is refused. An ABSENCE check: there is no positive
+    // signal to wait for, so wait a fixed 500ms.
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    expect(deletes, 'X13-7: a press while the remove runs sends no second DELETE').toBe(1);
+
+    releaseDelete();
+    await expect(next, "X13-7: focus lands on the next member's actions button").toBeFocused({ timeout: 15_000 });
+    await expect(dialog.getByText('E2E Removable', { exact: true })).toHaveCount(0);
+    expect(deletes, 'still exactly one DELETE').toBe(1);
+    expect(heldMemberWrites(), 'X13-7: no other member write was sent').toEqual([]);
   });
 });

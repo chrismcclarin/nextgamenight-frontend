@@ -72,7 +72,7 @@ export const floors = [
   { spec: 'e2e/input-date-phone.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/lane-a-tap-floors-desktop.spec.ts', project: 'journeys', floor: 14, why: '14 of 14 listed run in journeys; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/lane-a-tap-floors.spec.ts', project: 'phone', floor: 10, why: '10 of 10 listed run in phone; the other project is skipped by an isMobile predicate' },
-  { spec: 'e2e/manage-members-refresh.spec.ts', project: 'phone', floor: 5, why: '5 of 5 listed run in phone; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/manage-members-refresh.spec.ts', project: 'phone', floor: 7, why: '7 of 7 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/member-plus-failure.spec.ts', project: 'phone', floor: 4, why: '4 of 4 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/month-nav-row.spec.ts', project: 'journeys', floor: 2, why: '2 of 6 listed run in journeys; 4 skipped here by an isMobile predicate' },
   { spec: 'e2e/month-nav-row.spec.ts', project: 'phone', floor: 4, why: '4 of 6 listed run in phone; 2 skipped here by an isMobile predicate' },
