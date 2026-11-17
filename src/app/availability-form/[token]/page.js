@@ -352,7 +352,16 @@ export default function AvailabilityFormPage() {
               token_invalid). Amber (warning ink on the warning circle, 5.50 light / 4.95 dark)
               when the check could not complete (connection, 5xx, 429, an unreadable answer).
               NO retry control is added in this pass, so the amber card still offers nothing to
-              press; that is a known gap, not an oversight. One literal class string per arm. */}
+              press. One literal class string per arm.
+              AMENDED Phase 88.9-52 (S-C5): that gap is OPEN with the owner, not accepted; the
+              words "a known gap" that stood here named no owner and no phase. A Try again was
+              NOT built because re-running the check is not free: the validate route sits behind
+              the magic-link limiter (backend:Sonnet/routes/magicAuth.js, magicTokenLimiter; 5
+              failed answers per 15 minutes per address and link, one bucket shared with the
+              submit route), so each press that meets a 5xx spends one of the five tries the
+              person needs to submit. The check itself is safe to repeat (it consumes nothing and
+              sends nothing). Adding the control, or accepting the card without one, is the
+              owner's ruling. */}
           <div
             className={
               linkInvalid
