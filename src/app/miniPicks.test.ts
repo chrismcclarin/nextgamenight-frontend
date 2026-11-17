@@ -497,7 +497,7 @@ describe('88.9 RULING A mini-page picks', () => {
     const header = withoutComments(fs.readFileSync(path.join(__dirname, 'Header.js'), 'utf8'));
     const toasters = layout.match(/<Toaster\b[^>]*\/>/g) ?? [];
     expect(toasters, 'layout.js mounts exactly one Toaster').toHaveLength(1);
-    const offset = /\bmobileOffset=\{\{\s*top:\s*(\d+)\s*\}\}/.exec(toasters[0]);
+    const offset = /\bmobileOffset=\{\{\s*top:\s*(\d+)\s*\}\}/.exec(toasters[0] ?? '');
     expect(offset, 'the Toaster carries a mobile top offset and no other side').not.toBeNull();
     const strip = /className="w-full (h-(\d+)) bg-surface-header [^"]*\bsticky top-0\b/.exec(header);
     expect(strip, 'anti-vacuity: the sticky header strip with its height class is present').not.toBeNull();
