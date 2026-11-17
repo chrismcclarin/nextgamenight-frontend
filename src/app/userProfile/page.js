@@ -3984,15 +3984,26 @@ function Profile(){
                                     {availabilityPatterns
                                         .filter(p => p.type === 'recurring_pattern')
                                         .map(pattern => (
-                                            <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-content-primary">
-                                                        {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
-                                                    </p>
-                                                    <p className="text-sm text-content-secondary">
-                                                        {formatDate(pattern.start_date)} - {formatDate(pattern.end_date)}
-                                                    </p>
-                                                </div>
+                                            /* DECISION Phase 88.9-52 (W37): the row is a two-column grid. On a phone the hours
+                                               take the whole first line and the dates share the second with Delete, chosen
+                                               OVER the shipped one-line flex row, where the armed label (about 151px, was 61)
+                                               squeezed the hours onto two lines and the row grew 70 to 94px, and where a long
+                                               day (Wednesday) already wrapped at rest. Every phone row is now one height at
+                                               rest, counting down, live and busy: 24px of hours, the 44px control line, the
+                                               padding and border (94px). REJECTED: reserving the armed width at rest (the hours
+                                               would always wrap); pulling the 44px control up over the hours with negative
+                                               margins to keep 70px (its focus ring would cross the hours for a keyboard user
+                                               at phone width or 400% zoom). From sm the row reads as before: hours over dates
+                                               on the left, Delete centred on the right. The override rows below are the same.
+                                               The three cells are direct children of the row; a wrapper around the two lines
+                                               would take them out of the grid. */
+                                            <div key={pattern.id} className="p-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+                                                <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
+                                                    {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
+                                                </p>
+                                                <p className="text-sm text-content-secondary sm:col-start-1 sm:row-start-2">
+                                                    {formatDate(pattern.start_date)} - {formatDate(pattern.end_date)}
+                                                </p>
                                                 {(() => {
                                                     const patternLabel = `${getDayName(pattern.pattern_data.dayOfWeek)} schedule`;
                                                     const deleting = deletingPatternId === pattern.id;
@@ -4010,12 +4021,14 @@ function Profile(){
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
-                                                            {/* X69 width (88.9-67): held from the arm, nothing at rest. */}
-                                                            <ReservedLabel reserve={deletePatternGate.reserveFor(pattern.id)}>
+                                                            {/* X69 width (88.9-67): held from the arm, nothing at rest.
+                                                                W37 (88.9-52): right-anchored in the reserve, so Wait (3) ends where Delete ended
+                                                                (a button centres its text, which set the short label mid-reserve). */}
+                                                            <ReservedLabel className="justify-items-end" reserve={deletePatternGate.reserveFor(pattern.id)}>
                                                                 {deletePatternGate.labelFor(pattern.id, 'Delete')}
                                                             </ReservedLabel>
                                                             <DelayedSpinner busy={deleting} className="ml-2 align-middle" />
@@ -4154,15 +4167,14 @@ function Profile(){
                                     {availabilityPatterns
                                         .filter(p => p.type === 'specific_override')
                                         .map(pattern => (
-                                            <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-content-primary">
-                                                        {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
-                                                    </p>
-                                                    <p className="text-sm text-content-secondary">
-                                                        {pattern.is_available ? 'Available' : 'Busy'}
-                                                    </p>
-                                                </div>
+                                            // W37 (88.9-52): the two-line phone grid of the schedule rows (their DECISION marker).
+                                            <div key={pattern.id} className="p-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+                                                <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
+                                                    {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
+                                                </p>
+                                                <p className="text-sm text-content-secondary sm:col-start-1 sm:row-start-2">
+                                                    {pattern.is_available ? 'Available' : 'Busy'}
+                                                </p>
                                                 {(() => {
                                                     const patternLabel = `${formatDate(pattern.pattern_data.date)} override`;
                                                     const deleting = deletingPatternId === pattern.id;
@@ -4179,12 +4191,14 @@ function Profile(){
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
-                                                            {/* X69 width (88.9-67): held from the arm, nothing at rest. */}
-                                                            <ReservedLabel reserve={deletePatternGate.reserveFor(pattern.id)}>
+                                                            {/* X69 width (88.9-67): held from the arm, nothing at rest.
+                                                                W37 (88.9-52): right-anchored in the reserve, so Wait (3) ends where Delete ended
+                                                                (a button centres its text, which set the short label mid-reserve). */}
+                                                            <ReservedLabel className="justify-items-end" reserve={deletePatternGate.reserveFor(pattern.id)}>
                                                                 {deletePatternGate.labelFor(pattern.id, 'Delete')}
                                                             </ReservedLabel>
                                                             <DelayedSpinner busy={deleting} className="ml-2 align-middle" />

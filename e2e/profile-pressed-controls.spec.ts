@@ -583,6 +583,18 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // F9b (88.9-23): the second press is refused for 3 s after arming; wait for the live label
     // (the 5 s expect timeout covers the gate) before the committing press.
     await expect(monday).toHaveText('Tap again to confirm');
+    // W37 (88.9-52): arming neither grows the row nor re-wraps the hours (its first line), and the
+    // widest label still ends inside the row. Read while the live label shows.
+    const rowArmed = await readRow();
+    // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-52)
+    console.log(`[88.9-52 W37 Delete] ${testInfo.project.name}: rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)}`);
+    expect(rowAtRest && rowArmed, 'W37: the schedule row could not be read').toBeTruthy();
+    if (rowAtRest && rowArmed) {
+      expect(Math.abs(rowArmed.rowHeight - rowAtRest.rowHeight), `W37: the row changed height when Delete was armed (rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(rowArmed.wordsHeight - rowAtRest.wordsHeight), `W37: the hours line re-wrapped when Delete was armed (rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(rowArmed.wordsWidth - rowAtRest.wordsWidth), `W37: the hours line changed width when Delete was armed (rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(0.5);
+      expect(rowArmed.buttonRight, `W37: the armed Delete runs past its row (${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(rowArmed.rowRight + 0.5);
+    }
     await page.keyboard.press('Enter');
     await removal.arrived;
     await expect(monday).toBeFocused();

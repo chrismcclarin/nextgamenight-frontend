@@ -6912,6 +6912,42 @@ describe('phone layout of the availability panels and the inline two-tap control
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
     check(await screen.findByRole('button', { name: '+ Add Override' }));
   });
+
+  it('W37 (88.9-52): a schedule row is a two-line grid on a phone, hours on the first line at full width and Delete beside the dates on the second, so arming Delete neither squeezes the hours nor grows the row', async () => {
+    const before = h.patterns;
+    h.patterns = [
+      ...PATTERNS,
+      { id: 'override-w37', type: 'specific_override', is_available: true, pattern_data: { date: '2026-11-03', startTime: '18:00', endTime: '22:00' } },
+    ];
+    try {
+      renderProfile();
+      const check = (del: HTMLElement) => {
+        const row = del.parentElement as HTMLElement;
+        expect(row.className.split(/\s+/)).toEqual(
+          expect.arrayContaining(['grid', 'grid-cols-[minmax(0,1fr)_auto]', 'items-center', 'gap-x-2'])
+        );
+        expect(row.className.split(/\s+/)).not.toContain('flex');
+        // Three cells, in reading order: the hours, the dates, the control.
+        expect(Array.from(row.children).map((child) => child.tagName)).toEqual(['P', 'P', 'BUTTON']);
+        const [hours, dates] = Array.from(row.children) as HTMLElement[];
+        // Phone base: the hours span both columns. From sm they take column one of row one again.
+        expect(hours.className.split(/\s+/)).toEqual(
+          expect.arrayContaining(['col-span-2', 'sm:col-span-1', 'sm:col-start-1', 'sm:row-start-1'])
+        );
+        expect(dates.className.split(/\s+/)).toEqual(expect.arrayContaining(['sm:col-start-1', 'sm:row-start-2']));
+        expect(del.className.split(/\s+/)).toEqual(
+          expect.arrayContaining(['justify-self-end', 'sm:col-start-2', 'sm:row-start-1', 'sm:row-span-2', 'min-h-11'])
+        );
+        // The label is right-anchored in its reserve, so Wait (3) ends where Delete ended.
+        expect((del.querySelector('span.inline-grid') as HTMLElement).className.split(/\s+/)).toContain('justify-items-end');
+      };
+      check(await screen.findByRole('button', { name: 'Delete Monday schedule' }));
+      fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
+      check(await screen.findByRole('button', { name: /^Delete .+ override$/ }));
+    } finally {
+      h.patterns = before;
+    }
+  });
 });
 
 describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)', () => {
