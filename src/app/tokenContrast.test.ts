@@ -2746,6 +2746,44 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(measured, 'anti-vacuity: 2 themes x (card + wash)').toBe(4);
   });
+
+  it('W28 (88.9-52): the schedule Pause and Resume words clear 4.5 on their hover fills in both themes, through a hover ink the row itself names', () => {
+    // After-build look page W28: dark Pause hovered measured 4.1447 (amber-500 #f59e0b on the
+    // hover fill #554832); the same row's Resume measured 3.9378 (#22c55e on #235146). Test 21
+    // keeps the RESTING ink on those two hover fills pinned as failing (the token-wide OI-3
+    // deferral); this row pins what the one control that paints a status word on a status hover
+    // fill actually paints: a hover ink, read from the class string, so editing the row moves the
+    // numbers here. Measured with src/lib/wcag.ts: dark warning 5.3319, dark success 5.1568;
+    // light is the resting ink unchanged (4.7514 and the success pair).
+    const rowSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'ScheduleList.js'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    let measured = 0;
+    for (const hue of ['warning', 'success'] as const) {
+      const arm = new RegExp(
+        `'bg-status-${hue}-subtle text-content-status-${hue} enabled-hover:bg-([a-z0-9-]+) enabled-hover:text-([a-z0-9-]+)'`,
+      ).exec(rowSrc);
+      expect(arm, `LOCATOR: the ${hue} arm of the Pause/Resume button names a hover fill and a hover ink`).not.toBeNull();
+      const fill = runtimeProp(arm![1]);
+      const ink = runtimeProp(arm![2]);
+      for (const theme of ['light', 'dark'] as const) {
+        expectRatio(theme, ink, fill, 4.5, `W28 (88.9-52) the ${hue} hover word on its hover fill`);
+        expectRatio(theme, `--color-status-${hue}-text`, `--color-status-${hue}-subtle`, 4.5, `W28 (88.9-52) the ${hue} resting word on its resting fill`);
+        measured += 2;
+      }
+      // Light does not move: the hover ink is the resting ink there.
+      expect(resolve('light', ink), `W28 (88.9-52) — the light ${hue} hover ink is the resting ink`).toBe(
+        resolve('light', `--color-status-${hue}-text`),
+      );
+    }
+    expect(measured, 'anti-vacuity: 2 hues x 2 themes x (hover + rest)').toBe(8);
+  });
 });
 
 // =====================================================================================

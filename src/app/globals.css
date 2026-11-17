@@ -467,6 +467,14 @@
   --color-content-status-success: var(--color-status-success-text);
   --color-content-status-error: var(--color-status-error-text);
   --color-content-status-warning: var(--color-status-warning-text);
+  /* DECISION Phase 88.9-52 (W28): a status word that sits on its own status HOVER fill takes a
+     hover ink, chosen OVER moving the dark status text tokens themselves (36 and 47 call-site
+     lines read them; that is the OI-3 recolour, still deferred) and OVER a dimmer dark hover fill
+     (the success word reads 4.66 at rest, so a passing hover fill would be under 1.04 from rest,
+     no step at all). One consumer: the schedule Pause / Resume button. Light equals the resting
+     ink. Dropping these as duplicates puts dark Pause back at 4.14 and Resume at 3.94. */
+  --color-content-status-success-hover: var(--color-status-success-text-hover);
+  --color-content-status-warning-hover: var(--color-status-warning-text-hover);
 
   /* accent    -- 3 collision keys, aliased */
   --color-accent: var(--accent);
@@ -1879,6 +1887,10 @@
   --color-status-success-text: #166534;
   --color-status-error-text: #991b1b;
   --color-status-warning-text: #854d0e;
+  /* W28 (88.9-52), marker at the @theme inline keys: in light the hover ink IS the resting ink
+     (4.75 and 5.44 on the light hover fills already). */
+  --color-status-success-text-hover: var(--color-status-success-text);
+  --color-status-warning-text-hover: var(--color-status-warning-text);
 
   /* DECISION Phase 88.3 (OI-4 / UI-SPEC §5.7.4): status BORDERS get their own per-theme tokens,
      and the `@theme inline` keys `--color-status-{success,error,warning}` are re-pointed at THEM
@@ -2303,6 +2315,11 @@
   --color-status-success-text: #22c55e;
   --color-status-error-text: #fca5a5;
   --color-status-warning-text: #f59e0b;
+  /* W28 (88.9-52), marker at the @theme inline keys: the two candidates the OI-3 record already
+     measured. green-400 #4ade80 reads 5.16 on the success hover fill #235146 (resting ink 3.94);
+     amber-400 reads 5.33 on the warning hover fill #554832 (resting ink 4.14). */
+  --color-status-success-text-hover: #4ade80;
+  --color-status-warning-text-hover: var(--amber-400);
   --color-status-success-border: #22c55e;
   --color-status-error-border: #ef4444;
   --color-status-warning-border: #f59e0b;
