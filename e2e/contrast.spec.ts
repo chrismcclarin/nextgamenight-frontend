@@ -631,7 +631,7 @@ function expectInk(label: string, r: InkRead, floor: number, assertOpacity: bool
   expect(r.ratio, `${label}: ${r.ratio.toFixed(2)}:1 through ancestor opacity ${r.opacity} (ink ${r.effectiveFg} on ${r.ground}), floor ${floor}:1`).toBeGreaterThanOrEqual(floor);
 }
 
-/** A4b: adjacent-month day numbers, an adjacent-month tile and its '+N more' label on the group compact grid. */
+/** A4b: adjacent-month day numbers, an adjacent-month tile and its '+N' count label on the group compact grid. */
 async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<void> {
   // Since CS-05 the grid is whole weeks (28, 35 or 42 cells) and a month ending on a Saturday has
   // no trailing day, so the read happens in the first month from now whose grid ends with at least
@@ -713,7 +713,10 @@ async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<vo
       expectInk(label, await inkRatioThroughOpacity(el, label), AA_TEXT, true);
     }
 
-    // UI-SPEC E4 populated (amended C11): the tiles and the '+N more' label at full opacity too.
+    // UI-SPEC E4 populated (amended C11): the tiles and the more-events label at full opacity too.
+    // AMENDED Phase 88.9-52 (Q62, owner ruling A): the compact grid (this page) prints the count alone,
+    // +N; the word more is printed by the full grid only. The printed text sits in an aria-hidden span
+    // inside the labelled leaf; a text locator still finds it, and that span is the element whose ink is read.
     const cell = populated.locator('xpath=ancestor::*[.//*[starts-with(normalize-space(.), "E2E adjacent ")]][1]');
     const tile = cell.getByText(/^E2E adjacent [ABC]$/).first();
     await expect(tile, `A4b (${theme}): no synthetic tile inside the populated cell`).toBeVisible();
@@ -723,9 +726,9 @@ async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<vo
     console.log(`${tileLabel}: opacity product ${tileRead.opacity} (diagnostic, not asserted)`);
     expectInk(tileLabel, tileRead, AA_TEXT, false);
 
-    const more = cell.getByText(/^\+\d+ more$/);
-    await expect(more, `A4b (${theme}): the '+N more' label is absent — the three synthetic events did not reach the cell; fix the route, never delete this guard`).toBeVisible();
-    const moreLabel = `A4b (${theme}) adjacent-month '+N more' label through ancestor opacity`;
+    const more = cell.getByText(/^\+\d+$/);
+    await expect(more, `A4b (${theme}): the '+N' count label is absent — the three synthetic events did not reach the cell; fix the route, never delete this guard`).toBeVisible();
+    const moreLabel = `A4b (${theme}) adjacent-month '+N' count label through ancestor opacity`;
     expectInk(moreLabel, await inkRatioThroughOpacity(more, moreLabel), AA_TEXT, false);
   } finally {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
