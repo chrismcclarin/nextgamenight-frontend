@@ -74,7 +74,7 @@ export function useConfirmCountdown(
   // The key that reached live, read synchronously by isLive; null while gated or idle.
   const liveKeyRef = React.useRef<ConfirmArmKey>(null);
   const liveRef = React.useRef(false);
-  // True once a tick has written the state, so the disarm reset below runs only when there is
+  // True once a tick has written the state, so the reset below runs only when there is
   // something to reset (A-56).
   const wroteStateRef = React.useRef(false);
 
@@ -87,21 +87,30 @@ export function useConfirmCountdown(
   React.useEffect(() => {
     liveRef.current = false;
     liveKeyRef.current = null;
-    if (armKey === null) {
-      if (wroteStateRef.current) {
-        wroteStateRef.current = false;
-        setState(IDLE);
-      }
-      return undefined;
+    // AMENDED Phase 88.9-52 (S-A2): the reset runs on EVERY key change that follows a written
+    // tick, not only on a disarm. KebabMenu keys on the item index and arms another item with no
+    // null in between; with a disarm-only reset the state kept the old key as live, and coming
+    // back to that key inside a second painted and announced the live confirm on an item that
+    // refused the press. Chosen OVER a ref read during render that marks the state stale (no
+    // extra render, but a ref read in render is the shape React's rules forbid) and OVER going
+    // back to a state write on every arm (A-56 removed it). Cost, measured: one extra host
+    // render on a direct key-to-key move after a tick; an arm that follows a disarm still costs
+    // none. Pinned by src/components/ui/confirmDelay.test.ts ("S-A2 (88.9-52): key 0 goes live").
+    if (wroteStateRef.current) {
+      wroteStateRef.current = false;
+      setState(IDLE);
     }
+    if (armKey === null) return undefined;
 
     let remaining = START_SECONDS;
     let timer: ReturnType<typeof setTimeout> | null = null;
     // AMENDED Phase 88.9-52 (A-56): no state write on arm. The view below already reports the
     // starting state for a key the state does not hold yet, so writing it here only cost every
-    // host one extra render per arm. The reset to IDLE on disarm above STAYS, chosen OVER dropping
+    // host one extra render per arm. The reset to IDLE above STAYS, chosen OVER dropping
     // both: without it the state would keep the last key as live, and arming that same key again
-    // would paint the live label on its first render. The reset is skipped when no tick has
+    // would paint the live label on its first render (AMENDED S-A2: that holds for a re-arm
+    // after a disarm AND for a key that comes back after a direct move to another key, which is
+    // why the reset now runs on every key change). The reset is skipped when no tick has
     // written the state (measured: an unconditional updater that returns the same state, run on
     // mount, still made React call the host once more on the next arm).
     const tick = () => {
