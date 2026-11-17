@@ -108,6 +108,8 @@ import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFet
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner'; // X13-7 (88.9-67): the spinner's appear delay
 import { announceStatus } from '@/components/ui/announcer';
+import * as announcerStore from '@/components/ui/announcer';
+import { RootAnnouncer } from '@/components/ui/RootAnnouncer';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -799,11 +801,20 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
     const region = liveRegion(dialog);
     const confirm = screen.getByRole('button', { name: 'Confirm Leave' });
 
-    // Adjacency: exactly ONE live region in the leave dialog, polite, with no region inside it.
+    // Adjacency: exactly ONE live region of the leave dialog's OWN, polite, with no region inside it.
+    // AMENDED Phase 88.9-52 (A-47): was exactly one live region in the dialog. Every house Modal
+    // now also carries the announcer's region as its last child
+    // (src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (A-47): every house Modal carries its own announcer region")),
+    // so the dialog holds two: the leave outcome region, then that one. The announcer's region
+    // is empty here (this file automocks the store) and never carries the leave line.
     const statuses = within(dialog).getAllByRole('status');
-    expect(statuses).toHaveLength(1);
+    expect(statuses).toHaveLength(2);
     expect(statuses[0]).toBe(region);
-    expect(dialog.querySelectorAll('[aria-live]')).toHaveLength(1);
+    expect(statuses[1]).toHaveAttribute('data-announcer', 'dialog');
+    expect(statuses[1]).toBe(dialog.lastElementChild);
+    expect(statuses[1]).toBeEmptyDOMElement();
+    expect(dialog.querySelectorAll('[aria-live]:not([data-announcer])')).toHaveLength(1);
+    expect(dialog.querySelectorAll('[aria-live]')).toHaveLength(2);
     expect(region.querySelector('[aria-live]')).toBeNull();
 
     fireEvent.click(confirm);
@@ -2241,5 +2252,107 @@ describe('Phase 88.9-30 — T boxes on the status-warning family', () => {
 
     const dialog = screen.getByRole('dialog');
     expect(dialog.querySelectorAll('[class*="amber-"]'), 'no raw amber class left in the dialog').toHaveLength(0);
+  });
+});
+
+// 88.9-52 (A-47). MEASURED 2026-11-16 on the owner's iPhone with VoiceOver, on production: Role
+// updated was NOT spoken after a role change in this dialog. The root announcer's region sits
+// outside the open aria-modal dialog. The words now land in the region the house Modal mounts
+// inside the dialog (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
+// This file automocks the announcer store; this block alone hands every mocked export its real
+// implementation, so the real store, the real root region and the real dialog region run.
+describe('88.9-52 (A-47): Role updated and Member removed are announced INSIDE the Manage Members dialog', () => {
+  /** Every function the automocked store exports, by name (its one constant is not a mock). */
+  const storeMocks = (): Array<[string, Mock]> =>
+    (Object.entries(announcerStore) as Array<[string, unknown]>).filter(
+      (entry): entry is [string, Mock] => vi.isMockFunction(entry[1])
+    );
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<Record<string, (...args: never[]) => unknown>>(
+      '@/components/ui/announcer'
+    );
+    for (const [name, mock] of storeMocks()) mock.mockImplementation(actual[name]);
+    render(<RootAnnouncer />);
+  });
+
+  afterEach(() => {
+    // Unmount on the REAL store first (every dialog drops its host), then back to the automock.
+    cleanup();
+    for (const [, mock] of storeMocks()) mock.mockReset();
+  });
+
+  const rootRegion = () => document.querySelector('[data-announcer="root"]') as HTMLElement;
+  const membersDialog = () => screen.getByRole('dialog', { name: 'Manage Group Members' });
+
+  /** The one node on the page that holds the words must be the members dialog's own region. */
+  async function expectSpokenInsideMembersDialog(dialog: HTMLElement, words: string) {
+    await waitFor(() => expect(within(dialog).getByText(words)).toBeInTheDocument());
+    const holder = within(dialog).getByText(words);
+    expect(holder).toHaveAttribute('data-announcer', 'dialog');
+    expect(holder).toHaveAttribute('role', 'status');
+    expect(holder).toHaveAttribute('aria-live', 'polite');
+    expect(holder.parentElement).toBe(dialog);
+    expect(screen.getAllByText(words)).toHaveLength(1);
+    expect(rootRegion()).toBeEmptyDOMElement();
+  }
+
+  it('the store is real in this block and the root region is mounted', () => {
+    expect(storeMocks().map(([name]) => name).sort()).toEqual([
+      'announceStatus',
+      'getHostSnapshot',
+      'getServerSnapshot',
+      'getSnapshot',
+      'registerAnnounceHost',
+      'releaseAnnounceHost',
+      'subscribe',
+    ]);
+    expect(rootRegion()).not.toBeNull();
+    expect(rootRegion()).toBeEmptyDOMElement();
+  });
+
+  it('a demotion (no confirm): Role updated lands in the members dialog, not the root', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
+      ROSTER[0],
+      { ...ROSTER[1], UserGroup: { role: 'admin' } },
+      ROSTER[2],
+    ]);
+    await openMembersModal();
+    const dialog = membersDialog();
+    const demote = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
+    fireEvent.change(demote, { target: { value: 'member' } });
+    await expectSpokenInsideMembersDialog(dialog, 'Role updated');
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+  });
+
+  it('an escalation through the Make admin confirm: the confirm closes and Role updated lands in the members dialog beneath it', async () => {
+    await openMembersModal();
+    const dialog = membersDialog();
+    const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'admin' } });
+    fireEvent.click(await liveConfirm('Make admin'));
+    await expectSpokenInsideMembersDialog(dialog, 'Role updated');
+    // The confirm that was on top when announceStatus ran is gone; it never held the words.
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('a removal through the Remove confirm: Member removed lands in the members dialog beneath it', async () => {
+    await openMembersModal();
+    const dialog = membersDialog();
+    fireEvent.click(await screen.findByText('Remove'));
+    fireEvent.click(await liveConfirm('Remove'));
+    await expectSpokenInsideMembersDialog(dialog, 'Member removed');
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('a removal from the phone kebab (two taps, no confirm dialog): Member removed lands in the members dialog', async () => {
+    await openMembersModal();
+    const dialog = membersDialog();
+    const menu = await openKebabList('Member actions for Target');
+    const removeItem = within(menu).getByRole('button', { name: 'Remove' });
+    fireEvent.click(removeItem);
+    passKebabGate();
+    fireEvent.click(removeItem);
+    await expectSpokenInsideMembersDialog(dialog, 'Member removed');
   });
 });

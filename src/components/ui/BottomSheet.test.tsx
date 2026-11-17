@@ -25,7 +25,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
+import { announceStatus } from './announcer';
 import { BottomSheet } from './BottomSheet';
+import { RootAnnouncer } from './RootAnnouncer';
+import { REGION_EMPTY_DWELL_MS } from './StatusRegion';
 
 afterEach(cleanup);
 
@@ -367,5 +370,47 @@ describe('BottomSheet titleSize (D6c, 88.9-29)', () => {
       expect(display, `display title carries ${token}`).toContain(token);
     }
     expect(display, 'display title drops the 20px size').not.toContain('text-xl');
+  });
+});
+
+// 88.9-52 (A-47): the sheet is the house's other aria-modal dialog, so it carries the same
+// in-dialog announcer region as Modal (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
+// No caller announces while a sheet is open today; this pins the routing for the first one.
+describe('BottomSheet announcer region (88.9-52, A-47)', () => {
+  afterEach(() => {
+    act(() => {
+      vi.runAllTimers();
+    });
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it('an open sheet carries one empty polite region, last in the sheet, and takes the words instead of the root', () => {
+    vi.useFakeTimers();
+    render(
+      <>
+        <RootAnnouncer />
+        <BottomSheet open onClose={() => {}} title={TITLE}>
+          <p>Friday game night</p>
+        </BottomSheet>
+      </>
+    );
+    const sheet = screen.getByRole('dialog', { name: TITLE });
+    const regions = sheet.querySelectorAll('[data-announcer="dialog"]');
+    expect(regions).toHaveLength(1);
+    const region = regions[0] as HTMLElement;
+    expect(sheet.lastElementChild).toBe(region);
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+    expect(region).toBeEmptyDOMElement();
+    expect(region).not.toHaveAttribute('tabindex');
+
+    act(() => announceStatus('Event updated'));
+    act(() => {
+      vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    });
+    expect(region).toHaveTextContent(/^Event updated$/);
+    expect(document.querySelector('[data-announcer="root"]')).toBeEmptyDOMElement();
   });
 });

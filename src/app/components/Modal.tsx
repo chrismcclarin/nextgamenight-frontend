@@ -39,6 +39,7 @@ import {
   recordDialogOpener,
 } from '@/components/ui/dialog';
 import { DIALOG_ROLE_SELECTOR } from '@/components/ui/focusPageFloor';
+import { DialogAnnouncer } from '@/components/ui/RootAnnouncer';
 import { cn } from '@/lib/cn';
 
 export type ModalSize = 'sm' | 'default' | 'lg';
@@ -404,6 +405,20 @@ function ModalRoot({
         )}
       >
         {children}
+        {/* DECISION Phase 88.9-52 (A-47): every house Modal carries its own announcer region, the
+            LAST child of the dialog content, chosen OVER leaving save outcomes to the root
+            announcer alone. MEASURED 2026-11-16 on the owner's iPhone with VoiceOver, on
+            production: Role updated was not spoken while Manage Members stayed open (the root
+            region sits outside this aria-modal dialog). The region is empty until the announcer
+            store hands it words, and it takes them only while this dialog is the top open one;
+            the routing and what was rejected are in
+            src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open"). It sits here, a
+            sibling of Header / Body / Footer and outside the scrolling Body, so its 1px sr-only
+            box can never scroll the Body to a blank spot, and LAST so the header stays the first
+            child and the Close control the first Tab stop. It is not focusable and has no id, so
+            the focus trap and the aria-labelledby wiring never see it. Removing it, or moving it
+            out of the dialog content, is a decision, not a cleanup. */}
+        <DialogAnnouncer open={open} />
       </DialogContent>
     </Dialog>
   );

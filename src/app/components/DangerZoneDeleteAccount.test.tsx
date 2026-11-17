@@ -527,7 +527,15 @@ const trigger = () => screen.getByRole('button', { name: /^delete my account$/i 
 const confirmInput = () => screen.getByPlaceholderText('delete my account');
 const cancelAction = () => screen.getByRole('button', { name: 'Cancel' });
 /** The always-mounted polite progress region (D52 piece (i)). */
-const progressRegion = () => screen.getByRole('status');
+// AMENDED Phase 88.9-52 (A-47): was screen.getByRole('status'). Every house Modal now also
+// carries the announcer's polite region as its last child
+// (src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (A-47): every house Modal carries its own announcer region")),
+// so the progress region is the dialog's one polite region without data-announcer.
+const progressRegion = () => {
+  const own = screen.getAllByRole('status').filter((node) => !node.hasAttribute('data-announcer'));
+  expect(own).toHaveLength(1);
+  return own[0];
+};
 /** Its `tabIndex={-1}` wrapper — the node the false->true focus move targets. */
 const progressFocusTarget = () => progressRegion().parentElement as HTMLElement;
 
@@ -1033,8 +1041,15 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
     expect(polite.className).toMatch(/\bsr-only\b/);
     expect(failure).toHaveTextContent('');
     expect(failure.className).toMatch(/\bsr-only\b/);
-    // Adjacency: exactly ONE polite and ONE assertive region, neither inside the other.
-    expect(screen.getAllByRole('status')).toHaveLength(1);
+    // Adjacency: exactly ONE polite and ONE assertive region of this dialog's own, neither
+    // inside the other. AMENDED Phase 88.9-52 (A-47): the polite count on the page was 1 and is
+    // now 2, the progress region and then the Modal's announcer region (empty here, last in the
+    // dialog); progressRegion() above already asserts exactly one of the dialog's own.
+    const statuses = screen.getAllByRole('status');
+    expect(statuses).toHaveLength(2);
+    expect(statuses[0]).toBe(polite);
+    expect(statuses[1]).toHaveAttribute('data-announcer', 'dialog');
+    expect(statuses[1]).toBeEmptyDOMElement();
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(polite.contains(failure) || failure.contains(polite)).toBe(false);
 

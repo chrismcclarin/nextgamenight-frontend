@@ -120,8 +120,14 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
 
 // AMENDED 2026-10-19 (88.6.1 code review CR-1 / A-25): the dialog now holds TWO polite regions,
 // the sr-only copy announcement first and the copy-failure line second (DOM order).
+// AMENDED Phase 88.9-52 (A-47): the dialog now holds THREE polite regions; the third, last in
+// the dialog, is the Modal's announcer region
+// (src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (A-47): every house Modal carries its own announcer region")).
+// These helpers read the dialog's OWN two, the ones without data-announcer.
 function regions(): HTMLElement[] {
-  const found = screen.getByRole('dialog').querySelectorAll('[role="status"]');
+  const dialog = screen.getByRole('dialog');
+  expect(dialog.querySelectorAll('[role="status"]')).toHaveLength(3);
+  const found = dialog.querySelectorAll('[role="status"]:not([data-announcer])');
   expect(found).toHaveLength(2);
   return Array.from(found) as HTMLElement[];
 }

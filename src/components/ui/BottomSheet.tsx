@@ -68,6 +68,7 @@ import {
   handleDialogCloseAutoFocus,
   recordDialogOpener,
 } from '@/components/ui/dialog';
+import { DialogAnnouncer } from '@/components/ui/RootAnnouncer';
 import { cn } from '@/lib/cn';
 
 export type BottomSheetHeight = 'content' | 'full';
@@ -312,6 +313,12 @@ const BottomSheet = React.forwardRef<
           >
             {children}
           </div>
+          {/* 88.9-52 (A-47): the sheet's own announcer region, last in the sheet and outside the
+              scrolling body, the same as Modal's. Why every aria-modal dialog carries one:
+              src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open"). No caller
+              announces while a sheet is open today; without this the first one to do so would
+              not be heard on an iPhone. Removing it is a decision, not a cleanup. */}
+          <DialogAnnouncer open={open} />
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>

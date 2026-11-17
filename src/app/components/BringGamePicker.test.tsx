@@ -172,7 +172,15 @@ function Host({
   );
 }
 
-const politeRegion = () => screen.getByRole('status');
+// AMENDED Phase 88.9-52 (A-47): was screen.getByRole('status'). Every house Modal now also
+// carries the announcer's polite region as its last child
+// (src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (A-47): every house Modal carries its own announcer region")),
+// so the picker's OWN polite region is the one without data-announcer. Still exactly one.
+const politeRegion = () => {
+  const own = screen.getAllByRole('status').filter((node) => !node.hasAttribute('data-announcer'));
+  expect(own).toHaveLength(1);
+  return own[0];
+};
 const assertiveRegion = () => screen.getByRole('alert');
 
 // Settle on a BRANCH-SPECIFIC element (a game row), never on the header (88.6-15 recipe).
