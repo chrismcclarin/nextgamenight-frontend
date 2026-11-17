@@ -55,7 +55,7 @@ function mountFlagHits(src: string): MountFlagHit[] {
     for (const match of code.matchAll(block)) {
       const ref = match[1];
       const declared = new RegExp(
-        '\\b' + ref.replace(/\$/g, '\\$') + '\\s*=\\s*(?:React\\.)?useRef(?:<[^>]*>)?\\(\\s*' + initial + '\\s*\\)',
+        '\\b' + ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=\\s*(?:React\\.)?useRef(?:<[^>]*>)?\\(\\s*' + initial + '\\s*\\)',
       );
       if (declared.test(code)) hits.push({ ref, offset: match.index ?? 0 });
     }
