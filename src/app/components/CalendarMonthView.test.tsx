@@ -667,10 +667,26 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     expect(tokens(member), 'a member tile is dashed').not.toContain('border-dashed');
     cleanup();
 
-    // The compact tile gets neither the edge nor the word: its cue is the sheet row (88.9-39).
-    renderGrid({ variant: 'compact', events: [guestEvent], viewerDbUserId: VIEWER });
-    const compactTile = screen.getByRole('button', { name: 'Azul - Guest Crew' });
-    expect(tokens(compactTile), 'the compact guest tile is dashed').not.toContain('border-dashed');
+    // AMENDED 88.9-52 (W14, owner 2026-11-16: try the dashed guest edge on the compact tile): the
+    // compact guest tile takes the same edge and the same word; a compact member tile has no border
+    // at all, so its 28px text box at 375 is unchanged. Before W14 the compact tile had neither.
+    renderGrid({ variant: 'compact', events: [guestEvent, memberEvent], viewerDbUserId: VIEWER });
+    const compactGuest = screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' });
+    for (const t of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500/70']) {
+      expect(tokens(compactGuest), `the compact guest tile lacks ${t}`).toContain(t);
+    }
+    const compactMember = screen.getByRole('button', { name: 'Wingspan - Home Crew' });
+    expect(tokens(compactMember).filter((t) => /(^|:)border(-|$)/.test(t)), 'a compact member tile carries a border').toEqual([]);
+    cleanup();
+
+    // The word sits before the RSVP counts in the compact name.
+    renderGrid({ variant: 'compact', events: [{ ...guestEvent, rsvp_summary: { yes: 2, maybe: 0, no: 1 } }], viewerDbUserId: VIEWER });
+    expect(screen.getByRole('button', { name: "Azul - Guest Crew, Guest, 2 going, 0 maybe, 1 can't" })).toBeTruthy();
+    cleanup();
+
+    // Compact with no viewer id: no edge, no word.
+    renderGrid({ variant: 'compact', events: [guestEvent] });
+    expect(tokens(screen.getByRole('button', { name: 'Azul - Guest Crew' })), 'the compact tile is dashed with no viewer id').not.toContain('border-dashed');
     cleanup();
 
     // No viewer id: nothing is dashed and nothing says Guest.

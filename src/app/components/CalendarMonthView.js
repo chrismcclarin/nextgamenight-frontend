@@ -169,7 +169,7 @@ const tileTextTreatment = (tileGround, hasBgImage) => {
  *     clicks still call `onEventClick(event)` and stopPropagation.
  *   - `+N more` is a non-button label; the cell click handles the modal (88.9-52 Q62: the compact grid prints `+N`).
  *   - `viewerDbUserId` (88.9-28 D5a): the caller's own Users.id UUID, used only to derive the
- *     guest cue on the FULL tile (isGuestEvent); never rendered or logged.
+ *     guest cue on both tiles (isGuestEvent; the compact tile since 88.9-52 W14); never rendered or logged.
  */
 export default function CalendarMonthView({
   days,
@@ -874,6 +874,9 @@ export default function CalendarMonthView({
                           const rsvpLabel = hasRsvps && isFutureEvent
                             ? `, ${rs.yes || 0} going, ${rs.maybe || 0} maybe, ${rs.no || 0} can't`
                             : '';
+                          // 88.9-52 W14: ONE guest read feeds the edge arm and the name, as on the full tile below.
+                          const compactGuest = isGuestEvent(event, viewerDbUserId);
+                          const compactName = compactGuest ? `${tileLabel}, Guest` : tileLabel;
                           return (
                             /* DECISION Phase 88.3-16 (owner ruling 5, Req 12 tests 8c(iii) and 11a):
                                the COMPACT tile — the variant the GROUP page actually mounts
@@ -981,12 +984,25 @@ export default function CalendarMonthView({
                                shown. The title is now this wrapper's only child; the colour fork
                                stays on the wrapper.
 
+                               AMENDED Phase 88.9-52 (W14, owner 2026-11-16, 88.9-RULINGS.md after-build look
+                               page: the tile is too small to read anything; "If the dashed line is visible, it
+                               might work. So lets try to add that."): a guest night's compact tile takes the full
+                               tile's dashed edge, the one literal in
+                               src/app/components/GuestPill.tsx ("export const GUEST_ROW_EDGE"), and the same
+                               word in its name (', Guest', before the RSVP counts), chosen OVER the 88.9-28 D5a
+                               reading (full tile only, the phone cue is the sheet row). It is a TRY: the owner
+                               judges the 375 picture. Only the guest tile carries a border, chosen OVER a
+                               transparent 1px border on every compact tile: that would take 2px from every
+                               tile's 28px text box at 375 to keep a 1px text shift off the guest tile.
+                               Edge against the tile's own fill, wcag.ts formula on the token values: light
+                               3.34 (untinted) to 3.74; dark 3.23 (green) to 4.18. Not rendered.
+
                                Any of this is a decision, not a cleanup. */
                             <div
                               key={event.id}
                               role="button"
                               tabIndex={0}
-                              aria-label={tileLabel + rsvpLabel}
+                              aria-label={compactName + rsvpLabel}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
@@ -1018,7 +1034,7 @@ export default function CalendarMonthView({
                                  MEASURED BEFORE: ~20px (ARITHMETIC, not a rendered read — 16px
                                  `text-xs` line box + 2px `p-0.5` top and bottom). This is a
                                  decision, not a cleanup. */
-                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
+                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}${compactGuest ? ` ${GUEST_ROW_EDGE}` : ''}`}
                               style={{
                                 ...(tinted && {
                                   '--group-ground': ground,
