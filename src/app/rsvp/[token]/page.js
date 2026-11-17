@@ -128,8 +128,8 @@ const STATUS_CONFIG = {
   no: {
     heading: 'Got it!',
     messageTemplate: (name, date) => `We'll miss you at ${name} on ${date}.`,
-    iconBg: 'bg-surface-elevated',
-    iconColor: 'text-content-muted',
+    iconBg: 'bg-surface-muted', // DECISION Phase 88.9-52 (W3): the muted circle with the secondary ink, chosen OVER the elevated surface (it IS the card in light, 1.00, so the X had no circle; muted reads 1.50 there, and in dark both are purple-800) and OVER the muted ink on it (forbidden on the muted ground). Glyph 6.96 light, 7.07 dark.
+    iconColor: 'text-content-secondary',
   },
 };
 

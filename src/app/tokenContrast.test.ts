@@ -3024,6 +3024,35 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(measured, 'anti-vacuity: 2 bar arms x (3 card arms + the words)').toBe(8);
   });
+
+  it('W3 (88.9-52): all three RSVP answer cards paint a circle behind the glyph — the fill at least 1.15 off the card and the glyph at least 3.0 on it, both themes', () => {
+    // After-build look page W3: the No card's circle was the elevated surface, which IS the card
+    // in light (1.0000), so its X stood on the bare card while Yes and Maybe sat on a coloured
+    // circle. The three fills and glyph inks are read from the status config. Measured with
+    // src/lib/wcag.ts for No, on the muted circle: fill against the card 1.4993 light / 1.2281
+    // dark (dark unchanged), glyph 6.9561 light / 7.0661 dark. The floor is set under the faintest
+    // shipped circle, Yes in light (1.1834, a hue step more than a lightness one).
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'rsvp', '[token]', 'page.js'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    const arms = [...src.matchAll(/iconBg: 'bg-([a-z0-9-]+)',\s*iconColor: 'text-([a-z0-9-]+)',/g)];
+    expect(arms, 'LOCATOR: the yes, maybe and no arms of the status config').toHaveLength(3);
+    let measured = 0;
+    for (const arm of arms) {
+      for (const theme of ['light', 'dark'] as const) {
+        expectRatio(theme, runtimeProp(arm[1]), '--color-bg-card', 1.15, `W3 the ${arm[1]} circle on the card`);
+        expectRatio(theme, runtimeProp(arm[2]), runtimeProp(arm[1]), 3.0, `W3 the ${arm[2]} glyph on its circle`);
+        measured += 2;
+      }
+    }
+    expect(measured, 'anti-vacuity: 3 answers x 2 themes x (circle + glyph)').toBe(12);
+  });
 });
 
 // =====================================================================================
