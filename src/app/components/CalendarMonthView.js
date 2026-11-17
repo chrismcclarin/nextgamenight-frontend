@@ -167,7 +167,7 @@ const tileTextTreatment = (tileGround, hasBgImage) => {
  *     dispatcher (EventCalendar) decides between empty-day handler,
  *     event-detail navigation, or EventDayModal. Inner event-tile
  *     clicks still call `onEventClick(event)` and stopPropagation.
- *   - `+N more` is a non-button label; the cell click handles the modal.
+ *   - `+N more` is a non-button label; the cell click handles the modal (88.9-52 Q62: the compact grid prints `+N`).
  *   - `viewerDbUserId` (88.9-28 D5a): the caller's own Users.id UUID, used only to derive the
  *     guest cue on the FULL tile (isGuestEvent); never rendered or logged.
  */
@@ -323,7 +323,8 @@ export default function CalendarMonthView({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      {/* 88.9-52 (Q62): the day grid is a size container so the more label below can read its width. */}
+      <div className="@container grid grid-cols-7 gap-1">
         {days.map((cell, index) => {
           // CAL-01: cells are {date, isCurrentMonth} — adjacent-month cells
           // have isCurrentMonth=false, never null.
@@ -1287,11 +1288,38 @@ export default function CalendarMonthView({
                              The 500 weight goes with it, §4.5's EMPHASIS outcome: 400 plus the
                              colour token that is now correct, rather than weight standing in for
                              an ink that could not be read. `text-xs` STAYS — dense-grid cell,
-                             Caption 12 (§4.2). */
-                          className="text-xs text-content-secondary pointer-events-none select-none"
+                             Caption 12 (§4.2).
+                             DECISION Phase 88.9-52 (Q62, owner ruling A, 2026-11-16, 88.9-RULINGS.md after-build
+                             look page): the compact grid prints the count alone (+1), chosen OVER +1 more cut off
+                             at the column edge (B) and OVER letting it wrap (C, the shipped look: two lines at 375,
+                             and at 200% text a 60px word in a 31px column, 15px past the card on Saturdays).
+                             One line always (whitespace-nowrap). Under 14rem of grid width (about 200% text at 375)
+                             the compact label also starts at the cell edge (-mx-1): a column there is narrower than
+                             the count, and the pull keeps +99 clear of the next day's number. ARITHMETIC, not a
+                             rendered read (glyph widths scaled from the 2026-11-16 capture): +1 / +9 / +10 / +99 are
+                             about 11 / 15 / 20 / 22px at 100% in a 32px cell box, and 23 / 29 / 39 / 44px at 200% in
+                             a 30.7px column, where +99 ends 14.5px past its cell, 2.5px short of the next day's
+                             number and inside the card's 24px padding on a Saturday; without the pull it would
+                             overlap that number by 5.5px.
+                             The full grid keeps the word and drops it only under 32rem of grid width (W18: at 768 the
+                             Home month column is as narrow as a phone's and +1 more wrapped), chosen OVER +N everywhere
+                             (the ruling names the small calendar only).
+                             Spoken name: the ruling's words, N more event(s), from a labelled leaf in the weekday
+                             header's form (role img, aria-label, tabIndex -1, printed text aria-hidden), chosen OVER
+                             leaving the bare text, which reads as plus 1. Before this the label had no spoken name
+                             of its own. Not measured on a device. Changing any of this is a decision, not a cleanup. */
+                          role="img"
+                          aria-label={`${dayEvents.length - 2} more ${dayEvents.length - 2 === 1 ? 'event' : 'events'}`}
+                          tabIndex={-1}
+                          className={variant === 'compact'
+                            ? 'text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap @max-[14rem]:-mx-1'
+                            : 'text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap'}
                           title={`Tap the day to see all ${dayEvents.length} games`}
                         >
-                          +{dayEvents.length - 2} more
+                          <span aria-hidden="true">
+                            +{dayEvents.length - 2}
+                            {variant === 'compact' ? null : <span className="@max-[32rem]:hidden"> more</span>}
+                          </span>
                         </div>
                       )}
                     </div>

@@ -541,6 +541,46 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     }
   });
 
+  // 88.9-52 (Q62, owner ruling A, 2026-11-16): the compact grid prints the count alone, on one
+  // line, and speaks the count in words from a labelled leaf; the full grid keeps the word and
+  // drops it only when the day grid is narrow (W18).
+  const crowd = (n: number, onDay = 20) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `evt-crowd-${onDay}-${i}`,
+      start_date: `2031-09-${String(onDay).padStart(2, '0')}T${String(10 + (i % 10)).padStart(2, '0')}:00:00`,
+      Game: { name: `Game ${i}` },
+      Group: { name: 'Crowd', background_color: null },
+      rsvp_summary: null,
+    }));
+
+  it('Q62 (88.9-52): the compact grid shows +N on one line and speaks N more event(s) from a labelled leaf', () => {
+    const { cells, container } = renderGrid({ variant: 'compact', events: [...crowd(3, 20), ...crowd(5, 22)] });
+    expect(tokens(cells[0].parentElement as HTMLElement), 'the day grid is not a size container').toContain('@container');
+    const one = screen.getByRole('img', { name: '1 more event' });
+    const three = screen.getByRole('img', { name: '3 more events' });
+    expect(container.querySelectorAll('[role="img"]'), 'a day with one or two games prints a more label').toHaveLength(2);
+    for (const [label, text] of [[one, '+1'], [three, '+3']] as const) {
+      expect(label.textContent, 'the compact label still prints the word').toBe(text);
+      expect(label.getAttribute('tabindex'), 'the label is not a focusable leaf outside the Tab order').toBe('-1');
+      expect(label.children, 'the label holds more than its one hidden text span').toHaveLength(1);
+      expect(label.children[0].getAttribute('aria-hidden'), 'the printed count is not hidden from the accessibility tree').toBe('true');
+      for (const t of ['text-xs', 'text-content-secondary', 'pointer-events-none', 'select-none', 'whitespace-nowrap', '@max-[14rem]:-mx-1']) {
+        expect(tokens(label), `the compact label lacks ${t}`).toContain(t);
+      }
+    }
+  });
+
+  it('Q62 / W18 (88.9-52): the full grid keeps +N more, on one line, and hides the word when the day grid is under 32rem', () => {
+    renderGrid({ variant: 'full', events: crowd(3, 20) });
+    const label = screen.getByRole('img', { name: '1 more event' });
+    expect(label.textContent).toBe('+1 more');
+    expect(tokens(label), 'the full label can wrap').toContain('whitespace-nowrap');
+    expect(tokens(label), 'the full label takes the compact pull').not.toContain('@max-[14rem]:-mx-1');
+    const word = within(label).getByText('more', { exact: false, selector: 'span span' });
+    expect(word.textContent).toBe(' more');
+    expect(tokens(word), 'the word does not give way in a narrow grid').toContain('@max-[32rem]:hidden');
+  });
+
   const rsvpEvent = {
     id: 'evt-rsvp',
     start_date: '2031-09-20T19:00:00',
