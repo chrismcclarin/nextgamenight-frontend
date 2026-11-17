@@ -528,6 +528,9 @@ describe('invite/group/[token] — N36 the error glyph by cause (plan 88.9-69)',
       ['403', new ApiError('HTTP error! status: 403', 'forbidden', 403, { error: 'nope' }), 'red'],
       ['404', new ApiError('HTTP error! status: 404', 'not_found', 404), 'red'],
       ['410', new ApiError('HTTP error! status: 410', 'gone', 410), 'red'],
+      // S-C1 (88.9-52): the tombstone refusal carries its own envelope code, which wins over
+      // the status mapping, so it never arrives as gone.
+      ['410 account_deleted', new ApiError('This account has been deleted.', 'account_deleted', 410), 'red'],
     ];
     for (const [label, err, tone] of cases) {
       preview().mockReset();

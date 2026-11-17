@@ -54,11 +54,15 @@ function isWrongEmailRefusal(err) {
    (connection, 5xx, 429, an expired session, the proxy's CSRF gate, an unnamed failure), chosen
    OVER one red X for every cause. Keyed on the error's code and the CSRF predicate, never on
    the sentence. NO retry control is added: DECISION Phase 88.6.1-35 (W039) rejects clearing
-   the accept latch, and the amber X changes nothing about that. */
+   the accept latch, and the amber X changes nothing about that.
+   AMENDED Phase 88.9-52 (S-C1): account_deleted joins the red list. The backend's auth layer
+   refuses a deleted account on every signed-in route with a 410 that carries that envelope code
+   (backend:Sonnet/middleware/auth0.js), and the envelope code wins over the status mapping, so
+   it never arrived as gone and drew the amber X beside a sentence saying the account is gone. */
 function isAcceptRefusal(err) {
   if (isWrongEmailRefusal(err)) return true;
   const code = err?.code;
-  return code === 'not_found' || code === 'gone' || code === 'conflict';
+  return code === 'not_found' || code === 'gone' || code === 'conflict' || code === 'account_deleted';
 }
 
 // The page region's test handle. NOT EXPORTED, deliberately — the reason is recorded on the rsvp

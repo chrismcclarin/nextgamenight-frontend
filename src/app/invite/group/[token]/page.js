@@ -45,11 +45,23 @@ const INVALID_LINK_DETAIL = 'This invite link is no longer valid.';
    server uses to say no: forbidden (other than the proxy's CSRF gate), not_found, gone, conflict.
    Every other cause is amber, chosen OVER listing the temporary causes and defaulting to red: an
    unnamed failure's own sentence says to refresh and try again, and a red X would contradict it.
-   Read from the error's code and the CSRF predicate, never from message text. */
+   Read from the error's code and the CSRF predicate, never from message text.
+   AMENDED Phase 88.9-52 (S-C1): account_deleted joins the refusal list. The join route and the
+   backend's auth layer both refuse a deleted account with a 410 that carries that envelope code
+   (backend:Sonnet/routes/groups.js, backend:Sonnet/middleware/auth0.js), and the envelope code
+   wins over the status mapping, so it never arrived as gone and drew the amber X beside a
+   sentence saying the account is gone. Rejected: keying on status 410, which would leave the
+   code-keyed rule above with one status-keyed arm. */
 function isJoinRefusal(err) {
   if (isCsrfRejection(err)) return false;
   const code = err?.code;
-  return code === 'forbidden' || code === 'not_found' || code === 'gone' || code === 'conflict';
+  return (
+    code === 'forbidden' ||
+    code === 'not_found' ||
+    code === 'gone' ||
+    code === 'conflict' ||
+    code === 'account_deleted'
+  );
 }
 
 /** Join the non-empty parts of an announcement with one space (never a trailing space). */

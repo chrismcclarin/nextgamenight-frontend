@@ -544,6 +544,13 @@ describe('invite/accept — Q69 the failure glyph by cause (88.9-52)', () => {
       ['404', wireError(404, { error: 'Pending invite not found' }), 'This invite may have already been accepted or expired.'],
       ['wrong email', BACKEND_403(), 'This invite was sent to a different email address.'],
       ['410', wireError(410, { error: 'This group is no longer available' }), 'This is no longer available.'],
+      // S-C1 (88.9-52): the backend's auth layer refuses a deleted account with its own envelope
+      // code on every signed-in route, this one included; the code wins over the status mapping.
+      [
+        '410 account_deleted',
+        wireError(410, { code: 'account_deleted', message: 'This account has been deleted.' }),
+        'This account has already been deleted.',
+      ],
     ];
     for (const [label, err, line] of refusals) {
       accept().mockReset();
