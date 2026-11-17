@@ -156,15 +156,16 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             {/* 88.6.1-74 (owner ruling D8-r2, E17): no pill while the RSVP list never loaded, so no
                 chip says "No reply" for a list that failed. */}
             {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} nightStarted={nightStarted} />}
+            {/* 88.9-52 (W27, height half): every pill in this chip takes the See-all row's box, px-1.5 py-0.5. Owner and Admin had no vertical padding and measured 16px beside the 20px No reply and Maybe pills; Guest takes the same sides so the chip has one pill box (orchestrator decision). The Friend indicator is not part of this. */}
             {role === 'owner' && (
-                <span className="text-xs bg-surface-pill-violet text-content-pill-violet px-1 rounded-sm font-bold">Owner</span>
+                <span className="text-xs bg-surface-pill-violet text-content-pill-violet px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
             )}
             {role === 'admin' && (
-                <span className="text-xs bg-surface-pill-blue text-content-pill-blue px-1 rounded-sm font-bold">Admin</span>
+                <span className="text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
             )}
             {participant.is_guest && viewerScope === 'group-member' && (
                 <span
-                    className="text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber px-1 py-0.5"
+                    className="text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber px-1.5 py-0.5"
                     title="Joined via game-invite QR (not a group member)"
                 >
                     Guest

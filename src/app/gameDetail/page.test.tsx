@@ -5588,3 +5588,28 @@ describe("gameDetail Bringing control — the viewer's RSVP reaches the section,
     expect(bringPickerProps.current?.eventId).toBe(EVENT_ID);
   });
 });
+
+// 88.9-52 W27 (height half): in the participant strip chip the Owner and Admin pills measured 16px
+// tall (padding 0 4px) beside the 20px No reply and Maybe pills. Every pill in the chip now shares
+// the See-all row's box, px-1.5 py-0.5. jsdom lays nothing out, so this pins the class tokens.
+describe('gameDetail strip chip pills share one box (W27, 88.9-52)', () => {
+  it.each(['owner', 'admin'] as const)(
+    'W27 (88.9-52): the %s pill and the Guest pill in the strip chip take px-1.5 py-0.5',
+    async (role) => {
+      renderEventDetail({
+        role,
+        participants: [
+          participantRow({ user_id: SELF_UUID, username: 'Me' }),
+          participantRow({ user_id: 'guest-uuid', username: 'Visiting Pat', is_guest: true }),
+        ],
+      });
+      await screen.findByRole('heading', { name: 'Participants (2)' });
+      const rolePill = await screen.findByText(role === 'owner' ? 'Owner' : 'Admin', { selector: 'span' });
+      expect(rolePill).toHaveClass('text-xs', 'px-1.5', 'py-0.5', 'rounded-sm', 'font-bold');
+      expect(rolePill).not.toHaveClass('px-1');
+      const guestPill = screen.getByText('Guest', { selector: 'span[title]' });
+      expect(guestPill).toHaveClass('text-xs', 'px-1.5', 'py-0.5', 'rounded-sm');
+      expect(guestPill).not.toHaveClass('px-1');
+    }
+  );
+});
