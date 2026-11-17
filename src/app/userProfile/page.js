@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useId, memo } from 'react';
 import { flushSync } from 'react-dom';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
@@ -1942,6 +1942,16 @@ function Profile(){
         armedLabel: 'Remove',
         onConfirm: (gameId, ctx) => removeGameFromCollection(gameId, ctx),
     });
+    // PIX-1 / A-49 (88.9-52): ONE press handler for every collection card, the same function on every render, so
+    // a memoised card is not re-rendered by it. It calls the gate's own onClick (the newest one, through the ref),
+    // so the A-74 hand-over of the pressed control stays the hook's.
+    const removeTriggerPropsRef = useRef(removeGameGate.triggerProps);
+    useEffect(() => {
+        removeTriggerPropsRef.current = removeGameGate.triggerProps;
+    });
+    const pressRemoveGame = useCallback((game, event) => {
+        removeTriggerPropsRef.current(game.id, game.name, `Remove ${game.name}`).onClick(event);
+    }, []);
 
     // The old hand-rolled patterns fetcher (silent-retry + window-refocus
     // listener) is GONE (PRIM-03): the useQuery above owns fetching + silent-
@@ -4694,146 +4704,27 @@ function Profile(){
                                 const isThirdPeek = isPeek && index === collectionVisibleCount + 2;
                                 // The card that opening reveals first: its title takes the focus.
                                 const isFirstRevealed = collectionOverflows && index === collectionVisibleCount;
+                                const removeTrigger = removeGameGate.triggerProps(game.id, game.name, `Remove ${game.name}`);
+                                // PIX-1 / A-49 (88.9-52): every value handed down is the same from tick to tick for a card
+                                // at rest, so the memoised card skips the countdown's renders (marker at CollectionCard below).
                                 return (
-                                // D49-b (owner ruling 2026-09-09, option i): the inlined built-in md hover shadow was
-                                // snapped to the theme tier in 88.6, D49-b (a plain hover variant, not plan 05's
-                                // enabled-hover one, because this is a card div and not a .btn; the snap changed hue).
-                                // AMENDED Phase 88.9-32 (owner pick E3a, 88.9-PICKS-B4.json, 2026-11-06): the card carries
-                                // NO hover shadow and no shadow transition, chosen OVER the theme-tier md hover lift D49-b
-                                // shipped — the card is not a control (no click target of its own), so a hover lift
-                                // promised an action that does not exist. Re-adding a hover shadow here is a decision,
-                                // not a cleanup.
-                                // DECISION Phase 88.9-68 (X56c, same pick): dark cards take the raised fill, border
-                                // unchanged, chosen OVER a stronger border (X56a 2.45, X56b 3.42); fill vs card ground
-                                // 1.2281. Light is unchanged (no fill).
-                                <div
-                                    key={game.id}
-                                    className={
-                                        isThirdPeek
-                                            ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none max-lg:hidden'
-                                            : isPeek
-                                                ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none'
-                                                : 'border border-line rounded-lg p-4 dark:bg-surface-elevated'
-                                    }
-                                    inert={isPeek ? '' : undefined}
-                                    aria-hidden={isPeek ? 'true' : undefined}
-                                >
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="flex-1">
-                                            <Heading
-                                                ref={isFirstRevealed ? firstRevealedTitleRef : undefined}
-                                                tabIndex={isFirstRevealed ? -1 : undefined}
-                                                level={3}
-                                                size="body"
-                                                className={
-                                                    isFirstRevealed
-                                                        ? 'text-content-primary scroll-mt-20 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring'
-                                                        : 'text-content-primary'
-                                                }
-                                            >
-                                                {game.name}
-                                            </Heading>
-                                            {game.year_published && (
-                                                <p className="text-sm text-content-secondary">({game.year_published})</p>
-                                            )}
-                                        </div>
-                                        {/* Two-tap gate. The accessible name names the ACTION
-                                            and the OBJECT (F-369) — a bare glyph is not a
-                                            name, and the `title` it used to carry does not
-                                            count (§7.3). Armed state swaps the visible label
-                                            AND the name together (Label-in-Name, WCAG 2.5.3),
-                                            both from the hook.
-
-                                            88-33 Task 5 (fork 7): resting prominence (a real
-                                            affordance box, min-w-11) + armed 'Remove' label on
-                                            the error-subtle treatment. The invisible sizer span
-                                            reserves the ARMED label's width at rest so arming
-                                            never reflows the title next to it (walk row 573's
-                                            squeeze class).
-                                            AMENDED Phase 88.9-68 (X53): still a real bordered box (fork 7), now 32px with the dialog's 20px X; the 44px hit area is the button.
-                                            How it is built: the slot is the reserve's one-cell grid
-                                            AROUND the button, holding the armed box's width from
-                                            rest (label at the armed weight and size, plus the box's
-                                            padding and border), with the button at its right edge.
-                                            The button is the 44px hit area and carries no border or
-                                            fill; the one visible box inside it is 32px at rest (a
-                                            minimum width, so the busy spinner fits inside the
-                                            border; its side padding is 4px so that minimum governs:
-                                            the 20px icon, 8px of padding and the 1px border come to
-                                            30, where 6px a side measured 34 wide in CI) and grows to
-                                            its label when armed, where a second
-                                            reserve inside the box keeps it one width through
-                                            Wait (3), (2), (1) and Remove (X69, 88.9-67). */}
-                                        {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
-                                                `font-semibold` STAYS, and it is deliberately NOT one of
-                                                the 600s the weight sweep converted. It is not emphasis —
-                                                it is a MEASUREMENT. The span reserves the width of the
-                                                ARMED label at rest, so it has to be set in the same
-                                                weight the armed label renders at (the 600 on the line
-                                                above). Drop it to 400 and the reservation under-measures,
-                                                arming reflows the game title beside it, and walk row
-                                                573's squeeze class comes back — silently, because no gate
-                                                measures text advance width.
-
-                                                `typeScaleTouchedSurfaces`'s ARMED_STATE_600_ROSTER cannot
-                                                carry this one: its predicate reads the surrounding source
-                                                for `isArmed`, and 160 characters back from here lands
-                                                inside the className template rather than on the
-                                                `removeGameGate.isArmed(...)` call four lines up. It is
-                                                therefore carried in WEIGHT_ROSTER instead, which is why
-                                                that entry floors at FIVE and not at the armed roster's
-                                                four. Converting it is a decision, not a cleanup.
-                                                AMENDED Phase 88.9-67 (X69 width): the measurement lives in ReservedLabel's reserve (Wait (3), (2), (1), Remove), still 600 through reserveClassName.
-                                                AMENDED Phase 88.9-23 (F9b): the sizer reserves the countdown label, the widest armed state.
-                                                AMENDED Phase 88.9-67 (X69): the sizer reserves Remove, wider than Wait (n), until Task 2's shared reserve.
-                                                AMENDED Phase 88.9-67 (X69 width): the x reserves through ReservedLabel.
-                                                AMENDED Phase 88.9-68 (X53, owner at N37, 2026-11-13: a very large box and a very small x … Make it similar to the dialog boxes x): the sizer reserves the armed width on the slot around the button, not inside the visible box, chosen OVER the reservation inside the box (the large resting box); weight 600 and the measurement stand. */}
-                                        <ReservedLabel
-                                            className="justify-items-end"
-                                            reserve={removeGameGate.reserveFor(game.id, { atRest: true })}
-                                            reserveClassName="font-semibold whitespace-nowrap border border-transparent px-2 text-sm"
-                                        >
-                                            <button
-                                                {...removeGameGate.triggerProps(
-                                                    game.id,
-                                                    game.name,
-                                                    `Remove ${game.name}`
-                                                )}
-                                                {...(isPeek ? { tabIndex: -1 } : {})}
-                                                // DECISION Phase 88.9-68 (X36a, once-over R3, veto open): a committing two-tap remove shows its flight like the Friends Remove — aria-disabled, the delayed held spinner, , removing / , deleting in the name — chosen OVER no in-flight sign; the F9b two-tap is unchanged.
-                                                // A conditional spread AFTER the hook's props (the Friends form). The gate is
-                                                // disarmed while the DELETE runs, so the spinner joins the RESTING box.
-                                                // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): (1) armed keeps the RESTING bordered box and adds only the 600 weight, as the schedule Delete adds only its weight, chosen OVER the error-subtle FILL the armed box gained (fork 7, 88-33 Task 5: the pink pill of W38); the border stays in every state because an icon button needs its box (X53). Armed word on the card ground: 8.31 light, 5.94 on the dark raised fill (floor 4.5). (2) the busy spinner LEADS the X, so the right-anchored X holds its place while the box grows left, chosen OVER the trailing spinner (the X moved about 18px left).
-                                                {...(removingGameId === game.id ? { 'aria-disabled': 'true', 'aria-label': `Remove ${game.name}, removing` } : {})}
-                                                className="group inline-flex min-h-11 min-w-11 items-center justify-center whitespace-nowrap rounded-btn text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
-                                            >
-                                                <span
-                                                    className={
-                                                        removeGameGate.isArmed(game.id)
-                                                            ? 'font-semibold inline-flex min-h-8 items-center justify-center gap-1 rounded-btn border border-status-error px-2 group-hover:bg-status-error-subtle'
-                                                            : 'inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-status-error px-1 group-hover:bg-status-error-subtle'
-                                                    }
-                                                >
-                                                    {/* W38 (88.9-52): the spinner leads, and it is mounted OUTSIDE the armed ternary so
-                                                        arming never unmounts it mid-hold (R-C3b reach). */}
-                                                    <DelayedSpinner busy={removingGameId === game.id} />
-                                                    {removeGameGate.isArmed(game.id) ? (
-                                                        <ReservedLabel reserve={removeGameGate.reserveFor(game.id)}>
-                                                            {removeGameGate.labelFor(game.id, 'Remove')}
-                                                        </ReservedLabel>
-                                                    ) : (
-                                                        <Icon name="X" size={20} strokeWidth={2} />
-                                                    )}
-                                                </span>
-                                            </button>
-                                        </ReservedLabel>
-                                    </div>
-                                    <SafeImage
-                                        src={game.image_url}
-                                        alt={game.name}
-                                        className="w-full h-32 object-cover rounded-sm mb-2"
+                                    <CollectionCard
+                                        key={game.id}
+                                        game={game}
+                                        isPeek={isPeek}
+                                        isThirdPeek={isThirdPeek}
+                                        isFirstRevealed={isFirstRevealed}
+                                        titleRef={firstRevealedTitleRef}
+                                        armed={removeGameGate.isArmed(game.id)}
+                                        label={removeGameGate.labelFor(game.id, 'Remove')}
+                                        slotReserve={removeGameGate.reserveFor(game.id, { atRest: true })}
+                                        labelReserve={removeGameGate.reserveFor(game.id)}
+                                        ariaLabel={removeTrigger['aria-label']}
+                                        ariaPressed={removeTrigger['aria-pressed']}
+                                        ariaDisabled={removeTrigger['aria-disabled']}
+                                        removing={removingGameId === game.id}
+                                        onRemovePress={pressRemoveGame}
                                     />
-                                </div>
                                 );
                             })}
                             {collectionOverflows && !collectionOpen && (
@@ -4934,3 +4825,172 @@ const resolveNothing = () => Promise.resolve(undefined);
 const PROFILE_PAGE_NAME = 'Profile';
 
 export default Profile;
+
+/* DECISION Phase 88.9-52 (PIX-1 / A-49, owner condition met: the picture pass measured a 467 ms frame gap with 120 games while one Remove counted down):
+   one collection card is a MEMOISED component and takes only values that stay the same for a card at rest (the game, its
+   place flags, the resting name, the two reserve lists, one press handler that never changes), chosen OVER the cards
+   rendered inline in the page's map, where every countdown tick re-rendered every mounted card (30 of 30, four times per
+   arm). The page still renders on each tick, because the gate's countdown lives in the host:
+   src/components/ui/useConfirmAction.ts ("AMENDED Phase 88.9-23 (F9b): the dialog-tier countdown lives in ConfirmDialog").
+   The cards no longer follow it. Only the armed card's values change per tick, so only it renders. REJECTED: moving the countdown out of the hook (changes all five
+   triggerProps sites, the accept recorded there) and a custom memo comparator (hides a real prop change). Passing this
+   component the gate object, an inline function or a fresh object brings every card back on every tick, silently for a
+   reader and red in src/app/userProfile/page.test.tsx ("A-49 (88.9-52): a countdown tick re-renders the armed collection card only").
+   The markup, classes and markers below moved here from the map word for word. */
+const CollectionCard = memo(function CollectionCard({
+    game,
+    isPeek,
+    isThirdPeek,
+    isFirstRevealed,
+    titleRef,
+    armed,
+    label,
+    slotReserve,
+    labelReserve,
+    ariaLabel,
+    ariaPressed,
+    ariaDisabled,
+    removing,
+    onRemovePress,
+}) {
+    return (
+    // D49-b (owner ruling 2026-09-09, option i): the inlined built-in md hover shadow was
+    // snapped to the theme tier in 88.6, D49-b (a plain hover variant, not plan 05's
+    // enabled-hover one, because this is a card div and not a .btn; the snap changed hue).
+    // AMENDED Phase 88.9-32 (owner pick E3a, 88.9-PICKS-B4.json, 2026-11-06): the card carries
+    // NO hover shadow and no shadow transition, chosen OVER the theme-tier md hover lift D49-b
+    // shipped — the card is not a control (no click target of its own), so a hover lift
+    // promised an action that does not exist. Re-adding a hover shadow here is a decision,
+    // not a cleanup.
+    // DECISION Phase 88.9-68 (X56c, same pick): dark cards take the raised fill, border
+    // unchanged, chosen OVER a stronger border (X56a 2.45, X56b 3.42); fill vs card ground
+    // 1.2281. Light is unchanged (no fill).
+    <div
+        className={
+            isThirdPeek
+                ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none max-lg:hidden'
+                : isPeek
+                    ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none'
+                    : 'border border-line rounded-lg p-4 dark:bg-surface-elevated'
+        }
+        inert={isPeek ? '' : undefined}
+        aria-hidden={isPeek ? 'true' : undefined}
+    >
+        <div className="flex justify-between items-start mb-2">
+            <div className="flex-1">
+                <Heading
+                    ref={isFirstRevealed ? titleRef : undefined}
+                    tabIndex={isFirstRevealed ? -1 : undefined}
+                    level={3}
+                    size="body"
+                    className={
+                        isFirstRevealed
+                            ? 'text-content-primary scroll-mt-20 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring'
+                            : 'text-content-primary'
+                    }
+                >
+                    {game.name}
+                </Heading>
+                {game.year_published && (
+                    <p className="text-sm text-content-secondary">({game.year_published})</p>
+                )}
+            </div>
+            {/* Two-tap gate. The accessible name names the ACTION
+                and the OBJECT (F-369) — a bare glyph is not a
+                name, and the `title` it used to carry does not
+                count (§7.3). Armed state swaps the visible label
+                AND the name together (Label-in-Name, WCAG 2.5.3),
+                both from the hook.
+
+                88-33 Task 5 (fork 7): resting prominence (a real
+                affordance box, min-w-11) + armed 'Remove' label on
+                the error-subtle treatment. The invisible sizer span
+                reserves the ARMED label's width at rest so arming
+                never reflows the title next to it (walk row 573's
+                squeeze class).
+                AMENDED Phase 88.9-68 (X53): still a real bordered box (fork 7), now 32px with the dialog's 20px X; the 44px hit area is the button.
+                How it is built: the slot is the reserve's one-cell grid
+                AROUND the button, holding the armed box's width from
+                rest (label at the armed weight and size, plus the box's
+                padding and border), with the button at its right edge.
+                The button is the 44px hit area and carries no border or
+                fill; the one visible box inside it is 32px at rest (a
+                minimum width, so the busy spinner fits inside the
+                border; its side padding is 4px so that minimum governs:
+                the 20px icon, 8px of padding and the 1px border come to
+                30, where 6px a side measured 34 wide in CI) and grows to
+                its label when armed, where a second
+                reserve inside the box keeps it one width through
+                Wait (3), (2), (1) and Remove (X69, 88.9-67). */}
+            {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
+                    `font-semibold` STAYS, and it is deliberately NOT one of
+                    the 600s the weight sweep converted. It is not emphasis —
+                    it is a MEASUREMENT. The span reserves the width of the
+                    ARMED label at rest, so it has to be set in the same
+                    weight the armed label renders at (the 600 on the line
+                    above). Drop it to 400 and the reservation under-measures,
+                    arming reflows the game title beside it, and walk row
+                    573's squeeze class comes back — silently, because no gate
+                    measures text advance width.
+
+                    `typeScaleTouchedSurfaces`'s ARMED_STATE_600_ROSTER cannot
+                    carry this one: its predicate reads the surrounding source
+                    for `isArmed`, and 160 characters back from here lands
+                    inside the className template rather than on the
+                    `removeGameGate.isArmed(...)` call four lines up. It is
+                    therefore carried in WEIGHT_ROSTER instead, which is why
+                    that entry floors at FIVE and not at the armed roster's
+                    four. Converting it is a decision, not a cleanup.
+                    AMENDED Phase 88.9-67 (X69 width): the measurement lives in ReservedLabel's reserve (Wait (3), (2), (1), Remove), still 600 through reserveClassName.
+                    AMENDED Phase 88.9-23 (F9b): the sizer reserves the countdown label, the widest armed state.
+                    AMENDED Phase 88.9-67 (X69): the sizer reserves Remove, wider than Wait (n), until Task 2's shared reserve.
+                    AMENDED Phase 88.9-67 (X69 width): the x reserves through ReservedLabel.
+                    AMENDED Phase 88.9-68 (X53, owner at N37, 2026-11-13: a very large box and a very small x … Make it similar to the dialog boxes x): the sizer reserves the armed width on the slot around the button, not inside the visible box, chosen OVER the reservation inside the box (the large resting box); weight 600 and the measurement stand. */}
+            <ReservedLabel
+                className="justify-items-end"
+                reserve={slotReserve}
+                reserveClassName="font-semibold whitespace-nowrap border border-transparent px-2 text-sm"
+            >
+                <button
+                    type="button"
+                    onClick={(event) => onRemovePress(game, event)}
+                    aria-label={ariaLabel}
+                    aria-pressed={ariaPressed}
+                    aria-disabled={ariaDisabled}
+                    {...(isPeek ? { tabIndex: -1 } : {})}
+                    // DECISION Phase 88.9-68 (X36a, once-over R3, veto open): a committing two-tap remove shows its flight like the Friends Remove — aria-disabled, the delayed held spinner, , removing / , deleting in the name — chosen OVER no in-flight sign; the F9b two-tap is unchanged.
+                    // A conditional spread AFTER the hook's props (the Friends form). The gate is
+                    // disarmed while the DELETE runs, so the spinner joins the RESTING box.
+                    // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): (1) armed keeps the RESTING bordered box and adds only the 600 weight, as the schedule Delete adds only its weight, chosen OVER the error-subtle FILL the armed box gained (fork 7, 88-33 Task 5: the pink pill of W38); the border stays in every state because an icon button needs its box (X53). Armed word on the card ground: 8.31 light, 5.94 on the dark raised fill (floor 4.5). (2) the busy spinner LEADS the X, so the right-anchored X holds its place while the box grows left, chosen OVER the trailing spinner (the X moved about 18px left).
+                    {...(removing ? { 'aria-disabled': 'true', 'aria-label': `Remove ${game.name}, removing` } : {})}
+                    className="group inline-flex min-h-11 min-w-11 items-center justify-center whitespace-nowrap rounded-btn text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                    <span
+                        className={
+                            armed
+                                ? 'font-semibold inline-flex min-h-8 items-center justify-center gap-1 rounded-btn border border-status-error px-2 group-hover:bg-status-error-subtle'
+                                : 'inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-status-error px-1 group-hover:bg-status-error-subtle'
+                        }
+                    >
+                        {/* W38 (88.9-52): the spinner leads, and it is mounted OUTSIDE the armed ternary so
+                            arming never unmounts it mid-hold (R-C3b reach). */}
+                        <DelayedSpinner busy={removing} />
+                        {armed ? (
+                            <ReservedLabel reserve={labelReserve}>
+                                {label}
+                            </ReservedLabel>
+                        ) : (
+                            <Icon name="X" size={20} strokeWidth={2} />
+                        )}
+                    </span>
+                </button>
+            </ReservedLabel>
+        </div>
+        <SafeImage
+            src={game.image_url}
+            alt={game.name}
+            className="w-full h-32 object-cover rounded-sm mb-2"
+        />
+    </div>
+    );
+});

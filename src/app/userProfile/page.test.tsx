@@ -208,7 +208,8 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // `useFetchErrorState` and `FetchErrorBanner` are kept REAL — the hook is a pure
 // derivation over the query object supplied above and the banner renders null
 // while `showError` is false, so stubbing them would only hide regressions.
-vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
+// A spy, so the A-49 case below can count how often each collection card renders.
+vi.mock('@/app/components/SafeImage', () => ({ default: vi.fn(() => null) }));
 vi.mock('@/app/components/DangerZoneDeleteAccount', () => ({ default: () => null }));
 vi.mock('next/link', () => ({
   default: ({ children }: { children: React.ReactNode }) => children,
@@ -1097,6 +1098,47 @@ describe('userProfile two-tap armed state (F-357)', () => {
       const reverted = screen.getByRole('button', { name: 'Remove Catan' });
       expect(reverted).not.toHaveAttribute('aria-pressed');
       expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // PIX-1 / A-49 (88.9-52, owner condition met: the picture pass measured a hitch with 120 games).
+  // Each card renders its one SafeImage, so the stub's call count is the number of card renders.
+  // Before the memoised card every mounted card rendered on every countdown tick (30 of 30).
+  it('A-49 (88.9-52): a countdown tick re-renders the armed collection card only, not the other 29', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      const SafeImageStub = (await import('@/app/components/SafeImage')).default as unknown as Mock;
+      const thirty = Array.from({ length: 30 }, (_, i) => ({ id: 'g' + i, name: 'Game ' + i, image_url: null }));
+      (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(thirty);
+
+      renderProfile();
+      await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Show all 30 games' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Show all 30 games' }));
+      expect(screen.getAllByRole('button', { name: /^Remove Game \d+$/ })).toHaveLength(30);
+
+      const perStep: number[] = [];
+      SafeImageStub.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Game 7' }));
+      perStep.push(SafeImageStub.mock.calls.length);
+      expect(screen.getByRole('button', { name: 'Remove Game 7, wait 3 seconds' })).toBeInTheDocument();
+      // Three ticks: Wait (2), Wait (1), then the live label.
+      for (let tick = 0; tick < 3; tick += 1) {
+        SafeImageStub.mockClear();
+        await act(async () => {
+          vi.advanceTimersByTime(1000);
+        });
+        perStep.push(SafeImageStub.mock.calls.length);
+      }
+      // The control went live, so the ticks really ran.
+      expect(screen.getByRole('button', { name: 'Remove' })).toHaveAttribute('aria-pressed', 'true');
+      // On arm and on each tick: the armed card renders (at least once), the other 29 do not.
+      for (const count of perStep) {
+        expect(count, 'card renders per step: ' + perStep.join(', ')).toBeGreaterThanOrEqual(1);
+        expect(count, 'card renders per step: ' + perStep.join(', ')).toBeLessThanOrEqual(2);
+      }
     } finally {
       vi.useRealTimers();
     }
@@ -2392,12 +2434,19 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
     const SIZER_OPEN = 'reserveClassName="';
     const isSizer = (m: RegExpMatchArray) => stripped.slice(m.index! - SIZER_OPEN.length, m.index!) === SIZER_OPEN;
     const sizer = sites.filter(isSizer);
-    const armed = sites
+    // AMENDED Phase 88.9-52 (PIX-1 / A-49): the collection x lives in the memoised CollectionCard, which
+    // cannot take the gate (the gate object is new on every countdown tick), so its armed 600 hangs on the
+    // card's own armed value, and that value has ONE writer, the gate's isArmed call in the page's map.
+    const windows = sites
       .filter((m) => !isSizer(m))
-      .map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60))
-      .filter((w) => /\.isArmed\(/.test(w));
+      .map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60));
+    const armed = windows.filter((w) => /\.isArmed\(/.test(w));
+    const cardArmed = windows.filter((w) => !/\.isArmed\(/.test(w) && /\barmed\s*\? 'font-semibold /.test(w));
     expect(sizer).toHaveLength(1);
-    expect(armed).toHaveLength(4);
+    expect(armed).toHaveLength(3);
+    expect(cardArmed).toHaveLength(1);
+    expect(stripped.match(/\barmed=\{/g)).toEqual(['armed={']);
+    expect(stripped).toContain('armed={removeGameGate.isArmed(game.id)}');
     expect(stripped).not.toMatch(/removeArmed/);
   });
 
