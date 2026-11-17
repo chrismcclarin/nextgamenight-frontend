@@ -2972,7 +2972,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // After-build look page W36: in dark the plus was the primary fill colour (purple-600) on the
     // muted circle, 1.9917, so the control was nearly invisible. The glyph is a graphic (WCAG
     // 1.4.11, 3:1). Both classes are read from the call site. Measured with src/lib/wcag.ts on
-    // the muted circle: light 3.9930 (was 3.7615), dark 6.7469 (was 1.9917).
+    // the muted circle: light 3.7615 (unchanged), dark 4.0237 (was 1.9917).
     const src = withoutComments(
       fs.readFileSync(path.join(__dirname, 'components', 'ClickableMemberName.js'), 'utf8'),
     );
@@ -2987,6 +2987,42 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     for (const theme of ['light', 'dark'] as const) {
       expectRatio(theme, runtimeProp(cls![2]), runtimeProp(cls![1]), 3.0, 'W36 the plus on its round fill');
     }
+  });
+
+  it('W45 (88.9-52): in dark the collection bar is not the game cards\' fill — at least 1.30 from them, its words 4.5 on it; light keeps the muted bar', () => {
+    // After-build look page W45: X56c gave the dark game cards the raised fill and X52d gave the
+    // bar the muted fill; in dark both resolve to purple-800, so the bar read 1.0000 against the
+    // cards above it. The bar's dark fill and the cards' dark fill are read from the call site.
+    // Measured with src/lib/wcag.ts, dark: bar against the cards 1.38, against the section card
+    // 1.13, words 14.70 on the bar. Light: the muted bar, 1.4993 against the white cards.
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'userProfile', 'page.js'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const darkOf = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return resolve('dark', ref[1]);
+    };
+    const bars = [...src.matchAll(/rounded-b-card overflow-hidden border-t border-line bg-surface-muted dark:bg-([a-z0-9-]+)'/g)];
+    expect(bars, 'LOCATOR: both arms of the collection bar wrapper keep the muted fill and name a dark fill').toHaveLength(2);
+    const cards = [...src.matchAll(/'border border-line rounded-lg p-4 dark:bg-([a-z0-9-]+)[ ']/g)];
+    expect(cards, 'LOCATOR: the three arms of the collection game card name a dark fill').toHaveLength(3);
+    const ink = /flex w-full min-h-12 items-center justify-center gap-2 text-sm text-([a-z0-9-]+) /.exec(src);
+    expect(ink, 'LOCATOR: the bar button names its ink').not.toBeNull();
+    let measured = 0;
+    for (const bar of bars) {
+      const barHex = darkOf(bar[1]);
+      for (const card of cards) {
+        const ratio = ratioHex(barHex, darkOf(card[1]), 'W45 bar against the game cards');
+        expect(ratio, `W45 — [dark] the bar (${barHex}) against the game cards (${darkOf(card[1])}) measures ${ratio.toFixed(4)}:1, floor 1.30:1`).toBeGreaterThanOrEqual(1.3);
+        measured += 1;
+      }
+      const words = ratioHex(darkOf(ink![1]), barHex, 'W45 words on the bar');
+      expect(words, `W45 — [dark] the bar words measure ${words.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
+      measured += 1;
+    }
+    expect(measured, 'anti-vacuity: 2 bar arms x (3 card arms + the words)').toBe(8);
   });
 });
 

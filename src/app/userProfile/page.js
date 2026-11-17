@@ -4613,7 +4613,11 @@ function Profile(){
                             Header.js), hidden from assistive tech as the fallback where inert is not supported, takes
                             no pointer, and its Remove leaves the tab order. The bar is a raw button OVER the Button
                             primitive: a full-bleed bar takes none of its radius, padding or weight. Six cards from
-                            md is two rows of three at lg and three rows of two at md. */}
+                            md is two rows of three at lg and three rows of two at md.
+                            AMENDED Phase 88.9-52 (W45): in DARK the bar takes the sunken fill, chosen OVER the
+                            muted fill there: X56c's raised cards and the muted bar are both purple-800 in dark, so
+                            the bar read 1.00 against the cards above it. Sunken reads 1.38 against the cards and
+                            1.13 against the section card, words 14.70. Light keeps the muted bar (1.50). */}
                         <div id={collectionGridId} aria-busy={loadingGames || undefined} className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {(collectionOverflows && !collectionOpen
                                 ? ownedGames.slice(0, collectionVisibleCount + collectionPeekCount)
@@ -4771,8 +4775,8 @@ function Profile(){
                             <div
                                 className={
                                     collectionOpen
-                                        ? '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-4 rounded-b-card overflow-hidden border-t border-line bg-surface-muted'
-                                        : '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-0 rounded-b-card overflow-hidden border-t border-line bg-surface-muted'
+                                        ? '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-4 rounded-b-card overflow-hidden border-t border-line bg-surface-muted dark:bg-surface-sunken'
+                                        : '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-0 rounded-b-card overflow-hidden border-t border-line bg-surface-muted dark:bg-surface-sunken'
                                 }
                             >
                                 <button
