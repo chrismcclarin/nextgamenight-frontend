@@ -270,6 +270,15 @@ const calendarSheet = (page: Page) => page.getByRole('dialog', { name: 'Calendar
 const collapsedChipStack = (page: Page) =>
   page.getByRole('button', { name: /^members: .*show all members\.$/i });
 
+/** A collapsed stack that holds AT LEAST TWO members, picked by its name and never by its place
+ *  in the list. collapsedName() joins the shown names with a comma and adds " and N more" past
+ *  its limit, so a name with either in it lists two or more members; a group of the viewer plus
+ *  one other person (the seed's Photo Club) has neither. The home list's order is not fixed, so
+ *  the first card can be that two-person group (CI run 43785600614 expanded Photo Club and found
+ *  one chip where the isolation probe needs two). */
+const multiMemberChipStack = (page: Page) =>
+  page.getByRole('button', { name: /^members: (?:[^.]*, |.* and \d+ more\. show all members\.$)/i }).and(collapsedChipStack(page));
+
 /** The control that collapses an EXPANDED chip stack back. Only a stack that is currently
  *  expanded renders one, so this doubles as the "is it expanded" signal. */
 const showLessControl = (page: Page) =>
@@ -2099,8 +2108,13 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await page.goto('/');
     await assertDarkTheme(page);
 
-    const stack = collapsedChipStack(page);
-    await guardResolved(stack, 'the collapsed member-chip stack (the route to the expanded row)');
+    // A stack with two or more members, by name: the isolation probe below needs two chips, and
+    // the first card on the list can be a two-person group with one.
+    const stack = multiMemberChipStack(page);
+    await guardResolved(
+      stack,
+      'a collapsed member-chip stack naming at least two members (the route to the expanded row) — the seeded account needs one group with at least TWO non-self members; a miss here is a FIXTURE failure',
+    );
     await stack.first().click();
 
     await guardResolved(
