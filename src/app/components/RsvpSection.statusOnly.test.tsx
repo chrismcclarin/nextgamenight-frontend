@@ -1404,3 +1404,24 @@ describe('RsvpSection — the RSVP name and the gameDetail mounts take their hos
     );
   });
 });
+
+// PIX-6 (88.9-52, picture pass): the event view showed Loading RSVPs... in a frame taken while the
+// signed-in identity read was failing. The loader is NOT tied to the identity: it ends when the RSVP
+// read answers, with or without an identity row. Pinned so a later change cannot make the loader
+// wait for a row that a failed identity read never brings.
+describe('RsvpSection loader without an identity row (88.9-52: PIX-6)', () => {
+  it('PIX-6 (88.9-52): with no identity row the loader ends when the RSVP read answers, and when it fails', async () => {
+    getEventRsvps.mockResolvedValue({ rsvps: [], summary: { yes: 0, maybe: 0, no: 0 } });
+    render(<RsvpSection eventId={EVENT_ID} self={undefined} eventDate={EVENT_DATE} />);
+    expect(screen.getByText('Loading RSVPs...')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Loading RSVPs...')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument();
+    cleanup();
+
+    getEventRsvps.mockReset();
+    getEventRsvps.mockRejectedValue(new Error('boom'));
+    render(<RsvpSection eventId={EVENT_ID} self={undefined} eventDate={EVENT_DATE} />);
+    await waitFor(() => expect(screen.queryByText('Loading RSVPs...')).toBeNull());
+    expect(screen.getByText('Could not load RSVPs')).toBeInTheDocument();
+  });
+});

@@ -22,6 +22,8 @@ const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
   isPending: true,
+  // PIX-6 (88.9-52): the identity query the mock returns; null is the healthy default.
+  identityQuery: null as null | { isError: boolean; error: unknown; refetch: () => Promise<unknown> },
   search: 'id=GROUP1',
   createEventProps: null as null | { onEventCreated: (event: unknown) => Promise<void> },
   gamesListProps: null as null | {
@@ -66,7 +68,7 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({
     selfUuid: h.selfUuid,
     self: h.selfUuid ? { id: h.selfUuid, user_id: 'auth0|self' } : undefined,
-    query: { isError: false, error: null, refetch: vi.fn() },
+    query: h.identityQuery ?? { isError: false, error: null, refetch: vi.fn() },
     isPending: h.isPending,
   }),
 }));
@@ -172,6 +174,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
   h.isPending = true;
+  h.identityQuery = null;
   h.search = 'id=GROUP1';
   h.createEventProps = null;
   h.gamesListProps = null;
@@ -294,6 +297,37 @@ describe('groupHomePage membership gate vs unresolved identity', () => {
     // Membership confirmed → the games fetch fires (proves membershipChecked
     // flipped true without a redirect).
     await waitFor(() => expect(listsAPI.getGroupGames as Mock).toHaveBeenCalled());
+    expect(pushSpy).not.toHaveBeenCalled();
+  });
+
+  // PIX-6 (88.9-52, picture pass): with the identity read failed and no row held, the page stays on
+  // its loading line. That is the recorded state, not a loader with no exit: the D-08 marker at the
+  // paint gate (the membership check cannot complete, so the small notice is shown with Retry), and
+  // Retry is the identity read's own refetch; once the row lands the gate opens. Whether the page
+  // should show its full load-failed banner there instead is an owner question, not pinned here.
+  it('PIX-6 (88.9-52): a failed identity read keeps the loading line WITH the small notice, and its Retry re-reads the identity and opens the page', async () => {
+    const refetch = vi.fn(() => Promise.resolve({ isError: true }));
+    h.isPending = false;
+    h.identityQuery = { isError: true, error: new ApiError('Request failed', 'internal', 500), refetch };
+    const { rerender } = render(<GroupHomePage />);
+
+    await waitFor(() => expect(visibleLoadingLine()).toBeInTheDocument());
+    // The failure is said on the loading frame itself, with a way out.
+    expect(await screen.findByText('Some personal controls are unavailable.', { ignore: '.sr-only' })).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: /Retry/ });
+    expect(groupsAPI.getGroupMembers as Mock).not.toHaveBeenCalled();
+    expect(pushSpy).not.toHaveBeenCalled();
+
+    await userEvent.setup().click(retry);
+    await waitFor(() => expect(refetch).toHaveBeenCalledTimes(1));
+
+    // The re-read answers with the row: the membership check runs and the gate opens.
+    h.selfUuid = SELF_UUID;
+    h.identityQuery = null;
+    rerender(<GroupHomePage />);
+    await waitFor(() => expect(listsAPI.getGroupGames as Mock).toHaveBeenCalled());
+    expect(screen.queryByText('Some personal controls are unavailable.')).toBeNull();
+    expect(screen.queryByText('Loading group…', { selector: 'p' })).toBeNull();
     expect(pushSpy).not.toHaveBeenCalled();
   });
 });
