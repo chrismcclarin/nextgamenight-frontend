@@ -47,6 +47,20 @@ function isWrongEmailRefusal(err) {
   return err?.code === 'forbidden' && err?.status === 403 && !isCsrfRejection(err);
 }
 
+/* DECISION Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the ONE failure card keeps its
+   headline, its sentences and its single Go Home; only the X colour follows the cause. Red, a
+   real refusal that trying again never clears: no token, the 404 (used or expired invite), the
+   wrong-email 403, a 410 (group gone), a 409. Amber, trying again may work: everything else
+   (connection, 5xx, 429, an expired session, the proxy's CSRF gate, an unnamed failure), chosen
+   OVER one red X for every cause. Keyed on the error's code and the CSRF predicate, never on
+   the sentence. NO retry control is added: DECISION Phase 88.6.1-35 (W039) rejects clearing
+   the accept latch, and the amber X changes nothing about that. */
+function isAcceptRefusal(err) {
+  if (isWrongEmailRefusal(err)) return true;
+  const code = err?.code;
+  return code === 'not_found' || code === 'gone' || code === 'conflict';
+}
+
 // The page region's test handle. NOT EXPORTED, deliberately — the reason is recorded on the rsvp
 // page (`rsvp/[token]/page.js`, anchor `NOT EXPORTED, deliberately`): Next's generated route types
 // reject a page module's non-route named exports. The test re-declares the literal.
@@ -91,6 +105,9 @@ function InviteAcceptPage() {
      body carries the snake_case id only) and is deleted. The "User not found" half of W054 stays
      with Phase 93. */
   const [error, setError] = useState(null);
+  // Q69 (88.9-52): the failure's kind, kept beside its sentence. true = trying again may work
+  // (amber X); false = a refusal (red X). See isAcceptRefusal above.
+  const [errorIsTemporary, setErrorIsTemporary] = useState(false);
   const [inviteInfo, setInviteInfo] = useState(null);
   // Req 8: the signed-out announcement waits for the invite-info request to SETTLE (success, null
   // body or failure) — see DECISION Phase 88.6.1-35 (Req 8 / AC-24) at the return below.
@@ -116,6 +133,7 @@ function InviteAcceptPage() {
 
     if (!token) {
       setStatus('error');
+      setErrorIsTemporary(false);
       setError('Invalid invite link');
       return;
     }
@@ -202,6 +220,7 @@ function InviteAcceptPage() {
       } catch (err) {
         if (unmountedRef.current) return;
         setStatus('error');
+        setErrorIsTemporary(!isAcceptRefusal(err));
         /* R1 + D-46: the three outcomes are keyed on `err.code`, chosen OVER the shipped
            `err.message` prose match (`'not found'` / `'already'` / `'not for you'` /
            `'different email'`). Plan 88.6-42 drops the `body.error` alias in wave 8, after
@@ -371,9 +390,17 @@ function InviteAcceptPage() {
           {/* Error state */}
           {status === 'error' && (
             <div className="text-center">
-              {/* Red X icon */}
-              <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              {/* The X by cause (Q69, 88.9-52): amber when trying again may work, red for a
+                  refusal. One literal class string per arm (a class built from pieces emits
+                  nothing). */}
+              <div
+                className={
+                  errorIsTemporary
+                    ? 'mx-auto mb-4 w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center'
+                    : 'mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center'
+                }
+              >
+                <svg className={errorIsTemporary ? 'w-8 h-8 text-content-status-warning' : 'w-8 h-8 text-content-status-error'} aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>

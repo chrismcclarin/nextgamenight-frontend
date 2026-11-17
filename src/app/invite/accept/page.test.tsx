@@ -18,15 +18,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const TOKEN = 'd'.repeat(48);
 const GROUP_ID = '44444444-4444-4444-8444-444444444444';
 
-const { authState } = vi.hoisted(() => ({
+const { authState, searchState } = vi.hoisted(() => ({
   authState: {
     user: undefined as { sub: string } | undefined,
     isLoading: false,
   },
+  // Q69 (88.9-52): the query string is settable so the no-token arm can be rendered. Every other
+  // test reads the default, reset in beforeEach.
+  searchState: { query: `token=${'d'.repeat(48)}` },
 }));
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(`token=${'d'.repeat(48)}`),
+  useSearchParams: () => new URLSearchParams(searchState.query),
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
@@ -92,6 +95,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   authState.user = { sub: 'auth0|abc' };
   authState.isLoading = false;
+  searchState.query = `token=${'d'.repeat(48)}`;
   accept().mockReset();
   inviteInfo().mockReset();
   localStorage.clear();
@@ -512,5 +516,72 @@ describe('invite/accept — outcomes announced, L1, D-24 and W054 (plan 88.6.1-3
       screen.getByText('This invite was sent to a different email address.')
     ).toBeInTheDocument();
     expect(isCsrfRejection as unknown as Mock).toHaveBeenCalledWith(err);
+  });
+});
+
+// Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): ONE card and its texts, the X by cause.
+// Red: a refusal (used or expired invite, wrong email, group gone, no token). Amber: the accept
+// could not complete (connection, server, rate limit, expired session, the proxy's CSRF gate).
+// No retry control is added (DECISION Phase 88.6.1-35 rejects clearing the latch).
+describe('invite/accept — Q69 the failure glyph by cause (88.9-52)', () => {
+  const X_PATH = 'M6 18L18 6M6 6l12 12';
+  const expectTone = (container: HTMLElement, tone: 'amber' | 'red', label: string) => {
+    const path = container.querySelector(`path[d="${X_PATH}"]`);
+    expect(path, `${label}: the failure card draws no X`).not.toBeNull();
+    const svg = path!.closest('svg')!;
+    const circle = svg.parentElement!;
+    const on = tone === 'amber' ? 'warning' : 'error';
+    const off = tone === 'amber' ? 'error' : 'warning';
+    expect(circle, `${label}: the circle is not the ${on} fill`).toHaveClass(`bg-status-${on}-subtle`);
+    expect(circle, label).not.toHaveClass(`bg-status-${off}-subtle`);
+    expect(svg, `${label}: the X is not the ${on} ink`).toHaveClass(`text-content-status-${on}`);
+    expect(svg, label).not.toHaveClass(`text-content-status-${off}`);
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+  };
+
+  it('Q69: a refusal draws the red X (404, wrong email, 410, no token)', async () => {
+    const refusals: Array<[string, ApiError, string]> = [
+      ['404', wireError(404, { error: 'Pending invite not found' }), 'This invite may have already been accepted or expired.'],
+      ['wrong email', BACKEND_403(), 'This invite was sent to a different email address.'],
+      ['410', wireError(410, { error: 'This group is no longer available' }), 'This is no longer available.'],
+    ];
+    for (const [label, err, line] of refusals) {
+      accept().mockReset();
+      accept().mockRejectedValue(err);
+      const { container } = render(<InviteAcceptPage />);
+      await screen.findByRole('heading', { name: 'Unable to accept invite' });
+      expect(screen.getByText(line)).toBeInTheDocument();
+      expectTone(container, 'red', label);
+      cleanup();
+    }
+
+    accept().mockReset();
+    searchState.query = '';
+    const { container } = render(<InviteAcceptPage />);
+    await screen.findByRole('heading', { name: 'Unable to accept invite' });
+    expect(screen.getByText('Invalid invite link')).toBeInTheDocument();
+    expectTone(container, 'red', 'no token');
+    expect(accept()).not.toHaveBeenCalled();
+  });
+
+  it('Q69: an accept that could not complete draws the amber X and adds no retry control (network, 5xx, 429, 401, CSRF)', async () => {
+    const temporary: Array<[string, ApiError]> = [
+      ['network', new ApiError('Network error: Could not connect to the server.', 'network', 0)],
+      ['5xx', wireError(500, { error: 'boom' })],
+      ['429', wireError(429, { code: 'rate_limited', message: 'Too many requests' })],
+      ['401', wireError(401, { error: 'Unauthorized' })],
+      ['CSRF 403', CSRF_403()],
+    ];
+    for (const [label, err] of temporary) {
+      accept().mockReset();
+      accept().mockRejectedValue(err);
+      const { container } = render(<InviteAcceptPage />);
+      await screen.findByRole('heading', { name: 'Unable to accept invite' });
+      expectTone(container, 'amber', label);
+      expect(screen.queryAllByRole('button'), `${label}: a retry control was added`).toHaveLength(0);
+      expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['Go Home']);
+      expect(accept()).toHaveBeenCalledTimes(1);
+      cleanup();
+    }
   });
 });
