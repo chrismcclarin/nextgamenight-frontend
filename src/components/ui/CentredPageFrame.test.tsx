@@ -66,6 +66,18 @@ describe('CentredPageFrame (88.9-66: X64 / X70)', () => {
     expect(inner).toHaveAttribute('id', 'frame-under-test');
     expect(classesOf(inner)).toContain('text-left');
     expect(classesOf(inner)).toContain('max-w-xl');
+    // 88.9-52 W1: a frame that takes focus shows the house ring (2px ring over a 2px halo of the
+    // page ground, on the banner's own corner radius), never the browser's square outline.
+    for (const token of [
+      'rounded-card',
+      'focus:outline-hidden',
+      'focus-visible:ring-2',
+      'focus-visible:ring-focus-ring',
+      'focus-visible:ring-offset-2',
+      'focus-visible:ring-offset-surface-page',
+    ]) {
+      expect(classesOf(inner), `the inner box lacks ${token}`).toContain(token);
+    }
     // The outer box takes none of them.
     const outer = inner.parentElement as HTMLElement;
     expect(outer).not.toHaveAttribute('data-slot');

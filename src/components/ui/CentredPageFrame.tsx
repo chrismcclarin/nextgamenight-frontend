@@ -35,7 +35,23 @@ const CentredPageFrame = React.forwardRef<HTMLDivElement, CentredPageFrameProps>
           {srHeading}
         </Heading>
       ) : null}
-      <div ref={ref} data-slot="page-frame" className={cn('w-full max-w-xl', className)} {...props}>
+      {/* DECISION Phase 88.9-52 (W1, owner at the after-build look page: give the banner the house
+          ring): a frame a page moves focus to (Profile, session expired) shows the house ring — a
+          2px ring over a 2px halo of the page ground, on the banner's own corner radius — chosen
+          OVER the browser's outline (square corners, hugging the box; the look the owner flagged)
+          and OVER hiding the outline as main does (X20: main is the floor of a whole page; this
+          box is one banner, and a ring round it shows where focus went). The classes sit on every
+          frame and paint only while the box holds focus, which needs the host's tabIndex. Ring on
+          the page ground: light 5.97:1, dark 10.13:1 (floor 3.0). */}
+      <div
+        ref={ref}
+        data-slot="page-frame"
+        className={cn(
+          'w-full max-w-xl rounded-card focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page',
+          className
+        )}
+        {...props}
+      >
         {children}
       </div>
     </div>
