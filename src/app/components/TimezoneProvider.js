@@ -42,6 +42,7 @@ const TimezoneContext = createContext({
   timezone: null,
   setTimezone: () => {},
   isProfileTimezoneSet: false,
+  isProfileTimezoneKnown: false,
   browserTimezone: null,
 });
 
@@ -71,6 +72,18 @@ export function TimezoneProvider({ children }) {
   // their profile TZ). Plan 02 uses this to decide whether to render the
   // nudge banner.
   const [isProfileTimezoneSet, setIsProfileTimezoneSet] = useState(false);
+
+  // DECISION Phase 88.9-52 (W46): whether the profile zone is KNOWN, apart from whether it is
+  // set. True only once the self row has been read (the read effect below reached it). While the
+  // row is pending, after a read that failed with nothing cached, and signed out, it is false and
+  // isProfileTimezoneSet is false too, and that false means "not read", not "none stored". The
+  // nudge banner draws only when this is true, chosen OVER reading isProfileTimezoneSet alone: a
+  // failed account read drew "Your timezone isn't set" over an account whose zone IS set, on the
+  // event view, Create Event and the day sheet. REJECTED: a three-valued isProfileTimezoneSet
+  // (null for unknown), which changes the meaning of a value every consumer already reads as a
+  // boolean. Once true it stays true while the session lasts: a later failed refresh keeps the
+  // cached row, so what was read still holds.
+  const [isProfileTimezoneKnown, setIsProfileTimezoneKnown] = useState(false);
 
   // Save ordering and revert (88.9-68, X33b and owner ruling Q8 b). The AMENDED marker in
   // setTimezone's catch carries the decision; these four refs are its state.
@@ -185,6 +198,7 @@ export function TimezoneProvider({ children }) {
       // display purposes only. No backend interaction.
       setTimezoneState(detected || 'UTC');
       setIsProfileTimezoneSet(false);
+      setIsProfileTimezoneKnown(false);
       return;
     }
 
@@ -208,6 +222,9 @@ export function TimezoneProvider({ children }) {
       ? { timezone: stored, isSet: true }
       : { timezone: detected || 'UTC', isSet: false };
     savedTzRef.current = saved;
+    // W46 (88.9-52): the row has been read, so set-or-unset is now a fact (set before the
+    // in-flight return below: an unsaved pick does not make the row any less read).
+    setIsProfileTimezoneKnown(true);
 
     // While a pick is in flight the display belongs to that pick. An earlier pick's landed save
     // patches the self cache, which gives `self` a new reference and re-runs this effect; writing
@@ -221,7 +238,7 @@ export function TimezoneProvider({ children }) {
 
   return (
     <TimezoneContext.Provider
-      value={{ timezone, setTimezone, isProfileTimezoneSet, browserTimezone }}
+      value={{ timezone, setTimezone, isProfileTimezoneSet, isProfileTimezoneKnown, browserTimezone }}
     >
       {children}
     </TimezoneContext.Provider>

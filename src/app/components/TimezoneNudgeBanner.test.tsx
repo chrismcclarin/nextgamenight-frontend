@@ -21,12 +21,15 @@ import { render, screen, cleanup, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const tz = vi.hoisted(() => ({
+  // W46 (88.9-52): whether the self row has been read. The nudge is a claim about that row.
+  isProfileTimezoneKnown: true as boolean | undefined,
   isProfileTimezoneSet: false as boolean | undefined,
   browserTimezone: 'America/Denver' as string | null,
 }));
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({
+    isProfileTimezoneKnown: tz.isProfileTimezoneKnown,
     isProfileTimezoneSet: tz.isProfileTimezoneSet,
     browserTimezone: tz.browserTimezone,
   }),
@@ -40,6 +43,7 @@ import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 
 beforeEach(() => {
   __resetPaintGestureActiveStore();
+  tz.isProfileTimezoneKnown = true;
   tz.isProfileTimezoneSet = false;
   tz.browserTimezone = 'America/Denver';
 });
@@ -60,6 +64,21 @@ describe('TimezoneNudgeBanner — the two NON-scheduler mounts are unaffected', 
     tz.isProfileTimezoneSet = true;
     const { container } = render(<TimezoneNudgeBanner />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('W46 (88.9-52): renders NOTHING while the profile timezone is not KNOWN (the self read is pending or failed), and shows once it is known and unset', () => {
+    // Unknown and "not set" both read isProfileTimezoneSet false; only a read row can say unset.
+    tz.isProfileTimezoneKnown = false;
+    const { container, rerender } = render(<TimezoneNudgeBanner />);
+    expect(container).toBeEmptyDOMElement();
+    // A provider that does not say (an older mock, the context default) is unknown too.
+    tz.isProfileTimezoneKnown = undefined;
+    rerender(<TimezoneNudgeBanner />);
+    expect(container).toBeEmptyDOMElement();
+
+    tz.isProfileTimezoneKnown = true;
+    rerender(<TimezoneNudgeBanner />);
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('a LATE resolve unmounts it immediately when no gesture is running', () => {

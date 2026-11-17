@@ -200,6 +200,42 @@ describe('TimezoneProvider browser-zone reads (88.9-52, A-27)', () => {
   });
 });
 
+describe('TimezoneProvider says whether the profile timezone is KNOWN (88.9-52, W46)', () => {
+  const known = () => screen.getByTestId('tz-known').textContent;
+  const set = () => screen.getByTestId('tz-set').textContent;
+  const mount = () =>
+    render(
+      <TimezoneProvider>
+        <TZProbe zones={[]} />
+      </TimezoneProvider>
+    );
+
+  it('W46: not known while the self row is pending or its read failed (no row), known and unset once a row with no zone is read, known and set once a row with a zone is read', async () => {
+    // No self row (the harness's pending and failed-with-nothing-cached shape): unknown, not "unset".
+    h.selfUuid = undefined;
+    const pending = mount();
+    await act(async () => {});
+    expect(known()).toBe('false');
+    expect(set()).toBe('false');
+    pending.unmount();
+
+    // A row with no stored zone: now it is known that none is set.
+    h.selfUuid = SELF_UUID;
+    h.storedTz = null;
+    const unset = mount();
+    await waitFor(() => expect(known()).toBe('true'));
+    expect(set()).toBe('false');
+    unset.unmount();
+
+    // A row with a stored zone: known and set.
+    h.storedTz = 'Europe/Paris';
+    h.snapshot = null;
+    mount();
+    await waitFor(() => expect(known()).toBe('true'));
+    expect(set()).toBe('true');
+  });
+});
+
 // 88.9-68 (X33b and owner ruling Q8 b). setTimezone now answers whether the save landed, sends
 // saves one at a time in pick order, and puts the last SAVED zone back on screen when a save
 // fails with no later pick pending. The probe prints the provider's value and records what each
@@ -207,17 +243,19 @@ describe('TimezoneProvider browser-zone reads (88.9-52, A-27)', () => {
 type TzValue = {
   timezone: string;
   isProfileTimezoneSet: boolean;
+  isProfileTimezoneKnown: boolean;
   setTimezone: (tz: string) => Promise<unknown>;
 };
 
 const picked: Array<{ tz: string; ok: unknown }> = [];
 
 function TZProbe({ zones }: { zones: string[] }) {
-  const { timezone, isProfileTimezoneSet, setTimezone } = useTimezone() as unknown as TzValue;
+  const { timezone, isProfileTimezoneSet, isProfileTimezoneKnown, setTimezone } = useTimezone() as unknown as TzValue;
   return (
     <div>
       <output data-testid="tz">{timezone}</output>
       <output data-testid="tz-set">{String(isProfileTimezoneSet)}</output>
+      <output data-testid="tz-known">{String(isProfileTimezoneKnown)}</output>
       {zones.map((zone) => (
         <button
           key={zone}

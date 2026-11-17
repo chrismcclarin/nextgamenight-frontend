@@ -13,6 +13,13 @@
  * (Plan 62-01). Renders nothing when the profile TZ is set — banner is
  * a nudge, not a permanent badge.
  *
+ * AMENDED Phase 88.9-52 (W46): it also reads `isProfileTimezoneKnown` and renders nothing until
+ * the profile zone is KNOWN (the self row has been read). The sentence is a claim about that row,
+ * so a pending or failed account read shows no nudge, chosen OVER drawing it whenever
+ * `isProfileTimezoneSet` is false, which drew it over accounts whose zone is set when the read
+ * failed (and for a moment on every load, before the row landed). The decision is recorded at
+ * src/app/components/TimezoneProvider.js ("DECISION Phase 88.9-52 (W46)").
+ *
  * Mounted on:
  *   - createEvent.js (edit/create form) — most important nudge surface
  *     because that's where the silent fallback will actually corrupt data.
@@ -54,7 +61,11 @@ import { usePaintGestureHold } from './heatmap/paintGestureActiveStore';
 import { useTimezone } from './TimezoneProvider';
 
 export default function TimezoneNudgeBanner() {
-  const { isProfileTimezoneSet, browserTimezone } = useTimezone();
+  const { isProfileTimezoneSet, isProfileTimezoneKnown, browserTimezone } = useTimezone();
+  // W46 (88.9-52): hidden unless the row was read AND holds no zone. The HELD value is this one
+  // answer, so a late change in either direction (the row landing unset mid-paint, which now
+  // mounts the box, or a zone being saved, which unmounts it) waits for finger-up the same way.
+  const nudgeHidden = isProfileTimezoneKnown !== true || Boolean(isProfileTimezoneSet);
   // Held only while a paint gesture is ACTIVE. With no gesture running it returns the current value
   // from the first PAINTED frame after a change, so the mounts paint exactly what they painted
   // before the hold existed. A gesture can be running under a non-scheduler mount: gameDetail's
@@ -66,9 +77,9 @@ export default function TimezoneNudgeBanner() {
   // the layout-effect correction chosen at
   // src/app/components/heatmap/paintGestureActiveStore.ts ("DECISION Phase 88.6-63 (review round 2 #14)")
   // Pinned by src/app/components/heatmap/usePaintGesture.test.ts ("a no-gesture value change renders exactly twice")
-  const heldIsProfileTimezoneSet = usePaintGestureHold(isProfileTimezoneSet);
+  const heldNudgeHidden = usePaintGestureHold(nudgeHidden);
 
-  if (heldIsProfileTimezoneSet) return null;
+  if (heldNudgeHidden) return null;
 
   // Friendly form of the browser TZ identifier ("America/Denver" → "America/Denver";
   // we leave the IANA string verbatim — users seeing it usually recognize it,
