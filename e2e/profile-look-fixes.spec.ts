@@ -299,6 +299,9 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
       console.log(`[88.9-68 X53] ${testInfo.project.name} armed: ${JSON.stringify(armed)}`);
       expectSameBox(armed.title, rest.title, 'X53: the game title after arming');
       expectSameBox(armed.slot, rest.slot, 'X53: the slot after arming');
+      // A-06 (88.9-52): an ABSENCE check has no positive signal to wait for, so wait a fixed 500ms
+      // (the house idiom; well inside the 3 s gate) before reading that nothing was sent.
+      await page.waitForTimeout(500);
       expect(del.count(), 'X53: one press sent a removal').toBe(0);
 
       // The second live press commits; the DELETE is held. X36a: the spinner shows inside the box.

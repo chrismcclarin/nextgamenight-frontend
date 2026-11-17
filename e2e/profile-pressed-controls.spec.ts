@@ -362,6 +362,9 @@ test.describe('Profile phone block focus and Remove in flight (plan 88.6.1-53)',
       await expect(remove).toHaveAttribute('aria-pressed', 'true');
       await expect(remove).toHaveAttribute('aria-disabled', 'true');
       await page.keyboard.press('Enter');
+      // A-06 (88.9-52): an ABSENCE check has no positive signal to wait for, so wait a fixed 500ms
+      // (the house idiom; well inside the 3 s gate) before reading that nothing was sent.
+      await page.waitForTimeout(500);
       expect(removal.count(), 'a press while the Remove counted down sent a removal').toBe(0);
       // The live label (the 10 s timeout covers the 3 s gate), then the committing press.
       await expect(remove).toHaveText('Tap again to remove', { timeout: 10_000 });
