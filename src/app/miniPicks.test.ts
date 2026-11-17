@@ -487,4 +487,23 @@ describe('88.9 RULING A mini-page picks', () => {
     }
     expect(mounts, 'DelayedSpinner mounts in src (want at least 9: Button 1, AvailabilityForm 2, KebabMenu 1, NextGameNightCard 1, ResponseDashboard 1, RsvpSection 2, friends 1)').toBeGreaterThanOrEqual(9);
   });
+
+  it('8. 88.9-52 W40 — on a phone the one Toaster starts below the header strip, so a toast and its close button never lie over the logo', () => {
+    // The header strip is 64px tall (h-16) and sticky; Sonner pins a phone toast (600px and under)
+    // at its mobile top offset, 16px by default, which is inside the strip. The layout gives the
+    // Toaster a mobile top offset of the strip's height plus an 8px gap. jsdom has no layout, so
+    // this pins the two numbers at their source; the other three sides keep Sonner's default.
+    const layout = withoutComments(fs.readFileSync(path.join(__dirname, 'layout.js'), 'utf8'));
+    const header = withoutComments(fs.readFileSync(path.join(__dirname, 'Header.js'), 'utf8'));
+    const toasters = layout.match(/<Toaster\b[^>]*\/>/g) ?? [];
+    expect(toasters, 'layout.js mounts exactly one Toaster').toHaveLength(1);
+    const offset = /\bmobileOffset=\{\{\s*top:\s*(\d+)\s*\}\}/.exec(toasters[0]);
+    expect(offset, 'the Toaster carries a mobile top offset and no other side').not.toBeNull();
+    const strip = /className="w-full (h-(\d+)) bg-surface-header [^"]*\bsticky top-0\b/.exec(header);
+    expect(strip, 'anti-vacuity: the sticky header strip with its height class is present').not.toBeNull();
+    const stripPx = Number((strip as RegExpExecArray)[2]) * 4;
+    expect(stripPx).toBe(64);
+    expect(Number((offset as RegExpExecArray)[1]), 'mobile top offset = strip height + 8px').toBe(stripPx + 8);
+    expect(toasters[0], 'the desktop position is unchanged').toContain('position="top-right"');
+  });
 });

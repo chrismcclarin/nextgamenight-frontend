@@ -44,7 +44,16 @@ export default function RootLayout({ children }) {
               and GroupSettings unmount on close). It preserves a behaviour that already ships (the
               Toaster's live region spoke these words), not a new capability (P4). Changing this is
               a decision, not a cleanup. */}
-          <Toaster position="top-right" richColors closeButton theme="system" />
+          {/* DECISION Phase 88.9-52 (W40, owner at the after-build look page: the error toast lies
+              over the header and its close x overlaps the logo on a phone): on a phone (Sonner's
+              600px and under) the toast starts 72px from the top, the 64px header strip plus an
+              8px gap, chosen OVER Sonner's default 16px (inside the sticky strip, with the close
+              button on the logo) and OVER moving phone toasts to the bottom (the phone bottom bar
+              and the keyboard live there). Only the top is given, so the 16px side gutters stay
+              Sonner's own. The desktop position is unchanged. The number follows the strip's
+              height at src/app/Header.js ("const sessionKnown = !isLoading;"); pinned by
+              src/app/miniPicks.test.ts ("8. 88.9-52 W40"). */}
+          <Toaster position="top-right" richColors closeButton theme="system" mobileOffset={{ top: 72 }} />
           <RootAnnouncer />
           {/* PRIM-07 (Plan 84-04): TanStack Query provider mounted at the app
               root via the server-fresh / browser-singleton getQueryClient()
