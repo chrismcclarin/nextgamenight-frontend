@@ -205,6 +205,28 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
 
     releasePostRemoval();
     await expect(next, "focus lands on the next member's actions button").toBeFocused();
+    // 88.9-52 (A-47): Member removed is announced from INSIDE the dialog that is still open.
+    // MEASURED 2026-11-16 on the owner's iPhone with VoiceOver, on production: the root
+    // announcer's region, which sits outside the open aria-modal dialog, was not spoken. The
+    // words now land in the polite region the house Modal mounts as the dialog's last child
+    // (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")),
+    // and the root region stays empty, so exactly one region on the page holds them. Read
+    // straight after the refresh: the announcer clears its text 4s after it is written. This
+    // proves WHERE the words are in a real browser; whether VoiceOver speaks them is the
+    // owner's device check.
+    const dialogAnnouncer = dialog.locator('[data-announcer="dialog"]');
+    await expect(dialogAnnouncer, 'the open dialog carries exactly one announcer region').toHaveCount(1);
+    await expect(dialogAnnouncer, 'Member removed lands in the open dialog').toHaveText('Member removed');
+    await expect(dialogAnnouncer).toHaveAttribute('role', 'status');
+    await expect(dialogAnnouncer).toHaveAttribute('aria-live', 'polite');
+    await expect(
+      page.getByRole('status').filter({ hasText: /^Member removed$/ }),
+      'one region on the page holds Member removed',
+    ).toHaveCount(1);
+    await expect(
+      page.locator('[data-announcer="root"]'),
+      'the root announcer region stays empty while the dialog is open',
+    ).toHaveText('');
     await expect(dialog.getByText('E2E Removable', { exact: true })).toHaveCount(0);
     expect(deletes, 'still exactly one DELETE').toBe(1);
   });
