@@ -6562,6 +6562,10 @@ describe('collection bar and dark card fill (88.9-68: X52d, X56c)', () => {
     fireEvent.click(addFromBgg());
     expect(receipt.textContent).toBe('');
     fireEvent.click(addFromBgg()); // Hide Search
+    // AMENDED Phase 88.9-52 (A-59): the receipt hook holds a new line until the text has been empty
+    // for the region dwell. A person cannot search and add inside that dwell; the fake clock is
+    // moved past it here so the second line is read where it would really show.
+    advance(REGION_EMPTY_DWELL_MS);
 
     // A second add: the line shows again and clears by itself after INLINE_RECEIPT_MS.
     (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: 9010, name: 'Jaipur', year_published: 2010 }]);
