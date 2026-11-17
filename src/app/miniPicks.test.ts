@@ -393,12 +393,19 @@ describe('88.9 RULING A mini-page picks', () => {
 
   it('7. 88.9 R-C3b reach — every DelayedSpinner mount sits outside its host\'s busy guard', () => {
     // Plan 88.9-56 (R-C3b reach): a DelayedSpinner inside a busy guard unmounts when busy drops and
-    // loses its hold. A guard here is a fragment opened by an and-operator or a ternary whose test
-    // names a busy flag; Button's own tracksBusy opt-in renders the element or null with no
-    // fragment, and is exempt by name.
+    // loses its hold. Two guard shapes are caught. (1) A fragment opened by an and-operator or a
+    // ternary whose test names a busy flag (BUSY_TEST), the shape the plan first pinned. (2) ANY JSX
+    // branch (a bare element, a parenthesised one, either arm of a ternary) whose test names the
+    // identifier the mount itself passes as busy; the guarded body runs from the operator to the
+    // brace that closes the expression holding it. Button's own tracksBusy opt-in renders the
+    // element or null and is exempt by name.
+    // AMENDED Phase 88.9-52 (A-44): shape 2 is new. Shape 1 alone saw only a fragment, so the title
+    // claimed more than it checked. Shape 2 keys on the mount's OWN busy identifier, chosen OVER
+    // BUSY_TEST for the wide shape: a list drawn in the else arm of a page-level loading ternary
+    // (the Friends list) holds mounts that the loading flag does not unmount on their own busy.
     const MOUNT = '<DelayedSpinner';
     const BUSY_TEST = /busy|loading|saving|sending|removing|reminding|retrying|inviting|prefillSource|flight/i;
-    const guardedMounts = (src: string): number[] => {
+    const fragmentGuarded = (src: string): number[] => {
       const hits: number[] = [];
       for (const m of src.matchAll(/(&&|\?)\s*\(\s*<>/g)) {
         const at = m.index ?? 0;
@@ -420,9 +427,46 @@ describe('88.9 RULING A mini-page picks', () => {
       }
       return hits;
     };
+    const ownFlagGuarded = (src: string): number[] => {
+      const hits: number[] = [];
+      for (const m of src.matchAll(/(&&|\?)\s*\(?\s*<[A-Za-z>]/g)) {
+        const at = m.index ?? 0;
+        const guardTest = src.slice(src.lastIndexOf('{', at) + 1, at);
+        let depth = 0;
+        let end = src.length;
+        for (let i = at; i < src.length; i += 1) {
+          if (src[i] === '{') depth += 1;
+          else if (src[i] === '}') {
+            depth -= 1;
+            if (depth < 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+        const body = src.slice(at, end);
+        for (let k = body.indexOf(MOUNT); k >= 0; k = body.indexOf(MOUNT, k + 1)) {
+          const busy = /^<DelayedSpinner\b[^>]*?\bbusy=\{([^}]*)\}/.exec(body.slice(k));
+          const names = busy ? busy[1].match(/[A-Za-z_$][\w$]*/g) ?? [] : [];
+          if (names.some((name) => new RegExp('(^|[^\\w$.])' + name.replace(/\$/g, '\\$') + '(?![\\w$])').test(guardTest))) hits.push(at + k);
+        }
+      }
+      return hits;
+    };
+    const guardedMounts = (src: string): number[] =>
+      [...new Set([...fragmentGuarded(src), ...ownFlagGuarded(src)])].sort((a, b) => a - b);
     // Positive control: the detector finds a planted guarded mount and passes an unguarded one.
     expect(guardedMounts('{saving && (\n  <>\n    <DelayedSpinner busy={saving} />\n  </>\n)}')).toHaveLength(1);
     expect(guardedMounts('Save<DelayedSpinner busy={saving} />{saving && (<><span>, saving</span></>)}')).toHaveLength(0);
+    // 88.9-52 A-44: a guard needs no fragment. A bare element, a parenthesised element and the
+    // else arm of a ternary are guards too; a guard on some other flag is not, and neither is a
+    // mount that sits after the guard has closed.
+    expect(guardedMounts('{saving && <DelayedSpinner busy={saving} />}'), 'bare element after an and-operator').toHaveLength(1);
+    expect(guardedMounts('{saving && (<span><DelayedSpinner busy={saving} /></span>)}'), 'parenthesised element after an and-operator').toHaveLength(1);
+    expect(guardedMounts('{isSaving ? <b>x</b> : <DelayedSpinner busy={isSaving} />}'), 'the else arm of a ternary on the mount\'s own flag').toHaveLength(1);
+    expect(guardedMounts('{listLoading ? <p>x</p> : rows.map((r) => (<b>Remove<DelayedSpinner busy={removing} /></b>))}'), 'a list in the else arm of another flag\'s ternary').toHaveLength(0);
+    expect(guardedMounts('{open && (<span>Save<DelayedSpinner busy={saving} /></span>)}'), 'a guard on a flag that is not busy').toHaveLength(0);
+    expect(guardedMounts('{saving && <i>, saving</i>}<DelayedSpinner busy={saving} />'), 'a mount after the guard closes').toHaveLength(0);
 
     const files: string[] = [];
     const walk = (dir: string): void => {
