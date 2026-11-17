@@ -1159,6 +1159,20 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
     expect(document.querySelector('.modal-overlay')).toBeNull();
   });
 
+  it('A-39 (88.9-52): the bringing die is a labelled role img leaf in the See-all list too', async () => {
+    // Review 88.9-52 A-39: a bare span with aria-label has no role, so the label is not reliably
+    // spoken (iOS VoiceOver reads the glyph). The sixth participant is outside the five-chip strip,
+    // so the only die on the page is the See-all row's.
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+    (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([{ User: { id: 'p-5' } }]);
+    const dialog = await openParticipantsModal(user);
+    await waitFor(() =>
+      expect(within(dialog).getAllByRole('img', { name: 'Bringing a game' })).toHaveLength(1)
+    );
+    expect(screen.getAllByRole('img', { name: 'Bringing a game' })).toHaveLength(1);
+  });
+
   it('closes the participants list on Esc', async () => {
     const user = userEvent.setup();
     renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
@@ -3276,7 +3290,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     });
     await flushMacrotask();
     expect(screen.getByText('Someone Else')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Bringing a game')).toBeNull();
+    expect(screen.queryByRole('img', { name: 'Bringing a game' })).toBeNull();
   });
 
   it('S2: a user-triggered bring refresh still paints the indicator (review r3 M-15)', async () => {
@@ -3284,12 +3298,12 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     expect(await screen.findByText('Someone Else')).toBeInTheDocument();
     await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledTimes(1));
     await flushMacrotask();
-    expect(screen.queryByLabelText('Bringing a game')).toBeNull();
+    expect(screen.queryByRole('img', { name: 'Bringing a game' })).toBeNull();
     (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([{ User: { id: OTHER_UUID } }]);
     await act(async () => {
       rsvpProps.current?.onRsvpChange?.('yes');
     });
-    expect(await screen.findByLabelText('Bringing a game')).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: 'Bringing a game' })).toBeInTheDocument();
   });
 
   // ---- Phase 88.9-40 (SESSION-01, SPEC A8): the shared guard on both views ----
@@ -4760,12 +4774,12 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
   it('SR-2. a failed brings refresh keeps the dice and shows RF1', async () => {
     const r = renderEventDetail();
     (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
-    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
-    const count = screen.getAllByLabelText(BRINGING).length;
+    await waitFor(() => expect(screen.getAllByRole('img', { name: BRINGING }).length).toBeGreaterThan(0));
+    const count = screen.getAllByRole('img', { name: BRINGING }).length;
     (eventBringsAPI.getEventBrings as Mock).mockRejectedValueOnce(SERVER_500());
     forceRefresh(r.rerender);
     await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
-    expect(screen.getAllByLabelText(BRINGING)).toHaveLength(count);
+    expect(screen.getAllByRole('img', { name: BRINGING })).toHaveLength(count);
   });
 
   it('SR-3. a side 403 never silences RF1 over the kept event (P-2 under C10)', async () => {
@@ -4796,7 +4810,7 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
   it('SR-5. a new event never inherits the previous event\'s dice', async () => {
     const r = renderEventDetail();
     (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
-    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('img', { name: BRINGING }).length).toBeGreaterThan(0));
     (eventsAPI.getEvent as Mock).mockResolvedValue(eventFixture({ id: SECOND_EVENT_ID }));
     (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(SERVER_500());
     h.search = `event_id=${SECOND_EVENT_ID}&group_id=${GROUP_ID}`;
@@ -4804,7 +4818,7 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
     await waitFor(() => expect(eventBringsAPI.getEventBrings).toHaveBeenCalledWith(SECOND_EVENT_ID));
     await screen.findByRole('heading', { name: 'Game Night' });
     await flushMacrotask();
-    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+    expect(screen.queryAllByRole('img', { name: BRINGING })).toHaveLength(0);
     // The section notice shows; a CODED failure reads the register sentence for its code (SR-23's
     // mechanism), so the expected line comes from getFetchErrorMessage, never typed.
     await waitFor(() => expect(screen.getAllByText(getFetchErrorMessage(SERVER_500()))).toHaveLength(2));
@@ -4971,10 +4985,10 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
     // The older run must reach its brings read (held) before the newer run starts.
     await waitFor(() => expect((eventBringsAPI.getEventBrings as Mock).mock.calls.length).toBe(before + 1));
     forceRefresh(r.rerender, 'auth0|newer-sub');
-    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('img', { name: BRINGING }).length).toBeGreaterThan(0));
     await act(async () => settleOlder([]));
     await flushMacrotask();
-    expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('img', { name: BRINGING }).length).toBeGreaterThan(0);
   });
 
   it('SR-15. a user-triggered brings write lands for an upper-case event id in the URL (review r2 #86)', async () => {
@@ -4988,17 +5002,17 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
     (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
     (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
     render(<GameDetailPage />);
-    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('img', { name: BRINGING }).length).toBeGreaterThan(0));
     (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
     await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
     await flushMacrotask();
-    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+    expect(screen.queryAllByRole('img', { name: BRINGING })).toHaveLength(0);
   });
 
   it('SR-16. an event whose access comes back never shows the pre-drop dice as current (review r2 #310)', async () => {
     const r = renderEventDetail();
     (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
-    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('img', { name: BRINGING }).length).toBeGreaterThan(0));
     (eventsAPI.getEvent as Mock).mockRejectedValueOnce(FORBIDDEN());
     forceRefresh(r.rerender);
     await screen.findByRole('heading', { name: NO_ACCESS_TITLE });
@@ -5007,7 +5021,7 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
     forceRefresh(r.rerender, 'auth0|third-sub');
     await screen.findByRole('heading', { name: 'Game Night' });
     await flushMacrotask();
-    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+    expect(screen.queryAllByRole('img', { name: BRINGING })).toHaveLength(0);
   });
 
   it('SR-17. a group read\'s 401 takes the primary-401 path: sign-in once, never a silent page (review r2 #311) (redirects once, 88.9-40)', async () => {
@@ -5170,10 +5184,10 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
     await waitFor(() => expect(screen.getAllByText(BRINGS_LOAD_FAILED)).toHaveLength(2));
     const card = commonAncestor(screen.getByRole('heading', { name: /^Participants \(/ }), visibleLine(BRINGS_LOAD_FAILED));
     expect(within(card as HTMLElement).queryByTestId('rsvp-section')).toBeNull();
-    expect(screen.queryAllByLabelText(BRINGING)).toHaveLength(0);
+    expect(screen.queryAllByRole('img', { name: BRINGING })).toHaveLength(0);
     (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
     await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
-    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('img', { name: BRINGING }).length).toBeGreaterThan(0));
     await waitFor(() => expect(screen.queryAllByText(BRINGS_LOAD_FAILED)).toHaveLength(0));
   });
 
@@ -5210,12 +5224,12 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
   it('SR-28. a failed user-triggered brings refresh changes nothing (seam pass S2-4)', async () => {
     renderEventDetail();
     (eventBringsAPI.getEventBrings as Mock).mockResolvedValue(OTHER_BRINGS);
-    await waitFor(() => expect(screen.getAllByLabelText(BRINGING).length).toBeGreaterThan(0));
-    const count = screen.getAllByLabelText(BRINGING).length;
+    await waitFor(() => expect(screen.getAllByRole('img', { name: BRINGING }).length).toBeGreaterThan(0));
+    const count = screen.getAllByRole('img', { name: BRINGING }).length;
     (eventBringsAPI.getEventBrings as Mock).mockRejectedValue(SERVER_500());
     await act(async () => rsvpProps.current?.onRsvpChange?.('maybe'));
     await flushMacrotask();
-    expect(screen.getAllByLabelText(BRINGING)).toHaveLength(count);
+    expect(screen.getAllByRole('img', { name: BRINGING })).toHaveLength(count);
     expect(screen.queryAllByText(BRINGS_LOAD_FAILED)).toHaveLength(0);
   });
 });

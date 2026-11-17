@@ -164,7 +164,7 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
                 </span>
             )}
             {isBringing && (
-                <span title="Bringing a game" aria-label="Bringing a game">🎲</span>
+                <span role="img" title="Bringing a game" aria-label="Bringing a game">🎲</span>
             )}
         </span>
             {canInvite && (
@@ -3365,7 +3365,7 @@ export default function GameDetailPage() {
                                             </span>
                                         )}
                                         {isBringing && (
-                                            <span title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
+                                            <span role="img" title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
                                         )}
                                     </div>
                                     {(canInvite || canRemove) && (
