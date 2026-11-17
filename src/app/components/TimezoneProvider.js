@@ -35,6 +35,9 @@ import { detectBrowserTimezone } from '../../lib/datetime';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { patchSelfCache } from '../../lib/hooks/selfIdentityCache';
 
+// The one sentence a failed timezone save shows (T1, 88.9-52; the setTimezone catch below).
+const TIMEZONE_SAVE_FAILED = 'Failed to save your timezone — please try again.';
+
 const TimezoneContext = createContext({
   timezone: null,
   setTimezone: () => {},
@@ -150,8 +153,15 @@ export function TimezoneProvider({ children }) {
           setIsProfileTimezoneSet(savedTzRef.current.isSet);
           // The shipped sentence for an unknown cause; a known cause (a 401) reads the register's
           // own line. No new words.
+          // AMENDED Phase 88.9-52 (T1, owner ruling A, 2026-11-16): a failure on OUR side (a 500, or a
+          // misconfiguration) reads the timezone sentence too, chosen OVER the register's shared
+          // server-error line it showed (it never says what failed). A cause the person can act on
+          // (signed out, offline, going too fast) keeps the register's line.
           toast.error(
-            getFetchErrorMessage(err, { fallback: 'Failed to save your timezone — please try again.' })
+            getFetchErrorMessage(err, {
+              fallback: TIMEZONE_SAVE_FAILED,
+              byCode: { internal: TIMEZONE_SAVE_FAILED, config: TIMEZONE_SAVE_FAILED },
+            })
           );
         }
         return false;

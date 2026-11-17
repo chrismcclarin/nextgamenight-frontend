@@ -286,6 +286,19 @@ describe('TimezoneProvider save result, pick order and revert (88.9-68: X33b, Q8
     expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(2);
     expect(vi.mocked(toast.error)).toHaveBeenLastCalledWith('Your session may have expired. Sign in again to continue.');
 
+    // T1 (88.9-52, owner ruling A): a server failure (a 500, and a misconfiguration on our end)
+    // reads the timezone sentence too, never the register's shared server-error line.
+    for (const [code, status] of [['internal', 500], ['config', 503]] as const) {
+      update().mockRejectedValueOnce(new ApiError('Server said no', code, status));
+      pick(BERLIN);
+      await waitFor(() => expect(vi.mocked(logger.error)).toHaveBeenCalledTimes(code === 'internal' ? 3 : 4));
+      await waitFor(() =>
+        expect(vi.mocked(toast.error)).toHaveBeenLastCalledWith('Failed to save your timezone — please try again.')
+      );
+    }
+    await waitFor(() => expect(picked).toHaveLength(5));
+    picked.length = 3;
+
     // Pick order: with the first PATCH still out, the second is not sent until the first settles.
     const first = deferred();
     update().mockReturnValueOnce(first.promise);
