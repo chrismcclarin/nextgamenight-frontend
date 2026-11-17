@@ -703,7 +703,8 @@ async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<vo
     await expect(populated).toHaveText(/\d/);
     // EMPTY cell: a different trailing day the real response also leaves empty, by its accessible
     // name. The CI user is a member who can create events, so empty days carry the add-event name.
-    const empty = page.getByRole('button', { name: new RegExp(`^${next} \\d+\\. Add an event on this day\\.$`) }).first();
+    // (88.9-52 A-11: weekday first here too, the same label builder.)
+    const empty = page.getByRole('button', { name: new RegExp(`^[A-Z][a-z]+day, ${next} \\d+\\. Add an event on this day\\.$`) }).first();
     await expect(empty, `A4b (${theme}): no empty adjacent-month day number on the grid`).toBeVisible();
     await expect(empty).toHaveText(/\d/);
 
