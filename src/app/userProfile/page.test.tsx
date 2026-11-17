@@ -1110,9 +1110,9 @@ describe('userProfile two-tap armed state (F-357)', () => {
     vi.useFakeTimers();
     try {
       const { userGamesAPI } = await import('@/lib/api');
-      const SafeImageStub = (await import('@/app/components/SafeImage')).default as unknown as Mock;
+      const SafeImageStub = (await import('@/app/components/SafeImage')).default as unknown as ReturnType<typeof vi.fn>;
       const thirty = Array.from({ length: 30 }, (_, i) => ({ id: 'g' + i, name: 'Game ' + i, image_url: null }));
-      (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(thirty);
+      (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(thirty);
 
       renderProfile();
       await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Show all 30 games' })).toBeInTheDocument());
