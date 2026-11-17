@@ -116,11 +116,17 @@ test.describe('Edit Event on the event page — reopening while an update is sav
     await page.getByRole('dialog').getByLabel('Comments').fill(MARKER);
     await submit.click();
     await expect(editHeading(page)).toBeHidden();
+    // 88.9-52 (A-09): the result IS spoken, once, by the root announcer's sr-only polite region
+    // (DECISION Phase 88.9-24 in src/app/components/createEvent.js). Read straight after the close:
+    // the announcer clears its text 4s after it is written.
+    await expect(page.getByRole('status').filter({ hasText: /^Event updated$/ })).toHaveCount(1);
     await expect.poll(() => readsAfterPut).toBeGreaterThanOrEqual(1);
+    await page.waitForTimeout(1000);
     // Save-feedback rule 2 (88.9-24): the page shows the result, so no toast. Scoped to sonner's
     // toast items because the root announcer's sr-only region speaks the same words.
+    // 88.9-52 (A-05): read AFTER the fixed wait — an absence read taken at once would pass on a
+    // toast that had not been raised yet.
     await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Event updated' })).toHaveCount(0);
-    await page.waitForTimeout(1000);
     await expect(editHeading(page)).toBeHidden();
     expect(put.count()).toBe(1);
   });
