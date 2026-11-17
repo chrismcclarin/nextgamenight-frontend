@@ -8,12 +8,17 @@ import SafeImage from './SafeImage';
 import { usePaintGestureHold } from './heatmap/paintGestureActiveStore';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { isFocusLost, focusElement, focusPageFloor } from '../../components/ui/focusPageFloor';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
 
 /** Stable empty list, so the held slot descriptor compares by identity across commits. */
 const NO_SUGGESTIONS = [];
 
 /** Copy row H4 (88.6.1 D-30), ratified; the straight apostrophe per D-32 R8. Never interpolated. */
 const SUGGESTIONS_FAILED_LINE = "We couldn't load suggestions.";
+
+/** The empty-collection hint (88.6-39 D-18). One constant: the box shows it and, since 88.9-52
+ *  (A-23), a pressed retry that returns nothing says it. Never interpolated. */
+const EMPTY_COLLECTION_HINT = 'Add games to your collection to enable suggestions';
 
 /**
  * The failure this catch reports, reduced to what is safe to egress.
@@ -118,7 +123,7 @@ function reducedSuggestionsFetchError(err) {
  * edited to add a render guard — it is not this plan's file and containment here costs nothing
  * outside it.)
  */
-function QuickSuggestionsSlot({ desired, onSelectGame, onBrowseMore, onRetry }) {
+function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, onRetry }) {
   const shown = usePaintGestureHold(desired);
   const slotRef = useRef(null);
   const prevKindRef = useRef(shown.kind);
@@ -128,7 +133,11 @@ function QuickSuggestionsSlot({ desired, onSelectGame, onBrowseMore, onRetry }) 
      leaving focus on body, and OVER a live region written by every fetch (the 88.6-39 reason: dep
      re-fires while typing); a PRESSED retry that fails again says the H4 line once through a
      press-only polite region in the outer component. Changing this is a decision, not a
-     cleanup. */
+     cleanup.
+     AMENDED Phase 88.9-52 (A-23): a PRESSED retry that returns nothing now says the empty hint
+     once through the same press-only region. Focus is unchanged: with no control in the slot it
+     still goes to the shared floor (the dialog title), chosen OVER focusing the hint box, which
+     would override this marker and is the owner's call. */
   useEffect(() => {
     const previousKind = prevKindRef.current;
     prevKindRef.current = shown.kind;
@@ -253,7 +262,16 @@ function QuickSuggestionsSlot({ desired, onSelectGame, onBrowseMore, onRetry }) 
            retry's failure is announced (press-only region, existing H4 copy). `gap-2` sits on the
            SHARED class string so the failed and empty boxes still compare equal (Q2). Link ink:
            #92400e on #ffffff 7.09 light, #f59e0b on #232d3e 6.45 dark; the house raw-control ring
-           on the card key. */
+           on the card key.
+           AMENDED Phase 88.9-52 (A-20, A-29): while a pressed retry runs the link shows the house
+           busy state (rule 1, 88.9-46) — label kept, aria-disabled, the heard ", retrying" suffix,
+           the gated muted ink and the delayed house Spinner right of the word; a press in flight
+           is refused. Same pattern as the retry controls in
+           src/components/ui/FetchErrorBanner.tsx ("DECISION Phase 88.9-46 (rule 1 B37/B38)"),
+           chosen OVER the shipped silent press (nothing on screen changed, and a retry that failed
+           again looked like no press at all) and OVER the native disabled attribute (it drops
+           focus from the pressed control). The line, the link and the 52px failed height stay
+           (W030: the last settled content is kept until the next settle). */
         <div
           data-testid={shown.kind === 'failed' ? 'quick-suggestions-failed' : 'quick-suggestions-empty'}
           className="flex-1 min-w-0 flex items-center gap-2 border-2 border-dashed border-line rounded-card px-2"
@@ -261,15 +279,18 @@ function QuickSuggestionsSlot({ desired, onSelectGame, onBrowseMore, onRetry }) 
           <p className="text-xs text-content-muted italic">
             {shown.kind === 'failed'
               ? SUGGESTIONS_FAILED_LINE
-              : 'Add games to your collection to enable suggestions'}
+              : EMPTY_COLLECTION_HINT}
           </p>
           {shown.kind === 'failed' ? (
             <button
               type="button"
               onClick={onRetry}
-              className="ml-auto shrink-0 inline-flex items-center min-h-11 text-xs font-bold text-content-accent underline underline-offset-2 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+              aria-disabled={retrying || undefined}
+              className="ml-auto shrink-0 inline-flex items-center min-h-11 text-xs font-bold text-content-accent aria-disabled:text-content-muted underline underline-offset-2 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
             >
               Try again
+              {retrying ? <span className="sr-only">, retrying</span> : null}
+              <DelayedSpinner busy={retrying} className="ml-2 align-middle" />
             </button>
           ) : null}
         </div>
@@ -296,6 +317,14 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
   const [retryAnnouncement, setRetryAnnouncement] = useState('');
   const retryPressedRef = useRef(false);
   const lastRetryKeyRef = useRef(0);
+  /* 88.9-52 (A-20): the pressed retry's busy state. The REF is the synchronous first-line latch
+     (two presses in one tick both read stale state — the house idiom,
+     src/components/ui/FetchErrorBanner.tsx ("DECISION Phase 88.6.1-21 (R123 / W064 / Req 5)"));
+     the STATE paints the look. Both end at the next settle of the CURRENT generation (success or
+     failure, pressed or automatic) and in the invalid-params branch, so a dep change that
+     supersedes the pressed run cannot leave the link busy. */
+  const [retrying, setRetrying] = useState(false);
+  const retryInFlightRef = useRef(false);
   const debounceRef = useRef(null);
   /* THE PHASE'S ONE STALENESS IDIOM — the cancelled-generation guard plan 88.6-27 shipped and
      plans 29/30/32 reuse. Bumped in the effect's CLEANUP, so both a dep change and unmount
@@ -328,12 +357,17 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
     // announce its failure. (The same retryKey as last time means a dep change started this run.)
     if (retryKey === lastRetryKeyRef.current) retryPressedRef.current = false;
     lastRetryKeyRef.current = retryKey;
+    const endRetry = () => {
+      retryInFlightRef.current = false;
+      setRetrying(false);
+    };
 
     // Only fetch if we have a valid groupId and playerCount >= 1
     if (!paramsValid) {
       setSuggestions(NO_SUGGESTIONS);
       setPending(false);
       setFailed(false);
+      endRetry();
       return () => {
         generationRef.current += 1;
       };
@@ -357,6 +391,12 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
           const raw = Array.isArray(data) ? data : (data?.suggestions || []);
           setSuggestions(raw.slice(0, 5));
           setFailed(false);
+          // 88.9-52 (A-23): a PRESSED retry that returns nothing says the empty hint once (the
+          // link unmounts and focus goes to the D13c floor, so without this nothing said what
+          // happened). An automatic empty settle stays silent, as every automatic run does.
+          if (retryPressedRef.current && raw.length === 0) {
+            setRetryAnnouncement(EMPTY_COLLECTION_HINT);
+          }
           retryPressedRef.current = false;
         } catch (err) {
           /* THE GENERATION GUARD IS CHECKED FIRST: a superseded run reports nothing. What follows
@@ -396,6 +436,7 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
         if (generation !== generationRef.current) return;
         setPending(false);
         setHasSettled(true);
+        endRetry();
       };
       fetchSuggestions();
     }, 500);
@@ -408,6 +449,11 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
   // 88.9-43 D13c: the Try again press — mark the run as asked-for, clear the region (clear-then-set,
   // so a repeat failure is a real change), and re-run the effect in place.
   const onRetry = () => {
+    // 88.9-52 (A-20): a press while a pressed retry is still running is refused — it used to
+    // restart the 500ms debounce (or start a second fetch) every time.
+    if (retryInFlightRef.current) return;
+    retryInFlightRef.current = true;
+    setRetrying(true);
     retryPressedRef.current = true;
     setRetryAnnouncement('');
     setRetryKey((k) => k + 1);
@@ -450,6 +496,7 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
       <div className="text-xs font-bold text-content-muted uppercase tracking-wider mb-1">Suggestions</div>
       <QuickSuggestionsSlot
         desired={desired}
+        retrying={retrying}
         onSelectGame={onSelectGame}
         onBrowseMore={() => setBrowseModalOpen(true)}
         onRetry={onRetry}

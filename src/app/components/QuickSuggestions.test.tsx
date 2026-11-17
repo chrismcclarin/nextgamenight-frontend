@@ -559,6 +559,121 @@ describe('QuickSuggestions — a REAL failure reports, and the slot says so (D-2
     expect(firstChip.textContent).toContain('Catan');
     expect(document.activeElement).toBe(firstChip);
   });
+
+  it('A-20 (88.9-52): a pressed Try again shows busy and refuses a second press until the retry settles', async () => {
+    // Review 88.9-52 A-20 (+A-29): the press used to change nothing on screen, and each further
+    // press restarted the 500ms debounce. Rule 1 (88.9-46): the link keeps its label, takes
+    // aria-disabled, the heard suffix and the delayed house Spinner; a press in flight is refused.
+    api.getGroupSuggestions.mockRejectedValueOnce(failure());
+    renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+    const link = () => failedBox()!.querySelector('button') as HTMLElement;
+    expect(link()).toHaveAccessibleName('Try again');
+    expect(link()).not.toHaveAttribute('aria-disabled');
+
+    const gate = deferred<never>();
+    api.getGroupSuggestions.mockReturnValue(gate.promise);
+    fireEvent.click(link());
+    expect(link()).toHaveAttribute('aria-disabled', 'true');
+    expect(link()).toHaveAccessibleName('Try again, retrying');
+    expect(link()).not.toHaveAttribute('disabled');
+
+    // A second press 300ms in must NOT restart the debounce: the fetch starts 500ms after the FIRST.
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    fireEvent.click(link());
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(2);
+    // The delayed house Spinner is up by now (appear delay 200ms), inside the link.
+    expect(link().querySelector('[data-slot="spinner"]')).not.toBeNull();
+
+    // A press while the fetch is in the air starts no second fetch.
+    fireEvent.click(link());
+    await runDebounce();
+    await runDebounce();
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(2);
+    expect(link()).toHaveAttribute('aria-disabled', 'true');
+
+    // The retry fails again: the link is live again, and the next press runs.
+    await act(async () => {
+      gate.reject(failure());
+    });
+    expect(link()).not.toHaveAttribute('aria-disabled');
+    expect(link()).toHaveAccessibleName('Try again');
+    api.getGroupSuggestions.mockResolvedValue({ suggestions: GAMES });
+    fireEvent.click(link());
+    await runDebounce();
+    await waitFor(() => expect(screen.getByText('Catan')).toBeInTheDocument());
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(3);
+  });
+
+  it('A-20 (88.9-52): a dep change that supersedes a pressed retry still ends the busy state', async () => {
+    api.getGroupSuggestions.mockRejectedValue(failure());
+    const { rerender } = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+    const link = () => failedBox()!.querySelector('button') as HTMLElement;
+    fireEvent.click(link());
+    expect(link()).toHaveAttribute('aria-disabled', 'true');
+    // Invalid params: no fetch can settle, so the branch itself must end the busy state.
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={0} duration={120} onSelectGame={vi.fn()} />
+    );
+    expect(emptyBox()).toBeInTheDocument();
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={120} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(failedBox()).not.toBeNull());
+    expect(link()).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(link());
+    expect(link()).toHaveAttribute('aria-disabled', 'true');
+    // A valid dep change: the superseding run's own settle ends it.
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={60} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(link()).not.toHaveAttribute('aria-disabled'));
+  });
+
+  it('A-23 (88.9-52): a pressed retry that returns NOTHING says the empty hint once; an automatic one stays silent', async () => {
+    // Review 88.9-52 A-23: the link unmounts, focus goes to the D13c floor (the dialog title), and
+    // nothing said what happened. The existing empty hint is spoken through the press-only region.
+    api.getGroupSuggestions.mockRejectedValueOnce(failure());
+    renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+    const region = screen.getByRole('status');
+    api.getGroupSuggestions.mockResolvedValue({ suggestions: [] });
+    const link = failedBox()!.querySelector('button') as HTMLElement;
+    link.focus();
+    fireEvent.click(link);
+    await runDebounce();
+    await waitFor(() => expect(emptyBox()).not.toBeNull());
+    expect(region.textContent).toBe(EMPTY_HINT);
+    expect(emptyBox()!.querySelector('p')!.textContent).toBe(EMPTY_HINT);
+    // Focus is where the D13c marker put it: no control in the slot, so the shared floor, never the box.
+    expect(emptyBox()!.contains(document.activeElement)).toBe(false);
+    expect(slot().querySelectorAll('[role="alert"], [role="status"], [aria-live]')).toHaveLength(0);
+
+    // An automatic empty settle (a dep change after a failure) writes nothing.
+    cleanup();
+    api.getGroupSuggestions.mockReset();
+    api.getGroupSuggestions.mockRejectedValueOnce(failure()).mockResolvedValue({ suggestions: [] });
+    const second = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(failedBox()).not.toBeNull());
+    second.rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={90} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(emptyBox()).not.toBeNull());
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
 });
 
 // ---------------------------------------------------------------------------
