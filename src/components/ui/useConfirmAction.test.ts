@@ -33,6 +33,8 @@ afterEach(cleanup);
 // The newest hook state, written by the host on every render, so a test can read
 // dialogProps and compare function identities across renders.
 let latest: ConfirmActionState | null = null;
+// How many times the host has rendered (88.9-52 A-56: the countdown's cost is counted in host renders).
+let hostRenders = 0;
 
 function Host({
   tier,
@@ -49,6 +51,7 @@ function Host({
     onConfirm,
   });
   latest = gate;
+  hostRenders += 1;
   return React.createElement(
     'div',
     null,
@@ -79,6 +82,7 @@ function current(): ConfirmActionState {
 describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
   beforeEach(() => {
     latest = null;
+    hostRenders = 0;
     vi.useFakeTimers();
   });
 
@@ -298,5 +302,59 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     expect(vi.getTimerCount()).toBe(0);
     advance(10000);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('A-55 (88.9-52): a re-arm of the same row in the turn its window ends starts a fresh gate', () => {
+    // The window's end and the re-arm land in ONE act, so React commits them together and the armed
+    // row never renders as disarmed in between. The countdown must still restart: the label reads
+    // Wait (3) and a press right after is refused, not committed on the last window's live state.
+    const onConfirm = vi.fn();
+    renderHost('two-tap', onConfirm);
+    const trigger = screen.getByTestId('trigger');
+
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    expect(trigger).toHaveTextContent('Tap again to confirm');
+
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_LIVE_MS);
+      current().trigger('sam', 'Sam', trigger);
+    });
+    expect(current().armedId).toBe('sam');
+    expect(trigger).toHaveTextContent('Wait (3)');
+    expect(trigger).toHaveAttribute('aria-disabled', 'true');
+
+    act(() => {
+      current().trigger('sam', 'Sam', trigger);
+    });
+    expect(onConfirm, 'a press inside the fresh gate is refused').not.toHaveBeenCalled();
+    expect(trigger).toHaveTextContent('Wait (3)');
+
+    // The fresh gate then runs its full length and goes live as usual.
+    advance(CONFIRM_DELAY_MS - 1);
+    expect(trigger).toHaveTextContent('Wait (1)');
+    advance(1);
+    expect(trigger).toHaveTextContent('Tap again to confirm');
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('A-56 (88.9-52): one arm left alone costs the host 4 extra renders (two ticks, live, the disarm reset)', () => {
+    renderHost('two-tap');
+    const trigger = screen.getByTestId('trigger');
+    const atRest = hostRenders;
+
+    fireEvent.click(trigger);
+    expect(hostRenders - atRest, 'the arm itself is one render').toBe(1);
+    expect(trigger).toHaveTextContent('Wait (3)');
+    // One act per second: timers fired inside ONE act are batched into one render.
+    advance(1000);
+    advance(1000);
+    advance(CONFIRM_DELAY_MS - 2000);
+    expect(trigger).toHaveTextContent('Tap again to confirm');
+    expect(hostRenders - atRest, 'arm, Wait (2), Wait (1), live').toBe(4);
+    advance(CONFIRM_LIVE_MS);
+    expect(trigger).toHaveTextContent('Remove');
+    // The window's end is one render (the row disarms) plus the countdown's own reset to idle.
+    expect(hostRenders - atRest, 'arm and window end are the two renders every arm needs; the countdown adds 4').toBe(2 + 4);
   });
 });

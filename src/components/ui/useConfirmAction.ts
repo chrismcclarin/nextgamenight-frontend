@@ -255,7 +255,16 @@ function defaultAnnouncement(
    AMENDED Phase 88.9-23 (F9b): the dialog-tier countdown lives in ConfirmDialog for the same
    reason; the two-tap countdown lives here because the host renders the label — 3 extra host
    renders per arm, accepted, chosen OVER a label leaf component that would change all 5
-   triggerProps sites. */
+   triggerProps sites.
+   AMENDED Phase 88.9-52 (A-56): the measured count is 4 extra host renders per arm (two ticks, the
+   live edge, the countdown's reset to idle when the row disarms), not 3. It was 5 until the
+   countdown's arm-time state write was removed (src/components/ui/confirmDelay.ts ("AMENDED Phase 88.9-52 (A-56)")).
+   Pinned by src/components/ui/useConfirmAction.test.ts ("A-56 (88.9-52): one arm left alone costs the host 4 extra renders"). */
+
+/** The countdown's key for one arm: the target plus that arm's sequence number (A-55 marker below). */
+function countdownKey(armedId: string, armSeq: number): string {
+  return armedId + '#' + armSeq;
+}
 
 export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionState {
   const {
@@ -274,12 +283,21 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
   const [open, setOpen] = React.useState(false);
   const [pending, setPending] = React.useState(false);
   const [armedId, setArmedId] = React.useState<string | null>(null);
+  // DECISION Phase 88.9-52 (A-55): every arm gets its own sequence number, and the countdown is
+  // keyed on the target AND that number, chosen OVER keying on the target alone. When a row's
+  // window ends and the same row is pressed again before React has rendered the disarm, the two
+  // updates commit together, the target key never changes, and a countdown keyed on the target
+  // would keep the ended window's live state: the label would read live at once and the next press
+  // would delete with no wait. The number makes each arm a new key. Removing it is a decision, not
+  // a cleanup.
+  const [armSeq, setArmSeq] = React.useState(0);
   const [announcement, setAnnouncement] = React.useState('');
 
   // Refs mirror the state the event handlers must read SYNCHRONOUSLY. Two clicks
   // inside one tick see stale state but never a stale ref — which is what makes
   // the no-double-fire and re-arm guarantees hold under a fast double tap.
   const armedIdRef = React.useRef<string | null>(null);
+  const armSeqRef = React.useRef(0);
   const pendingRef = React.useRef(false);
   const targetRef = React.useRef<string | undefined>(undefined);
   const armedTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -333,7 +351,10 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       setAnnouncement(pendingAnnouncementRef.current);
     }
   }, []);
-  const countdown = useConfirmCountdown(tier === 'two-tap' ? armedId : null, announceLive);
+  const countdown = useConfirmCountdown(
+    tier === 'two-tap' && armedId !== null ? countdownKey(armedId, armSeq) : null,
+    announceLive
+  );
   const { isLive, secondsLeft } = countdown;
   const gated = tier === 'two-tap' && !countdown.live;
   // The armed label: counting down while gated, then the live label.
@@ -414,6 +435,8 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
         clearArmTimer();
         armedIdRef.current = key;
         setArmedId(key);
+        armSeqRef.current += 1;
+        setArmSeq(armSeqRef.current);
         // F9b: the text is unchanged (copy NC-1); it is held until the countdown's live edge.
         pendingAnnouncementRef.current = armedAnnouncementRef.current(
           targetLabel,
@@ -433,7 +456,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       // Second invocation on the SAME target while the gate still runs — refused (F9b): stay
       // armed, announcement unchanged. Read from a ref, so a double tap inside one tick cannot
       // slip through.
-      if (!isLive(key)) return;
+      if (!isLive(countdownKey(key, armSeqRef.current))) return;
 
       // Second invocation on the SAME target inside the live window — commit.
       clearArmTimer();

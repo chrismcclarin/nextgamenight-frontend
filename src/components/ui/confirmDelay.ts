@@ -74,6 +74,9 @@ export function useConfirmCountdown(
   // The key that reached live, read synchronously by isLive; null while gated or idle.
   const liveKeyRef = React.useRef<ConfirmArmKey>(null);
   const liveRef = React.useRef(false);
+  // True once a tick has written the state, so the disarm reset below runs only when there is
+  // something to reset (A-56).
+  const wroteStateRef = React.useRef(false);
 
   // Latest-callback ref: the tick that reaches 0 calls the newest onLive.
   const onLiveRef = React.useRef(onLive);
@@ -85,16 +88,25 @@ export function useConfirmCountdown(
     liveRef.current = false;
     liveKeyRef.current = null;
     if (armKey === null) {
-      setState((prev) => (prev === IDLE ? prev : IDLE));
+      if (wroteStateRef.current) {
+        wroteStateRef.current = false;
+        setState(IDLE);
+      }
       return undefined;
     }
 
     let remaining = START_SECONDS;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    setState({ key: armKey, secondsLeft: remaining, live: false });
-
+    // AMENDED Phase 88.9-52 (A-56): no state write on arm. The view below already reports the
+    // starting state for a key the state does not hold yet, so writing it here only cost every
+    // host one extra render per arm. The reset to IDLE on disarm above STAYS, chosen OVER dropping
+    // both: without it the state would keep the last key as live, and arming that same key again
+    // would paint the live label on its first render. The reset is skipped when no tick has
+    // written the state (measured: an unconditional updater that returns the same state, run on
+    // mount, still made React call the host once more on the next arm).
     const tick = () => {
       remaining -= 1;
+      wroteStateRef.current = true;
       if (remaining > 0) {
         setState({ key: armKey, secondsLeft: remaining, live: false });
         timer = setTimeout(tick, TICK_MS);
