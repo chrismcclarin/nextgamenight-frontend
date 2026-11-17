@@ -526,6 +526,29 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
+  it('A-13 (88.9-52): a reload while open clears the failed-save line with the announced half', async () => {
+    // Review 88.9-52 A-13: the fetch reset cleared the assertive region but not the visible D12b
+    // line, so the two halves of one failure could diverge — an old "couldn't save" sentence
+    // under a freshly reloaded list.
+    const user = userEvent.setup();
+    api.updateMyBrings.mockRejectedValue(new Error(SENTINEL));
+    const { rerender } = render(<Host initiallyOpen />);
+    await settleOnRows();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(assertiveRegion()).toHaveTextContent(RATIFIED_UNKNOWN_COPY));
+    const visibleLines = () =>
+      screen
+        .queryAllByText(RATIFIED_UNKNOWN_COPY)
+        .filter((node) => node.closest('[aria-live]') === null && !node.className.includes('sr-only'));
+    expect(visibleLines()).toHaveLength(1);
+
+    // A dep change re-runs the fetch while the picker stays open (the idiom of arm 6).
+    rerender(<Host initiallyOpen eventId={EVENT_ID_2} />);
+    await settleOnRows();
+    expect(assertiveRegion().textContent).toBe('');
+    expect(visibleLines()).toHaveLength(0);
+  });
+
   it('9. a successful save calls onSave then closes through the local handleClose (regions cleared)', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

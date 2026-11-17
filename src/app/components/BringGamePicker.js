@@ -137,9 +137,14 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
          guard above (`self?.user_id`) is what turns "loading" into a DOM mutation the reader
          hears. The failure state (visible + announced) is RESET on every new fetch so a
          successful retry never paints the failure branch over a fresh list, and so an identical
-         second failure is a real change rather than a React bail-out. */
+         second failure is a real change rather than a React bail-out.
+         AMENDED Phase 88.9-52 (A-13): the visible failed-save line (D12b) is reset here too, so
+         it cannot outlive the assertive sentence it mirrors across a reload while open. A state
+         reset only; the fetch itself is unchanged (Phase 89's fence on this effect is about the
+         performance restructure). */
       setLoadError('');
       setAssertiveAnnouncement('');
+      setSaveFailureLine('');
       setPoliteAnnouncement(LOADING_ANNOUNCEMENT);
       setLoading(true);
       try {
