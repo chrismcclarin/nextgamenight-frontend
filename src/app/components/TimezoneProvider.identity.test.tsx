@@ -26,6 +26,8 @@ const h = vi.hoisted(() => ({
   storedTz: null as string | null,
   listeners: new Set<() => void>(),
   snapshot: null as { key: string; self: SelfRow } | null,
+  // A-27 (88.9-52): a counting stand-in for the browser-zone read.
+  detect: vi.fn(() => 'UTC'),
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => {
@@ -85,7 +87,7 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({
 
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }));
 
-vi.mock('@/lib/datetime', () => ({ detectBrowserTimezone: () => 'UTC' }));
+vi.mock('@/lib/datetime', () => ({ detectBrowserTimezone: () => h.detect() }));
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
@@ -175,6 +177,26 @@ describe('TimezoneProvider identity flip (Plan 09 Task 2)', () => {
 
     await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
     expect(usersAPI.updateTimezone as Mock).not.toHaveBeenCalled();
+  });
+});
+
+describe('TimezoneProvider browser-zone reads (88.9-52, A-27)', () => {
+  it('A-27: a re-render with nothing changed does not read the browser zone again', () => {
+    h.selfUuid = SELF_UUID;
+    // A NEW element each time: React skips a re-render of the very same element object.
+    const tree = () => (
+      <TimezoneProvider>
+        <TZConsumer />
+      </TimezoneProvider>
+    );
+    const { rerender } = render(tree());
+    const afterMount = h.detect.mock.calls.length;
+    expect(afterMount).toBeGreaterThan(0);
+    // Same props, same self row: the read effect does not re-run, so every extra read here would
+    // come from the render body (the saved-zone ref built its starting value on every render).
+    rerender(tree());
+    rerender(tree());
+    expect(h.detect.mock.calls.length).toBe(afterMount);
   });
 });
 

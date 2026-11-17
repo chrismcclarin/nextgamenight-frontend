@@ -83,7 +83,9 @@ export function TimezoneProvider({ children }) {
   //                  is in flight.
   //   saveChainRef   one promise chain: a save is sent only after the previous one settled, so
   //                  the server keeps the LAST pick whatever the network does.
-  const savedTzRef = useRef({ timezone: detectBrowserTimezone() || 'UTC', isSet: false });
+  // A-27 (88.9-52): the starting value reads the zone captured once above. useRef evaluates its
+  // argument on every render, and a detect call here built two Intl formatters per render.
+  const savedTzRef = useRef({ timezone: browserTimezone || 'UTC', isSet: false });
   const pickSeqRef = useRef(0);
   const settledSeqRef = useRef(0);
   const saveChainRef = useRef(Promise.resolve());
