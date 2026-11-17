@@ -2,8 +2,8 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 
 import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
 
-// Phase 88.9 plan 66 (X13-1, owner at the round-2 glance) — a long email or name on the Friends
-// page, measured on a phone at 375: the row's action must stay on screen.
+// Phase 88.9 plan 66 (X13-1, owner at the round-2 glance) — a long name on the Friends page,
+// measured on a phone at 375: the row's action must stay on screen.
 //
 // THE DEFECT. Each Friends row is a flex row with a text column and an action column. The text
 // column could not shrink below its longest unbroken word and the action column could, so a long
@@ -11,10 +11,16 @@ import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFligh
 // past the right edge of the screen.
 //
 // WHAT EACH TEST DOES. It answers the page's list reads in the browser with ONE made-up row whose
-// email (or name, for a friend: the friends payload carries no email) is an unbroken 52-character
-// string on the reserved .invalid domain, opens the tab that shows the row, and measures the
-// action's box against the viewport. It also measures the long text itself, so a fix that clipped
-// the address instead of wrapping it would fail here too.
+// name is an unbroken 50-character string (the backend's longest username), opens the tab that
+// shows the row, and measures the action's box against the viewport. It also measures the long
+// text itself, so a fix that clipped the name instead of wrapping it would fail here too.
+//
+// AMENDED Phase 88.9-52 (A-01): every row carries the long text as its NAME and no email, because
+// that is what the backend sends: the search answers id and username only and the request rows
+// carry id, username and picture_url (backend:Sonnet/routes/friendships.js, its literal
+// id-and-username projection and its PUBLIC_USER_ATTRS includes). Before this the found, request
+// and sent tests measured an email line production never draws (REJECTED: keeping them, a long
+// username in those rows was unguarded). The name was 52 characters; the backend stops at 50.
 //
 // NOTHING IS WRITTEN. Every write is held in the browser (support/inFlight.ts) and no test presses
 // a control that writes: Search sends a GET, which is answered here. The rows are the white cards
@@ -25,22 +31,20 @@ import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFligh
 // the signed-in storage state, which does not exist locally, so typecheck and listing are the
 // only local proof.
 
-const LONG_EMAIL = 'x13longaddressfromtheglance@nextgamenighte2e.invalid';
-const LONG_NAME = 'X13LongNameWithNoSpacesFromTheRoundTwoGlanceOwnerRow';
+// What the person types into the search field; the answer never echoes it back.
+const SEARCH_ADDRESS = 'x13longname@nextgamenighte2e.invalid';
+const LONG_NAME = 'X13LongNameWithNoSpacesFromTheRoundTwoGlanceOwnRow';
 
-const FOUND_PERSON = { id: '88966a13-0000-4000-8000-0000000000c1', username: null, email: LONG_EMAIL };
+const FOUND_PERSON = { id: '88966a13-0000-4000-8000-0000000000c1', username: LONG_NAME };
 const RECEIVED_REQUEST = {
   id: 'e2e-friends-x13-received',
   status: 'pending',
-  Requester: { id: '88966a13-0000-4000-8000-0000000000c2', username: 'E2E Long Requester', email: LONG_EMAIL },
+  Requester: { id: '88966a13-0000-4000-8000-0000000000c2', username: LONG_NAME, picture_url: null },
 };
-// The request and sent rows print the email on a second line whenever it differs from the name, so
-// a person with no name would show the address twice and a text lookup would match two nodes
-// (run 43767360823 failed its sent test that way, not on the layout). Each carries a short name.
 const SENT_REQUEST = {
   id: 'e2e-friends-x13-sent',
   status: 'pending',
-  Addressee: { id: '88966a13-0000-4000-8000-0000000000c3', username: 'E2E Long Addressee', email: LONG_EMAIL },
+  Addressee: { id: '88966a13-0000-4000-8000-0000000000c3', username: LONG_NAME, picture_url: null },
 };
 const LONG_FRIEND = {
   id: 'e2e-friends-x13-friend',
@@ -112,7 +116,7 @@ async function openFriends(page: Page) {
   await expect(page.getByLabel("Friend's email address")).toBeVisible({ timeout: 15_000 });
 }
 
-test.describe('Friends rows with a long address — phone (375), plan 88.9-66', () => {
+test.describe('Friends rows with a long name — phone (375), plan 88.9-66', () => {
   // Runs ONLY in the phone project: both projects collect every spec, so this is a runtime skip.
   test.skip(({ isMobile }) => !isMobile, 'X13-1 is a 375 layout defect: phone project only');
 
@@ -127,7 +131,7 @@ test.describe('Friends rows with a long address — phone (375), plan 88.9-66', 
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
-  test('X13-1 (88.9): a found person with a long email keeps Send Request inside a 375 screen', async ({ page }) => {
+  test('X13-1 (88.9): a found person with a long name keeps Send Request inside a 375 screen', async ({ page }) => {
     await answerLists(page, {});
     await page.route(
       (url) => url.pathname.endsWith('/friendships/search'),
@@ -142,36 +146,37 @@ test.describe('Friends rows with a long address — phone (375), plan 88.9-66', 
     await openFriends(page);
 
     const email = page.getByLabel("Friend's email address");
-    await email.fill(LONG_EMAIL);
+    await email.fill(SEARCH_ADDRESS);
     // Enter in the field submits the search form: a GET, answered above.
     await email.press('Enter');
 
-    const address = page.getByText(LONG_EMAIL, { exact: true });
-    await expectInsideViewport(page, address, 'the found address');
+    // Exact: the screen-reader line beside the row reads Found <name>. and is a different string.
+    const name = page.getByText(LONG_NAME, { exact: true });
+    await expectInsideViewport(page, name, 'the found name');
     await expectInsideViewport(page, page.getByRole('button', { name: 'Send Request', exact: true }), 'Send Request');
     await expectNoSidewaysScroll(page);
   });
 
-  test('X13-1 (88.9): a friend request from a long email keeps Accept and Decline inside a 375 screen', async ({ page }) => {
+  test('X13-1 (88.9): a friend request from a long name keeps Accept and Decline inside a 375 screen', async ({ page }) => {
     await answerLists(page, { received: [RECEIVED_REQUEST] });
     await openFriends(page);
     await page.getByRole('button', { name: /^Requests(\s*\d+)?$/ }).click();
 
     const row = page.locator(`[data-request-row="${RECEIVED_REQUEST.id}"]`);
     await expect(row, 'the request row never rendered').toBeVisible({ timeout: 15_000 });
-    await expectInsideViewport(page, row.getByText(LONG_EMAIL, { exact: true }), 'the requester address');
+    await expectInsideViewport(page, row.getByText(LONG_NAME, { exact: true }), 'the requester name');
     await expectInsideViewport(page, row.getByRole('button', { name: 'Accept', exact: true }), 'Accept');
     await expectInsideViewport(page, row.getByRole('button', { name: 'Decline', exact: true }), 'Decline');
     await expectNoSidewaysScroll(page);
   });
 
-  test('X13-1 (88.9): a sent request to a long email keeps its Pending tag inside a 375 screen', async ({ page }) => {
+  test('X13-1 (88.9): a sent request to a long name keeps its Pending tag inside a 375 screen', async ({ page }) => {
     await answerLists(page, { sent: [SENT_REQUEST] });
     await openFriends(page);
     await page.getByRole('button', { name: /^Sent(\s*\d+)?$/ }).click();
 
-    const address = page.getByText(LONG_EMAIL, { exact: true });
-    await expectInsideViewport(page, address, 'the sent-to address');
+    const name = page.getByText(LONG_NAME, { exact: true });
+    await expectInsideViewport(page, name, 'the sent-to name');
     await expectInsideViewport(page, page.getByText('Pending', { exact: true }), 'the Pending tag');
     await expectNoSidewaysScroll(page);
   });
