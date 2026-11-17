@@ -2730,7 +2730,11 @@ test.describe('Req 11 Gate C — round 2 pins (88.9 R2), both themes per test', 
       // error register (the house error form), so a 500 shows the register's server-error line; the
       // sentence Failed to save your timezone is kept only for a failure with no known cause. This
       // test measures the toast's ink, so it follows the words the forced 500 now raises.
-      const toast = page.locator('[data-sonner-toast][data-type="error"]').filter({ hasText: 'Something went wrong on our end' });
+      // AMENDED Phase 88.9-52 (T1, owner ruling A, 2026-11-16; FE commit 261b086): a failure on our
+      // side (this forced 500) now raises the timezone sentence too, in place of the register's
+      // server-error line, so the filter reads Failed to save your timezone. The words are set at
+      // src/app/components/TimezoneProvider.js ("const TIMEZONE_SAVE_FAILED =").
+      const toast = page.locator('[data-sonner-toast][data-type="error"]').filter({ hasText: 'Failed to save your timezone' });
       await expect(toast, `O20c (${theme}): the failed timezone save raised no error toast`).toBeVisible({ timeout: 15_000 });
       const title = toast.locator('[data-title]');
       const label = `O20c error toast title ink (${theme}, OS light)`;
