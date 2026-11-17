@@ -257,9 +257,14 @@ function renderStack(opts: {
   tinted?: boolean;
   onCardActivate?: (e: React.SyntheticEvent) => void;
   statuses?: Record<string, string>;
+  strict?: boolean;
 } = {}) {
   const onCardActivate = opts.onCardActivate ?? vi.fn();
+  // 88.9-52 W12 / MOUNT: strict wraps the tree in React.StrictMode, the mode the Next dev server
+  // runs in, where every effect is mounted, cleaned up and mounted again.
+  const Wrapper = opts.strict ? React.StrictMode : React.Fragment;
   const utils = render(
+    <Wrapper>
     <FriendshipContext.Provider value={friendshipValue(opts.statuses) as never}>
       <div
         role="button"
@@ -274,7 +279,8 @@ function renderStack(opts: {
           tinted={opts.tinted}
         />
       </div>
-    </FriendshipContext.Provider>,
+    </FriendshipContext.Provider>
+    </Wrapper>,
   );
   return { ...utils, onCardActivate };
 }
@@ -842,5 +848,49 @@ describe('MemberChipStack — Phase 88.9-30 D1b fills and G halos', () => {
     expect(less).toHaveClass('focus-visible:ring-offset-surface-group-halo');
     expect(less).not.toHaveClass('focus-visible:ring-offset-surface-card');
     expect(COMPONENT_SRC.split('hostGround="group"').length - 1, 'the expanded name sits on the group ground').toBe(1);
+  });
+});
+
+// 88.9-52 W12 / MOUNT. Measured in a live browser on the dev server: the focus effect skipped its
+// first run with a mount-flag ref, StrictMode ran the effect twice at mount, the flag survived, and
+// the second run focused the collapsed control of EVERY group card. The last card took focus and
+// the browser scrolled the Home groups list to its end. Every other describe in this file renders
+// WITHOUT StrictMode, which is why 46 could never have gone red there.
+describe('MemberChipStack — under React.StrictMode (the dev-server double effect run)', () => {
+  it('46. W12: mounting moves focus NOWHERE — the body keeps it, with one stack and with several', () => {
+    renderStack({ strict: true });
+    expect(
+      document.activeElement,
+      'a freshly mounted chip stack must not take focus: under StrictMode the effect runs twice at mount',
+    ).toBe(document.body);
+    cleanup();
+
+    render(
+      <React.StrictMode>
+        <FriendshipContext.Provider value={friendshipValue() as never}>
+          <MemberChipStack members={MEMBERS} selfUuid={SELF} />
+          <MemberChipStack members={MEMBERS.slice(0, 3)} selfUuid={SELF} />
+          <MemberChipStack members={MEMBERS.slice(2)} selfUuid={SELF} />
+        </FriendshipContext.Provider>
+      </React.StrictMode>,
+    );
+    expect(document.activeElement, 'three cards mount, none takes focus').toBe(document.body);
+  });
+
+  it('47. W12: a REAL expand still focuses the first chip and a REAL collapse still focuses the control', async () => {
+    renderStack({ strict: true });
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.click(collapsed());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'mary kay, friend' })).toHaveFocus());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    await waitFor(() => expect(collapsed()).toHaveFocus());
+
+    // A second round trip: the previous-value ref must keep tracking after the first toggle.
+    fireEvent.click(collapsed());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'mary kay, friend' })).toHaveFocus());
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    await waitFor(() => expect(collapsed()).toHaveFocus());
   });
 });

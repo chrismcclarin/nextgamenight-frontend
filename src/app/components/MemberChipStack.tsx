@@ -409,15 +409,24 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
   const triggerRef = useRef<HTMLSpanElement | null>(null);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const lessRef = useRef<HTMLSpanElement | null>(null);
-  const didMount = useRef(false);
+  const prevExpanded = useRef(expanded);
 
   // Focus movement (UI-SPEC section 7): expand -> the first chip trigger; collapse -> the
-  // control that was activated. Skipped on mount so a freshly rendered card never steals focus.
+  // control that was activated. Never on mount: a freshly rendered card must not steal focus.
+  //
+  // DECISION Phase 88.9-52 (W12 / MOUNT): the effect acts only on a REAL change of `expanded`,
+  // compared against a previous-value ref, chosen OVER the mount flag it replaces
+  // (a ref set true on the first effect run, which then returned early). React StrictMode, on by
+  // default on the Next dev server, mounts every effect, runs a simulated cleanup and mounts it
+  // again; a ref survives that, so the flag was already set on the second run and every group
+  // card focused its own collapsed control at mount. The last card kept focus and the browser
+  // scrolled the Home groups list to its end (measured live). Also REJECTED: resetting the flag
+  // in a cleanup, because a real toggle runs the cleanup first and the focus move would then be
+  // skipped every time. A previous-value compare is the same in development and production.
+  // Changing this back is a decision, not a cleanup. Pinned by tests 46 and 47.
   useEffect(() => {
-    if (!didMount.current) {
-      didMount.current = true;
-      return;
-    }
+    if (prevExpanded.current === expanded) return;
+    prevExpanded.current = expanded;
     if (expanded) {
       const first =
         rowRef.current?.querySelector<HTMLElement>('[role="button"]') ?? lessRef.current;
