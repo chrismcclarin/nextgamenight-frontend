@@ -2887,6 +2887,29 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(measured, 'anti-vacuity: home (8 presets + card + hovered card) + group page (8 presets + plain header)').toBe(19);
   });
+
+  it('W20 (88.9-52): the Powered by BGG mark sits on a white plate in dark, where its navy wordmark reads over 4.5; on the dark page ground alone it reads under 2', () => {
+    // After-build look page W20: the mark is BoardGameGeek's own artwork (public/bgg-logo.png), a
+    // navy wordmark (#3e3a5f, 3782 of its 6490 painted pixels, counted from the file 2026-11-16)
+    // beside an orange shield, on a transparent ground. On the dark page it read 1.59. The mark is
+    // a third party's brand, so it is not recoloured or inverted: it gets a plate. The plate is
+    // dark-only; light keeps the page ground (8.14 there); on the plate 10.63.
+    const WORDMARK = '#3e3a5f';
+    const logoSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'BGGLogo.js'), 'utf8'),
+    );
+    const link = /className="([^"]*hover:opacity-80[^"]*)"/.exec(logoSrc);
+    expect(link, 'LOCATOR: the BGG link class string').not.toBeNull();
+    const tokens = link![1].split(/\s+/).filter((token) => token.length > 0);
+    expect(tokens, 'the mark has a dark-only white plate').toContain('dark:bg-white');
+    expect(tokens.filter((token) => /^bg-/.test(token)), 'light paints no plate').toEqual([]);
+    const onPlate = ratioHex(WORDMARK, '#ffffff', 'W20 wordmark on the plate');
+    expect(onPlate, `W20 — the wordmark on the white plate measures ${onPlate.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
+    const bare = ratioHex(WORDMARK, resolve('dark', '--color-bg-page'), 'W20 wordmark on the dark page');
+    expect(bare, `W20 — without the plate the wordmark on the dark page measures ${bare.toFixed(4)}:1; if this ever clears 4.5 the plate is no longer needed`).toBeLessThan(2);
+    const light = ratioHex(WORDMARK, resolve('light', '--color-bg-page'), 'W20 wordmark on the light page');
+    expect(light, `W20 — the wordmark on the light page measures ${light.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 // =====================================================================================
