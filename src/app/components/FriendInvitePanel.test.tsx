@@ -621,7 +621,6 @@ describe('FriendInvitePanel — gated controls stay in the focus order (88.6-22)
     (api.searchUserByEmail as Mock).mockResolvedValue({
       id: FRIEND_UUID,
       username: 'Dana',
-      email: 'dana@example.test',
     });
     (api.sendRequest as Mock).mockImplementationOnce(
       () => new Promise((resolve) => { release = resolve; })
@@ -684,7 +683,6 @@ describe('FriendInvitePanel — pressed controls, focus and the copy timer (88.6
     (api.searchUserByEmail as Mock).mockResolvedValue({
       id: FRIEND_UUID,
       username: 'Dana',
-      email: 'dana@example.test',
     });
     (invitesAPI.sendInvite as Mock).mockResolvedValue({});
     renderPanel({ friends: [] });
@@ -1168,7 +1166,6 @@ describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4
     (api.searchUserByEmail as Mock).mockResolvedValue({
       id: FRIEND_UUID,
       username: 'Dana',
-      email: 'dana@example.test',
     });
     (invitesAPI.sendInvite as Mock).mockResolvedValue({});
     renderPanel({ friends: [] });
@@ -1184,6 +1181,23 @@ describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4
     expect(dialog.querySelector('img')).toBeNull();
     expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
     expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  // 88.9-52 Q66: the search answers id and username only, so the prompt has no branch that draws
+  // the found person's email. A payload that carried one and no name must not put it on screen.
+  it("Q66 (88.9-52): the add-friend prompt never draws the found person's email", async () => {
+    const OTHER = 'other.person@example.test';
+    const { friendshipsAPI: api, invitesAPI } = await import('@/lib/api');
+    (api.searchUserByEmail as Mock).mockResolvedValue({ id: FRIEND_UUID, username: '', email: OTHER });
+    (invitesAPI.sendInvite as Mock).mockResolvedValue({});
+    renderPanel({ friends: [] });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invite by Email' }), {
+      target: { value: 'typed.address@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('button', { name: 'Add Friend' });
+    expect(screen.getByRole('dialog').textContent).not.toContain(OTHER);
   });
 });
 
@@ -1468,7 +1482,6 @@ describe('FriendInvitePanel — Add Friend tells the truth when the request fail
     (api.searchUserByEmail as Mock).mockResolvedValue({
       id: FRIEND_UUID,
       username: 'Dana',
-      email: 'dana@example.test',
     });
     (invitesAPI.sendInvite as Mock).mockResolvedValue({});
     const utils = renderPanel({ friends: [] });

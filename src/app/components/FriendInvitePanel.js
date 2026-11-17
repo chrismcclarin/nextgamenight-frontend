@@ -80,7 +80,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
     const [emailSuccess, setEmailSuccess] = useState('');
 
     // Add friend prompt state
-    const [friendPrompt, setFriendPrompt] = useState(null); // { id, username, email } — id is the Users.id UUID
+    const [friendPrompt, setFriendPrompt] = useState(null); // { id, username } — id is the Users.id UUID (88.9-52 Q66: no email; the search never sends one)
     const [addingFriend, setAddingFriend] = useState(false);
     const [friendRequestSent, setFriendRequestSent] = useState(false);
     // Add Friend's failure lane (88.6.1-27): every failure except the already-pending answer.
@@ -390,7 +390,6 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                         setFriendPrompt({
                             id: foundUser.id,
                             username: foundUser.username,
-                            email: foundUser.email,
                         });
                     }
                 }
@@ -950,7 +949,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     via the shared UserChip primitive. */}
                                 <div className="min-w-0">
                                     <UserChip
-                                        user={{ name: friendPrompt.username || friendPrompt.email }}
+                                        user={{ name: friendPrompt.username }}
                                         size="sm"
                                     />
                                     <p className="text-xs text-content-muted mt-0.5">Add as a friend?</p>

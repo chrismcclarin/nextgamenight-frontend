@@ -473,7 +473,6 @@ describe('send friend request — conflict/validation copy (D2)', () => {
     (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValue({
       id: 'user-search-hit',
       username: 'Riley',
-      email: 'riley@example.com',
     });
     fireEvent.change(screen.getByPlaceholderText("Enter friend's email address"), {
       target: { value: 'riley@example.com' },
@@ -1139,8 +1138,9 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
 // Phase 88.6.1-40 Task 2 (D-35, Req 5 / D-04 / D-05, review r2 #47 / #201, review r3 H-02).
 // jsdom never blurs a disabled element (FE-TESTING-CONVENTIONS C-11), so every RED half below is
 // an ATTRIBUTE or a REQUEST COUNT; the focus claims are proven on a positive signal (C-5).
-const RILEY_HIT = { id: 'user-search-hit', username: 'Riley', email: 'riley@example.com' };
-const MORGAN_HIT = { id: 'user-morgan', username: 'Morgan', email: 'morgan@example.com' };
+// AMENDED Phase 88.9-52 (Q66): a search hit is id and username only, as the backend sends it.
+const RILEY_HIT = { id: 'user-search-hit', username: 'Riley' };
+const MORGAN_HIT = { id: 'user-morgan', username: 'Morgan' };
 const SAM_REQUEST = { id: 'req-1', Requester: { id: FRIEND_2_UUID, username: 'Sam' } };
 const RILEY_REQUEST = { id: 'req-2', Requester: { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', username: 'Riley' } };
 
@@ -1735,9 +1735,9 @@ describe('friends — lists refresh in place (88.6.1-40, AC-29)', () => {
     (friendshipsAPI.getFriends as Mock).mockReturnValueOnce(firstLoad.promise);
     renderFriends();
     await screen.findByRole('heading', { name: 'Add Friend' });
-    await searchShows({ ...FRIENDSHIP.friend, email: 'dana@example.com' } as { username: string }, 'dana@example.com');
+    await searchShows(FRIENDSHIP.friend, 'dana@example.com');
     // Positive signal: the result card is shown (the list behind it is still loading).
-    expect(screen.getByText('dana@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Dana')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send Request' })).toBeNull();
 
     await act(async () => {
@@ -1751,8 +1751,8 @@ describe('friends — lists refresh in place (88.6.1-40, AC-29)', () => {
     providerCtx.loading = true;
     const { rerender } = renderFriends({ friends: [] });
     await screen.findByRole('heading', { name: 'No friends yet' });
-    await searchShows({ ...SAM_REQUEST.Requester, email: 'sam@example.com' } as { username: string }, 'sam@example.com');
-    expect(screen.getByText('sam@example.com')).toBeInTheDocument();
+    await searchShows(SAM_REQUEST.Requester, 'sam@example.com');
+    expect(screen.getByText('Sam')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send Request' })).toBeNull();
 
     // The provider's first load lands, listing Sam's request to you.
@@ -2484,16 +2484,30 @@ describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)'
     await searchTo(RILEY_HIT, 'riley@example.com');
     expect(searchStatus()?.textContent).toBe('Found Riley.');
     expect(searchStatus()).toBe(region);
-    cleanup();
+  });
 
-    // An email-only hit is announced by what the row shows: the address.
-    renderFriends({ friends: [] });
+  // 88.9-52 Q66: the backend never sends the other person's email (the search answers id and
+  // username; request rows carry id, username and picture_url), so the page has no branch that
+  // draws one. A payload that carried one anyway must not put it on screen or in a spoken line.
+  it("Q66 (88.9-52): the other person's email is never drawn or spoken, in the found row, a request row or a sent row", async () => {
+    const OTHER = 'other.person@example.test';
+    providerCtx.receivedRequests = [{ id: 'req-q66', Requester: { id: FRIEND_2_UUID, username: 'Sam', email: OTHER } }];
+    renderFriends({ friends: [], sent: [{ id: 'sr-q66', Addressee: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'Alex', email: OTHER } }] });
     await screen.findByRole('heading', { name: 'No friends yet' });
-    (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValueOnce({ ...RILEY_HIT, username: null });
+    (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValueOnce({ ...RILEY_HIT, email: OTHER });
     fireEvent.change(emailField(), { target: { value: 'riley@example.com' } });
     fireEvent.submit(emailField().closest('form') as HTMLFormElement);
     await screen.findByRole('button', { name: 'Send Request' });
-    expect(searchStatus()?.textContent).toBe('Found riley@example.com.');
+    expect(searchStatus()?.textContent).toBe('Found Riley.');
+    expect(document.body.textContent).not.toContain(OTHER);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Requests/ }));
+    await screen.findByText('Sam');
+    expect(document.body.textContent).not.toContain(OTHER);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Sent/ }));
+    await screen.findByText('Alex');
+    expect(document.body.textContent).not.toContain(OTHER);
   });
 
   it('F2. a miss keeps the search alert and leaves the found region empty', async () => {

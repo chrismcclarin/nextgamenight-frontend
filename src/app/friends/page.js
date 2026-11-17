@@ -1034,7 +1034,13 @@ function FriendsPage() {
     }
 
     // The F7 region's subject: the name the result row shows, while a result is shown.
-    const searchFoundName = searchResult && !searching ? searchResult.username || searchResult.email || '' : '';
+    // DECISION Phase 88.9-52 (Q66): the found row, the request rows and the sent rows read the other
+    // person's username ONLY, chosen OVER the email fallback and second line they carried: the backend
+    // never sends that field (backend:Sonnet/routes/friendships.js, the search's literal id-and-username
+    // projection and the PUBLIC_USER_ATTRS includes on Requester and Addressee; username is NOT NULL),
+    // so those branches drew nothing, and a branch that would print another person's address must not
+    // wait for a payload to widen. Re-adding one is a privacy decision, not a cleanup.
+    const searchFoundName = searchResult && !searching ? searchResult.username || '' : '';
 
     // X35 (88.9-66): each tab's loading line is on screen exactly while this is true; the visible
     // row and the tab's polite region both read it, so they cannot disagree.
@@ -1141,16 +1147,13 @@ function FriendsPage() {
                         message={searchFoundName ? foundAnnouncement(searchFoundName) : ''}
                     />
 
-                    {/* DECISION Phase 88.9-66 (X13-1, owner at the round-2 glance): a long address wraps (wrap-anywhere, the house rule for unbroken user text) and the action column never shrinks, chosen OVER truncating it (an ellipsis hides the address the person is checking); the same on the request, sent and friend rows. Matches FriendInvitePanel's found-person row. */}
+                    {/* DECISION Phase 88.9-66 (X13-1, owner at the round-2 glance): a long address wraps (wrap-anywhere, the house rule for unbroken user text) and the action column never shrinks, chosen OVER truncating it (an ellipsis hides the address the person is checking); the same on the request, sent and friend rows. Matches FriendInvitePanel's found-person row. AMENDED Phase 88.9-52 (Q66): the long text these rows can hold is the NAME (the backend sends no address for another person, so the address line is gone); the wrap rule is unchanged. */}
                     {searchResult && !searching && (
                         <div className="mt-4 p-4 border border-line rounded-lg flex items-center justify-between gap-3">
                             <div className="min-w-0 flex-1">
                                 <p className="font-bold text-content-primary wrap-anywhere">
-                                    {searchResult.username || searchResult.email}
+                                    {searchResult.username}
                                 </p>
-                                {searchResult.username && searchResult.email && (
-                                    <p className="text-sm text-content-muted wrap-anywhere">{searchResult.email}</p>
-                                )}
                             </div>
                             <div className="shrink-0">
                                 {(() => {
@@ -1681,11 +1684,8 @@ function FriendsPage() {
                                                 >
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-bold text-content-primary wrap-anywhere">
-                                                            {requester.username || requester.email}
+                                                            {requester.username}
                                                         </p>
-                                                        {requester.email && requester.email !== requester.username && (
-                                                            <p className="text-sm text-content-muted mt-0.5 wrap-anywhere">{requester.email}</p>
-                                                        )}
                                                     </div>
                                                     <div className="flex items-center gap-2 shrink-0">
                                                         <Button
@@ -1796,11 +1796,8 @@ function FriendsPage() {
                                                 >
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-bold text-content-primary wrap-anywhere">
-                                                            {addressee.username || addressee.email}
+                                                            {addressee.username}
                                                         </p>
-                                                        {addressee.email && addressee.email !== addressee.username && (
-                                                            <p className="text-sm text-content-muted mt-0.5 wrap-anywhere">{addressee.email}</p>
-                                                        )}
                                                     </div>
                                                     <span className="shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                                         Pending
