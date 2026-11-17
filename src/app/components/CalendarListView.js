@@ -1499,11 +1499,19 @@ const EventRow = forwardRef(function EventRow(
           <span className="ml-auto shrink-0 px-2 py-0.5 rounded-sm bg-surface-muted text-content-secondary text-xs font-bold">{statusTag}</span>
         )}
 
+        {/* DECISION Phase 88.9-52 (PIX-4, R23 side finding of the picture pass): the square is hidden
+            under sm with max-sm:hidden and takes NO display class from sm up, chosen OVER the
+            hidden-then-block pair it carried. SafeImage hands this class string to its fallback box
+            too, and the block won over the box's own flex, so a failed picture's die sat in the
+            box's top-left corner instead of its centre. With no display class the box keeps its
+            flex and the picture keeps its own display; both are flex items of this row, so the
+            picture lays out as it did. WHEN the fallback shows is unchanged (an owner question is
+            open on that). Putting a display class back here is a decision, not a cleanup. */}
         {event.Game?.image_url && (
           <SafeImage
             src={event.Game.image_url}
             alt={event.Game?.name}
-            className="hidden sm:block w-12 h-12 md:w-14 md:h-14 object-cover rounded-sm shrink-0"
+            className="max-sm:hidden w-12 h-12 md:w-14 md:h-14 object-cover rounded-sm shrink-0"
           />
         )}
       </div>

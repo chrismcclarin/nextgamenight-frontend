@@ -385,4 +385,29 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
       expect(bgImageProbeForTests.listenerCount(), `${arm}: the list left a store listener behind`).toBe(0);
     }
   });
+
+  // PIX-4 (88.9-52, R23 side finding of the picture pass): when a row's game picture fails to load,
+  // SafeImage's fallback box centres its die with flex. The row handed the box a display class of its
+  // own (block from sm up), which won over flex, so the die sat in the box's top-left corner. jsdom has
+  // no layout, so the proof is the class list: the box keeps flex and takes no other display from sm up.
+  it('PIX-4 (88.9-52): a failed game picture leaves the fallback die centred in its square on every arm', () => {
+    const DISPLAYS = ['block', 'inline', 'inline-block', 'inline-flex', 'grid', 'inline-grid', 'contents', 'flow-root', 'table'];
+    for (const arm of ARMS) {
+      renderArm(arm, [{ ...night('azul', 'Azul', at(2 * HOUR)), Game: { name: 'Azul', image_url: 'https://images.example.test/azul.jpg' } }]);
+      const picture = panelOf(upcomingButton()).querySelector('img[alt="Azul"]');
+      expect(picture, `${arm}: the row renders no game picture`).not.toBeNull();
+      fireEvent.error(picture as Element);
+      const box = within(panelOf(upcomingButton())).getByRole('img', { name: 'Azul' });
+      expect(box.tagName, `${arm}: the fallback is the box, not a picture`).toBe('DIV');
+      const tokens = box.className.split(/\s+/).filter(Boolean);
+      for (const t of ['flex', 'items-center', 'justify-center']) expect(tokens, `${arm}: the fallback box lacks ${t}`).toContain(t);
+      // No display utility other than hidden may reach the box, bare or behind a breakpoint.
+      const otherDisplays = tokens.filter((t) => t !== 'flex' && DISPLAYS.concat('flex').includes(t.split(':').pop() as string));
+      expect(otherDisplays, `${arm}: a display class overrides the fallback's flex`).toEqual([]);
+      // Still hidden on a phone, where the row has no room for the square (the Req 11b marker).
+      expect(tokens, `${arm}: the square is no longer hidden under sm`).toContain('max-sm:hidden');
+      expect(box.textContent, `${arm}: the die`).toBe('\u{1F3B2}');
+      cleanup();
+    }
+  });
 });
