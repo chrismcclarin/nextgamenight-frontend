@@ -2502,6 +2502,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(measured, 'anti-vacuity: 22 grounds, 40 measurements').toBe(40);
 
     // D-03: the export IS the month tile's recipe (owner pick D5a / O18a), on all four sides.
+    // AMENDED 88.9-52 (W14 follow-up 2): the two MONTH tiles no longer read this export in dark.
+    // On a day cell (today's cell, a hovered cell) the 70% edge measured 2.9844 for the blue tint,
+    // so the tiles carry amber-500 at full strength from their own literal, measured in
+    // src/app/components/CalendarMonthView.test.tsx ("W14 follow-up (88.9-52): the full guest tile edge clears 3:1").
+    // The rows this test measures (on the card) keep the export at 70%.
     expect(GUEST_ROW_EDGE, 'X27 (88.9) — the one guest edge is the tile recipe: a 1px dashed outline, amber-700 in light and amber-500 at 70% in dark').toBe(
       'border border-dashed border-amber-700 dark:border-amber-500/70',
     );
