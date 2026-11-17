@@ -27,6 +27,13 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 // that clips its overflow or by the screen edge. A ring with no offset has no halo and is recorded
 // only. Padding, radius and box size are looks: recorded, never asserted, so this spec cannot turn
 // an unruled look into a red build.
+// AMENDED Phase 88.9-52 (A-03): ONE more assertion, for every measured control, house ring or not:
+// SOME focus indicator is painted — a box-shadow layer with a spread, or an outline with a width,
+// in a colour that is not fully transparent (paintsIndicator below). Whether a focused control
+// shows anything at all is WCAG 2.4.7, not a look. An ordinary drop shadow has no spread and does
+// not count; the transparent 2px outline that the outline-hidden utility leaves for forced-colours
+// mode does not count either. The Friends test proves the check can fail: it strips the indicator
+// from one control with an injected style and reads the check as false.
 //
 // NOTHING IS WRITTEN. Writes are held in the browser (support/inFlight.ts); the friend and request
 // rows are made-up rows answered in the browser; no test presses a control that writes. Selecting
@@ -80,6 +87,10 @@ interface RingRead {
   inkToRing: Edges | null;
   borderRadius: string;
   boxShadow: string;
+  /** The outline as computed: its style, its width in px and its colour (A-03). */
+  outlineStyle: string;
+  outlineWidth: number;
+  outlineColour: string;
   layers: ShadowLayer[];
   /** The largest non-inset spread: how far the ring reaches outside the box. */
   outward: number;
@@ -245,6 +256,9 @@ async function readRing(control: Locator): Promise<RingRead> {
       inkToRing,
       borderRadius: cs.borderRadius,
       boxShadow: cs.boxShadow,
+      outlineStyle: cs.outlineStyle,
+      outlineWidth: parseFloat(cs.outlineWidth) || 0,
+      outlineColour: cs.outlineColor,
       layers: layers.filter((l) => l.spread > 0),
       outward,
       halo,
@@ -252,6 +266,23 @@ async function readRing(control: Locator): Promise<RingRead> {
       pastStripLine,
     };
   });
+}
+
+// A colour that paints nothing: the keyword, a zero FOURTH value in the comma form
+// (rgba(0, 0, 0, 0); never the three-value rgb(0, 0, 0), which is opaque black) or a zero alpha in
+// the slash form (oklch(0.5 0.1 20 / 0), color(srgb 0 0 0 / 0)).
+function isTransparent(colour: string): boolean {
+  const c = colour.trim().toLowerCase();
+  return c === 'transparent' || /^rgba\([^,]+,[^,]+,[^,]+,\s*0(\.0+)?\s*\)$/.test(c) || /\/\s*0(\.0+)?%?\s*\)$/.test(c);
+}
+
+// A-03: does the focused control paint ANY focus indicator? A box-shadow layer with a spread (the
+// layers readRing keeps, inset or not) or an outline with a width, in a colour that shows. A layer
+// whose colour could not be read is taken as showing.
+function paintsIndicator(read: RingRead): boolean {
+  const shadow = read.layers.some((layer) => !isTransparent(layer.colour));
+  const outline = read.outlineStyle !== 'none' && read.outlineWidth > 0 && !isTransparent(read.outlineColour);
+  return shadow || outline;
 }
 
 interface Context {
@@ -296,6 +327,12 @@ async function measure(ctx: Context, control: Locator, what: string, mustBeHouse
   records.push(record);
 
   expect.soft(read.focusVisible, `${where}: the control never matched :focus-visible`).toBe(true);
+  expect
+    .soft(
+      paintsIndicator(read),
+      `${where}: no focus indicator is painted (box-shadow: ${read.boxShadow}; outline: ${read.outlineWidth}px ${read.outlineStyle} ${read.outlineColour})`,
+    )
+    .toBe(true);
   if (mustBeHouse) {
     expect.soft(houseRing, `${where}: no offset ring is painted (box-shadow: ${read.boxShadow})`).toBe(true);
   }
@@ -515,7 +552,21 @@ test.describe('focus ring geometry, measured (plan 88.9-66, X61)', () => {
       const requestRow = page.locator(`[data-request-row="${RING_REQUEST.id}"]`);
       await expect(requestRow, `X61 (${theme}): the request row never rendered`).toBeVisible({ timeout: 15_000 });
       await measure(ctx, requestRow.getByRole('button', { name: 'Accept', exact: true }), 'Accept on its row', true);
-      await measure(ctx, requestRow.getByRole('button', { name: 'Decline', exact: true }), 'Decline on its row', true);
+      const decline = requestRow.getByRole('button', { name: 'Decline', exact: true });
+      await measure(ctx, decline, 'Decline on its row', true);
+
+      // A-03 control: the "some indicator is painted" check can fail. With the ring and the outline
+      // stripped from this one focused control by an injected style, the check reads false; with the
+      // style removed it reads true again. Nothing is pressed.
+      const stripped = await page.addStyleTag({
+        content: `[data-request-row="${RING_REQUEST.id}"] button:focus-visible { box-shadow: none !important; outline: none !important; }`,
+      });
+      await focusByKeyboard(page, decline);
+      await settleAnimations(decline);
+      expect(paintsIndicator(await readRing(decline)), `X61 (${theme}): the indicator check still passed on a control with no ring and no outline`).toBe(false);
+      await stripped.evaluate((el) => el.parentNode?.removeChild(el));
+      await settleAnimations(decline);
+      expect(paintsIndicator(await readRing(decline)), `X61 (${theme}): the indicator check did not recover once the injected style left`).toBe(true);
     }
     await publish(testInfo, records);
   });
