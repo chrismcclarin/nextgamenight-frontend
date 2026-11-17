@@ -90,7 +90,7 @@ const existing = () => availabilityFormAPI.getExistingResponse as unknown as Moc
  * and the page sees exactly what `lib/api.ts` throws or resolves.
  */
 const actualApi = () => vi.importActual<typeof import('@/lib/api')>('@/lib/api');
-async function useRealValidate() {
+async function routeToRealValidate() {
   const actual = await actualApi();
   validate().mockImplementation((...args: Parameters<typeof actual.magicAuthAPI.validateToken>) =>
     actual.magicAuthAPI.validateToken(...args),
@@ -196,7 +196,7 @@ describe('availability-form/[token] — AC-19 widened, the ERROR announcement', 
           }),
       ),
     );
-    await useRealValidate();
+    await routeToRealValidate();
 
     render(<AvailabilityFormPage />);
 
@@ -242,7 +242,7 @@ describe('availability-form/[token] — AC-19, the FOCUS half', () => {
 
   it('does NOT move focus on the ERROR flip — the branch has no control the user was operating', async () => {
     vi.stubGlobal('fetch', dropped());
-    await useRealValidate();
+    await routeToRealValidate();
 
     render(<AvailabilityFormPage />);
 
@@ -287,7 +287,7 @@ describe('availability-form/[token] — AC-2: the token-validation failure is a 
   it('calls logger.info with the frozen message and a keyed ctx, never the raw Error', async () => {
     // Rebuilt by plan 88.6-62 over a REAL 500 (Sonnet/routes/magicAuth.js's raw catch body).
     vi.stubGlobal('fetch', respond(500, '{"error":"Validation failed","action":"request_new"}'));
-    await useRealValidate();
+    await routeToRealValidate();
 
     render(<AvailabilityFormPage />);
     await screen.findByRole('heading', { name: /something went wrong/i });
@@ -364,7 +364,7 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
 
   it('a dropped connection says check your connection — not that the link is dead', async () => {
     vi.stubGlobal('fetch', dropped());
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await expectFailedRequest(NETWORK_LINE);
   });
@@ -377,21 +377,21 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
         '{"code":"rate_limited","message":"Too many attempts. Please try again later.","error":"Too many attempts. Please try again later."}',
       ),
     );
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await expectFailedRequest("You're going a little fast — give it a moment, then try again.");
   });
 
   it('the raw code-less 500 renders the internal line', async () => {
     vi.stubGlobal('fetch', respond(500, '{"error":"Validation failed","action":"request_new"}'));
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await expectFailedRequest(INTERNAL_LINE);
   });
 
   it('an unparseable 200 (a gateway HTML page) renders the internal line', async () => {
     vi.stubGlobal('fetch', respond(200, '<!DOCTYPE html><html><body>gateway</body></html>'));
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await expectFailedRequest(INTERNAL_LINE);
   });
@@ -409,7 +409,7 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
         }),
       ),
     );
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await screen.findByRole('heading', { level: 1, name: 'Link No Longer Valid' });
     expect(
@@ -425,7 +425,7 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
   // invalid-link branch).
   it('P2: a 400 that is not token_invalid renders the failed-request heading over the validation line', async () => {
     vi.stubGlobal('fetch', respond(400, '{"code":"validation","message":"Bad input"}'));
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await expectFailedRequest('Something looks off with that request. Refresh the page to try again.');
   });
@@ -567,7 +567,7 @@ describe('availability-form/[token] — Q69 the failure glyph by cause (88.9-52)
         }),
       ),
     );
-    await useRealValidate();
+    await routeToRealValidate();
     const { container } = render(<AvailabilityFormPage />);
     await screen.findByRole('heading', { level: 1, name: 'Link No Longer Valid' });
     expectTone(container, 'red', 'token_invalid');
@@ -587,7 +587,7 @@ describe('availability-form/[token] — Q69 the failure glyph by cause (88.9-52)
     ];
     for (const [label, fetchStub] of arms) {
       vi.stubGlobal('fetch', fetchStub);
-      await useRealValidate();
+      await routeToRealValidate();
       const { container } = render(<AvailabilityFormPage />);
       await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
       expectTone(container, 'amber', label);
