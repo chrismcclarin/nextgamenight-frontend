@@ -1384,6 +1384,42 @@ describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
     expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
   });
 
+  // 88.9-52 A-37: the marker's 401 arm (a signed-in visitor whose group read answers 401, SPEC A8)
+  // had no test; every redirect assertion above is the signed-out arm.
+  it('A-37 (88.9-52): signed in, a 401 on the group read replaces the page with sign-in once (returnTo = path + search) and sets the latch', async () => {
+    const search = `?group_id=${h.G1}`;
+    const target = '/api/auth/login?returnTo=' + encodeURIComponent(`/groupPlanning${search}`);
+    const { replace, hrefSet } = stubLocation({ search });
+    (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('expired', 'unauthorized', 401));
+    render(<GroupPlanningPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(target);
+    expect(hrefSet).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    // Still one: nothing re-fires the redirect once the page has settled.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('A-37 (88.9-52): signed in with the latch already set, a 401 on the group read shows the group banner with Sign in and never redirects again', async () => {
+    const search = `?group_id=${h.G1}`;
+    const target = '/api/auth/login?returnTo=' + encodeURIComponent(`/groupPlanning${search}`);
+    const { replace, hrefSet } = stubLocation({ search });
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('expired', 'unauthorized', 401));
+    render(<GroupPlanningPage />);
+    expect(await screen.findByText("Couldn't load this group")).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', target);
+    expect(screen.queryByText('Redirecting to login...')).toBeNull();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(replace).not.toHaveBeenCalled();
+    expect(hrefSet).not.toHaveBeenCalled();
+  });
+
   it('SESSION-01 (88.9): a useUser error on the planning page shows Reload, never a redirect or a blank page', async () => {
     const { replace, hrefSet } = stubLocation({ search: `?group_id=${h.G1}` });
     h.AUTH = {
