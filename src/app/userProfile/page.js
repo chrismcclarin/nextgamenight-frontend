@@ -3700,7 +3700,14 @@ function Profile(){
                     {/* Schedules Tab */}
                     <TabsContent value="recurring">
                         <div>
-                            <div className="flex justify-between items-center mb-4">
+                            {/* DECISION Phase 88.9-52 (W43): on a phone the header STACKS (title and sentence, then the
+                                button on its own line at its own width) and the button never wraps, the collection
+                                header's shape (this file ("flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3")),
+                                chosen OVER whitespace-nowrap alone in the old row (about 187px would be left for a
+                                title that needs about 170 to 185, so the title and sentence wrap against the button
+                                instead) and OVER the shipped row (+ Add Schedule broke onto two lines inside its
+                                button at 375). From sm the row is as it was. The Specific Dates header is the same. */}
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                                 <div>
                                     <Heading ref={schedulesHeadingRef} level={3} size="body" className="text-content-primary">Availability Schedules</Heading>
                                     <p className="text-sm text-content-secondary mt-1">Set your recurring availability schedule</p>
@@ -3711,6 +3718,7 @@ function Profile(){
                                     onClick={() => setShowRecurringForm(!showRecurringForm)}
                                     aria-expanded={showRecurringForm}
                                     {...(showRecurringForm ? { 'aria-controls': recurringFormPanelId } : {})}
+                                    className="self-start whitespace-nowrap sm:self-auto"
                                 >
                                     {showRecurringForm ? 'Cancel' : '+ Add Schedule'}
                                 </Button>
@@ -4029,7 +4037,8 @@ function Profile(){
                     {/* Specific Dates Tab */}
                     <TabsContent value="specific">
                         <div>
-                            <div className="flex justify-between items-center mb-4">
+                            {/* W43 (88.9-52): stacked on a phone, as on the Schedules header above (its DECISION marker). */}
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                                 <div>
                                     <Heading ref={overridesHeadingRef} level={3} size="body" className="text-content-primary">Specific Date Overrides</Heading>
                                     <p className="text-sm text-content-secondary mt-1">Override your schedules for specific dates</p>
@@ -4040,6 +4049,7 @@ function Profile(){
                                     onClick={() => setShowSpecificForm(!showSpecificForm)}
                                     aria-expanded={showSpecificForm}
                                     {...(showSpecificForm ? { 'aria-controls': specificFormPanelId } : {})}
+                                    className="self-start whitespace-nowrap sm:self-auto"
                                 >
                                     {showSpecificForm ? 'Cancel' : '+ Add Override'}
                                 </Button>

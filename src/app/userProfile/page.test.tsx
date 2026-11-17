@@ -6894,6 +6894,26 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
 // the search row (the toast is gone), and the search panel has a title and the import box's corners.
 // X33b: the timezone picker shows Saved beside it once the save has landed. The provider is mocked
 // in this file, so its save result is whatever `h.setTimezone` resolves.
+describe('phone layout of the availability panels and the inline two-tap controls (88.9-52: W37, W38, W39, W43)', () => {
+  it('W43 (88.9-52): + Add Schedule and + Add Override never wrap inside their buttons: each header stacks on a phone and the button keeps one line', async () => {
+    renderProfile();
+    const check = (toggle: HTMLElement) => {
+      const classes = toggle.className.split(/\s+/);
+      expect(classes).toEqual(expect.arrayContaining(['whitespace-nowrap', 'self-start', 'sm:self-auto']));
+      const header = toggle.parentElement as HTMLElement;
+      expect(header.className.split(/\s+/)).toEqual(
+        expect.arrayContaining(['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between'])
+      );
+      // The phone layout is the base: no unprefixed row alignment left behind.
+      expect(header.className.split(/\s+/)).not.toContain('justify-between');
+      expect(header.className.split(/\s+/)).not.toContain('items-center');
+    };
+    check(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
+    check(await screen.findByRole('button', { name: '+ Add Override' }));
+  });
+});
+
 describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)', () => {
   type Mock = ReturnType<typeof vi.fn>;
   const SENTENCE = 'No games found. Try a different search term.';
