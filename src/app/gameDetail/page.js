@@ -1877,7 +1877,7 @@ export default function GameDetailPage() {
                 loadedEntityKeyRef.current = entityKey;
                 setGameAnsweredFor(entityKey);
                 setLoading(false);
-                // 88.9-52 (A-31): the newest run only, and only a run with no 401 anywhere.
+                // 88.9-52 (A-31): the newest run only, and only when no group read answered 401 (a fan-out read's 401 is a side failure and does not count).
                 if (gameReadAnswered && !sawUnauthorized) signIn.markSessionProven();
             }
         }
