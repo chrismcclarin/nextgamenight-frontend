@@ -1170,6 +1170,54 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
     expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(2);
   });
 
+  // 88.9-52 S-C2: A-24 dropped only its own id and only on its own failed refresh, so with two
+  // removes overlapping the first one's refresh was superseded (it drops nothing) and the second
+  // one's failed refresh dropped only the second: the first row stayed with a live Remove
+  // although its DELETE had landed.
+  it('S-C2 (88.9-52): two overlapping removes whose last refresh FAILS drop BOTH removed rows from the kept roster', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0], ROSTER[1], X13_ROBIN]);
+    await openMembersModal();
+    await screen.findByText('Robin');
+
+    // Target's DELETE lands; the refresh after it is held in flight.
+    const heldRefresh = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(heldRefresh.promise);
+    commitRemoveIn(await openKebabList('Member actions for Target'));
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+
+    // Robin's DELETE lands before that refresh answers; Robin's own refresh fails.
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    commitRemoveIn(await openKebabList('Member actions for Robin'));
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(3));
+    // The superseded refresh answers late with the roster it read before Robin left: ignored.
+    await act(async () => {
+      heldRefresh.resolve([ROSTER[0], X13_ROBIN]);
+    });
+
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Robin')).not.toBeInTheDocument());
+    expect(screen.queryByLabelText('Member actions for Target')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('More actions for Target')).not.toBeInTheDocument();
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(2);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('S-C2 (88.9-52): a remove whose DELETE FAILED keeps its row when a later remove drops its own after a failed refresh', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0], ROSTER[1], X13_ROBIN]);
+    await openMembersModal();
+    await screen.findByText('Robin');
+
+    (groupsAPI.removeUserFromGroup as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    commitRemoveIn(await openKebabList('Member actions for Target'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(1);
+
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    commitRemoveIn(await openKebabList('Member actions for Robin'));
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Robin')).not.toBeInTheDocument());
+    // Target was never removed on the server, so its row and its menu stay.
+    expect(screen.getByLabelText('Member actions for Target')).toBeInTheDocument();
+  });
+
   it('"Make admin" from the kebab routes to the SAME escalation gate as the desktop select', async () => {
     await openMembersModal();
     const menu = await openKebabList('Member actions for Target');

@@ -73,6 +73,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // W027: bumped at the start of every fetchMembers call; a run that is no longer the latest
     // writes nothing after its awaits (see the W027 marker above fetchMembers).
     const fetchGenerationRef = useRef(0);
+    // S-C2 (88.9-52): the ids of members whose remove DELETE landed and whose row no successful
+    // roster read has yet confirmed gone. See the DECISION Phase 88.9-52 (A-24) marker.
+    const landedRemovalsRef = useRef(new Set());
+    const dropLandedRemovals = () => {
+        const landed = landedRemovalsRef.current;
+        if (landed.size === 0) return;
+        setMembers((prev) => prev.filter((m) => !landed.has(m.id)));
+    };
     // Mirrors `rosterWithheld` (loaded, but withheld by `useRetainedContent`) after each commit;
     // the close reset reads it (see the C10 marker below the members error adapter).
     const rosterWithheldRef = useRef(false);
@@ -243,6 +251,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             setError(null);
             setPendingInvites([]);
             setFetchedRole(null);
+            landedRemovalsRef.current.clear();
         }
         setLoading(true);
         try {
@@ -262,9 +271,13 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     received: data === null ? 'null' : typeof data,
                 });
                 setError(new Error("The members request didn't complete."));
+                dropLandedRemovals();
                 return LOAD_FAILED;
             }
 
+            // S-C2 (88.9-52): this roster was read after every landed remove (a remove that lands
+            // later starts a newer run in the same tick, so this run would not be current).
+            landedRemovalsRef.current.clear();
             setMembers(data || []);
             setLoadedGroupId(group_id);
             setError(null);
@@ -310,6 +323,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             setError(
                 error instanceof Error ? error : new Error("The members request didn't complete.")
             );
+            dropLandedRemovals();
             return LOAD_FAILED;
         } finally {
             if (isCurrent()) setLoading(false);
@@ -463,15 +477,21 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         const settle = rosterFocusRecovery.arm({ preferred: neighbourMemberActions(target_user_id) });
         try {
             await groupsAPI.removeUserFromGroup(group_id, target_user_id);
-            const refreshed = await fetchMembers(); // Refresh the list
             /* DECISION Phase 88.9-52 (A-24): the DELETE landed, so when the refresh after it FAILS the
                removed member is dropped from the kept roster here, chosen OVER leaving the kept rows
                whole (the removed member's row and its open menu still offered Remove, and a second
                Remove answered with an error toast right after Member removed was spoken). Only a
-               failed refresh: a superseded one (undefined) is left to the newer run. */
-            if (refreshed === LOAD_FAILED) {
-                setMembers((prev) => prev.filter((m) => m.id !== target_user_id));
-            }
+               failed refresh: a superseded one (undefined) is left to the newer run.
+               AMENDED Phase 88.9-52 (S-C2): the drop moved into fetchMembers and covers EVERY member
+               whose DELETE landed, chosen OVER each remove dropping only its own id after its own
+               refresh. With two removes overlapping (A-25 allows it) the first one's refresh is
+               superseded and drops nothing, and the second one's failed refresh dropped only the
+               second, so the first row stayed with a live Remove. The id is recorded here, after the
+               DELETE resolves and never when it throws; the current run of fetchMembers drops every
+               recorded id when it fails and forgets them when it reads a roster. "Left to the newer
+               run" still holds: the newer run either reads the roster or drops them all. */
+            landedRemovalsRef.current.add(target_user_id);
+            await fetchMembers(); // Refresh the list
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
