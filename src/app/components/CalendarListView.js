@@ -628,9 +628,14 @@ export default function CalendarListView({
   // Both arms pad the region's scroll position at the top by 3.5rem (the 44px header, the 4px a
   // row's ring reaches above it, 8px of air; rem, so it grows with the text like the header's
   // own floor) — see the X25a DECISION above SectionHeader.
+  // AMENDED Phase 88.9-52 (W17, after-build look page): 5.75rem. The 3.5rem above cleared the
+  // focused ROW, but its own day heading stayed behind the stuck header (the first Past row
+  // showed with no date above it). The extra 2.25rem is that heading's box: a 1.25rem line,
+  // 0.25rem of pad, the 1px rule and the 0.5rem gap (33px at 100%; 36px given). Chosen OVER a
+  // script that scrolls the heading into view (the X25a DECISION rejects a focus handler).
   const scrollRegionClassName = isSheet
-    ? 'relative overflow-y-auto pr-1 min-h-0 flex-1 max-h-[85dvh] scroll-pt-14'
-    : 'relative overflow-y-auto pr-1 scroll-pt-14';
+    ? 'relative overflow-y-auto pr-1 min-h-0 flex-1 max-h-[85dvh] scroll-pt-23'
+    : 'relative overflow-y-auto pr-1 scroll-pt-23';
   // Inline height only on the desktop arms — the sheet arm is sized by flex.
   const scrollRegionStyle = isSheet ? undefined : { height: containerHeight };
 

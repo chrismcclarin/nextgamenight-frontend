@@ -273,11 +273,19 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
         expect(buttonClasses, `${arm}: the default outside offset is dropped`).not.toContain('focus-visible:ring-offset-2');
       }
 
-      // 3.5rem of scroll padding at the top of the region: the 44px header, the row's 4px of
-      // ring, and 8px of air. In rem so it grows with the text, like the header's own floor.
+      // AMENDED 88.9-52 (W17): 5.75rem of scroll padding at the top of the region. 3.5rem as
+      // before (the 44px header, the row's 4px of ring, 8px of air) plus the row's own day heading
+      // (a 1.25rem line, 0.25rem of pad, the 1px rule and the 0.5rem gap under it), so a focused
+      // row scrolled up from under a stuck header brings its day heading with it. In rem so it
+      // grows with the text, like the header's own floor.
       const region = container.querySelector('.overflow-y-auto') as HTMLElement | null;
       expect(region, `${arm}: the scroll region`).not.toBeNull();
-      expect((region as HTMLElement).className.split(/\s+/), `${arm}: the region pads its top for a stuck header`).toContain('scroll-pt-14');
+      expect((region as HTMLElement).className.split(/\s+/), `${arm}: the region pads its top for a stuck header`).toContain('scroll-pt-23');
+      expect((region as HTMLElement).className.split(/\s+/), `${arm}: the old 3.5rem pad is still there`).not.toContain('scroll-pt-14');
+      // The day heading's box the extra 2.25rem is sized for.
+      const dayHeading = within(panelOf(upcomingButton())).getAllByRole('heading', { level: 4 })[0];
+      expect(dayHeading.className.split(/\s+/), `${arm}: the day heading's box changed; re-measure scroll-pt-23`).toEqual(expect.arrayContaining(['text-sm', 'pb-1', 'border-b']));
+      expect((dayHeading.parentElement as HTMLElement).className.split(/\s+/), `${arm}: the gap under the day heading changed; re-measure scroll-pt-23`).toContain('space-y-2');
       cleanup();
     }
   });
