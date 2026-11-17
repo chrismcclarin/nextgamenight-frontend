@@ -448,7 +448,7 @@ describe('88.9 RULING A mini-page picks', () => {
         for (let k = body.indexOf(MOUNT); k >= 0; k = body.indexOf(MOUNT, k + 1)) {
           const busy = /^<DelayedSpinner\b[^>]*?\bbusy=\{([^}]*)\}/.exec(body.slice(k));
           const names = busy ? busy[1].match(/[A-Za-z_$][\w$]*/g) ?? [] : [];
-          if (names.some((name) => new RegExp('(^|[^\\w$.])' + name.replace(/\$/g, '\\$') + '(?![\\w$])').test(guardTest))) hits.push(at + k);
+          if (names.some((name) => new RegExp('(^|[^\\w$.])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w$])').test(guardTest))) hits.push(at + k);
         }
       }
       return hits;
