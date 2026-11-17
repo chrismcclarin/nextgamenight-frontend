@@ -75,4 +75,25 @@ describe('X1 (88.9 B5a) — the footer controls', () => {
     render(<Footer />);
     expectFooterControls(true);
   });
+
+  // 88.9-52 W10: at 375px with doubled text the link row was one unbreakable line wider than the
+  // screen (the group page measured 643px). The row wraps and centres in both footers. jsdom lays
+  // nothing out, so this pins the class tokens; the width itself is unmeasured here.
+  it('W10 (88.9-52): the link row wraps and centres in both footers', () => {
+    for (const loggedOut of [true, false]) {
+      h.loggedOut = loggedOut;
+      render(<Footer />);
+      const row = within(screen.getByRole('contentinfo')).getByRole('link', { name: 'About' })
+        .parentElement as HTMLElement;
+      expect(row, loggedOut ? 'signed out' : 'signed in').toHaveClass(
+        'flex',
+        'flex-wrap',
+        'items-center',
+        'justify-center',
+        'gap-4',
+      );
+      expect(within(row).getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/Privacy');
+      cleanup();
+    }
+  });
 });

@@ -227,6 +227,33 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     expect(card).toHaveClass('text-base', 'font-bold');
     expect(card).not.toHaveClass('text-xl');
   });
+
+  // 88.9-52 W10: at 375px with doubled text the sort row was one unbreakable line (Sort by, the
+  // select, the arrow, Filter) and pushed the group page to 643px. Every level of the row may now
+  // wrap and shrink, and the select is capped at its row. jsdom lays nothing out, so this pins the
+  // class tokens; the width itself is unmeasured here.
+  it('W10 (88.9-52): the sort row wraps at every level and the select is capped at its row', () => {
+    render(
+      <GroupGamesList
+        {...anyProps({
+          games: [WINGSPAN],
+          groupId: 'g1',
+          userRole: 'member',
+          onAddEvent: vi.fn(),
+        })}
+      />
+    );
+    const select = screen.getByRole('combobox', { name: /sort by/i });
+    const label = select.closest('label') as HTMLElement;
+    const group = label.parentElement as HTMLElement;
+    const row = group.parentElement as HTMLElement;
+    expect(row).toHaveClass('flex', 'flex-wrap', 'items-center', 'justify-between', 'gap-2');
+    expect(group).toHaveClass('flex', 'flex-wrap', 'items-center', 'gap-2', 'min-w-0');
+    expect(label).toHaveClass('flex', 'flex-wrap', 'items-center', 'gap-2', 'min-w-0');
+    // w-auto is the 88-21 toolbar decision and stays; max-w-full only bites when the row is too narrow.
+    expect(select).toHaveClass('w-auto', 'max-w-full');
+    expect(row).toContainElement(screen.getByRole('button', { name: 'Filter' }));
+  });
 });
 
 // Copy row RF1 (D-47), plan 88.6.1-70's one constant, read here as text (contract C7): declared

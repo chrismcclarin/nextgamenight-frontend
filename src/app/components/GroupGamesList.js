@@ -422,9 +422,10 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
             {refreshNotice}
 
             {/* Sorting Controls */}
-            <div className="mb-6 flex items-center justify-between bg-surface-page p-3 md:p-4 rounded-card">
-                <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-2">
+            {/* DECISION Phase 88.9-52 (W10): the row, its left group and the label all wrap and may shrink (flex-wrap, min-w-0), and the select is capped at its row (max-w-full), chosen OVER the one unbreakable line this was: at 375px with doubled text that line was wider than the screen and the whole group page scrolled sideways (measured 643px). At ordinary text size everything fits on one line and nothing here bites; the 88-21 w-auto below stands. gap-2 is the space between wrapped lines and between the left group and Filter. Taking the wraps off is a decision, not a cleanup. */}
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-2 bg-surface-page p-3 md:p-4 rounded-card">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <label className="flex min-w-0 flex-wrap items-center gap-2">
                         <span className="text-sm text-content-secondary whitespace-nowrap">Sort by:</span>
                         {/* DECISION Phase 88-21 (Req 1): `w-auto` overrides the primitive's
                             `block w-full`. This select sits INLINE beside its "Sort by:" span on
@@ -437,7 +438,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                             name="group-games-sort"
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="w-auto"
+                            className="w-auto max-w-full"
                         >
                             <option value="name">Name</option>
                             <option value="theme">Theme</option>
