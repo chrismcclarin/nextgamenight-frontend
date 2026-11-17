@@ -34,10 +34,12 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 // Keep the error-surface primitives light + deterministic: showError follows the
 // mocked query.isError, and the banner renders a marker only when showError.
 vi.mock('@/components/ui/useFetchErrorState', () => ({
-  useFetchErrorState: (q: { isError?: boolean }) => ({
+  // 88.9-52 (A-19): the code follows the error object when it carries one (an ApiError), so a 401
+  // reads as unauthorized; every older case passes no code and still reads unknown.
+  useFetchErrorState: (q: { isError?: boolean; error?: unknown }) => ({
     showError: Boolean(q?.isError),
     message: '',
-    code: 'unknown',
+    code: (q?.error as { code?: string } | null | undefined)?.code ?? 'unknown',
     retry: vi.fn(),
   }),
 }));
@@ -83,7 +85,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import GroupList from './grouplist';
-import { groupsAPI } from '@/lib/api';
+import { groupsAPI, ApiError } from '@/lib/api';
 import { installFakeImage, paintMarkup } from '@/test-utils/pictureProbe';
 import { bgImageProbeForTests } from '@/lib/hooks/useBgImageFailed';
 
@@ -400,6 +402,64 @@ describe('D-37 — the home list refreshes in place (Req 9)', () => {
 // not, both themes) the Last Game row, its date and its label take the title's O02d1 outline
 // utilities; a plain card keeps the content tokens. The utilities resolve to the outline because the
 // card root carries the image arm's --t-* values (src/lib/colorUtils.js ("const STROKE_OUTLINE =")).
+// 88.9-52 (A-19, code review): the O22d hand-shake with the home page had no test. GroupList
+// reports a groups 401 upward as a boolean and lowers it on unmount; while the page's session
+// banner shows (sessionBannerShown) it draws neither its own banner, nor No groups yet, nor the
+// compact identity notice. The home page's own suite stubs GroupList, so only this file can see
+// these four lines. Absences are read synchronously after a positive signal (CF-26).
+describe('O22d (88.9-42), pinned by 88.9-52 A-19: the groups 401 report and the yield to the page session banner', () => {
+  const unauthorized = () => new ApiError('Unauthorized', 'unauthorized', 401);
+
+  it('A-19a. a groups 401 reports true upward, a non-401 failure reports false, and unmount lowers the flag', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockRejectedValue(unauthorized());
+    const report = vi.fn();
+    const view = render(<GroupList {...listProps} onGroupsUnauthorized={report} />);
+    await screen.findByText(BANNER_TEXT);
+    expect(report).toHaveBeenLastCalledWith(true);
+    report.mockClear();
+    view.unmount();
+    expect(report.mock.calls, 'unmount did not lower the page flag').toEqual([[false]]);
+
+    (groupsAPI.getUserGroups as Mock).mockRejectedValue(new Error('boom'));
+    const other = vi.fn();
+    render(<GroupList {...listProps} onGroupsUnauthorized={other} />);
+    await screen.findByText(BANNER_TEXT);
+    expect(other.mock.calls.every(([flag]) => flag === false), 'a non-401 failure raised the session flag').toBe(true);
+    expect(other).toHaveBeenCalled();
+  });
+
+  it('A-19b. while the session banner shows, the groups banner yields and No groups yet is not claimed', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockRejectedValue(unauthorized());
+    const failed = render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+    await screen.findByText(BANNER_TEXT);
+    failed.rerender(<GroupList {...listProps} onCreateGroup={vi.fn()} sessionBannerShown />);
+    expect(screen.getByRole('heading', { name: 'Your Groups' })).toBeInTheDocument();
+    expect(screen.queryByText(BANNER_TEXT), 'the groups banner doubles the page session banner').toBeNull();
+    expect(screen.queryByRole('heading', { name: 'No groups yet' }), 'a failed list claims no groups').toBeNull();
+    failed.unmount();
+
+    // A list that LOADED empty, then the page raises its session banner for another request's 401.
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([]);
+    const empty = render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'No groups yet' });
+    empty.rerender(<GroupList {...listProps} onCreateGroup={vi.fn()} sessionBannerShown />);
+    expect(screen.getByRole('heading', { name: 'Your Groups' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'No groups yet' }), 'No groups yet shows beside the session banner').toBeNull();
+  });
+
+  it('A-19c. while the session banner shows, the identity shell keeps its header and the compact notice yields', async () => {
+    h.selfUuid = undefined;
+    h.isError = true;
+    const view = render(<GroupList {...listProps} />);
+    expect(await screen.findByTestId('identity-degrade-banner')).toBeInTheDocument();
+    view.rerender(<GroupList {...listProps} sessionBannerShown />);
+    expect(screen.getByRole('heading', { name: 'Your Groups' })).toBeInTheDocument();
+    expect(screen.queryByTestId('identity-degrade-banner'), 'the compact notice doubles the page session banner').toBeNull();
+  });
+});
+
 describe("R-P4 (88.9-27): a photo card's secondary row takes the title's outline treatment", () => {
   const R_P4 =
     '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] ' +
