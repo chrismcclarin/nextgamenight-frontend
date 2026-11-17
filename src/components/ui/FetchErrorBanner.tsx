@@ -405,7 +405,15 @@ interface NoticeRowProps {
 // component so no hook call sits in the banner's body below its compact early return.
 function RetrySlot({ retrying }: { retrying: boolean }) {
   const shown = useDelayedSpinner(retrying);
-  return shown ? <Spinner /> : <Icon name="RefreshCw" size={14} />;
+  // AMENDED Phase 88.9-52 (A-50): the 14px icon and the 16px house Spinner share ONE fixed 16px box,
+  // so a retry slower than the appear delay no longer widens the control by 2px. Chosen OVER a
+  // smaller spinner in this slot (rule 1: busy looks the same everywhere; the Spinner class string
+  // is a look) and OVER a 16px icon (the resting look stays as shipped).
+  return (
+    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+      {shown ? <Spinner /> : <Icon name="RefreshCw" size={14} />}
+    </span>
+  );
 }
 
 function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, hostGround }: NoticeRowProps) {
@@ -482,7 +490,9 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, host
             AMENDED Phase 88.9-56 (R-C3b reach): the slot is driven by the delayed-spinner hook inside
             RetrySlot — the RefreshCw icon stays until the spinner shows, so a fast retry never changes the
             slot; a successful retry unmounts the banner (the hold ends with the host), a failed one keeps
-            it, so the spinner finishes its hold. */}
+            it, so the spinner finishes its hold.
+            AMENDED Phase 88.9-52 (A-50): "never changes the slot" now holds for a slow retry too — the
+            icon and the spinner sit in one fixed 16px box inside RetrySlot. */}
         <RetrySlot retrying={retrying} />
         Retry
         {retrying ? <span className="sr-only">, retrying</span> : null}

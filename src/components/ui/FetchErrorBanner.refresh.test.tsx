@@ -396,6 +396,8 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     render(<NoticeHost retry={retry} />);
     const compact = screen.getByRole('button', { name: 'Retry' });
     expect(compact.querySelector('svg'), 'the RefreshCw icon shows at rest').not.toBeNull();
+    // 88.9-52 A-50: the icon and the spinner share ONE fixed 16px box, so a slow retry never widens the control.
+    expect(compact.querySelector('svg')?.parentElement, 'the icon sits in the fixed slot box').toHaveClass('inline-flex', 'h-4', 'w-4', 'shrink-0');
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, SPINNER_DELAY_MS + 300))); // AMENDED Phase 88.9-56 (R-C3b reach): read after the appear window
     expect(compact.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0); // AMENDED Phase 88.9-56 (R-C3b reach): read after the appear window
 
@@ -409,6 +411,7 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     expect(compact.querySelector('svg'), 'the slot keeps its icon until the spinner shows').not.toBeNull(); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     await waitFor(() => expect(compact.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(compact.querySelector('svg'), 'the icon yields to the house spinner while busy').toBeNull();
+    expect(compact.querySelector('[data-slot="spinner"]')?.parentElement, 'the spinner sits in the same fixed slot box').toHaveClass('inline-flex', 'h-4', 'w-4', 'shrink-0');
     expect(compact).toHaveAttribute('aria-disabled', 'true');
     expect(compact).not.toHaveAttribute('disabled');
     expect(politeRegionIn(slot())?.textContent, 'the compact region is quiet in flight (RN-4)').toBe('');
@@ -423,6 +426,7 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     const { container, rerender } = render(<FetchErrorBanner state={state} />);
     const tryAgain = screen.getByRole('button', { name: 'Try again' });
     expect(tryAgain.querySelector('svg'), 'the RefreshCw icon shows at rest').not.toBeNull();
+    expect(tryAgain.querySelector('svg')?.parentElement, 'the icon sits in the fixed slot box').toHaveClass('inline-flex', 'h-4', 'w-4', 'shrink-0');
 
     act(() => {
       tryAgain.click();
@@ -433,6 +437,7 @@ describe('RefreshFailedNotice — retry behaviour (plan 88.6.1-70)', () => {
     expect(tryAgain).toHaveTextContent(/^Try again/);
     await waitFor(() => expect(tryAgain.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     expect(tryAgain.querySelector('svg'), 'the icon yields to the house spinner while busy').toBeNull();
+    expect(tryAgain.querySelector('[data-slot="spinner"]')?.parentElement, 'the spinner sits in the same fixed slot box').toHaveClass('inline-flex', 'h-4', 'w-4', 'shrink-0');
     expect(tryAgain).toHaveAttribute('aria-disabled', 'true');
     expect(tryAgain).not.toHaveAttribute('disabled');
     // The full banner's polite region is a status caption, not a button: it keeps its word.
