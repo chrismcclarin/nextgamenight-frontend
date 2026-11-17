@@ -3555,7 +3555,13 @@ export default function GameDetailPage() {
     // stale game view for one commit. See the AMENDED line on the DECISION Phase 88-25 gate below.
     const gameKeyUnanswered = Boolean(game_id) && gameAnsweredFor !== entityKey;
     // 88.9-40: `signIn.holding` is the game view's redirect frame (the event view's is holdEventLoader).
-    if (loading || holdEventLoader || holdAccountDeletedLoader || gameKeyUnanswered || signIn.holding) {
+    // 88.9-52 (A-40): the hook's hold is armed only once the session read has settled, and the game
+    // fetch does not wait for it, so a game read that answered 401 FIRST painted the load-failed
+    // banner for the frames before the loader and the redirect. The loader holds through that gap;
+    // once the session settles the hook decides (redirect, or the banner when the latch is set).
+    const holdGameLoader =
+        Boolean(game_id) && authLoading && gameError instanceof ApiError && gameError.code === 'unauthorized';
+    if (loading || holdEventLoader || holdAccountDeletedLoader || gameKeyUnanswered || signIn.holding || holdGameLoader) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <p className="text-content-secondary">{PAGE_LOADING_LABEL}</p>

@@ -3359,6 +3359,24 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
     expect(replace).toHaveBeenCalledTimes(1);
   });
 
+  it('A-40 (88.9-52): a game read that answers 401 while the session is still loading holds the loader, never the banner; one redirect once it settles', async () => {
+    // Review 88.9-52 A-40: the game fetch does not wait for useUser, and the hook's hold is not
+    // armed while auth loads, so the load-failed banner painted before the loader and the redirect.
+    const search = `?game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search });
+    h.authLoading = true;
+    const r = renderGameRejecting(UNAUTHORIZED(), search.slice(1));
+    await waitFor(() => expect(gamesAPI.getGame).toHaveBeenCalled());
+    await flushMacrotask();
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+    expect(screen.getByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    h.authLoading = false;
+    r.rerender(<GameDetailPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(GAME_LOAD_FAILED)).toBeNull();
+  });
+
   it("SESSION-01 (88.9): another event in the same mount decides afresh — A declined with its latch set, B's 401 redirects once with B as returnTo, A's latch untouched", async () => {
     const searchA = `?event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
     const replaceA = stubLocation({ search: searchA });
