@@ -803,8 +803,15 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 {/* DECISION Phase 88.9-42 F4b (owner pick, 2026-11-07 1:08 AM Pacific): 460px (+15%), chosen OVER the shipped 400 and the rendered 440 / 500; phone untouched.
                     AMENDED Phase 88.9-59 (X12 W2 + X5b, owner 2026-11-11: W2 is good; A, lets make the groups wider): the
                     column is clamp(320px, 42vw, 460px), 460 as picked from about 1096 up, narrower windows give the
-                    calendar room; the list fills it. Chosen OVER the fixed 460 basis. */}
-                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_clamp(320px,42vw,460px)] md:relative">
+                    calendar room; the list fills it. Chosen OVER the fixed 460 basis.
+                    DECISION Phase 88.9-52 (W12, after-build look page, no objection from the owner 2026-11-16): the
+                    column has a 600px floor from md up, chosen OVER taking its whole height from the calendar
+                    column. The list is absolutely placed in this box, so the box is exactly as tall as the
+                    calendar column; while the calendar showed its short Loading card (or a failure banner) the
+                    groups were a strip with the top edge of one card. 600px is the List view's own fixed height
+                    (src/app/components/CalendarListView.js ("const CONTAINER_HEIGHT_FULL = 600;")), under the
+                    month grid's, so a loaded page is unchanged. Changing this is a decision, not a cleanup. */}
+                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_clamp(320px,42vw,460px)] md:relative md:min-h-[600px]">
                     <div className="md:absolute md:inset-0">
                     <GroupList
                         onGroupSelect={handleGroupSelect}

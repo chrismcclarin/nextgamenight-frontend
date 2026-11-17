@@ -646,6 +646,22 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
   });
 });
 
+// 88.9-52 (W12, after-build look page): from md up the groups column takes its height from the
+// calendar column (its list is absolutely placed inside it), so while the calendar was still
+// loading the column was a strip showing the top edge of one card. It now has a floor of 600px,
+// the List view's own fixed height. A class pin: jsdom lays nothing out.
+describe('W12 (88.9-52) — the groups column keeps a usable height while the calendar loads', () => {
+  it('W12. the groups column carries a 600px floor from md up, and its list still fills it', () => {
+    renderHome();
+    const list = screen.getByRole('button', { name: 'force a group refresh' });
+    const fill = list.parentElement as HTMLElement;
+    const column = fill.parentElement as HTMLElement;
+    expect(fill.className.split(/\s+/), 'the list no longer fills the column').toEqual(expect.arrayContaining(['md:absolute', 'md:inset-0']));
+    expect(column.className.split(/\s+/), 'the column has no height floor').toContain('md:min-h-[600px]');
+    expect(column.className.split(/\s+/), 'the column lost its width rule').toContain('md:flex-[0_0_clamp(320px,42vw,460px)]');
+  });
+});
+
 describe('Req 11b — tapping an event', () => {
   it('leaves no open sheet behind and navigates by EVENT id for a future event', async () => {
     await mockEvents(EVENTS);
