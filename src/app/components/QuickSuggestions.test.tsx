@@ -611,6 +611,44 @@ describe('QuickSuggestions — a REAL failure reports, and the slot says so (D-2
     expect(api.getGroupSuggestions).toHaveBeenCalledTimes(3);
   });
 
+  it('A-20 (88.9-52, CI): the busy name is exactly Try again, retrying where the visually hidden suffix is its own box, before and after the Spinner shows', async () => {
+    // CI on e2e2331: Chromium named the busy link "Try again , retrying" (a space before the
+    // comma), so the exact-name locator in e2e/quick-suggestions-failed.spec.ts found nothing. The
+    // suffix used to be a visually hidden span; that class is position: absolute, which makes the
+    // span a block box, and the accessible-name computation puts a space round a non-inline child.
+    // jsdom does not blockify an absolutely positioned box, so the stylesheet below states the
+    // resulting display outright. The name is now an aria-label on the busy link, which no child
+    // box (the suffix, the Spinner) can change.
+    const style = document.createElement('style');
+    style.textContent = '.sr-only { display: block; }';
+    document.head.appendChild(style);
+    try {
+      api.getGroupSuggestions.mockRejectedValueOnce(failure());
+      renderSuggestions();
+      await runDebounce();
+      await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+      const link = () => failedBox()!.querySelector('button') as HTMLElement;
+      const gate = deferred<never>();
+      api.getGroupSuggestions.mockReturnValue(gate.promise);
+      fireEvent.click(link());
+      expect(link()).toHaveAccessibleName('Try again, retrying');
+      // The visible label is unchanged (WCAG 2.5.3: the name starts with it).
+      expect(link()).toHaveTextContent(/^Try again$/);
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(link().querySelector('[data-slot="spinner"]')).not.toBeNull();
+      expect(link()).toHaveAccessibleName('Try again, retrying');
+      await act(async () => {
+        gate.reject(failure());
+      });
+      expect(link()).toHaveAccessibleName('Try again');
+      expect(link()).not.toHaveAttribute('aria-label');
+    } finally {
+      style.remove();
+    }
+  });
+
   it('A-20 (88.9-52): a dep change that supersedes a pressed retry still ends the busy state', async () => {
     api.getGroupSuggestions.mockRejectedValue(failure());
     const { rerender } = renderSuggestions();

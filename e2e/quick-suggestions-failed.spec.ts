@@ -126,11 +126,19 @@ test('a failed suggestions load shows the H4 line and a Try again link-styled bu
   });
   const retryRequest = page.waitForRequest(SUGGESTIONS_REQUEST);
   await retry.click();
+  // AMENDED 88.9-52 (CI on e2e2331): this exact name found nothing while the suffix was a visually
+  // hidden span (Chromium computed "Try again , retrying", a space before the comma, because that
+  // span is its own block box). The component now names the busy link with an aria-label, so the
+  // exact name is the true one here; it is not loosened to the optional-space pattern other specs
+  // use for the span-suffixed house controls.
   const busyRetry = failedBox.getByRole('button', { name: 'Try again, retrying', exact: true });
   await expect(busyRetry).toHaveAttribute('aria-disabled', 'true');
   await retryRequest;
   // The house Spinner appears 200ms into the busy state; the debounce alone is 500ms.
   await expect(busyRetry.locator('[data-slot="spinner"]')).toBeVisible();
+  // The Spinner adds nothing to the name, and the visible words are unchanged.
+  await expect(busyRetry).toHaveAccessibleName('Try again, retrying');
+  await expect(busyRetry).toHaveText('Try again');
   const busySlotBox = await slot.boundingBox();
   expect(busySlotBox, 'the busy slot has no layout box').not.toBeNull();
   expect(busySlotBox!.height, 'the busy state must not change the 52px failed slot').toBeGreaterThanOrEqual(52);

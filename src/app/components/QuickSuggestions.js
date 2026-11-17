@@ -271,7 +271,15 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
            chosen OVER the shipped silent press (nothing on screen changed, and a retry that failed
            again looked like no press at all) and OVER the native disabled attribute (it drops
            focus from the pressed control). The line, the link and the 52px failed height stay
-           (W030: the last settled content is kept until the next settle). */
+           (W030: the last settled content is kept until the next settle).
+           AMENDED Phase 88.9-52 (A-20, CI on e2e2331): the heard suffix is an aria-label on the
+           busy link (Try again, retrying), chosen OVER the visually hidden suffix span the house
+           Button and the banner's retry controls render. That span is position: absolute, so it
+           is a block box, and Chromium computes the name with a space before the comma (Try
+           again , retrying): the exact-name locator found nothing in CI. The label is set only
+           while busy, starts with the visible words, and no child box (suffix or Spinner) can
+           change it; the Profile schedule Delete names its busy state the same way. Going back
+           to the span is a decision, not a cleanup. */
         <div
           data-testid={shown.kind === 'failed' ? 'quick-suggestions-failed' : 'quick-suggestions-empty'}
           className="flex-1 min-w-0 flex items-center gap-2 border-2 border-dashed border-line rounded-card px-2"
@@ -286,10 +294,10 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
               type="button"
               onClick={onRetry}
               aria-disabled={retrying || undefined}
+              aria-label={retrying ? 'Try again, retrying' : undefined}
               className="ml-auto shrink-0 inline-flex items-center min-h-11 text-xs font-bold text-content-accent aria-disabled:text-content-muted underline underline-offset-2 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
             >
               Try again
-              {retrying ? <span className="sr-only">, retrying</span> : null}
               <DelayedSpinner busy={retrying} className="ml-2 align-middle" />
             </button>
           ) : null}
