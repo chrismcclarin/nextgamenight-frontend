@@ -327,7 +327,7 @@ const D13_FLOOR_ROSTER: ExemptionRoster = {
   // handoff completes. Neither threshold was lowered and neither locator was re-anchored.
   //
   //  - `app/components/CalendarMonthView.js` carried `sites: 1` for the COMPACT month event tile
-  //    (`aria-label={tileLabel + rsvpLabel}`), which was `text-xs p-0.5 rounded-sm` with no
+  //    (`aria-label={compactName + rsvpLabel}`; `tileLabel + rsvpLabel` until 88.9-52 W14), which was `text-xs p-0.5 rounded-sm` with no
   //    minimum dimension (~20px: a 16px `text-xs` line box plus 2px `p-0.5` each side,
   //    arithmetic). It now DECLARES `min-h-6` at the site, with WCAG 2.2 SC 2.5.8 cited and 44
   //    recorded as REJECTED (it would deform a 7-column grid at 375px).
@@ -425,10 +425,11 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
    * stable handle:
    *
    *  - the compact month event tile: the unique element whose opening tag contains
-   *    `aria-label={tileLabel + rsvpLabel}`. Measured 2026-09-15, `grep -rn "tileLabel +
+   *    `aria-label={compactName + rsvpLabel}` (`tileLabel + rsvpLabel` until 88.9-52 W14 put the
+   *    guest word in the compact name). Measured 2026-11-16, `grep -rn "compactName +
    *    rsvpLabel" src` returns exactly ONE non-test hit
-   *    (src/app/components/CalendarMonthView.js ("aria-label={tileLabel + rsvpLabel}"), re-checked
-   *    2026-10-24), and it distinguishes the COMPACT tile from the full-variant twin below it,
+   *    (src/app/components/CalendarMonthView.js ("aria-label={compactName + rsvpLabel}")),
+   *    and it distinguishes the COMPACT tile from the full-variant twin below it,
    *    whose label is the bare `tileLabel`.
    *  - the home-card cog: the unique element whose opening tag contains
    *    `title={customizeGroupLabel(group.name)}`. Re-anchored by 88.6.1-54 for D-19 and D-52,
@@ -458,7 +459,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
   };
   const NAMED_SUBJECTS: Record<string, NamedSubject> = {
     compactMonthTile: {
-      anchor: 'aria-label={tileLabel + rsvpLabel}',
+      anchor: 'aria-label={compactName + rsvpLabel}',
       expectedFile: 'app/components/CalendarMonthView.js',
       expectedCount: 1,
       floor: MIN_TARGET_24,
