@@ -578,7 +578,26 @@ test.describe('Profile availability forms and username editor in flight (plan 88
         const r = row.getBoundingClientRect();
         const w = words.getBoundingClientRect();
         const b = el.getBoundingClientRect();
-        return { rowHeight: r.height, rowRight: r.right, wordsWidth: w.width, wordsHeight: w.height, buttonWidth: b.width, buttonRight: b.right };
+        // The hours TEXT (not its paragraph's box): a range over the paragraph's contents gives one
+        // rect per rendered line, so a re-wrap or a clip is read from what a person sees.
+        const range = document.createRange();
+        range.selectNodeContents(words);
+        const lines = Array.from(range.getClientRects()).filter((rect) => rect.width > 0);
+        const textRight = Math.max(...lines.map((rect) => rect.right));
+        const lineTops = new Set(lines.map((rect) => Math.round(rect.top)));
+        return {
+          rowHeight: r.height,
+          rowRight: r.right,
+          wordsLeft: w.left,
+          wordsRight: w.right,
+          wordsWidth: w.width,
+          wordsHeight: w.height,
+          textRight,
+          textLines: lineTops.size,
+          buttonWidth: b.width,
+          buttonLeft: b.left,
+          buttonRight: b.right,
+        };
       });
     const rowAtRest = await readRow();
     await focusByKeyboard(page, monday);
@@ -588,6 +607,16 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(monday).toHaveText('Tap again to confirm');
     // W37 (88.9-52): arming neither grows the row nor re-wraps the hours (its first line), and the
     // widest label still ends inside the row. Read while the live label shows.
+    // AMENDED Phase 88.9-52 (W37, CI on e2e2331): the paragraph-width equality is the PHONE arm only.
+    // W37 is what a person sees: the hours are not squeezed onto another line and the row does not
+    // grow or jump. On a phone the hours span both columns, so their box must not change at all.
+    // From sm the hours share row one with Delete (the row's DECISION marker: reads as before), so
+    // the hours' column narrows as the label widens (CI at 1280: 707 to 606 with the button 59 to
+    // 160) while the text stays on one line at the same left edge, row 70 both. There the check is
+    // the text itself: one line at rest and armed, same left edge, same row edge, and the text ends
+    // inside its own box and before the control (nothing clipped or overlapped). Chosen OVER dropping
+    // the width check everywhere (the phone arm is the ruling) and OVER reserving the armed width at
+    // rest from sm (rejected in the row's marker).
     const rowArmed = await readRow();
     // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-52)
     console.log(`[88.9-52 W37 Delete] ${testInfo.project.name}: rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)}`);
@@ -595,7 +624,20 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     if (rowAtRest && rowArmed) {
       expect(Math.abs(rowArmed.rowHeight - rowAtRest.rowHeight), `W37: the row changed height when Delete was armed (rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(0.5);
       expect(Math.abs(rowArmed.wordsHeight - rowAtRest.wordsHeight), `W37: the hours line re-wrapped when Delete was armed (rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(0.5);
-      expect(Math.abs(rowArmed.wordsWidth - rowAtRest.wordsWidth), `W37: the hours line changed width when Delete was armed (rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(0.5);
+      const w37Read = `rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)}`;
+      expect(Math.abs(rowArmed.wordsLeft - rowAtRest.wordsLeft), `W37: the hours line moved sideways when Delete was armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(rowArmed.rowRight - rowAtRest.rowRight), `W37: the row's right edge moved when Delete was armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+      expect(rowAtRest.textLines, `W37: the hours are on more than one line at rest (${w37Read})`).toBe(1);
+      expect(rowArmed.textLines, `W37: the hours are on more than one line when Delete is armed (${w37Read})`).toBe(1);
+      expect(Math.abs(rowArmed.textRight - rowAtRest.textRight), `W37: the hours text changed where it ends when Delete was armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+      expect(rowArmed.textRight, `W37: the hours text runs past its own box when Delete is armed (${w37Read})`).toBeLessThanOrEqual(rowArmed.wordsRight + 0.5);
+      if ((page.viewportSize()?.width ?? 0) < 640) {
+        // Phone (under sm): the hours own the whole first line, so their box is unchanged.
+        expect(Math.abs(rowArmed.wordsWidth - rowAtRest.wordsWidth), `W37: the hours line changed width when Delete was armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+      } else {
+        // From sm: the hours and Delete share row one; the text must end before the control.
+        expect(rowArmed.textRight, `W37: the hours text runs under the armed Delete (${w37Read})`).toBeLessThanOrEqual(rowArmed.buttonLeft + 0.5);
+      }
       expect(rowArmed.buttonRight, `W37: the armed Delete runs past its row (${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(rowArmed.rowRight + 0.5);
     }
     await page.keyboard.press('Enter');
