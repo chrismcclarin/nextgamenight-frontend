@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import Link from 'next/link';
-import { groupsAPI } from '../../../../lib/api';
+import { groupsAPI, isCsrfRejection } from '../../../../lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
@@ -30,9 +30,27 @@ const JOIN_ERROR_HEADLINE = 'Unable to join group';
    rendered for this card (hand-off to 88.9-51). ASCII apostrophe, house punctuation.
    AMENDED Phase 88.9-69 (N36, owner: Follow recommendation): a preview failure's X is amber (5.50 / 4.95), a join failure's red, chosen OVER one red X; keyed on previewFailed.
    The two numbers are the warning ink on the warning circle, light then dark (wcag.ts). One
-   literal class string per arm at the glyph, because a class built from pieces emits nothing. */
+   literal class string per arm at the glyph, because a class built from pieces emits nothing.
+   AMENDED Phase 88.9-52 (Q69-1, owner 2026-11-16 "approve all"): the X colour is keyed on the
+   CAUSE, chosen OVER the N36 key above (colour keyed on the headline, so a dead link drew amber
+   and a join lost to a dropped connection drew red). Amber says trying again may work: a preview
+   failure that is not the dead-link arm, and a join that failed on the connection, a 5xx, a 429,
+   the proxy's CSRF gate or an expired session. Red says it never will: the dead link (preview
+   404, no token, empty body) and a join the server refused. Headlines, sentences and the Try
+   again rule are unchanged (the HEADLINE is still keyed on previewFailed). */
 const PREVIEW_ERROR_HEADLINE = "Couldn't load this invite";
 const INVALID_LINK_DETAIL = 'This invite link is no longer valid.';
+
+/* DECISION Phase 88.9-52 (Q69-1): a failed JOIN is a real refusal (red X) only on the codes the
+   server uses to say no: forbidden (other than the proxy's CSRF gate), not_found, gone, conflict.
+   Every other cause is amber, chosen OVER listing the temporary causes and defaulting to red: an
+   unnamed failure's own sentence says to refresh and try again, and a red X would contradict it.
+   Read from the error's code and the CSRF predicate, never from message text. */
+function isJoinRefusal(err) {
+  if (isCsrfRejection(err)) return false;
+  const code = err?.code;
+  return code === 'forbidden' || code === 'not_found' || code === 'gone' || code === 'conflict';
+}
 
 /** Join the non-empty parts of an announcement with one space (never a trailing space). */
 function joinParts(...parts) {
@@ -52,6 +70,9 @@ function GroupInvitePage() {
      as not_found because their sentence says the link is dead, so offering Try again would
      contradict it. A join failure sets neither. Changing this is a decision, not a cleanup. */
   const [previewFailed, setPreviewFailed] = useState(null); // 'not_found' | 'other' | null
+  // Q69-1 (88.9-52): true when a failed JOIN may pass on another try (see isJoinRefusal). Colour
+  // only: it adds no control and changes no words. Never reset, because the join is single-shot.
+  const [joinFailedTemporary, setJoinFailedTemporary] = useState(false);
   // Bumped by handleRetry to re-run the preview effect in place (D14a).
   const [retryKey, setRetryKey] = useState(0);
 
@@ -263,6 +284,7 @@ function GroupInvitePage() {
       } catch (err) {
         if (unmountedRef.current) return;
         setStatus('error');
+        setJoinFailedTemporary(!isJoinRefusal(err));
         // R1 (SPEC DEF-88-25-01): the ratified register replaces the raw upstream text and the
         // hand-rolled "Failed to join group." fallback. MUTATION-path failure; the toast arm of
         // UI-SPEC §6.2 does not apply because this page IS the mutation and has no other
@@ -291,6 +313,8 @@ function GroupInvitePage() {
   // branch other than the one on screen. Loading and joining yield '' — the region must be
   // mounted and empty first, or there is no CHANGE for a screen reader to announce.
   const isLoading = authLoading || status === 'loading';
+  // Q69-1 (88.9-52): amber for a failure another try may clear, red for a refusal.
+  const failureIsTemporary = previewFailed === 'other' || (!previewFailed && joinFailedTemporary);
   let announcement = '';
   if (regionDwell) {
     // D14a: empty for the dwell after a Try again press (see the game page's REGION DWELL).
@@ -411,17 +435,18 @@ function GroupInvitePage() {
           {/* Error state */}
           {status === 'error' && (
             <div className="text-center">
-              {/* N36 (88.9-69): the circle and the X by cause, amber for a failed load, red for a
-                  refused join. See the K11(c) marker above the headline constants. */}
+              {/* N36 (88.9-69), re-keyed by Q69-1 (88.9-52): the circle and the X by cause, amber
+                  when trying again may work, red for a dead link or a refused join. See the
+                  K11(c) marker above the headline constants. */}
               <div
                 className={
-                  previewFailed
+                  failureIsTemporary
                     ? 'mx-auto mb-4 w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center'
                     : 'mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center'
                 }
               >
                 <svg
-                  className={previewFailed ? 'w-8 h-8 text-content-status-warning' : 'w-8 h-8 text-content-status-error'}
+                  className={failureIsTemporary ? 'w-8 h-8 text-content-status-warning' : 'w-8 h-8 text-content-status-error'}
                   aria-hidden="true"
                   focusable="false"
                   fill="none"

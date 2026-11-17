@@ -458,8 +458,11 @@ describe('invite/group/[token] — the line beside Try again (88.9-66: X68)', ()
 });
 
 // Plan 88.9-69 — N36 (owner 2026-11-13, "Follow recommendation"): the X on a failed invite LOAD
-// turns amber; the X on a refused JOIN keeps red. One literal class pair per arm, keyed on
-// previewFailed.
+// turned amber and the X on a refused JOIN kept red, keyed on previewFailed (the headline).
+// AMENDED Phase 88.9-52 (Q69-1, owner 2026-11-16 "approve all"): the pair is keyed on the CAUSE.
+// A dead link (preview 404, empty body) is red; a preview failure that may pass is amber; a join
+// that failed on the connection, the server, the rate limit, the proxy's CSRF gate or an expired
+// session is amber; a join the server refused is red. Headlines and sentences are unchanged.
 describe('invite/group/[token] — N36 the error glyph by cause (plan 88.9-69)', () => {
   const X_PATH = 'M6 18L18 6M6 6l12 12';
   const errorGlyph = (container: HTMLElement) => {
@@ -468,37 +471,77 @@ describe('invite/group/[token] — N36 the error glyph by cause (plan 88.9-69)',
     const svg = path!.closest('svg')!;
     return { svg, circle: svg.parentElement! };
   };
+  const expectTone = (container: HTMLElement, tone: 'amber' | 'red', label: string) => {
+    const { svg, circle } = errorGlyph(container);
+    const on = tone === 'amber' ? 'warning' : 'error';
+    const off = tone === 'amber' ? 'error' : 'warning';
+    expect(circle, `${label}: the circle is not the ${on} fill`).toHaveClass(`bg-status-${on}-subtle`);
+    expect(circle, label).not.toHaveClass(`bg-status-${off}-subtle`);
+    expect(svg, `${label}: the X is not the ${on} ink`).toHaveClass(`text-content-status-${on}`);
+    expect(svg, label).not.toHaveClass(`text-content-status-${off}`);
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+  };
 
-  it('N36 (88.9-69): a preview failure shows the X on the amber warning circle; a failed join keeps the red error circle', async () => {
-    const previewFailures: ApiError[] = [
+  it('Q69-1 (88.9-52): a preview that could not load is amber and keeps Try again; a dead link (404, empty body) is red', async () => {
+    const temporary: ApiError[] = [
       new ApiError('Network error: Could not connect to the server.', 'network', 0),
-      new ApiError('HTTP error! status: 404', 'not_found', 404, { error: 'Invalid invite link' }),
+      new ApiError('HTTP error! status: 500', 'internal', 500),
+      new ApiError('HTTP error! status: 429', 'rate_limited', 429),
     ];
-    for (const err of previewFailures) {
+    for (const err of temporary) {
       preview().mockReset();
       preview().mockRejectedValue(err);
       const { container } = render(<GroupInvitePage />);
       await screen.findByRole('heading', { name: "Couldn't load this invite" });
-      const { svg, circle } = errorGlyph(container);
-      expect(circle, `${err.code}: the circle is not the warning fill`).toHaveClass('bg-status-warning-subtle');
-      expect(circle, err.code).not.toHaveClass('bg-status-error-subtle');
-      expect(svg, `${err.code}: the X is not the warning ink`).toHaveClass('text-content-status-warning');
-      expect(svg, err.code).not.toHaveClass('text-content-status-error');
-      expect(svg).toHaveAttribute('aria-hidden', 'true');
+      expectTone(container, 'amber', `preview ${err.code}`);
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
       cleanup();
     }
 
-    // A signed-in person whose JOIN is refused keeps the red pair.
+    // The preview route's only 404: the link is dead, and no Try again is offered.
     preview().mockReset();
-    authState.user = { sub: 'auth0|abc' };
-    preview().mockResolvedValue(PREVIEW_BODY);
-    join().mockRejectedValue(new ApiError('HTTP error! status: 403', 'forbidden', 403, { error: 'nope' }));
-    const { container } = render(<GroupInvitePage />);
-    await screen.findByRole('heading', { name: 'Unable to join group' });
-    const { svg, circle } = errorGlyph(container);
-    expect(circle).toHaveClass('bg-status-error-subtle');
-    expect(circle).not.toHaveClass('bg-status-warning-subtle');
-    expect(svg).toHaveClass('text-content-status-error');
-    expect(svg).not.toHaveClass('text-content-status-warning');
+    preview().mockRejectedValue(
+      new ApiError('HTTP error! status: 404', 'not_found', 404, { error: 'Invalid invite link' })
+    );
+    let view = render(<GroupInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't load this invite" });
+    expect(screen.getByText('This invite link is no longer valid.')).toBeInTheDocument();
+    expectTone(view.container, 'red', 'preview 404');
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    cleanup();
+
+    // A 2xx with no body is the same dead-link arm.
+    preview().mockReset();
+    preview().mockResolvedValue(null);
+    view = render(<GroupInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't load this invite" });
+    expectTone(view.container, 'red', 'preview empty body');
+  });
+
+  it('Q69-1 (88.9-52): a join that failed on the connection, the server, the rate limit, CSRF or an expired session is amber; a refused join is red', async () => {
+    const cases: Array<[string, ApiError, 'amber' | 'red']> = [
+      ['network', new ApiError('Network error: Could not connect to the server.', 'network', 0), 'amber'],
+      ['5xx', new ApiError('HTTP error! status: 500', 'internal', 500), 'amber'],
+      ['429', new ApiError('HTTP error! status: 429', 'rate_limited', 429), 'amber'],
+      ['401', new ApiError('HTTP error! status: 401', 'unauthorized', 401), 'amber'],
+      ['CSRF 403', new ApiError('HTTP error! status: 403', 'forbidden', 403, { csrf_rejected: true }), 'amber'],
+      ['403', new ApiError('HTTP error! status: 403', 'forbidden', 403, { error: 'nope' }), 'red'],
+      ['404', new ApiError('HTTP error! status: 404', 'not_found', 404), 'red'],
+      ['410', new ApiError('HTTP error! status: 410', 'gone', 410), 'red'],
+    ];
+    for (const [label, err, tone] of cases) {
+      preview().mockReset();
+      join().mockReset();
+      authState.user = { sub: 'auth0|abc' };
+      preview().mockResolvedValue(PREVIEW_BODY);
+      join().mockRejectedValue(err);
+      const { container } = render(<GroupInvitePage />);
+      await screen.findByRole('heading', { name: 'Unable to join group' });
+      expectTone(container, tone, `join ${label}`);
+      // The sentence is the register's own line for the cause, unchanged, and no Try again.
+      expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      cleanup();
+    }
   });
 });
