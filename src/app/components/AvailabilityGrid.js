@@ -858,15 +858,27 @@ export default function AvailabilityGrid({
               — and active:opacity-75 is .btn:active:not(:disabled)'s job now. The native
               `disabled` STAYS: it is a MODE gate (the whole grid is disabled while "I'm
               unavailable" is checked), not an in-flight gate on a control the user is operating,
-              which is the rule-of-kind split plans 17-24 record. */}
+              which is the rule-of-kind split plans 17-24 record.
+
+              AMENDED Phase 88.9-52 (W29): each arm gains a DARK arm, the X17a pill pair of its hue
+              (green, amber) with the status edge, chosen OVER the light raw pair in dark (a pale
+              mint box, the brightest thing on the dark page) and OVER moving light onto the pill
+              pair too (the light pair above is this marker's pick and is not on the look list).
+              Dark, measured: green word 5.94 on its fill, edge 6.08 on the card; amber word 5.65,
+              edge 6.45. The hue still names the legend swatch. The dark hover pin follows the dark
+              fill for the T-88.6-71 reason above: without it the light pin repaints the fill mint
+              under the pointer. The All box and the day boxes below tick in the pressed-toggle
+              fill (accent-toggle-on: 5.66 on the light card, 4.93 on the dark card), chosen OVER
+              the raw blue-600 accent they carried and OVER the primary fill in both themes (2.45
+              on the dark card). The browser picks the tick colour itself. */}
           <Button
             variant="ghost"
             onClick={togglePaintMode}
             disabled={disabled}
             className={
               paintMode === 'preferred'
-                ? 'border bg-green-100 enabled-hover:bg-green-100 border-green-400 text-green-800 enabled-hover:opacity-80'
-                : 'border bg-yellow-100 enabled-hover:bg-yellow-100 border-yellow-400 text-yellow-800 enabled-hover:opacity-80'
+                ? 'border bg-green-100 enabled-hover:bg-green-100 border-green-400 text-green-800 dark:bg-surface-pill-green dark:enabled-hover:bg-surface-pill-green dark:border-status-success dark:text-content-pill-green enabled-hover:opacity-80'
+                : 'border bg-yellow-100 enabled-hover:bg-yellow-100 border-yellow-400 text-yellow-800 dark:bg-surface-pill-amber dark:enabled-hover:bg-surface-pill-amber dark:border-status-warning dark:text-content-pill-amber enabled-hover:opacity-80'
             }
           >
             {paintMode === 'preferred' ? 'Adding: Preferred' : 'Adding: If Need Be'}
@@ -1021,7 +1033,7 @@ export default function AvailabilityGrid({
                   checked={allChecked}
                   onChange={toggleSelectAll}
                   disabled={disabled}
-                  className="w-3.5 h-3.5 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+                  className="w-3.5 h-3.5 accent-toggle-on cursor-pointer disabled:cursor-not-allowed"
                 />
                 <span className="text-xs text-content-muted">All</span>
               </label>
@@ -1074,7 +1086,7 @@ export default function AvailabilityGrid({
                   checked={!!dayFull[index]}
                   onChange={() => toggleDayCheck(index)}
                   disabled={disabled}
-                  className="w-4 h-4 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+                  className="w-4 h-4 accent-toggle-on cursor-pointer disabled:cursor-not-allowed"
                 />
               </label>
             ))}

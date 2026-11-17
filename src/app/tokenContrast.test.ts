@@ -2910,6 +2910,59 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     const light = ratioHex(WORDMARK, resolve('light', '--color-bg-page'), 'W20 wordmark on the light page');
     expect(light, `W20 — the wordmark on the light page measures ${light.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
   });
+
+  it('W29 (88.9-52): in dark the paint-mode toggle wears the green / amber pill pair (word 4.5 on its fill, edge 3.0 on the card and on the fill), light keeps its raw pair, and the day boxes tick in the pressed-toggle fill, 3.0 on the card in both themes', () => {
+    // After-build look page W29: in dark the toggle kept its light-theme mint box (green-100 with
+    // green-800 words), the brightest thing on the page, and the ticked day boxes painted the
+    // raw blue-600 accent (now the pressed-toggle fill: 5.6617 light, 4.9264 dark on the card). The dark arm is built from the X17a pill pairs and the status edges,
+    // read from the class string. Measured with src/lib/wcag.ts, dark: green word 5.9404 on its
+    // fill, edge 6.0823 on the card and 3.1628 on the fill; amber word 5.6462, edge 6.4458 and
+    // 3.2738. Light is the DECISION Phase 88.6-25 raw pair, unchanged.
+    const gridSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'AvailabilityGrid.js'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const darkOf = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return resolve('dark', ref[1]);
+    };
+    const card = resolve('dark', '--color-bg-card');
+    let measured = 0;
+    for (const [raw, hue] of [['green', 'green'], ['yellow', 'amber']] as const) {
+      const arm = new RegExp(`'(border bg-${raw}-100 enabled-hover:bg-${raw}-100 border-${raw}-400 text-${raw}-800[^']*)'`).exec(gridSrc);
+      expect(arm, `LOCATOR: the ${raw} arm of the paint-mode toggle keeps its light raw pair`).not.toBeNull();
+      const tokens = arm![1].split(/\s+/).filter((token) => token.length > 0);
+      const one = (re: RegExp, what: string): string => {
+        const hits = tokens.flatMap((token) => { const m = re.exec(token); return m ? [m[1]] : []; });
+        if (hits.length !== 1) throw new TokenContrastParseError(`the ${raw} arm names ${hits.length} ${what} classes; one is measurable`);
+        return hits[0];
+      };
+      const fillKey = one(/^dark:bg-([a-z0-9-]+)$/, 'dark fill');
+      expect(fillKey, 'the dark fill is the pill family of the same hue').toBe(`surface-pill-${hue}`);
+      // The hover pin must follow the fill, or the ghost hover (or the light pin) repaints it.
+      expect(one(/^dark:enabled-hover:bg-([a-z0-9-]+)$/, 'dark hover pin'), 'the dark hover pin is the dark fill').toBe(fillKey);
+      const fill = darkOf(fillKey);
+      const word = darkOf(one(/^dark:text-([a-z0-9-]+)$/, 'dark word'));
+      const edge = darkOf(one(/^dark:border-([a-z0-9-]+)$/, 'dark edge'));
+      for (const [ink, ground, floor, what] of [
+        [word, fill, 4.5, 'word on the fill'],
+        [edge, card, 3.0, 'edge on the card'],
+        [edge, fill, 3.0, 'edge on the fill'],
+      ] as const) {
+        const ratio = ratioHex(ink, ground, `W29 ${raw} ${what}`);
+        expect(ratio, `W29 — [dark] the ${raw} arm's ${what} (${ink} on ${ground}) measures ${ratio.toFixed(4)}:1, floor ${floor.toFixed(2)}:1`).toBeGreaterThanOrEqual(floor);
+        measured += 1;
+      }
+    }
+    expect(measured, 'anti-vacuity: 2 arms x 3 pairs').toBe(6);
+    expect(gridSrc.match(/accent-blue-600/g) ?? [], 'no day box ticks in raw blue').toHaveLength(0);
+    expect(gridSrc.match(/[" ]accent-toggle-on[" ]/g) ?? [], 'the All box and the day boxes tick in the pressed-toggle fill').toHaveLength(2);
+    expect(declIn(themeBlock, '--color-toggle-on'), 'accent-toggle-on reads the pressed-toggle fill').toBe('var(--color-toggle-pressed-bg)');
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-toggle-pressed-bg', '--color-bg-card', 3.0, 'W29 the ticked box on the card');
+    }
+  });
 });
 
 // =====================================================================================
