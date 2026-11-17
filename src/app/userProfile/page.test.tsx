@@ -1558,7 +1558,11 @@ describe('userProfile type scale (Req 2)', () => {
   // and `gap-*` are DEAD, so carrying one is a lie about what paints.
   it('leaves no dead class on any `Button` in this file', async () => {
     const source = await pageSource();
-    const buttons = [...source.matchAll(/<Button\n((?:\s+[^\n]*\n)*?)\s*>/g)].map((m) => m[1]);
+    // 88.9-52 (CodeQL alert 6, js/redos): an attribute line is spaces or tabs, then a non-space, then
+    // the rest of the line. The earlier form let the leading run and the rest of the line both take
+    // the same spaces and newlines, which backtracks without bound on a hostile input. Same matches
+    // on this file (18 of 18, compared when this was written).
+    const buttons = [...source.matchAll(/<Button\n((?:[ \t]+\S[^\n]*\n)*?)[ \t]*>/g)].map((m) => m[1]);
     expect(buttons.length).toBeGreaterThanOrEqual(13);
     for (const attrs of buttons) {
       const cls = /className="([^"]*)"/.exec(attrs)?.[1] ?? '';
