@@ -1108,7 +1108,7 @@ function DateGroup({
  * view on first paint.
  */
 const EventRow = forwardRef(function EventRow(
-  { event, timezone, onClick, viewerDbUserId = null, statusTagEligible = false, isSheet = false, headingLevel = 'h5', bgImageFailed },
+  { event, timezone, onClick, viewerDbUserId = null, statusTagEligible = false, bgImageFailed, isSheet = false, headingLevel = 'h5' },
   ref
 ) {
   // See the `headingLevel` DECISION on `DateGroup` above — the default IS the shipped
