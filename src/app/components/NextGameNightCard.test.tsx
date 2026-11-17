@@ -116,6 +116,10 @@ const EVENT = {
 };
 
 const WHEN_LINE = 'Friday, Sep 4 · 7:00 PM EDT';
+// 88.9-52 W19: the time and zone sit in their own no-wrap span, so the when-line is found by its
+// whole text content (a plain text query reads one element's own text nodes only).
+const whenLineNode = (line: string) =>
+  screen.getByText((_content, el) => el?.tagName === 'SPAN' && el.classList.contains('text-xl') && el.textContent === line);
 
 const EMPTY_RSVPS = { rsvps: [], summary: { yes: 0, maybe: 0, no: 0 } };
 
@@ -198,8 +202,23 @@ describe('NextGameNightCard — content and navigation (SPEC Req 3 / D-05, D-14)
     // The literal string is `Next game night`; `uppercase` is a CSS treatment, so the
     // DOM text — and therefore the accessible name — stays sentence case.
     expect(screen.getByText('Next game night')).toBeInTheDocument();
-    expect(screen.getByText(WHEN_LINE)).toBeInTheDocument();
+    expect(whenLineNode(WHEN_LINE)).toBeInTheDocument();
     expect(screen.getByText('Navy Knights')).toBeInTheDocument();
+  });
+
+  // 88.9-52 W19: with the year on the line the when-line wrapped at 375px and left the zone alone on
+  // the second line (7:00 PM / PST). The time and its zone now sit in one no-wrap span, so the line
+  // breaks before the time. jsdom lays nothing out: this pins the span, its class and the full text.
+  it('W19 (88.9-52): the time and its zone share one no-wrap span inside the when-line, and the line still reads whole', () => {
+    renderCard();
+    const time = screen.getByText('7:00 PM EDT');
+    expect(time.tagName).toBe('SPAN');
+    expect(time).toHaveClass('whitespace-nowrap');
+    const line = time.parentElement as HTMLElement;
+    expect(line).toHaveClass('block', 'text-xl', 'font-bold');
+    expect(line.textContent).toBe(WHEN_LINE);
+    // The spoken names are built from the same string, unchanged.
+    expect(rsvpGroup()).toHaveAttribute('aria-label', `RSVP for ${WHEN_LINE}`);
   });
 
   it("X29 (88.9, owner 2026-11-14 'Yes'): a next game night outside the current year shows its year on the when-line", () => {
@@ -210,7 +229,7 @@ describe('NextGameNightCard — content and navigation (SPEC Req 3 / D-05, D-14)
     renderCard({ event: nextYear });
 
     const NEXT_YEAR_LINE = 'Friday, Jan 8, 2027 · 7:00 PM EST';
-    expect(screen.getByText(NEXT_YEAR_LINE)).toBeInTheDocument();
+    expect(whenLineNode(NEXT_YEAR_LINE)).toBeInTheDocument();
     // The accessible names are built from the same when-line, so they carry the year too.
     expect(screen.getByRole('button', { name: /^Next game night, / })).toHaveAccessibleName(
       expect.stringContaining(NEXT_YEAR_LINE),
@@ -221,7 +240,7 @@ describe('NextGameNightCard — content and navigation (SPEC Req 3 / D-05, D-14)
     // A night inside the current year still shows no year.
     vi.setSystemTime(PINNED_NOW);
     renderCard();
-    expect(screen.getByText(WHEN_LINE)).toBeInTheDocument();
+    expect(whenLineNode(WHEN_LINE)).toBeInTheDocument();
     expect(screen.queryByText(/2026/)).toBeNull();
   });
 
@@ -276,7 +295,7 @@ describe('NextGameNightCard — content and navigation (SPEC Req 3 / D-05, D-14)
   it('omits the who-line rather than printing "undefined" when Group is absent', () => {
     const { container } = renderCard({ event: { ...EVENT, Group: undefined } });
 
-    expect(screen.getByText(WHEN_LINE)).toBeInTheDocument();
+    expect(whenLineNode(WHEN_LINE)).toBeInTheDocument();
     expect(container.textContent).not.toContain('undefined');
   });
 

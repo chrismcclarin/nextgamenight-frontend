@@ -155,10 +155,13 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
     // deliberate choice — the list rows directly beneath the hero already render
     // "7:00 PM EDT", and consistency with the rows the hero sits above beats a literal
     // copy match against the mockup.
-    const whenLine = React.useMemo(() => {
-      if (!startDate) return '';
+    // 88.9-52 (W19): the two halves are kept beside the joined line so the render below can hold
+    // the time and its zone on one line; whenLine itself (the string the spoken names read) is
+    // byte-unchanged.
+    const whenParts = React.useMemo(() => {
+      if (!startDate) return { day: '', time: '' };
       const d = new Date(startDate);
-      if (Number.isNaN(d.getTime())) return '';
+      if (Number.isNaN(d.getTime())) return { day: '', time: '' };
       let day: string;
       try {
         // SHORT month: the ruled copy is "Friday, Sep 4", not "Friday, September 4".
@@ -171,8 +174,9 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
         day = formatWithTzAbbr(d, null, withYearOutsideCurrent(WHEN_DAY_FORMAT, d, null));
       }
       const time = formatTime(startDate, timezone);
-      return time ? `${day} · ${time}` : day;
+      return { day, time: time || '' };
     }, [startDate, timezone]);
+    const whenLine = whenParts.time ? `${whenParts.day} · ${whenParts.time}` : whenParts.day;
 
     const groupName = event?.Group?.name ?? '';
 
@@ -419,8 +423,16 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             semantic level to preserve and P4 forbids inventing one — which is the conclusion the
             marker above reaches by a different route, and both still stand.
           */}
+          {/* DECISION Phase 88.9-52 (W19): the time and its zone sit in one no-wrap span, chosen OVER the free wrap, where a line carrying the year (a night outside the current year) broke between them at 375px and left PST alone on the second line. The line now breaks before the time. The text content is the same string as whenLine. REJECTED: no-wrap on the whole line (it would run off a 375px card with the year). Taking the span out is a decision, not a cleanup. */}
           <span className="mt-1 block text-xl font-bold leading-tight text-content-primary">
-            {whenLine}
+            {whenParts.time ? (
+              <>
+                {`${whenParts.day} · `}
+                <span className="whitespace-nowrap">{whenParts.time}</span>
+              </>
+            ) : (
+              whenLine
+            )}
           </span>
           {/*
             D-14 (owner ruling 2026-08-31): the who-line is `{Group name}` ALONE. RESEARCH
