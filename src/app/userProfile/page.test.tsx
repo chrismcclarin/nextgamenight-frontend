@@ -6510,6 +6510,8 @@ describe('collection bar and dark card fill (88.9-68: X52d, X56c)', () => {
     expect(receipt.className.split(/\s+/)).toEqual(
       expect.arrayContaining(['min-h-4', 'text-xs', 'text-content-status-success', 'sm:text-right'])
     );
+    // W41 (88.9-52): 4px of air under the button and 12px above the import box (the line touched both).
+    expect(receipt.className.split(/\s+/)).toEqual(expect.arrayContaining(['mt-1', 'mb-3']));
     const headerRow = receipt.previousElementSibling as HTMLElement;
     expect(headerRow).toContainElement(addFromBgg());
     expect(headerRow.className.split(/\s+/)).not.toContain('mb-4');

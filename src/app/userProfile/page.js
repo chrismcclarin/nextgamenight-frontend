@@ -4276,8 +4276,11 @@ function Profile(){
                         min-h-4 row replaces the header's mb-4 so the words never move the page. Under the
                         button: left at 375 (the header row stacks), right-aligned from sm. Shown beside the
                         announcer call in the add path, cleared after the receipt hook's 4000 ms and at the
-                        next press of + Add from BGG. The bar is never opened for the new game. */}
-                    <p data-testid="add-game-receipt" className="min-h-4 text-xs text-content-status-success sm:text-right">{addGameReceipt}</p>
+                        next press of + Add from BGG. The bar is never opened for the new game.
+                        AMENDED Phase 88.9-52 (W41): the row gains mt-1 and mb-3 (4px under the button, 12px above
+                        the import box; the words touched the button and the box started right under them).
+                        The header-to-box gap is 32px, was 16; still always reserved, so nothing moves. */}
+                    <p data-testid="add-game-receipt" className="mt-1 mb-3 min-h-4 text-xs text-content-status-success sm:text-right">{addGameReceipt}</p>
 
                     {/* BGG Collection Import */}
                     <div className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">

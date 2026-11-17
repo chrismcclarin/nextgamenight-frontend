@@ -813,6 +813,9 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
       if (showing.words) {
         // Under the button: below it, left-aligned with it on a phone, right-aligned from sm.
         expect(showing.words.top, `Q2: the words are not below + Add from BGG (${seen})`).toBeGreaterThanOrEqual(showing.button.bottom - 0.5);
+        // W41 (88.9-52): the words no longer touch the button above or the import box below.
+        expect(showing.words.top - showing.button.bottom, `W41: under 4px between + Add from BGG and the words (${seen})`).toBeGreaterThanOrEqual(3.5);
+        expect(showing.importBox.top - showing.words.bottom, `W41: under 12px between the words and the import box (${seen})`).toBeGreaterThanOrEqual(11.5);
         if (phone) {
           expect(Math.abs(showing.words.left - showing.button.left), `Q2: on a phone the words do not start at the button's left edge (${seen})`).toBeLessThanOrEqual(1);
         } else {
