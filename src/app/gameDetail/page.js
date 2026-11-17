@@ -67,7 +67,13 @@ import { toast } from 'sonner';
 // so this pill and that button are two different yellows, and a person who is both Maybe and
 // Guest shows two same-coloured pills — both accepted by the owner. Putting this pill back on
 // warning is a decision, not a cleanup.
-function RsvpStatusPill({ status }) {
+/* DECISION Phase 88.9-52 (W26, fixer's reading of the look item, veto open): once the night has
+   started a person with no reply shows NO pill, chosen OVER the shipped "No reply" on every chip
+   of a finished night (RSVP closes at the start, so the pill described nothing anyone could act
+   on) and OVER dropping every RSVP pill after the start (Going / Maybe / No are a record of what
+   was said). The same hasStarted clock as the Share Game QR gate (X42). Bringing the pill back on
+   a started night is a decision, not a cleanup. */
+function RsvpStatusPill({ status, nightStarted = false }) {
     const map = {
         yes: { label: 'Going', cls: 'bg-surface-pill-green text-content-pill-green' },
         maybe: { label: 'Maybe', cls: 'bg-surface-pill-amber text-content-pill-amber' },
@@ -84,6 +90,7 @@ function RsvpStatusPill({ status }) {
        can wrap; every other badge on this surface is a single word.
        AMENDED Phase 88.9-63 (X16): sentence case; nowrap kept; 375 re-measure at the capture. */
     if (!status) {
+        if (nightStarted) return null;
         return (
             <span className="text-xs whitespace-nowrap px-1.5 py-0.5 rounded-sm bg-surface-pill-neutral text-content-pill-neutral">
                 No reply
@@ -131,7 +138,7 @@ function canInviteGuest(participant, viewerRole) {
 // onto the chip. The gate is computed by `canInviteGuest` at the call site rather
 // than re-derived here, so the chip and the See-all row cannot disagree.
 // AMENDED Phase 88.9-65 (X63): the invite sits beside the chip, not inside it; its rest label is Invite and its name adds the person; Retry's name adds inviting <name> to the group (owner 2026-11-14, Q7 B).
-function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId, rsvpUnavailable = false }) {
+function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId, rsvpUnavailable = false, nightStarted = false }) {
     const isCustom = !!participant.is_custom;
     return (
         /* DECISION Phase 88.9-65 (X63, owner at N43: the chip grows too thick): the invite sits beside its chip, as at its other two sites, chosen OVER a sub-44 button inside it (the .btn phone floor is unlayered; .btn-compact is closed) and OVER a 44px box in a slim chip (its ring would cross the chip edge, as in X19). Heard name owner-ratified 2026-11-14. The error arm keeps the visible word Retry and its name adds inviting <name> to the group (owner 2026-11-14 Q7 B), chosen OVER a bare Retry (it does not say what is retried or for whom) and OVER Retry, invite <name> to the group. */
@@ -148,7 +155,7 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             </span>
             {/* 88.6.1-74 (owner ruling D8-r2, E17): no pill while the RSVP list never loaded, so no
                 chip says "No reply" for a list that failed. */}
-            {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} />}
+            {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} nightStarted={nightStarted} />}
             {role === 'owner' && (
                 <span className="text-xs bg-surface-pill-violet text-content-pill-violet px-1 rounded-sm font-bold">Owner</span>
             )}
@@ -3050,6 +3057,7 @@ export default function GameDetailPage() {
                                         participant={p}
                                         rsvpStatus={status}
                                         rsvpUnavailable={repliesLoadState.showError}
+                                        nightStarted={hasStarted(singleEvent, Date.now())}
                                         role={role}
                                         isBringing={isBringing}
                                         viewerScope={userScope}
@@ -3339,7 +3347,7 @@ export default function GameDetailPage() {
                                                 <span>{p.username || 'Unknown'}</span>
                                             )}
                                         </span>
-                                        {!repliesLoadState.showError && <RsvpStatusPill status={status} />}
+                                        {!repliesLoadState.showError && <RsvpStatusPill status={status} nightStarted={hasStarted(singleEvent, Date.now())} />}
                                         {isSelfRow && (
                                             // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
                                             // CONTEXT D-SOCL-06: "visible on both mobile and desktop, not

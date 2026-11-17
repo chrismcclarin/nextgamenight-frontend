@@ -1173,6 +1173,38 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
     expect(screen.getAllByRole('img', { name: 'Bringing a game' })).toHaveLength(1);
   });
 
+  it('W26 (88.9-52): before the night a person who has not replied shows No reply, on the chip and in See-all', async () => {
+    pinClockBeforeTheNight();
+    try {
+      const user = userEvent.setup();
+      renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+      await screen.findByText('Player 0');
+      await waitFor(() => expect(screen.getAllByText('No reply')).toHaveLength(5));
+      const dialog = await openParticipantsModal(user);
+      expect(within(dialog).getAllByText('No reply')).toHaveLength(6);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('W26 (88.9-52): once the night has started nobody shows No reply; a reply that was given stays', async () => {
+    // eventFixture's night began 2026-03-01; the page reads the live clock (hasStarted), and RSVP
+    // closes at the start, so "No reply" on a started night describes nothing anyone can act on.
+    const user = userEvent.setup();
+    const participants = [
+      participantRow(),
+      ...SIX_PARTICIPANTS.slice(0, 5),
+    ];
+    renderEventDetail({ role: 'owner', participants });
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [{ User: { id: OTHER_UUID }, status: 'yes' }] });
+    await screen.findByText('Player 0');
+    expect(await screen.findByText('Going')).toBeInTheDocument();
+    expect(screen.queryAllByText('No reply')).toHaveLength(0);
+    const dialog = await openParticipantsModal(user);
+    expect(within(dialog).getByText('Going')).toBeInTheDocument();
+    expect(within(dialog).queryAllByText('No reply')).toHaveLength(0);
+  });
+
   it('closes the participants list on Esc', async () => {
     const user = userEvent.setup();
     renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
@@ -4772,6 +4804,7 @@ function expectNoSectionLines() {
 
 describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
   afterEach(() => {
+    vi.useRealTimers();
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
@@ -5233,6 +5266,9 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
   });
 
   it('SR-24. an RSVP list that failed and never loaded: no "No reply", no ballot, the E17 notice; Retry recovers', async () => {
+    // 88.9-52 (W26): pinned BEFORE the night — a started night shows no "No reply" pill at all, so
+    // without the pin the absence below would pass for the wrong reason. Restored by the afterEach.
+    pinClockBeforeTheNight();
     const user = userEvent.setup();
     renderEventDetail({ role: 'member' });
     (rsvpAPI.getEventRsvps as Mock).mockRejectedValue(CODELESS());
