@@ -198,7 +198,8 @@ describe('apiFetch — the error sinks carry the path, never the query (CR-501)'
     expect(warn).toHaveBeenCalledTimes(1);
     const [msg, ctx] = warn.mock.calls[0];
     expect(String(msg).startsWith('API Error: Received HTML instead of JSON')).toBe(true);
-    expect(ctx).toEqual({ url: '/api/friendships/search' });
+    // 88.9-52 A-54: the status rides the ctx, so a 404 HTML page from the backend reads as a missing route.
+    expect(ctx).toEqual({ url: '/api/friendships/search', status: 200 });
     const serialised = JSON.stringify(warn.mock.calls);
     expect(serialised).not.toContain('?');
     expect(serialised).not.toContain('example.com');

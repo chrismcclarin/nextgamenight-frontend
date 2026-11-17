@@ -621,8 +621,13 @@ export async function apiFetch<T = unknown>(
       // AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-4a = b, chat 2026-11-07 6:35 PM
       // Pacific; 88.9-UI-SPEC.md (d) Resolutions of (c)): the level moved to logger.warn — a
       // warning event — chosen OVER the logger.info breadcrumb of 2026-09-13 (D2).
+      // AMENDED Phase 88.9-52 (A-54, frontend half): the ctx also carries the HTTP status (a number,
+      // nothing personal). An HTML body with a 404 is the backend's default page for a route that
+      // no longer exists (a stale tab after a deploy), not a wrong environment variable; without
+      // the status the two cannot be told apart in Sentry. The path-only rule below still holds
+      // for the url key.
       const urlPath = url.split('?')[0];
-      logger.warn('API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.', { url: urlPath });
+      logger.warn('API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.', { url: urlPath, status: response.status });
       // Phase 88.6-57 (CR-501): the MESSAGE carries the path only -- it becomes the Sentry
       // exception value via queryCacheOnError, and a query can carry a third party's
       // email. DECISION Phase 88.9-38 F1-4a: the warning's ctx carries the PATH only (urlPath),
