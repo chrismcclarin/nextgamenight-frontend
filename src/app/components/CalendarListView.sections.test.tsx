@@ -18,6 +18,7 @@ import { render, screen, cleanup, within, fireEvent, act } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import CalendarListView from './CalendarListView';
+import { bgImageProbeForTests } from '../../lib/hooks/useBgImageFailed';
 
 const TZ = 'America/New_York';
 // Friday 2:00 PM in New York.
@@ -334,6 +335,22 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
       expect(row.className.split(/\s+/), `${arm}: no viewer id, no outline`).not.toContain('border-dashed');
       expect(within(row).queryByText('Guest'), `${arm}: no viewer id, no Guest pill`).toBeNull();
       cleanup();
+    }
+  });
+
+  // 88.9-52 (A-17): the picture-load probe is called once per list, as its contract asks, not once
+  // per row: three picture rows subscribe one store listener, and none is left after unmount.
+  it('A-17 (88.9-52): three picture rows share one picture-load probe on every arm', () => {
+    const pictured = (id: string, name: string, offset: number) => ({
+      ...night(id, name, at(offset)),
+      Group: { name: 'Photo Club', background_image_url: `https://images.example.test/${id}.jpg` },
+    });
+    for (const arm of ARMS) {
+      renderArm(arm, [pictured('pic1', 'Catan', 2 * HOUR), pictured('pic2', 'Azul', DAY), pictured('pic3', 'Root', 2 * DAY)]);
+      expect(rowTitles(panelOf(upcomingButton())), `${arm}: the three rows`).toHaveLength(3);
+      expect(bgImageProbeForTests.listenerCount(), `${arm}: one probe per list, not one per row`).toBe(1);
+      cleanup();
+      expect(bgImageProbeForTests.listenerCount(), `${arm}: the list left a store listener behind`).toBe(0);
     }
   });
 });

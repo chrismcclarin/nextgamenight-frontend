@@ -234,6 +234,15 @@ export default function CalendarListView({
   // since 88.9-61). `useId` so two mounted list views can never collide on the same
   // `aria-controls` target.
   const uid = useId();
+  /* X6 (88.9-60), moved here by 88.9-52 (A-17): the shared picture-load probe is called ONCE for the
+     whole list, as its contract asks (src/lib/hooks/useBgImageFailed.ts ("Call ONCE at a component")),
+     and handed down through DateGroup to each EventRow, which asks it in its flag. It was called in
+     every EventRow: one store listener and two effects per row.
+     DECISION Phase 88.9-52 (A-17): the rows ask the LIST's probe during their own render, chosen OVER
+     a probe per row. That is sound only while DateGroup and EventRow are not memoised: the probe
+     records what it was asked on each list render, so a row that skipped a list render would drop out
+     of the set a failed picture wakes. Wrapping either in React.memo is a decision, not a cleanup. */
+  const bgImageFailed = useBgImageFailed();
   const upcomingHeadingId = `${uid}-upcoming`;
   const upcomingPanelId = `${uid}-upcoming-panel`;
   const pastHeadingId = `${uid}-past-heading`;
@@ -845,6 +854,7 @@ export default function CalendarListView({
                   onEventClick={onEventClick}
                   isSheet={isSheet}
                   viewerDbUserId={viewerDbUserId}
+                  bgImageFailed={bgImageFailed}
                   statusTagEligible
                 />
               ))}
@@ -930,6 +940,7 @@ export default function CalendarListView({
                         onEventClick={onEventClick}
                         isSheet={isSheet}
                         viewerDbUserId={viewerDbUserId}
+                        bgImageFailed={bgImageFailed}
                       />
                     ))}
 
@@ -1051,6 +1062,8 @@ function DateGroup({
   // ONLY (F2c; the Later group until X11, 88.9-61, folded it into that list).
   viewerDbUserId = null,
   statusTagEligible = false,
+  // 88.9-52 (A-17): the list's one picture-load probe, forwarded to EventRow.
+  bgImageFailed,
 }) {
   // Capitalised so JSX treats it as a component; the value is a lowercase intrinsic tag.
   const DayHeading = headingLevel;
@@ -1072,6 +1085,7 @@ function DateGroup({
             headingLevel={rowHeadingLevel}
             viewerDbUserId={viewerDbUserId}
             statusTagEligible={statusTagEligible}
+            bgImageFailed={bgImageFailed}
             onClick={() => onEventClick && onEventClick(event)}
           />
         ))}
@@ -1094,14 +1108,14 @@ function DateGroup({
  * view on first paint.
  */
 const EventRow = forwardRef(function EventRow(
-  { event, timezone, onClick, viewerDbUserId = null, statusTagEligible = false, isSheet = false, headingLevel = 'h5' },
+  { event, timezone, onClick, viewerDbUserId = null, statusTagEligible = false, isSheet = false, headingLevel = 'h5', bgImageFailed },
   ref
 ) {
   // See the `headingLevel` DECISION on `DateGroup` above — the default IS the shipped
   // level, so every caller that passes nothing renders exactly what it rendered before.
   const TitleHeading = headingLevel;
-  // X6 (88.9-60): the shared picture-load probe; one row, one lookup, in the flag below.
-  const bgImageFailed = useBgImageFailed();
+  // X6 (88.9-60): the shared picture-load probe arrives as a prop (88.9-52 A-17: called once, in
+  // CalendarListView); one row, one lookup, in the flag below.
   const groupBgImage = event.Group?.background_image_url;
   const groupProfilePic = event.Group?.profile_picture_url;
 
