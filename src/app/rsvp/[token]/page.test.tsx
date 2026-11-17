@@ -886,3 +886,96 @@ describe('rsvp/[token] — the used-link glyph, the success card top and Go to H
     expect(links[0].className).toContain('btn-primary');
   });
 });
+
+// Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the error card draws the X, in place of
+// the warning triangle. Amber X: the RSVP could not be confirmed, or the server asked the person
+// to slow down. Red X: the link itself is malformed or was tampered with. The amber cards with
+// their own glyphs (used link, account, cancelled, already happened) are untouched (Q69-4).
+describe('rsvp/[token] — Q69 the error card glyph by cause (88.9-52)', () => {
+  const X_PATH = 'M6 18L18 6M6 6l12 12';
+  const TRIANGLE_START = 'M12 9v2m0 4h.01';
+  const RETAP = 'This link may be invalid or expired. Please try clicking the RSVP link from your email again.';
+  const RATE_LIMITED_LINE = "You're going a little fast — give it a moment, then try again.";
+  // The limiter's body, in shape (the envelope's code, its message and the alias), from
+  // backend:Sonnet/middleware/rateLimiter.js ("const rateLimitedBody = (message) =>")
+  const BODY_RATE_LIMITED_429 = {
+    code: 'rate_limited',
+    message: 'Too many requests from this IP, please try again later.',
+    error: 'Too many requests from this IP, please try again later.',
+  };
+  const expectTone = (container: HTMLElement, tone: 'amber' | 'red', label: string) => {
+    expect(container.querySelector(`path[d^="${TRIANGLE_START}"]`), `${label}: the triangle is still drawn`).toBeNull();
+    const path = container.querySelector(`path[d="${X_PATH}"]`);
+    expect(path, `${label}: the error card draws no X`).not.toBeNull();
+    const svg = path!.closest('svg')!;
+    const circle = svg.parentElement!;
+    const on = tone === 'amber' ? 'warning' : 'error';
+    const off = tone === 'amber' ? 'error' : 'warning';
+    expect(circle, `${label}: the circle is not the ${on} fill`).toHaveClass(`bg-status-${on}-subtle`);
+    expect(circle, label).not.toHaveClass(`bg-status-${off}-subtle`);
+    expect(svg, `${label}: the X is not the ${on} ink`).toHaveClass(`text-content-status-${on}`);
+    expect(svg, label).not.toHaveClass(`text-content-status-${off}`);
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelectorAll('svg'), `${label}: one glyph on the card`).toHaveLength(1);
+  };
+
+  it('Q69: a malformed or tampered link draws the red X over the retap line (unrecognised body, missing query value)', async () => {
+    respond().mockResolvedValue({ error: 'Invalid or expired link' });
+    let view = render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'Something went wrong' });
+    expect(screen.getByText(RETAP)).toBeInTheDocument();
+    expectTone(view.container, 'red', 'signature-mismatch 403');
+    cleanup();
+
+    respond().mockReset();
+    searchQueryOverride = () => `e=${EVENT_ID}&u=${USER_ID}`;
+    view = render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'Something went wrong' });
+    expect(screen.getByText(RETAP)).toBeInTheDocument();
+    expectTone(view.container, 'red', 'missing status');
+    expect(respond()).not.toHaveBeenCalled();
+  });
+
+  it('Q69: an RSVP that could not be confirmed draws the amber X (network, internal), words unchanged', async () => {
+    const arms: Array<[ApiError, string]> = [
+      [
+        new ApiError('RSVP request failed', 'network', 0),
+        "We couldn't confirm your RSVP — the connection timed out. Sign in and open the event to check your answer.",
+      ],
+      [
+        new ApiError('HTTP error! status: 500', 'internal', 500),
+        "We couldn't confirm your RSVP. Sign in and open the event to check your answer.",
+      ],
+    ];
+    for (const [err, line] of arms) {
+      respond().mockReset();
+      respond().mockRejectedValue(err);
+      const { container } = render(<RsvpPage />);
+      await screen.findByRole('heading', { name: 'Something went wrong' });
+      expect(screen.getByText(line)).toBeInTheDocument();
+      expectTone(container, 'amber', err.code);
+      cleanup();
+    }
+  });
+
+  it('Q69: a rate-limited answer (429) shows the amber X over the register rate-limit line, never the retap advice or the backend message', async () => {
+    respond().mockResolvedValue(BODY_RATE_LIMITED_429);
+    const { container } = render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'Something went wrong' });
+    expect(screen.getByText(RATE_LIMITED_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(RETAP)).toBeNull();
+    expect(screen.queryByText(/Too many requests/)).toBeNull();
+    expectTone(container, 'amber', '429');
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toHaveTextContent(`Something went wrong ${RATE_LIMITED_LINE}`);
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('Q69: REGRESSION PIN — only the rate_limited code is read; any other code-only body stays on the red retap card (D62)', async () => {
+    respond().mockResolvedValue({ code: 'event_cancelled', group_id: GROUP_ID });
+    const { container } = render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'Something went wrong' });
+    expect(screen.getByText(RETAP)).toBeInTheDocument();
+    expectTone(container, 'red', 'code-only body');
+  });
+});

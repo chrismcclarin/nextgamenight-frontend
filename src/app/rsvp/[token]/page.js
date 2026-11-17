@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
 import { Icon } from '@/components/ui/Icon';
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 /**
  * Page states for the RSVP magic link flow
@@ -27,6 +28,9 @@ const PAGE_STATES = {
   // Plan 88.6.1-87 (close ruling P-77): the backend's own 404, carrying its token, after the
   // link was used. Entered on an ApiError with code `not_found`.
   EVENT_GONE: 'event_gone',
+  // Phase 88.9-52 (Q69): the rate limiter's 429. See the DECISION Phase 88.9-52 (Q69) marker
+  // above RATE_LIMITED_DETAIL.
+  RATE_LIMITED: 'rate_limited',
 };
 
 /**
@@ -64,10 +68,45 @@ const UNCONFIRMED_NETWORK_DETAIL =
   "We couldn't confirm your RSVP — the connection timed out. Sign in and open the event to check your answer.";
 const UNCONFIRMED_INTERNAL_DETAIL =
   "We couldn't confirm your RSVP. Sign in and open the event to check your answer.";
+/* DECISION Phase 88.9-52 (Q69, orchestrator-ruled defect inside the owner's "approve all",
+   2026-11-16): a rate-limited answer gets its OWN state on the error card, with the register's
+   rate-limit sentence, chosen OVER the shipped fallthrough to ERROR_DETAIL, which told a person
+   who was only asked to slow down to tap the link from their email again. The limiter answers
+   before the route runs (backend:Sonnet/server.js, the apiLimiter mount on /api/), so the
+   single-use token is unspent and "try again" is true.
+   THE MECHANISM: the 429 is under 500, so respondViaToken RESOLVES its parsed body, and that
+   body is the backend envelope with code rate_limited
+   (backend:Sonnet/middleware/rateLimiter.js, anchor "const rateLimitedBody = (message) =>").
+   The page reads that ONE code off the resolved body. This is NOT the D62 conversion: the four
+   result.error discriminants below are untouched (their bodies carry no code), the roster count
+   in src/app/errorEnvelopeReads.test.ts stays 4, and any other code-only body still falls to
+   ERROR (pinned in page.test.tsx).
+   REJECTED (a): having respondViaToken reject a 429 (src/lib/api.ts, another plan's file; a
+   third scoped exception to its no-throw rule for something one page read settles). The catch
+   below maps a rejected rate_limited to this state anyway, so that route stays open.
+   REJECTED (b): rendering the body's message (R1: upstream prose is never the display string).
+   REJECTED (c): a literal copy of the register line here (two sources that can drift); the
+   sentence is read from the register by its code.
+   A 429 whose body is not the envelope (an edge or proxy limiter) carries no code and stays on
+   ERROR; the resolved body has no status to read. */
+const RATE_LIMITED_DETAIL = getFetchErrorMessage(new ApiError('rate limited', 'rate_limited', 429));
 const UNCONFIRMED_DETAIL_BY_STATE = {
   [PAGE_STATES.UNCONFIRMED_NETWORK]: UNCONFIRMED_NETWORK_DETAIL,
   [PAGE_STATES.UNCONFIRMED_INTERNAL]: UNCONFIRMED_INTERNAL_DETAIL,
+  [PAGE_STATES.RATE_LIMITED]: RATE_LIMITED_DETAIL,
 };
+/* DECISION Phase 88.9-52 (Q69-1/-2, owner 2026-11-16 "approve all"): the error card draws the X
+   (the group invite page's glyph) in place of the warning triangle, and its colour follows the
+   cause. Amber (warning ink on the warning circle, 5.50 light / 4.95 dark): the three states
+   below, where trying again or checking the event may work. Red: PAGE_STATES.ERROR, a link that
+   is malformed or was tampered with. Chosen OVER the triangle on red for every cause. The amber
+   cards with their own glyphs (used link, account, cancelled, already happened) are not this
+   card and are unchanged (Q69-4). */
+const AMBER_ERROR_STATES = new Set([
+  PAGE_STATES.UNCONFIRMED_NETWORK,
+  PAGE_STATES.UNCONFIRMED_INTERNAL,
+  PAGE_STATES.RATE_LIMITED,
+]);
 
 /* Plan 88.6-58 task 7 (review MEDLOW-16; `ITEM-16-COPY-RULING: ratified`, owner 2026-09-29,
    UI-SPEC §6.3). Before this, a second tap on a used link — or a link for an account the backend
@@ -276,6 +315,10 @@ export default function RsvpPage() {
           setPageState(PAGE_STATES.EXPIRED_LINK);
         } else if (result.error === 'account_not_found') {
           setPageState(PAGE_STATES.ACCOUNT_NOT_FOUND);
+        } else if (result.code === 'rate_limited') {
+          // Q69 (88.9-52): the limiter's envelope, the one code this page reads. See the marker
+          // above RATE_LIMITED_DETAIL.
+          setPageState(PAGE_STATES.RATE_LIMITED);
         } else {
           setPageState(PAGE_STATES.ERROR);
         }
@@ -322,6 +365,12 @@ export default function RsvpPage() {
            88.6.1-87 — owner-ruled 2026-10-18 ("amber"), shown at 375px: the deleted-event state
            (EVENT_GONE) draws the LINK_STATE_COPY branch; UNCONFIRMED_NETWORK and
            UNCONFIRMED_INTERNAL stay on the ERROR branch, where this rejection still holds.
+           AMENDED Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): Q69 is the Phase 88.9
+           look change this rejection deferred. The two UNCONFIRMED states STAY on the ERROR
+           branch (its headline, their own details, Go to Home) and that branch now draws the X
+           on the amber warning pair for them, chosen OVER moving them to LINK_STATE_COPY (still
+           rejected: the clock is that branch's glyph, and Q69-4 keeps it there) and OVER the
+           triangle on red. See AMBER_ERROR_STATES.
            REJECTED (b): ONE unconfirmed state plus a second state value (or an `errorInfo`
            field) holding the cause — two writes per failure that must agree, and the detail
            would no longer follow from `pageState`.
@@ -356,6 +405,10 @@ export default function RsvpPage() {
           setPageState(PAGE_STATES.UNCONFIRMED_NETWORK);
         } else if (err instanceof ApiError && err.code === 'internal') {
           setPageState(PAGE_STATES.UNCONFIRMED_INTERNAL);
+        } else if (err instanceof ApiError && err.code === 'rate_limited') {
+          // Q69 (88.9-52): unreachable today (a 429 resolves); kept so a helper that starts
+          // rejecting it lands on the same card.
+          setPageState(PAGE_STATES.RATE_LIMITED);
         } else {
           setPageState(PAGE_STATES.ERROR);
         }
@@ -403,7 +456,9 @@ export default function RsvpPage() {
      this page composes both halves. Reverting to heading-only is a decision, not a cleanup. */
   // Plan 88.6.1-36 (D-25): the ERROR branch's detail — R3 or R9 for the two UNCONFIRMED states,
   // `ERROR_DETAIL` otherwise. ONE value read by the branch's `<p>` AND the announcement.
+  // Q69 (88.9-52): the rate-limited state reads the register's rate-limit line from the same map.
   const errorDetail = UNCONFIRMED_DETAIL_BY_STATE[pageState] ?? ERROR_DETAIL;
+  const errorIsTemporary = AMBER_ERROR_STATES.has(pageState);
   const announcement =
     pageState === PAGE_STATES.LOADING
       ? ''
@@ -619,10 +674,18 @@ export default function RsvpPage() {
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
-          <div className="w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4">
+          {/* Q69 (88.9-52): the X, amber or red by cause. See AMBER_ERROR_STATES. One literal
+              class string per arm (a class built from pieces emits nothing). */}
+          <div
+            className={
+              errorIsTemporary
+                ? 'w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4'
+                : 'w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4'
+            }
+          >
             {/* Decorative — see the success branch. */}
-            <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            <svg className={errorIsTemporary ? 'w-8 h-8 text-content-status-warning' : 'w-8 h-8 text-content-status-error'} aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
           <Heading level={1} size="heading" className="text-content-primary mb-2">
