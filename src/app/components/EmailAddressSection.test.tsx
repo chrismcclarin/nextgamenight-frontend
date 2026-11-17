@@ -823,6 +823,41 @@ describe('EmailAddressSection — Resend and Discard', () => {
     expect(screen.getByTestId('email-receipt')).toHaveTextContent('Email change discarded');
     expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
   });
+
+  it('A-14 (88.9-52): when the receipt caption leaves after its 4000 ms, the spoken lane is emptied with it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderAwaiting();
+      api.cancelEmailChange.mockResolvedValue(
+        body({ outcome: 'cancelled', pending_email_change: null, verification_sent: false })
+      );
+      const lane = sectionRegion();
+      await user.click(screen.getByRole('button', { name: 'Discard change' }));
+      await waitFor(() =>
+        expect(screen.getByTestId('email-receipt')).toHaveTextContent('Email change discarded')
+      );
+      expect(lane).toHaveTextContent('Email change discarded');
+
+      // One tick short of the window: both still there.
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(screen.getByTestId('email-receipt')).toBeInTheDocument();
+      expect(lane).toHaveTextContent('Email change discarded');
+
+      // Past the window: the caption is gone, and a screen-reader user swiping later finds
+      // nothing left in the lane (it used to keep the words until the next action).
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(screen.queryByTestId('email-receipt')).not.toBeInTheDocument();
+      expect(sectionRegion()).toBe(lane);
+      expect(lane).toBeEmptyDOMElement();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

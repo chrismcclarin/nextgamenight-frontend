@@ -628,10 +628,37 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
      the START of the action — `handleSave` and `handleResend` each `announce('')`
      synchronously after their gates, so the same outcome twice puts an empty region
      between the two equal strings and both are heard. Still no timer, so the rejected
-     clear-then-set timer stays rejected for the reason above. */
-  const announce = setAnnouncement;
+     clear-then-set timer stays rejected for the reason above.
+     AMENDED Phase 88.9-52 (A-14): a receipt (changed / discarded / reverted) now leaves this lane
+     when its visible caption leaves (the effect below). What changed: the lane kept the words
+     until the next action, so a screen-reader user swiping later met an outcome with no visible
+     home. This does not delay or re-time any announcement, so the rejected clear-then-set timer
+     stays rejected; the only clock is the caption's own 4000 ms in useInlineReceipt. REJECTED: a
+     second timer here (two clocks for one caption) and clearing inside useInlineReceipt (its other
+     sites speak through their own region, which the hook already empties). */
+  const announceSeqRef = React.useRef(0);
+  const announce = React.useCallback((text: string) => {
+    announceSeqRef.current += 1;
+    setAnnouncement(text);
+  }, []);
   // Save-feedback rule 3 (88.9-24): the outcome caption beside Change (see the AMENDED line above).
   const { receipt, showReceipt, clearReceipt } = useInlineReceipt();
+  // A-14 (88.9-52): what the caption last showed, and the announce count when it appeared. The
+  // lane is emptied only when the caption has gone, the lane still holds that same receipt, and
+  // nothing was announced since. The count is what tells an expiry from the hook's short empty
+  // spell before a repeated receipt, whose own announce() lands in that same spell.
+  const shownReceiptRef = React.useRef({ text: '', seq: 0 });
+  React.useEffect(() => {
+    if (receipt) {
+      shownReceiptRef.current = { text: receipt, seq: announceSeqRef.current };
+      return;
+    }
+    const gone = shownReceiptRef.current;
+    if (!gone.text) return;
+    shownReceiptRef.current = { text: '', seq: 0 };
+    if (gone.seq !== announceSeqRef.current) return;
+    setAnnouncement((held) => (held === gone.text ? '' : held));
+  }, [receipt]);
   /* Failures of Resend / Discard / Revert used to be written into `codeError`,
      which `FormField` turns into `aria-invalid="true"` on the code input — marking
      a field the user has not mistyped, and often has not touched (code review #35).
