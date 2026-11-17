@@ -2689,6 +2689,13 @@ describe('friend Remove takes the one inline two-tap look (88.9-52: W38)', () =>
     expect(remove).toHaveTextContent('Wait (3)');
     expect(borderClasses(remove)).toEqual([]);
     expect(classes()).toContain('font-semibold');
+    // PIX-2 (88.9-52, W38 one look): the short Wait (3) is anchored to the RIGHT end of the reserve, as
+    // the schedule Delete's is. A button centres its text, so without this the label sat mid-reserve
+    // (measured: left edge 240 in a 151px reserve at 375) while the schedule Delete's ended at the edge.
+    const reserveRoot = remove.querySelector('span.inline-grid') as HTMLElement;
+    expect(reserveRoot, 'the armed Remove has no reserve around its label').not.toBeNull();
+    expect(reserveRoot.querySelectorAll('[data-reserve]').length).toBeGreaterThan(0);
+    expect(reserveRoot.className.split(/\s+/)).toContain('justify-items-end');
     passGate();
     expect(remove).toHaveTextContent('Tap again to confirm');
     expect(borderClasses(remove)).toEqual([]);

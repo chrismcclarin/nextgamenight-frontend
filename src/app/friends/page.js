@@ -1582,8 +1582,14 @@ function FriendsPage() {
                                                                     <DelayedSpinner busy={removing} className="mr-2" />
                                                                     {/* X69 width (88.9-67): from the arm the label holds the widest of
                                                                         Wait (3), (2), (1) and Tap again to confirm, so the row does not
-                                                                        move when the wait ends; at rest nothing is reserved. */}
-                                                                    <ReservedLabel reserve={removeFriendGate.reserveFor(friendship.id)}>
+                                                                        move when the wait ends; at rest nothing is reserved.
+                                                                        AMENDED Phase 88.9-52 (PIX-2, W38 one look, picture pass): the label is
+                                                                        anchored to the RIGHT end of that reserve (justify-items-end), the schedule
+                                                                        Delete's form on Profile (W37), chosen OVER the default cell, where the
+                                                                        button's centred text set Wait (3) in the middle of the 151px reserve (left
+                                                                        edge 240 at 375) while the schedule Delete's ended at the edge (330). Both
+                                                                        are right-anchored controls, so the short label now ends where Remove ended. */}
+                                                                    <ReservedLabel className="justify-items-end" reserve={removeFriendGate.reserveFor(friendship.id)}>
                                                                         {removeFriendGate.labelFor(friendship.id, 'Remove')}
                                                                     </ReservedLabel>
                                                                 </button>

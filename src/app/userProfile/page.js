@@ -4921,7 +4921,10 @@ const CollectionCard = memo(function CollectionCard({
                 30, where 6px a side measured 34 wide in CI) and grows to
                 its label when armed, where a second
                 reserve inside the box keeps it one width through
-                Wait (3), (2), (1) and Remove (X69, 88.9-67). */}
+                Wait (3), (2), (1) and Remove (X69, 88.9-67).
+                AMENDED Phase 88.9-52 (PIX-2): the side padding is 5px now (20 + 10 + 2 = 32,
+                the minimum exactly) and the resting button anchors the box 6px inside its
+                right edge; see the PIX-2 line on the X36a marker below. */}
             {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
                     `font-semibold` STAYS, and it is deliberately NOT one of
                     the 600s the weight sweep converted. It is not emphasis —
@@ -4962,14 +4965,19 @@ const CollectionCard = memo(function CollectionCard({
                     // A conditional spread AFTER the hook's props (the Friends form). The gate is
                     // disarmed while the DELETE runs, so the spinner joins the RESTING box.
                     // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): (1) armed keeps the RESTING bordered box and adds only the 600 weight, as the schedule Delete adds only its weight, chosen OVER the error-subtle FILL the armed box gained (fork 7, 88-33 Task 5: the pink pill of W38); the border stays in every state because an icon button needs its box (X53). Armed word on the card ground: 8.31 light, 5.94 on the dark raised fill (floor 4.5). (2) the busy spinner LEADS the X, so the right-anchored X holds its place while the box grows left, chosen OVER the trailing spinner (the X moved about 18px left).
+                    // AMENDED Phase 88.9-52 (PIX-2, W38 one look, picture pass): claim (2) was not true as built. Rendered at 375 the X moved 7px RIGHT while busy (left edge 302 to 309): the 32px box was CENTRED in the 44px button at rest (6px each side), and once the spinner made the box 50px, wider than the button, it sat flush with the button's right edge (6px), with the 2px of centring slack round the X gone as well (1px). Now, at rest and while busy, the button anchors the box 6px inside its right edge (justify-end, pr-1.5: 44 - 6 - 32 leaves the same 6px on the left at rest) and the box pads 5px a side (px-1.25: 20 + 10 + 2 = 32, no slack), so the X's right edge is 12px inside the button's right edge in both states and the box grows left only (52px box, 58px button, inside the slot's reserve). Chosen OVER a spinner slot reserved at rest (a 52px box for good, X53 rejected the large resting box) and OVER an absolutely placed spinner (it would sit outside the border, and an icon button's busy sign belongs in its box). The ARMED button keeps the centred, unpadded string: its box is the slot's whole reserve, and 6px of padding would widen the slot on arming and push the title (walk row 573). Arithmetic at the default text size only, not rendered: with enlarged text the box's rem minimum is larger than the 20px icon needs, the slack returns and the X can still shift while busy.
                     {...(removing ? { 'aria-disabled': 'true', 'aria-label': `Remove ${game.name}, removing` } : {})}
-                    className="group inline-flex min-h-11 min-w-11 items-center justify-center whitespace-nowrap rounded-btn text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    className={
+                        armed
+                            ? 'group inline-flex min-h-11 min-w-11 items-center justify-center whitespace-nowrap rounded-btn text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring'
+                            : 'group inline-flex min-h-11 min-w-11 items-center justify-end pr-1.5 whitespace-nowrap rounded-btn text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring'
+                    }
                 >
                     <span
                         className={
                             armed
                                 ? 'font-semibold inline-flex min-h-8 items-center justify-center gap-1 rounded-btn border border-status-error px-2 group-hover:bg-status-error-subtle'
-                                : 'inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-status-error px-1 group-hover:bg-status-error-subtle'
+                                : 'inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-status-error px-1.25 group-hover:bg-status-error-subtle'
                         }
                     >
                         {/* W38 (88.9-52): the spinner leads, and it is mounted OUTSIDE the armed ternary so

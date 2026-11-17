@@ -6805,8 +6805,17 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     // The box is 32px SQUARE at rest: its padding must leave the 32px minimum in charge. The 20px
     // icon with 6px of padding each side and the 1px border measured 34px wide in CI (runs
     // 43796833042 and 43796838489), so the padding is 4px each side (20 + 8 + 2 = 30, under 32).
-    expect(boxClasses).toContain('px-1');
-    expect(boxClasses.filter((c) => /^p[xlr]?-/.test(c))).toEqual(['px-1']);
+    // AMENDED Phase 88.9-52 (PIX-2, W38 one look): 5px each side, so the box is 32px by its own content
+    // (20 + 10 + 2) and the X sits 6px inside the box's right edge with no centring slack. With 4px the
+    // 2px of slack was shared round the X at rest and gone while busy, one of the two causes of the X
+    // moving while busy (the picture pass measured 7px at 375).
+    expect(boxClasses).toContain('px-1.25');
+    expect(boxClasses.filter((c) => /^p[xlr]?-/.test(c))).toEqual(['px-1.25']);
+    // The button anchors the box 6px inside its right edge at rest (44 - 6 - 32 leaves 6 on the left,
+    // the same place as centred) and keeps that anchor while busy.
+    expect(classes).toContain('justify-end');
+    expect(classes).toContain('pr-1.5');
+    expect(classes).not.toContain('justify-center');
     const icon = box.querySelector('svg');
     expect(icon, 'the box holds no icon').not.toBeNull();
     expect(icon).toHaveAttribute('width', '20');
@@ -6860,6 +6869,14 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     // The spinner sits in the bordered box, beside the X.
     expect((x.firstElementChild as HTMLElement).querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
     // W38 (88.9-52): the spinner LEADS, so the X (right-anchored) holds its place while the box grows left.
+    // PIX-2 (88.9-52): the button and the box keep their resting class strings while busy, so the box stays
+    // anchored 6px inside the button's right edge once it is wider than the 44px button (it was centred at
+    // rest and flush right while busy: the X moved 7px).
+    const busyClasses = x.className.split(/\s+/);
+    expect(busyClasses).toContain('justify-end');
+    expect(busyClasses).toContain('pr-1.5');
+    expect(busyClasses).not.toContain('justify-center');
+    expect((x.firstElementChild as HTMLElement).className.split(/\s+/).filter((c) => /^p[xlr]?-/.test(c))).toEqual(['px-1.25']);
     const boxChildren = Array.from((x.firstElementChild as HTMLElement).children);
     expect(boxChildren).toHaveLength(2);
     expect(boxChildren[0].getAttribute('data-slot')).toBe('spinner');
