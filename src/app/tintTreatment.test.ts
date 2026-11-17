@@ -316,7 +316,8 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
     ).toBeGreaterThanOrEqual(2);
 
     const member = fs.readFileSync(path.join(SRC, 'app/components/ClickableMemberName.js'), 'utf8');
-    expect(member).toMatch(/rounded-full bg-surface-muted text-btn-primary/);
+    // AMENDED Phase 88.9-52 (W36): the glyph is the link ink (dark 1.99 to 6.75 on the circle); the muted circle stands.
+    expect(member).toMatch(/rounded-full bg-surface-muted text-content-link/);
   });
 
   it('4b. the Req 10 delete-over-revive decision lives at a PRODUCTION site, not only in this file', () => {

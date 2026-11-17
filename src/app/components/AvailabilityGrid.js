@@ -924,21 +924,21 @@ export default function AvailabilityGrid({
 
               AMENDED Phase 88.9-52 (W30, owner ruling A, 2026-11-16: Clear All when it cannot be
               pressed is clearly fainter than the live button in both themes): the gated FILL is
-              removed and the gated EDGE is the live edge at half strength (border-line/50, a
-              colour alpha on the edge only, not element opacity); the gated ink stays the house
-              gated ink. The fill was the fault: darker than the live button in light (1.38) and
+              removed and the gated EDGE steps down to its own token (border-line-gated: light
+              warm-300, dark purple-800; never an opacity modifier, which the tint sweep
+              forbids); the gated ink stays the house gated ink. The fill was the fault: darker than the live button in light (1.38) and
               lighter in dark (1.23). Chosen OVER keeping the O09a fill in one theme (the two
               themes would gate in opposite directions again) and OVER ink alone (the look O09a
               rejected: the edge is the second cue now). The button stays active, so the word
               keeps the 4.5 floor. On the card, live / gated: word light 10.48 / 6.58, dark
-              8.68 / 6.00; edge light 2.31 / 1.47, dark 1.78 / 1.33 (Gate A row W30). The O09a
+              8.68 / 6.00; edge light 2.31 / 1.60, dark 1.78 / 1.23 (Gate A row W30). The O09a
               fill sentences above are history. */}
           <Button
             variant="ghost"
             onClick={handleClearAll}
             disabled={disabled}
             aria-disabled={value.length === 0 ? 'true' : undefined}
-            className="border border-line text-content-secondary bg-surface-card aria-disabled:border-line/50 aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]"
+            className="border border-line text-content-secondary bg-surface-card aria-disabled:border-line-gated aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]"
           >
             Clear All
           </Button>

@@ -2789,10 +2789,12 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // Owner ruling W30 A (2026-11-16): "Clear All when it cannot be pressed is clearly fainter
     // than the live button in both themes." Built: the O09a gated FILL is gone (it was DARKER
     // than the live button in light and LIGHTER in dark), the word keeps the house gated ink, and
-    // the edge is the live edge at half strength. The control stays active (it takes focus and
-    // answers a press), so the word keeps the 4.5 text floor: no inactive-component exemption.
-    // Measured with src/lib/wcag.ts on the card, live / gated: word light 10.4818 / 6.5793, dark
-    // 8.6797 / 5.9963; edge light 2.31 / 1.47, dark 1.78 / 1.33.
+    // the edge steps down to its own gated token (a palette step per theme; never a /N opacity
+    // modifier, which src/app/tintTreatment.test.ts ("no source file re-adds a") forbids). The
+    // control stays active (it takes focus and answers a press), so the word keeps the 4.5 text
+    // floor: no inactive-component exemption. Measured with src/lib/wcag.ts on the card, live /
+    // gated: word light 10.4818 / 6.5793, dark 8.6797 / 5.9963; edge light 2.3096 / 1.5954, dark
+    // 1.7767 / 1.2281.
     const gridSrc = withoutComments(
       fs.readFileSync(path.join(__dirname, 'components', 'AvailabilityGrid.js'), 'utf8'),
     );
@@ -2800,8 +2802,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(cls, 'LOCATOR: the Clear All class string').not.toBeNull();
     const tokens = cls![1].split(/\s+/).filter((token) => token.length > 0);
     const gated = tokens.filter((token) => token.startsWith('aria-disabled:'));
-    expect(gated.sort(), 'the gated arm is exactly an ink and a half-strength edge: no fill').toEqual([
-      'aria-disabled:border-line/50',
+    expect(gated.sort(), 'the gated arm is exactly an ink and the gated edge: no fill').toEqual([
+      'aria-disabled:border-line-gated',
       'aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]',
     ]);
     let measured = 0;
@@ -2812,14 +2814,16 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       expect(liveWord - gatedWord, `W30 — [${theme}] the gated word (${gatedWord.toFixed(4)}) must sit at least 2.5 under the live word (${liveWord.toFixed(4)})`).toBeGreaterThanOrEqual(2.5);
       const liveEdgeHex = resolve(theme, '--color-border');
       const liveEdge = ratioHex(liveEdgeHex, card, 'W30 live edge on the card');
-      const half = blend(liveEdgeHex, 0.5, card);
-      if (half === null) throw new TokenContrastParseError('W30: the half-strength edge did not blend');
+      const half = resolve(theme, '--color-border-gated');
       const gatedEdge = ratioHex(half, card, 'W30 gated edge on the card');
       expect(liveEdge - gatedEdge, `W30 — [${theme}] the gated edge (${half}, ${gatedEdge.toFixed(4)}) must sit at least 0.4 under the live edge (${liveEdge.toFixed(4)})`).toBeGreaterThanOrEqual(0.4);
       expect(gatedEdge, `W30 — [${theme}] the gated edge is still painted (over 1.2 on the card)`).toBeGreaterThan(1.2);
       measured += 4;
     }
     expect(measured, 'anti-vacuity: 2 themes x 4 checks').toBe(8);
+    expect(declIn(blockOf('theme'), '--color-line-gated'), 'W30 — @theme inline must expose --color-line-gated').toBe('var(--color-border-gated)');
+    expect(resolve('light', '--color-border-gated'), 'W30 — the light gated edge is the warm-300 step').toBe(resolve('light', '--warm-300'));
+    expect(resolve('dark', '--color-border-gated'), 'W30 — the dark gated edge is the purple-800 step').toBe(resolve('dark', '--purple-800'));
   });
 
   it('W4 + W5 (88.9-52): in dark both gears carry a painted edge that stands at least 1.40 off every ground they sit on, and further off it than the gear fill alone', () => {
@@ -2961,6 +2965,27 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(declIn(themeBlock, '--color-toggle-on'), 'accent-toggle-on reads the pressed-toggle fill').toBe('var(--color-toggle-pressed-bg)');
     for (const theme of ['light', 'dark'] as const) {
       expectRatio(theme, '--color-toggle-pressed-bg', '--color-bg-card', 3.0, 'W29 the ticked box on the card');
+    }
+  });
+
+  it('W36 (88.9-52): the phone add-friend plus clears 3.0 on its round fill in both themes', () => {
+    // After-build look page W36: in dark the plus was the primary fill colour (purple-600) on the
+    // muted circle, 1.9917, so the control was nearly invisible. The glyph is a graphic (WCAG
+    // 1.4.11, 3:1). Both classes are read from the call site. Measured with src/lib/wcag.ts on
+    // the muted circle: light 3.9930 (was 3.7615), dark 6.7469 (was 1.9917).
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'ClickableMemberName.js'), 'utf8'),
+    );
+    const cls = /rounded-full bg-([a-z0-9-]+) text-([a-z0-9-]+) text-sm font-bold/.exec(src);
+    expect(cls, 'LOCATOR: the round add-friend button names a fill and a glyph colour').not.toBeNull();
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, runtimeProp(cls![2]), runtimeProp(cls![1]), 3.0, 'W36 the plus on its round fill');
     }
   });
 });

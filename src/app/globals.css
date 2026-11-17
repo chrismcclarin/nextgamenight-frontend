@@ -515,6 +515,13 @@
      down and neither needs an alias. Full DECISION marker above the `.btn-secondary` rule. */
   --color-line-control: var(--color-border-control);
   --color-line-control-hover: var(--color-border-control-hover);
+  /* DECISION Phase 88.9-52 (W30, owner ruling A): the edge of a card-ground control that is
+     gated but still active, one step fainter than the card line in each theme (light warm-300,
+     1.60 on the card where the line reads 2.31; dark purple-800, 1.23 where the line reads 1.78).
+     Its own token, chosen OVER a /50 opacity modifier on the line (D-32/D-33 forbid it; the tint
+     sweep reds) and OVER the secondary gated edge (transparent in dark, so no edge at all there).
+     One consumer: the availability grid's Clear All. */
+  --color-line-gated: var(--color-border-gated);
   /* Phase 88.9-58 (X60 De3): the secondary button's OWN edge, bridged so a border utility exists
      for the two raw twins that wear the secondary fill without the button class (the landing
      Google light arm, the home-card gear). The key name differs from the runtime property, so it
@@ -1839,6 +1846,8 @@
      secondary rule's hover step still reads the shared hover token. */
   --color-border-control: var(--warm-300);
   --color-border-control-hover: var(--warm-400);
+  /* W30 (88.9-52), marker at the @theme inline key. */
+  --color-border-gated: var(--warm-300);
 
   /* Success / Error / Warning (functional -- not palette-themed) */
   --color-success: #16a34a;
@@ -2290,6 +2299,8 @@
      byte-UNCHANGED and Gate A pins it. Full rationale above the `.btn-secondary` rule. */
   --color-border-control: transparent;
   --color-border-control-hover: transparent;
+  /* W30 (88.9-52), marker at the @theme inline key: painted in dark, unlike the two above. */
+  --color-border-gated: var(--purple-800);
 
   --color-success: #22c55e;
   --color-error: #b91c1c;

@@ -600,6 +600,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // send-error branch can render it again for a retry; the decision markers that govern its hit
   // extension, tint and focus handling stay at the `status === 'none'` branch below, where they
   // have always been.
+  // AMENDED Phase 88.9-52 (W36): the plus takes the link ink, chosen OVER the primary fill colour
+  // it carried (purple-600 on the muted circle read 1.99 in dark, under the 3:1 a glyph needs).
+  // On the circle: light 3.99, dark 6.75 (the dark link ink is the amber the Invite word uses).
   const renderAddButton = () => (
     <button
       type="button"
@@ -609,7 +612,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       aria-disabled={sendingFrom === 'inline' ? 'true' : undefined}
       disabled={sendingFrom === 'popover'}
       className={cn(
-        "md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card",
+        "md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-content-link text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card",
         hostGroundHalo(hostGround),
       )}
       aria-label={`Add ${username} as a friend`}
