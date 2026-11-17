@@ -4032,7 +4032,10 @@ export default function GameDetailPage() {
                         onClick={() => setShowFilters(!showFilters)}
                         aria-expanded={showFilters}
                         {...(showFilters ? { 'aria-controls': SESSION_FILTERS_PANEL_ID } : {})}
-                        className={showFilters ? "w-full sm:w-auto btn-fuse-bottom" : "w-full sm:w-auto"}
+                        /* 88.9-52 (W33): sm:shrink-0 + sm:whitespace-nowrap — the heading beside it is
+                           w-full, so from 640 the auto-width toggle was shrunk until "Show Filters &
+                           Sort" broke in two with the row half empty. Below 640 it is full width. */
+                        className={showFilters ? "w-full sm:w-auto sm:shrink-0 sm:whitespace-nowrap btn-fuse-bottom" : "w-full sm:w-auto sm:shrink-0 sm:whitespace-nowrap"}
                     >
                         {showFilters ? (
                             <>

@@ -799,6 +799,11 @@ describe('gameDetail sessions header (D-39)', () => {
     const toggle = within(header).getByRole('button', { name: 'Show Filters & Sort' });
 
     expect(toggle.classList.contains('btn-fuse-bottom')).toBe(false);
+    // 88.9-52 (W33): beside the w-full heading the auto-width toggle was squeezed until its label
+    // broke in two at 1280; from 640 it keeps its own width and its words on one line.
+    for (const cls of ['sm:shrink-0', 'sm:whitespace-nowrap']) {
+      expect(toggle.classList.contains(cls), `the closed toggle carries ${cls}`).toBe(true);
+    }
     expect(header.classList.contains('mb-4')).toBe(true);
     expect(header.classList.contains('mb-0')).toBe(false);
 
