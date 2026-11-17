@@ -40,9 +40,9 @@ export const gates = [
   { file: 'src/app/components/availabilityGridColumns.test.ts', min: 6, why: 'Phase 88 Req 4 phone geometry — the six aligned AvailabilityGrid column widths stay in lockstep' },
   { file: 'src/app/decisionMarkers.test.ts', min: 23, why: 'Phase 88 D-36 / D-37 — the decision markers Phase 88 overrode say so, in place' },
   { file: 'src/app/rawColorValues.test.ts', min: 7, why: 'Phase 88 Req 2 — no raw hex or black shadows' },
-  { file: 'src/app/tokenContrast.test.ts', min: 87, why: 'Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
+  { file: 'src/app/tokenContrast.test.ts', min: 95, why: '88.9-52 fix batch raised 87 -> 95 (W28 W30 W4+W5 W20 W29 W36 W45 W3); Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
   { file: 'src/app/pillFamily.test.ts', min: 3, why: 'Phase 88.9-63 X16 / X17a — one pill family, sentence case, names 600' },
-  { file: 'src/app/miniPicks.test.ts', min: 8, why: '88.9 RULING A mini-page picks; 88.9-56 R-C5 rating ink (floor raised to the count); 88.9-56 R-C3b guard scan' },
+  { file: 'src/app/miniPicks.test.ts', min: 9, why: '88.9-52 fix batch raised 8 -> 9 (W40 Toaster pin); 88.9 RULING A mini-page picks; 88.9-56 R-C5 rating ink (floor raised to the count); 88.9-56 R-C3b guard scan' },
   { file: 'src/app/surfaceHoverSweep.test.ts', min: 12, why: 'Phase 88.3 Req 1 / D-02 — the hover and sunken sweep' },
   { file: 'src/app/darkChromeLegibility.test.ts', min: 8, why: 'Phase 88.3 Req 7/8 — dark-chrome ring, muted-label corrections, mobile-panel inert guard' },
   { file: 'src/app/accentSweep.test.ts', min: 7, why: 'Phase 88.3 Req 4/5 — the text-safe accent sweep, incl. the today number' },
@@ -126,7 +126,7 @@ export const gates = [
   // AMENDED Phase 88.9-61 (X25a + X29 A): emptyStates 1 -> 2 (the past-only empty case on every arm); the sections suite is new at 6, then 7 with the sticky / scroll-padding / inset-ring class pin.
   { file: 'src/app/components/CalendarListView.emptyStates.test.tsx', min: 2, why: 'Phase 88.6-60 — the desktop No events and loading arms of CalendarListView' },
   // AMENDED Phase 88.9-63 (X27): sections 7 -> 8 (the guest outline on every list arm).
-  { file: 'src/app/components/CalendarListView.sections.test.tsx', min: 8, why: 'Phase 88.9-61 X25a / X29 — the two-section Calendar list on every arm; 88.9-63 X27 — the guest outline on every arm' },
+  { file: 'src/app/components/CalendarListView.sections.test.tsx', min: 10, why: '88.9-52 fix batch raised 8 -> 10 (A-17, W9); Phase 88.9-61 X25a / X29 — the two-section Calendar list on every arm; 88.9-63 X27 — the guest outline on every arm' },
 
   // AMENDMENT — Phase 88.6 gap plan 61 (review round 2 #18 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING).
   // Two rows added — the guards on the magic-link Sentry egress fixes:
