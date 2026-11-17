@@ -969,7 +969,9 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
 test.describe('Phase 88.5 Req 2/3 — the counted button and the hero, LIGHT (phone project)', () => {
   test.skip(({ isMobile }) => !isMobile, 'phone-tenet requirements — phone project only');
 
-  // UI-SPEC section 12 item 14: the hero and BOTH pills are asserted in both themes. The
+  // UI-SPEC section 12 item 14: the hero and the Calendar-button pill are asserted in both themes;
+  // the sheet's This-week pill is asserted ABSENT (D6c, 88.9-39 removed it; this comment said BOTH
+  // pills until 88.9-52 A-08). The
   // pill's colour genuinely forks (amber-700 on white in light, amber-400 on warm-900 in
   // dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-400)]")) and so does the chip/card treatment beneath the
   // hero, so a dark-only pass leaves one shipped arm rendered by nothing.
