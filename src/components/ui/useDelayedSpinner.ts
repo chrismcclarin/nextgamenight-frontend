@@ -6,8 +6,10 @@
  *
  * The hook returns whether the spinner should be in the tree right now:
  * false for the first SPINNER_DELAY_MS of a busy, true from then on, and still true for
- * SPINNER_MIN_MS after its first appearance even when busy has already dropped. The only
- * consumer is {@link DelayedSpinner}; hosts mount that element, they do not call this hook.
+ * SPINNER_MIN_MS after its first appearance even when busy has already dropped. It has
+ * two consumers: {@link DelayedSpinner}, which hosts mount instead of calling this hook, and the
+ * retry icon slot (RetrySlot) in FetchErrorBanner, which calls it directly because that slot must
+ * show the RefreshCw icon while the spinner is not shown (88.9-56 R-C3b reach).
  */
 import * as React from 'react';
 

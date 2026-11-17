@@ -4,7 +4,7 @@
  * Button — the one button primitive (PRIM-01 / D-01 elevation, D-02 variants).
  *
  * Six variants (`primary` / `secondary` / `danger` / `ghost` / `ghostDanger` / `accent`) and
- * three sizes (`default` / `icon` / `sm`), on the repo's `cva` + `cn()` +
+ * four sizes (`default` / `icon` / `iconSquare` / `sm`), on the repo's `cva` + `cn()` +
  * `forwardRef` + `displayName` idiom established by {@link Banner}. Names are
  * deliberately aligned with `Modal.tsx`'s `ModalActionVariant` so the later
  * adoption plans are a mechanical swap, not a rename.

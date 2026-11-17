@@ -3171,7 +3171,8 @@ describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx
 // label that carries a letter-spacing utility carries exactly tracking-wider (0.05em). The
 // scan keys on a string chunk holding BOTH the uppercase class and any tracking utility,
 // chosen OVER the R2-13 census command keyed on text-xs, which misses the 14px Heading size
-// label sites (Later, the day heading, the FriendInvitePanel section headings). The tutorial
+// label sites (the day heading, the FriendInvitePanel section headings; the Later heading named
+// here first left with 88.9-61 X11). The tutorial
 // exemption is a counted roster entry by file name, chosen OVER a directory glob, so a new
 // tutorial site still has to be counted and the tutorial rewrite deletes the entry.
 //

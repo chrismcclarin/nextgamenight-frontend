@@ -1,4 +1,4 @@
-// Phase 88.9-40 (SESSION-01, owner ruling 2026-11-07; SPEC A8): the seven behaviour pins of the ONE
+// Phase 88.9-40 (SESSION-01, owner ruling 2026-11-07; SPEC A8): the eight behaviour pins of the ONE
 // sign-in guard every protected page uses. The hook decides once per mount, by a ref, whether a
 // signed-out or token-rejected visitor goes to sign-in (a latched window.location.replace to the
 // house URL, src/lib/signIn.ts ("export function buildSignInUrl")) or, back with the latch set,

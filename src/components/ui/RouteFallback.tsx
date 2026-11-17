@@ -17,6 +17,9 @@
  * speaks a change to a live region, not its arrival), so the labelled root named the region but
  * did not speak it. The region inside mounts empty and takes the label after the house dwell.
  * Chosen OVER keeping the labelled root beside it (two status regions for one line).
+ * AMENDED Phase 88.9-52 (A-53): swiping through this screen meets the words twice, the visible line
+ * and the region. That is the deliberate house two-node shape (W38: the visible row is not hidden
+ * from assistive technology), an accepted double swipe stop, chosen OVER hiding the visible line.
  *
  * What it deliberately does NOT do:
  * - **No per-route skeleton content (D-21).** `loading.tsx` unmounts as soon as the
