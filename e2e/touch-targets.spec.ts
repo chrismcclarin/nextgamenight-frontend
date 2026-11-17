@@ -783,7 +783,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      project; the file-level skip already guarantees that. The kebab renders at every
      breakpoint (its own marker says so) but its floor is a phone-tenet requirement, so it
      is asserted here rather than in `journeys`. */
-  test('R4: hamburger, the group page Group settings gear and a KebabMenu item row measure >= 44x44 at 375px (88-28 geometry, measured not derived)', async ({ page }) => {
+  test('R4: hamburger, the group page Group settings gear, the KebabMenu trigger and a KebabMenu item row measure >= 44x44 at 375px (88-28 geometry, measured not derived)', async ({ page }) => {
     await page.goto('/');
     await assertDarkTheme(page);
 
@@ -808,6 +808,11 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await page.getByRole('button', { name: 'Manage Members' }).click();
     const kebab = page.getByRole('button', { name: /^Member actions for / }).first();
     await guardResolved(kebab, 'the first Manage Members member-row KebabMenu trigger');
+    // 88.9-52 A-10: the trigger's own floor (min-h-11 min-w-11) is measured again. The 88.9-31
+    // re-point kept only the item row, so no e2e measured any KebabMenu trigger. Settled first:
+    // the trigger sits in a dialog that is still animating in (see settleOpenAnimation).
+    await settleOpenAnimation(page, kebab, 'the Manage Members member-row KebabMenu trigger');
+    await assertMin44(kebab, 'KebabMenu trigger (Manage Members member row)');
 
     // 88-CODE-REVIEW MED#13: the ITEMS behind the trigger — the destructive row
     // actions D-40 routed through this menu — carried the census's ~36px FAIL
