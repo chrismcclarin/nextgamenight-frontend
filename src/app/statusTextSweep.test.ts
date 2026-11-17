@@ -45,7 +45,7 @@
  * --------------------------------
  * The token lives in shapes a `className=`-anchored rewrite misses and a naive `sed` corrupts:
  * a `closeClassName=` prop (src/app/components/createGroup.js ("closeClassName=")), object-literal config values
- * (src/app/components/rsvpStatusConfig.ts ("textColor: 'text-content-status-success',"), moved there from RsvpSection.js), a lookup table (src/app/gameDetail/page.js ("function RsvpStatusPill({ status })"); its cls values carried status tokens until 88.9-63 moved the pills to the pill family) and template-literal
+ * (src/app/components/rsvpStatusConfig.ts ("textColor: 'text-content-status-success',"), moved there from RsvpSection.js), a lookup table (src/app/gameDetail/page.js ("function RsvpStatusPill({ status, nightStarted = false })"); its cls values carried status tokens until 88.9-63 moved the pills to the pill family) and template-literal
  * ternary branches (src/app/components/KebabMenu.js ("text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold'"), src/app/components/ScheduleList.js ("'bg-status-warning-subtle text-content-status-warning enabled-hover"), src/app/components/FriendInvitePanel.js ("'bg-status-success-subtle text-content-status-success border border-status-success'")).
  * The lexer crosses newlines, recurses into `${...}`, and DROPS COMMENTS — the last one matters
  * here because a raw grep reads 134 occurrences where the class-string population is 132; the two
@@ -148,7 +148,7 @@ describe('Req 6 status text sweep — every status text site reads the text-safe
     ).toHaveLength(2);
     // (iv) an object-literal config value (src/app/components/rsvpStatusConfig.ts ("textColor: 'text-content-status-success',"), moved there from RsvpSection.js).
     expect(legacyStatusTextUses(`const cfg = { textColor: '${LEGACY[0]}' };`)).toHaveLength(1);
-    // (v) a lookup-table `cls:` value (the RsvpStatusPill map, src/app/gameDetail/page.js ("function RsvpStatusPill({ status })"), until 88.9-63).
+    // (v) a lookup-table `cls:` value (the RsvpStatusPill map, src/app/gameDetail/page.js ("function RsvpStatusPill({ status, nightStarted = false })"), until 88.9-63).
     expect(
       legacyStatusTextUses(
         `const m = { yes: { label: 'Going', cls: 'bg-status-success-subtle ${LEGACY[0]}' } };`,
