@@ -90,6 +90,15 @@ describe('TimezoneNudgeBanner — K8, the B3a status-warning family (plan 88.9-4
     expect(body).toHaveClass('text-sm', 'text-content-status-warning');
 
     expect(link).toHaveClass('underline', 'hover:text-content-primary');
+    // A-30 (88.9-52): the house focus ring, with the halo keyed to the box it sits on.
+    expect(link).toHaveClass(
+      'rounded-sm',
+      'focus:outline-hidden',
+      'focus-visible:ring-2',
+      'focus-visible:ring-focus-ring',
+      'focus-visible:ring-offset-2',
+      'focus-visible:ring-offset-status-warning-subtle'
+    );
     expect(
       Array.from(link.classList).filter((c) => c.startsWith('text-')),
       'the link inherits its ink from the body; no text- class of its own'

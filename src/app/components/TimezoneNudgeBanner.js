@@ -123,9 +123,12 @@ export default function TimezoneNudgeBanner() {
           <span className="font-bold">{displayTz}</span>.
         </p>
         <p>
+          {/* A-30 (88.9-52): the house ring, halo keyed to this box (the Dismiss key on the removed
+              notice, src/app/userHome/UserHomePage.js ("focus-visible:ring-offset-status-warning-subtle (ring vs halo 6.65 light / 6.37 dark, band 1.00)"));
+              ring vs the box 6.26 light / 6.37 dark. It showed the browser's own outline. */}
           <Link
             href="/userProfile#timezone"
-            className="underline hover:text-content-primary"
+            className="underline hover:text-content-primary rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
           >
             Set your timezone
           </Link>
