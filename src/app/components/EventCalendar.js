@@ -32,6 +32,8 @@ import { logger, errCtx } from '../../lib/logger';
 // events and mounts its own named notice, so it stays byte-identical with no prop to thread.
 // Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
 const CALENDAR_SECTION_NAME = 'Calendar';
+// 88.9-52 (A-18): the month branch's stand-in for the two list id sets; shared, never written to.
+const NO_EVENT_IDS = new Set();
 
 // 88.9-39 N1: the two segments of the Month | List switch (owner pick N1, votes-b7a v3).
 const VIEW_OPTIONS = [
@@ -509,16 +511,22 @@ export default function EventCalendar({
      home sheet's host uses (src/lib/upcomingEvents.ts) and ONE clock per render. Plain compute on
      purpose — see the DECISION above. Disjoint by construction (the has-check below), so the list
      can never claim one row for both sections. This file still compares no status and no time of
-     its own. */
+     its own.
+     AMENDED Phase 88.9-52 (A-18, code review): the two sets are built in LIST mode only; the month
+     branch below never reads them, so a month render no longer walks the whole history twice.
+     Still plain compute with one clock per list render (the X29 DECISION above stands: no memo). */
+  const listMode = effectiveViewMode !== 'month';
   const nowMs = Date.now();
-  const happeningNowIds = new Set(
-    chronologicalEvents.filter((event) => isStillRunning(event, nowMs)).map((event) => event.id)
-  );
-  const startedNotLiveIds = new Set(
-    chronologicalEvents
-      .filter((event) => hasStartedRecently(event, nowMs) && !happeningNowIds.has(event.id))
-      .map((event) => event.id)
-  );
+  const happeningNowIds = listMode
+    ? new Set(chronologicalEvents.filter((event) => isStillRunning(event, nowMs)).map((event) => event.id))
+    : NO_EVENT_IDS;
+  const startedNotLiveIds = listMode
+    ? new Set(
+        chronologicalEvents
+          .filter((event) => hasStartedRecently(event, nowMs) && !happeningNowIds.has(event.id))
+          .map((event) => event.id)
+      )
+    : NO_EVENT_IDS;
 
   // WR-03: in self-fetch mode (externalEvents === null) the calendar gates its
   // fetch on selfUuid; fetchEvents early-returns on `!selfUuid` before its
