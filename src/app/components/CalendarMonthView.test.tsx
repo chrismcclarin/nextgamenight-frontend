@@ -599,7 +599,10 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
       expect(label.getAttribute('tabindex'), 'the label is not a focusable leaf outside the Tab order').toBe('-1');
       expect(label.children, 'the label holds more than its one hidden text span').toHaveLength(1);
       expect(label.children[0].getAttribute('aria-hidden'), 'the printed count is not hidden from the accessibility tree').toBe('true');
-      for (const t of ['text-xs', 'text-content-secondary', 'pointer-events-none', 'select-none', 'whitespace-nowrap', '@max-[14rem]:-mx-1']) {
+      // S-B2 (88.9-52): relative z-10 lifts the label above the NEXT cell's opaque ground, which
+      // otherwise paints over the end of a two-digit count at 200% text. jsdom has no paint order:
+      // this pins the classes only.
+      for (const t of ['text-xs', 'text-content-secondary', 'pointer-events-none', 'select-none', 'whitespace-nowrap', '@max-[14rem]:-mx-1', 'relative', 'z-10']) {
         expect(tokens(label), `the compact label lacks ${t}`).toContain(t);
       }
     }
@@ -611,6 +614,7 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     expect(label.textContent).toBe('+1 more');
     expect(tokens(label), 'the full label can wrap').toContain('whitespace-nowrap');
     expect(tokens(label), 'the full label takes the compact pull').not.toContain('@max-[14rem]:-mx-1');
+    expect(tokens(label), 'the full label is lifted; it has no pull and never leaves its cell').not.toContain('z-10');
     const word = within(label).getByText('more', { exact: false, selector: 'span span' });
     expect(word.textContent).toBe(' more');
     expect(tokens(word), 'the word does not give way in a narrow grid').toContain('@max-[32rem]:hidden');

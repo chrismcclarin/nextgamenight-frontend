@@ -1352,6 +1352,21 @@ export default function CalendarMonthView({
                              a 30.7px column, where +99 ends 14.5px past its cell, 2.5px short of the next day's
                              number and inside the card's 24px padding on a Saturday; without the pull it would
                              overlap that number by 5.5px.
+                             AMENDED Phase 88.9-52 (S-B2, scoped check): the sentence above measured the wrong
+                             neighbour. The next day's number sits in the TOP row of its cell and this label
+                             in a lower row, so the two never meet; what the overflow meets is the next CELL.
+                             Same widths, at 200% (8px gap, 1px border, 8px padding): +10 ends 9.4px past its
+                             cell, 1.4px into the next cell; +99 ends 14.5px past, 6.5px into the next cell
+                             (and still 7.6px / 2.5px short of where that cell's number column starts). A
+                             plain label paints UNDER the next cell's opaque ground (grid items paint in
+                             source order), so those 1.4px / 6.5px of the last digit were covered. The compact
+                             label is now relative z-10, the form the full tile's contents use, chosen OVER
+                             leaving the digit clipped; it stays pointer-events-none, so the lift takes no tap
+                             from the next cell. Saturdays have no next cell. NOT FIXED, recorded: when the
+                             next day ALSO has three or more games its own label starts 1px inside its cell,
+                             so +99 overprints the first 5.5px of it (+10: 0.4px); that needs a day with 12
+                             or more games beside a day with 3 or more, at 200% text. Paint order cannot be
+                             pinned in jsdom; only the classes are (Q62 test). Not rendered.
                              The full grid keeps the word and drops it only under 32rem of grid width (W18: at 768 the
                              Home month column is as narrow as a phone's and +1 more wrapped), chosen OVER +N everywhere
                              (the ruling names the small calendar only).
@@ -1363,7 +1378,7 @@ export default function CalendarMonthView({
                           aria-label={`${dayEvents.length - 2} more ${dayEvents.length - 2 === 1 ? 'event' : 'events'}`}
                           tabIndex={-1}
                           className={variant === 'compact'
-                            ? 'text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap @max-[14rem]:-mx-1'
+                            ? 'relative z-10 text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap @max-[14rem]:-mx-1'
                             : 'text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap'}
                           title={`Tap the day to see all ${dayEvents.length} games`}
                         >
