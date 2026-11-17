@@ -370,8 +370,9 @@ const GroupList = ({
   if (selfIdentityErrorState.showError) {
     return (
       <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-          <Heading level={2} size="heading" className="text-content-primary">Your Groups</Heading>
+        {/* 88.9-52 (W2 / W18): the same wrapping header row as the main return below; see its marker. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4 pb-3 border-b border-line">
+          <Heading level={2} size="heading" className="text-content-primary shrink-0 max-w-full">Your Groups</Heading>
           {onCreateGroup && (
             /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
             <Button
@@ -424,8 +425,18 @@ const GroupList = ({
     // dead). Column width: src/app/userHome/UserHomePage.js ("DECISION Phase 88.9-42 F4b"). A cap
     // back here is a decision, not a cleanup.
     <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-        <Heading ref={groupsHeadingRef} level={2} size="heading" className="text-content-primary">Your Groups</Heading>
+      {/* DECISION Phase 88.9-52 (W2 / W18, after-build look page, no objection from the owner
+          2026-11-16): the header row wraps. When the heading and the Create button do not fit on one
+          line with a 12px gap, the button drops under the heading, chosen OVER the one-line row,
+          where the heading shrank instead: at 200% text it broke two letters per line (Yo / ur / Gr
+          / ou / ps; the Heading base is wrap-anywhere and a flex item may shrink to one letter), and
+          at 768 it sat 2px from the button. shrink-0 keeps the heading at its words' width;
+          max-w-full lets wrap-anywhere still act if one line is wider than the whole column.
+          ARITHMETIC from the 2026-11-16 captures, not a rendered read: heading 119px + gap 12 +
+          button 168 = 299; the column is 428 at 1280 and 343 at 375 (one line, as before) and 291 at
+          768 (the button drops). Changing this is a decision, not a cleanup. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4 pb-3 border-b border-line">
+        <Heading ref={groupsHeadingRef} level={2} size="heading" className="text-content-primary shrink-0 max-w-full">Your Groups</Heading>
         {onCreateGroup && (
           /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
           <Button
@@ -490,7 +501,9 @@ const GroupList = ({
           Changing this is a decision, not a cleanup. */}
       <RefreshFailedNotice state={groupsErrorState} retained={groupsRetained} focusTarget={groupsHeadingRef} className="mb-4" sectionName={GROUPS_SECTION_NAME} />
 
-      <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
+      {/* 88.9-52 (W22): max-md:pt-0.5 leaves the 2px a hovered card lifts by (hover:-translate-y-0.5);
+          below md this scroll area has no padding and cut the first card's lifted top edge. */}
+      <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 max-md:pt-0.5 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
         {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary
             that put the full banner in place of retained cards (see DECISION Phase 88.6.1-41
             (D-37, Req 9) above). The banner holds the list's place only while nothing loaded. */}
@@ -789,9 +802,18 @@ const GroupList = ({
                   {/* 87.8-13 walkthrough F-8: single row at ALL widths — the old
                       max-[480px] column-stack dropped the players pill to its own
                       right-justified line under a left-aligned card (owner call).
-                      Long names still coexist with the pill: min-w-0 + wrap. */}
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      Long names still coexist with the pill: min-w-0 + wrap.
+                      AMENDED Phase 88.9-52 (W2, after-build look page): the single row stands at
+                      100% text at every measured width; the row may now WRAP, and the title block
+                      has a 6rem basis, so at enlarged text the pill drops under the title, chosen
+                      OVER the title breaking two letters per line beside it (W / ee / ke / nd at
+                      200% on a 1280 window). The dropped pill sits at the LEFT, under the title
+                      (the row's gap replaces the pill's ml-2), not right-justified as in the
+                      stack F-8 removed. ARITHMETIC, not a rendered read: 6rem + 8px gap + the
+                      73px pill = 177px at 100%, under the narrowest measured card (201px at 768);
+                      at 200% it is 354px against a 234px card. */}
+                  <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2 min-w-0 flex-[1_1_6rem]">
                       {profilePic && (
                         <div className="w-10 h-10 rounded-full bg-surface-muted flex items-center justify-center text-2xl shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
@@ -889,7 +911,7 @@ const GroupList = ({
                         (plan 88.6-19). The SIZE stays at 12: §4.2 names badge labels as a Caption
                         role, so this is not a sub-12px fold site. A decision, not a cleanup. */}
                     <span
-                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-bold ml-2 shrink-0"
+                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-bold shrink-0"
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
                     </span>

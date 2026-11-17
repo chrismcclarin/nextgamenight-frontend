@@ -460,6 +460,69 @@ describe('O22d (88.9-42), pinned by 88.9-52 A-19: the groups 401 report and the 
   });
 });
 
+// 88.9-52 (W2, W18, W22; after-build look page): at 200% text the Your Groups heading broke two
+// letters per line beside the Create button, and so did a card's title beside its players pill; at
+// 768 the heading sat 2px from the button; on a narrow window a hovered card's lifted top edge was
+// cut by the scroll area. Class pins: jsdom lays nothing out, so the wrap itself is read in the
+// after-build pictures.
+describe('W2 / W18 / W22 (88.9-52): the Your Groups header and the card title row give way by wrapping, not by breaking words', () => {
+  const tokens = (el: Element) => el.className.split(/\s+/).filter(Boolean);
+
+  it('W2 / W18. the header row wraps with a gap and the heading never shrinks below its words, in the main list and in the identity shell', async () => {
+    const check = (where: string) => {
+      const heading = screen.getByRole('heading', { name: 'Your Groups' });
+      const row = heading.parentElement as HTMLElement;
+      for (const t of ['flex', 'flex-wrap', 'items-center', 'justify-between', 'gap-x-3', 'gap-y-2']) {
+        expect(tokens(row), `${where}: the header row lacks ${t}`).toContain(t);
+      }
+      for (const t of ['shrink-0', 'max-w-full']) {
+        expect(tokens(heading), `${where}: the heading lacks ${t}`).toContain(t);
+      }
+      expect(tokens(screen.getByRole('button', { name: 'Create new group' })), `${where}: the Create button can wrap its label`).toContain('whitespace-nowrap');
+    };
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([ALPHA]);
+    const main = render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Alpha Crew' });
+    check('main list');
+    main.unmount();
+
+    h.selfUuid = undefined;
+    h.isError = true;
+    render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+    await screen.findByTestId('identity-degrade-banner');
+    check('identity shell');
+  });
+
+  it('W2. the card title row wraps: the title block keeps a 6rem basis and the players pill drops under it when there is no room', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([ALPHA]);
+    render(<GroupList {...listProps} />);
+    const title = await screen.findByRole('button', { name: 'Alpha Crew' });
+    const block = title.parentElement as HTMLElement;
+    const row = block.parentElement as HTMLElement;
+    for (const t of ['flex', 'flex-wrap', 'justify-between', 'items-center', 'gap-2']) {
+      expect(tokens(row), `the title row lacks ${t}`).toContain(t);
+    }
+    expect(tokens(block), 'the title block has no 6rem basis').toContain('flex-[1_1_6rem]');
+    expect(tokens(block), 'the title block keeps the zero basis').not.toContain('flex-1');
+    const pill = within(row).getByText('0 players');
+    expect(tokens(pill), 'the pill can shrink').toContain('shrink-0');
+    expect(tokens(pill), 'the pill keeps a margin that would indent it on its own line').not.toContain('ml-2');
+  });
+
+  it('W22. the scroll area leaves 2px above the first card on a narrow window, so the hover lift is not cut', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([ALPHA]);
+    render(<GroupList {...listProps} />);
+    const card = (await screen.findAllByTestId('group-card'))[0];
+    expect(tokens(card), 'the card no longer lifts 2px on hover; re-measure the pad').toContain('hover:-translate-y-0.5');
+    const scroller = card.closest('.overflow-y-auto') as HTMLElement;
+    expect(scroller, 'no scroll area above the card').not.toBeNull();
+    expect(tokens(scroller), 'the scroll area has no top pad below md').toContain('max-md:pt-0.5');
+  });
+});
+
 describe("R-P4 (88.9-27): a photo card's secondary row takes the title's outline treatment", () => {
   const R_P4 =
     '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] ' +
