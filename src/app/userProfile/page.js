@@ -3143,15 +3143,26 @@ function Profile(){
                                                 are right-anchored, where a leading spinner lets the word hold its place; this one is
                                                 left-anchored (W39: its label starts at one left edge in every state), so a leading
                                                 spinner would push the word about 24px right when it appears and a trailing one moves
-                                                nothing. */}
+                                                nothing.
+                                                AMENDED Phase 88.9-52 (W38 completion, owner: every inline two-tap control takes ONE
+                                                look): at rest and armed this control now wears the schedule Delete's look. Changed:
+                                                the underline is gone, the hover is the error-subtle fill (the hover it had set the
+                                                ink it already wore, so it did nothing), the word stays on one line
+                                                (whitespace-nowrap), and the ring loses its card-ground offset as Delete's has none
+                                                (the ring still paints whole: it reads 3:1 or better against the card ground and
+                                                against the hover fill in both themes, and with no offset it stays inside the 4px
+                                                between this control and Change number). REJECTED: keeping the underline, the link
+                                                dress Change number wears, because then this one remove would read as a link while
+                                                the schedule Delete, the override Delete and the Friends Remove read as bare red
+                                                words; the four removes read alike. Kept as its own: its place (-mx-2 ml-3), the
+                                                left-anchored label reserve (W39) and the trailing spinner above. The ink is the
+                                                same token as before, so its contrast on the card is unchanged. */}
                                             <button
                                                 {...removePhoneTriggerProps}
                                                 onClick={handleRemovePhone}
                                                 {...(removingPhone ? { 'aria-disabled': 'true', 'aria-label': 'Remove, removing' } : {})}
-                                                className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
-                                                    removePhoneGate.isArmed()
-                                                        ? 'text-content-status-error font-semibold'
-                                                        : 'text-content-status-error hover:text-content-status-error'
+                                                className={`-mx-2 ml-3 inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring${
+                                                    removePhoneGate.isArmed() ? ' font-semibold' : ''
                                                 }`}
                                             >
                                                 {/* X69 width (88.9-67): held from the arm, nothing at rest.

@@ -2086,9 +2086,14 @@ describe('userProfile phone block (plan 88.6-17)', () => {
       const classes = el.className.split(/\s+/);
       expect(classes).toContain('min-h-11');
       expect(classes, 'these are floored IN PLACE, not migrated').not.toContain('btn');
+      expect(classes).toContain('focus-visible:ring-2');
       expect(classes).toContain('focus-visible:ring-focus-ring');
-      expect(classes).toContain('focus-visible:ring-offset-2');
     }
+    // AMENDED Phase 88.9-52 (W38 completion): Change number keeps its card-ground ring offset; Remove
+    // now wears the schedule Delete's look, whose ring has none (the exact set is pinned in the
+    // 88.9-52 W38 phone Remove test below).
+    expect(change.className.split(/\s+/)).toContain('focus-visible:ring-offset-2');
+    expect(remove.className.split(/\s+/)).not.toContain('focus-visible:ring-offset-2');
     expect(remove.className).toMatch(/\btext-content-status-error\b/);
 
     // AMENDED Phase 88.9-68 (X36b): the arm is the shared gated two-tap, so the armed state is read
@@ -6995,6 +7000,31 @@ describe('phone layout of the availability panels and the inline two-tap control
     expect(change.className.split(/\s+/)).not.toContain('ml-2');
     expect(remove).toHaveTextContent('Remove');
     expect((remove.querySelector('span.inline-grid') as HTMLElement).className.split(/\s+/)).toContain('justify-items-start');
+  });
+
+  // W38 completion (88.9-52, owner: every inline two-tap control takes ONE look). The phone Remove
+  // wears the schedule Delete's look: no underline, the error-subtle hover fill, one line, the house
+  // ring with no offset. Only its place (-mx-2 ml-3) is its own. Armed adds the 600 weight and
+  // nothing else. Exact class sets, so a class added to one arm only goes red here.
+  it('W38 (88.9-52): the phone Remove wears the schedule Delete look at rest and armed; only its position classes are its own', async () => {
+    const DELETE_LOOK = [
+      'inline-flex', 'min-h-11', 'items-center', 'whitespace-nowrap', 'rounded-btn', 'px-2', 'text-sm',
+      'text-content-status-error', 'hover:bg-status-error-subtle',
+      'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring',
+    ];
+    const PLACE = ['-mx-2', 'ml-3'];
+    const sorted = (list: string[]) => [...list].sort();
+    renderProfile({ sms_enabled: true, phone: '+1 415 555 2671', phone_verified: true });
+    const row = (await vi.waitFor(() => screen.getByText('Phone verified'))).parentElement as HTMLElement;
+    const remove = within(row).getAllByRole('button').at(-1) as HTMLElement;
+    expect(remove).toHaveTextContent('Remove');
+    const classes = () => remove.className.split(/\s+/).filter(Boolean);
+    expect(sorted(classes())).toEqual(sorted([...DELETE_LOOK, ...PLACE]));
+
+    // First tap arms it: the same set plus the 600 weight.
+    fireEvent.click(remove);
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(sorted(classes())).toEqual(sorted([...DELETE_LOOK, ...PLACE, 'font-semibold']));
   });
 });
 
