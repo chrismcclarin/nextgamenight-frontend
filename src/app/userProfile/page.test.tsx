@@ -6948,6 +6948,25 @@ describe('phone layout of the availability panels and the inline two-tap control
       h.patterns = before;
     }
   });
+
+  it('W39 (88.9-52): on a phone Phone verified takes the first line, Change number and Remove share the second, and the Remove label is left-anchored in its reserve', async () => {
+    renderProfile({ sms_enabled: true, phone: '+1 415 555 2671', phone_verified: true });
+    const verified = await screen.findByText('Phone verified');
+    const row = verified.parentElement as HTMLElement;
+    expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'items-center', 'gap-2']));
+    // The status words fill the first line beside the 20px tick (40px left for it and the gap), so
+    // nothing else fits there; from sm they are their own width again and the row is one line.
+    expect(verified.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['basis-[calc(100%-2.5rem)]', 'sm:basis-auto'])
+    );
+    const [change, remove] = within(row).getAllByRole('button');
+    expect(change).toHaveTextContent('Change number');
+    // On the second line Change number starts at the row's left edge: no base left margin.
+    expect(change.className.split(/\s+/)).toContain('sm:ml-2');
+    expect(change.className.split(/\s+/)).not.toContain('ml-2');
+    expect(remove).toHaveTextContent('Remove');
+    expect((remove.querySelector('span.inline-grid') as HTMLElement).className.split(/\s+/)).toContain('justify-items-start');
+  });
 });
 
 describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)', () => {

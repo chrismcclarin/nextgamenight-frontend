@@ -3074,11 +3074,19 @@ function Profile(){
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </span>
-                                            <span ref={phoneVerifiedRef} className="text-sm text-content-status-success">Phone verified</span>
+                                            {/* DECISION Phase 88.9-52 (W39): on a phone the status words take the rest of the first
+                                                line (the row's width less 40px for the 20px tick and its gap), so the two
+                                                controls always start the second line together, chosen OVER the free wrap,
+                                                where Change number fitted beside the words and Remove dropped alone under
+                                                it. Change number starts at the row's left edge there (its left margin is
+                                                from sm only). From sm the row is one line, as before. REJECTED: a wrapper
+                                                around the tick and the words (the row's children stay flat; tests and the
+                                                focus hand-off find the row from the words). */}
+                                            <span ref={phoneVerifiedRef} className="basis-[calc(100%-2.5rem)] text-sm text-content-status-success sm:basis-auto">Phone verified</span>
                                             {/* A10: floored in place — see the Remove marker below. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline sm:ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                                             >
                                                 Change number
                                             </button>
@@ -3140,8 +3148,11 @@ function Profile(){
                                                         : 'text-content-status-error hover:text-content-status-error'
                                                 }`}
                                             >
-                                                {/* X69 width (88.9-67): held from the arm, nothing at rest. */}
-                                                <ReservedLabel reserve={removePhoneGate.reserveFor()}>
+                                                {/* X69 width (88.9-67): held from the arm, nothing at rest.
+                                                    W39 (88.9-52): left-anchored in the reserve, so Wait (3) starts where Remove
+                                                    started and Tap again to remove starts there too (a button centres its
+                                                    text, which set Wait (3) to the right of both). */}
+                                                <ReservedLabel className="justify-items-start" reserve={removePhoneGate.reserveFor()}>
                                                     {removePhoneGate.labelFor(undefined, 'Remove')}
                                                 </ReservedLabel>
                                                 <DelayedSpinner busy={removingPhone} className="ml-2 align-middle" />
