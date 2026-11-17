@@ -3137,7 +3137,13 @@ function Profile(){
                                                 AMENDED Phase 88.9-68 (X36b, once-over R3, veto open): the arm is the shared two-tap (gated, then live), chosen OVER its own instant 3000 ms timer, which the 8 Nov list left out; the refusal now lives in useConfirmAction's pending latch; aria-disabled stays; rule 1's delayed spinner joins with , removing.
                                                 How it is spread: the hook's props first, then this page's guarded onClick, then the
                                                 in-flight pair as a CONDITIONAL spread (the Friends form) — a plain attribute that is
-                                                undefined at rest would overwrite the hook's own aria-disabled while it counts down. */}
+                                                undefined at rest would overwrite the hook's own aria-disabled while it counts down.
+                                                AMENDED Phase 88.9-52 (W38): the spinner STAYS trailing here, chosen OVER the leading
+                                                spinner the schedule Delete, the Friends Remove and the collection x now carry. Those
+                                                are right-anchored, where a leading spinner lets the word hold its place; this one is
+                                                left-anchored (W39: its label starts at one left edge in every state), so a leading
+                                                spinner would push the word about 24px right when it appears and a trailing one moves
+                                                nothing. */}
                                             <button
                                                 {...removePhoneTriggerProps}
                                                 onClick={handleRemovePhone}
@@ -4026,6 +4032,7 @@ function Profile(){
                                                                 `Delete ${patternLabel}`
                                                             )}
                                                             // DECISION Phase 88.9-68 (X36a, once-over R3, veto open): a committing two-tap remove shows its flight like the Friends Remove — aria-disabled, the delayed held spinner, , removing / , deleting in the name — chosen OVER no in-flight sign; the F9b two-tap is unchanged.
+                                                            // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): the busy spinner LEADS the word (mr-2), so the right-anchored word holds its place, chosen OVER the trailing spinner (ml-2), which shifted the word about 24px left (16px glyph and 8px gap). The same form as the Friends Remove. Rest, armed (font-semibold only) and busy keep one class string.
                                                             // A conditional spread AFTER the hook's props (the Friends form), so the hook's
                                                             // own aria-disabled is never overwritten by an undefined while it counts down.
                                                             {...(deleting ? { 'aria-disabled': 'true', 'aria-label': `Delete ${patternLabel}, deleting` } : {})}
@@ -4036,13 +4043,14 @@ function Profile(){
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
+                                                            {/* W38 (88.9-52): the spinner LEADS the word (see the AMENDED line on the X36a marker above). */}
+                                                            <DelayedSpinner busy={deleting} className="mr-2" />
                                                             {/* X69 width (88.9-67): held from the arm, nothing at rest.
                                                                 W37 (88.9-52): right-anchored in the reserve, so Wait (3) ends where Delete ended
                                                                 (a button centres its text, which set the short label mid-reserve). */}
                                                             <ReservedLabel className="justify-items-end" reserve={deletePatternGate.reserveFor(pattern.id)}>
                                                                 {deletePatternGate.labelFor(pattern.id, 'Delete')}
                                                             </ReservedLabel>
-                                                            <DelayedSpinner busy={deleting} className="ml-2 align-middle" />
                                                         </button>
                                                     );
                                                 })()}
@@ -4197,7 +4205,7 @@ function Profile(){
                                                                 `Delete ${patternLabel}`
                                                             )}
                                                             // X36a (88.9-68): the in-flight pair, as on the schedule Delete — see the
-                                                            // X36a marker of plan 88.9-68 there.
+                                                            // X36a marker of plan 88.9-68 there, and its AMENDED 88.9-52 (W38) line: the spinner leads.
                                                             {...(deleting ? { 'aria-disabled': 'true', 'aria-label': `Delete ${patternLabel}, deleting` } : {})}
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
@@ -4206,13 +4214,14 @@ function Profile(){
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
+                                                            {/* W38 (88.9-52): the spinner LEADS the word (see the AMENDED line on the X36a marker above). */}
+                                                            <DelayedSpinner busy={deleting} className="mr-2" />
                                                             {/* X69 width (88.9-67): held from the arm, nothing at rest.
                                                                 W37 (88.9-52): right-anchored in the reserve, so Wait (3) ends where Delete ended
                                                                 (a button centres its text, which set the short label mid-reserve). */}
                                                             <ReservedLabel className="justify-items-end" reserve={deletePatternGate.reserveFor(pattern.id)}>
                                                                 {deletePatternGate.labelFor(pattern.id, 'Delete')}
                                                             </ReservedLabel>
-                                                            <DelayedSpinner busy={deleting} className="ml-2 align-middle" />
                                                         </button>
                                                     );
                                                 })()}
@@ -4776,16 +4785,20 @@ function Profile(){
                                                 // DECISION Phase 88.9-68 (X36a, once-over R3, veto open): a committing two-tap remove shows its flight like the Friends Remove — aria-disabled, the delayed held spinner, , removing / , deleting in the name — chosen OVER no in-flight sign; the F9b two-tap is unchanged.
                                                 // A conditional spread AFTER the hook's props (the Friends form). The gate is
                                                 // disarmed while the DELETE runs, so the spinner joins the RESTING box.
+                                                // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): (1) armed keeps the RESTING bordered box and adds only the 600 weight, as the schedule Delete adds only its weight, chosen OVER the error-subtle FILL the armed box gained (fork 7, 88-33 Task 5: the pink pill of W38); the border stays in every state because an icon button needs its box (X53). Armed word on the card ground: 8.31 light, 5.94 on the dark raised fill (floor 4.5). (2) the busy spinner LEADS the X, so the right-anchored X holds its place while the box grows left, chosen OVER the trailing spinner (the X moved about 18px left).
                                                 {...(removingGameId === game.id ? { 'aria-disabled': 'true', 'aria-label': `Remove ${game.name}, removing` } : {})}
                                                 className="group inline-flex min-h-11 min-w-11 items-center justify-center whitespace-nowrap rounded-btn text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
                                             >
                                                 <span
                                                     className={
                                                         removeGameGate.isArmed(game.id)
-                                                            ? 'font-semibold inline-flex min-h-8 items-center justify-center rounded-btn border border-status-error bg-status-error-subtle px-2'
+                                                            ? 'font-semibold inline-flex min-h-8 items-center justify-center gap-1 rounded-btn border border-status-error px-2 group-hover:bg-status-error-subtle'
                                                             : 'inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-status-error px-1 group-hover:bg-status-error-subtle'
                                                     }
                                                 >
+                                                    {/* W38 (88.9-52): the spinner leads, and it is mounted OUTSIDE the armed ternary so
+                                                        arming never unmounts it mid-hold (R-C3b reach). */}
+                                                    <DelayedSpinner busy={removingGameId === game.id} />
                                                     {removeGameGate.isArmed(game.id) ? (
                                                         <ReservedLabel reserve={removeGameGate.reserveFor(game.id)}>
                                                             {removeGameGate.labelFor(game.id, 'Remove')}
@@ -4793,7 +4806,6 @@ function Profile(){
                                                     ) : (
                                                         <Icon name="X" size={20} strokeWidth={2} />
                                                     )}
-                                                    <DelayedSpinner busy={removingGameId === game.id} />
                                                 </span>
                                             </button>
                                         </ReservedLabel>

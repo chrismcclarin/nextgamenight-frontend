@@ -863,11 +863,19 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(trigger);
     const gated = screen.getByRole('button', { name: 'Remove Catan, wait 3 seconds' });
     expect(gated.textContent).toBe('Wait (3)');
-    expect((gated.firstElementChild as HTMLElement).className).toContain('bg-status-error-subtle');
+    // AMENDED Phase 88.9-52 (W38, owner ruling): one look in every state. Armed keeps the resting
+    // bordered box and adds only the 600 weight; the error-subtle FILL it gained is gone (the
+    // hover fill is the resting box's own, in every state).
+    const armedBoxTokens = (button: HTMLElement) => (button.firstElementChild as HTMLElement).className.split(/\s+/);
+    for (const tokens of [armedBoxTokens(gated)]) {
+      expect(tokens).toEqual(expect.arrayContaining(['font-semibold', 'border', 'border-status-error', 'group-hover:bg-status-error-subtle']));
+      expect(tokens).not.toContain('bg-status-error-subtle');
+    }
     passGate();
     const armed = screen.getByRole('button', { name: 'Remove' });
     expect(armed.textContent).toBe('Remove');
-    expect((armed.firstElementChild as HTMLElement).className).toContain('bg-status-error-subtle');
+    expect(armedBoxTokens(armed)).toEqual(expect.arrayContaining(['font-semibold', 'border', 'border-status-error']));
+    expect(armedBoxTokens(armed)).not.toContain('bg-status-error-subtle');
   });
 
   // AR DEC-2: the armed state is keyed by TARGET, not a boolean. Without that,
@@ -6755,6 +6763,12 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expectSpinnerAppearsAfterTheDelay(x);
     // The spinner sits in the bordered box, beside the X.
     expect((x.firstElementChild as HTMLElement).querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    // W38 (88.9-52): the spinner LEADS, so the X (right-anchored) holds its place while the box grows left.
+    const boxChildren = Array.from((x.firstElementChild as HTMLElement).children);
+    expect(boxChildren).toHaveLength(2);
+    expect(boxChildren[0].getAttribute('data-slot')).toBe('spinner');
+    expect(boxChildren[1].tagName.toLowerCase()).toBe('svg');
+    expect(boxChildren[1].getAttribute('data-slot')).not.toBe('spinner');
     // The other card's x is untouched.
     const other = screen.getByRole('button', { name: 'Remove Brass' });
     expect(other).not.toHaveAttribute('aria-disabled');
@@ -6796,6 +6810,16 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expect(del).toHaveAttribute('aria-label', 'Delete Monday schedule, deleting');
     expect(del).toHaveTextContent('Delete');
     expectSpinnerAppearsAfterTheDelay(del);
+    // W38 (88.9-52): the spinner LEADS the label with mr-2, so the right-anchored word holds its place.
+    const expectLeadingSpinner = (control: HTMLElement) => {
+      const kids = Array.from(control.children);
+      expect(kids).toHaveLength(2);
+      expect(kids[0].getAttribute('data-slot')).toBe('spinner');
+      expect(kids[0].getAttribute('class')?.split(/\s+/)).toContain('mr-2');
+      expect(kids[0].getAttribute('class')?.split(/\s+/)).not.toContain('ml-2');
+      expect(kids[1].className).toContain('inline-grid');
+    };
+    expectLeadingSpinner(del);
     const tuesday = screen.getByRole('button', { name: 'Delete Tuesday schedule' });
     expect(tuesday).not.toHaveAttribute('aria-disabled');
     expect(spinnersIn(tuesday)).toHaveLength(0);
@@ -6825,6 +6849,7 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expect(overrideDelete).toHaveAttribute('aria-disabled', 'true');
     expect(overrideDelete).toHaveAttribute('aria-label', `${overrideName}, deleting`);
     expectSpinnerAppearsAfterTheDelay(overrideDelete);
+    expectLeadingSpinner(overrideDelete);
     await act(async () => { second.resolve({}); });
     await vi.waitFor(() => expect(overrideDelete).not.toHaveAttribute('aria-disabled'));
   });
@@ -6877,6 +6902,10 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expect(remove).toHaveTextContent('Remove');
     expect(remove).not.toHaveTextContent('Tap again to remove');
     expectSpinnerAppearsAfterTheDelay(remove);
+    // W38 (88.9-52): this control is LEFT-anchored, so its spinner trails the word (a leading one
+    // would push the word 24px right); the right-anchored Delete and x lead with theirs.
+    expect(Array.from(remove.children).at(-1)?.getAttribute('data-slot')).toBe('spinner');
+    expect(Array.from(remove.children).at(-1)?.getAttribute('class')?.split(/\s+/)).toContain('ml-2');
 
     // Taps while it runs send nothing and arm nothing.
     fireEvent.click(remove);
