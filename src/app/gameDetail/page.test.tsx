@@ -5034,6 +5034,9 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
       // The game read's own success clears the latch in the same run, so this is the REDIRECT arm,
       // not a declined one: one replace with the game as returnTo and the loader frame — never a
       // silent page, which is the property #311 pinned.
+      // AMENDED Phase 88.9-52 (A-31): the latch is now cleared at the END of a run that saw no 401,
+      // so it is the FIRST (clean) run above that left the latch clear, not the refresh's own game
+      // read. Same arm, same assertions; SR-17b pins the run that starts with the latch set.
       const e401 = new ApiError('Unauthorized', 'unauthorized', 401);
       (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(e401);
       forceRefresh(r.rerender);
@@ -5044,6 +5047,72 @@ describe('gameDetail side reads on a refresh (88.6.1-74, contract C1)', () => {
       expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
       expect(screen.getByText('Loading game night...', { selector: 'p' })).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+    }
+  });
+
+  // 88.9-52 (A-31): the game view's bounded latch. A run proves the session only when its game
+  // read answered AND no group read answered 401. First render with the given side-read answers.
+  function renderGameWithSideAnswers(search: string, set: () => void) {
+    h.selfUuid = SELF_UUID;
+    h.search = search.slice(1);
+    (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+    (eventsAPI.getGroupEvents as Mock).mockResolvedValue([SESSION]);
+    (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue([]);
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor('member'));
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
+    set();
+    return renderPage(false);
+  }
+
+  it('SR-17b. back from sign-in (latch set): the game read answers and a group read answers 401 — the sign-in banner, never a second redirect, the latch kept (88.9-52 A-31)', async () => {
+    const search = `?game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    const replace = stubLocation({ search });
+    try {
+      window.sessionStorage.setItem(signInLatch(), '1');
+      renderGameWithSideAnswers(search, () => {
+        (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(UNAUTHORIZED());
+      });
+      expect(await screen.findByText(GAME_LOAD_FAILED)).toBeInTheDocument();
+      expect(screen.getByText(X1_SENTENCE)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+      await flushMacrotask();
+      expect(replace).not.toHaveBeenCalled();
+      // A run that saw a 401 never clears the latch: clearing it is what rebuilt the loop.
+      expect(window.sessionStorage.getItem(signInLatch())).toBe('1');
+      expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+    }
+  });
+
+  it('SR-17c. a run with no 401 still clears the latch on each of its three clean endings (88.9-52 A-31)', async () => {
+    // The rejected placement (beside the final clean write) misses the two early returns: a group
+    // read's 403 that withdraws the group content, and a failed refresh (RF1). On both the game read
+    // proved the session, so the latch must go — or the next real expiry shows a banner, not sign-in.
+    const search = `?game_id=${GAME_ID}&group_id=${GROUP_ID}`;
+    stubLocation({ search });
+    try {
+      // (1) every read answers.
+      window.sessionStorage.setItem(signInLatch(), '1');
+      const r = renderGameWithSideAnswers(search, () => {});
+      await screen.findByRole('heading', { name: 'Wingspan' });
+      await waitFor(() => expect(window.sessionStorage.getItem(signInLatch())).toBeNull());
+      // (2) a failed refresh of a read that had loaded: RF1, the run returns early.
+      window.sessionStorage.setItem(signInLatch(), '1');
+      (gameReviewsAPI.getGameReviews as Mock).mockRejectedValue(SERVER_500());
+      forceRefresh(r.rerender);
+      await waitFor(() => expect(screen.getAllByText(RF1)).toHaveLength(2));
+      await waitFor(() => expect(window.sessionStorage.getItem(signInLatch())).toBeNull());
+      cleanup();
+      // (3) a group read's 403: the group content is withdrawn, the run returns early and clean.
+      window.sessionStorage.setItem(signInLatch(), '1');
+      renderGameWithSideAnswers(search, () => {
+        (eventsAPI.getGroupEvents as Mock).mockRejectedValue(FORBIDDEN());
+      });
+      await screen.findByRole('heading', { name: 'Wingspan' });
+      await waitFor(() => expect(window.sessionStorage.getItem(signInLatch())).toBeNull());
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
     }

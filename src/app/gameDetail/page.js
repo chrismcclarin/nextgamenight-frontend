@@ -1564,6 +1564,20 @@ export default function GameDetailPage() {
             // 88.9-40 (SESSION-01): C3's clean slate now covers the sign-in decision too.
             signIn.resetDecision();
         }
+        /* DECISION Phase 88.9-52 (A-31): a run proves the session (clears this path's sign-in latch)
+           only when its game read answered AND no group read answered 401, decided in the finally
+           below — chosen OVER clearing the latch at the game read's own success (88.9-40: a later
+           group read's 401 in the same run then found the latch clear and redirected again, on
+           every return, with no bound) and OVER moving the call beside the last clean write (that
+           misses the two clean early returns — a group read's 403 that withdraws the group content,
+           and a failed refresh — where the game read did prove the session and a kept latch would
+           turn the person's next real expiry into a banner instead of sign-in). Review r2 #311 is
+           kept: a group read's 401 still takes the primary-401 path; with the latch set that path
+           is the sign-in banner, never a second redirect. The event view does not loop (its roster
+           401 is a side failure, review r3 M-01) and is unchanged. Changing this is a decision, not
+           a cleanup. */
+        let gameReadAnswered = false;
+        let sawUnauthorized = false;
         try {
             // Fetch game details using gamesAPI which includes proper API URL and auth
             let gameData;
@@ -1614,7 +1628,9 @@ export default function GameDetailPage() {
             if (!isCurrentRun()) return undefined;
             setGame(gameData);
             // 88.9-40 (SESSION-01): a game read that succeeded proves the session (clears this path's latch).
-            signIn.markSessionProven();
+            // AMENDED Phase 88.9-52 (A-31): only once the run ends with no 401 from a group read — the
+            // call now sits in the finally (see the DECISION above the try).
+            gameReadAnswered = true;
             setLoadedFor(entityKey);
             // A first run (or a full banner's Try again) gives way to the content at once.
             if (!isRefresh) setGameError(null);
@@ -1634,6 +1650,7 @@ export default function GameDetailPage() {
             const answerGroupRead = (error) => {
                 const code = error instanceof ApiError ? error.code : 'unknown';
                 if (code === 'unauthorized') {
+                    sawUnauthorized = true;
                     clearGameKeyData();
                     setGameError(error);
                     return { isError: true };
@@ -1842,6 +1859,8 @@ export default function GameDetailPage() {
                 loadedEntityKeyRef.current = entityKey;
                 setGameAnsweredFor(entityKey);
                 setLoading(false);
+                // 88.9-52 (A-31): the newest run only, and only a run with no 401 anywhere.
+                if (gameReadAnswered && !sawUnauthorized) signIn.markSessionProven();
             }
         }
     };
