@@ -56,7 +56,7 @@ function readRefreshTurnMs(glyph) {
    RefreshCw that spins on every press at once, at least one whole turn, keeps turning while the
    refresh runs, stops on a whole turn; chosen OVER the shared delayed, held spinner (R-C3b: a fast
    in-place refresh gave no sign) and OVER swapping to the house ring while busy (the RetrySlot pattern at
-   src/components/ui/FetchErrorBanner.tsx ("return shown ? <Spinner /> : <Icon name=");
+   src/components/ui/FetchErrorBanner.tsx ("{shown ? <Spinner /> : <Icon name=");
    owner: this refreshes one component, Try again the page). A deliberate R-C3b exception; reduced
    motion keeps its 1.5 s turn even on a fast refresh where nothing is busy, so the spin exemption at
    src/app/globals.css ("animation-duration: 1.5s !important;")
