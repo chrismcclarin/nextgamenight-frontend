@@ -534,3 +534,65 @@ describe('availability-form/[token] — 88.6.1-39: the real form speaks the grid
     for (const r of regions) expect(r.textContent).toBe('');
   });
 });
+
+// Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the error card's X by cause, keyed on the
+// linkInvalid state the heading already reads. Red: the link is dead. Amber: the check could not
+// complete. No retry control is added in this pass.
+describe('availability-form/[token] — Q69 the failure glyph by cause (88.9-52)', () => {
+  const X_PATH = 'M6 18L18 6M6 6l12 12';
+  const expectTone = (container: HTMLElement, tone: 'amber' | 'red', label: string) => {
+    const path = container.querySelector(`path[d="${X_PATH}"]`);
+    expect(path, `${label}: the failure card draws no X`).not.toBeNull();
+    const svg = path!.closest('svg')!;
+    const circle = svg.parentElement!;
+    const on = tone === 'amber' ? 'warning' : 'error';
+    const off = tone === 'amber' ? 'error' : 'warning';
+    expect(circle, `${label}: the circle is not the ${on} fill`).toHaveClass(`bg-status-${on}-subtle`);
+    expect(circle, label).not.toHaveClass(`bg-status-${off}-subtle`);
+    expect(svg, `${label}: the X is not the ${on} ink`).toHaveClass(`text-content-status-${on}`);
+    expect(svg, label).not.toHaveClass(`text-content-status-${off}`);
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+  };
+
+  it('Q69: a link the server rejected (400 token_invalid) draws the red X', async () => {
+    vi.stubGlobal(
+      'fetch',
+      respond(
+        400,
+        JSON.stringify({
+          code: 'token_invalid',
+          message: 'This link is no longer valid.',
+          error: 'This link is no longer valid.',
+          details: { action: 'request_new' },
+        }),
+      ),
+    );
+    await useRealValidate();
+    const { container } = render(<AvailabilityFormPage />);
+    await screen.findByRole('heading', { level: 1, name: 'Link No Longer Valid' });
+    expectTone(container, 'red', 'token_invalid');
+  });
+
+  it('Q69: a check that could not complete draws the amber X and adds no retry control (network, 5xx, 429)', async () => {
+    const arms: Array<[string, ReturnType<typeof vi.fn>]> = [
+      ['network', dropped()],
+      ['5xx', respond(500, '{"error":"Validation failed","action":"request_new"}')],
+      [
+        '429',
+        respond(
+          429,
+          '{"code":"rate_limited","message":"Too many attempts. Please try again later.","error":"Too many attempts. Please try again later."}',
+        ),
+      ],
+    ];
+    for (const [label, fetchStub] of arms) {
+      vi.stubGlobal('fetch', fetchStub);
+      await useRealValidate();
+      const { container } = render(<AvailabilityFormPage />);
+      await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
+      expectTone(container, 'amber', label);
+      expect(screen.queryAllByRole('button'), `${label}: a retry control was added`).toHaveLength(0);
+      cleanup();
+    }
+  });
+});

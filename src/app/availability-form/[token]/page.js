@@ -346,11 +346,24 @@ export default function AvailabilityFormPage() {
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
-          <div className="w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4">
+          {/* DECISION Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the X colour follows
+              the cause, keyed on the linkInvalid state the heading below already reads, chosen
+              OVER one red X for both. Red when the link is dead (no token, the resolved 400
+              token_invalid). Amber (warning ink on the warning circle, 5.50 light / 4.95 dark)
+              when the check could not complete (connection, 5xx, 429, an unreadable answer).
+              NO retry control is added in this pass, so the amber card still offers nothing to
+              press; that is a known gap, not an oversight. One literal class string per arm. */}
+          <div
+            className={
+              linkInvalid
+                ? 'w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4'
+                : 'w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4'
+            }
+          >
             {/* Decorative: the meaning is carried by the heading beside it. Repo idiom —
                 `aria-hidden` + `focusable="false"` on the graphic itself, matching the
                 `<svg>`s on the sibling invite pages and `Icon`'s own default. */}
-            <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={linkInvalid ? 'w-8 h-8 text-content-status-error' : 'w-8 h-8 text-content-status-warning'} aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
