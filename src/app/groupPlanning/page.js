@@ -37,6 +37,8 @@ const LOAD_FAILED = Object.freeze({ isError: true });
 // Copy row G5 (D-30): byte-equal to the route fallback label (groupPlanning/loading.tsx), so the
 // wording does not change when the route boundary hands over to the page.
 const AUTH_LOADING_MESSAGE = "Getting your group's plans...";
+// DECISION Phase 88.9-52 (R3, owner 2026-11-16: we have to remember to update the hidden headings if we modify the title): the page's name is ONE constant, read by the screen-reader-only heading on the banner-only screens (the frame's srHeading; marker at src/components/ui/CentredPageFrame.tsx ("DECISION Phase 88.9-52 (A-04 / A-38)")) and by the visible level-1 title (alone, or before the group name) and the breadcrumb current-page crumb, chosen OVER the same word typed at each site, which drifts silently. Renaming the page is one edit here.
+const PLAN_PAGE_TITLE = 'Plan Game Session';
 
 // quick-261026-pi6 (owner R3): the lead word of the line that names the poll the dashboard shows,
 // and the chip row's group name (read by screen readers; the row has no visible label).
@@ -634,7 +636,7 @@ export default function GroupPlanningPage() {
     }
     if (!user) {
         // 88.9-66 (X64): the shared frame gives the banner its gutter and width.
-        return <CentredPageFrame srHeading="Plan Game Session">
+        return <CentredPageFrame srHeading={PLAN_PAGE_TITLE}>
             <FetchErrorBanner state={signIn.signedOutErrorState} thing="your group's plans" reportContext="Group planning — signed out" />
         </CentredPageFrame>;
     }
@@ -730,7 +732,7 @@ export default function GroupPlanningPage() {
                         <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     </>
                 )}
-                <span aria-current="page" className="text-content-primary font-bold">Plan Game Session</span>
+                <span aria-current="page" className="text-content-primary font-bold">{PLAN_PAGE_TITLE}</span>
             </nav>
 
             {/* Header */}
@@ -752,7 +754,7 @@ export default function GroupPlanningPage() {
                             by e2e/padding-budget.spec.ts. Re-adding the clip is a decision, not a
                             cleanup. */}
                         <Heading level={1} size="display" className="text-content-primary">
-                            {group ? `Plan Game Session - ${group.name}` : 'Plan Game Session'}
+                            {group ? `${PLAN_PAGE_TITLE} - ${group.name}` : PLAN_PAGE_TITLE}
                         </Heading>
                         <p className="text-base text-content-secondary mt-1">
                             Send availability polls and manage responses

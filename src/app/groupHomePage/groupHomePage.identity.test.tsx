@@ -1984,3 +1984,20 @@ describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', 
     expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
   });
 });
+
+// 88.9-52 R3 (owner: "we have to remember to update the[m] if we modify the title"): the heading
+// only screen readers get and the page's own visible name are ONE constant, so one cannot be
+// changed without the other. Read off the page source: a hand-typed copy at either site fails here.
+describe('group page name, one source (88.9-52 R3)', () => {
+  it('R3 (88.9-52): the screen-reader-only page heading and the visible page name come from one constant', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'page.js'), 'utf8');
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
+    // The visible level-1 title here is the group's own name; the word Group is what the title and
+    // the breadcrumb crumb show when no name has arrived. Those two and the hidden heading share it.
+    expect(count(src, "const GROUP_PAGE_NAME = 'Group';"), 'the one declaration').toBe(1);
+    expect(count(src, 'srHeading="'), 'a hand-typed hidden heading').toBe(0);
+    expect(count(src, 'srHeading={GROUP_PAGE_NAME}'), 'the could-not-load frame').toBe(1);
+    expect(count(src, '{Group?.name || GROUP_PAGE_NAME}'), 'the visible level-1 title and the breadcrumb crumb').toBe(2);
+    expect(count(src, "Group?.name || 'Group'"), 'a hand-typed fallback').toBe(0);
+  });
+});

@@ -46,6 +46,8 @@ import { logger, errCtx } from '../../lib/logger';
 // Copy row FR1 (owner ruling 2026-10-05, D-47; D-32 R8 straight apostrophe): the Requests tab's
 // full-banner title when the provider's load failed and nothing is retained. AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): the constant holds the thing; the composed title is unchanged, chosen OVER typing the whole title.
 const FRIEND_REQUESTS_LOAD_FAILED_THING = 'your friend requests';
+// DECISION Phase 88.9-52 (R3, owner 2026-11-16: we have to remember to update the hidden headings if we modify the title): the page's name is ONE constant, read by the screen-reader-only heading on the banner-only screens (the frame's srHeading; marker at src/components/ui/CentredPageFrame.tsx ("DECISION Phase 88.9-52 (A-04 / A-38)")) and by the three visible level-1 titles, chosen OVER the same word typed at each site, which drifts silently. Renaming the page is one edit here.
+const FRIENDS_PAGE_TITLE = 'Friends';
 
 // Copy row F7 (owner ruling 2026-10-05, D-47): the found result, heard and not seen; `name` is
 // what the result row shows.
@@ -935,7 +937,7 @@ function FriendsPage() {
     // DECISION Phase 88.9-66 (X70b, owner 2026-11-14: yes): the shared centred banner, chosen OVER the older prompt 88.9-40 kept with no recorded reason; 88.6-19's rule holds through the banner's own Sign in anchor.
     if (!user) {
         return (
-            <CentredPageFrame srHeading="Friends">
+            <CentredPageFrame srHeading={FRIENDS_PAGE_TITLE}>
                 <FetchErrorBanner state={signIn.signedOutErrorState} thing="your friends" reportContext="Friends page — signed out" />
             </CentredPageFrame>
         );
@@ -950,7 +952,7 @@ function FriendsPage() {
         return (
             <div className="min-h-screen bg-surface-page">
                 <div className="max-w-3xl mx-auto px-4 py-8">
-                    <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
+                    <Heading level={1} size="display" className="text-content-primary mb-6">{FRIENDS_PAGE_TITLE}</Heading>
                     <FetchErrorBanner
                         state={selfIdentityErrorState}
                         thing="your friends"
@@ -983,7 +985,7 @@ function FriendsPage() {
         return (
             <div className="min-h-screen bg-surface-page">
                 <div className="max-w-3xl mx-auto px-4 py-8">
-                    <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
+                    <Heading level={1} size="display" className="text-content-primary mb-6">{FRIENDS_PAGE_TITLE}</Heading>
                     <FetchErrorBanner
                         state={friendsErrorState.showError ? friendsErrorState : sentErrorState}
                         thing="your friends"
@@ -1057,7 +1059,7 @@ function FriendsPage() {
     return (
         <div className="min-h-screen bg-surface-page">
             <div className="max-w-3xl mx-auto px-4 py-8">
-                <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
+                <Heading level={1} size="display" className="text-content-primary mb-6">{FRIENDS_PAGE_TITLE}</Heading>
 
                 {/* The remove-friend gate's live region. Mounted HERE — once, outside the
                     tab conditional and outside the row map — because a live region that

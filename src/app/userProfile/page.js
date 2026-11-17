@@ -2414,7 +2414,7 @@ function Profile(){
     // The title literal is the one this file already uses; plans 88.9-48 / 49 convert it to `thing=`.
     if (!user) {
         return (
-            <CentredPageFrame srHeading="Profile">
+            <CentredPageFrame srHeading={PROFILE_PAGE_NAME}>
                 <FetchErrorBanner state={signIn.signedOutErrorState} thing="your profile" reportContext="Profile page — signed out" />
             </CentredPageFrame>
         );
@@ -2440,7 +2440,7 @@ function Profile(){
        AMENDED Phase 88.9-66 (X70a): both page-replacing banners sit centred in CentredPageFrame, OVER the top of the page column; focus lands on the frame's inner box. */
     if (rc2Active) {
         return (
-            <CentredPageFrame ref={sessionDeadRef} tabIndex={-1} srHeading="Profile">
+            <CentredPageFrame ref={sessionDeadRef} tabIndex={-1} srHeading={PROFILE_PAGE_NAME}>
                 <FetchErrorBanner state={sessionDeadBannerState} thing="your profile" reportContext="Profile page — session expired" />
             </CentredPageFrame>
         );
@@ -2563,7 +2563,7 @@ function Profile(){
                         span reads 700 (font-bold), chosen OVER the shipped 400 — all five breadcrumb current
                         crumbs now read 700 (UI-SPEC R2-19). aria-current stays, so the state is still exposed
                         programmatically as well as by weight. */}
-                    <span aria-current="page" className="text-content-primary font-bold">Profile</span>
+                    <span aria-current="page" className="text-content-primary font-bold">{PROFILE_PAGE_NAME}</span>
                 </nav>
 
                 {/* Profile Header */}
@@ -4922,5 +4922,8 @@ function Profile(){
 // retried here; the banner's action is Sign in) — the same pair the home page builds for its groups report.
 const SESSION_DEAD_ERROR = new ApiError('Unauthorized', 'unauthorized', 401);
 const resolveNothing = () => Promise.resolve(undefined);
+
+// DECISION Phase 88.9-52 (R3, owner 2026-11-16: we have to remember to update the hidden headings if we modify the title): the page's name is ONE constant, read by the screen-reader-only heading on the banner-only screens (the frame's srHeading; marker at src/components/ui/CentredPageFrame.tsx ("DECISION Phase 88.9-52 (A-04 / A-38)")) and by the breadcrumb current-page crumb (the visible level-1 title is the person's own name, so the crumb is the page's static visible name), chosen OVER the same word typed at each site, which drifts silently. Renaming the page is one edit here. Declared down here beside the other late constants, OVER the top of the file: a line-keyed row in src/app/errorEnvelopeReads.test.ts ("declaration: 'const [phoneValidation, setPhoneValidation] = useState(',") counts the lines above the phone state.
+const PROFILE_PAGE_NAME = 'Profile';
 
 export default Profile;

@@ -2895,3 +2895,18 @@ describe('friends busy lines are heard (88.9-66: X35)', () => {
     }
   });
 });
+
+// 88.9-52 R3 (owner: "we have to remember to update the[m] if we modify the title"): the heading
+// only screen readers get and the page's own visible name are ONE constant, so one cannot be
+// changed without the other. Read off the page source: a hand-typed copy at either site fails here.
+describe('friends page name, one source (88.9-52 R3)', () => {
+  it('R3 (88.9-52): the screen-reader-only page heading and the visible page name come from one constant', () => {
+    const src = readFileSync(resolve(__dirname, 'page.js'), 'utf8');
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
+    expect(count(src, "const FRIENDS_PAGE_TITLE = 'Friends';"), 'the one declaration').toBe(1);
+    expect(count(src, 'srHeading="'), 'a hand-typed hidden heading').toBe(0);
+    expect(count(src, 'srHeading={FRIENDS_PAGE_TITLE}'), 'the signed-out frame').toBe(1);
+    expect(count(src, '>{FRIENDS_PAGE_TITLE}</Heading>'), 'the three visible level-1 titles').toBe(3);
+    expect(count(src, '>Friends</Heading>'), 'a hand-typed visible title').toBe(0);
+  });
+});

@@ -22,6 +22,8 @@
 // fresh QueryClient once (every existing render and its rerender run unchanged). The PI tests
 // change h.PARAMS on purpose to model Next's patched history, which re-renders without a remount
 // (planning read: node_modules:next/dist/client/components/app-router.js ("Patch pushState to ensure external changes")).
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import * as React from 'react';
 import { act, cleanup, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -1433,5 +1435,22 @@ describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
     expect(replace).not.toHaveBeenCalled();
     expect(hrefSet).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
+  });
+});
+
+// 88.9-52 R3 (owner: "we have to remember to update the[m] if we modify the title"): the heading
+// only screen readers get and the page's own visible name are ONE constant, so one cannot be
+// changed without the other. Read off the page source: a hand-typed copy at either site fails here.
+describe('planning page name, one source (88.9-52 R3)', () => {
+  it('R3 (88.9-52): the screen-reader-only page heading and the visible page name come from one constant', () => {
+    const src = readFileSync(resolvePath(__dirname, 'page.js'), 'utf8');
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
+    expect(count(src, "const PLAN_PAGE_TITLE = 'Plan Game Session';"), 'the one declaration').toBe(1);
+    expect(count(src, 'srHeading="'), 'a hand-typed hidden heading').toBe(0);
+    expect(count(src, 'srHeading={PLAN_PAGE_TITLE}'), 'the signed-out frame').toBe(1);
+    expect(count(src, '{group ? `${PLAN_PAGE_TITLE} - ${group.name}` : PLAN_PAGE_TITLE}'), 'the visible level-1 title, with and without the group name').toBe(1);
+    expect(count(src, '>{PLAN_PAGE_TITLE}</span>'), 'the breadcrumb current-page crumb').toBe(1);
+    expect(count(src, "'Plan Game Session'"), 'the words are typed once, in the declaration').toBe(1);
+    expect(count(src, '>Plan Game Session<'), 'a hand-typed crumb or title').toBe(0);
   });
 });

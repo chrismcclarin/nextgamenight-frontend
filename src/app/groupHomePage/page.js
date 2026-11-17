@@ -50,6 +50,8 @@ const LOAD_FAILED = Object.freeze({ isError: true });
 // existing title, hoisted so the calendar and the events failure arm's heading cannot drift apart.
 // AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): each constant holds the thing and FetchErrorBanner composes the title, chosen OVER one whole-title constant per string; the copy rows pin the noun plus the thing attribute.
 const GROUP_LOAD_FAILED_THING = 'this group';
+// DECISION Phase 88.9-52 (R3, owner 2026-11-16: we have to remember to update the hidden headings if we modify the title): the page's name is ONE constant, read by the screen-reader-only heading on the banner-only screens (the frame's srHeading; marker at src/components/ui/CentredPageFrame.tsx ("DECISION Phase 88.9-52 (A-04 / A-38)")) and by the word the visible level-1 title and the breadcrumb crumb show when the group's own name has not arrived (with a name, both show the name), chosen OVER the same word typed at each site, which drifts silently. Renaming the page is one edit here.
+const GROUP_PAGE_NAME = 'Group';
 const GROUP_EVENTS_LOAD_FAILED_THING = "this group's events";
 const CALENDAR_TITLE = "Calendar";
 // Copy row P78c (close ruling P-78, owner 2026-10-17): the members notice's spoken section name — the member list has no heading of its own.
@@ -811,7 +813,7 @@ function GroupHomePage(){
         return (
             <>
                 {/* 88.9-66 (X64 / X70): the shared frame; its marker is in src/components/ui/CentredPageFrame.tsx ("ONE frame for a page-replacing banner"). */}
-                <CentredPageFrame srHeading="Group">
+                <CentredPageFrame srHeading={GROUP_PAGE_NAME}>
                     <FetchErrorBanner state={pageGateState} thing={GROUP_LOAD_FAILED_THING} reportContext="Group home page — group and members fetch" />
                 </CentredPageFrame>
                 {membersFocusGuard}
@@ -1102,7 +1104,7 @@ function GroupHomePage(){
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
-                <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || 'Group'}</span>
+                <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || GROUP_PAGE_NAME}</span>
             </nav>
 
             {/* Header — Phase 69-04 layout: ALWAYS stack title row above
@@ -1311,7 +1313,7 @@ function GroupHomePage(){
                             className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                             style={headerTitleVars}
                         >
-                            {Group?.name || 'Group'}
+                            {Group?.name || GROUP_PAGE_NAME}
                         </Heading>
                         <p
                             className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"

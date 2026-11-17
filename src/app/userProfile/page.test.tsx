@@ -36,6 +36,8 @@
 // false-positive failure mode hit plans 88-01..05). That gate has run; 88-10
 // then wrote the real assertions, which is why the literals now appear in the
 // test bodies below. Do not "restore" the prose form over a live assertion.
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import * as React from 'react';
 import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -7192,5 +7194,22 @@ describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)
     await act(async () => { later.resolve(true); });
     await waitFor(() => expect(receipt.textContent).toBe('Saved'));
     expect(h.setTimezone).toHaveBeenLastCalledWith('Europe/Berlin');
+  });
+});
+
+// 88.9-52 R3 (owner: "we have to remember to update the[m] if we modify the title"): the heading
+// only screen readers get and the page's own visible name are ONE constant, so one cannot be
+// changed without the other. Read off the page source: a hand-typed copy at either site fails here.
+describe('profile page name, one source (88.9-52 R3)', () => {
+  it('R3 (88.9-52): the screen-reader-only page heading and the visible page name come from one constant', () => {
+    const src = readFileSync(resolvePath(__dirname, 'page.js'), 'utf8');
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
+    // The visible level-1 title here is the person's own name, so the page's static visible name is
+    // the breadcrumb's current-page crumb; that crumb and both hidden headings share the constant.
+    expect(count(src, "const PROFILE_PAGE_NAME = 'Profile';"), 'the one declaration').toBe(1);
+    expect(count(src, 'srHeading="'), 'a hand-typed hidden heading').toBe(0);
+    expect(count(src, 'srHeading={PROFILE_PAGE_NAME}'), 'the signed-out frame and the session-expired frame').toBe(2);
+    expect(count(src, '>{PROFILE_PAGE_NAME}</span>'), 'the breadcrumb current-page crumb').toBe(1);
+    expect(count(src, '>Profile</span>'), 'a hand-typed crumb').toBe(0);
   });
 });

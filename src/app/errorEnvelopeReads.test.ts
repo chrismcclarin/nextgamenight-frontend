@@ -242,7 +242,9 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // RE-DERIVED by plan 88.9-40 (Task 2, 2026-11-10): 141 -> 143. The SESSION-01 ErrorFallback and useSignInRedirect imports landed above it. Kept as a line number.
     // RE-DERIVED by plan 88.9-66 (Task 3, 2026-11-15): 143 -> 144. One import line above it, the
     // shared CentredPageFrame (X64: the signed-out banner sits in it). Kept as a line number.
-    declaredAt: 144,
+    // RE-DERIVED by the 88.9-52 fix batch (R3, 2026-11-16): 144 -> 146. The page-name constant
+    // PLAN_PAGE_TITLE and its one-line marker landed above it. Kept as a line number.
+    declaredAt: 146,
     declaration: 'const [roleRecord, setRoleRecord] = useState(',
     why:
       'Local role-read state { groupId, role, error } written only by the page\'s own ' +
