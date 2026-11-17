@@ -11,7 +11,7 @@
    gone. REJECTED: R2 on the page for mixed reasons (the two surfaces would disagree for one batch). */
 
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
-import { ApiError, type ApiErrorCode } from '../../lib/api';
+import { ApiError, isCsrfRejection, type ApiErrorCode } from '../../lib/api';
 
 // Wave-12 review MED #9: fork-F contract — a terminal 409
 // (already a member / invite pending) is not a FAILURE; count
@@ -31,6 +31,9 @@ export function isAlreadyInvitedOrMember(err: unknown): boolean {
 // every other failure (unknown, network, internal, rate_limited, a non-ApiError) is TRANSIENT and
 // stays ticked for the retry. Chosen OVER a sent-only clear (a refused id left ticked re-fails on
 // every press). The one list for both bulk-invite surfaces, beside the terminal-409 rule above.
+// AMENDED Phase 88.9-52 (A-15): the proxy's same-origin refusal (a 403 with no code, read as
+// forbidden) is TRANSIENT: it says nothing about the invite and the next press may pass, so the
+// friend stays ticked. REJECTED: remapping its code in the api client (its own marker forbids it).
 export const PERMANENT_INVITE_REFUSALS: readonly ApiErrorCode[] = Object.freeze([
   'forbidden',
   'not_found',
@@ -38,7 +41,7 @@ export const PERMANENT_INVITE_REFUSALS: readonly ApiErrorCode[] = Object.freeze(
 ]);
 
 export function isPermanentInviteRefusal(err: unknown): boolean {
-  return err instanceof ApiError && PERMANENT_INVITE_REFUSALS.includes(err.code);
+  return err instanceof ApiError && PERMANENT_INVITE_REFUSALS.includes(err.code) && !isCsrfRejection(err);
 }
 
 // The invite panel's two shipped lines (plan 88.6.1-27), moved here byte-for-byte; the dash in
