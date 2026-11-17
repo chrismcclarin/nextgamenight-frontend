@@ -183,9 +183,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const [removeTarget, setRemoveTarget] = useState(null);
     const [rejectTarget, setRejectTarget] = useState(null);
     const [promoteTarget, setPromoteTarget] = useState(null);
-    // X13-7 (88.9-67): the member whose phone Remove is in flight (its DELETE and the refresh
-    // after it), or null. Drives the kebab item's busy look; see the marker at the kebab item.
-    const [removingMemberId, setRemovingMemberId] = useState(null);
+    // X13-7 (88.9-67): the members whose phone Remove is in flight (its DELETE and the refresh
+    // after it). Drives the kebab item's busy look; see the marker at the kebab item.
+    // AMENDED Phase 88.9-52 (A-25): a Set of member ids, chosen OVER the one id it was (a second
+    // member's remove moved the busy look off the first, and the first landing cleared the second's
+    // while its DELETE still ran) and OVER a compare-and-clear on the one id (it fixes only the second half).
+    const [removingMemberIds, setRemovingMemberIds] = useState(() => new Set());
 
     useEffect(() => {
         if (modal && group_id && user?.sub) {
@@ -491,11 +494,15 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // can show its flight; the desktop dialog path below calls handleRemoveMemberConfirmed directly
     // and is untouched (its confirm already carries the spinner and the heard verb).
     const commitPhoneRemove = async (target_user_id) => {
-        setRemovingMemberId(target_user_id);
+        setRemovingMemberIds((prev) => new Set(prev).add(target_user_id));
         try {
             await handleRemoveMemberConfirmed(target_user_id);
         } finally {
-            setRemovingMemberId(null);
+            setRemovingMemberIds((prev) => {
+                const next = new Set(prev);
+                next.delete(target_user_id);
+                return next;
+            });
         }
     };
 
@@ -1073,7 +1080,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                             member.username || member.email,
                                                                             memberRole
                                                                         ),
-                                                                        ariaDisabled: removingMemberId === member.id,
+                                                                        ariaDisabled: removingMemberIds.has(member.id),
                                                                     },
                                                                     /* DECISION Phase 88 AR-DEC-3 (owner, 2026-08-05): keep
                                                                        KebabMenu-internal two-tap OVER routing through
@@ -1097,23 +1104,25 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                        aria-disabled meanwhile, chosen OVER leaving them live under
                                                                        the spinner (a dialog opened on a member being removed fails
                                                                        with an error toast). On failure the menu stays open, item at
-                                                                       rest, error toast. */
+                                                                       rest, error toast.
+                                                                       AMENDED Phase 88.9-52 (A-25): the flight is held per member
+                                                                       (a Set of ids), so two removes in flight each keep this look. */
                                                                     {
                                                                         label: 'Remove',
                                                                         danger: true,
                                                                         twoTap: true,
                                                                         confirmLabel: 'Tap again to remove',
                                                                         keepOpen: true,
-                                                                        busy: removingMemberId === member.id,
+                                                                        busy: removingMemberIds.has(member.id),
                                                                         busySuffix: ', removing',
-                                                                        ariaDisabled: removingMemberId === member.id,
+                                                                        ariaDisabled: removingMemberIds.has(member.id),
                                                                         onClick: () => commitPhoneRemove(member.id),
                                                                     },
                                                                     // Phase 69-02 GROUP-06: owner-only — admins don't see this item.
                                                                     ...(userRole === 'owner' ? [{
                                                                         label: 'Transfer ownership to this member',
                                                                         danger: true,
-                                                                        ariaDisabled: removingMemberId === member.id,
+                                                                        ariaDisabled: removingMemberIds.has(member.id),
                                                                         onClick: () => setTransferTarget({
                                                                             id: member.id,
                                                                             name: member.username || member.email || 'this member',

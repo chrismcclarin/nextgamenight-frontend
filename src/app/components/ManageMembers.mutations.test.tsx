@@ -1111,6 +1111,54 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
     await waitFor(() => expect(document.activeElement).toBe(next));
   });
 
+  // 88.9-52 A-25: one id held the flight, so a second member's remove moved the busy look off the
+  // first, and the first one landing cleared the second's while its DELETE still ran.
+  it('A-25 (88.9-52): two phone removes in flight each keep their own busy item; one landing never clears the other', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0], ROSTER[1], X13_ROBIN]);
+    const heldTarget = deferred<unknown>();
+    const heldRobin = deferred<unknown>();
+    (groupsAPI.removeUserFromGroup as Mock)
+      .mockReturnValueOnce(heldTarget.promise)
+      .mockReturnValueOnce(heldRobin.promise);
+    await openMembersModal();
+    await screen.findByText('Robin');
+
+    const targetMenu = await openKebabList('Member actions for Target');
+    const targetItem = commitRemoveIn(targetMenu);
+    await waitFor(() => expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1));
+    const robinMenu = await openKebabList('Member actions for Robin');
+    const robinItem = commitRemoveIn(robinMenu);
+    await waitFor(() => expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(2));
+
+    // Both in flight: Robin's item is busy, and Target's flight is still on (its menu may have
+    // closed when Robin's opened, so read it where it is: the open item, or a reopened menu).
+    expect(within(robinMenu).getByRole('button', { name: 'Remove, removing' })).toBe(robinItem);
+    const targetBusy = targetItem.isConnected
+      ? targetItem
+      : within(await openKebabList('Member actions for Target')).getByRole('button', { name: /^Remove/ });
+    expect(targetBusy).toHaveAccessibleName('Remove, removing');
+    expect(targetBusy).toHaveAttribute('aria-disabled', 'true');
+
+    // Target's remove and its refresh land; Robin's DELETE is still held.
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce([ROSTER[0], X13_ROBIN]);
+    await act(async () => {
+      heldTarget.resolve({});
+    });
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Target')).not.toBeInTheDocument());
+    const robinStill = robinItem.isConnected
+      ? robinItem
+      : within(await openKebabList('Member actions for Robin')).getByRole('button', { name: /^Remove/ });
+    expect(robinStill).toHaveAccessibleName('Remove, removing');
+    expect(robinStill).toHaveAttribute('aria-disabled', 'true');
+
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce([ROSTER[0]]);
+    await act(async () => {
+      heldRobin.resolve({});
+    });
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Robin')).not.toBeInTheDocument());
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(2);
+  });
+
   it('"Make admin" from the kebab routes to the SAME escalation gate as the desktop select', async () => {
     await openMembersModal();
     const menu = await openKebabList('Member actions for Target');
