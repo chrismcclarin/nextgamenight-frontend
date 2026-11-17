@@ -751,8 +751,21 @@ function RestoreGroupPage() {
           {/* Terminal error */}
           {status === 'error' && (
             <div className="text-center">
-              <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              {/* DECISION Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the X colour
+                  follows the cause, read from the recovery state this card already offers, chosen
+                  OVER one red X for every failure. Amber (warning ink on the warning circle, 5.50
+                  light / 4.95 dark) when a way back is offered: Try again after a failed check or
+                  take-over, or Sign in to try again after an expired session. Red when recovery
+                  is null: the link is dead, the window closed, or the visitor is not a member.
+                  One literal class string per arm (a class built from pieces emits nothing). */}
+              <div
+                className={
+                  recovery
+                    ? 'mx-auto mb-4 w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center'
+                    : 'mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center'
+                }
+              >
+                <svg className={recovery ? 'w-8 h-8 text-content-status-warning' : 'w-8 h-8 text-content-status-error'} aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>

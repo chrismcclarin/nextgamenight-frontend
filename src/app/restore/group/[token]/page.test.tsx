@@ -1202,3 +1202,85 @@ describe('restore/group/[token] — slot-0 region and outcome focus (plan 88.6.1
     }
   });
 });
+
+// Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the error card's X by cause, read from
+// the recovery the page already offers. Amber when a way back is offered (Try again, or Sign in
+// to try again); red when none is (the link is dead, or the visitor was refused).
+describe('restore/group/[token] — Q69 the failure glyph by cause (88.9-52)', () => {
+  const X_PATH = 'M6 18L18 6M6 6l12 12';
+  const expectTone = (container: HTMLElement, tone: 'amber' | 'red', label: string) => {
+    const path = container.querySelector(`path[d="${X_PATH}"]`);
+    expect(path, `${label}: the failure card draws no X`).not.toBeNull();
+    const svg = path!.closest('svg')!;
+    const circle = svg.parentElement!;
+    const on = tone === 'amber' ? 'warning' : 'error';
+    const off = tone === 'amber' ? 'error' : 'warning';
+    expect(circle, `${label}: the circle is not the ${on} fill`).toHaveClass(`bg-status-${on}-subtle`);
+    expect(circle, label).not.toHaveClass(`bg-status-${off}-subtle`);
+    expect(svg, `${label}: the X is not the ${on} ink`).toHaveClass(`text-content-status-${on}`);
+    expect(svg, label).not.toHaveClass(`text-content-status-${off}`);
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+  };
+  const HEADLINE = { name: 'Unable to restore this group' };
+
+  it('Q69: a preview that could not be checked is amber (network, 5xx, 429); a dead link is red (404, empty body)', async () => {
+    const temporary = [
+      new ApiError('down', 'network', 0),
+      new ApiError('HTTP error! status: 500', 'internal', 500),
+      new ApiError('HTTP error! status: 429', 'rate_limited', 429),
+    ];
+    for (const err of temporary) {
+      getPreview().mockReset();
+      getPreview().mockRejectedValue(err);
+      const { container } = renderPage();
+      await screen.findByRole('heading', HEADLINE);
+      expectTone(container, 'amber', `preview ${err.code}`);
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+      cleanup();
+    }
+
+    getPreview().mockReset();
+    getPreview().mockRejectedValue(new ApiError('nope', 'not_found', 404, { error: 'nope' }));
+    let view = renderPage();
+    await screen.findByRole('heading', HEADLINE);
+    expectTone(view.container, 'red', 'preview 404');
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    cleanup();
+
+    getPreview().mockReset();
+    getPreview().mockResolvedValue(null);
+    view = renderPage();
+    await screen.findByRole('heading', HEADLINE);
+    expectTone(view.container, 'red', 'preview empty body');
+  });
+
+  it('Q69: a take-over that could not complete is amber (network, 5xx, 429, CSRF, expired session); a refusal is red (not a member, 410)', async () => {
+    const cases: Array<[string, ApiError, 'amber' | 'red']> = [
+      ['network', new ApiError('down', 'network', 0), 'amber'],
+      ['5xx', new ApiError('HTTP error! status: 500', 'internal', 500), 'amber'],
+      ['429', new ApiError('HTTP error! status: 429', 'rate_limited', 429), 'amber'],
+      ['CSRF 403', new ApiError('HTTP error! status: 403', 'forbidden', 403, { csrf_rejected: true }), 'amber'],
+      ['401', new ApiError('unauthorized', 'unauthorized', 401, { error: 'unauthorized' }), 'amber'],
+      ['403 not a member', forbiddenError(), 'red'],
+      ['410 window_expired', goneError('window_expired'), 'red'],
+      ['410 already_used', goneError('already_used'), 'red'],
+      ['410 no code', goneError(null), 'red'],
+    ];
+    for (const [label, err, tone] of cases) {
+      signedIn();
+      accept().mockReset();
+      accept().mockRejectedValue(err);
+      const { container } = renderPage();
+      await tapTakeOver();
+      await screen.findByRole('heading', HEADLINE);
+      expectTone(container, tone, `accept ${label}`);
+      // The colour agrees with the way back the card offers.
+      const wayBack =
+        screen.queryByRole('button', { name: 'Try again' }) ??
+        screen.queryByRole('link', { name: 'Sign in to try again' });
+      if (tone === 'amber') expect(wayBack, `${label}: amber with no way back`).not.toBeNull();
+      else expect(wayBack, `${label}: red beside a way back`).toBeNull();
+      cleanup();
+    }
+  }, 20000);
+});
