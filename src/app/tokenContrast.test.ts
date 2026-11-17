@@ -2821,6 +2821,72 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(measured, 'anti-vacuity: 2 themes x 4 checks').toBe(8);
   });
+
+  it('W4 + W5 (88.9-52): in dark both gears carry a painted edge that stands at least 1.40 off every ground they sit on, and further off it than the gear fill alone', () => {
+    // After-build look page W4: on a hovered dark home card the gear fill (purple-700) stood 1.4467
+    // off the hovered card, so its box nearly vanished. W5: on the plain dark group header the gear
+    // fill IS the header (1.0000; 1.0016 on the green header) and its edge token is transparent in
+    // dark, so only a bare cog showed. Both gears now name a dark edge class on both arms; the class
+    // is read from the call site and resolved through @theme inline, so editing it moves the
+    // numbers here. The cog (over 6:1 on every fill) is what identifies the control for WCAG
+    // 1.4.11; this is a box band, not a 3:1 claim (the strong line stays rejected for the cog:
+    // src/app/groupColourRendering.test.ts ("was pointed at the rejected >= 3:1 border token")).
+    // Measured with src/lib/wcag.ts. Home edge #536889: 2.4455 on the card, 1.9917 on the hovered
+    // card, 1.9954-2.7208 on the eight preset grounds. Group edge #42536e: 1.4467 on the plain
+    // header, 1.4494-1.9763 on the eight preset grounds.
+    const themeBlock = blockOf('theme');
+    const darkOf = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return resolve('dark', ref[1]);
+    };
+    const armsOf = (file: string[], opener: string): string[] => {
+      const src = withoutComments(fs.readFileSync(path.join(__dirname, ...file), 'utf8'));
+      const end = src.indexOf(opener);
+      if (end < 0 || src.indexOf(opener, end + opener.length) >= 0) {
+        throw new TokenContrastParseError(`${file.join('/')}: the gear anchor is not in the source exactly once`);
+      }
+      const forks = [...src.slice(0, end).matchAll(/tinted\s*\?\s*'([^']*)'\s*:\s*'([^']*)'/g)];
+      const fork = forks[forks.length - 1];
+      if (!fork) throw new TokenContrastParseError(`${file.join('/')}: no tinted fork precedes the gear anchor`);
+      return [fork[1], fork[2]];
+    };
+    const key = (tokens: string[], re: RegExp, what: string): string => {
+      const hits = tokens.flatMap((token) => { const m = re.exec(token); return m ? [m[1]] : []; });
+      if (hits.length !== 1) throw new TokenContrastParseError(`the gear literal names ${hits.length} ${what} classes; one is measurable`);
+      return hits[0];
+    };
+    const presets = GROUP_COLOUR_PRESETS.map((preset) => preset.dark);
+    const gears = [
+      {
+        name: 'home',
+        arms: armsOf(['components', 'grouplist.js'], 'title={customizeGroupLabel(group.name)}'),
+        // tinted arm: the eight preset grounds; plain arm: the card and the hovered card
+        grounds: [presets, [resolve('dark', '--color-bg-card'), resolve('dark', '--color-bg-hover')]],
+      },
+      {
+        name: 'group page',
+        arms: armsOf(['groupHomePage', 'page.js'], '<Icon name="Settings" size={20} />'),
+        grounds: [presets, [resolve('dark', '--color-bg-elevated')]],
+      },
+    ];
+    let measured = 0;
+    for (const gear of gears) {
+      gear.arms.forEach((arm, index) => {
+        const tokens = arm.split(/\s+/).filter((token) => token.length > 0);
+        const edge = darkOf(key(tokens, /^dark:border-([a-z0-9-]+)$/, 'dark edge'));
+        const fill = darkOf(key(tokens, /^bg-([a-z0-9-]+)$/, 'fill'));
+        for (const ground of gear.grounds[index]) {
+          const edgeOff = ratioHex(edge, ground, `${gear.name} gear edge on ${ground}`);
+          const fillOff = ratioHex(fill, ground, `${gear.name} gear fill on ${ground}`);
+          expect(edgeOff, `W4 + W5 — the dark ${gear.name} gear edge (${edge}) on ${ground} measures ${edgeOff.toFixed(4)}:1, floor 1.40:1`).toBeGreaterThanOrEqual(1.4);
+          expect(edgeOff, `W4 + W5 — the dark ${gear.name} gear edge (${edge}) must stand further off ${ground} than the fill alone (${fill}, ${fillOff.toFixed(4)})`).toBeGreaterThan(fillOff);
+          measured += 1;
+        }
+      });
+    }
+    expect(measured, 'anti-vacuity: home (8 presets + card + hovered card) + group page (8 presets + plain header)').toBe(19);
+  });
 });
 
 // =====================================================================================

@@ -1375,12 +1375,19 @@ const GroupList = ({
                          the fill paints under it. Hover: 1.4467 against rest in light (darker), 1.2981 in
                          dark (lighter). These grounds are measured here, not pinned (the 88.3-18 NOT A GATE
                          A ROW note above stands); the icon, hover and ring floors are pinned in
-                         src/app/tokenContrast.test.ts ("anti-vacuity: (5 pairs + 8 preset halos) x 2 themes"). */
+                         src/app/tokenContrast.test.ts ("anti-vacuity: (5 pairs + 8 preset halos) x 2 themes").
+                         AMENDED Phase 88.9-52 (W4): in DARK the edge is painted in Invite's blue
+                         (purple-600, the primary fill key), chosen OVER the fill as its own edge
+                         there (a hovered dark card lightens to within 1.45 of the G2 fill and the box
+                         nearly vanished) and OVER the strong line (2.79 on the hovered card; the
+                         REJECTED list above keeps it out). The edge reads 2.45 on the card, 1.99 on
+                         the hovered card and 2.00-2.72 on the eight preset grounds. The G2 fill pair
+                         does not move; light keeps the transparent edge. */
                       <button
                         className={
                           tinted
-                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
-                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
                         }
                         onClick={(e) => {
                           e.stopPropagation();

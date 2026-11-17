@@ -1386,7 +1386,8 @@ function GroupHomePage(){
                         The two numbers are the old hover's step from rest in L*; the new step is 21.30
                         in light and 10.27 in dark, the icon stays over 7:1 on the hovered fill, and the
                         hovered fill stands at least 1.30 off every preset header ground (the token
-                        contrast suite's Gear hover test holds all 18 arms). */}
+                        contrast suite's Gear hover test holds all 18 arms).
+                        AMENDED Phase 88.9-52 (W5): in DARK the edge is the card line (purple-700), chosen OVER the control edge, which is transparent there (on the plain header the fill IS the header, 1.00, and on the green header 1.00, so the gear showed as a bare cog) and OVER the strong line (rejected for the home cog as a 3:1 neutral border). 1.45 on the plain header, 1.45-1.98 on the eight preset grounds; the light control edge reads 1.60 and does not move. On hover the fill reaches the edge colour, so the box fills in. */}
                     {canEditGroup && (
                         <div className="shrink-0 relative z-20">
                             <button
@@ -1398,8 +1399,8 @@ function GroupHomePage(){
                                 // header it sits on.
                                 className={
                                     tinted
-                                        ? 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
-                                        : 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated'
+                                        ? 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                                        : 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated'
                                 }
                             >
                                 <Icon name="Settings" size={20} />
