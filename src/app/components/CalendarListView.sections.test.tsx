@@ -346,6 +346,30 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
     }
   });
 
+  // 88.9-52 (W9, after-build look page): at 200% text on a 375 phone the header read Upcomi / ng /
+  // events. The button's 1rem side padding left the label 156px and the word needs about 196px.
+  // Under 14rem of header width the label row now takes the button's padding too (220px). Class
+  // pins: jsdom lays nothing out; the rendered read is the after-build picture.
+  it('W9 (88.9-52): each section header is a size container and, under 14rem, its label row takes the button padding; the label reads from the left', () => {
+    for (const arm of ARMS) {
+      renderArm(arm);
+      for (const button of [upcomingButton(), pastButton()]) {
+        const heading = button.closest('h3') as HTMLElement;
+        expect(heading.className.split(/\s+/), `${arm}: the header is not a size container`).toContain('@container');
+        const row = button.firstElementChild as HTMLElement;
+        for (const t of ['flex', 'w-full', 'items-center', 'justify-between', 'gap-2', '@max-[14rem]:-mx-4', '@max-[14rem]:w-[calc(100%+2rem)]']) {
+          expect(row.className.split(/\s+/), `${arm}: the label row lacks ${t}`).toContain(t);
+        }
+        const label = row.firstElementChild as HTMLElement;
+        for (const t of ['text-xl', 'font-bold', 'text-left', 'min-w-0']) {
+          expect(label.className.split(/\s+/), `${arm}: the label lacks ${t}`).toContain(t);
+        }
+        expect(row.querySelector('svg')?.getAttribute('class')?.split(/\s+/), `${arm}: the chevron can be squeezed`).toContain('shrink-0');
+      }
+      cleanup();
+    }
+  });
+
   // 88.9-52 (A-17): the picture-load probe is called once per list, as its contract asks, not once
   // per row: three picture rows subscribe one store listener, and none is left after unmount.
   it('A-17 (88.9-52): three picture rows share one picture-load probe on every arm', () => {

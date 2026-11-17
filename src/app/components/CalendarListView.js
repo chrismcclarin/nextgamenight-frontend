@@ -1000,10 +1000,20 @@ export default function CalendarListView({
  * Removing either is a decision, not a cleanup. The heading sticks at the top of the scroll
  * region, above the rows (a row paints at z-index 1) and on the card ground, which is the ground
  * of the sheet and of both desktop cards, so a row passing under it does not show through.
+ *
+ * DECISION Phase 88.9-52 (W9, after-build look page, no objection from the owner 2026-11-16): the
+ * heading is a size container and, under 14rem of its width (about 200% text on a 375 phone), the
+ * label row spreads over the button's 1rem side padding, chosen OVER the padded row, where the
+ * header read Upcomi / ng / events. The padding is the unlayered .btn rule's, so a padding utility
+ * on the button would be dead (the LAYOUT note above); the row takes a negative margin and the
+ * matching width. ARITHMETIC from the 2026-11-16 capture, not a rendered read: the header is
+ * 254px there, the label had 156px and Upcoming needs about 196px; with the padding it has 220px.
+ * The label reads from the left (text-left: .btn centres text, which showed once it wrapped) and
+ * the chevron keeps its size. At 100% nothing moves. Changing this is a decision, not a cleanup.
  */
 function SectionHeader({ headingId, panelId, expanded, onToggle, buttonRef, children }) {
   return (
-    <Heading level={3} size="heading" id={headingId} className="sticky top-0 z-10 bg-surface-card">
+    <Heading level={3} size="heading" id={headingId} className="@container sticky top-0 z-10 bg-surface-card">
       {/* DECISION Phase 88.9-61 (X25a focus ring): the header button draws the house ring INSET,
           chosen OVER Button's default ring-offset-2, whose 4px outside ring the scroll region
           cuts on the left (overflow clips both axes, no left pad), at scrollTop 0, and above a
@@ -1018,12 +1028,12 @@ function SectionHeader({ headingId, panelId, expanded, onToggle, buttonRef, chil
         aria-controls={panelId}
         className="w-full min-h-11 focus-visible:ring-inset focus-visible:ring-offset-0"
       >
-        <span className="flex w-full items-center justify-between gap-2">
-          <span className="text-xl leading-tight font-bold text-content-primary">{children}</span>
+        <span className="flex w-full items-center justify-between gap-2 @max-[14rem]:-mx-4 @max-[14rem]:w-[calc(100%+2rem)]">
+          <span className="min-w-0 text-left text-xl leading-tight font-bold text-content-primary">{children}</span>
           <Icon
             name="ChevronDown"
             size={18}
-            className={`transition-transform ${expanded ? 'rotate-180' : ''}`}
+            className={expanded ? 'shrink-0 transition-transform rotate-180' : 'shrink-0 transition-transform'}
           />
         </span>
       </Button>
