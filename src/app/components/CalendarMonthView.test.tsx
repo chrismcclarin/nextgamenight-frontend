@@ -9,6 +9,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CalendarMonthView from './CalendarMonthView';
 import { getDaysInMonth } from '../../lib/calendarUtils';
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
+import { blend, contrastRatio } from '../../lib/wcag';
+import { GROUP_COLOUR_PRESETS } from '../../lib/groupColourPresets';
 
 const day = new Date();
 day.setDate(15);
@@ -703,9 +707,12 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     // at all, so its 28px text box at 375 is unchanged. Before W14 the compact tile had neither.
     renderGrid({ variant: 'compact', events: [guestEvent, memberEvent], viewerDbUserId: VIEWER });
     const compactGuest = screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' });
-    for (const t of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500/70']) {
+    // AMENDED 88.9-52 (W14 follow-up): the compact tile's dark edge is amber-500 at full strength,
+    // not the full tile's 70% (the ratio test below says why).
+    for (const t of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500']) {
       expect(tokens(compactGuest), `the compact guest tile lacks ${t}`).toContain(t);
     }
+    expect(tokens(compactGuest), 'the compact guest tile still carries the 70% dark edge').not.toContain('dark:border-amber-500/70');
     const compactMember = screen.getByRole('button', { name: 'Wingspan - Home Crew' });
     expect(tokens(compactMember).filter((t) => /(^|:)border(-|$)/.test(t)), 'a compact member tile carries a border').toEqual([]);
     cleanup();
@@ -725,5 +732,85 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     for (const name of ['Azul - Guest Crew', 'Wingspan - Home Crew']) {
       expect(tokens(screen.getByRole('button', { name })), `${name} is dashed with no viewer id`).not.toContain('border-dashed');
     }
+  });
+
+  it('W14 (88.9-52): the compact guest tile edge clears 3:1 against its own fill and against every day cell around it, both themes', () => {
+    // The edge classes are read off the RENDERED compact guest tile, the hexes off globals.css, the
+    // tints off the preset table. Each edge is composited over the tile's own fill (a tile's
+    // background paints under its border), then measured against that fill (the inner side) and
+    // against each ground a day cell can hold (the outer side): this month's cell, today's cell,
+    // an adjacent-month cell on the page ground, and the hovered cell. Floor 3.0 (WCAG 1.4.11).
+    const VIEWER = '00000000-0000-4000-8000-000000000028';
+    renderGrid({
+      variant: 'compact',
+      viewerDbUserId: VIEWER,
+      events: [{
+        id: 'evt-guest',
+        start_date: '2031-09-20T19:00:00',
+        Game: { name: 'Azul' },
+        Group: { name: 'Guest Crew', background_color: null },
+        rsvp_summary: null,
+        EventParticipations: [{ user_id: VIEWER, is_guest: true }],
+      }],
+    });
+    const tile = tokens(screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' }));
+    cleanup();
+
+    const css = readFileSync(resolvePath(__dirname, '../globals.css'), 'utf8');
+    const decls = (name: string): string[] =>
+      [...css.matchAll(new RegExp('^[ \\t]*' + name + ':[ \\t]*([^;]+);', 'gm'))].map((m) => m[1].trim());
+    const one = (name: string): string => {
+      const hits = decls(name);
+      if (hits.length !== 1 || !/^#[0-9a-f]{6}$/i.test(hits[0])) throw new Error(`${name}: expected one hex declaration, found ${JSON.stringify(hits)}`);
+      return hits[0];
+    };
+    // A themed token is declared twice, light first then dark; each is a hex or one var() hop.
+    const themed = (name: string): { light: string; dark: string } => {
+      const hits = decls(name);
+      if (hits.length !== 2) throw new Error(`${name}: expected a light and a dark declaration, found ${hits.length}`);
+      const [light, dark] = hits.map((v) => {
+        const hop = /^var\((--[a-z0-9-]+)\)$/.exec(v);
+        return hop ? one(hop[1]) : v;
+      });
+      return { light, dark };
+    };
+    const readEdge = (pattern: RegExp, what: string): { hex: string; alpha: number } => {
+      const hits = tile.map((t) => pattern.exec(t)).filter((m): m is RegExpExecArray => m !== null);
+      if (hits.length !== 1) throw new Error(`the compact guest tile holds ${hits.length} ${what} edge colours, expected 1`);
+      return { hex: one(`--color-amber-${hits[0][1]}`), alpha: hits[0][2] === undefined ? 1 : Number(hits[0][2]) / 100 };
+    };
+    const edge = {
+      light: readEdge(/^border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'light'),
+      dark: readEdge(/^dark:border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'dark'),
+    };
+    const muted = themed('--color-bg-muted');
+    const cells = {
+      "this month's cell": themed('--color-bg-tile'),
+      "today's cell": muted,
+      'an adjacent-month cell': themed('--color-bg-page'),
+      'a hovered cell': themed('--color-bg-hover'),
+    };
+
+    const failures: string[] = [];
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      const fills = [
+        { name: 'untinted', fill: muted[theme] },
+        ...GROUP_COLOUR_PRESETS.map((p) => ({ name: `${p.name} tint`, fill: p[theme] })),
+      ];
+      for (const { name, fill } of fills) {
+        const painted = blend(edge[theme].hex, edge[theme].alpha, fill);
+        const sides: [string, string][] = [['its own fill', fill], ...Object.entries(cells).map(([cell, v]): [string, string] => [cell, v[theme]])];
+        for (const [side, against] of sides) {
+          const value = contrastRatio(painted, against);
+          if (value === null) throw new Error(`could not measure the ${theme} edge on ${name} against ${side}`);
+          measured += 1;
+          if (value < 3.0) failures.push(`[${theme}] ${name} tile, edge painted ${painted}: ${value.toFixed(4)}:1 against ${side} (${against}), floor 3.00:1`);
+        }
+      }
+    }
+    expect(failures, `the compact guest edge must clear 3:1 on every arm:\n${failures.join('\n')}`).toEqual([]);
+    // 2 themes x 9 fills x (own fill + 4 cell grounds).
+    expect(measured, 'anti-vacuity: 90 measurements').toBe(90);
   });
 });

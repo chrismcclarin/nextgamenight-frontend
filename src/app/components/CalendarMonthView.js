@@ -21,6 +21,9 @@ import { Icon } from '../../components/ui/Icon';
 import SafeImage from './SafeImage';
 import { GUEST_ROW_EDGE } from './GuestPill';
 
+// DECISION Phase 88.9-52 (W14 follow-up): the COMPACT guest tile's dashed edge is its own literal, amber-500 at FULL strength in dark, chosen OVER the full tile's GUEST_ROW_EDGE (70% in dark). At 70% a blue-tinted compact tile in today's cell (and in a hovered cell, the same dark ground) measured 2.98 on its outer side, under the 3.0 floor; at full strength the worst dark arm is 5.25. Light is the same amber-700 (worst 3.34). REJECTED: changing GUEST_ROW_EDGE (the full tile, the sheet row and the upcoming card are owner-ruled, X27); stacking a second dark:border class beside the export (two same-weight utilities, the winner is emission order). A whole literal because Tailwind emits nothing for a built class name. Measured by src/app/components/CalendarMonthView.test.tsx ("W14 (88.9-52): the compact guest tile edge clears 3:1"). Changing this is a decision, not a cleanup.
+const COMPACT_GUEST_EDGE = 'border border-dashed border-amber-700 dark:border-amber-500';
+
 const isPast = (date) => {
   if (!date) return false;
   const today = new Date();
@@ -1010,6 +1013,9 @@ export default function CalendarMonthView({
                                tile's 28px text box at 375 to keep a 1px text shift off the guest tile.
                                Edge against the tile's own fill, wcag.ts formula on the token values: light
                                3.34 (untinted) to 3.74; dark 3.23 (green) to 4.18. Not rendered.
+                               AMENDED Phase 88.9-52 (W14 follow-up): the compact tile's dark edge is amber-500 at
+                               full strength, its own literal (this file ("const COMPACT_GUEST_EDGE")), OVER the
+                               full tile's 70%; the dark numbers in the lines above are superseded by the marker there.
 
                                Any of this is a decision, not a cleanup. */
                             <div
@@ -1048,7 +1054,7 @@ export default function CalendarMonthView({
                                  MEASURED BEFORE: ~20px (ARITHMETIC, not a rendered read — 16px
                                  `text-xs` line box + 2px `p-0.5` top and bottom). This is a
                                  decision, not a cleanup. */
-                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}${compactGuest ? ` ${GUEST_ROW_EDGE}` : ''}`}
+                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}${compactGuest ? ` ${COMPACT_GUEST_EDGE}` : ''}`}
                               style={{
                                 ...(tinted && {
                                   '--group-ground': ground,
