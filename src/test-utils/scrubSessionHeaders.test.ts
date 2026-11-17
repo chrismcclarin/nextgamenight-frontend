@@ -74,7 +74,10 @@ function callLinesIn(text: string, rel: string): number[] {
   });
   const bound =
     names.size > 0
-      ? new RegExp(`(?<![\\w$.])(?:${[...names].map((n) => n.replace(/\$/g, '\\$')).join('|')})${VERB_CALL}`)
+      ? // Every regular-expression metacharacter is escaped, the backslash included (CodeQL
+        // js/incomplete-sanitization, 88.9-52). A captured name is an identifier, so in practice
+        // only the dollar sign occurs; the full class leaves no gap if the capture ever widens.
+        new RegExp(`(?<![\\w$.])(?:${[...names].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})${VERB_CALL}`)
       : null;
   const flagSources = !rel.startsWith('e2e/support/');
   return lines.flatMap((line, i) =>
@@ -238,5 +241,9 @@ describe('scrubSessionHeaders and scrubError', () => {
     // A scrubbed wrapper under e2e/support/ may create the context; its verb calls stay flagged
     // until the census names that wrapper beside the helper.
     expect(callLinesIn(probe.slice(0, 2).join('\n'), 'e2e/support/apiWrapper.ts')).toEqual([2]);
+    // 88.9-52 (CodeQL js/incomplete-sanitization): a captured name is escaped before it is built
+    // into the pattern, so a name holding a dollar sign is matched as written, not as an anchor.
+    const dollar = ['const $h = await request.newContext();', "const res = await $h.get('/api/users/me');"];
+    expect(callLinesIn(dollar.join('\n'), 'e2e/support/apiWrapper.ts')).toEqual([2]);
   });
 });
