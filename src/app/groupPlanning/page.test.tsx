@@ -589,7 +589,7 @@ describe('groupPlanning page — one load per visit (88.6.1-16, W060)', () => {
   it('L4: a failed group fetch is a logger breadcrumb with errCtx, and the group banner still shows', async () => {
     (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('group failed', 'internal', 500));
     render(<GroupPlanningPage />);
-    await screen.findByText("Couldn't load this group");
+    await screen.findByText("Couldn't load your group's plans");
     expect(h.logInfo).toHaveBeenCalledWith('Error fetching group:', { name: 'ApiError', message: 'group failed' });
   });
 });
@@ -1373,7 +1373,7 @@ describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
 
     // Back in the same tab without signing in: the latch is set, so the banner, with Sign in.
     render(<GroupPlanningPage />);
-    expect(await screen.findByText("Couldn't load this group")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load your group's plans")).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', target);
     expect(screen.queryByText('Redirecting to login...')).toBeNull();
     // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
@@ -1410,7 +1410,7 @@ describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
     window.sessionStorage.setItem(signInLatchKey(window.location), '1');
     (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('expired', 'unauthorized', 401));
     render(<GroupPlanningPage />);
-    expect(await screen.findByText("Couldn't load this group")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load your group's plans")).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', target);
     expect(screen.queryByText('Redirecting to login...')).toBeNull();
     await act(async () => {
@@ -1429,7 +1429,7 @@ describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
     };
     render(<GroupPlanningPage />);
     expect(await screen.findByRole('button', { name: 'Reload page' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: "Couldn't load this group" })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: "Couldn't load your group's plans" })).toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
     expect(hrefSet).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();

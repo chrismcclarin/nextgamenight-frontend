@@ -608,6 +608,7 @@ export default function GroupPlanningPage() {
     // frame (both arms), a useUser() failure (Reload, never a redirect), and the declined signed-out
     // return (the group banner with Sign in). The title is plan 88.9-48's target form for this page's
     // banner title; the body is userProfile's 88-19 sentence — no new copy.
+    // AMENDED Phase 88.9-52 (W21, owner ruling R18): this page's three titles (the useUser failure, the signed-out banner, the signed-in group-load banner) read Couldn't load your group's plans, OVER Couldn't load this group, which is the group page's own title and named the wrong page here.
     // DECISION Phase 88.9-52 (A-45): both waiting frames are HEARD. Each keeps ONE visually hidden
     // polite region, mounted empty and fed the frame's own visible words after the house dwell (the
     // X35 two-node shape, src/app/friends/page.js ("DECISION Phase 88.9-66 (X35, once-over R13)")),
@@ -629,12 +630,12 @@ export default function GroupPlanningPage() {
         </div>;
     }
     if (signIn.sessionError) {
-        return <ErrorFallback title="Couldn't load this group" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />;
+        return <ErrorFallback title="Couldn't load your group's plans" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />;
     }
     if (!user) {
         // 88.9-66 (X64): the shared frame gives the banner its gutter and width.
         return <CentredPageFrame srHeading="Plan Game Session">
-            <FetchErrorBanner state={signIn.signedOutErrorState} thing="this group" reportContext="Group planning — signed out" />
+            <FetchErrorBanner state={signIn.signedOutErrorState} thing="your group's plans" reportContext="Group planning — signed out" />
         </CentredPageFrame>;
     }
 
@@ -806,7 +807,7 @@ export default function GroupPlanningPage() {
                 <div className="mb-6">
                     <FetchErrorBanner
                         state={groupErrorState}
-                        thing="this group"
+                        thing="your group's plans"
                         reportContext="Group planning page — group details fetch"
                     />
                 </div>
