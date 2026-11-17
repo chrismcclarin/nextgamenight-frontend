@@ -545,6 +545,9 @@ export default function KebabMenu({
                 : item.confirmLabel || confirmLabel
               : item.label;
             const danger = item.danger || isArmed;
+            // 88.9-52 (W31): which of the two spinner mounts below this item uses. A property of the
+            // item, never its busy flag, so neither mount unmounts when busy drops (the R-C3b hold).
+            const reservesLabel = Boolean(item.twoTap);
             return (
               /* DECISION Phase 88.6-16 (D-12/D24): the mapped root is keyed on
                  POSITION, over the label-derived key this map used to carry. NOT
@@ -647,7 +650,7 @@ export default function KebabMenu({
                        occupant, so the word plus the spinner still fits the reserved width for every
                        shipped label. A plain item has no reserved cell and keeps the spinner after its
                        label. Moving it back out is a decision, not a cleanup. */}
-                  {item.twoTap ? (
+                  {reservesLabel ? (
                     <ReservedLabel
                       reserve={[...COUNTDOWN_LABELS, item.confirmLabel || confirmLabel]}
                       reserveClassName="font-semibold"
@@ -672,7 +675,7 @@ export default function KebabMenu({
                        keeps busy until the page unmounts.
                        AMENDED Phase 88.9-52 (W31): a twoTap item mounts that same element inside its
                        label cell above; only a plain item mounts it here. */}
-                  {item.twoTap ? null : <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />}
+                  {reservesLabel ? null : <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />}
                   {item.busy ? <span className="sr-only">{item.busySuffix}</span> : null}
                 </button>
               </li>
