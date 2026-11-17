@@ -433,14 +433,29 @@ function FriendsPage() {
     // (SPEC A8). A useUser() error shows Reload, not the log-in prompt. See
     // src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling").
     // AMENDED Phase 88.9-66 (X70b): the declined return is the shared banner with Sign in (returnTo kept).
+    // AMENDED Phase 88.9-52 (A-31): the session is proven only once identity, the friends list and the
+    // sent list have each SETTLED (answered or failed) with no 401 among them and at least one answered,
+    // chosen OVER the friends list's success alone (it cleared the latch while the sent or identity read
+    // was still out, so that read's 401 redirected again on every return) and OVER all three SUCCEEDING
+    // (a sent list that failed with a 500 would hold the latch set, and the next real expiry would show
+    // a banner where it should go to sign-in). Each read fetches its own token, so one can 401 alone.
+    const signInUnauthorized = [selfIdentityErrorState, friendsErrorState, sentErrorState].some(
+        (s) => s.showError && s.code === 'unauthorized'
+    );
+    const identitySettled = Boolean(selfUuid) || selfIdentityErrorState.showError;
+    const friendsSettled = friendsLoaded || Boolean(friendsLoadError);
+    const sentSettled = sentLoaded || Boolean(sentError);
     const signIn = useSignInRedirect({
         authLoading,
         signedOut: !user,
         authError,
-        unauthorized: [selfIdentityErrorState, friendsErrorState, sentErrorState].some(
-            (s) => s.showError && s.code === 'unauthorized'
-        ),
-        sessionProven: friendsLoaded,
+        unauthorized: signInUnauthorized,
+        sessionProven:
+            identitySettled &&
+            friendsSettled &&
+            sentSettled &&
+            !signInUnauthorized &&
+            (Boolean(selfUuid) || friendsLoaded || sentLoaded),
     });
 
     // The Requests tab over the shared provider (88.6.1-70 contract C5): the refetch is plan

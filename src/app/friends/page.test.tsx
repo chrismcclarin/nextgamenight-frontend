@@ -2586,6 +2586,65 @@ describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
     expect(replace).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
   });
+
+  // 88.9-52 review A-37: the REDIRECT arm of a list read's 401 (the helpers above pin only the
+  // declined arm, by setting the latch first). No latch here, so the guard navigates once.
+  it('SESSION-01 (88.9-52 A-37): a 401 on the friends list with no latch is sent to sign-in once, /friends as returnTo, and sets the latch', async () => {
+    const replace = stubLocation('/friends');
+    renderFriends({ loadError: new ApiError('Unauthorized', 'unauthorized', 401) });
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2Ffriends');
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    // The redirect frame is the hold, never a banner.
+    expect(screen.queryByText("Couldn't load your friends")).toBeNull();
+  });
+
+  it('SESSION-01 (88.9-52 A-37): a 401 on the sent list with no latch is sent to sign-in once and sets the latch', async () => {
+    const replace = stubLocation('/friends');
+    h.selfUuid = SELF_UUID;
+    (friendshipsAPI.getFriends as Mock).mockResolvedValue([FRIENDSHIP]);
+    (friendshipsAPI.getSentRequests as Mock).mockRejectedValue(new ApiError('Unauthorized', 'unauthorized', 401));
+    render(<FriendsPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2Ffriends');
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+  });
+
+  // 88.9-52 review A-31 (Friends half): back from sign-in with the latch set, the friends list
+  // answering first must not clear the latch while the sent list is still out; its 401 then takes
+  // the declined arm (the banner with Sign in), never a second trip.
+  it('SESSION-01 (88.9-52 A-31): back with the latch set, a friends list that loads before the sent list answers 401 does not redirect again', async () => {
+    const replace = stubLocation('/friends');
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.selfUuid = SELF_UUID;
+    const sent = deferred<unknown>();
+    (friendshipsAPI.getFriends as Mock).mockResolvedValue([FRIENDSHIP]);
+    (friendshipsAPI.getSentRequests as Mock).mockReturnValue(sent.promise);
+    render(<FriendsPage />);
+    await screen.findByText('Dana');
+    // The friends list alone has not proven the session: the latch is still set.
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    await act(async () => {
+      sent.reject(new ApiError('Unauthorized', 'unauthorized', 401));
+    });
+    fireEvent.click(sentTabButton());
+    expect(await screen.findByText(SENT_TITLE)).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+  });
+
+  // The stale-latch trap: a read that settles as a plain failure must not hold the latch set, or the
+  // person's next real expiry would show a banner where it should send them to sign-in.
+  it('SESSION-01 (88.9-52 A-31): the latch is cleared once the three reads have settled with no 401, even when the sent list failed', async () => {
+    stubLocation('/friends');
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.selfUuid = SELF_UUID;
+    (friendshipsAPI.getFriends as Mock).mockResolvedValue([FRIENDSHIP]);
+    (friendshipsAPI.getSentRequests as Mock).mockRejectedValue(new ApiError('Server error', 'internal', 500));
+    render(<FriendsPage />);
+    await screen.findByText('Dana');
+    await waitFor(() => expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull());
+  });
 });
 
 // DECISION Phase 88.9-58 (X14 family, owner 2026-11-14 on the live page: "Why not just turn them
