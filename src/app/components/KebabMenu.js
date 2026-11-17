@@ -636,9 +636,24 @@ export default function KebabMenu({
                   {/* X69 width (88.9-67): a twoTap item holds the widest of Wait (3), (2), (1) and its
                        armed words from the moment the menu opens, so the item and the menu keep their
                        size when it arms and when it goes live; a plain item renders its bare label. */}
+                  {/* AMENDED Phase 88.9-52 (W32, width half): the reserve is measured at the armed weight
+                       (font-semibold, the weight the gated and armed labels paint at, on the armed
+                       branch of this item's className), chosen OVER the resting weight it inherited: the
+                       Cancel event menu grew 1.4px (160 to 161.4, measured at 375) on the first tap. */}
+                  {/* DECISION Phase 88.9-52 (W31): a busy twoTap item's spinner is rendered INSIDE the
+                       label's cell, straight after the word, chosen OVER after the reserved cell, where
+                       it sat about 90px right of a short word (measured: the member menu's Remove,
+                       whose cell holds Tap again to remove). The cell is as wide as its widest
+                       occupant, so the word plus the spinner still fits the reserved width for every
+                       shipped label. A plain item has no reserved cell and keeps the spinner after its
+                       label. Moving it back out is a decision, not a cleanup. */}
                   {item.twoTap ? (
-                    <ReservedLabel reserve={[...COUNTDOWN_LABELS, item.confirmLabel || confirmLabel]}>
+                    <ReservedLabel
+                      reserve={[...COUNTDOWN_LABELS, item.confirmLabel || confirmLabel]}
+                      reserveClassName="font-semibold"
+                    >
                       {label}
+                      <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />
                     </ReservedLabel>
                   ) : (
                     label
@@ -654,8 +669,10 @@ export default function KebabMenu({
                        AMENDED Phase 88.9-56 (R-C3b reach): the spinner is the delayed, held element, mounted
                        beside the label outside the busy ternary (an element, not a hook, so it works inside
                        items.map); the ternary keeps only the heard suffix. An item that navigates on success
-                       keeps busy until the page unmounts. */}
-                  <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />
+                       keeps busy until the page unmounts.
+                       AMENDED Phase 88.9-52 (W31): a twoTap item mounts that same element inside its
+                       label cell above; only a plain item mounts it here. */}
+                  {item.twoTap ? null : <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />}
                   {item.busy ? <span className="sr-only">{item.busySuffix}</span> : null}
                 </button>
               </li>

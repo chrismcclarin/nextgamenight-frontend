@@ -2416,10 +2416,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // The mobile tone keeps everything else that distinguishes it — more padding, `ring-1 ring-line`
   // and the wider `max-w`. Both tones' `text-base` is Body 16 and already on the scale. Visible
   // delta 500 -> 400, covered by V-6. Entry DELETED, not zeroed.
+  // AMENDED Phase 88.9-52 (W32, width half): FLOORED at 2. The second 600 is the invisible reserve
+  // of a twoTap item's label (reserveClassName on its ReservedLabel), a width MEASUREMENT of the
+  // armed and gated words at the weight they paint at, not emphasis; without it the menu grew
+  // 1.4px on the first tap. The same shape as the collection x reserve carried for userProfile.
   'app/components/KebabMenu.js': {
-    sites: 1,
+    sites: 2,
     why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. 1 of these is a PERMANENT armed-state 600 (see ARMED_STATE_600_ROSTER), so this entry floors at 1 rather than at zero. Owning plans: 88.6-11, 88.6-12, 88.6-16, 88.6-17, 88.6-18, 88.6-31.',
+      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. 1 of these is a PERMANENT armed-state 600 (see ARMED_STATE_600_ROSTER) and 1 is the invisible armed-label reserve measured at that same weight (88.9-52 W32), so this entry floors at 2 rather than at zero. Owning plans: 88.6-11, 88.6-12, 88.6-16, 88.6-17, 88.6-18, 88.6-31.',
     owner: { kind: 'decision', marker: 'DECISION Phase 65-02 EVT-08' },
   },
   // OUTCOME LEAD CORRECTED, NOT ABSORBED, by plan 88.6-35 task 1 (wave 7, 2026-09-16). This

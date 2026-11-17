@@ -462,6 +462,61 @@ describe('KebabMenu busy item (rule 1, 88.9-46)', () => {
     fireEvent.click(resting);
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  // 88.9-52 W31: a twoTap item's label sits in a cell as wide as its longest armed words, so a
+  // spinner placed after that cell sat about 90px right of a short word (measured on the member
+  // menu's Remove). jsdom has no layout, so the pin is the spinner's place in the tree: inside the
+  // label's own cell, straight after the word.
+  it('W31 (88.9-52): a busy twoTap item shows its spinner straight after the word, inside the label cell; a plain busy item keeps it after the label', async () => {
+    render(
+      <KebabMenu
+        ariaLabel="Member actions"
+        items={[
+          { label: 'Remove', danger: true, twoTap: true, keepOpen: true, confirmLabel: 'Tap again to remove', ariaDisabled: true, busy: true, busySuffix: ', removing', onClick: vi.fn() },
+          { label: 'Leave event', ariaDisabled: true, busy: true, busySuffix: ', leaving', onClick: vi.fn() },
+        ]}
+      />
+    );
+    const { list } = openMenu();
+    const remove = within(list).getByRole('button', { name: 'Remove, removing' });
+    const leave = within(list).getByRole('button', { name: 'Leave event, leaving' });
+    await waitFor(() => expect(remove.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    await waitFor(() => expect(leave.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+
+    const spinner = remove.querySelector('[data-slot="spinner"]') as HTMLElement;
+    const cell = spinner.parentElement as HTMLElement;
+    expect(cell.tagName, 'the spinner sits in the visible label cell, not after the reserved width').toBe('SPAN');
+    expect(cell).not.toHaveAttribute('aria-hidden');
+    expect(cell).not.toHaveAttribute('data-reserve');
+    expect(cell.parentElement?.querySelectorAll('[data-reserve]').length, 'the cell is the reserved label\'s own').toBe(4);
+    expect(cell.firstChild?.textContent, 'the word comes first').toBe('Remove');
+    expect(spinner.previousSibling?.textContent).toBe('Remove');
+    // The name and the text order are unchanged: label, then the heard suffix.
+    expect(remove.textContent).toBe('Remove, removing');
+
+    // A plain item has no reserved cell: its spinner stays a child of the button, after the label.
+    const plainSpinner = leave.querySelector('[data-slot="spinner"]') as HTMLElement;
+    expect(plainSpinner.parentElement).toBe(leave);
+    expect(plainSpinner.previousSibling?.textContent).toBe('Leave event');
+  });
+
+  // 88.9-52 W32 (width half): the armed and gated labels paint at 600 while the reserve was
+  // measured at the resting 400, so the Cancel event menu grew 1.4px (160 to 161.4) on the first tap.
+  it('W32 (88.9-52): every reserved string of a twoTap item is measured at the armed weight', () => {
+    render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[{ label: 'Cancel event', danger: true, twoTap: true, onClick: vi.fn() }]}
+      />
+    );
+    const item = within(openMenu('Event actions').list).getByRole('button', { name: 'Cancel event' });
+    const reserves = Array.from(item.querySelectorAll('[data-reserve]'));
+    expect(reserves).toHaveLength(4);
+    for (const span of reserves) expect(span).toHaveClass('font-semibold');
+    // The armed item paints that same weight (the class the reserve has to match).
+    fireEvent.click(item);
+    expect(item).toHaveClass('font-semibold');
+  });
 });
 
 // Plan 88.9-35 (owner pick B2a, 88.9-PICKS-B1.json): the trigger's focus halo is the ground its
