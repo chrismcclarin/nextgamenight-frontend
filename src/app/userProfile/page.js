@@ -4676,7 +4676,14 @@ function Profile(){
                             AMENDED Phase 88.9-52 (W45): in DARK the bar takes the sunken fill, chosen OVER the
                             muted fill there: X56c's raised cards and the muted bar are both purple-800 in dark, so
                             the bar read 1.00 against the cards above it. Sunken reads 1.38 against the cards and
-                            1.13 against the section card, words 14.70. Light keeps the muted bar (1.50). */}
+                            1.13 against the section card, words 14.70. Light keeps the muted bar (1.50).
+                            AMENDED Phase 88.9-52 (W45 reverted, CI): the sunken dark fill is WITHDRAWN and the
+                            bar is the muted fill in both themes again. Sunken read 1.1251 against the section
+                            card, under the 1.20 floor the owner ruled with X52d, and the ruled floor wins OVER
+                            the W45 fix until the owner rules again. Dark now: bar 1.2281 from the section card,
+                            1.0000 from the game cards (W45's complaint, OPEN with the owner: a bar lighter than
+                            the cards, or the bar left equal to them), rule 1.4467, words 10.64. Giving the bar a
+                            dark fill of its own is the owner's ruling to make, not a cleanup. */}
                         <div id={collectionGridId} aria-busy={loadingGames || undefined} className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {(collectionOverflows && !collectionOpen
                                 ? ownedGames.slice(0, collectionVisibleCount + collectionPeekCount)
@@ -4837,8 +4844,8 @@ function Profile(){
                             <div
                                 className={
                                     collectionOpen
-                                        ? '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-4 rounded-b-card overflow-hidden border-t border-line bg-surface-muted dark:bg-surface-sunken'
-                                        : '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-0 rounded-b-card overflow-hidden border-t border-line bg-surface-muted dark:bg-surface-sunken'
+                                        ? '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-4 rounded-b-card overflow-hidden border-t border-line bg-surface-muted'
+                                        : '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-0 rounded-b-card overflow-hidden border-t border-line bg-surface-muted'
                                 }
                             >
                                 <button

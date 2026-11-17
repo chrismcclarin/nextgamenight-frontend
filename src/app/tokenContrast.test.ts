@@ -2989,40 +2989,44 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
   });
 
-  it('W45 (88.9-52): in dark the collection bar is not the game cards\' fill — at least 1.30 from them, its words 4.5 on it; light keeps the muted bar', () => {
-    // After-build look page W45: X56c gave the dark game cards the raised fill and X52d gave the
-    // bar the muted fill; in dark both resolve to purple-800, so the bar read 1.0000 against the
-    // cards above it. The bar's dark fill and the cards' dark fill are read from the call site.
-    // Measured with src/lib/wcag.ts, dark: bar against the cards 1.38, against the section card
-    // 1.13, words 14.70 on the bar. Light: the muted bar, 1.4993 against the white cards.
+  it('X52d (88.9-68; W45 re-pointed 88.9-52): the collection bar is at least 1.20 from the section card in both themes, its top rule 1.20 from it, its words 4.5 on it', () => {
+    // Owner ruling X52d (pick page 10c): the bar reads as a bar against the section card it closes,
+    // floor 1.20 (the same floor e2e/profile-look-fixes.spec.ts ("X52d dark bar against the card ground") holds
+    // in the browser). The W45 fix of this batch gave the dark bar the sunken fill to part it from
+    // the game cards; that read 1.1251 against the section card and broke this floor in CI, so it
+    // was reverted and this row now pins the ruled floor at the token layer. W45 itself (the dark
+    // bar equals the game cards, 1.0000) is OPEN with the owner; see the marker at the call site.
+    // The bar's fill (and a dark: fill, if one is ever named), its rule and its ink are read from
+    // the call site. Measured with src/lib/wcag.ts: light bar 1.5046, rule 1.5350, words 11.94;
+    // dark bar 1.2281, rule 1.4467, words 10.64.
     const src = withoutComments(
       fs.readFileSync(path.join(__dirname, 'userProfile', 'page.js'), 'utf8'),
     );
     const themeBlock = blockOf('theme');
-    const darkOf = (key: string): string => {
+    const propOf = (key: string): string => {
       const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
       if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
-      return resolve('dark', ref[1]);
+      return ref[1];
     };
-    const bars = [...src.matchAll(/rounded-b-card overflow-hidden border-t border-line bg-surface-muted dark:bg-([a-z0-9-]+)'/g)];
-    expect(bars, 'LOCATOR: both arms of the collection bar wrapper keep the muted fill and name a dark fill').toHaveLength(2);
-    const cards = [...src.matchAll(/'border border-line rounded-lg p-4 dark:bg-([a-z0-9-]+)[ ']/g)];
-    expect(cards, 'LOCATOR: the three arms of the collection game card name a dark fill').toHaveLength(3);
+    const bars = [...src.matchAll(/rounded-b-card overflow-hidden border-t border-([a-z0-9-]+) bg-([a-z0-9-]+)(?: dark:bg-([a-z0-9-]+))?'/g)];
+    expect(bars, 'LOCATOR: both arms of the collection bar wrapper name a rule and a fill').toHaveLength(2);
     const ink = /flex w-full min-h-12 items-center justify-center gap-2 text-sm text-([a-z0-9-]+) /.exec(src);
     expect(ink, 'LOCATOR: the bar button names its ink').not.toBeNull();
     let measured = 0;
     for (const bar of bars) {
-      const barHex = darkOf(bar[1]);
-      for (const card of cards) {
-        const ratio = ratioHex(barHex, darkOf(card[1]), 'W45 bar against the game cards');
-        expect(ratio, `W45 — [dark] the bar (${barHex}) against the game cards (${darkOf(card[1])}) measures ${ratio.toFixed(4)}:1, floor 1.30:1`).toBeGreaterThanOrEqual(1.3);
-        measured += 1;
+      for (const theme of ['light', 'dark'] as const) {
+        const fill = propOf(theme === 'dark' && bar[3] ? bar[3] : bar[2]);
+        const barHex = resolve(theme, fill);
+        const groundHex = resolve(theme, propOf('surface-card'));
+        const apart = ratioHex(barHex, groundHex, 'X52d bar against the section card');
+        expect(apart, `X52d — [${theme}] the bar (${barHex}) against the section card (${groundHex}) measures ${apart.toFixed(4)}:1, floor 1.20:1`).toBeGreaterThanOrEqual(1.2);
+        const rule = ratioHex(resolve(theme, propOf(bar[1])), barHex, 'X52d top rule against the bar');
+        expect(rule, `X52d — [${theme}] the top rule against the bar (${barHex}) measures ${rule.toFixed(4)}:1, floor 1.20:1`).toBeGreaterThanOrEqual(1.2);
+        expectRatio(theme, propOf(ink![1]), fill, 4.5, 'X52d the bar words');
+        measured += 3;
       }
-      const words = ratioHex(darkOf(ink![1]), barHex, 'W45 words on the bar');
-      expect(words, `W45 — [dark] the bar words measure ${words.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
-      measured += 1;
     }
-    expect(measured, 'anti-vacuity: 2 bar arms x (3 card arms + the words)').toBe(8);
+    expect(measured, 'anti-vacuity: 2 bar arms x 2 themes x (ground, rule, words)').toBe(12);
   });
 
   it('W3 (88.9-52): all three RSVP answer cards paint a circle behind the glyph — the fill at least 1.15 off the card and the glyph at least 3.0 on it, both themes', () => {
