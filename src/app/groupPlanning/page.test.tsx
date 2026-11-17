@@ -594,11 +594,24 @@ describe('groupPlanning page — one load per visit (88.6.1-16, W060)', () => {
   });
 });
 
+// 88.9-52 A-45: a loading or redirect frame is HEARD. Its words are spoken by a visually hidden
+// polite region (StatusRegion with settleOnMount: mounted empty, filled after the house dwell),
+// with one real ellipsis character where the visible line has three dots.
+async function expectSpokenByHiddenRegion(words: string) {
+  await waitFor(() => {
+    const region = screen.queryAllByRole('status').find((n) => n.textContent === words);
+    expect(region, 'no polite region said "' + words + '"').toBeDefined();
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+  });
+}
+
 describe('groupPlanning page — loading line and breadcrumb (88.6.1-16, G5 / R7-M7)', () => {
-  it("G5: while Auth0 resolves the session the page reads Getting your group's plans... (byte-equal to the route fallback)", () => {
+  it("G5: while Auth0 resolves the session the page reads Getting your group's plans... (byte-equal to the route fallback)", async () => {
     h.AUTH = { user: undefined, isLoading: true };
     render(<GroupPlanningPage />);
     expect(screen.getByText("Getting your group's plans...")).toBeInTheDocument();
+    await expectSpokenByHiddenRegion("Getting your group's plans…");
     expect(screen.queryByText('Loading...')).toBeNull();
   });
 
@@ -1354,6 +1367,7 @@ describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
     expect(replace).toHaveBeenCalledWith(target);
     expect(hrefSet).not.toHaveBeenCalled();
     expect(screen.getByText('Redirecting to login...')).toBeInTheDocument();
+    await expectSpokenByHiddenRegion('Redirecting to login…');
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
     cleanup();
 

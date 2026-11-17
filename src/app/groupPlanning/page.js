@@ -608,13 +608,23 @@ export default function GroupPlanningPage() {
     // frame (both arms), a useUser() failure (Reload, never a redirect), and the declined signed-out
     // return (the group banner with Sign in). The title is plan 88.9-48's target form for this page's
     // banner title; the body is userProfile's 88-19 sentence — no new copy.
+    // DECISION Phase 88.9-52 (A-45): both waiting frames are HEARD. Each keeps ONE visually hidden
+    // polite region, mounted empty and fed the frame's own visible words after the house dwell (the
+    // X35 two-node shape, src/app/friends/page.js ("DECISION Phase 88.9-66 (X35, once-over R13)")),
+    // chosen OVER a status role on the visible line (a region that mounts holding its words is not
+    // announced) and OVER new spoken wording (none was ruled): the words are the visible ones, with
+    // one real ellipsis character where the visible line has three dots. The region is the first
+    // child of both wrappers, so React keeps it from the session wait into the redirect hold and the
+    // second line is spoken as a change.
     if (authLoading && !user) {
         return <div className="flex items-center justify-center min-h-screen text-content-secondary">
+            <StatusRegion settleOnMount className="sr-only" message="Getting your group's plans…" />
             {AUTH_LOADING_MESSAGE}
         </div>;
     }
     if (signIn.holding) {
         return <div className="flex items-center justify-center min-h-screen text-content-secondary">
+            <StatusRegion settleOnMount className="sr-only" message="Redirecting to login…" />
             Redirecting to login...
         </div>;
     }

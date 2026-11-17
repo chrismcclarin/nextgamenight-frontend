@@ -238,6 +238,18 @@ const ROSTER3 = [
   { id: 'third-uuid', user_id: 'auth0|third', username: 'Third', UserGroup: { role: 'member' } },
 ];
 
+// 88.9-52 A-45: a loading or redirect frame is HEARD. Its words are spoken by a visually hidden
+// polite region (StatusRegion with settleOnMount: mounted empty, filled after the house dwell),
+// with one real ellipsis character where the visible line has three dots.
+async function expectSpokenByHiddenRegion(words: string) {
+  await waitFor(() => {
+    const region = screen.queryAllByRole('status').find((n) => n.textContent === words);
+    expect(region, 'no polite region said "' + words + '"').toBeDefined();
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+  });
+}
+
 describe('groupHomePage membership gate vs unresolved identity', () => {
   it('does NOT redirect-as-removed while the identity query is unresolved (shows loading)', async () => {
     // Pending identity: selfUuid undefined.
@@ -245,6 +257,7 @@ describe('groupHomePage membership gate vs unresolved identity', () => {
 
     // The page stays on the "Loading group…" gate...
     expect(await screen.findByText('Loading group…')).toBeInTheDocument();
+    await expectSpokenByHiddenRegion('Loading group…');
 
     // ...and the members fetch should not even fire the membership derive, so
     // the removed-redirect never happens. Give any stray async a tick.
@@ -751,6 +764,7 @@ describe('groupHomePage games refresh keeps the page (88.6.1-55: Req 9, D-09a / 
     rerender(<GroupHomePage />);
 
     expect(await screen.findByText('Loading games...')).toBeInTheDocument();
+    await expectSpokenByHiddenRegion('Loading games…');
     await act(async () => {
       otherGroup.resolve([]);
     });
@@ -1887,6 +1901,7 @@ describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', 
     expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
     // The redirect frame is the hold (the K10 hang was this same screen with replace never called).
     expect(screen.getByText('Loading group…')).toBeInTheDocument();
+    await expectSpokenByHiddenRegion('Loading group…');
     expect(screen.queryAllByText(G7)).toHaveLength(0);
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
     cleanup();

@@ -36,6 +36,7 @@ import { logger, errCtx } from '../../lib/logger';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 
 // The resolved outcome of one games load: the shape plan 88.6.1-21's banner reads
 // (`classifyRetryResult`) to announce a failed retry, and the shape plan 88.6.1-71 reuses for the
@@ -768,6 +769,16 @@ function GroupHomePage(){
     // AMENDED 88.6.1-89 (close ruling P-79): the gate reads the page-load state — the members load
     // OR the group record's load failing with nothing retained, members first — so one banner and
     // one Try again cover both (the marker on getGroup, REJECTED (a)).
+    // DECISION Phase 88.9-52 (A-45): the three waiting frames below (the redirect hold, the paint gate,
+    // Loading games) are HEARD. Each keeps ONE visually hidden polite region as the FIRST child of its
+    // wrapper, mounted empty and fed the frame's own visible words after the house dwell (the X35
+    // two-node shape, src/app/friends/page.js ("DECISION Phase 88.9-66 (X35, once-over R13)")), chosen
+    // OVER a status role on the visible line (a region that mounts holding its words is not announced)
+    // and OVER new spoken wording (none was ruled): the words are the visible ones, with one real
+    // ellipsis character where the visible line has three dots. The region sits at the same place in
+    // all three wrappers ON PURPOSE: React keeps the one region across the frames, so the hold handing
+    // over to the paint gate says nothing twice, and Loading games is a change, which is spoken. It is
+    // inside the wrapper, so both focus guards stay the 2nd and 3rd children (the C12 position rule).
     // 88.9-40 (SESSION-01 / SESSION-03): the redirect frame. The paint gate's own wrapper and copy,
     // both guards as the 2nd and 3rd children (the 88.6.1-71 C12 position rule). It holds BOTH arms,
     // because the paint gate below opens on a first-load 401 once membership has settled (its
@@ -776,6 +787,7 @@ function GroupHomePage(){
         return (
             <>
                 <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
+                    <StatusRegion settleOnMount className="sr-only" message="Loading group…" />
                     <p className="text-content-secondary">Loading group…</p>
                 </div>
                 {membersFocusGuard}
@@ -820,6 +832,7 @@ function GroupHomePage(){
         return (
             <>
                 <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
+                    <StatusRegion settleOnMount className="sr-only" message="Loading group…" />
                     <p className="text-content-secondary">Loading group…</p>
                     {/* D-08: if identity resolution permanently fails, the membership
                         check can never complete — surface a compact, non-blocking
@@ -836,6 +849,7 @@ function GroupHomePage(){
         return (
             <>
                 <div className="p-6 flex items-center justify-center min-h-screen">
+                    <StatusRegion settleOnMount className="sr-only" message="Loading games…" />
                     <p className="text-content-secondary">Loading games...</p>
                 </div>
                 {membersFocusGuard}
