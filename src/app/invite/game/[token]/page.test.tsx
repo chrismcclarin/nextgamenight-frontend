@@ -14,7 +14,7 @@
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only,
 // so a `.js` sibling would be silently never run.
 import * as React from 'react';
-import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, act, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -618,5 +618,90 @@ describe('invite/game/[token] — Q69 the failure glyph by cause (88.9-52)', () 
     expect(screen.queryByText('Check your connection and try again.')).toBeNull();
     expect(screen.getByRole('link', { name: 'Go Home' })).toHaveAttribute('href', '/');
     expect(join()).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Phase 88.9-52 (PIX-5, picture pass, the Q69 as-is note): the small line under the failure sentence,
+// Check your connection and try again., named the connection as the cause on EVERY retryable failure,
+// so a 5xx card said "our end" in one sentence and "your connection" in the next. It now shows only
+// when the failure IS a network failure (ApiError code network). No string changed.
+describe('invite/game/[token] — the connection hint by cause (88.9-52: PIX-5)', () => {
+  const HINT = 'Check your connection and try again.';
+  const EVENT = { game_name: 'Wingspan', event_date: '2030-01-01T00:00:00Z' };
+  const CAUSES: Array<[string, unknown, boolean]> = [
+    ['network', new ApiError('Network error: Could not connect to the server.', 'network', 0), true],
+    ['5xx', new ApiError('HTTP error! status: 500', 'internal', 500), false],
+    ['code-less 500', new ApiError('HTTP error! status: 500', 'unknown', 500, { error: 'boom' }), false],
+    ['429', new ApiError('HTTP error! status: 429', 'rate_limited', 429), false],
+    ['CSRF 403', new ApiError('HTTP error! status: 403', 'forbidden', 403, { csrf_rejected: true }), false],
+    // A transport error rethrown raw carries no code, so the page cannot call it a network failure.
+    ['raw TypeError', new TypeError('Load failed'), false],
+  ];
+  const expectCard = (label: string, hinted: boolean) => {
+    expect(screen.getByRole('button', { name: 'Retry' }), `${label}: no Retry`).toBeInTheDocument();
+    const hint = screen.queryByText(HINT);
+    const sentence = screen.getByRole('heading', { name: "Couldn't join game night" }).nextElementSibling as HTMLElement;
+    expect(sentence.tagName, `${label}: the failure sentence`).toBe('P');
+    if (hinted) {
+      expect(hint, `${label}: the connection hint is missing on a network failure`).not.toBeNull();
+      // The sentence keeps its small gap to the hint, and the hint carries the gap to Retry.
+      expect(sentence).toHaveClass('mb-2');
+      expect(hint).toHaveClass('mb-6');
+    } else {
+      expect(hint, `${label}: the card blames the connection for a failure that is not one`).toBeNull();
+      // With no hint the sentence carries the gap to Retry itself.
+      expect(sentence).toHaveClass('mb-6');
+      expect(sentence).not.toHaveClass('mb-2');
+    }
+  };
+
+  it('PIX-5 (88.9-52): a preview failure shows the connection hint for a network failure only', async () => {
+    for (const [label, err, hinted] of CAUSES) {
+      preview().mockReset();
+      preview().mockRejectedValue(err);
+      render(<GameInvitePage />);
+      await screen.findByRole('heading', { name: "Couldn't join game night" });
+      expectCard(`preview ${label}`, hinted);
+      cleanup();
+    }
+  });
+
+  it('PIX-5 (88.9-52): a join failure shows the connection hint for a network failure only, and a Retry clears it', async () => {
+    for (const [label, err, hinted] of CAUSES) {
+      preview().mockReset();
+      join().mockReset();
+      authState.user = { sub: 'auth0|abc' };
+      preview().mockResolvedValue(EVENT);
+      join().mockRejectedValue(err);
+      render(<GameInvitePage />);
+      await screen.findByRole('heading', { name: "Couldn't join game night" });
+      expectCard(`join ${label}`, hinted);
+      cleanup();
+    }
+
+    // A 2xx the page cannot read is not a network failure.
+    preview().mockReset();
+    join().mockReset();
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(EVENT);
+    join().mockResolvedValue({});
+    render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't join game night" });
+    expectCard('join bad 2xx', false);
+    cleanup();
+
+    // Network first (hint), then Retry answers 500: the hint does not carry over.
+    preview().mockReset();
+    join().mockReset();
+    authState.user = undefined;
+    preview()
+      .mockRejectedValueOnce(new ApiError('Network error: Could not connect to the server.', 'network', 0))
+      .mockRejectedValueOnce(new ApiError('HTTP error! status: 500', 'internal', 500));
+    render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't join game night" });
+    expectCard('first load, network', true);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('Something went wrong on our end. Please try again shortly.');
+    expectCard('after Retry, 5xx', false);
   });
 });

@@ -62,8 +62,20 @@ function GameInvitePage() {
      dead session and could never work. Keyed on the HTTP status alone, like isPermanent below.
      The connection hint under the line is left out on this arm (the remedy is not the
      connection); the register's session line and the restore page's link words are reused, no
-     new string. Putting Retry back on a 401 is a decision, not a cleanup. */
+     new string. Putting Retry back on a 401 is a decision, not a cleanup.
+     AMENDED Phase 88.9-52 (PIX-5): the connection hint is now left out for every cause but a
+     network failure; see the PIX-5 marker on connectionHint below. */
   const [needsSignIn, setNeedsSignIn] = useState(false);
+  /* DECISION Phase 88.9-52 (PIX-5, picture pass, the Q69 as-is note): the small line under the
+     failure sentence (Check your connection and try again.) shows ONLY when the failure is a
+     network failure, read from ApiError.code (network), chosen OVER the shipped form, where it
+     sat under every retryable failure: a 5xx card then gave two causes, "our end" in the
+     register sentence and "your connection" in the small line. Every other retryable cause (5xx,
+     429, the CSRF refusal, an unreadable 2xx, a raw transport error that carries no code) shows
+     the register sentence and Retry alone. Keyed on the code, never on the message text (the
+     classifier's rule below). No string was added or changed. Showing the line for another cause
+     is a decision, not a cleanup. */
+  const [connectionHint, setConnectionHint] = useState(false);
 
   // Classify a thrown error as transient (retryable) or permanent. Used by
   // both the preview fetch catch and the join POST catch so backend-down /
@@ -163,6 +175,8 @@ function GameInvitePage() {
           // X68 (88.9-66, owner ruled 2026-11-14): the transient branch renders Retry, so its line
           // is the register line's beside-retry form.
           setError(messageBesideRetry(getFetchErrorMessage(err)));
+          // PIX-5 (88.9-52): the connection line is for a network failure only.
+          setConnectionHint(err?.code === 'network');
         } else {
           setStatus('error-permanent');
           setError('This invite link is no longer valid.');
@@ -209,6 +223,7 @@ function GameInvitePage() {
           // Defensive: backend returned an unexpected shape.
           setStatus('error-transient');
           setError('Unexpected response from server.');
+          setConnectionHint(false);
         }
       })
       .catch((err) => {
@@ -238,6 +253,8 @@ function GameInvitePage() {
         // register line too.
         const signIn = err?.status === 401;
         setNeedsSignIn(signIn);
+        // PIX-5 (88.9-52): the connection line is for a network failure only.
+        setConnectionHint(err?.code === 'network');
         setError(
           permanent || signIn ? getFetchErrorMessage(err) : messageBesideRetry(getFetchErrorMessage(err))
         );
@@ -280,6 +297,7 @@ function GameInvitePage() {
     }, REGION_EMPTY_DWELL_MS);
     joiningRef.current = false;
     setNeedsSignIn(false);
+    setConnectionHint(false);
     setError(null);
     setStatus('loading');
     setEventInfo(null);
@@ -524,7 +542,10 @@ function GameInvitePage() {
         )}
 
         {/* Transient error — D-INVITE-LANDING-03 transient branch: inline
-            error + Retry button. Network failures, 5xx, ambiguous errors. */}
+            error + Retry button. Network failures, 5xx, ambiguous errors.
+            AMENDED Phase 88.9-52 (PIX-5): the small connection line under the error shows for a
+            network failure only (the PIX-5 marker on connectionHint above); without it the error
+            line carries the 24px gap to Retry, as the sign-in arm's does. */}
         {/* DECISION Phase 88.9-52 (Q69-2 / Q69-3, owner 2026-11-16 "approve all"): this card draws
             the X on the amber warning pair (the group invite page's amber arm: warning ink on the
             warning circle, 5.50 light / 4.95 dark), chosen OVER the shipped warning triangle on
@@ -556,10 +577,12 @@ function GameInvitePage() {
               </>
             ) : (
               <>
-                <p className="text-content-secondary mb-2">{error}</p>
-                <p className="text-xs text-content-muted mb-6">
-                  Check your connection and try again.
-                </p>
+                <p className={connectionHint ? 'text-content-secondary mb-2' : 'text-content-secondary mb-6'}>{error}</p>
+                {connectionHint && (
+                  <p className="text-xs text-content-muted mb-6">
+                    Check your connection and try again.
+                  </p>
+                )}
                 <Button
                   variant="primary"
                   size="default"
