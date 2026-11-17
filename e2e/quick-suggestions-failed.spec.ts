@@ -13,6 +13,12 @@ import { test, expect, type Page } from '@playwright/test';
 //
 // 88.9 D13c (owner pick): the failed box also carries a Try again link right of the line (44px
 // tall), so the failed state's slot is 52px (box 48 + pb-1) while the empty and chip states keep 44.
+// (88.9-52 A-08: "link" is the house word for it; the element is a button styled as a link, which
+// is why it is located by role button below.)
+//
+// 88.9-52 (A-20): the last block presses Try again against a HELD answer and proves the busy state
+// on the phone: aria-disabled, the heard suffix, the delayed house Spinner, and the same 52px slot
+// with nothing wrapped or pushed out of the box.
 //
 // CI ONLY. The phone and journeys projects need the `.auth/user.json` login state, which exists
 // only in CI (C-14 in .planning/codebase/FE-TESTING-CONVENTIONS.md). It was not run locally.
@@ -43,7 +49,7 @@ const EMPTY_HINT = 'Add games to your collection to enable suggestions';
 
 const dialog = (page: Page) => page.getByRole('dialog');
 
-test('a failed suggestions load shows the H4 line and a Try again link inside the slot (88.6.1-14 D-28; 88.9 D13c)', async ({ page }) => {
+test('a failed suggestions load shows the H4 line and a Try again link-styled button inside the slot (88.6.1-14 D-28; 88.9 D13c)', async ({ page }) => {
   await page.route(SUGGESTIONS_REQUEST, async (route) => {
     await route.fulfill({
       status: 500,
@@ -102,4 +108,44 @@ test('a failed suggestions load shows the H4 line and a Try again link inside th
   expect(failedBoxRect!.x + failedBoxRect!.width).toBeLessThanOrEqual(viewport!.width);
   expect(retryBox!.x + retryBox!.width).toBeLessThanOrEqual(failedBoxRect!.x + failedBoxRect!.width);
   expect(retryBox!.x + retryBox!.width).toBeLessThanOrEqual(viewport!.width);
+
+  // 88.9-52 (A-20): the busy state. The retry's answer is HELD so the in-flight look can be
+  // measured; it is a GET answered with the same synthetic 500, so nothing is written either way.
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.unroute(SUGGESTIONS_REQUEST);
+  await page.route(SUGGESTIONS_REQUEST, async (route) => {
+    await held;
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'synthetic failure (88.9-52 e2e)' }),
+    });
+  });
+  const retryRequest = page.waitForRequest(SUGGESTIONS_REQUEST);
+  await retry.click();
+  const busyRetry = failedBox.getByRole('button', { name: 'Try again, retrying', exact: true });
+  await expect(busyRetry).toHaveAttribute('aria-disabled', 'true');
+  await retryRequest;
+  // The house Spinner appears 200ms into the busy state; the debounce alone is 500ms.
+  await expect(busyRetry.locator('[data-slot="spinner"]')).toBeVisible();
+  const busySlotBox = await slot.boundingBox();
+  expect(busySlotBox, 'the busy slot has no layout box').not.toBeNull();
+  expect(busySlotBox!.height, 'the busy state must not change the 52px failed slot').toBeGreaterThanOrEqual(52);
+  expect(busySlotBox!.height, 'the busy state must not wrap the line').toBeLessThanOrEqual(53);
+  const busyRetryBox = await busyRetry.boundingBox();
+  const busyFailedRect = await failedBox.boundingBox();
+  expect(busyRetryBox, 'the busy Try again link has no layout box').not.toBeNull();
+  expect(busyFailedRect, 'the failed box has no layout box').not.toBeNull();
+  expect(busyRetryBox!.height).toBeGreaterThanOrEqual(44);
+  expect(busyRetryBox!.x + busyRetryBox!.width).toBeLessThanOrEqual(busyFailedRect!.x + busyFailedRect!.width);
+  const busyLineFits = await failedBox.locator('p').evaluate((p) => p.scrollWidth <= p.clientWidth);
+  expect(busyLineFits, 'the H4 line overflows its paragraph box while the retry runs').toBe(true);
+
+  release();
+  // The retry fails again: the link is live again under its plain name.
+  await expect(retry).toBeVisible();
+  await expect(retry).not.toHaveAttribute('aria-disabled', 'true');
 });
