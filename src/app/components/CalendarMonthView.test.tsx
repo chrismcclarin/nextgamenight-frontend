@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { blend, contrastRatio } from '../../lib/wcag';
 import { GROUP_COLOUR_PRESETS } from '../../lib/groupColourPresets';
+import * as guestEdges from './GuestPill';
 
 const day = new Date();
 day.setDate(15);
@@ -914,5 +915,29 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
         expect(member, `${where}: the member tile lost ${memberHover}`).toContain(memberHover);
       }
     }
+  });
+
+  it('S-B3 (88.9-52): the guest edge is one family in GuestPill.tsx; the month tiles import theirs and hold no amber edge literal', () => {
+    // Read through the namespace so a missing export fails here as an assertion.
+    const family = guestEdges as unknown as { GUEST_ROW_EDGE?: string; GUEST_TILE_EDGE?: string; GUEST_TILE_HOVER?: string };
+    // No class value changed in the move: the rows keep the owner-ruled 70% in dark, the tiles are full strength.
+    expect(family.GUEST_ROW_EDGE).toBe('border border-dashed border-amber-700 dark:border-amber-500/70');
+    expect(family.GUEST_TILE_EDGE, 'GuestPill.tsx does not export the tile edge').toBe('border border-dashed border-amber-700 dark:border-amber-500');
+    expect(family.GUEST_TILE_HOVER, 'GuestPill.tsx does not export the tile hover').toBe('hover:border-solid');
+
+    const { tile, tintedTile } = guestTiles('compact');
+    const full = guestTiles('full');
+    for (const rendered of [tile, tintedTile, full.tile, full.tintedTile]) {
+      for (const t of [...(family.GUEST_TILE_EDGE ?? '').split(' '), family.GUEST_TILE_HOVER ?? '']) {
+        expect(rendered, `a guest month tile lacks ${t}`).toContain(t);
+      }
+    }
+
+    // The source holds no amber border class of its own, in code or in a string (comments are
+    // dropped line by line: every marker line in the file starts with // or sits in a block).
+    const source = readFileSync(resolvePath(__dirname, 'CalendarMonthView.js'), 'utf8');
+    const literals = source.split('\n').filter((line) => /['"\x60][^'"\x60]*border-amber-\d/.test(line) && /className|const /.test(line));
+    expect(literals, 'CalendarMonthView.js carries its own amber edge literal again').toEqual([]);
+    expect(source, 'CalendarMonthView.js does not import the tile edge from GuestPill').toMatch(/import \{ GUEST_TILE_EDGE, GUEST_TILE_HOVER \} from '\.\/GuestPill';/);
   });
 });
