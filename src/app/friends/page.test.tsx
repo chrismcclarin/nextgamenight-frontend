@@ -791,6 +791,30 @@ describe('friends D-16 / R2 #171 — the tab strip', () => {
     await waitFor(() => expect(sentTab).toHaveAttribute('aria-current', 'true'));
     expect(screen.getByRole('button', { name: /^Friends/ })).not.toHaveAttribute('aria-current');
   });
+
+  // PIX-8 (88.9-52, picture pass): the active tab's label was the primary BUTTON FILL colour used as
+  // ink (a dim slate blue on the dark page: 2.99, and 4.34 on the light page, both under 4.5). It is the
+  // primary text ink now, the Tabs primitive's active ink. The active tab is still told apart by more
+  // than colour: the 2px underline and aria-current. The numbers are held in
+  // src/app/tokenContrast.test.ts ("PIX-8 (88.9-52): the Friends tab labels on the page").
+  it('PIX-8 (88.9-52): the active tab label is the primary text ink with its underline; the inactive tabs keep the secondary ink and no underline', async () => {
+    renderFriends();
+    await screen.findByText('Dana');
+    const tokens = (el: HTMLElement) => el.className.split(/\s+/);
+    const friendsTab = screen.getByRole('button', { name: /^Friends/ });
+    const sentTab = screen.getByRole('button', { name: /^Sent/ });
+    expect(tokens(friendsTab)).toContain('text-content-primary');
+    expect(tokens(friendsTab)).not.toContain('text-btn-primary');
+    expect(tokens(friendsTab)).toContain('border-b-2');
+    expect(tokens(friendsTab)).toContain('border-btn-primary');
+    expect(tokens(sentTab)).toContain('text-content-secondary');
+    expect(tokens(sentTab)).not.toContain('border-b-2');
+
+    fireEvent.click(sentTab);
+    await waitFor(() => expect(tokens(sentTab)).toContain('text-content-primary'));
+    expect(tokens(sentTab)).toContain('border-b-2');
+    expect(tokens(screen.getByRole('button', { name: /^Friends/ }))).toContain('text-content-secondary');
+  });
 });
 
 describe('friends #127 / R8 §2 — the email search 404 is STATUS-keyed, not prose-matched', () => {

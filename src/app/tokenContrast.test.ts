@@ -3133,3 +3133,43 @@ describe('Phase 88.6-02 (D-15) — the retired card-hover property names are ABS
     expect(declIn(themeInlineBlock(), '--color-muted')).toBe('var(--muted)');
   });
 });
+
+// ===================================================================================
+// Phase 88.9-52 PIX-8 (picture pass): the Friends page tab labels sit on the PAGE ground.
+// The active label was text-btn-primary, the primary button FILL used as ink: 4.3366 on the light
+// page and 2.9867 on the dark page, both under the 4.5 text floor (in dark it read as a dim slate
+// blue). The ink the page uses is read from its source here, so a later re-ink of the active tab
+// to a token that fails on the page turns this row red.
+// ===================================================================================
+describe('PIX-8 — Friends tab labels on the page ground (Phase 88.9-52)', () => {
+  // The utility a tab arm may carry as its ink, and the token each one paints.
+  const INK_TOKEN: Record<string, string> = {
+    'text-content-primary': '--color-text-primary',
+    'text-content-secondary': '--color-text-secondary',
+    'text-btn-primary': '--color-btn-primary-bg',
+    'text-content-link': '--color-text-link',
+  };
+  const source = withoutComments(fs.readFileSync(path.join(__dirname, 'friends', 'page.js'), 'utf8'));
+  const inkOf = (arm: string): string => {
+    const inks = arm.split(/\s+/).filter((t) => /^text-(content|btn)-/.test(t));
+    expect(inks, `PIX-8 — one ink utility expected in the tab arm "${arm}"`).toHaveLength(1);
+    expect(INK_TOKEN[inks[0]], `PIX-8 — no token is mapped for ${inks[0]}`).toBeDefined();
+    return INK_TOKEN[inks[0]];
+  };
+
+  it('PIX-8 (88.9-52): the Friends tab labels on the page are 4.5 or better in both themes, and the retired button-fill ink is recorded under it', () => {
+    const arms = source.match(/activeTab === key\s*\?\s*'([^']+)'\s*:\s*'([^']+)'/);
+    expect(arms, 'PIX-8 — the Friends tab class ternary was not found in src/app/friends/page.js').not.toBeNull();
+    const [, activeArm, inactiveArm] = arms as RegExpMatchArray;
+    // The active tab is told apart by more than colour: it carries the 2px underline, the inactive arm none.
+    expect(activeArm.split(/\s+/)).toContain('border-b-2');
+    expect(inactiveArm.split(/\s+/)).not.toContain('border-b-2');
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, inkOf(activeArm), '--color-bg-page', 4.5, 'PIX-8 / Friends ACTIVE tab label on the page');
+      expectRatio(theme, inkOf(inactiveArm), '--color-bg-page', 4.5, 'PIX-8 / Friends inactive tab label on the page');
+      // Recorded failure: the ink this row replaced. If the button fill is ever re-tuned to pass as
+      // text on the page, this says so and the choice can be looked at again.
+      expectRatioBelow(theme, '--color-btn-primary-bg', '--color-bg-page', 4.5, 'PIX-8 / the retired button-fill ink on the page');
+    }
+  });
+});

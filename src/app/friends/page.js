@@ -1249,7 +1249,19 @@ function FriendsPage() {
                                AMENDED Phase 88.9-10 (owner picks A7a + O3a, 2026-10-31): the strip
                                geometry routed here is ruled — every tab is at least 44 x 44
                                (min-h-11 and min-w-11, unprefixed); the outset ring stays and
-                               its halo takes the page ground (owner option (a)). */
+                               its halo takes the page ground (owner option (a)).
+                               AMENDED Phase 88.9-52 (PIX-8, picture pass: the active label read as a
+                               dim slate blue on the dark page): the ACTIVE label takes the primary
+                               text ink (text-content-primary: 13.76 on the light page, 15.95 on the
+                               dark page), the Tabs primitive's active ink and this strip's own hover
+                               ink, chosen OVER text-btn-primary, the primary button FILL used as ink:
+                               4.34 light and 2.99 dark on the page, both under the 4.5 text floor.
+                               REJECTED: the link ink (4.60 light, 10.13 dark: a tab is not a link, and
+                               in dark it is the amber accent). The underline keeps border-btn-primary
+                               (4.34 light, 2.99 dark against the page; its dark number is a hair under
+                               the 3.0 edge floor and is reported to the owner, not changed here). The
+                               active tab is still told apart by more than colour: the 2px underline
+                               and aria-current. Held by src/app/tokenContrast.test.ts ("PIX-8 (88.9-52): the Friends tab labels on the page"). */
                             <button
                                 key={key}
                                 ref={tabRefs[key]}
@@ -1264,7 +1276,7 @@ function FriendsPage() {
                                 aria-current={activeTab === key ? 'true' : undefined}
                                 className={`pb-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11 min-w-11 ${
                                     activeTab === key
-                                        ? 'border-b-2 border-btn-primary text-btn-primary'
+                                        ? 'border-b-2 border-btn-primary text-content-primary'
                                         : 'text-content-secondary hover:text-content-primary'
                                 }`}
                             >
@@ -1277,7 +1289,9 @@ function FriendsPage() {
                                        edit. The tab's own active state is unchanged and is
                                        carried by `text-btn-primary` + the bottom border + the
                                        `aria-current` above — the pill was a redundant second
-                                       cue, and it is the cue that was below AA. */
+                                       cue, and it is the cue that was below AA.
+                                       AMENDED Phase 88.9-52 (PIX-8): the active label's ink is the
+                                       primary text ink now; the bottom border and aria-current stand. */
                                     <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-content-secondary">
                                         {count}
                                     </span>
