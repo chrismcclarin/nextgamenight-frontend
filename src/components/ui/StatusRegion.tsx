@@ -68,6 +68,11 @@ export interface StatusRegionProps
   // whose host mounts it busy, chosen OVER a timer per site, OVER default-on (every region's first
   // words would wait), OVER the root announcer (saves only; hidden under an open dialog).
   // FetchErrorBanner keeps its own (it re-dwells on every Retry).
+  // AMENDED Phase 88.9-52 (A-47): "hidden under an open dialog" is UNMEASURED, not a fact. The
+  // aria-hidden package the dialogs hide the page with exempts every aria-live node, so the root
+  // announcer is not hidden by that route; whether WebKit and VoiceOver speak a live region that
+  // sits outside an aria-modal dialog is unverified (a device check is pending). The choice above
+  // does not rest on that clause alone: the root announcer carries save outcomes only.
   /**
    * Opt-in (default `false`). A polite region that MOUNTS already holding its words is not
    * announced: screen readers announce a change to a live region, not its arrival. With this

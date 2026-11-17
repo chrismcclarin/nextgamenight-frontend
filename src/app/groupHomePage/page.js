@@ -2042,7 +2042,16 @@ function GroupHomePage(){
                    premise was that the region sits under aria-hidden): the region is exposed, so a
                    remount would make a screen reader hear the same sentence twice (plant N).
                    If the dialog ever gains aria-modal or a hide that covers live regions, this
-                   choice must be revisited. Changing it is a decision, not a cleanup. */
+                   choice must be revisited. Changing it is a decision, not a cleanup.
+                   AMENDED Phase 88.9-52 (A-47): the sentence above that the dialog sets no
+                   aria-modal is FALSE and is withdrawn. This dialog is the house Modal, which sets
+                   aria-modal true on its content
+                   (src/app/components/Modal.tsx ("This Radix build does not emit aria-modal on Content; set it")).
+                   What RF-8 measured still holds (the region is not under aria-hidden). What is NOT
+                   measured is whether iOS VoiceOver speaks a live region that sits outside an
+                   aria-modal dialog, so "that fill IS heard" is unproven on a phone. A device check
+                   is pending (88.9-52 A-47); the choice stands until it is run, and no behaviour
+                   changed with this note. */
                 modaltoggle={() => setMemberModal(false)}
                 onMembersUpdated={getGroupMembers}
                 group_name={Group?.name || 'this group'}
