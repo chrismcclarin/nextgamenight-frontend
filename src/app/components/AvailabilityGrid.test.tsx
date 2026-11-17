@@ -379,14 +379,16 @@ describe('88.6-63 (review round 2 #23) — Clear All keeps focus; the summary an
   });
 
   // 88.9 O09a (owner pick, 88.9-PICKS-B8B.json): enabled vs gated Clear All must differ by more than ink colour; page 8b printed 5.81 light / 4.88 dark for the gated pair.
-  it('O09a (88.9): a gated Clear All wears the house secondary gated pair, the enabled one is unchanged', () => {
+  // AMENDED Phase 88.9-52 (W30, owner ruling A): the second cue is now the EDGE (half strength), not a fill; the gated fill made the button darker than live in light and lighter in dark.
+  it('O09a + W30 (88.9): a gated Clear All wears the house gated ink and a half-strength edge with no fill of its own, the enabled one is unchanged', () => {
     renderHarness(2);
 
     const clear = screen.getByRole('button', { name: 'Clear All' });
     expect(clear).toHaveAttribute('aria-disabled', 'true');
     expect(clear).not.toBeDisabled();
-    // The gated pair: fill AND ink, as call-site utilities on the ghost Button (whole literals).
-    expect(clear).toHaveClass('aria-disabled:bg-[var(--color-btn-secondary-gated-bg)]');
+    // The gated pair: ink AND edge, as call-site utilities on the ghost Button (whole literals); no gated fill.
+    expect(clear).not.toHaveClass('aria-disabled:bg-[var(--color-btn-secondary-gated-bg)]');
+    expect(clear).toHaveClass('aria-disabled:border-line/50');
     expect(clear).toHaveClass('aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]');
     // ONE gated ink rule: cn()'s merge drops the ghost default, so no cascade-order bet is made.
     expect(clear).not.toHaveClass('aria-disabled:text-content-muted');

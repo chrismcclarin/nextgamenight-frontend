@@ -2784,6 +2784,43 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(measured, 'anti-vacuity: 2 hues x 2 themes x (hover + rest)').toBe(8);
   });
+
+  it('W30 (88.9-52): a gated Clear All is fainter than the live one in both themes — no fill of its own, a word that drops at least 2.5 in ratio and still clears 4.5, and an edge that drops at least 0.4', () => {
+    // Owner ruling W30 A (2026-11-16): "Clear All when it cannot be pressed is clearly fainter
+    // than the live button in both themes." Built: the O09a gated FILL is gone (it was DARKER
+    // than the live button in light and LIGHTER in dark), the word keeps the house gated ink, and
+    // the edge is the live edge at half strength. The control stays active (it takes focus and
+    // answers a press), so the word keeps the 4.5 text floor: no inactive-component exemption.
+    // Measured with src/lib/wcag.ts on the card, live / gated: word light 10.4818 / 6.5793, dark
+    // 8.6797 / 5.9963; edge light 2.31 / 1.47, dark 1.78 / 1.33.
+    const gridSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'AvailabilityGrid.js'), 'utf8'),
+    );
+    const cls = /className="(border border-line text-content-secondary bg-surface-card[^"]*)"/.exec(gridSrc);
+    expect(cls, 'LOCATOR: the Clear All class string').not.toBeNull();
+    const tokens = cls![1].split(/\s+/).filter((token) => token.length > 0);
+    const gated = tokens.filter((token) => token.startsWith('aria-disabled:'));
+    expect(gated.sort(), 'the gated arm is exactly an ink and a half-strength edge: no fill').toEqual([
+      'aria-disabled:border-line/50',
+      'aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]',
+    ]);
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      const card = resolve(theme, '--color-bg-card');
+      const liveWord = expectRatio(theme, '--color-text-secondary', '--color-bg-card', 4.5, 'W30 the live word on the card');
+      const gatedWord = expectRatio(theme, '--color-btn-secondary-gated-text', '--color-bg-card', 4.5, 'W30 the gated word on the card');
+      expect(liveWord - gatedWord, `W30 — [${theme}] the gated word (${gatedWord.toFixed(4)}) must sit at least 2.5 under the live word (${liveWord.toFixed(4)})`).toBeGreaterThanOrEqual(2.5);
+      const liveEdgeHex = resolve(theme, '--color-border');
+      const liveEdge = ratioHex(liveEdgeHex, card, 'W30 live edge on the card');
+      const half = blend(liveEdgeHex, 0.5, card);
+      if (half === null) throw new TokenContrastParseError('W30: the half-strength edge did not blend');
+      const gatedEdge = ratioHex(half, card, 'W30 gated edge on the card');
+      expect(liveEdge - gatedEdge, `W30 — [${theme}] the gated edge (${half}, ${gatedEdge.toFixed(4)}) must sit at least 0.4 under the live edge (${liveEdge.toFixed(4)})`).toBeGreaterThanOrEqual(0.4);
+      expect(gatedEdge, `W30 — [${theme}] the gated edge is still painted (over 1.2 on the card)`).toBeGreaterThan(1.2);
+      measured += 4;
+    }
+    expect(measured, 'anti-vacuity: 2 themes x 4 checks').toBe(8);
+  });
 });
 
 // =====================================================================================

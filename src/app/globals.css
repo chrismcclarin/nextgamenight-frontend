@@ -1789,7 +1789,9 @@
      band in the same way. Every gated secondary at this commit sits on a card: the two email
      panel buttons, Reset invite link, the two notification Declines and the friends request
      Decline. The scheduler grid's Clear All (a ghost Button that reads these gated tokens by
-     class) moves with them: src/app/components/AvailabilityGrid.js ("LOOK NOTE AMENDED Phase 88.9-41 (owner pick O09a"). */
+     class) moves with them: src/app/components/AvailabilityGrid.js ("LOOK NOTE AMENDED Phase 88.9-41 (owner pick O09a").
+     AMENDED Phase 88.9-52 (W30): Clear All now reads only the gated INK from this family; its
+     gated fill is gone (owner ruling A), so it sits on the card with the ink at 6.58 / 6.00. */
   --color-btn-primary-gated-bg: var(--purple-200);
   --color-btn-primary-gated-text: var(--purple-700);
   --color-btn-secondary-gated-bg: var(--color-btn-secondary-bg);
