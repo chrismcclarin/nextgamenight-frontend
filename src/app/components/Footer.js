@@ -5,7 +5,8 @@ import FeedbackForm from './FeedbackForm';
 import BGGLogo from './BGGLogo';
 
 // Public/auth footer split via useUser() discriminator.
-// - Stable isLoading placeholder mirrors src/app/Header.js ("if (isLoading) return <div") to avoid SSR/hydration mismatch.
+// - Stable isLoading placeholder, as the header's session wait at src/app/Header.js ("const sessionKnown = !isLoading;"), to avoid SSR/hydration mismatch
+//   (88.9-52 W6: the header now shows its brand while it waits; this footer still shows its placeholder).
 // - Privacy href intentionally uses `/Privacy` (capital P) — required for Google auth
 //   integration. Do NOT lowercase. About + Terms can be lowercase.
 // - Report Bug button lives only in the auth footer — anonymous visitors aren't reporting

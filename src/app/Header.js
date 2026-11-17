@@ -86,7 +86,15 @@ function Header(){
         wasOpenRef.current = mobileMenuOpen;
     }, [mobileMenuOpen]);
 
-    if (isLoading) return <div className="w-full h-16 bg-surface-header" />;
+    // DECISION Phase 88.9-52 (W6, owner at the after-build look page: no logo and no menu until the
+    // check finishes): while the session is still being read the header is the real strip with the
+    // brand in it, chosen OVER the empty strip this line used to return (a page that shows its own
+    // loading card under a blank bar read as broken) and OVER drawing the lists and the menu button
+    // early (which links they hold depends on whether someone is signed in, and a signed-in person
+    // would see Login flash). So three things wait for the answer, each behind sessionKnown below:
+    // the desktop list, the phone menu button and the phone panel. The brand is the same link, in
+    // the same one Main landmark, so nothing moves when the rest arrives.
+    const sessionKnown = !isLoading;
     if (error) return <div>{error.message}</div>;
 
     const navLinks = user
@@ -215,7 +223,7 @@ function Header(){
                             the page already comes from `text-white` on the dark header ground, so
                             400 loses nothing. `text-sm` STAYS — Label 14 is the correct rung for a
                             nav label and is already on the scale. Restoring 500 is a decision. */}
-                        <ul className="hidden md:flex gap-x-6 items-center text-white text-sm">
+                        {sessionKnown && <ul className="hidden md:flex gap-x-6 items-center text-white text-sm">
                             {navLinks.map(({ href, label, isLink }, index) => (
                                 <li key={label} className="flex items-center gap-x-6">
                                     {isLink ? (
@@ -240,7 +248,7 @@ function Header(){
                                 </li>
                             ))}
                             <li><ThemeToggle /></li>
-                        </ul>
+                        </ul>}
 
                         {/* Mobile menu button — `relative` parent lets the
                             MOB-08 unread-indicator dot absolutely position
@@ -260,7 +268,7 @@ function Header(){
                             87.8-08 logged this as a "40x40 FAIL" by arithmetic and RESEARCH
                             flagged it as assumption A7 (never measured in a browser); 88-30's
                             e2e is what settles it. Going back to `p-2` is a decision. */}
-                        <button
+                        {sessionKnown && <button
                             ref={triggerRef}
                             className="relative md:hidden text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -308,7 +316,7 @@ function Header(){
                                     aria-hidden="true"
                                 />
                             )}
-                        </button>
+                        </button>}
                     </div>
 
                     {/* Mobile dropdown — rendered unconditionally with class-toggle so
@@ -344,8 +352,15 @@ function Header(){
                         touching the mount the exit animation needs; a conditional mount would
                         fix the Tab order by re-breaking the animation. React 18.2.0 here, so
                         the empty-string attribute form is required (React 19 would accept a
-                        boolean `inert` prop). That is a decision, not a cleanup. */}
-                    <div
+                        boolean `inert` prop). That is a decision, not a cleanup.
+
+                        AMENDED Phase 88.9-52 (W6): the panel now waits for the session answer
+                        (sessionKnown), with the menu button that opens it. That is NOT the
+                        conditional mount R3-D rejected: R3-D is about open and closed, and the exit
+                        animation it protects cannot be running while there is no button to have
+                        opened the menu. Once the session is known the panel is mounted for good,
+                        closed and inert, exactly as before. */}
+                    {sessionKnown && <div
                         className={`md:hidden absolute top-16 left-0 right-0 bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
                             mobileMenuOpen
                                 ? 'translate-y-0 opacity-100'
@@ -421,7 +436,7 @@ function Header(){
                                 />
                             </div>
                         )}
-                    </div>
+                    </div>}
                 </nav>
             </div>
         </>

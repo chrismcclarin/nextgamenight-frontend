@@ -278,5 +278,23 @@ describe('Header — one Main navigation landmark (AC-18, copy row H5)', () => {
     const links = Array.from(document.querySelectorAll('a'));
     expect(links).toHaveLength(3);
     expect(links.filter((a) => !nav.contains(a))).toEqual([]);
+    cleanup();
+
+    // 88.9-52 W6: while the session is still being read, the strip is not empty. The brand (logo
+    // and name) is there, inside the same one Main landmark; the lists and the menu button, which
+    // depend on who is signed in, are not there yet.
+    auth.isLoading = true;
+    render(<Header />);
+    const waitingNavs = document.querySelectorAll('nav');
+    expect(waitingNavs).toHaveLength(1);
+    expect(waitingNavs[0].getAttribute('aria-label')).toBe('Main');
+    const waitingLinks = Array.from(document.querySelectorAll('a'));
+    expect(waitingLinks).toHaveLength(1);
+    expect(waitingLinks[0]).toHaveAttribute('href', '/');
+    expect(waitingLinks[0]).toHaveTextContent('Next Game Night');
+    expect(waitingNavs[0].contains(waitingLinks[0])).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Toggle menu' })).toBeNull();
+    expect(screen.queryByText('Login')).toBeNull();
+    expect(document.querySelectorAll('[inert]')).toHaveLength(0);
   });
 });
