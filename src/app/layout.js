@@ -56,7 +56,7 @@ export default function RootLayout({ children }) {
               button on the logo) and OVER moving phone toasts to the bottom (the phone bottom bar
               and the keyboard live there). Only the top is given, so the 16px side gutters stay
               Sonner's own. The desktop position is unchanged. The number follows the strip's
-              height at src/app/Header.js ("const sessionKnown = !isLoading;"); pinned by
+              height at src/app/Header.js ("w-full h-16 bg-surface-header border-b border-line-strong"); pinned by
               src/app/miniPicks.test.ts ("8. 88.9-52 W40"). */}
           <Toaster position="top-right" richColors closeButton theme="system" mobileOffset={{ top: 72 }} />
           <RootAnnouncer />
