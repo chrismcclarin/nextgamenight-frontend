@@ -1088,6 +1088,29 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
     expect(screen.getByLabelText('Member actions for Target')).toBeInTheDocument();
   });
 
+  // 88.9-52 A-24: the DELETE succeeded but the refresh after it failed, so the kept roster still
+  // showed the removed member with a live Remove; a second Remove answered with an error toast.
+  it('A-24 (88.9-52): a remove whose refresh FAILS still drops the removed row from the kept roster, with focus on the next row', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0], ROSTER[1], X13_ROBIN]);
+    await openMembersModal();
+    await screen.findByText('Robin');
+    const next = screen.getByLabelText('Member actions for Robin');
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    const menu = await openKebabList('Member actions for Target');
+    commitRemoveIn(menu);
+
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Target')).not.toBeInTheDocument());
+    expect(screen.queryByLabelText('More actions for Target')).not.toBeInTheDocument();
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1);
+    // The rest of the kept roster stands and the remove is still spoken as done.
+    expect(screen.getByLabelText('Member actions for Robin')).toBe(next);
+    expect(announceStatus as Mock).toHaveBeenCalledWith('Member removed');
+    expect(toast.error).not.toHaveBeenCalled();
+    // Req 5: the row left, so focus goes to the next row's trigger, never to the body.
+    await waitFor(() => expect(document.activeElement).toBe(next));
+  });
+
   it('"Make admin" from the kebab routes to the SAME escalation gate as the desktop select', async () => {
     await openMembersModal();
     const menu = await openKebabList('Member actions for Target');

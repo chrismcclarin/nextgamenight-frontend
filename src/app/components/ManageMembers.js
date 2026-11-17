@@ -460,7 +460,15 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         const settle = rosterFocusRecovery.arm({ preferred: neighbourMemberActions(target_user_id) });
         try {
             await groupsAPI.removeUserFromGroup(group_id, target_user_id);
-            await fetchMembers(); // Refresh the list
+            const refreshed = await fetchMembers(); // Refresh the list
+            /* DECISION Phase 88.9-52 (A-24): the DELETE landed, so when the refresh after it FAILS the
+               removed member is dropped from the kept roster here, chosen OVER leaving the kept rows
+               whole (the removed member's row and its open menu still offered Remove, and a second
+               Remove answered with an error toast right after Member removed was spoken). Only a
+               failed refresh: a superseded one (undefined) is left to the newer run. */
+            if (refreshed === LOAD_FAILED) {
+                setMembers((prev) => prev.filter((m) => m.id !== target_user_id));
+            }
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
