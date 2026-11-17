@@ -742,7 +742,11 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
   // own fill (a tile's background paints under its border), then measured against that fill (the
   // inner side) and against each ground a day cell can hold (the outer side). Floor 3.0 (WCAG
   // 1.4.11). An image tile is not measured: a photo has no fixed ratio (the marker in GuestPill.tsx).
-  const measureGuestEdge = (tile: string[], variant: 'compact' | 'full'): { failures: string[]; measured: number } => {
+  // S-B1 (88.9-52), the HOVERED TILE arm: a tile under the pointer paints with its own hover
+  // classes, read off the rendered tiles (tile = the untinted one, tintedTile = a tinted one): a
+  // hover opacity fades the edge AND the fill together over the cell, and a hover fill replaces the
+  // fill under the edge. Every cell ground is measured, a superset of the cells a pointer can be in.
+  const measureGuestEdge = (tile: string[], tintedTile: string[], variant: 'compact' | 'full'): { failures: string[]; measured: number; hovered: number } => {
   const css = readFileSync(resolvePath(__dirname, '../globals.css'), 'utf8');
   const decls = (name: string): string[] =>
     [...css.matchAll(new RegExp('^[ \\t]*' + name + ':[ \\t]*([^;]+);', 'gm'))].map((m) => m[1].trim());
@@ -770,6 +774,19 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     light: readEdge(/^border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'light'),
     dark: readEdge(/^dark:border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'dark'),
   };
+  for (const t of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500']) {
+    if (!tintedTile.includes(t)) throw new Error(`the tinted ${variant} guest tile lacks ${t}, so it is not the same edge`);
+  }
+  const hoverOf = (classes: string[], what: string): { opacity: number; fill: { light: string; dark: string } | null } => {
+    const opacities = classes.map((t) => /^hover:opacity-(\d{1,3})$/.exec(t)).filter((m): m is RegExpExecArray => m !== null);
+    const hoverFills = classes.map((t) => /^hover:bg-surface-([a-z-]+)$/.exec(t)).filter((m): m is RegExpExecArray => m !== null);
+    if (opacities.length > 1 || hoverFills.length > 1) throw new Error(`the ${what} ${variant} guest tile holds ${opacities.length} hover opacities and ${hoverFills.length} hover fills, expected at most 1 of each`);
+    return {
+      opacity: opacities.length === 1 ? Number(opacities[0][1]) / 100 : 1,
+      fill: hoverFills.length === 1 ? themed(`--color-bg-${hoverFills[0][1]}`) : null,
+    };
+  };
+  const hover = { untinted: hoverOf(tile, 'untinted'), tinted: hoverOf(tintedTile, 'tinted') };
   const muted = themed('--color-bg-muted');
   const cells = {
     "this month's cell": themed('--color-bg-tile'),
@@ -782,6 +799,7 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
 
   const failures: string[] = [];
   let measured = 0;
+  let hovered = 0;
   for (const theme of ['light', 'dark'] as const) {
     const fills = [
       // An untinted COMPACT tile is filled with the muted surface; an untinted FULL tile has no
@@ -798,34 +816,59 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
         measured += 1;
         if (value < 3.0) failures.push(`[${theme}] ${name} tile, edge painted ${painted}: ${value.toFixed(4)}:1 against ${side} (${against}), floor 3.00:1`);
       }
+
+      // The hovered tile.
+      const h = name === 'untinted' ? hover.untinted : hover.tinted;
+      const hoverFill = h.fill === null ? fill : h.fill[theme];
+      for (const [cell, v] of Object.entries(cells)) {
+        const ground = v[theme];
+        const edgePainted = blend(blend(edge[theme].hex, edge[theme].alpha, hoverFill ?? ground), h.opacity, ground);
+        const fillPainted = hoverFill === null ? null : blend(hoverFill, h.opacity, ground);
+        const hoverSides: [string, string][] = [[cell, ground], ...(fillPainted === null ? [] : [['its own hovered fill', fillPainted] as [string, string]])];
+        for (const [side, against] of hoverSides) {
+          const value = contrastRatio(edgePainted, against);
+          if (value === null) throw new Error(`could not measure the hovered ${theme} edge on ${name} against ${side}`);
+          measured += 1;
+          hovered += 1;
+          if (value < 3.0) failures.push(`[${theme}] HOVERED ${name} tile (opacity ${h.opacity}) in ${cell}, edge painted ${edgePainted}: ${value.toFixed(4)}:1 against ${side} (${against}), floor 3.00:1`);
+        }
+      }
     }
   }
-    return { failures, measured };
+    return { failures, measured, hovered };
+  };
+
+  // S-B1: one untinted and one tinted guest tile of a variant, as class tokens.
+  const guestTiles = (variant: 'compact' | 'full'): { tile: string[]; tintedTile: string[] } => {
+    const VIEWER = '00000000-0000-4000-8000-000000000028';
+    const guestNight = (id: string, game: string, colour: string | null) => ({
+      id,
+      start_date: '2031-09-20T19:00:00',
+      Game: { name: game },
+      Group: { name: 'Guest Crew', background_color: colour },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: true }],
+    });
+    renderGrid({ variant, viewerDbUserId: VIEWER, events: [guestNight('evt-guest', 'Azul', null), guestNight('evt-guest-tint', 'Root', '#722f37')] });
+    const tile = tokens(screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' }));
+    const tintedTile = tokens(screen.getByRole('button', { name: 'Root - Guest Crew, Guest' }));
+    cleanup();
+    if (!tintedTile.includes('bg-[var(--group-ground-light)]')) throw new Error(`the tinted ${variant} fixture tile is not tinted, so the hovered arm reads the wrong classes`);
+    if (tile.includes('bg-[var(--group-ground-light)]')) throw new Error(`the untinted ${variant} fixture tile is tinted`);
+    return { tile, tintedTile };
   };
 
   it('W14 (88.9-52): the compact guest tile edge clears 3:1 against its own fill and against every day cell around it, both themes', () => {
     // Measured by measureGuestEdge above: this month's cell, today's cell, an adjacent-month cell
-    // on the page ground, and the hovered cell.
-    const VIEWER = '00000000-0000-4000-8000-000000000028';
-    renderGrid({
-      variant: 'compact',
-      viewerDbUserId: VIEWER,
-      events: [{
-        id: 'evt-guest',
-        start_date: '2031-09-20T19:00:00',
-        Game: { name: 'Azul' },
-        Group: { name: 'Guest Crew', background_color: null },
-        rsvp_summary: null,
-        EventParticipations: [{ user_id: VIEWER, is_guest: true }],
-      }],
-    });
-    const tile = tokens(screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' }));
-    cleanup();
-
-    const { failures, measured } = measureGuestEdge(tile, 'compact');
+    // on the page ground, and the hovered cell; then the same again for the tile under the pointer
+    // (S-B1: at hover:opacity-90 the light edge on today's cell measured 2.9516).
+    const { tile, tintedTile } = guestTiles('compact');
+    const { failures, measured, hovered } = measureGuestEdge(tile, tintedTile, 'compact');
     expect(failures, `the compact guest edge must clear 3:1 on every arm:\n${failures.join('\n')}`).toEqual([]);
-    // 2 themes x 9 fills x (own fill + 4 cell grounds).
-    expect(measured, 'anti-vacuity: 90 measurements').toBe(90);
+    // At rest: 2 themes x 9 fills x (own fill + 4 cell grounds) = 90.
+    // Hovered: 2 themes x 9 fills x 4 cell grounds x (the cell + the hovered fill) = 144.
+    expect(hovered, 'anti-vacuity: 144 hovered measurements').toBe(144);
+    expect(measured, 'anti-vacuity: 234 measurements').toBe(234);
   });
 
   it('W14 follow-up (88.9-52): the full guest tile edge clears 3:1 against its own fill and against every day cell around it, both themes', () => {
@@ -833,24 +876,39 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     // by the compact tile's arithmetic a blue-tinted full tile in today's cell or a hovered cell
     // measured 2.98 on its outer side in dark. The full grid also paints past days on their own
     // ground, and an untinted full tile has no fill, so the cell is behind its edge.
-    const VIEWER = '00000000-0000-4000-8000-000000000028';
-    renderGrid({
-      variant: 'full',
-      viewerDbUserId: VIEWER,
-      events: [{
-        id: 'evt-guest',
-        start_date: '2031-09-20T19:00:00',
-        Game: { name: 'Azul' },
-        Group: { name: 'Guest Crew', background_color: null },
-        rsvp_summary: null,
-        EventParticipations: [{ user_id: VIEWER, is_guest: true }],
-      }],
-    });
-    const tile = tokens(screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' }));
-    cleanup();
-    const { failures, measured } = measureGuestEdge(tile, 'full');
+    const { tile, tintedTile } = guestTiles('full');
+    const { failures, measured, hovered } = measureGuestEdge(tile, tintedTile, 'full');
     expect(failures, `the full guest edge must clear 3:1 on every arm:\n${failures.join('\n')}`).toEqual([]);
-    // 2 themes x (8 tints x (own fill + 5 cell grounds) + the untinted tile on 5 cell grounds).
-    expect(measured, 'anti-vacuity: 106 measurements').toBe(106);
+    // At rest: 2 themes x (8 tints x (own fill + 5 cell grounds) + the untinted tile on 5 cell grounds) = 106.
+    // Hovered: 2 themes x (8 tints x 5 cell grounds x (the cell + the hovered fill) + the untinted tile on 5 cell grounds) = 170.
+    expect(hovered, 'anti-vacuity: 170 hovered measurements').toBe(170);
+    expect(measured, 'anti-vacuity: 276 measurements').toBe(276);
+  });
+
+  it('S-B1 (88.9-52): a guest tile answers the pointer with a solid edge and keeps full opacity; a member tile keeps its own hover', () => {
+    const VIEWER = '00000000-0000-4000-8000-000000000028';
+    const night = (id: string, game: string, colour: string | null, isGuest: boolean) => ({
+      id,
+      start_date: '2031-09-20T19:00:00',
+      Game: { name: game },
+      Group: { name: 'Crew', background_color: colour },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: isGuest }],
+    });
+    for (const variant of ['compact', 'full'] as const) {
+      for (const colour of [null, '#722f37']) {
+        renderGrid({ variant, viewerDbUserId: VIEWER, events: [night('evt-g', 'Azul', colour, true), night('evt-m', 'Root', colour, false)] });
+        const guest = tokens(screen.getByRole('button', { name: 'Azul - Crew, Guest' }));
+        const member = tokens(screen.getByRole('button', { name: 'Root - Crew' }));
+        cleanup();
+        const where = `${variant}, ${colour === null ? 'untinted' : 'tinted'}`;
+        expect(guest, `${where}: the guest tile has no solid-edge hover`).toContain('hover:border-solid');
+        expect(guest.filter((t) => t.startsWith('hover:opacity-')), `${where}: the guest tile fades under the pointer`).toEqual([]);
+        expect(member, `${where}: a member tile took the guest hover`).not.toContain('hover:border-solid');
+        // The member hover is what it was: the fill step on an untinted compact tile, 90% elsewhere.
+        const memberHover = variant === 'compact' && colour === null ? 'hover:bg-surface-elevated' : 'hover:opacity-90';
+        expect(member, `${where}: the member tile lost ${memberHover}`).toContain(memberHover);
+      }
+    }
   });
 });
