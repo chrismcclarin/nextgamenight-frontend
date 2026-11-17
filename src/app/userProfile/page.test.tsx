@@ -6966,6 +6966,17 @@ describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)
     expect(line.textContent).toBe(SENTENCE);
     expect(toastMock()).not.toHaveBeenCalled();
 
+    // A-48 (88.9-52): typing a new term takes the sentence away at the first character (it used
+    // to stay under the box, beside a term it was not about, until the next Search press).
+    fireEvent.change(field, { target: { value: 'nothing e' } });
+    expect(line.textContent).toBe('');
+    expect(line.classList).toContain('sr-only');
+    // The next search puts it back, so the reopen check below still starts from a shown line.
+    fireEvent.click(search);
+    await flush();
+    advance(REGION_EMPTY_DWELL_MS);
+    expect(line.textContent).toBe(SENTENCE);
+
     // Hiding the search and opening it again starts from an empty line.
     fireEvent.click(screen.getByRole('button', { name: 'Hide Search' }));
     fireEvent.click(screen.getByRole('button', { name: '+ Add from BGG' }));

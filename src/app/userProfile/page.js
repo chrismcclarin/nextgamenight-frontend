@@ -4417,7 +4417,8 @@ function Profile(){
                                     name="bgg-search"
                                     aria-label="Search BoardGameGeek"
                                     value={bggSearchQuery}
-                                    onChange={(e) => setBggSearchQuery(e.target.value)}
+                                    // A-48 (88.9-52): typing a new term takes the no-results line away; it was about the term before.
+                                    onChange={(e) => { setBggSearchQuery(e.target.value); clearBggNoResults(); }}
                                     onKeyPress={(e) => e.key === 'Enter' && searchBGG()}
                                     placeholder="Search BoardGameGeek..."
                                     className="flex-1"
