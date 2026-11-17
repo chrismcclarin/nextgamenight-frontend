@@ -520,7 +520,8 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
         const day = FULL[i];
         expect(tokens(cell), `${variant}: ${day} is not 12px`).toContain('text-xs');
         expect(tokens(cell), `${variant}: ${day} is not 700`).toContain('font-bold');
-        expect(cell.hasAttribute('role'), `${variant}: the ${day} cell carries a role`).toBe(false);
+        // AMENDED 88.9-52 (A-11): the cell is an img, so its name is allowed (ARIA 1.2 prohibits naming a generic) and desktop screen readers speak it.
+        expect(cell.getAttribute('role'), `${variant}: the ${day} cell is not a labelled img`).toBe('img');
         expect(cell.getAttribute('tabindex'), `${variant}: the ${day} cell is not a focusable leaf outside the Tab order`).toBe('-1');
         expect(cell.getAttribute('aria-label'), `${variant}: the ${day} cell does not speak its full day name`).toBe(day);
         const parts = Array.from(cell.children);
@@ -541,6 +542,36 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     }
   });
 
+  // 88.9-52 (A-11): a desktop screen-reader user reading the grid hears which weekday a date falls
+  // on: the weekday headers are labelled imgs (above) and the day target's name starts with the weekday.
+  it('A-11 (88.9-52): the day target names its weekday first, on a multi-game day and on an empty day with the hint', () => {
+    const two = [
+      { id: 'a11-1', start_date: '2031-09-19T18:00:00', Game: { name: 'Azul' }, Group: { name: 'Crew', background_color: null }, rsvp_summary: null },
+      { id: 'a11-2', start_date: '2031-09-19T20:00:00', Game: { name: 'Catan' }, Group: { name: 'Crew', background_color: null }, rsvp_summary: null },
+    ];
+    for (const variant of ['full', 'compact'] as const) {
+      const out = render(
+        <CalendarMonthView
+          days={getDaysInMonth(new Date(2031, 8, 1, 12))}
+          activeEvents={two}
+          currentDate={new Date(2031, 8, 1, 12)}
+          variant={variant}
+          onDayClick={vi.fn()}
+          onEventClick={vi.fn()}
+          onNavigateMonth={vi.fn()}
+          onGoToday={vi.fn()}
+          showEmptyDayHint
+          monthNames={MONTHS}
+          tzLegend={null}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Friday, September 19, 2 games. Open this day.' }), `${variant}: the two-game day`).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Saturday, September 20. Add an event on this day.' }), `${variant}: an empty day`).toBeTruthy();
+      expect(out.container.querySelectorAll('[role="button"][aria-label$="this day."]:not([aria-label*="day, "])'), `${variant}: a day target without its weekday`).toHaveLength(0);
+      cleanup();
+    }
+  });
+
   // 88.9-52 (Q62, owner ruling A, 2026-11-16): the compact grid prints the count alone, on one
   // line, and speaks the count in words from a labelled leaf; the full grid keeps the word and
   // drops it only when the day grid is narrow (W18).
@@ -554,11 +585,11 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     }));
 
   it('Q62 (88.9-52): the compact grid shows +N on one line and speaks N more event(s) from a labelled leaf', () => {
-    const { cells, container } = renderGrid({ variant: 'compact', events: [...crowd(3, 20), ...crowd(5, 22)] });
+    const { cells } = renderGrid({ variant: 'compact', events: [...crowd(3, 20), ...crowd(5, 22)] });
     expect(tokens(cells[0].parentElement as HTMLElement), 'the day grid is not a size container').toContain('@container');
     const one = screen.getByRole('img', { name: '1 more event' });
     const three = screen.getByRole('img', { name: '3 more events' });
-    expect(container.querySelectorAll('[role="img"]'), 'a day with one or two games prints a more label').toHaveLength(2);
+    expect((cells[0].parentElement as HTMLElement).querySelectorAll('[role="img"]'), 'a day with one or two games prints a more label').toHaveLength(2);
     for (const [label, text] of [[one, '+1'], [three, '+3']] as const) {
       expect(label.textContent, 'the compact label still prints the word').toBe(text);
       expect(label.getAttribute('tabindex'), 'the label is not a focusable leaf outside the Tab order').toBe('-1');

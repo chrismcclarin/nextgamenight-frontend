@@ -1640,8 +1640,9 @@ describe('Phase 88.6-40 AC-5 / R5 (W39): the calendar day cell has a keyboard pa
     calEvent('e1', CAL_DAY, 'Catan', 'Tuesday Crew'),
     calEvent('e2', CAL_DAY, 'Wingspan', 'Plain Group'),
   ];
-  const OPEN_DAY_NAME = 'September 15, 2 games. Open this day.';
-  const ADD_EVENT_NAME = 'September 15. Add an event on this day.';
+  // 88.9-52 (A-11): the day target's name starts with the weekday (15 September 2031 is a Monday).
+  const OPEN_DAY_NAME = 'Monday, September 15, 2 games. Open this day.';
+  const ADD_EVENT_NAME = 'Monday, September 15. Add an event on this day.';
 
   it('DC-1. a MULTI-EVENT day exposes a focusable day-number target naming the date AND the action', () => {
     renderMonth({ events: MULTI });

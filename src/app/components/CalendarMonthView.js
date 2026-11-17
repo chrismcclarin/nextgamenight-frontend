@@ -313,10 +313,24 @@ export default function CalendarMonthView({
           device measurement; desktop screen readers may not speak a name on a generic. (2) The iPhone
           result here is inferred (the chart header's owner re-check plus WebKit's Generic branch,
           research APPENDIX-AT AT-1), not measured on this element: an owner iPhone VoiceOver re-check
-          after deploy is owed (88.9-53). Changing any of this is a decision, not a cleanup. */}
+          after deploy is owed (88.9-53). Changing any of this is a decision, not a cleanup.
+          AMENDED Phase 88.9-52 (A-11, code review): each header cell now carries role img, chosen OVER
+          the role-less labelled generic above. The review's finding: a desktop screen reader reading
+          the page (NVDA, JAWS) may speak nothing for a named generic, so the weekday row went silent
+          there, and origin/main spoke it as plain text. With a role the name is allowed, so
+          trade-off (1)'s axe aria-prohibited-attr report goes away. Everything else stands: the full
+          day name in aria-label, tabIndex -1 (still the labelled focusable leaf of M29), both visible
+          spans aria-hidden, no sr-only text. Known cost, as weighed above: a screen reader may say
+          image after each day name; rejected again: columnheader (needs a row in a grid or table)
+          and heading (seven rotor headings). The day target's name also starts with the weekday now
+          (Friday, September 19, 2 games. Open this day.), chosen OVER the month-and-date-only name:
+          it is the one place a keyboard or screen-reader user lands on a date. That covers active
+          day targets only; a one-game day speaks through its tile and a plain date has no label.
+          Not measured on any screen reader; the iPhone re-check owed above (88.9-53) now covers the
+          img form. */}
       <div className="@container grid grid-cols-7 gap-1 mb-4">
         {dayNames.map(day => (
-          <div key={day} aria-label={day} tabIndex={-1} className="text-center font-bold text-content-secondary py-2 text-xs">
+          <div key={day} role="img" aria-label={day} tabIndex={-1} className="text-center font-bold text-content-secondary py-2 text-xs">
             <span aria-hidden="true" className="@max-[14rem]:hidden">{day.slice(0, 3)}</span>
             <span aria-hidden="true" className="hidden @max-[14rem]:inline">{day[0]}</span>
           </div>
@@ -359,7 +373,7 @@ export default function CalendarMonthView({
              one render site in `src/` (`EventCalendar.js`). This is a decision, not a cleanup. */
           const dayTargetActive = cellClickable && dayEvents.length !== 1;
           const dayNumberLabel = dayTargetActive
-            ? `${monthNames?.[date.getMonth()] ?? ''} ${date.getDate()}`.trim() +
+            ? `${dayNames[date.getDay()]}, ${monthNames?.[date.getMonth()] ?? ''} ${date.getDate()}`.trim() +
               (dayEvents.length > 0
                 ? `, ${dayEvents.length} games. Open this day.`
                 : '. Add an event on this day.')

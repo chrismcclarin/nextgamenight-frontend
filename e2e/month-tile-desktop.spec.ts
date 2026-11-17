@@ -1218,7 +1218,8 @@ async function measureDayModalQr(page: Page, read: () => O19Day, theme: 'light' 
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',
   ];
-  const dayTarget = page.getByRole('button', { name: `${monthNames[month]} ${day}, 2 games. Open this day.`, exact: true });
+  // 88.9-52 (A-11): the day target's name starts with its weekday; matched by shape so the test holds in any year.
+  const dayTarget = page.getByRole('button', { name: new RegExp(`^[A-Z][a-z]+day, ${monthNames[month]} ${day}, 2 games\\. Open this day\\.$`) });
   await expect(dayTarget, `O-19 (${theme}): the two-event day target is not on the grid`).toBeVisible();
   await dayTarget.click();
   const dialog = page.getByRole('dialog');
