@@ -2661,6 +2661,58 @@ describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
   });
 });
 
+// 88.9-52 W38 (owner ruling, 88.9-RULINGS.md: the inline two-tap controls take ONE look at rest,
+// armed and busy; schedule Delete and phone Remove on Profile are the model). The friend Remove has
+// no border in any state (it drew an outlined box when armed), speaks its arm in weight alone, and
+// while its write runs the spinner sits BEFORE the word, so the word stays where the other rows'
+// Remove is. jsdom has no layout, so the proof is the class list and the child order.
+describe('friend Remove takes the one inline two-tap look (88.9-52: W38)', () => {
+  const borderClasses = (el: HTMLElement) => el.className.split(/\s+/).filter((c) => /(^|:)border(-|$)/.test(c));
+
+  it('W38 (88.9-52): the friend Remove has no box at rest, armed or busy; armed is weight only; the busy spinner leads the word', async () => {
+    const heldRemove = deferred<unknown>();
+    (friendshipsAPI.removeFriend as Mock).mockReturnValueOnce(heldRemove.promise);
+    renderFriends();
+    const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    const classes = () => remove.className.split(/\s+/);
+
+    // At rest: the model's host classes, and no border class of any kind.
+    expect(borderClasses(remove)).toEqual([]);
+    for (const c of ['inline-flex', 'items-center', 'min-h-11', 'shrink-0', 'whitespace-nowrap', 'px-2', 'rounded-btn', 'text-sm', 'text-content-status-error', 'hover:bg-status-error-subtle', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring']) {
+      expect(classes(), c).toContain(c);
+    }
+    expect(classes()).not.toContain('font-semibold');
+
+    // Armed, while it counts down and once live: weight only, still no border.
+    fakeClock();
+    fireEvent.click(remove);
+    expect(remove).toHaveTextContent('Wait (3)');
+    expect(borderClasses(remove)).toEqual([]);
+    expect(classes()).toContain('font-semibold');
+    passGate();
+    expect(remove).toHaveTextContent('Tap again to confirm');
+    expect(borderClasses(remove)).toEqual([]);
+    expect(classes()).toContain('font-semibold');
+
+    // Busy: the resting weight, no border, and the spinner is the FIRST child, before the word.
+    fireEvent.click(remove);
+    expect(remove).toHaveAccessibleName('Remove Dana, removing');
+    await waitFor(() => expect(remove.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(borderClasses(remove)).toEqual([]);
+    expect(classes()).not.toContain('font-semibold');
+    const spinner = remove.querySelector('[data-slot="spinner"]') as HTMLElement;
+    expect(remove.firstElementChild).toBe(spinner);
+    expect(spinner.className.split(/\s+/)).toContain('mr-2');
+    expect(spinner.className.split(/\s+/)).not.toContain('ml-2');
+    expect(remove).toHaveTextContent(/^Remove$/);
+
+    await act(async () => {
+      heldRemove.resolve({});
+    });
+    await waitFor(() => expect(remove).not.toBeInTheDocument());
+  });
+});
+
 // DECISION Phase 88.9-58 (X14 family, owner 2026-11-14 on the live page: "Why not just turn them
 // into white cards?"): the three bordered rows on the Friends page are card surfaces with no hover,
 // chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a

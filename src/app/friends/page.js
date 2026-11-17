@@ -1552,28 +1552,38 @@ function FriendsPage() {
                                                                     // state at all, which would have been a silent downgrade
                                                                     // dressed up as a decision. A background cannot collide with
                                                                     // the armed state below it, which speaks in border and
-                                                                    // weight. Same treatment on the two delete-pattern gates in
+                                                                    // weight (AMENDED Phase 88.9-52, W38: in weight only now). Same treatment on the two delete-pattern gates in
                                                                     // userProfile and on ParticipantRow's Remove, which reaches
                                                                     // it by the ordinary bucket-C rule.
-                                                                    className={`min-h-11 shrink-0 px-3 rounded-btn border text-sm transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
-                                                                        armed
-                                                                            ? 'border-status-error font-semibold'
-                                                                            : 'border-transparent'
+                                                                    // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline
+                                                                    // two-tap controls take ONE look at rest, armed and busy; the
+                                                                    // schedule Delete and the phone Remove on Profile are the model):
+                                                                    // this host now carries the schedule Delete's class string plus
+                                                                    // shrink-0, with NO border in any state, so the armed state speaks
+                                                                    // in weight alone. REJECTED: the outlined box it drew when armed
+                                                                    // (the only one of the three with a box).
+                                                                    className={`inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                                        armed ? 'font-semibold' : ''
                                                                     }`}
                                                                 >
+                                                                    {/* DECISION Phase 88.9-52 (W38): the busy spinner sits BEFORE the word
+                                                                        (mr-2), chosen OVER after it (ml-2, the raw-host idiom): this
+                                                                        control is anchored to the row's right edge, so a spinner after
+                                                                        the word pushed Remove 24px left of the other rows' Remove while
+                                                                        the write ran; before it, the control grows to the left and the
+                                                                        word stays put. REJECTED too: a spinner slot reserved at rest
+                                                                        (every row's Remove would sit 24px in from the edge for good).
+                                                                        The delayed, held element is unchanged (AMENDED Phase 88.9-56,
+                                                                        R-C3b reach: the row leaves with the friend on success, so the
+                                                                        hold ends with the host); the suffix rides the aria-label above.
+                                                                        Moving it back after the word is a decision, not a cleanup. */}
+                                                                    <DelayedSpinner busy={removing} className="mr-2" />
                                                                     {/* X69 width (88.9-67): from the arm the label holds the widest of
                                                                         Wait (3), (2), (1) and Tap again to confirm, so the row does not
                                                                         move when the wait ends; at rest nothing is reserved. */}
                                                                     <ReservedLabel reserve={removeFriendGate.reserveFor(friendship.id)}>
                                                                         {removeFriendGate.labelFor(friendship.id, 'Remove')}
                                                                     </ReservedLabel>
-                                                                    {/* Raw host (not Button, not flex): the house spinner with
-                                                                        the same ml-2 spacing plan 88.9-45 gives AvailabilityForm's
-                                                                        raw buttons; the suffix rides the aria-label above.
-                                                                        AMENDED Phase 88.9-56 (R-C3b reach): the delayed, held
-                                                                        element; the row leaves with the friend on success, so
-                                                                        the hold ends with the host. */}
-                                                                    <DelayedSpinner busy={removing} className="ml-2 align-middle" />
                                                                 </button>
                                                             );
                                                         })()}

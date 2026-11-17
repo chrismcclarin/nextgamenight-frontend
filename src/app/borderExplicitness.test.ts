@@ -252,8 +252,9 @@ const PAIRED_ELSEWHERE: Record<string, string> = {
   // what test 2 is for — a deletion cannot leave a widening exemption behind.
   'app/components/ManageMembers.js':
     'role pill: all three roleStyles entries name a colour, and the `||` guarantees a fallback',
-  'app/friends/page.js':
-    'armed-remove ternary: both branches name a colour (status-error / transparent)',
+  // REMOVED BY 88.9-52 (W38): app/friends/page.js was exempt here for its armed-remove ternary
+  // (status-error / transparent). The friend Remove has no border in any state now, so the file
+  // holds no bare border and test 2 (allow-list staleness) requires the exemption to go with it.
   'app/gameDetail/page.js':
     'two-tap remove ternary: both branches name a colour (status-error / line)',
   'app/userProfile/page.js':
