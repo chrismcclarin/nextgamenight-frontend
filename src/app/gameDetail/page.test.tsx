@@ -4080,6 +4080,42 @@ describe('gameDetail breadcrumbs — ring, hidden separators, min-w-0 (D-46 / R7
     await within(nav).findByRole('link', { name: 'Group' });
     expectHouseBreadcrumb(nav);
   });
+
+  it('W35 (88.9-52): the game view breadcrumb names the group once the group nights answer carries it; the word Group only until then, and again when the group content is withdrawn', async () => {
+    // The game view never loads the group itself; every night in the group-nights answer carries
+    // its Group (id + name), a read this view already makes.
+    const named = { ...SESSION, id: 'evt-other-game', game_id: 'some-other-game', Group: { id: GROUP_ID, name: 'Weekend Warriors' } };
+    const r = renderGameDetail({ role: 'member', events: [named] });
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    const link = await within(nav).findByRole('link', { name: 'Weekend Warriors' });
+    expect(link).toHaveAttribute('href', `/groupHomePage?id=${GROUP_ID}`);
+    expect(within(nav).queryByRole('link', { name: 'Group' })).toBeNull();
+    expectHouseBreadcrumb(nav);
+    // A group read's 403 withdraws the group content: the name goes with it (no link either, the
+    // viewer is no longer a member on this page).
+    (eventsAPI.getGroupEvents as Mock).mockRejectedValue(new ApiError('Access denied', 'forbidden', 403));
+    forceRefresh(r.rerender);
+    await waitFor(() => expect(screen.queryByText('Weekend Warriors')).toBeNull());
+  });
+
+  it('W35 (88.9-52): from md up a session\'s participant chips sit side by side; on a phone they stay one per line', async () => {
+    const withPeople = {
+      ...SESSION,
+      EventParticipations: [
+        { user_id: OTHER_UUID, username: 'Someone Else', score: 10, placement: 1 },
+        { user_id: null, username: 'Typed In', is_custom: true, score: 7, placement: 2 },
+      ],
+    };
+    renderGameDetail({ role: 'member', events: [withPeople] });
+    const label = await screen.findByText('Participants:');
+    const list = label.nextElementSibling as HTMLElement;
+    expect(list.children).toHaveLength(2);
+    for (const cls of ['flex', 'flex-col', 'gap-2', 'md:flex-row', 'md:flex-wrap']) {
+      expect(list.classList.contains(cls), `the chip list carries ${cls}`).toBe(true);
+    }
+    expect(list.classList.contains('space-y-2')).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------

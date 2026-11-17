@@ -550,6 +550,9 @@ export default function GameDetailPage() {
 
     const [game, setGame] = useState(null);
     const [events, setEvents] = useState([]);
+    // 88.9-52 (W35): the group's name on the GAME view, taken from the group-nights answer (every
+    // night carries its Group); null until a night names it. See the marker at the breadcrumb.
+    const [gameViewGroupName, setGameViewGroupName] = useState(null);
     const [reviews, setReviews] = useState([]);
     const [userReview, setUserReview] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -1517,6 +1520,7 @@ export default function GameDetailPage() {
     const clearGameKeyData = () => {
         setGame(null);
         setEvents([]);
+        setGameViewGroupName(null);
         setEventRsvpStatuses({});
         setReviews([]);
         setUserReview(null);
@@ -1533,6 +1537,7 @@ export default function GameDetailPage() {
     // would clear the game. DECISION Phase 88.6.1-74 (C1, side reads).
     const withdrawGroupContent = () => {
         setEvents([]);
+        setGameViewGroupName(null);
         setEventRsvpStatuses({});
         setReviews([]);
         setUserReview(null);
@@ -1711,6 +1716,11 @@ export default function GameDetailPage() {
 
                     const gameEvents = eventsData.filter(event => event.game_id === game_id);
                     setEvents(gameEvents);
+                    // 88.9-52 (W35): any night of THIS group names it (not only this game's nights).
+                    const namedNight = eventsData.find(
+                        (event) => event?.Group?.id === group_id && typeof event.Group.name === 'string' && event.Group.name
+                    );
+                    setGameViewGroupName(namedNight ? namedNight.Group.name : null);
                     stampRead('groupEvents');
 
                     // Fetch RSVP statuses for each event (for BallotSection).
@@ -2466,7 +2476,10 @@ export default function GameDetailPage() {
                                 {event.EventParticipations && event.EventParticipations.length > 0 && (
                                     <div className="text-sm mt-3 pt-2 border-t border-line">
                                         <p className="font-bold mb-2 text-content-primary">Participants:</p>
-                                        <div className="space-y-2">
+                                        {/* 88.9-52 (W35): one chip per line on a phone (the X47 look, as shipped); from md
+                                            the chips sit side by side and wrap, where one per line left a wide card
+                                            mostly empty. Same 8px gap both ways. */}
+                                        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
                                             {event.EventParticipations.map((participation, idx) => (
                                                 <div key={idx} className="flex items-center gap-2 flex-wrap">
                                                     {/* DECISION Phase 88.9-65 (X47): the chip wraps by piece on the card ground, chosen OVER the one-line row (a squeezed piece wrapped inside itself and kept its width: the gap the owner saw) and OVER the muted ground; no new colour.
@@ -3698,9 +3711,14 @@ export default function GameDetailPage() {
                             /* Group-context (game_id present) view: group-members
                                see the link with the group name (or generic "Group"
                                while loading — graceful, not load-bearing for the
-                               game-only flow). */
+                               game-only flow).
+                               DECISION Phase 88.9-52 (W35): on this view the name comes from the
+                               group-nights answer this view already reads (each night carries its
+                               Group), chosen OVER the shipped singleEvent read alone (always empty
+                               here, so the crumb always said "Group") and OVER a new group read
+                               for one word. A group with no night at all still reads "Group". */
                             <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">
-                                {singleEvent?.Group?.name || 'Group'}
+                                {singleEvent?.Group?.name || gameViewGroupName || 'Group'}
                             </Link>
                         ) : singleEvent?.Group?.name ? (
                             /* Phase 71.1 GAMP-11 + Blocker 2 fix: render the
