@@ -2052,9 +2052,15 @@ function GroupHomePage(){
                    (src/app/components/Modal.tsx ("This Radix build does not emit aria-modal on Content; set it")).
                    What RF-8 measured still holds (the region is not under aria-hidden). What is NOT
                    measured is whether iOS VoiceOver speaks a live region that sits outside an
-                   aria-modal dialog, so "that fill IS heard" is unproven on a phone. A device check
-                   is pending (88.9-52 A-47); the choice stands until it is run, and no behaviour
-                   changed with this note. */
+                   aria-modal dialog, so "that fill IS heard" is unproven on a phone.
+                   DEVICE RESULT 2026-11-16 (owner's iPhone, VoiceOver, production): a polite region
+                   outside this open dialog (the root announcer, Role updated) was NOT spoken. So on
+                   an iPhone this notice's fill behind the dialog is most likely not heard while the
+                   dialog is open (same mechanism; the notice itself was not measured). The dialog's
+                   own save outcomes now land inside the dialog
+                   (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
+                   Whether the notice must be re-presented on close is OPEN: this marker's own
+                   revisit condition is met. No behaviour changed with this note. */
                 modaltoggle={() => setMemberModal(false)}
                 onMembersUpdated={getGroupMembers}
                 group_name={Group?.name || 'this group'}

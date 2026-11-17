@@ -25,7 +25,11 @@ export interface CentredPageFrameProps extends React.HTMLAttributes<HTMLDivEleme
    page, and Banner is shared with in-page notices). It sits in the OUTER box, before the inner
    one, chosen OVER inside the inner box: a page that moves focus to the inner box must still land
    on a box whose first text is the banner title. The house sr-only class takes it out of the
-   layout, so the centring and the gutter are unchanged. */
+   layout, so the centring and the gutter are unchanged.
+   AMENDED Phase 88.9-52 (R3, owner 2026-11-16): each page passes srHeading from the ONE constant
+   that also feeds its visible page name (FRIENDS_PAGE_TITLE, PLAN_PAGE_TITLE, PROFILE_PAGE_NAME,
+   GROUP_PAGE_NAME), chosen OVER a typed word at the mount; a hand-typed srHeading fails that
+   page's R3 test. */
 
 const CentredPageFrame = React.forwardRef<HTMLDivElement, CentredPageFrameProps>(
   ({ className, children, srHeading, ...props }, ref) => (
