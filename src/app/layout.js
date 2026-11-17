@@ -43,7 +43,12 @@ export default function RootLayout({ children }) {
               outside the children and every provider) and OVER a per-component region (createEvent
               and GroupSettings unmount on close). It preserves a behaviour that already ships (the
               Toaster's live region spoke these words), not a new capability (P4). Changing this is
-              a decision, not a cleanup. */}
+              a decision, not a cleanup.
+              AMENDED Phase 88.9-52 (A-47): this root region is not heard on an iPhone while a house
+              dialog is open (measured 2026-11-16), so while one is open the same store hands the
+              words to a region inside that dialog and this one stays empty
+              (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
+              The mount here is unchanged. */}
           {/* DECISION Phase 88.9-52 (W40, owner at the after-build look page: the error toast lies
               over the header and its close x overlaps the logo on a phone): on a phone (Sonner's
               600px and under) the toast starts 72px from the top, the 64px header strip plus an
