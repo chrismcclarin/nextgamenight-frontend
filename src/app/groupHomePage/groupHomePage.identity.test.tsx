@@ -241,6 +241,23 @@ const ROSTER3 = [
 // 88.9-52 A-45: a loading or redirect frame is HEARD. Its words are spoken by a visually hidden
 // polite region (StatusRegion with settleOnMount: mounted empty, filled after the house dwell),
 // with one real ellipsis character where the visible line has three dots.
+// 88.9-52 (GL-7 flake): the group page's loading frame holds its words TWICE once the hidden region
+// has settled (the visible paragraph and the sr-only polite region both read Loading group…, the
+// same characters), so a bare text query matched one node or two depending on whether the 100 ms
+// dwell had run out. The visible line is read by its own element; the spoken line by its role
+// (expectSpokenByHiddenRegion below).
+function visibleLoadingLine(): HTMLElement {
+  const line = screen.getByText('Loading group…', { selector: 'p' });
+  expect(line).not.toHaveAttribute('role');
+  expect(line).not.toHaveClass('sr-only');
+  return line;
+}
+
+/** Neither the visible loading line nor a region speaking it (zero nodes, whatever the dwell). */
+function expectNoLoadingLine() {
+  expect(screen.queryAllByText('Loading group…')).toHaveLength(0);
+}
+
 async function expectSpokenByHiddenRegion(words: string) {
   await waitFor(() => {
     const region = screen.queryAllByRole('status').find((n) => n.textContent === words);
@@ -256,8 +273,10 @@ describe('groupHomePage membership gate vs unresolved identity', () => {
     render(<GroupHomePage />);
 
     // The page stays on the "Loading group…" gate...
-    expect(await screen.findByText('Loading group…')).toBeInTheDocument();
+    await waitFor(() => expect(visibleLoadingLine()).toBeInTheDocument());
     await expectSpokenByHiddenRegion('Loading group…');
+    // Still there, and still one visible line, after the hidden region has spoken.
+    expect(visibleLoadingLine()).toBeInTheDocument();
 
     // ...and the members fetch should not even fire the membership derive, so
     // the removed-redirect never happens. Give any stray async a tick.
@@ -876,7 +895,7 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     (groupsAPI.getGroupMembers as Mock).mockRejectedValue(internal());
     render(<GroupHomePage />);
     await screen.findAllByText(G7);
-    expect(screen.queryByText('Loading group…')).toBeNull();
+    expectNoLoadingLine();
     expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
     expect(pushSpy).not.toHaveBeenCalled();
     expect(listsAPI.getGroupGames as Mock).not.toHaveBeenCalled();
@@ -914,7 +933,7 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     (groupsAPI.getGroupMembers as Mock).mockResolvedValue({ unexpected: true });
     render(<GroupHomePage />);
     await screen.findAllByText(G7);
-    expect(screen.queryByText('Loading group…')).toBeNull();
+    expectNoLoadingLine();
   });
 
   it('MB-4. a removal (403) still redirects first and never shows the group banner', async () => {
@@ -1049,7 +1068,7 @@ describe('groupHomePage load failures (88.6.1-71: Req 9, owner rulings 2026-10-0
     await waitFor(() => expect(groupsAPI.getGroup).toHaveBeenCalledWith('GROUP2'));
     await act(async () => {});
     expect(screen.queryAllByText(G7)).toHaveLength(0);
-    expect(screen.getByText('Loading group…')).toBeInTheDocument();
+    expect(visibleLoadingLine()).toBeInTheDocument();
     expect(screen.queryByText(/2 members/)).toBeNull();
 
     await act(async () => {
@@ -1726,7 +1745,10 @@ describe("groupHomePage — the group record's own load (88.6.1-89, close ruling
       await act(async () => {
         await new Promise((r) => setTimeout(r, 20));
       });
-      expect(screen.getByText('Loading group…')).toBeInTheDocument();
+      expect(visibleLoadingLine()).toBeInTheDocument();
+      // Read again once the hidden region has spoken: the ordering that matched two nodes.
+      await expectSpokenByHiddenRegion('Loading group…');
+      expect(visibleLoadingLine()).toBeInTheDocument();
       expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
       expect(screen.queryByRole('heading', { name: 'Group' })).toBeNull();
       // C12 while held: nothing inside main can take focus, so the late answer has no focused
@@ -1900,8 +1922,9 @@ describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', 
     expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1');
     expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
     // The redirect frame is the hold (the K10 hang was this same screen with replace never called).
-    expect(screen.getByText('Loading group…')).toBeInTheDocument();
+    expect(visibleLoadingLine()).toBeInTheDocument();
     await expectSpokenByHiddenRegion('Loading group…');
+    expect(visibleLoadingLine()).toBeInTheDocument();
     expect(screen.queryAllByText(G7)).toHaveLength(0);
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
     cleanup();
@@ -1913,7 +1936,7 @@ describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', 
       'href',
       '/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1'
     );
-    expect(screen.queryByText('Loading group…')).toBeNull();
+    expectNoLoadingLine();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
@@ -1932,7 +1955,7 @@ describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', 
     await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
     expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2FgroupHomePage%3Fid%3DGROUP1');
     // The hold, not the page and not the banner, while the browser navigates.
-    expect(screen.getByText('Loading group…')).toBeInTheDocument();
+    expect(visibleLoadingLine()).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull();
     expect(screen.queryAllByText(G7)).toHaveLength(0);
     cleanup();
@@ -1944,7 +1967,7 @@ describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', 
     expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
-    expect(screen.queryByText('Loading group…')).toBeNull();
+    expectNoLoadingLine();
     expect(replace).toHaveBeenCalledTimes(1);
   });
 
@@ -1955,7 +1978,7 @@ describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', 
     renderInMain();
     expect(await screen.findByRole('button', { name: 'Reload page' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: G7 })).toBeInTheDocument();
-    expect(screen.queryByText('Loading group…')).toBeNull();
+    expectNoLoadingLine();
     expect(replace).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
     expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
