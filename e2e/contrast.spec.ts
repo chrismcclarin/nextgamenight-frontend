@@ -695,7 +695,10 @@ async function adjacentMonthInk(page: Page, theme: 'light' | 'dark'): Promise<vo
     const next = MONTH_NAMES[target.nextMonth];
     expect(syntheticDay, `A4b (${theme}): the route handler never answered the group events GET`).toBeGreaterThan(0);
 
-    const populated = page.getByRole('button', { name: `${next} ${syntheticDay}, 3 games. Open this day.`, exact: true });
+    // AMENDED Phase 88.9-52 (A-11): the day target's name starts with the weekday now (the label built at
+    // src/app/components/CalendarMonthView.js ("const dayNumberLabel = dayTargetActive")), so it is matched by a whole-name
+    // pattern with any weekday first; the month, the day and the count stay exact.
+    const populated = page.getByRole('button', { name: new RegExp(`^[A-Z][a-z]+day, ${next} ${syntheticDay}, 3 games\\. Open this day\\.$`) });
     await expect(populated, `A4b (${theme}): the populated adjacent-month day number is absent — the synthetic events did not reach the grid`).toBeVisible({ timeout: 15_000 });
     await expect(populated).toHaveText(/\d/);
     // EMPTY cell: a different trailing day the real response also leaves empty, by its accessible
