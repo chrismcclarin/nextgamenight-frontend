@@ -209,6 +209,8 @@ if (typeof globalThis.IntersectionObserver === 'undefined') {
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
   isError: false,
+  // 88.9-52 (A-46): the identity failure's error object; null means the plain Error below.
+  identityError: null as Error | null,
   push: vi.fn(),
   calendarMounts: 0,
 }));
@@ -220,7 +222,7 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
     self: h.selfUuid ? { id: h.selfUuid, user_id: 'auth0|self' } : undefined,
     query: {
       isError: h.isError,
-      error: h.isError ? new Error('identity failed') : null,
+      error: h.isError ? (h.identityError ?? new Error('identity failed')) : null,
       refetch: vi.fn(),
     },
     isPending: !h.selfUuid && !h.isError,
@@ -477,6 +479,7 @@ afterEach(() => {
   cleanup();
   h.selfUuid = undefined;
   h.isError = false;
+  h.identityError = null;
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -623,6 +626,23 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
     expect(within(dialog).queryByText(/^no (upcoming )?events$/i)).toBeNull();
     // The identity branch is checked FIRST, so the events copy is not also shown.
     expect(within(dialog).queryByText("Couldn't load your calendar")).toBeNull();
+  });
+
+  // 88.9-52 (A-46, code review): on a phone with an expired session the sheet drew the compact
+  // notice, whose Retry can only fail again, while the page's Sign in sat hidden behind the sheet.
+  // A 401 on identity now draws the full banner in the sheet, whose action is Sign in.
+  it('A-46 (88.9-52): an identity 401 shows Sign in inside the sheet and no Retry', async () => {
+    h.selfUuid = undefined;
+    h.isError = true;
+    h.identityError = new ApiError('Unauthorized', 'unauthorized', 401);
+    const user = userEvent.setup();
+    renderHome();
+
+    const dialog = await openCalendarSheet(user);
+    expect(within(dialog).getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /retry|try again/i }), 'the sheet offers a retry for a dead session').toBeNull();
+    expect(within(dialog).queryByText(/some personal controls are unavailable/i), 'the compact notice still shows for a 401').toBeNull();
+    expect(within(dialog).queryByText(/^no (upcoming )?events$/i)).toBeNull();
   });
 });
 

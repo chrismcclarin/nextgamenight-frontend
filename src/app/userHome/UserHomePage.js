@@ -722,7 +722,12 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 banners (a phone showed nothing) and OVER passing a masked state to the card (it would
                 claim the calendar is clear after a failure). The sheet keeps its own arms: it is a
                 dialog over this banner. FetchErrorBanner takes no className by its own decision, so
-                the spacing lives on this wrapper. */}
+                the spacing lives on this wrapper.
+                AMENDED Phase 88.9-52 (A-46, code review): the sheet's own arms now include an
+                identity-401 arm (the full banner, whose action is Sign in), chosen OVER the compact
+                notice it drew for every identity failure: that notice's Retry can only fail again on
+                a dead session, and this banner's Sign in is hidden behind the open sheet. The compact
+                notice stays for every other identity failure. */}
             {pageSessionState && (
                 <div className="mb-4">
                     <FetchErrorBanner state={pageSessionState} thing="this page" />
@@ -963,8 +968,17 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                    needs to hand it the full height to flex into. */
                 bodyClassName="flex min-h-0 flex-col overflow-hidden"
             >
-                {selfIdentityErrorState.showError ? (
+                {selfIdentityErrorState.showError && selfIdentityErrorState.code !== 'unauthorized' ? (
                     <FetchErrorBanner state={selfIdentityErrorState} compact />
+                ) : selfIdentityErrorState.showError ? (
+                    /* 88.9-52 (A-46): a dead session; see the O22d marker's amendment above. The
+                       compact arm stays FIRST in the source: the R073 mount-ground scan reads the
+                       first banner tag after this sheet's bodyClassName and expects the compact one. */
+                    <FetchErrorBanner
+                        state={selfIdentityErrorState}
+                        thing="your calendar"
+                        reportContext="Calendar sheet (home page, phone)"
+                    />
                 ) : upcomingErrorState.showError && !upcomingRetained ? (
                     <FetchErrorBanner
                         state={upcomingErrorState}
