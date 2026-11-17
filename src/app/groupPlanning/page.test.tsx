@@ -1362,6 +1362,9 @@ describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
     expect(await screen.findByText("Couldn't load this group")).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', target);
     expect(screen.queryByText('Redirecting to login...')).toBeNull();
+    // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Plan Game Session' })).toHaveClass('sr-only');
     expect(replace).toHaveBeenCalledTimes(1);
     expect(hrefSet).not.toHaveBeenCalled();
     expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();

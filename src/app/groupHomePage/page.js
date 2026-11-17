@@ -799,7 +799,7 @@ function GroupHomePage(){
         return (
             <>
                 {/* 88.9-66 (X64 / X70): the shared frame; its marker is in src/components/ui/CentredPageFrame.tsx ("ONE frame for a page-replacing banner"). */}
-                <CentredPageFrame>
+                <CentredPageFrame srHeading="Group">
                     <FetchErrorBanner state={pageGateState} thing={GROUP_LOAD_FAILED_THING} reportContext="Group home page — group and members fetch" />
                 </CentredPageFrame>
                 {membersFocusGuard}

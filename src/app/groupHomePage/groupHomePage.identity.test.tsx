@@ -1328,7 +1328,10 @@ describe('groupHomePage refresh notice (88.6.1-71: AC-29, RF1, ruling Y, 88.6.1-
     expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
     expect(screen.queryByText(/2 members/)).toBeNull();
     await act(async () => {});
-    await waitFor(() => expect(document.activeElement).toBe(document.querySelector('main')));
+    // AMENDED Phase 88.9-52 (A-04): the banner frame now carries the page's one level-1 heading
+    // (screen readers only), so the page floor's own order (main h1, then main) lands on it.
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector('main h1')));
+    expect(document.activeElement).toHaveTextContent('Group');
     expect(document.activeElement).not.toBe(document.body);
     cleanup();
 
@@ -1591,7 +1594,10 @@ describe("groupHomePage — the group record's own load (88.6.1-89, close ruling
     expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
     expect(screen.queryByRole('link', { name: 'Plan Game Session' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Group' })).toBeNull();
+    // AMENDED Phase 88.9-52 (A-04): no page means no heading but the banner frame's own
+    // screen-reader-only level-1 heading.
+    expect(screen.getAllByRole('heading')).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Group' })).toHaveClass('sr-only');
     expect(pushSpy).not.toHaveBeenCalled();
   });
 
@@ -1666,8 +1672,12 @@ describe("groupHomePage — the group record's own load (88.6.1-89, close ruling
     expect(manage.isConnected).toBe(false);
     expect(document.activeElement).not.toBe(document.body);
     expect(document.querySelector('main')!.contains(document.activeElement)).toBe(true);
-    // C-5, the named node: nothing of the group survives under G7 (no h1), so the floor is main.
-    expect(document.activeElement).toBe(document.querySelector('main'));
+    // C-5, the named node: nothing of the group survives under G7, so the floor is the page floor.
+    // AMENDED Phase 88.9-52 (A-04): the banner frame carries a screen-reader-only level-1 heading,
+    // and the floor's order is main h1 before main, so focus lands on that heading (it was main
+    // while the frame had no heading).
+    expect(document.activeElement).toBe(document.querySelector('main h1'));
+    expect(document.activeElement).toHaveClass('sr-only');
     expect(pushSpy).not.toHaveBeenCalled();
   });
 
@@ -1890,6 +1900,9 @@ describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', 
     );
     expect(screen.queryByText('Loading group…')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Group' })).toHaveClass('sr-only');
     expect(replace).toHaveBeenCalledTimes(1);
     expect(pushSpy).not.toHaveBeenCalled();
   });

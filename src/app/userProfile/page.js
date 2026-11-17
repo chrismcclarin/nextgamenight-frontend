@@ -2414,7 +2414,7 @@ function Profile(){
     // The title literal is the one this file already uses; plans 88.9-48 / 49 convert it to `thing=`.
     if (!user) {
         return (
-            <CentredPageFrame>
+            <CentredPageFrame srHeading="Profile">
                 <FetchErrorBanner state={signIn.signedOutErrorState} thing="your profile" reportContext="Profile page — signed out" />
             </CentredPageFrame>
         );
@@ -2440,7 +2440,7 @@ function Profile(){
        AMENDED Phase 88.9-66 (X70a): both page-replacing banners sit centred in CentredPageFrame, OVER the top of the page column; focus lands on the frame's inner box. */
     if (rc2Active) {
         return (
-            <CentredPageFrame ref={sessionDeadRef} tabIndex={-1}>
+            <CentredPageFrame ref={sessionDeadRef} tabIndex={-1} srHeading="Profile">
                 <FetchErrorBanner state={sessionDeadBannerState} thing="your profile" reportContext="Profile page — session expired" />
             </CentredPageFrame>
         );

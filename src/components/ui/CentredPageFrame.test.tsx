@@ -32,6 +32,24 @@ describe('CentredPageFrame (88.9-66: X64 / X70)', () => {
     expect(classesOf(inner)).toContain('w-full');
     expect(classesOf(inner)).toContain('max-w-xl');
     expect(outer.children).toHaveLength(1);
+    expect(screen.queryByRole('heading')).toBeNull();
+    cleanup();
+
+    // 88.9-52 A-04: srHeading adds ONE level-1 heading that only screen readers get. It sits in the
+    // outer box BEFORE the inner one, so the inner box's first text is still the banner title.
+    render(
+      <CentredPageFrame srHeading="Friends">
+        <p>the banner</p>
+      </CentredPageFrame>
+    );
+    const heading = screen.getByRole('heading', { level: 1, name: 'Friends' });
+    expect(heading.tagName).toBe('H1');
+    expect(classesOf(heading)).toContain('sr-only');
+    const framed = screen.getByText('the banner').parentElement as HTMLElement;
+    expect(framed).toHaveAttribute('data-slot', 'page-frame');
+    expect(framed.textContent).toBe('the banner');
+    expect(Array.from((framed.parentElement as HTMLElement).children)).toEqual([heading, framed]);
+    expect(framed).not.toHaveAttribute('srheading');
   });
 
   it('X64 / X70 (88.9): ref, tabIndex and other props reach the inner box, which carries data-slot page-frame', () => {

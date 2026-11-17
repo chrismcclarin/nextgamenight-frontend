@@ -623,7 +623,7 @@ export default function GroupPlanningPage() {
     }
     if (!user) {
         // 88.9-66 (X64): the shared frame gives the banner its gutter and width.
-        return <CentredPageFrame>
+        return <CentredPageFrame srHeading="Plan Game Session">
             <FetchErrorBanner state={signIn.signedOutErrorState} thing="this group" reportContext="Group planning — signed out" />
         </CentredPageFrame>;
     }

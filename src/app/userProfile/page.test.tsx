@@ -6147,6 +6147,9 @@ describe('userProfile sign-in guard (88.9-40: SESSION-01)', () => {
     // Back in the same tab without signing in: the profile banner with Sign in, no redirect.
     render(<Profile />);
     expect(await screen.findByText("Couldn't load your profile")).toBeInTheDocument();
+    // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Profile' })).toHaveClass('sr-only');
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
       'href',
       '/api/auth/login?returnTo=%2FuserProfile'
@@ -6180,6 +6183,9 @@ describe('userProfile sign-in guard (88.9-40: SESSION-01)', () => {
 
     const title = await screen.findByText("Couldn't load your profile");
     expect(screen.getAllByText("Couldn't load your profile")).toHaveLength(1);
+    // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Profile' })).toHaveClass('sr-only');
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
       'href',
       '/api/auth/login?returnTo=%2FuserProfile'

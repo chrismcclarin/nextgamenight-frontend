@@ -795,7 +795,11 @@ const EXPECTED_PROP_SEAMS = 1;
 // AMENDED Phase 88.9-68 (X58, owner R2: "It has no title"): 133 -> 134. The Profile BGG search
 // panel takes a level-3 title on the body rung (Search BoardGameGeek), beside the import box's;
 // measured by this suite's own failure message, "expected 134 to be 133".
-const EXPECTED_PRIMITIVES = 134;
+// AMENDED Phase 88.9-52 (A-04 / A-38): 134 -> 135. The shared centred frame renders ONE level-1
+// heading for screen readers only (the page's name) when a page passes srHeading; it is one
+// primitive in src/components/ui/CentredPageFrame.tsx, not one per page. Measured by this suite's
+// own failure message, "expected 135 to be 134".
+const EXPECTED_PRIMITIVES = 135;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -1750,6 +1754,10 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   // BoardGameGeek, the same level and rung as the import box's title beside it under the card's h2.
   // No existing heading moved level or size. Not an R7 heading-order finding.
   'app/userProfile/page.js': { 1: 2, 2: 7, 3: 5, 4: 2 },
+  // ADDED by 88.9-52 (A-04 / A-38): the frame's screen-reader-only page heading (srHeading). A
+  // page that is replaced by one banner had no level-1 heading at all; this is that heading, so
+  // each such screen renders exactly ONE h1. No existing heading moved level or size.
+  'components/ui/CentredPageFrame.tsx': { 1: 1 },
   'components/ui/ErrorFallback.tsx': { 1: 1 },
 };
 

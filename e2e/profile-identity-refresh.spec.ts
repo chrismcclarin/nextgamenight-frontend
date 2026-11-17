@@ -18,6 +18,11 @@ import { test, expect, type Locator, type Page, type Request } from '@playwright
      the session lapsed — the page-level banner with Sign in (at least 44 x 44, inside the viewport,
      nothing sideways) and no second request. The withdrawn header-card screen is pinned by the
      unit suite (userProfile K4 / K8, latch set) and is no longer what a refresh 401 shows.
+     AMENDED Phase 88.9-52 (A-02): the first sentence of this entry is withdrawn. Test 2 reads no
+     heading: the heading-above check left with the header-card screen in 88.9-40, and the
+     return-visit screen is one banner in the centred frame. Since 88.9-52 (A-04) that screen
+     carries one level-1 heading, Profile, for screen readers only; it is read by
+     e2e/signed-out-banner-frame.spec.ts ("X70a (88.9): Profile signed out"), not here.
    A failed layout assertion is a STOP for the owner's mockup (88.6.1-70 contract C8 d), never an
    ad-hoc restyle.
 
@@ -174,6 +179,8 @@ test.describe('Profile identity refresh (88.6.1-79)', () => {
 
   // AMENDED Phase 88.9-26 (O22d): the 401 banner's control is a Sign in link in place of Try again,
   // so the 44 x 44 fit and the heading-above check move onto it, and Try again must be absent.
+  // AMENDED Phase 88.9-52 (A-02): the heading-above check did not survive 88.9-40; this test reads
+  // no heading (see the header's A-02 note). The 44 x 44 fit and the absent Try again stand.
   // AMENDED Phase 88.9-40 (SESSION-01, SPEC A8): a 401 on the identity read now redirects once
   // (src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling")). The
   // page's healthy first load had proved the session (the latch was clear), so the refresh 401 is

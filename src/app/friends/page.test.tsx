@@ -345,6 +345,9 @@ describe('friends render harness', () => {
       expect(signInLink.closest('[data-slot="page-frame"]'), 'the banner sits in the shared centred frame').not.toBeNull();
       expect(screen.getByText("Couldn't load your friends")).toBeInTheDocument();
       expect(screen.queryByRole('link', { name: 'Log In' })).toBeNull();
+      // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(screen.getByRole('heading', { level: 1, name: 'Friends' })).toHaveClass('sr-only');
     } finally {
       auth.user = saved;
       restoreLocation();

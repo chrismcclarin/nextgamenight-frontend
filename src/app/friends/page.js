@@ -920,7 +920,7 @@ function FriendsPage() {
     // DECISION Phase 88.9-66 (X70b, owner 2026-11-14: yes): the shared centred banner, chosen OVER the older prompt 88.9-40 kept with no recorded reason; 88.6-19's rule holds through the banner's own Sign in anchor.
     if (!user) {
         return (
-            <CentredPageFrame>
+            <CentredPageFrame srHeading="Friends">
                 <FetchErrorBanner state={signIn.signedOutErrorState} thing="your friends" reportContext="Friends page — signed out" />
             </CentredPageFrame>
         );

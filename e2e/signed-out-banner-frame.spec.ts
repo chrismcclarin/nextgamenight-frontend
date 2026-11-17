@@ -19,6 +19,9 @@ import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFligh
 // data-slot page-frame): 16px from each screen edge on a phone; at desktop width the frame is
 // 576px wide with equal space on both sides; and at both widths it is centred top to bottom in
 // the full-height column around it. Sign in is on screen and the page does not scroll sideways.
+// AMENDED Phase 88.9-52 (A-04 / A-38): each of the four screens also carries exactly ONE level-1
+// heading, the page's name, which only screen readers get (the frame's srHeading). It is read
+// here by role, so a screen that loses it, or gains a second one, fails.
 //
 // HOW THE SCREEN IS REACHED. Signed out (an empty storage state), and the page's once-only
 // redirect latch is set before any page script runs, so the page shows its banner instead of
@@ -44,9 +47,9 @@ interface FrameRead {
   scrollWidth: number;
 }
 
-// Opens the page signed out with the latch already set, waits for the banner's Sign in, and reads
-// the frame and the column around it in ONE evaluate.
-async function readFrame(page: Page, path: string): Promise<FrameRead> {
+// Opens the page signed out with the latch already set, waits for the banner's Sign in, checks the
+// screen's one level-1 heading, and reads the frame and the column around it in ONE evaluate.
+async function readFrame(page: Page, path: string, heading: string): Promise<FrameRead> {
   await page.addInitScript((prefix) => {
     window.sessionStorage.setItem(prefix + window.location.pathname + window.location.search, '1');
   }, LATCH_PREFIX);
@@ -58,6 +61,11 @@ async function readFrame(page: Page, path: string): Promise<FrameRead> {
   const frame = page.locator('[data-slot="page-frame"]');
   await expect(frame, `${path}: the banner is not inside the shared centred frame`).toHaveCount(1);
   await expect(frame.getByRole('link', { name: 'Sign in', exact: true }), `${path}: Sign in is not inside the frame`).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 }), `${path}: the screen must carry exactly one level-1 heading`).toHaveCount(1);
+  await expect(
+    page.getByRole('heading', { level: 1, name: heading, exact: true }),
+    `${path}: the level-1 heading is not "${heading}"`,
+  ).toHaveCount(1);
 
   return frame.evaluate((el) => {
     const box = el.getBoundingClientRect();
@@ -103,17 +111,17 @@ test.describe('the signed-out banner frame (plan 88.9-66: X64, X70)', () => {
   });
 
   test('X64 (88.9): Plan Game Session signed out — the banner sits in the centred frame with its gutter', async ({ page, isMobile }) => {
-    const read = await readFrame(page, `/groupPlanning?group_id=${E2E_GROUP_ID}`);
+    const read = await readFrame(page, `/groupPlanning?group_id=${E2E_GROUP_ID}`, 'Plan Game Session');
     expectFrameGeometry(read, isMobile, 'Plan Game Session');
   });
 
   test('X70a (88.9): Profile signed out — the banner sits in the centred frame with its gutter', async ({ page, isMobile }) => {
-    const read = await readFrame(page, '/userProfile');
+    const read = await readFrame(page, '/userProfile', 'Profile');
     expectFrameGeometry(read, isMobile, 'Profile');
   });
 
   test('X70b (88.9): Friends signed out shows the same centred banner with Sign in, never the older prompt', async ({ page, isMobile }) => {
-    const read = await readFrame(page, '/friends');
+    const read = await readFrame(page, '/friends', 'Friends');
     expectFrameGeometry(read, isMobile, 'Friends');
     await expect(page.getByText('Please log in to view your friends.')).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Log In', exact: true })).toHaveCount(0);
@@ -121,7 +129,7 @@ test.describe('the signed-out banner frame (plan 88.9-66: X64, X70)', () => {
   });
 
   test('X64 / X70 (88.9): the group page signed out uses the same frame', async ({ page, isMobile }) => {
-    const read = await readFrame(page, `/groupHomePage?id=${E2E_GROUP_ID}`);
+    const read = await readFrame(page, `/groupHomePage?id=${E2E_GROUP_ID}`, 'Group');
     expectFrameGeometry(read, isMobile, 'the group page');
   });
 });
