@@ -1042,6 +1042,52 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
     expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1);
   });
 
+  const X13_ROBIN = {
+    id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    user_id: 'auth0|second',
+    username: 'Robin',
+    UserGroup: { role: 'member' },
+  };
+
+  /** Arm, wait out the gate and commit the phone Remove in an open member menu. */
+  function commitRemoveIn(menu: HTMLElement): HTMLElement {
+    const removeItem = within(menu).getByRole('button', { name: 'Remove' });
+    fireEvent.click(removeItem);
+    passKebabGate();
+    fireEvent.click(removeItem);
+    return removeItem;
+  }
+
+  // 88.9-52 A-22: the marker's failure promise (menu stays open, item at rest, error toast) had no
+  // test; every rejected remove in this file went through the desktop dialog.
+  it('A-22 (88.9-52): a phone Remove that FAILS keeps the menu open with every item back at rest and one error toast', async () => {
+    const heldRemove = deferred<unknown>();
+    (groupsAPI.removeUserFromGroup as Mock).mockReturnValueOnce(heldRemove.promise);
+    await openMembersModal();
+    const menu = await openKebabList('Member actions for Target');
+    const removeItem = commitRemoveIn(menu);
+    await waitFor(() => expect(within(menu).getByRole('button', { name: 'Remove, removing' })).toBe(removeItem));
+
+    await act(async () => {
+      heldRemove.reject(new Error('HTTP error! status: 500'));
+    });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+
+    // The same menu and the same item, at rest: not busy, not refused, not armed.
+    expect(menu).toBeInTheDocument();
+    await waitFor(() => expect(within(menu).getByRole('button', { name: 'Remove' })).toBe(removeItem));
+    expect(removeItem.textContent).toBe('Remove');
+    expect(removeItem).not.toHaveAttribute('aria-disabled');
+    expect(removeItem).not.toHaveAttribute('aria-pressed');
+    expect(removeItem.querySelector('[data-slot="spinner"]')).toBeNull();
+    expect(within(menu).getByRole('button', { name: 'Make admin' })).not.toHaveAttribute('aria-disabled');
+    expect(within(menu).getByRole('button', { name: 'Transfer ownership to this member' })).not.toHaveAttribute('aria-disabled');
+    // Nothing was refreshed or announced as done, and the row is still there.
+    expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(1);
+    expect(announceStatus as Mock).not.toHaveBeenCalledWith('Member removed');
+    expect(screen.getByLabelText('Member actions for Target')).toBeInTheDocument();
+  });
+
   it('"Make admin" from the kebab routes to the SAME escalation gate as the desktop select', async () => {
     await openMembersModal();
     const menu = await openKebabList('Member actions for Target');
