@@ -2319,7 +2319,7 @@ describe('gameDetail guest-removal disclosure (row 530 FE half)', () => {
     renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
     const dialog = await openParticipantsModal(user);
     expect(
-      within(dialog).getByText('Guests and your own row are removed via Edit Event.')
+      within(dialog).getByText('Names added by hand and your own row are removed via Edit Event.')
     ).toBeInTheDocument();
   });
 
@@ -2328,7 +2328,7 @@ describe('gameDetail guest-removal disclosure (row 530 FE half)', () => {
     renderEventDetail({ role: 'member', participants: SIX_PARTICIPANTS });
     const dialog = await openParticipantsModal(user);
     expect(
-      within(dialog).queryByText('Guests and your own row are removed via Edit Event.')
+      within(dialog).queryByText('Names added by hand and your own row are removed via Edit Event.')
     ).toBeNull();
   });
 });

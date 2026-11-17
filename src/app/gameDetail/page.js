@@ -3494,10 +3494,11 @@ export default function GameDetailPage() {
                             disclosure of the removal boundary — the 65-02 Remove works only
                             on member rows; guests (no DB user) and your own row go through
                             Edit Event. The remove-any-participant CAPABILITY is a recorded
-                            backlog item (needs a new BE delete path), not this phase. */}
+                            backlog item (needs a new BE delete path), not this phase.
+                            AMENDED Phase 88.9-52 (W24, owner ruling R14): the sentence opens Names added by hand, OVER Guests: a guest who has an account does show Remove (only a typed-in name and your own row do not), so the old word contradicted the list above it. */}
                         {(userRole === 'owner' || userRole === 'admin') && (
                             <p className="text-content-muted text-sm">
-                                Guests and your own row are removed via Edit Event.
+                                Names added by hand and your own row are removed via Edit Event.
                             </p>
                         )}
                         {/* 88-33 Task 5: the armed-state live region MUST live INSIDE this
