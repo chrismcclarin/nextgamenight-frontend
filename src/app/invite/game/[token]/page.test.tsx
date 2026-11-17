@@ -507,3 +507,116 @@ describe('invite/game/[token] — the line beside Retry (88.9-66: X68)', () => {
     expect(screen.queryByText(/Refresh the page to try again/)).toBeNull();
   });
 });
+
+// Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"). Amber X: could not load or join, trying
+// again may work. Red X: the link is dead. The grey clock on the passed game night is untouched.
+describe('invite/game/[token] — Q69 the failure glyph by cause (88.9-52)', () => {
+  const X_PATH = 'M6 18L18 6M6 6l12 12';
+  const expectTone = (container: HTMLElement, tone: 'amber' | 'red', label: string) => {
+    const path = container.querySelector(`path[d="${X_PATH}"]`);
+    expect(path, `${label}: the failure card draws no X`).not.toBeNull();
+    const svg = path!.closest('svg')!;
+    const circle = svg.parentElement!;
+    const on = tone === 'amber' ? 'warning' : 'error';
+    const off = tone === 'amber' ? 'error' : 'warning';
+    expect(circle, `${label}: the circle is not the ${on} fill`).toHaveClass(`bg-status-${on}-subtle`);
+    expect(circle, label).not.toHaveClass(`bg-status-${off}-subtle`);
+    expect(svg, `${label}: the X is not the ${on} ink`).toHaveClass(`text-content-status-${on}`);
+    expect(svg, label).not.toHaveClass(`text-content-status-${off}`);
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelectorAll('svg'), `${label}: one glyph on the card`).toHaveLength(1);
+  };
+  const EVENT = { game_name: 'Wingspan', event_date: '2030-01-01T00:00:00Z' };
+
+  it('Q69-2: a preview that could not load draws the X on amber (network, 5xx, 429); a preview 404 draws it on red', async () => {
+    const temporary: ApiError[] = [
+      new ApiError('Network error: Could not connect to the server.', 'network', 0),
+      new ApiError('HTTP error! status: 500', 'internal', 500),
+      new ApiError('HTTP error! status: 429', 'rate_limited', 429),
+    ];
+    for (const err of temporary) {
+      preview().mockReset();
+      preview().mockRejectedValue(err);
+      const { container } = render(<GameInvitePage />);
+      await screen.findByRole('heading', { name: "Couldn't join game night" });
+      expectTone(container, 'amber', `preview ${err.code}`);
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+      cleanup();
+    }
+    preview().mockReset();
+    preview().mockRejectedValue(postAliasDropError(404, 'not_found'));
+    const { container } = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'This invite is no longer valid' });
+    expectTone(container, 'red', 'preview 404');
+  });
+
+  it('Q69-2: a join that could not complete draws the X on amber (network, 5xx, 429, CSRF, a bad 2xx); a join 404 draws it on red', async () => {
+    const temporary: Array<[string, ApiError]> = [
+      ['network', new ApiError('Network error: Could not connect to the server.', 'network', 0)],
+      ['5xx', new ApiError('HTTP error! status: 500', 'internal', 500)],
+      ['429', new ApiError('HTTP error! status: 429', 'rate_limited', 429)],
+      ['CSRF 403', new ApiError('HTTP error! status: 403', 'forbidden', 403, { csrf_rejected: true })],
+    ];
+    for (const [label, err] of temporary) {
+      preview().mockReset();
+      join().mockReset();
+      authState.user = { sub: 'auth0|abc' };
+      preview().mockResolvedValue(EVENT);
+      join().mockRejectedValue(err);
+      const { container } = render(<GameInvitePage />);
+      await screen.findByRole('heading', { name: "Couldn't join game night" });
+      expectTone(container, 'amber', `join ${label}`);
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+      cleanup();
+    }
+
+    // A 2xx the page cannot read is not a refusal either.
+    preview().mockReset();
+    join().mockReset();
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(EVENT);
+    join().mockResolvedValue({});
+    let view = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't join game night" });
+    expectTone(view.container, 'amber', 'join bad 2xx');
+    cleanup();
+
+    preview().mockReset();
+    join().mockReset();
+    preview().mockResolvedValue(EVENT);
+    join().mockRejectedValue(postAliasDropError(404, 'not_found'));
+    view = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'This invite is no longer valid' });
+    expectTone(view.container, 'red', 'join 404');
+  });
+
+  it('Q69-4: the passed game night keeps its grey clock, no X', async () => {
+    preview().mockRejectedValue(postAliasDropError(410, 'gone'));
+    const { container } = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'Game Night Has Passed' });
+    expect(container.querySelector(`path[d="${X_PATH}"]`)).toBeNull();
+    const svg = container.querySelector('svg')!;
+    expect(svg).toHaveClass('text-content-muted');
+    expect(svg.parentElement!).toHaveClass('bg-surface-elevated');
+  });
+
+  it('Q69-3: an expired session on the join is amber and offers the sign-in round trip, not a Retry that re-sends the dead session', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(EVENT);
+    join().mockRejectedValue(new ApiError('HTTP error! status: 401', 'unauthorized', 401));
+    const { container } = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't join game night" });
+    expectTone(container, 'amber', 'join 401');
+    expect(screen.getByText('Your session may have expired. Sign in again to continue.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    const signIn = screen.getByRole('link', { name: 'Sign in to try again' });
+    expect(signIn).toHaveAttribute(
+      'href',
+      `/api/auth/login?returnTo=${encodeURIComponent(`/invite/game/${TOKEN}`)}`
+    );
+    // The connection hint belongs to the Retry form of the card.
+    expect(screen.queryByText('Check your connection and try again.')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go Home' })).toHaveAttribute('href', '/');
+    expect(join()).toHaveBeenCalledTimes(1);
+  });
+});

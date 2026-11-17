@@ -55,6 +55,15 @@ function GameInvitePage() {
   // Bumped by handleRetry to re-fire both preview AND join effects when the
   // backend was unreachable on first attempt.
   const [retryKey, setRetryKey] = useState(0);
+  /* DECISION Phase 88.9-52 (Q69-3, owner 2026-11-16 "approve all"): a JOIN 401 (the session
+     expired) stays on the transient card but swaps Retry for the sign-in round trip, the restore
+     page's sign-in recovery (restore/group/[token]/page.tsx, its Sign in to try again link) with
+     this page's own returnTo, chosen OVER the shipped Retry: Retry re-sent the join with the same
+     dead session and could never work. Keyed on the HTTP status alone, like isPermanent below.
+     The connection hint under the line is left out on this arm (the remedy is not the
+     connection); the register's session line and the restore page's link words are reused, no
+     new string. Putting Retry back on a 401 is a decision, not a cleanup. */
+  const [needsSignIn, setNeedsSignIn] = useState(false);
 
   // Classify a thrown error as transient (retryable) or permanent. Used by
   // both the preview fetch catch and the join POST catch so backend-down /
@@ -225,7 +234,13 @@ function GameInvitePage() {
         // X68 (88.9-66): Retry shows on the transient branch only, so only that branch takes the
         // beside-retry form; the permanent branch keeps the register line.
         const permanent = classifyError(err) === 'permanent';
-        setError(permanent ? getFetchErrorMessage(err) : messageBesideRetry(getFetchErrorMessage(err)));
+        // Q69-3 (88.9-52): a 401 renders the sign-in link in place of Retry, so it keeps the full
+        // register line too.
+        const signIn = err?.status === 401;
+        setNeedsSignIn(signIn);
+        setError(
+          permanent || signIn ? getFetchErrorMessage(err) : messageBesideRetry(getFetchErrorMessage(err))
+        );
         setStatus(permanent ? 'error-permanent' : 'error-transient');
       });
     // NOTE: `status` deliberately omitted from deps — its inclusion was the
@@ -264,6 +279,7 @@ function GameInvitePage() {
       setRegionDwell(false);
     }, REGION_EMPTY_DWELL_MS);
     joiningRef.current = false;
+    setNeedsSignIn(false);
     setError(null);
     setStatus('loading');
     setEventInfo(null);
@@ -509,28 +525,51 @@ function GameInvitePage() {
 
         {/* Transient error — D-INVITE-LANDING-03 transient branch: inline
             error + Retry button. Network failures, 5xx, ambiguous errors. */}
+        {/* DECISION Phase 88.9-52 (Q69-2 / Q69-3, owner 2026-11-16 "approve all"): this card draws
+            the X on the amber warning pair (the group invite page's amber arm: warning ink on the
+            warning circle, 5.50 light / 4.95 dark), chosen OVER the shipped warning triangle on
+            the red pair. Amber X says trying again may work; the red X below says the link is
+            dead; the grey clock on the passed game night is untouched (Q69-4). */}
         {status === 'error-transient' && (
           <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            <div className="mx-auto mb-4 w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-content-status-warning" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
             <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
               {TRANSIENT_HEADLINE}
             </Heading>
-            <p className="text-content-secondary mb-2">{error}</p>
-            <p className="text-xs text-content-muted mb-6">
-              Check your connection and try again.
-            </p>
-            <Button
-              variant="primary"
-              size="default"
-              onClick={handleRetry}
-              className="w-full text-center mb-2"
-            >
-              Retry
-            </Button>
+            {needsSignIn ? (
+              <>
+                <p className="text-content-secondary mb-6">{error}</p>
+                {/* Stays an <a>: the Auth0 handoff needs a hard navigation, and the href is the
+                    preview branch's own returnTo, so signing in lands back here and the join
+                    runs again with a live session. */}
+                <Button asChild variant="primary" size="default" className="w-full text-center mb-2">
+                  <a
+                    href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/game/${token}`)}`}
+                  >
+                    Sign in to try again
+                  </a>
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-content-secondary mb-2">{error}</p>
+                <p className="text-xs text-content-muted mb-6">
+                  Check your connection and try again.
+                </p>
+                <Button
+                  variant="primary"
+                  size="default"
+                  onClick={handleRetry}
+                  className="w-full text-center mb-2"
+                >
+                  Retry
+                </Button>
+              </>
+            )}
             <Link
               href="/"
               className="block w-full text-center text-sm text-content-muted hover:text-content-secondary mt-2"
