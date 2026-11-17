@@ -25,20 +25,6 @@ const RESPONSES_LOADING_LABEL = 'Loading responses...';
 const REFRESHING_RESPONSES_COPY = 'Refreshing responses…';
 const RESPONSES_REFRESHED_COPY = 'Responses refreshed.';
 
-/**
- * ResponseDashboard - Shows who has/hasn't responded to an availability prompt
- *
- * Features:
- * - Displays respondent/pending status for all group members
- * - Admins can send reminder emails (24-hour cooldown)
- * - Blind voting: hides slot counts until user submits or poll closes
- *
- * @param {string} promptId - The availability prompt ID
- * @param {boolean} isAdmin - Whether the current user is admin/owner
- * @param {string} currentUserId - The current user's ID
- * @param {boolean} blindVotingEnabled - Whether blind voting is enabled for this prompt
- * @param {boolean} pollClosed - Whether the poll has closed (deadline passed)
- */
 // One turn of the Refresh glyph when its animation-duration cannot be read (Tailwind's spin is 1 s).
 const REFRESH_TURN_FALLBACK_MS = 1000;
 
@@ -109,6 +95,20 @@ function RefreshSpinIcon({ refreshing }) {
   return <Icon ref={glyphRef} name="RefreshCw" size={16} className={refreshing || spinning ? 'animate-spin' : undefined} />;
 }
 
+/**
+ * ResponseDashboard - Shows who has/hasn't responded to an availability prompt
+ *
+ * Features:
+ * - Displays respondent/pending status for all group members
+ * - Admins can send reminder emails (24-hour cooldown)
+ * - Blind voting: hides slot counts until user submits or poll closes
+ *
+ * @param {string} promptId - The availability prompt ID
+ * @param {boolean} isAdmin - Whether the current user is admin/owner
+ * @param {string} currentUserId - The current user's ID
+ * @param {boolean} blindVotingEnabled - Whether blind voting is enabled for this prompt
+ * @param {boolean} pollClosed - Whether the poll has closed (deadline passed)
+ */
 export default function ResponseDashboard({
   promptId,
   isAdmin = false,
