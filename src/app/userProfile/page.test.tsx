@@ -6190,6 +6190,46 @@ describe('userProfile sign-in guard (88.9-40: SESSION-01)', () => {
     expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
   });
 
+  // 88.9-52 S-C6: the R3 source read at the foot of this file counts substrings, so a comment
+  // could satisfy it. This one reads the RENDERED names: the screen-reader-only heading on each
+  // of the two banner-only screens (signed out; a live cookie whose identity read answers 401)
+  // must read what the breadcrumb's current-page crumb reads on a normal render. It lives in this
+  // describe for its location stub.
+  it('S-C6 (88.9-52): rendered, the screen-reader-only heading on both banner-only screens reads what the breadcrumb current-page crumb reads', async () => {
+    // The session-expired frame: signed in, the identity read answers 401, the latch is set.
+    stubLocation();
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.selfError = new ApiError('Unauthorized', 'unauthorized', 401);
+    render(<Profile />);
+    await screen.findByText("Couldn't load your profile");
+    const expired = screen.getByRole('heading', { level: 1 });
+    expect(expired).toHaveClass('sr-only');
+    const expiredName = expired.textContent;
+    cleanup();
+
+    // The signed-out frame: no user, back with the latch set.
+    h.selfError = null;
+    h.authUser = undefined;
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    render(<Profile />);
+    await screen.findByText("Couldn't load your profile");
+    const signedOut = screen.getByRole('heading', { level: 1 });
+    expect(signedOut).toHaveClass('sr-only');
+    const signedOutName = signedOut.textContent;
+    cleanup();
+
+    // A normal render: the page's static visible name is the breadcrumb's current-page crumb.
+    h.authUser = savedUser;
+    window.sessionStorage.clear();
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+    renderProfile();
+    const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    const crumb = nav.querySelector('[aria-current="page"]')?.textContent;
+    expect(crumb).toBeTruthy();
+    expect(expiredName, 'the session-expired frame').toBe(crumb);
+    expect(signedOutName, 'the signed-out frame').toBe(crumb);
+  });
+
   // R-C2 (88.9-56, owner ruling 2026-11-10 + 'profile'; closes plan 88.9-40 Deviations 8): a LIVE
   // cookie whose identity read still 401s, with no row held and the latch set, gets ONE page-level
   // banner with Sign in. The banner reads a latched state of its own, so a tab-return refetch (which

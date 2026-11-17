@@ -1386,6 +1386,28 @@ describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
     expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
   });
 
+  // 88.9-52 S-C6: the R3 source read at the foot of this file counts substrings, so a comment
+  // could satisfy it. This one reads the RENDERED names: the screen-reader-only heading on the
+  // signed-out banner screen must be the static part of the visible title and the whole of the
+  // breadcrumb's current-page crumb. It lives in this describe for its location stub.
+  it('S-C6 (88.9-52): rendered, the signed-out screen-reader-only heading reads the static part of the visible title and the breadcrumb crumb', async () => {
+    await renderSettled();
+    const visibleTitle = screen.getByRole('heading', { level: 1 }).textContent;
+    const crumb = document.querySelector('[aria-current="page"]')?.textContent;
+    cleanup();
+
+    stubLocation({ search: `?group_id=${h.G1}` });
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.AUTH = { user: undefined, isLoading: false };
+    render(<GroupPlanningPage />);
+    await screen.findByRole('link', { name: 'Sign in' });
+    const hidden = screen.getByRole('heading', { level: 1 });
+    expect(hidden).toHaveClass('sr-only');
+    expect(hidden.textContent).toBeTruthy();
+    expect(visibleTitle).toBe(`${hidden.textContent} - Weekend Warriors`);
+    expect(crumb).toBe(hidden.textContent);
+  });
+
   // 88.9-52 A-37: the marker's 401 arm (a signed-in visitor whose group read answers 401, SPEC A8)
   // had no test; every redirect assertion above is the signed-out arm.
   it('A-37 (88.9-52): signed in, a 401 on the group read replaces the page with sign-in once (returnTo = path + search) and sets the latch', async () => {

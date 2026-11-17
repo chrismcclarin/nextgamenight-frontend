@@ -2909,4 +2909,31 @@ describe('friends page name, one source (88.9-52 R3)', () => {
     expect(count(src, '>{FRIENDS_PAGE_TITLE}</Heading>'), 'the three visible level-1 titles').toBe(3);
     expect(count(src, '>Friends</Heading>'), 'a hand-typed visible title').toBe(0);
   });
+
+  // 88.9-52 S-C6: the source read above counts substrings, so a comment could satisfy it. This one
+  // reads the two RENDERED headings: the visible title on a normal render and the screen-reader-only
+  // heading on the signed-out banner screen must be the same words.
+  it('S-C6 (88.9-52): rendered, the signed-out screen-reader-only heading reads what the visible title reads', async () => {
+    renderFriends();
+    const visible = await screen.findByRole('heading', { level: 1 });
+    expect(visible).not.toHaveClass('sr-only');
+    const visibleName = visible.textContent;
+    expect(visibleName).toBeTruthy();
+    cleanup();
+
+    const saved = auth.user;
+    auth.user = null as unknown as typeof auth.user;
+    stubLocation('/friends');
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    try {
+      render(<FriendsPage />);
+      await screen.findByRole('link', { name: 'Sign in' });
+      const hidden = screen.getByRole('heading', { level: 1 });
+      expect(hidden).toHaveClass('sr-only');
+      expect(hidden.textContent).toBe(visibleName);
+    } finally {
+      auth.user = saved;
+      restoreLocation();
+    }
+  });
 });

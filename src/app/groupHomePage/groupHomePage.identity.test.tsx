@@ -1945,6 +1945,32 @@ describe('groupHomePage sign-in guard (88.9-40: SESSION-01 / SESSION-03, K10)', 
     expect(pushSpy).not.toHaveBeenCalled();
   });
 
+  // 88.9-52 S-C6: the R3 source read at the foot of this file counts substrings, so a comment
+  // could satisfy it. This one reads the RENDERED names: with a group that has no name, the
+  // visible level-1 title and the breadcrumb crumb show the page's fallback word, and the
+  // screen-reader-only heading on the signed-out banner screen must read the same word. It lives
+  // in this describe for its location stub.
+  it('S-C6 (88.9-52): rendered, the banner screen screen-reader-only heading reads what a nameless group title and crumb read', async () => {
+    (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1' });
+    await renderHeaderAt('owner');
+    const visible = screen.getByRole('heading', { level: 1 });
+    expect(visible).not.toHaveClass('sr-only');
+    const visibleName = visible.textContent?.trim();
+    const crumb = document.querySelector('[aria-current="page"]')?.textContent;
+    expect(visibleName).toBeTruthy();
+    expect(crumb).toBe(visibleName);
+    cleanup();
+
+    stubLocation(GROUP_PATH);
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.authUser = undefined;
+    renderInMain();
+    await screen.findAllByText(G7);
+    const hidden = screen.getByRole('heading', { level: 1 });
+    expect(hidden).toHaveClass('sr-only');
+    expect(hidden.textContent).toBe(visibleName);
+  });
+
   it("SESSION-01 (88.9): a 401 on the group's first load redirects once; with the latch set it is the page-load banner, never a second redirect", async () => {
     const replace = stubLocation(GROUP_PATH);
     h.selfUuid = SELF_UUID;
