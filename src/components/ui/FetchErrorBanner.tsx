@@ -244,7 +244,7 @@ function useRetryEpisode(options: RetryEpisodeOptions) {
      full `Try again`) are gated in flight by `aria-disabled` plus a synchronous first-line REF
      latch (`retryInFlightRef`) — D52's idiom, `R123-RULING: extend-d52`, house template
      src/app/components/RsvpSection.js ("const statusLatch = useRef(false);"). The gated look is COLOUR
-     (`aria-disabled:text-content-muted`, the ghost variant's gated ink, src/components/ui/Button.tsx ("text-content-secondary enabled-hover:bg-surface-hover aria-disabled:text-content-muted")). The
+     (`aria-disabled:text-content-muted`, the ghost variant's gated ink, src/components/ui/Button.tsx ("text-content-secondary enabled-hover:bg-surface-ghost-hover aria-disabled:text-content-muted")). The
      shared recovery hook is armed at the press with `from: event.currentTarget` (Safari does not
      focus a clicked button) and NO fallback: this primitive owns no section heading, and
      `focusPageFloor` resolves the open dialog's title, else `main h1`, else `main` (D-05, D-07).

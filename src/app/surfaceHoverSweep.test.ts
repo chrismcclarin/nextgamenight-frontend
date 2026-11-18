@@ -217,7 +217,8 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     //
     //  1. the GuestInviteButton idle branch — migrated to `<Button variant="ghost">`, whose
     //     cva variant already supplies the byte-equal `enabled-hover:bg-surface-hover`
-    //     (src/components/ui/Button.tsx ("bg-transparent text-content-secondary enabled-hover:bg-surface-hover")).
+    //     (src/components/ui/Button.tsx ("bg-transparent text-content-secondary enabled-hover:bg-surface-ghost-hover");
+    //     since 88.9-52 R8c the variant's wash is the ghost-hover token, as that live string reads).
     //     The bare form could NOT be kept: under the D8 amendment that
     //     control is `aria-disabled` while sending, and a bare `hover:` re-lights a gated
     //     control — the exact defect `enabled-hover` exists to prevent

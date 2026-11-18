@@ -867,9 +867,10 @@ export default function AvailabilityGrid({
               yellow twin.
 
               WHY THE HOVER IS PINNED AT THE CALL SITE. Button's ghost variant emits
-              bg-transparent text-content-secondary enabled-hover:bg-surface-hover (Button.tsx).
+              bg-transparent text-content-secondary enabled-hover:bg-surface-ghost-hover (Button.tsx;
+              the wash was enabled-hover:bg-surface-hover until 88.9-52 R8c, the reasoning is unchanged).
               Under tailwind-merge the call site's own bg-* beats bg-transparent, but with no
-              call-site hover the variant's enabled-hover:bg-surface-hover SURVIVES and repaints
+              call-site hover the variant's enabled-hover:bg-surface-ghost-hover SURVIVES and repaints
               this toggle neutral on hover — erasing the mode colour exactly when the user is
               reaching for it (T-88.6-71). So each arm pins its own enabled-hover:bg-* to the same
               value it rests at, and the hover CUE is enabled-hover:opacity-80, which is what the
