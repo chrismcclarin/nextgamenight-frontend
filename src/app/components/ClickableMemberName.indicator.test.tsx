@@ -6,14 +6,14 @@
  * -------------------------
  * `ClickableMemberName` renders `renderMobileIndicator()` as a SIBLING of the trigger span,
  * outside the element `children` renders into. Every branch of it is `md:hidden`, i.e. VISIBLE
- * at 375px: `✓ Friend` for `accepted`, `⏳ Pending` for either pending direction, an assertive
+ * at 375px: the green `Friend` pill for `accepted` (R19, 88.9-52; `✓ Friend` text before that), `⏳ Pending` for either pending direction, an assertive
  * failure line, copy row X3 (plus the `+` again, for a retry) when the `+` send fails (plan
  * 88.6-63; a popover-origin failure keeps the bare `Failed`), and
  * for `none` a 24px `+` button carrying a 10px horizontal hit extension
  * (`after:-inset-x-2.5`). Phase 88.5's member chips sit in a `gap-3` (12px) flex-wrap, so
  * shipping them WITHOUT an opt-out would do two bad things at once:
  *
- *   1. every expanded chip would read `[MK] ✓ Friend` instead of the ruled chip row, and
+ *   1. every expanded chip would read `[MK] Friend` instead of the ruled chip row, and
  *   2. the `+` sibling's 10px extension plus the next chip's 6px extension is 16px reaching
  *      into a 12px gap — a 4px overlap, which is exactly the tap-stealing failure mode
  *      `DECISION Phase 87.8 D-13` exists to prevent. A mis-tap there is not a recoverable UI
@@ -67,7 +67,7 @@ function renderName(status: Status, props?: { showInlineIndicator?: boolean; hos
   return render(
     <FriendshipContext.Provider value={value as never}>
       {/* aria-label is on the CARD deliberately: without it the card's accessible name is
-          computed from its contents, which is "ada ✓ Friend" while the indicator renders and
+          computed from its contents, which is "ada Friend" while the indicator renders and
           bare "ada" once it is suppressed — so `getByRole('button', {name: 'ada'})` would
           match the trigger in one arm and BOTH nodes in the other. Labelling the card keeps
           the trigger query unambiguous in every arm without weakening it. */}
@@ -80,18 +80,46 @@ function renderName(status: Status, props?: { showInlineIndicator?: boolean; hos
 
 /* The two queries the negative arms depend on, named once so test 7 can exercise the SAME
    ones it is vouching for. A divergent copy would defeat the anti-vacuity guard. */
-const friendIndicator = () => screen.queryByText('✓ Friend');
+// R19 (88.9-52, owner 2026-11-17): the phone indicator is the green Friend pill, so its word is the
+// same as the popover pill's; the indicator is found by its own data attribute.
+const friendIndicator = () => document.querySelector<HTMLElement>('[data-friend-indicator]');
 const addFriendPlus = () => screen.queryByRole('button', { name: 'Add ada as a friend' });
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () => {
-  it('1. DEFAULT (prop omitted), accepted: the inline ✓ Friend indicator is still rendered', () => {
+  it('1. DEFAULT (prop omitted), accepted: the inline Friend indicator is still rendered', () => {
     renderName('accepted');
     // Regression pin for the ~9 shipped member ROWS, not a smoke test — see the preamble.
     expect(friendIndicator()).toBeInTheDocument();
     expect(friendIndicator()).toHaveClass('md:hidden');
+  });
+
+  it('R19 (88.9-52): the phone Friend indicator is the green pill, says Friend once, and has no tick', () => {
+    renderName('accepted');
+    const pill = friendIndicator()!;
+    expect(pill.textContent).toBe('Friend');
+    for (const cls of [
+      'md:hidden',
+      'inline-flex',
+      'items-center',
+      'align-middle',
+      'text-xs',
+      'font-bold',
+      'bg-surface-pill-emerald',
+      'text-content-pill-emerald',
+      'px-1.5',
+      'py-0.5',
+      'rounded-sm',
+    ]) {
+      expect(pill).toHaveClass(cls);
+    }
+    expect(pill).not.toHaveClass('text-content-status-success');
+    // Said once: one node carries the word while the popover is closed, and nothing hides it from a reader.
+    expect(screen.getAllByText('Friend')).toHaveLength(1);
+    expect(pill).not.toHaveAttribute('aria-hidden');
+    expect(document.body.textContent).not.toContain('✓');
   });
 
   it('2. DEFAULT (prop omitted), none: the inline + add-friend button is still rendered', () => {
@@ -99,9 +127,10 @@ describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () 
     expect(addFriendPlus()).toBeInTheDocument();
   });
 
-  it('3. showInlineIndicator={false}, accepted: no ✓ Friend node in the output', () => {
+  it('3. showInlineIndicator={false}, accepted: no Friend indicator in the output', () => {
     renderName('accepted', { showInlineIndicator: false });
     expect(friendIndicator()).not.toBeInTheDocument();
+    expect(screen.queryByText('Friend')).not.toBeInTheDocument();
     // the name itself is untouched — the opt-out removes the SIBLING, not the trigger
     expect(screen.getByRole('button', { name: 'ada' })).toBeInTheDocument();
   });
@@ -135,13 +164,13 @@ describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () 
   });
 
   it('7. ANTI-VACUITY: the queries tests 3 and 4 rely on really can find these nodes', () => {
-    // Demonstrated on a fixture rather than asserted. If `queryByText('✓ Friend')` were broken
-    // (text split across elements) or the aria-label string had drifted, tests 3 and 4 would
+    // Demonstrated on a fixture rather than asserted. If the indicator query were broken
+    // (a drifted data attribute) or the aria-label string had drifted, tests 3 and 4 would
     // pass against markup that still renders the indicator. Here the nodes ARE present, so
     // both queries MUST hit — and then, with nothing rendered, both MUST miss.
     render(
       <>
-        <span className="md:hidden ml-1 text-xs">✓ Friend</span>
+        <span data-friend-indicator="" className="md:hidden ml-1 text-xs">Friend</span>
         <button type="button" aria-label="Add ada as a friend">
           +
         </button>
@@ -417,7 +446,7 @@ describe('Phase 88.6.1-37 — one request per press, no stale failure, focus kep
       held.resolve(undefined);
     });
     setStatus('accepted');
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByText('✓ Friend')));
+    await waitFor(() => expect(document.activeElement).toBe(friendIndicator()));
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByText(X3)).toBeNull();
   });
@@ -604,7 +633,7 @@ describe('Phase 88.6.1-37 — one request per press, no stale failure, focus kep
         fireEvent.click(plus);
       });
       setStatus(via);
-      const indicator = via === 'pending_sent' ? pendingSpan() : screen.getByText('✓ Friend');
+      const indicator = via === 'pending_sent' ? pendingSpan() : friendIndicator()!;
       await waitFor(() => expect(document.activeElement).toBe(indicator));
       setStatus('none');
       await waitFor(() => expect(document.activeElement).toBe(nameTrigger()));

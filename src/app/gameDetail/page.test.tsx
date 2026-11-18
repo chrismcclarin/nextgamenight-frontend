@@ -123,8 +123,14 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'UTC' }),
 }));
 
+// R19 (88.9-52): the status is 'none' for everyone unless a test names friends here (reset in afterEach).
+const friendship = vi.hoisted(() => ({ accepted: new Set<string>() }));
+afterEach(() => friendship.accepted.clear());
 vi.mock('@/app/components/FriendshipStatusProvider', () => ({
-  useFriendshipStatus: () => ({ getStatus: () => 'none', sendRequest: vi.fn() }),
+  useFriendshipStatus: () => ({
+    getStatus: (id: string) => (friendship.accepted.has(id) ? 'accepted' : 'none'),
+    sendRequest: vi.fn(),
+  }),
 }));
 
 // Heavy / self-fetching children stubbed. `FetchErrorBanner` is deliberately kept
@@ -1208,6 +1214,27 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
     const dialog = await openParticipantsModal(user);
     expect(within(dialog).getByText('Going')).toBeInTheDocument();
     expect(within(dialog).queryAllByText('No reply')).toHaveLength(0);
+  });
+
+  it('R19 (88.9-52): in See-all the desktop Friend pill comes BEFORE the RSVP pill, and Friend is said once', async () => {
+    // Owner 2026-11-17: friend should come first. ClickableMemberName is stubbed in this file, so the
+    // only Friend here is the page's own desktop pill; the phone pill is the component's (pinned in
+    // src/app/components/ClickableMemberName.indicator.test.tsx ("says Friend once, and has no tick")).
+    const user = userEvent.setup();
+    friendship.accepted.add(OTHER_UUID);
+    renderEventDetail({ role: 'owner', participants: [participantRow(), ...SIX_PARTICIPANTS.slice(0, 5)] });
+    (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [{ User: { id: OTHER_UUID }, status: 'yes' }] });
+    await screen.findByText('Player 0');
+    const dialog = await openParticipantsModal(user);
+    const going = await within(dialog).findByText('Going');
+    const friends = within(dialog).getAllByText('Friend');
+    expect(friends).toHaveLength(1);
+    const friend = friends[0];
+    expect(friend.parentElement).toBe(going.parentElement);
+    expect(friend.compareDocumentPosition(going) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const cls of ['hidden', 'md:inline-flex', 'bg-surface-pill-emerald', 'text-content-pill-emerald']) {
+      expect(friend).toHaveClass(cls);
+    }
   });
 
   it('closes the participants list on Esc', async () => {

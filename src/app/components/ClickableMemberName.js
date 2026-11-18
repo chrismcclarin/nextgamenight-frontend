@@ -37,10 +37,14 @@ function firstRendered(candidates) {
   );
 }
 
+// The green Friend pill's look, shared by the popover pill and the phone indicator (R19, 88.9-52).
+const FRIEND_PILL_CLASSES =
+  'text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold';
+
 /**
  * ClickableMemberName - Wraps a member name with a hover-to-open tooltip
  * for sending friend requests on desktop. Phase 68-02 MOB-06 adds an
- * always-visible inline "+ Add friend" / "⏳ Pending" / "✓ Friend"
+ * always-visible inline "+ Add friend" / "⏳ Pending" / "Friend" pill
  * indicator on mobile (<768px) so touch users have a primary affordance
  * that does not depend on hover or popover gymnastics.
  *
@@ -52,7 +56,7 @@ function firstRendered(candidates) {
  *              first friendship load has not settled (plan 88.6.1-66's loading arm), or a
  *              friendship load failed. The plain name is right for all three.
  * - accepted → name with desktop hover-tooltip showing green "Friend" pill
- *              + mobile-only "✓ Friend" inline indicator (preserved for touch parity)
+ *              + mobile-only green "Friend" pill inline (R19, 88.9-52; ticked "✓ Friend" text before that)
  * - none / pending_sent / pending_received → name with desktop hover-tooltip
  *              popover + existing touch-tap-toggle fallback for hybrid
  *              touch laptops at desktop widths + mobile inline indicator
@@ -101,7 +105,18 @@ function firstRendered(candidates) {
    STATUS IS STILL CONVEYED, so WCAG 1.4.1 (use of colour) holds without the inline text: the
    chip carries friend/pending in its RING (solid green / dashed amber) AND in its accessible
    name, and the two-tap popover — never gated by this prop — remains the add-friend path.
-   Turning this into an opt-in, or defaulting it to `false`, is a decision, not a cleanup. */
+   Turning this into an opt-in, or defaulting it to `false`, is a decision, not a cleanup.
+
+   AMENDED Phase 88.9-52 (R19, owner 2026-11-17: pick A, and by chat: friend should come first): on a
+   phone the accepted indicator is now the green Friend pill (the popover pill's classes, md:hidden,
+   right after the name so it comes BEFORE any RSVP or role pill the host draws), chosen OVER the
+   ticked `✓ Friend` text this marker and rejected arm (a) describe, which was kept for touch parity
+   when phones had no pill; the pill is not a tap target either, so nothing is lost. The word is
+   plain text in the pill and no host draws a second Friend at the same width, so a screen reader
+   hears Friend once. Supersedes the Phase 76 SOCL-06 split (ticked text on phones, a pill after the
+   RSVP pill on desktop). The opt-out, its default and the chip rows are untouched: a chip still
+   draws no inline Friend. Going back to the ticked text, or moving Friend after the RSVP pill on
+   either width, is a decision, not a cleanup. */
 export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true, hostGround = 'card' }) {
   const { getStatus, sendRequest } = useContext(FriendshipContext);
   const [isOpen, setIsOpen] = useState(false);
@@ -443,8 +458,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // Mobile inline indicators vary per status (handled in renderMobileIndicator).
 
   // The green "Friend" pill, in ONE place: the accepted return and the success region both use it.
+  // R19 (88.9-52): the phone indicator below wears the same FRIEND_PILL_CLASSES.
   const renderFriendPill = () => (
-    <span className="text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold">
+    <span className={FRIEND_PILL_CLASSES}>
       Friend
     </span>
   );
@@ -628,8 +644,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // Self has no mobile inline indicator — informational only, surfaced
     // via desktop hover popover.
     if (status === 'self') return null;
-    // Accepted preserves the existing md:hidden ✓ Friend mobile indicator
-    // (desktop now also shows a "Friend" pill via the hover popover).
+    // Accepted: the md:hidden green Friend pill (R19, 88.9-52: the AMENDED paragraph of DECISION
+    // Phase 88.5 (D-15) above; the ticked text before that). Desktop shows the same pill in the
+    // hover popover. Measured on the See-all row mock at 375: 48.7 x 20px, word on fill 5.78 light /
+    // 5.89 dark. inline-flex + align-middle centre it on the name's line; ml-1 is the shipped gap.
     if (status === 'accepted') {
       // DECISION Phase 88.6.1-37 (Req 5, deviation Rule 1): the Friend span and the Pending span
       // below carry DISTINCT keys, chosen OVER leaving them unkeyed. Both are a span in the same
@@ -642,9 +660,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
           key="friend-indicator"
           ref={friendIndicatorRef}
           onFocus={armStatusRecovery}
-          className="md:hidden ml-1 text-xs text-content-status-success"
+          data-friend-indicator=""
+          className={cn('md:hidden ml-1 inline-flex items-center align-middle', FRIEND_PILL_CLASSES)}
         >
-          ✓ Friend
+          Friend
         </span>
       );
     }

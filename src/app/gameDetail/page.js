@@ -3306,8 +3306,13 @@ export default function GameDetailPage() {
                             //               (ClickableMemberName already renders plain <span> for self, so
                             //               the short-circuit is byte-equivalent and avoids a context lookup).
                             //   accepted  → 'Friend' pill on DESKTOP ONLY (hidden md:inline-flex) + keep
-                            //               name rendering through ClickableMemberName so the existing
-                            //               'md:hidden ✓ Friend' mobile inline indicator stays preserved.
+                            //               name rendering through ClickableMemberName, which draws the
+                            //               phone's md:hidden Friend pill right after the name.
+                            //               AMENDED Phase 88.9-52 (R19, owner 2026-11-17: A, and "friend
+                            //               should come first"): the phone indicator is the same green pill
+                            //               (was ticked text) and on BOTH widths Friend comes BEFORE the
+                            //               RSVP pill (the desktop pill sat after it), chosen OVER the
+                            //               SOCL-06 split. One pill shows per width, so Friend is said once.
                             //   pending_* → unchanged. ClickableMemberName provides desktop hover popover +
                             //               mobile inline indicator.
                             //   none      → unchanged. ClickableMemberName provides 'Add friend' on hover.
@@ -3349,9 +3354,9 @@ export default function GameDetailPage() {
                                                 <span>{p.username || 'Unknown'}</span>
                                             ) : memberUuid ? (
                                                 // Stranger / pending / accepted all route through
-                                                // ClickableMemberName. For accepted on mobile this preserves
-                                                // the existing md:hidden ✓ Friend indicator (pre-phase
-                                                // affordance). For accepted on desktop ClickableMemberName
+                                                // ClickableMemberName. For accepted on mobile it draws the
+                                                // md:hidden green Friend pill (R19, 88.9-52; ticked text
+                                                // before that). For accepted on desktop ClickableMemberName
                                                 // renders only the plain name — the desktop-only 'Friend'
                                                 // pill below gives desktop its read-only indicator.
                                                 <ClickableMemberName userId={memberUuid} username={p.username || 'Unknown'} />
@@ -3362,6 +3367,19 @@ export default function GameDetailPage() {
                                                 <span>{p.username || 'Unknown'}</span>
                                             )}
                                         </span>
+                                        {!isSelfRow && friendStatus === 'accepted' && (
+                                            // Phase 76 SOCL-06: "Friend" pill — DESKTOP ONLY
+                                            // (hidden md:inline-flex). The phone's twin is the md:hidden
+                                            // Friend pill ClickableMemberName draws after the name above.
+                                            // R19 (88.9-52, owner 2026-11-17): it sits BEFORE the RSVP pill,
+                                            // the phone's order; the marker is at the per-state list above.
+                                            // History: emerald was picked to echo the
+                                            // text-status-success used by that mobile inline indicator for
+                                            // continuity; that indicator was the ticked text R19 replaced.
+                                            <span className="hidden md:inline-flex items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold">
+                                                Friend
+                                            </span>
+                                        )}
                                         {!repliesLoadState.showError && <RsvpStatusPill status={status} nightStarted={hasStarted(singleEvent, Date.now())} />}
                                         {isSelfRow && (
                                             // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
@@ -3372,18 +3390,6 @@ export default function GameDetailPage() {
                                             // role, but the visual family is the closest existing pattern.
                                             <span className="align-middle text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">
                                                 You
-                                            </span>
-                                        )}
-                                        {!isSelfRow && friendStatus === 'accepted' && (
-                                            // Phase 76 SOCL-06: "Friend" pill — DESKTOP ONLY
-                                            // (hidden md:inline-flex) per CONTEXT: "SOCL-06 is desktop-only".
-                                            // Mobile already shows the existing md:hidden ✓ Friend indicator
-                                            // from ClickableMemberName, preserved by routing accepted rows
-                                            // through ClickableMemberName above. Emerald color echoes the
-                                            // text-status-success used by that mobile inline indicator for
-                                            // visual continuity across viewports.
-                                            <span className="hidden md:inline-flex items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold">
-                                                Friend
                                             </span>
                                         )}
                                         {role === 'owner' && (
