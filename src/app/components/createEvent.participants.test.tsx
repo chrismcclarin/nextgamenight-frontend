@@ -296,6 +296,20 @@ describe('add-participant focus (UAT row 542)', () => {
   });
 });
 
+// Phase 88.9-52, R15a (owner pick B, 2026-11-17): on a phone the participant list box is capped at
+// 24rem (384px), which shows two whole participant rows (the picked mock measured 2.13 rows of 179px;
+// the 15rem cap showed 1.33). From md up the 15rem cap is kept (rows are one 83px line there).
+// jsdom lays nothing out: this pins the classes, the row count is the capture's.
+describe('R15a (88.9-52) — the participant list box shows two whole people on a phone', () => {
+  it('R15a (88.9-52): the list box is capped at 24rem below md and 15rem from md, and still scrolls', async () => {
+    await renderModal();
+    const box = screen.getByRole('group', { name: /^Participants/ });
+    const tokens = box.className.split(/\s+/);
+    expect(tokens).toEqual(expect.arrayContaining(['max-h-96', 'md:max-h-60', 'overflow-y-auto']));
+    expect(tokens).not.toContain('max-h-60');
+  });
+});
+
 // Plan 88.6.1-26 (D-35 rule of POSITION, copy row C7, plan 88.6.1-15's finding). Create Event's
 // submit had NO in-flight guard: one double tap created two events and sent two rounds of
 // notifications, and the button gave no sign it was working. It now refuses a second submit on

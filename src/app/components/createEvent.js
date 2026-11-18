@@ -1793,10 +1793,19 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                 {PARTICIPANTS_SECTION_TITLE} <span aria-hidden="true" className="text-content-accent">*</span>
               </span>
             </span>
+            {/* DECISION Phase 88.9-52 (R15a, owner pick B, 2026-11-17): below md the list box is capped at
+                24rem (384px), which shows TWO whole participant rows (two 183px rows, the 8px between
+                them and the box's own 8px above fill its 382px inside exactly; the picked mock measured
+                2.13 rows of 179px), chosen OVER the 15rem cap (1.33 rows: one person and a sliver) and
+                OVER no cap (mock A: Add Participant and Winner slide off the screen). From md the 15rem
+                cap is KEPT: a row is one 83px line there, so it already shows two and a half. A custom
+                row is 2px taller on a phone (its name is a 44px Input), so two custom rows lose the last
+                4px of the second row's bottom padding, never a control. Lowering the phone cap is a
+                decision, not a cleanup. */}
             <div
               role="group"
               aria-labelledby="participants-section-label"
-              className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
+              className="space-y-2 max-h-96 md:max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
             >
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
