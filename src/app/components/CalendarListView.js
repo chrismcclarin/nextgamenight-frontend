@@ -27,7 +27,7 @@ import RsvpCount from './RsvpCount';
 // D6c; nothing here counts anything.
 import { statusTagLabel } from '../../lib/upcomingEvents';
 import { isGuestEvent } from '../../lib/eventClassification';
-import GuestPill, { GUEST_ROW_EDGE } from './GuestPill';
+import GuestPill, { GUEST_ROW_EDGE, GUEST_PICTURE_ROW_EDGE } from './GuestPill';
 
 /**
  * CalendarListView — Phase 64 Plan 03 (CAL-06), Today-delineator revision.
@@ -1183,7 +1183,12 @@ const EventRow = forwardRef(function EventRow(
      paint.
      AMENDED Phase 88.9-63 (X27 + orchestrator decision 3): a dashed outline on all four sides, on
      every arm, chosen OVER sheet-only marking (guest on the phone, nothing on its desktop twin).
-     The exclusive arm and the inline borderColor deletion stand. */
+     The exclusive arm and the inline borderColor deletion stand.
+     AMENDED Phase 88.9-52 (R7b, owner 2026-11-17, pick Gap): a guest row that paints a PHOTO takes
+     the picture-row member of the family, the same line with a 2px card-colour gap inside it,
+     chosen OVER the line straight on the photo. Still one exclusive arm; the choice and the
+     numbers are at src/app/components/GuestPill.tsx ("export const GUEST_PICTURE_ROW_EDGE"). A status row paints
+     no photo (hasBgImage is false there), so it keeps the plain guest edge. */
   const guest = isGuestEvent(event, viewerDbUserId);
   /*
    * DECISION Phase 88.3 (D-09, cascade fix): the row's ground is a MUTUALLY
@@ -1343,7 +1348,7 @@ const EventRow = forwardRef(function EventRow(
          enabled-hover variant exists to withhold the lift from a GATED CONTROL, and there is no
          control here to gate. REJECTED: leaving the alias in place for visual continuity.
          Re-spelling it back to `shadow-md` is a decision, not a cleanup. */
-      className={`p-3 sm:p-4 ${guest ? GUEST_ROW_EDGE : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${tinted && !statusTag ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+      className={`p-3 sm:p-4 ${guest ? (hasBgImage ? GUEST_PICTURE_ROW_EDGE : GUEST_ROW_EDGE) : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${tinted && !statusTag ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
       style={{
         ...(tinted && {
           '--group-ground': ground,

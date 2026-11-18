@@ -24,7 +24,16 @@
      GUEST_TILE_EDGE  the two month tiles (compact and full). Dark is amber-500 at FULL strength: a
                       tile sits on a DAY CELL, where 70% measured 2.98, under the floor.
    Light is amber-700 in both. They differ on purpose; merging them is a decision, not a cleanup.
-   No class value changed in this move. */
+   No class value changed in this move.
+   AMENDED Phase 88.9-52 (R7b, owner 2026-11-17, pick Gap: "Could we put a gap around it like we
+   have for other things? that way the dotted line isn't directly on the game? then it might be
+   more visible."): a third member, for a guest ROW WHOSE GROUND IS A PHOTO:
+     GUEST_PICTURE_ROW_EDGE  the GUEST_ROW_EDGE line, plus a 2px band of the card colour between
+                             the line and the photo.
+   It supersedes X27's "on a photo row the inner side meets the raw photo" above, for the list row.
+   Chosen OVER the line straight on the photo (as built: hard to pick out on a busy picture) and
+   OVER a 2px line (the other mock). A row with no photo keeps GUEST_ROW_EDGE; the month tiles and
+   the upcoming card are not picture rows and are untouched. */
 import * as React from 'react';
 
 import { cn } from '@/lib/cn';
@@ -34,6 +43,31 @@ import { cn } from '@/lib/cn';
  * row, the Calendar sheet row and the upcoming card. The month tiles take GUEST_TILE_EDGE below.
  */
 export const GUEST_ROW_EDGE = 'border border-dashed border-amber-700 dark:border-amber-500/70';
+
+/* DECISION Phase 88.9-52 (R7b, how the gap is drawn): the line STAYS the row's own 1px border and
+   the photo is held back from it, chosen OVER the picture page's mock form (the line as an outline
+   2px outside the row). Three things, all on the row:
+     the border                 the dashed line, where it has always been, so nothing moves;
+     bg-clip-padding            the photo stops at the border's inner side, so the card shows
+                                between the dashes instead of the photo;
+     inset-ring-2 + card colour a 2px band of the card colour painted over the photo's rim (an
+                                inset ring paints above the background and below the content).
+   What a person sees is what the mock showed: line, 2px of ground, photo. REJECTED, the outline
+   form: the list's scroll box (overflow-y-auto, no left padding) clips whatever is drawn outside
+   a row on its left side; the row's focus:outline-hidden would take the guest line away whenever
+   the row holds focus, mouse focus included; and the line would sit 3px nearer the day heading
+   above (5px instead of 8px). An inset ring is a box-shadow LAYER of its own in Tailwind 4, so the
+   hover shadow and the focus ring still compose with it (compiled and read, 2026-11-18). The band
+   is the card colour, the same ground the row's ring offset already assumes. The line's colours
+   are GUEST_ROW_EDGE's, so its measured ratios against the card stand (5.02 light, 3.88 dark,
+   capture j; src/app/tokenContrast.test.ts ("X27 (88.9) — the guest edge must clear 3:1 on every ground")).
+   Not rendered. A whole literal because Tailwind emits nothing for a built class name; the
+   family pin is
+   src/app/components/CalendarListView.sections.test.tsx ("R7b (88.9-52): a guest PICTURE row puts a 2px card-colour gap").
+   Changing this is a decision, not a cleanup. */
+/** The guest edge of a ROW WHOSE GROUND IS A PHOTO: the row line, then a 2px card-colour gap (R7b). */
+export const GUEST_PICTURE_ROW_EDGE =
+  'border border-dashed border-amber-700 dark:border-amber-500/70 bg-clip-padding inset-ring-2 inset-ring-surface-card';
 
 /* The three markers below moved here from CalendarMonthView.js with the constants (S-B3), word
    for word; "this file" in them meant CalendarMonthView.js, and the constant was a local there.

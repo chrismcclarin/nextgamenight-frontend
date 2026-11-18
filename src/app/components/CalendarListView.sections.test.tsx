@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import CalendarListView from './CalendarListView';
 import { bgImageProbeForTests } from '../../lib/hooks/useBgImageFailed';
+import * as guestEdges from './GuestPill';
 
 const TZ = 'America/New_York';
 // Friday 2:00 PM in New York.
@@ -342,6 +343,52 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
       const row = rowOf('Catan');
       expect(row.className.split(/\s+/), `${arm}: no viewer id, no outline`).not.toContain('border-dashed');
       expect(within(row).queryByText('Guest'), `${arm}: no viewer id, no Guest pill`).toBeNull();
+      cleanup();
+    }
+  });
+
+  // 88.9-52 (R7b, owner pick Gap, 2026-11-17; his words: "Could we put a gap around it like we have
+  // for other things? that way the dotted line isn't directly on the game?"): on a guest row whose
+  // ground is a photo, a 2px band of the card colour sits between the dashed line and the photo.
+  // A guest row with no photo, and a member row with one, are as they were. jsdom paints nothing:
+  // these are class pins, and the family pin keeps the line the colours X27 measured.
+  it('R7b (88.9-52): a guest PICTURE row puts a 2px card-colour gap between its dashed edge and the photo; other rows keep their edge', () => {
+    const VIEWER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const photoGroup = { name: 'Photo Club', background_image_url: 'https://images.example.test/club.jpg' };
+    const guestPhoto = { ...SOON, Group: photoGroup, EventParticipations: [{ user_id: VIEWER, is_guest: true }] };
+    const guestPlain = { ...NEXT_WEEK, EventParticipations: [{ user_id: VIEWER, is_guest: true }] };
+    const memberPhoto = { ...NEXT_YEAR, Group: photoGroup, EventParticipations: [{ user_id: VIEWER, is_guest: false }] };
+    const GAP = ['bg-clip-padding', 'inset-ring-2', 'inset-ring-surface-card'];
+    const LINE = ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500/70'];
+
+    const family = guestEdges as unknown as { GUEST_ROW_EDGE?: string; GUEST_PICTURE_ROW_EDGE?: string };
+    expect(family.GUEST_PICTURE_ROW_EDGE, 'GuestPill.tsx does not export the picture-row edge').toBe(`${family.GUEST_ROW_EDGE} ${GAP.join(' ')}`);
+
+    const rowOf = (title: string): HTMLElement => {
+      const heading = screen.getAllByRole('heading').find((el) => (el.textContent ?? '').trim() === title && el.closest('[role="button"]') !== null);
+      expect(heading, `no row titled ${title}`).toBeDefined();
+      return (heading as HTMLElement).closest('[role="button"]') as HTMLElement;
+    };
+    const ListWithViewer = CalendarListView as unknown as React.ComponentType<Record<string, unknown>>;
+    for (const arm of ARMS) {
+      render(<ListWithViewer events={[guestPhoto, guestPlain, memberPhoto]} onEventClick={vi.fn()} timezone={TZ} loading={false} variant={arm} viewerDbUserId={VIEWER} />);
+
+      const photoRow = rowOf('Catan');
+      expect(photoRow.style.backgroundImage, `${arm}: the fixture row paints no photo`).toContain('club.jpg');
+      const photoTokens = photoRow.className.split(/\s+/);
+      for (const t of [...LINE, ...GAP]) expect(photoTokens, `${arm}: the guest picture row lacks ${t}`).toContain(t);
+      // The line stays a border, so nothing is drawn outside the row: no outline, no margin.
+      expect(photoTokens.filter((t) => /(^|:)(outline-(dashed|\d)|outline-offset-|-?m[xytrbl]?-)/.test(t)), `${arm}: the gap is drawn outside the row`).toEqual([]);
+
+      const plainTokens = rowOf('Gloomhaven').className.split(/\s+/);
+      for (const t of LINE) expect(plainTokens, `${arm}: the plain guest row lost ${t}`).toContain(t);
+      for (const t of GAP) expect(plainTokens, `${arm}: a guest row with no photo takes ${t}`).not.toContain(t);
+
+      const memberRow = rowOf('Brass');
+      expect(memberRow.style.backgroundImage, `${arm}: the member fixture row paints no photo`).toContain('club.jpg');
+      const memberTokens = memberRow.className.split(/\s+/);
+      expect(memberTokens, `${arm}: the member picture row lost its hairline`).toContain('border-line');
+      for (const t of ['border-dashed', ...GAP]) expect(memberTokens, `${arm}: a member picture row takes ${t}`).not.toContain(t);
       cleanup();
     }
   });
