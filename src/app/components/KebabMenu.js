@@ -696,12 +696,20 @@ export default function KebabMenu({
                        reserved by name: the item's own label with the spinner's room after it (pr-6 is
                        the spinner's ml-2 plus its w-4), at the resting weight a busy item paints at.
                        Chosen OVER leaving it to the short words, where a one-item menu at enlarged
-                       text would widen by the spinner when the request starts. */}
+                       text would widen by the spinner when the request starts.
+                       AMENDED Phase 88.9-52 (G2, round 4, 2026-11-18): that resting weight is now NAMED
+                       on the reserve (font-normal), chosen OVER inheriting it. An armed item paints
+                       font-semibold on this button, the reserve inherited it, and the cell grew to
+                       the bold form of the item's own word: the one-item End check-in menu measured
+                       273.23px at rest and 277.34px at Wait (3) and Tap again at 200% text (capture
+                       r3-m). At normal text the 160px floor hid it; a menu whose longest item is a
+                       plain one (the member menu) never showed it. Every occupant of the cell now
+                       has one weight in every state, so the cell cannot change with arming. */}
                   {reservesLabel ? (
                     <ReservedLabel
                       reserve={[...COUNTDOWN_LABELS, DEFAULT_ARMED_LABEL]}
                       reserveClassName="font-semibold"
-                      reserveTrailing={{ text: item.label, className: 'pr-6' }}
+                      reserveTrailing={{ text: item.label, className: 'pr-6 font-normal' }}
                     >
                       {label}
                       <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />

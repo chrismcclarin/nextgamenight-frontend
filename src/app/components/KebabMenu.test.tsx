@@ -719,11 +719,23 @@ describe('R13 (88.9-52): an armed kebab item shows Tap again and is named by its
     expect(classes).toContain('invisible');
     expect(classes).toContain('before:content-[attr(data-reserve-trailing)]');
     expect(classes).not.toContain('font-semibold');
+    // G2 (88.9-52 round 4): the busy width is held at the RESTING weight by name, not by
+    // inheritance. An armed item paints font-semibold on the button, and a reserve with no weight
+    // of its own inherits it: the one-item End check-in menu measured 273.23px at rest and
+    // 277.34px at Wait (3) and Tap again at 200% text (capture r3-m), the bold form of its own
+    // word. jsdom lays nothing out, so this pins the class that fixes the weight, armed or not.
+    expect(classes).toContain('font-normal');
     expect(trailing[0].getAttribute('aria-hidden')).toBe('true');
     expect(trailing[0].textContent).toBe('');
     expect(remove.textContent).toBe('Remove');
     // A plain item holds nothing.
     const plain = within(list).getByRole('button', { name: 'Make admin' });
     expect(plain.querySelectorAll('[data-reserve], [data-reserve-trailing]')).toHaveLength(0);
+    // G2: armed, the button is bold and the busy reserve still names the resting weight.
+    fireEvent.click(remove);
+    expect(remove).toHaveClass('font-semibold');
+    const armedTrailing = (remove.querySelector('[data-reserve-trailing]') as HTMLElement).className.split(/\s+/);
+    expect(armedTrailing).toContain('font-normal');
+    expect(armedTrailing).not.toContain('font-semibold');
   });
 });

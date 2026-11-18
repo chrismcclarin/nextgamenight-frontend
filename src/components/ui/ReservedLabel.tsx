@@ -22,7 +22,11 @@ import { cn } from '@/lib/cn';
    room, for a label that gains an element after its word (the kebab item's busy spinner). It is the
    same kind of empty span, painted from its own attribute (data-reserve-trailing) so every reader
    of data-reserve still sees the label strings alone, and it does NOT take reserveClassName: it
-   measures the label at the weight the host paints it with that element beside it. */
+   measures the label at the weight the host paints it with that element beside it.
+   AMENDED Phase 88.9-52 (G2, round 4): a host whose OWN weight changes with its state names that
+   weight in reserveTrailing.className, because an occupant with no weight class inherits the
+   host's weight of the moment and the cell follows it (the kebab item is bold while armed and
+   its busy reserve is font-normal: src/app/components/KebabMenu.js ("className: 'pr-6 font-normal'")). */
 
 export interface ReservedLabelProps {
   /** The visible label. */

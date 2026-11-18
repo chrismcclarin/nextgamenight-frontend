@@ -247,3 +247,50 @@ test('E3: the expanded Check-ins panel is neither capped nor clipped, and adds n
   expect(style.maxHeight).toBe('none');
   expect(style.overflowY).toBe('visible');
 });
+
+/* G2 (88.9-52 round 4): the one-item End check-in menu keeps ONE width at rest, at Wait (3) and at
+   Tap again, at normal text and with root text at 200%. The after-build capture (r3-m) measured
+   273.23px at rest and 277.34px armed at 200%: the busy reserve inherited the armed item's bold
+   weight (src/app/components/KebabMenu.js ("className: 'pr-6 font-normal'")). At normal text the
+   menu's 160px floor hides a few px of growth, which is why the 200% arm is the one that proves it.
+   No write: the committing tap is never made, and the trigger closes the menu. */
+test('E4 (G2): the End check-in menu keeps its width at rest, at Wait and at Tap again, at 100% and 200% text', async ({ page }) => {
+  await mockCheckIns(page);
+  await page.goto(`/groupPlanning?group_id=${E2E_GROUP_ID}`);
+  await expect(checkInTriggers(page)).toHaveCount(2);
+
+  for (const scale of ['100%', '200%'] as const) {
+    if (scale === '200%') {
+      await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+      await expect
+        .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+          message: 'the root font size did not become 32px after the 200% style tag',
+        })
+        .toBe('32px');
+    }
+    const trigger = checkInTriggers(page).first();
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
+    const listId = await trigger.getAttribute('aria-controls');
+    expect(listId, `${scale}: the kebab names its open list through aria-controls`).toBeTruthy();
+    const list = page.locator(`[id="${listId}"]`);
+    const width = async () => (await list.evaluate((el) => el.getBoundingClientRect().width));
+
+    const rest = await width();
+    await list.getByRole('button', { name: 'End check-in' }).click();
+    await expect(list.getByRole('button')).toHaveText(/^Wait \(\d\)$/);
+    const wait = await width();
+    await expect(list.getByRole('button', { name: 'Tap again to end' })).toHaveText('Tap again');
+    const armed = await width();
+    // eslint-disable-next-line no-console -- the measured widths are recorded from the CI log
+    console.log(`[88.9-52 G2] End check-in menu at ${scale} text: rest ${rest.toFixed(2)}px, wait ${wait.toFixed(2)}px, armed ${armed.toFixed(2)}px`);
+    expect(Math.abs(wait - rest), `${scale}: the menu is ${rest.toFixed(2)}px at rest and ${wait.toFixed(2)}px at Wait`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(armed - rest), `${scale}: the menu is ${rest.toFixed(2)}px at rest and ${armed.toFixed(2)}px at Tap again`).toBeLessThanOrEqual(0.5);
+
+    // Closed from the trigger, not by Escape: a WebKit tap does not focus the item, and the
+    // menu's Escape is bound on its own container.
+    await trigger.click();
+    await expect(list).toHaveCount(0);
+  }
+  expect(routeState.patchCount, 'no check-in was ended').toBe(0);
+});
