@@ -1506,11 +1506,20 @@ const EventRow = forwardRef(function EventRow(
             box's top-left corner instead of its centre. With no display class the box keeps its
             flex and the picture keeps its own display; both are flex items of this row, so the
             picture lays out as it did. WHEN the fallback shows is unchanged (an owner question is
-            open on that). Putting a display class back here is a decision, not a cleanup. */}
+            open on that). Putting a display class back here is a decision, not a cleanup.
+            AMENDED Phase 88.9-52 (R23, owner pick B, 2026-11-17): that question is ruled. On this
+            row a game picture that cannot show (load error, or a src the image guard rejects)
+            shows NOTHING, like a game with no picture, chosen OVER the die square (A, as built)
+            and OVER a die square on every row without a picture (C). So no die is centred here
+            any more. What stands of PIX-4: this class string still carries no display class, so
+            the picture keeps its own display; and the centring itself lives in SafeImage's box
+            (src/app/components/SafeImage.js ("flex items-center justify-center rounded-sm")), for every call
+            site that still shows a fallback. */}
         {event.Game?.image_url && (
           <SafeImage
             src={event.Game.image_url}
             alt={event.Game?.name}
+            hideOnFailure
             className="max-sm:hidden w-12 h-12 md:w-14 md:h-14 object-cover rounded-sm shrink-0"
           />
         )}

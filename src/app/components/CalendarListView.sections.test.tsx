@@ -386,27 +386,28 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
     }
   });
 
-  // PIX-4 (88.9-52, R23 side finding of the picture pass): when a row's game picture fails to load,
-  // SafeImage's fallback box centres its die with flex. The row handed the box a display class of its
-  // own (block from sm up), which won over flex, so the die sat in the box's top-left corner. jsdom has
-  // no layout, so the proof is the class list: the box keeps flex and takes no other display from sm up.
-  it('PIX-4 (88.9-52): a failed game picture leaves the fallback die centred in its square on every arm', () => {
-    const DISPLAYS = ['block', 'inline', 'inline-block', 'inline-flex', 'grid', 'inline-grid', 'contents', 'flow-root', 'table'];
+  // R23 (88.9-52, owner pick B, 2026-11-17): on this row a game picture that fails to load shows
+  // nothing, like a night whose game has no picture. Before the ruling the row showed SafeImage's
+  // die square, and PIX-4 (this test's earlier form) pinned that die centred in it; the die left
+  // this row, so what PIX-4 still holds here is the class string the row hands the picture: hidden
+  // under sm, and no display class of its own from sm up.
+  it('R23 (88.9-52): a game picture that fails to load leaves nothing on the row, on every arm; the picture keeps PIX-4 class string', () => {
+    const DISPLAYS = ['block', 'inline', 'inline-block', 'inline-flex', 'flex', 'grid', 'inline-grid', 'contents', 'flow-root', 'table'];
     for (const arm of ARMS) {
       renderArm(arm, [{ ...night('azul', 'Azul', at(2 * HOUR)), Game: { name: 'Azul', image_url: 'https://images.example.test/azul.jpg' } }]);
       const picture = panelOf(upcomingButton()).querySelector('img[alt="Azul"]');
       expect(picture, `${arm}: the row renders no game picture`).not.toBeNull();
-      fireEvent.error(picture as Element);
-      const box = within(panelOf(upcomingButton())).getByRole('img', { name: 'Azul' });
-      expect(box.tagName, `${arm}: the fallback is the box, not a picture`).toBe('DIV');
-      const tokens = box.className.split(/\s+/).filter(Boolean);
-      for (const t of ['flex', 'items-center', 'justify-center']) expect(tokens, `${arm}: the fallback box lacks ${t}`).toContain(t);
-      // No display utility other than hidden may reach the box, bare or behind a breakpoint.
-      const otherDisplays = tokens.filter((t) => t !== 'flex' && DISPLAYS.concat('flex').includes(t.split(':').pop() as string));
-      expect(otherDisplays, `${arm}: a display class overrides the fallback's flex`).toEqual([]);
+      const tokens = (picture as Element).className.split(/\s+/).filter(Boolean);
       // Still hidden on a phone, where the row has no room for the square (the Req 11b marker).
       expect(tokens, `${arm}: the square is no longer hidden under sm`).toContain('max-sm:hidden');
-      expect(box.textContent, `${arm}: the die`).toBe('\u{1F3B2}');
+      expect(tokens.filter((t) => DISPLAYS.includes(t.split(':').pop() as string)), `${arm}: the row hands the picture a display class`).toEqual([]);
+      const row = (picture as Element).closest('[role="button"]') as HTMLElement;
+      fireEvent.error(picture as Element);
+      expect(row.querySelector('img'), `${arm}: the failed picture is still in the row`).toBeNull();
+      expect(within(row).queryByRole('img'), `${arm}: a fallback square shows on the row`).toBeNull();
+      expect(row.textContent ?? '', `${arm}: the die shows on the row`).not.toContain('\u{1F3B2}');
+      // The row itself is untouched: its title still reads.
+      expect(rowTitles(panelOf(upcomingButton())), `${arm}: the row lost its title`).toEqual(['Azul']);
       cleanup();
     }
   });

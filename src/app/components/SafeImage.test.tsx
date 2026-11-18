@@ -213,4 +213,37 @@ describe('SafeImage protocol allow-list (CodeQL js/xss-through-dom)', () => {
       expect(screen.getByRole('img', { name: 'Group' }).className).not.toContain('text-xs');
     });
   });
+
+  // 88.9-52 (R23, owner pick B, 2026-11-17): one call site, the Calendar list row, asks for
+  // nothing at all when its picture cannot show. Every other call site keeps the die box, and
+  // that box keeps centring its die (PIX-4: the centring lives in the box, not in the caller).
+  describe('hideOnFailure (88.9-52 R23)', () => {
+    it('renders nothing after a load error when hideOnFailure is set', () => {
+      const { container } = render(
+        <SafeImage {...anyProps({ src: 'https://example.com/404.png', alt: 'Azul', hideOnFailure: true, className: 'w-12 h-12' })} />
+      );
+      expect(container.querySelector('img')).not.toBeNull();
+      fireEvent.error(container.querySelector('img') as HTMLImageElement);
+      expect(container.innerHTML).toBe('');
+    });
+
+    it('renders nothing for a missing or rejected src when hideOnFailure is set', () => {
+      for (const src of [undefined, '', 'javascript:alert(1)']) {
+        const { container } = render(<SafeImage {...anyProps({ src, alt: 'Azul', hideOnFailure: true })} />);
+        expect(container.innerHTML, String(src)).toBe('');
+        cleanup();
+      }
+    });
+
+    it('without hideOnFailure the die box still shows, and centres its die', () => {
+      const { container } = render(
+        <SafeImage {...anyProps({ src: 'https://example.com/404.png', alt: 'Azul', className: 'w-12 h-12' })} />
+      );
+      fireEvent.error(container.querySelector('img') as HTMLImageElement);
+      const box = screen.getByRole('img', { name: 'Azul' });
+      expect(box.tagName).toBe('DIV');
+      for (const t of ['flex', 'items-center', 'justify-center']) expect(box.className.split(/\s+/)).toContain(t);
+      expect(box.textContent).toBe('\u{1F3B2}');
+    });
+  });
 });
