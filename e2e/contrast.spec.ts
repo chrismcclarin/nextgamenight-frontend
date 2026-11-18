@@ -2707,7 +2707,15 @@ test.describe('Req 11 Gate C — round 2 pins (88.9 R2), both themes per test', 
     await page.emulateMedia({ colorScheme: 'light' });
     await holdWrites(page, {});
     // The timezone write, answered 500 by a route registered AFTER the hold (the tz-answer reason
-    // above): it never lands, and the provider's catch raises the error toast.
+    // above): it never lands, and the provider's catch reports the failure.
+    // AMENDED Phase 88.9-52 (T1, owner pick Field, 2026-11-17): on the Profile page that failure is
+    // no longer a toast. It is the line under the Timezone field
+    // (src/app/userProfile/page.js ("DECISION Phase 88.9-52 (T1, owner 2026-11-17, pick Field")), so
+    // each arm now reads TWO things: the inline line (its ink, and that no toast carries its words)
+    // and then an error toast raised another way, so the O-20 toast ink this test exists for is still
+    // measured. The toast's trigger is Save Schedule with no day ticked: a refusal in the browser
+    // (src/app/userProfile/page.js ("toast.error('Please select at least one day.');")), chosen OVER a
+    // forced failing write (nothing is sent, so nothing can reach the CI database).
     await page.route(
       (url) => /\/users\/[^/]+\/timezone$/.test(url.pathname),
       async (route) => {
@@ -2741,8 +2749,24 @@ test.describe('Req 11 Gate C — round 2 pins (88.9 R2), both themes per test', 
       // side (this forced 500) now raises the timezone sentence too, in place of the register's
       // server-error line, so the filter reads Failed to save your timezone. The words are set at
       // src/app/components/TimezoneProvider.js ("const TIMEZONE_SAVE_FAILED =").
-      const toast = page.locator('[data-sonner-toast][data-type="error"]').filter({ hasText: 'Failed to save your timezone' });
-      await expect(toast, `O20c (${theme}): the failed timezone save raised no error toast`).toBeVisible({ timeout: 15_000 });
+      // AMENDED Phase 88.9-52 (T1, owner pick Field): the sentence shows under the field, as an alert,
+      // and no toast carries it.
+      const failedLine = page.getByTestId('timezone-save-error');
+      await expect(failedLine, `T1 (${theme}): the failed timezone save showed no line under the Timezone field`).toBeVisible({ timeout: 15_000 });
+      await expect(failedLine, `T1 (${theme}): the line under the Timezone field does not read the timezone sentence`).toHaveText('Failed to save your timezone — please try again.');
+      await expect(failedLine, `T1 (${theme}): the failed-save line is not an alert`).toHaveAttribute('role', 'alert');
+      await expect(
+        page.locator('[data-sonner-toast]').filter({ hasText: 'Failed to save your timezone' }),
+        `T1 (${theme}): the failed timezone save still raised a toast beside its inline line`,
+      ).toHaveCount(0);
+      const lineLabel = `T1 failed timezone save line ink (${theme})`;
+      const lineInk = await ratioAgainstGround(failedLine, lineLabel);
+      expect.soft(lineInk.ratio, describeRatio(lineLabel, AA_TEXT, lineInk)).toBeGreaterThanOrEqual(AA_TEXT);
+      // The O-20 toast: Save Schedule with no day ticked is refused in the browser with an error toast.
+      await page.getByRole('button', { name: '+ Add Schedule' }).click();
+      await page.getByRole('button', { name: 'Save Schedule' }).click();
+      const toast = page.locator('[data-sonner-toast][data-type="error"]').filter({ hasText: 'Please select at least one day.' });
+      await expect(toast, `O20c (${theme}): Save Schedule with no day ticked raised no error toast`).toBeVisible({ timeout: 15_000 });
       const title = toast.locator('[data-title]');
       const label = `O20c error toast title ink (${theme}, OS light)`;
       const m = await ratioAgainstGround(title, label);

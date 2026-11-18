@@ -723,13 +723,30 @@ function Profile(){
     // provider's (src/app/components/TimezoneProvider.js ("const saveChainRef = useRef(Promise.resolve());")).
     const { receipt: timezoneReceipt, showReceipt: showTimezoneReceipt, clearReceipt: clearTimezoneReceipt } = useInlineReceipt();
     const tzSaveSeqRef = useRef(0);
+    // T1 (88.9-52, owner pick Field): the failed-save line under the picker (the DECISION is at
+    // its node). `timezoneCardRef` is the Timezone card: while it is mounted there is a field to
+    // put the line beside; once it is gone (the person left the page, or a signed-out frame took
+    // the page's place) the failure is the top toast, so it is never lost.
+    const [timezoneSaveError, setTimezoneSaveError] = useState('');
+    const timezoneCardRef = useRef(null);
     const handleTimezoneSelect = useCallback(async (tz) => {
         clearTimezoneReceipt();
+        // T1: the next pick clears the failed-save line at the press.
+        setTimezoneSaveError('');
         const seq = ++tzSaveSeqRef.current;
         // The list closes at the pick, before the save lands (as it always did).
         setTzPickerOpen(false);
         setTzSearch('');
-        const ok = await setTimezone(tz);
+        const ok = await setTimezone(tz, {
+            onSaveFailed: (message) => {
+                if (!timezoneCardRef.current) {
+                    toast.error(message);
+                    return;
+                }
+                // A stale result changes nothing here either.
+                if (seq === tzSaveSeqRef.current) setTimezoneSaveError(message);
+            },
+        });
         // A stale result, success or failure, changes nothing.
         if (ok && seq === tzSaveSeqRef.current) showTimezoneReceipt('Saved');
     }, [setTimezone, clearTimezoneReceipt, showTimezoneReceipt]);
@@ -3439,7 +3456,7 @@ function Profile(){
                 </div>
 
                 {/* Timezone Setting */}
-                <div className="card p-3 md:p-6 mb-6">
+                <div ref={timezoneCardRef} className="card p-3 md:p-6 mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-1">Timezone</Heading>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
                     {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
@@ -3480,7 +3497,9 @@ function Profile(){
                         the picker, announced once, ruled by the owner 2026-11-14 (Yes, small saved besides
                         picker); 4000 ms, polite, mounted empty. It shows only after the save has LANDED
                         (setTimezone resolved true) and only for the latest pick; a failed save shows the
-                        provider's error toast and the saved zone back in the field instead (owner ruling Q8 b). */}
+                        provider's error toast and the saved zone back in the field instead (owner ruling Q8 b).
+                        AMENDED Phase 88.9-52 (T1, owner 2026-11-17): a failed save no longer shows the toast
+                        here; it shows the line below this region (the T1 marker there). */}
                     <StatusRegion
                         data-testid="timezone-receipt"
                         politeness="polite"
@@ -3488,6 +3507,30 @@ function Profile(){
                         message={timezoneReceipt}
                         className="mt-2 text-xs text-content-status-success"
                     />
+                    {/* DECISION Phase 88.9-52 (T1, owner 2026-11-17, pick Field: I thought we were making a
+                        toast next to the Timezones, not a notice at the top of the page): a failed timezone
+                        save shows its line HERE, where Saved shows, in this page's inline error style, chosen
+                        OVER the provider's top toast (owner ruling T1 A, 2026-11-16, ruled the sentence only;
+                        the place is this ruling). The page hands setTimezone an onSaveFailed and the provider
+                        raises no toast for it (src/app/components/TimezoneProvider.js ("const reportFailure = (message) => {")).
+                        The words are the provider's: the timezone sentence, or the register's own line for
+                        signed out, offline and going too fast.
+                        Spoken as the phone flow's failed submission is on this page (DECISION Phase 88-25):
+                        a conditionally mounted alert, inserted with its text, chosen OVER putting the words
+                        in the polite Saved region above (a failure would wait its turn behind other speech,
+                        and that region clears itself after 4000 ms; this line must stay) and OVER a standing
+                        empty assertive region. Each failure mounts it afresh, so the same sentence twice is
+                        spoken twice.
+                        It stays until the NEXT PICK (cleared at the press) and is never beside Saved;
+                        reopening the picker or typing in it does not clear it, chosen OVER clearing on
+                        reopen as Saved does: it is the only thing saying why the field went back to the
+                        saved zone. A result from an earlier pick is ignored. With no Timezone card on screen
+                        when the answer comes, the failure is the top toast. */}
+                    {timezoneSaveError && (
+                        <p data-testid="timezone-save-error" role="alert" className="text-content-status-error text-xs mt-1">
+                            {timezoneSaveError}
+                        </p>
+                    )}
                 </div>
 
                 {/* Notification Preferences Section — absent while identity has no row, on purpose:

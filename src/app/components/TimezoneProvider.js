@@ -35,11 +35,13 @@ import { detectBrowserTimezone } from '../../lib/datetime';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { patchSelfCache } from '../../lib/hooks/selfIdentityCache';
 
-// The one sentence a failed timezone save shows (T1, 88.9-52; the setTimezone catch below).
+// The one sentence a failed timezone save shows (T1, 88.9-52; the setTimezone catch below), as a
+// top toast or, on the Profile page, beside the Timezone field (T1 Field: the marker at setTimezone).
 const TIMEZONE_SAVE_FAILED = 'Failed to save your timezone — please try again.';
 
 const TimezoneContext = createContext({
   timezone: null,
+  // (timezone, options?) => Promise<boolean>; options.onSaveFailed(message) takes the failure line.
   setTimezone: () => {},
   isProfileTimezoneSet: false,
   isProfileTimezoneKnown: false,
@@ -112,22 +114,39 @@ export function TimezoneProvider({ children }) {
    * new zone) and `false` in every other case: the identity guard, a failed save, and the
    * logged-out display-only path. Never rejects (88.9-68, X33b: the Profile picker shows its
    * Saved caption from this result).
+   *
+   * DECISION Phase 88.9-52 (T1, owner 2026-11-17, pick Field: I thought we were making a toast
+   * next to the Timezones, not a notice at the top of the page): a caller that has a Timezone
+   * field on screen passes `{ onSaveFailed }` and is HANDED the failure line to show beside its
+   * field; the provider then raises no toast for that call. A caller that passes nothing keeps
+   * the top toast (no field on screen to put it beside). The line is the same one either way,
+   * worked out here once. Chosen OVER resolving the line in place of the boolean (the X33b
+   * contract, read by the Saved caption, stays true / false) and OVER a toast plus the line (the
+   * same words twice). The still-loading refusal at the identity guard goes the same way: one
+   * rule, a caller with a field never gets a toast. A failed EARLIER pick with a later one
+   * pending is still silent (Q8): nothing is handed over.
    */
-  const setTimezone = useCallback(async (newTimezone) => {
+  const setTimezone = useCallback(async (newTimezone, options) => {
+    // T1 (88.9-52): the caller's own place for the failure line, or the top toast.
+    const reportFailure = (message) => {
+      if (typeof options?.onSaveFailed === 'function') options.onSaveFailed(message);
+      else toast.error(message);
+    };
     // D-02: persisting the profile TZ requires the resolved caller UUID. Guard
     // BEFORE the optimistic display-state update — flipping display to a value
     // we can't persist would silently revert on the next remount. In practice
     // the picker/nudge CTA only render after `self` (and thus selfUuid) has
     // resolved, so this is defensive. Fail loud via toast, not throw (87.5
     // review ML-02): a throw here would become an unhandled rejection the user
-    // never sees. AMENDED Phase 88.9-68 (X33b): the Profile picker now AWAITS
+    // never sees (AMENDED Phase 88.9-52, T1: or beside the caller's Timezone field, where it
+    // has one; the marker above setTimezone). AMENDED Phase 88.9-68 (X33b): the Profile picker now AWAITS
     // this call (it was fire-and-forget) and reads the boolean it resolves, so
     // every path below returns one and none throws. Logged-out callers keep the
     // display-only fallback (no send, resolves false), matching the
     // pre-existing behavior.
     if (user?.sub && !selfUuid) {
       console.error('Cannot update timezone: identity not resolved yet');
-      toast.error('Your account is still loading — please try again in a moment.');
+      reportFailure('Your account is still loading — please try again in a moment.');
       return false;
     }
     setTimezoneState(newTimezone);
@@ -172,7 +191,9 @@ export function TimezoneProvider({ children }) {
           // misconfiguration) reads the timezone sentence too, chosen OVER the register's shared
           // server-error line it showed (it never says what failed). A cause the person can act on
           // (signed out, offline, going too fast) keeps the register's line.
-          toast.error(
+          // AMENDED Phase 88.9-52 (T1, owner pick Field, 2026-11-17): WHERE the line shows is the
+          // caller's: beside its Timezone field when it passed onSaveFailed, else the top toast.
+          reportFailure(
             getFetchErrorMessage(err, {
               fallback: TIMEZONE_SAVE_FAILED,
               byCode: { internal: TIMEZONE_SAVE_FAILED, config: TIMEZONE_SAVE_FAILED },

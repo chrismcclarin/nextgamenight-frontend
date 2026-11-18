@@ -1049,7 +1049,7 @@ describe('userProfile timezone picker (F-359)', () => {
     expect(field).toHaveAttribute('aria-activedescendant');
 
     await user.keyboard('{Enter}');
-    expect(h.setTimezone).toHaveBeenCalledWith('America/Chicago');
+    expect(h.setTimezone).toHaveBeenCalledWith('America/Chicago', { onSaveFailed: expect.any(Function) });
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 
@@ -7292,7 +7292,7 @@ describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)
     const save = deferred<boolean>();
     h.setTimezone.mockReturnValueOnce(save.promise);
     pickZone('America/Chicago');
-    expect(h.setTimezone).toHaveBeenCalledWith('America/Chicago');
+    expect(h.setTimezone).toHaveBeenCalledWith('America/Chicago', { onSaveFailed: expect.any(Function) });
     expect(screen.queryByRole('listbox')).toBeNull();
     expect(receipt.textContent).toBe('');
     await act(async () => { save.resolve(true); });
@@ -7314,7 +7314,7 @@ describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)
     fireEvent.click(within(screen.getByRole('listbox')).getAllByRole('option')[0]);
     await flush();
     await flush();
-    expect(h.setTimezone).toHaveBeenLastCalledWith('America/Denver');
+    expect(h.setTimezone).toHaveBeenLastCalledWith('America/Denver', { onSaveFailed: expect.any(Function) });
     expect(receipt.textContent).toBe('');
 
     // Two overlapping picks, the later one FAILS: the earlier one landing shows nothing, and
@@ -7342,7 +7342,96 @@ describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)
     expect(receipt.textContent).toBe('');
     await act(async () => { later.resolve(true); });
     await waitFor(() => expect(receipt.textContent).toBe('Saved'));
-    expect(h.setTimezone).toHaveBeenLastCalledWith('Europe/Berlin');
+    expect(h.setTimezone).toHaveBeenLastCalledWith('Europe/Berlin', { onSaveFailed: expect.any(Function) });
+  });
+
+  // T1 (88.9-52, owner pick Field, 2026-11-17). The provider is mocked here: a failed save is the
+  // mock calling the onSaveFailed it was handed (what the real provider does, pinned in
+  // src/app/components/TimezoneProvider.identity.test.tsx) and resolving false.
+  it('T1 (88.9-52): a failed timezone save shows its line under the Timezone field as an alert in the error ink, with no toast; the line stays while the picker is reopened, clears at the next pick, never shows beside Saved, ignores a result from an earlier pick, and becomes a toast when the field is no longer on screen', async () => {
+    const SENTENCE = 'Failed to save your timezone — please try again.';
+    const OFFLINE = "We couldn't reach the server. Check your connection and try again.";
+    type Options = { onSaveFailed: (message: string) => void };
+    const failWith = (message: string) =>
+      h.setTimezone.mockImplementationOnce(async (_zone: string, options: Options) => {
+        options.onSaveFailed(message);
+        return false;
+      });
+    const { unmount } = renderProfile();
+    const field = await screen.findByRole('combobox', { name: 'Timezone' });
+    const pickZone = (zone: string) => {
+      fireEvent.click(field);
+      fireEvent.change(field, { target: { value: zone } });
+      fireEvent.click(within(screen.getByRole('listbox')).getAllByRole('option')[0]);
+    };
+    const errorLine = () => screen.queryByTestId('timezone-save-error');
+    const receipt = screen.getByTestId('timezone-receipt');
+
+    // Nothing at rest: the line is not mounted (no standing empty alert, no footprint).
+    expect(errorLine()).toBeNull();
+
+    // A failed save: the sentence, in the page's inline error style, as an alert, right after
+    // the Saved region in the Timezone card; no toast, and no Saved.
+    failWith(SENTENCE);
+    pickZone('America/Chicago');
+    await waitFor(() => expect(errorLine()).not.toBeNull());
+    const line = errorLine() as HTMLElement;
+    expect(line.textContent).toBe(SENTENCE);
+    expect(line).toHaveAttribute('role', 'alert');
+    expect(line.className.split(/\s+/).sort()).toEqual(['mt-1', 'text-content-status-error', 'text-xs']);
+    expect(line.previousElementSibling).toBe(receipt);
+    expect(receipt.textContent).toBe('');
+    expect(toastMock().error).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
+
+    // Reopening the picker and typing keep the line (it says why the field went back).
+    fireEvent.click(field);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: 'America/Den' } });
+    expect(errorLine()?.textContent).toBe(SENTENCE);
+
+    // The next pick clears it at the press, before its save answers; a landed save shows Saved alone.
+    const save = deferred<boolean>();
+    h.setTimezone.mockReturnValueOnce(save.promise);
+    fireEvent.click(within(screen.getByRole('listbox')).getAllByRole('option')[0]);
+    expect(errorLine()).toBeNull();
+    await act(async () => { save.resolve(true); });
+    await waitFor(() => expect(receipt.textContent).toBe('Saved'));
+    expect(errorLine()).toBeNull();
+
+    // A known cause shows its own register line in the same place, and Saved is gone at that pick.
+    failWith(OFFLINE);
+    pickZone('Asia/Tokyo');
+    await waitFor(() => expect(errorLine()?.textContent).toBe(OFFLINE));
+    expect(receipt.textContent).toBe('');
+
+    // A result handed over by an EARLIER pick after a later pick was made changes nothing.
+    const earlier = deferred<boolean>();
+    const later = deferred<boolean>();
+    let earlierOptions: Options | undefined;
+    h.setTimezone
+      .mockImplementationOnce((_zone: string, options: Options) => { earlierOptions = options; return earlier.promise; })
+      .mockReturnValueOnce(later.promise);
+    pickZone('Europe/Berlin');
+    pickZone('Europe/Paris');
+    expect(errorLine()).toBeNull();
+    await act(async () => { earlierOptions?.onSaveFailed(SENTENCE); earlier.resolve(false); });
+    await flush();
+    expect(errorLine()).toBeNull();
+    expect(toastMock().error).not.toHaveBeenCalled();
+    await act(async () => { later.resolve(true); });
+    await waitFor(() => expect(receipt.textContent).toBe('Saved'));
+
+    // The person left the page before the save answered: no field to put the line beside, so the
+    // failure is the top toast (it must not vanish).
+    const leaving = deferred<boolean>();
+    let leavingOptions: Options | undefined;
+    h.setTimezone.mockImplementationOnce((_zone: string, options: Options) => { leavingOptions = options; return leaving.promise; });
+    pickZone('America/Denver');
+    unmount();
+    await act(async () => { leavingOptions?.onSaveFailed(SENTENCE); leaving.resolve(false); });
+    expect(toastMock().error).toHaveBeenCalledTimes(1);
+    expect(toastMock().error).toHaveBeenCalledWith(SENTENCE);
   });
 });
 

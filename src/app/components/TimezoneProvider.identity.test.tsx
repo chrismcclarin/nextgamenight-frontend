@@ -244,10 +244,34 @@ type TzValue = {
   timezone: string;
   isProfileTimezoneSet: boolean;
   isProfileTimezoneKnown: boolean;
-  setTimezone: (tz: string) => Promise<unknown>;
+  setTimezone: (tz: string, options?: { onSaveFailed?: (message: string) => void }) => Promise<unknown>;
 };
 
 const picked: Array<{ tz: string; ok: unknown }> = [];
+// T1 (88.9-52, owner pick Field): what a caller with its own place for the failure was handed.
+const handed: Array<{ tz: string; message: string }> = [];
+
+// A caller that shows the failure itself (the Profile page): it passes onSaveFailed.
+function TZFieldProbe({ zones }: { zones: string[] }) {
+  const { timezone, setTimezone } = useTimezone() as unknown as TzValue;
+  return (
+    <div>
+      <output data-testid="tz">{timezone}</output>
+      {zones.map((zone) => (
+        <button
+          key={zone}
+          onClick={() => {
+            void setTimezone(zone, { onSaveFailed: (message) => handed.push({ tz: zone, message }) }).then((ok) => {
+              picked.push({ tz: zone, ok });
+            });
+          }}
+        >
+          {`pick ${zone}`}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function TZProbe({ zones }: { zones: string[] }) {
   const { timezone, isProfileTimezoneSet, isProfileTimezoneKnown, setTimezone } = useTimezone() as unknown as TzValue;
@@ -300,6 +324,7 @@ describe('TimezoneProvider save result, pick order and revert (88.9-68: X33b, Q8
 
   beforeEach(() => {
     picked.length = 0;
+    handed.length = 0;
     // clearAllMocks keeps queued once-values; start every test from the harness default.
     update().mockReset().mockResolvedValue({});
   });
@@ -463,5 +488,80 @@ describe('TimezoneProvider save result, pick order and revert (88.9-68: X33b, Q8
       { tz: DENVER, ok: true },
       { tz: TOKYO, ok: false },
     ]);
+  });
+
+  // T1 (88.9-52, owner pick Field, 2026-11-17: I thought we were making a toast next to the
+  // Timezones, not a notice at the top of the page). A caller with a Timezone field on screen
+  // passes onSaveFailed and shows the line beside its field; the provider then raises NO toast.
+  // A caller that passes nothing keeps the toast (the X33b and Q8 tests above).
+  it('T1 (88.9-52): a caller that passes onSaveFailed is handed the failure line and no toast is raised: the timezone sentence for an unknown cause and for a failure on our side, the register line for signed-out, offline and going too fast, the still-loading line at the identity guard; a failed earlier pick with a later one pending hands nothing', async () => {
+    const SENTENCE = 'Failed to save your timezone — please try again.';
+    const mountField = (zones: string[]) =>
+      render(
+        <TimezoneProvider>
+          <TZFieldProbe zones={zones} />
+        </TimezoneProvider>
+      );
+
+    // The identity guard: nothing sent, false, the still-loading line handed over, no toast.
+    h.selfUuid = undefined;
+    const guarded = mountField([TOKYO]);
+    pick(TOKYO);
+    await waitFor(() => expect(picked).toEqual([{ tz: TOKYO, ok: false }]));
+    expect(update()).not.toHaveBeenCalled();
+    expect(handed).toEqual([{ tz: TOKYO, message: 'Your account is still loading — please try again in a moment.' }]);
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+    guarded.unmount();
+    picked.length = 0;
+    handed.length = 0;
+
+    h.selfUuid = SELF_UUID;
+    h.storedTz = PARIS;
+    mountField([TOKYO, BERLIN]);
+    await waitFor(() => expect(onScreen()).toBe(PARIS));
+
+    const cases: Array<[unknown, string]> = [
+      [new Error('boom'), SENTENCE],
+      [new ApiError('Server said no', 'internal', 500), SENTENCE],
+      [new ApiError('Server said no', 'config', 503), SENTENCE],
+      [new ApiError('Unauthorized', 'unauthorized', 401), 'Your session may have expired. Sign in again to continue.'],
+      [new ApiError('Offline', 'network', 0), "We couldn't reach the server. Check your connection and try again."],
+      [new ApiError('Slow down', 'rate_limited', 429), "You're going a little fast — give it a moment, then try again."],
+    ];
+    for (const [index, [failure, line]] of cases.entries()) {
+      update().mockRejectedValueOnce(failure);
+      pick(TOKYO);
+      await waitFor(() => expect(picked).toHaveLength(index + 1));
+      expect(picked[index]).toEqual({ tz: TOKYO, ok: false });
+      expect(handed).toHaveLength(index + 1);
+      expect(handed[index]).toEqual({ tz: TOKYO, message: line });
+      // The saved zone is back in the field (Q8), and the failure is still logged once per pick.
+      expect(onScreen()).toBe(PARIS);
+      expect(vi.mocked(logger.error)).toHaveBeenCalledTimes(index + 1);
+    }
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+
+    // A save that lands hands nothing.
+    pick(BERLIN);
+    await waitFor(() => expect(picked).toHaveLength(cases.length + 1));
+    expect(picked[cases.length]).toEqual({ tz: BERLIN, ok: true });
+    expect(handed).toHaveLength(cases.length);
+
+    // Two picks, the EARLIER fails while the later is still saving: nothing handed, no toast (Q8).
+    const a = deferred();
+    const b = deferred();
+    update().mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    pick(TOKYO);
+    pick(BERLIN);
+    await act(async () => {
+      a.reject(new Error('earlier'));
+    });
+    await waitFor(() => expect(update()).toHaveBeenLastCalledWith(SELF_UUID, BERLIN));
+    await act(async () => {
+      b.resolve({});
+    });
+    await waitFor(() => expect(picked).toHaveLength(cases.length + 3));
+    expect(handed).toHaveLength(cases.length);
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
   });
 });
