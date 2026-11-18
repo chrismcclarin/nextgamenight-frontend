@@ -391,7 +391,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
           query on its own strip, and this button is outside that strip, so it cannot read it.
           It reads a container of its own that is the SAME WIDTH BY CONSTRUCTION: a zero-height
           box fixed to the left, right and bottom edges of the screen (the strip is the full
-          width of the page; both leave out a classic scrollbar). Same width, same 40.25rem,
+          width of the page; both leave out a classic scrollbar). Same width, same switch,
           same md gate, so the two always flip together; FeedbackButton.test.tsx (R4 C4) holds
           the width to the header's.
           WHY THE BOX IS FIXED TO THE BOTTOM EDGE AND HAS NO HEIGHT. Browsers disagree on
@@ -408,10 +408,14 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
           S2 close effect reads the stylesheet's decision (it works, but it is a second source
           of truth with a frame of lag, where a stylesheet route exists); keeping the button
           and the menu row both on screen (the owner ruled it out).
-          The footer's corner reserve (R4 S1) is unchanged. Changing 40.25rem here and not in
-          the header, or unpinning the box from the bottom edge, is a decision, not a cleanup. */}
+          The footer's corner reserve (R4 S1) is unchanged. Changing the width here and not in
+          the header, or unpinning the box from the bottom edge, is a decision, not a cleanup.
+          AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): 40rem, with the header, in place of
+          the 40.25rem the lines above name (the owner chose the desktop list back at exactly
+          1280px with doubled text OVER the last half pixel of a 48px gap; the sum is at the
+          header's strip marker). Nothing else here moved. */}
       <div className="@container/fab fixed inset-x-0 bottom-0 h-0 z-30">
-      <div className="hidden md:block md:@max-[40.25rem]/fab:hidden">
+      <div className="hidden md:block md:@max-[40rem]/fab:hidden">
         {/* Floating feedback button.
             DECISION Phase 87.8 (D-09/D-10): `z-30` chosen OVER raising the
             overlays — the FAB is the element in the wrong tier, and one value

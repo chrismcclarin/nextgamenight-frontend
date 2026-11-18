@@ -511,7 +511,7 @@ describe('R5 (88.9-52): the floating feedback button is a fixed size and is rais
 
   // 88.9-52 R4 C4 (owner 2026-11-18: "When it switches to the menu, we should just let the menu
   // hold the feedback button and lose it on the main screen, like the phone does"). From md the
-  // header falls back to its phone-menu form while its strip is under 40.25rem (R4 S2 / B4), and
+  // header falls back to its phone-menu form while its strip is under 40rem (R4 S2 / B4 / D5), and
   // while it does the floating button is not drawn; the menu's Send feedback row is the entry.
   // The button cannot read the header's container (it is outside it), so it reads a container
   // of its own that is the same width by construction: a zero-height box fixed across the bottom
@@ -522,7 +522,7 @@ describe('R5 (88.9-52): the floating feedback button is a fixed size and is rais
     const toggle = fab.parentElement as HTMLElement;
     const container = toggle.parentElement as HTMLElement;
     // The DEC-2 wrapper keeps its phone rule and gains the header's condition.
-    expect(tokens(toggle)).toEqual(['hidden', 'md:block', 'md:@max-[40.25rem]/fab:hidden']);
+    expect(tokens(toggle)).toEqual(['hidden', 'md:block', 'md:@max-[40rem]/fab:hidden']);
     // The container: fixed across the bottom edge, no height, the button's own tier. Whether or
     // not a browser makes a query container the containing block of a fixed descendant, the
     // button lands in the same place (the box's bottom and right edges are the screen's).

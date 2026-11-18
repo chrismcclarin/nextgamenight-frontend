@@ -938,17 +938,22 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
     // R21 (88.9-52 R4 S2), RENDERED: from md up. The round-3 capture found, at 768px with text at
     // 200%, the desktop header's 40px name run straight into Home and the list run off the right
-    // edge. From md the desktop list is drawn only while the strip is at least 40.25rem wide
+    // edge. From md the desktop list is drawn only while the strip is at least 40rem wide
     // (src/app/Header.js ("DECISION Phase 88.9-52 (R4 S2, the round-3 capture: at 768px with doubled text the")); under that it is the
     // phone header, so every link is in the menu. Three states are read: 768 at 200% (the phone
     // header), 1400 at 200% (43.75rem: the desktop list, with room), 768 at 100% (unchanged).
     // AMENDED Phase 88.9-52 (R4 B4): the switch moved from 42rem to 40.25rem
     // (src/app/Header.js ("AMENDED Phase 88.9-52 (R4 B4, round 4, 2026-11-18): the width is 40.25rem, not 42rem.")), so two more
-    // widths are read at 200%, one each side of it (1320 and 1264; 1288 is the switch), and four
+    // widths are read at 200%, one each side of it (1320 and 1264), and four
     // text sizes between 100% and 200% are read at 768, the narrowest screen that can draw the
     // list: whichever header is drawn there, it is whole. The open menu's last three rows are
     // also read at rest: the re-shoot saw a lighter Send feedback row, which was the row's hover
     // fill under the capture's pointer, not a fill of its own.
+    // AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): the switch is 40rem, so at 200% text it is
+    // a 1280px screen exactly (src/app/Header.js ("AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): the width is 40rem, not 40.25rem.")).
+    // The reads stay at 1320 (40px over) and 1264 (16px under): no read sits on the boundary,
+    // where a pixel of scrollbar or rounding would decide the result. The unit pin holds the
+    // exact value (src/app/Header.test.tsx ("const SWITCH_REM = 40;")).
     // EXTENDED by 88.9-52 R4 C4 (owner 2026-11-18): from md, while the header is in this
     // phone-menu form the floating feedback button is not drawn (the menu's Send feedback row is
     // the entry), and it is drawn again with the desktop list
@@ -1093,9 +1098,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     expect(wide.listRight, `R21 S2: at 1400px and 200% text the desktop list ends at ${wide.listRight}px, off the 1400px screen`).toBeLessThanOrEqual(1400);
     expect(wide.stripOverflow, `R21 S2: at 1400px and 200% text the header is ${wide.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
 
-    // R4 B4: either side of the 40.25rem switch at 200% text (1288px). 1320 is 41.25rem: the
+    // R4 B4 / D5: either side of the 40rem switch at 200% text (1280px). 1320 is 41.25rem: the
     // desktop list, 142px after the name by the measured line (screen width less 1178). 1264 is
-    // 39.5rem: the phone header. 42rem would have kept the phone header at 1320.
+    // 39.5rem: the phone header, 16px under the switch. 42rem would have kept the phone header at 1320.
     await page.setViewportSize({ width: 1320, height: 900 });
     await expect
       .poll(async () => (await readWide()).window, { message: 'R21 B4: the window did not become 1320px wide' })
@@ -1115,7 +1120,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       .poll(async () => (await readWide()).window, { message: 'R21 B4: the window did not become 1264px wide' })
       .toBe(1264);
     const justUnder = await readWide();
-    expect(justUnder.listDrawn, 'R21 B4: at 1264px and 200% text (39.5rem) the desktop list is drawn — 54px short of the switch').toBe(false);
+    expect(justUnder.listDrawn, 'R21 B4: at 1264px and 200% text (39.5rem) the desktop list is drawn — 16px short of the switch').toBe(false);
     expect(justUnder.menuDrawn, 'R21 B4: at 1264px and 200% text the menu button is not drawn').toBe(true);
     expectFabFollowsList(justUnder, 'at 1264px and 200% text');
 
@@ -3464,12 +3469,16 @@ test.describe('Phase 88.9-52 R5 — the floating feedback button, fixed size and
       })
       .toBe('32px');
     // AMENDED Phase 88.9-52 (R4 C4, owner 2026-11-18): with text at 200% the header is in its
-    // phone-menu form on any screen under 1288px (40.25rem of 32px), and while it is the floating
+    // phone-menu form on any screen under the switch (1288px then; 1280px since R4 D5), and while it is the floating
     // button is not drawn (src/app/components/FeedbackButton.js ("HOW IT LEARNS THE HEADER'S STATE, with no script.")).
-    // This project's 1280px window is 8px short of that, so the 200% reads moved to windows that
+    // This project's 1280px window was 8px short of that, so the 200% reads moved to windows that
     // draw the button (1400 here; 1300, 1400 and 1600 for the footer arm below, where the arm read
     // 768, 900 and 1100), and those three narrower widths now prove the opposite: no floating
     // button, the copyright still on one line.
+    // AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): the switch is 40rem, which at 200% text is
+    // 1280px: this project's own window now sits exactly ON it, where a pixel of scrollbar would
+    // decide the result. So the not-drawn read is taken at 1264 (16px under) before the 1400 one;
+    // the footer arm's 1300 is 20px over and stays.
     const fabDrawn = () =>
       page.evaluate(() => {
         const button = Array.from(document.querySelectorAll('button[aria-label="Send feedback"]')).find(
@@ -3478,8 +3487,9 @@ test.describe('Phase 88.9-52 R5 — the floating feedback button, fixed size and
         return { found: Boolean(button), drawn: Boolean(button && button.getClientRects().length > 0) };
       });
     expect((await fabDrawn()).found, 'R5 C4: the floating feedback button is not in the page at all').toBe(true);
+    await page.setViewportSize({ width: 1264, height: 900 });
     await expect
-      .poll(async () => (await fabDrawn()).drawn, { message: 'R5 C4: at 1280px and 200% text (40rem, under the 40.25rem switch) the floating feedback button is still drawn' })
+      .poll(async () => (await fabDrawn()).drawn, { message: 'R5 C4: at 1264px and 200% text (39.5rem, under the 40rem switch) the floating feedback button is still drawn' })
       .toBe(false);
     await page.setViewportSize({ width: 1400, height: 900 });
     await expect
@@ -3509,7 +3519,7 @@ test.describe('Phase 88.9-52 R5 — the floating feedback button, fixed size and
     // (src/app/components/Footer.js ("DECISION Phase 88.9-52 (R4 S1, the round-3 capture")): the copyright stays one line,
     // and nothing readable in the footer is under the button's box at the page end. The button
     // itself has not moved: still 56px, 24px in, 104px up. 768 is the narrowest width that draws it.
-    // AMENDED Phase 88.9-52 (R4 C4): at 200% text the narrowest width that draws it is now 1288px,
+    // AMENDED Phase 88.9-52 (R4 C4, then D5): at 200% text the narrowest width that draws it is now 1280px,
     // so this arm reads 1300, 1400 and 1600; the footer's corner reserve itself is unchanged.
     for (const width of [1300, 1400, 1600]) {
       await page.setViewportSize({ width, height: 900 });

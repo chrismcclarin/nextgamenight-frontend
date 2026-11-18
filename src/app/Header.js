@@ -95,7 +95,7 @@ function Header(){
     // strip's width, and so can no longer be hidden by a class of its own; left open it would
     // dim the page and swallow the first click with no menu on screen. CHOSEN OVER a script that
     // works out the width for itself (the R21 marker's rejected script): this reads only what
-    // the stylesheet decided, so the 40.25rem rule lives in one place. The watcher exists only
+    // the stylesheet decided, so the 40rem rule lives in one place. The watcher exists only
     // while the menu is open. Focus is not moved: the button it would go back to is not drawn.
     // Removing this while the dim layer has no md class brings that stuck dim layer back.
     useEffect(() => {
@@ -139,7 +139,7 @@ function Header(){
                 class-toggle so the fade animation plays on both directions.
                 pointer-events-none on closed state ensures it never eats clicks.
                 AMENDED Phase 88.9-52 (R4 S2): its md class is gone. From md the menu can now be
-                open (a strip under 40.25rem, the marker on the strip below), and this layer is
+                open (a strip under 40rem, the marker on the strip below), and this layer is
                 outside the strip, so no class here can follow that rule. It is drawn whenever
                 the menu is open, and the menu closes itself when its button stops being drawn
                 (this file ("an open menu closes when its own button stops being drawn")). */}
@@ -238,7 +238,17 @@ function Header(){
                 the name. REJECTED: 40rem, which also brings the list back at exactly 1280px
                 doubled: its tightest case is 47.5px, half a pixel short. At ordinary text the
                 strip is 48rem at md, so md alone still decides and nothing changes.
-                Header.test.tsx (S2 arithmetic) works this sum from the measured numbers. */}
+                Header.test.tsx (S2 arithmetic) works this sum from the measured numbers.
+                AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): the width is 40rem, not 40.25rem.
+                The value R4 B4 rejected is now CHOSEN, by the owner, OVER 40.25rem: with doubled
+                text the desktop list is back at exactly a 1280px screen (40 x 32; 40.25rem gave
+                1288px, so a 1280 laptop at 200% stayed on the phone menu by 8px). Its price, which
+                he accepted: the tightest space after the name is 47.5px in place of 51.8px, half a
+                pixel under the 48px R4 B4 asked for, at one text size only (a 19.2px root, text
+                at 120%, on a 768px screen: 768 - 34 - 35.75 x 19.2). At 200% and 1280 the space is
+                102px. The floating feedback button's own box switches at the same 40rem
+                (src/app/components/FeedbackButton.js ("AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): 40rem")).
+                Header.test.tsx (S2 arithmetic) shows the sum and holds a 47px floor. */}
             <div ref={stripRef} className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)] @container/header">
                 {/* DECISION Phase 88.6.1-45 (AC-18, HEADER-NAV-LANDMARK-RULING, copy row H5):
                     CHOSEN — this inner container is the ONE nav landmark, named by
@@ -326,13 +336,13 @@ function Header(){
                                 Header.test.tsx (R21 lockstep) holds them together.
                                 AMENDED Phase 88.9-52 (R4 S2): "From md the menu button is gone and
                                 the md rung applies unchanged" above is now true only while the
-                                strip is at least 40.25rem wide (ordinary text: always). Under that the
+                                strip is at least 40rem wide (ordinary text: always). Under that the
                                 menu button is back from md too, so the md rung waits for the same
-                                40.25rem and this fit rule holds the name instead: at 768 with doubled
+                                40rem and this fit rule holds the name instead: at 768 with doubled
                                 text it is the full doubled 36px on one line, 8px or more before the
                                 button. The marker is on the strip:
                                 this file ("desktop list is drawn only while this strip is at least 42rem wide"). */}
-                            <span className="text-[length:clamp(18px,calc((100cqw_-_34px_-_3.375rem_-_8px)_/_8),1.125rem)] leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only md:@min-[40.25rem]/header:text-xl font-bold tracking-tight text-white">
+                            <span className="text-[length:clamp(18px,calc((100cqw_-_34px_-_3.375rem_-_8px)_/_8),1.125rem)] leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only md:@min-[40rem]/header:text-xl font-bold tracking-tight text-white">
                                 Next Game Night
                             </span>
                         </Link>
@@ -345,8 +355,8 @@ function Header(){
                             the page already comes from `text-white` on the dark header ground, so
                             400 loses nothing. `text-sm` STAYS — Label 14 is the correct rung for a
                             nav label and is already on the scale. Restoring 500 is a decision. */}
-                        {/* 88.9-52 R4 S2: hidden again from md while the strip is under 40.25rem (the marker on the strip). */}
-                        {sessionKnown && <ul className="hidden md:flex gap-x-6 items-center text-white text-sm md:@max-[40.25rem]/header:hidden">
+                        {/* 88.9-52 R4 S2: hidden again from md while the strip is under 40rem (the marker on the strip). */}
+                        {sessionKnown && <ul className="hidden md:flex gap-x-6 items-center text-white text-sm md:@max-[40rem]/header:hidden">
                             {navLinks.map(({ href, label, isLink }, index) => (
                                 <li key={label} className="flex items-center gap-x-6">
                                     {isLink ? (
@@ -391,11 +401,11 @@ function Header(){
                             87.8-08 logged this as a "40x40 FAIL" by arithmetic and RESEARCH
                             flagged it as assumption A7 (never measured in a browser); 88-30's
                             e2e is what settles it. Going back to `p-2` is a decision.
-                            88.9-52 R4 S2: drawn again from md while the strip is under 40.25rem (the
+                            88.9-52 R4 S2: drawn again from md while the strip is under 40rem (the
                             marker on the strip); inline-block is a button's own display. */}
                         {sessionKnown && <button
                             ref={triggerRef}
-                            className="relative md:hidden md:@max-[40.25rem]/header:inline-block text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                            className="relative md:hidden md:@max-[40rem]/header:inline-block text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             aria-label="Toggle menu"
                             aria-expanded={mobileMenuOpen}
@@ -485,10 +495,10 @@ function Header(){
                         animation it protects cannot be running while there is no button to have
                         opened the menu. Once the session is known the panel is mounted for good,
                         closed and inert, exactly as before.
-                        88.9-52 R4 S2: drawn again from md while the strip is under 40.25rem (the
+                        88.9-52 R4 S2: drawn again from md while the strip is under 40rem (the
                         marker on the strip). */}
                     {sessionKnown && <div
-                        className={`md:hidden absolute top-16 left-0 right-0 md:@max-[40.25rem]/header:block bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
+                        className={`md:hidden absolute top-16 left-0 right-0 md:@max-[40rem]/header:block bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
                             mobileMenuOpen
                                 ? 'translate-y-0 opacity-100'
                                 : '-translate-y-full opacity-0 pointer-events-none'
