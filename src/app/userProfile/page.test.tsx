@@ -6571,6 +6571,30 @@ describe('collection bar and dark card fill (88.9-68: X52d, X56c)', () => {
     NAMES.forEach(expectCardFill);
   });
 
+  // W45 (88.9-52, owner pick B, 2026-11-17): in DARK the bar is a lighter strip than the game cards
+  // above it (purple-700 against their purple-800, 1.45), with a purple-500 top rule. Light keeps
+  // the muted bar and the line rule. Exact colour sets on the wrapper, closed and open, so a dark
+  // fill or rule dropped from one arm goes red here; the ratios are pinned at the token layer
+  // (the X52d row of src/app/tokenContrast.test.ts) and in the browser (e2e/profile-look-fixes.spec.ts).
+  it('W45 (88.9-52): the collection bar wrapper names the muted fill and line rule for light and the lighter dark fill and stronger dark rule, closed and open', async () => {
+    stubPhoneViewport(true);
+    await ownGames(8);
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    const colours = () =>
+      (collectionBar().parentElement as HTMLElement).className
+        .split(/\s+/)
+        .filter((token) => /^(dark:)?(bg|border)-/.test(token))
+        .sort();
+    const WANT = ['bg-surface-muted', 'border-line', 'border-t', 'dark:bg-btn-secondary-hover', 'dark:border-line-strong'];
+    expect(colours()).toEqual(WANT);
+    fireEvent.click(collectionBar());
+    await waitFor(() => expect(collectionBar()).toHaveAttribute('aria-expanded', 'true'));
+    expect(colours()).toEqual(WANT);
+    // The words and the chevron keep the primary ink (7.35 on the dark bar, 11.94 on the light one).
+    expect(collectionBar().className.split(/\s+/)).toContain('text-content-primary');
+  });
+
   // Q2 (owner ruling 2026-11-14, "Q2-y-inline"): the bar never opens by itself; a plain visible
   // Game added line shows under + Add from BGG. The owned-games read answers whatever `rows` holds,
   // so a refresh after the add brings the new list.

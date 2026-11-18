@@ -386,6 +386,13 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
       expect(dark.ruleWidth, `X52d: the bar's top rule is not 1px (${read})`).toBe('1px');
       expect(ruleApart, `X52d: the dark top rule reads ${ruleApart.toFixed(4)} from the bar, under ${FILL_FLOOR} (${read})`).toBeGreaterThanOrEqual(FILL_FLOOR);
       expect(wordsOnBar, `X52d: the dark bar's words read ${wordsOnBar.toFixed(4)}, under ${TEXT_FLOOR} (${read})`).toBeGreaterThanOrEqual(TEXT_FLOOR);
+      // W45 (88.9-52, owner pick B, 2026-11-17): the dark bar is a LIGHTER strip than the game cards
+      // above it (it was the same colour, 1.0000). Token values: bar purple-700 on the cards'
+      // purple-800 = 1.4467, on the section card 1.7767, rule purple-500 on the bar 1.9263, words 7.3532.
+      const barFromCards = ratio(dark.bar, dark.cards[0].fill, 'W45 dark bar against the game cards');
+      // eslint-disable-next-line no-console -- the measured pair is recorded from the CI log (plan 88.9-52)
+      console.log(`[88.9-52 W45] ${testInfo.project.name} dark: bar ${dark.bar} on cards ${dark.cards[0].fill} = ${barFromCards.toFixed(4)}`);
+      expect(barFromCards, `W45: the dark bar reads ${barFromCards.toFixed(4)} from the game cards above it, under ${FILL_FLOOR} (${read})`).toBeGreaterThanOrEqual(FILL_FLOOR);
     }
 
     // Light: the cards keep no fill of their own; the bar still reads apart and its words pass.

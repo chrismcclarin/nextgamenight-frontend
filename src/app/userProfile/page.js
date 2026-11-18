@@ -4704,7 +4704,18 @@ function Profile(){
                             the W45 fix until the owner rules again. Dark now: bar 1.2281 from the section card,
                             1.0000 from the game cards (W45's complaint, OPEN with the owner: a bar lighter than
                             the cards, or the bar left equal to them), rule 1.4467, words 10.64. Giving the bar a
-                            dark fill of its own is the owner's ruling to make, not a cleanup. */}
+                            dark fill of its own is the owner's ruling to make, not a cleanup.
+                            AMENDED Phase 88.9-52 (W45, owner 2026-11-17, pick B): the owner ruled. In DARK the bar
+                            is the LIGHTER strip: fill purple-700 #42536e (dark:bg-btn-secondary-hover, the step a
+                            pressable secondary surface already lifts to in dark) under a purple-500 #6b7fa3 top
+                            rule (dark:border-line-strong), chosen OVER the bar left equal to the game cards (the
+                            muted fill, 1.0000 from them) and OVER the darker bar (mock A, purple-950: it read as a
+                            gap, the page showing through). This supersedes the two W45 lines above for dark; the
+                            X52d floors hold. Dark now: bar 1.7767 from the section card, 1.4467 from the game
+                            cards, rule 1.9263 on the bar, words 7.3532, focus ring 4.6693 on the bar. Light is
+                            unchanged (muted bar, line rule). The dark classes sit on the wrapper beside the light
+                            ones, in both arms; naming a dark fill without the dark rule leaves the rule the SAME
+                            colour as the bar (the line colour in dark is purple-700). */}
                         <div id={collectionGridId} aria-busy={loadingGames || undefined} className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {(collectionOverflows && !collectionOpen
                                 ? ownedGames.slice(0, collectionVisibleCount + collectionPeekCount)
@@ -4746,8 +4757,8 @@ function Profile(){
                             <div
                                 className={
                                     collectionOpen
-                                        ? '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-4 rounded-b-card overflow-hidden border-t border-line bg-surface-muted'
-                                        : '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-0 rounded-b-card overflow-hidden border-t border-line bg-surface-muted'
+                                        ? '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-4 rounded-b-card overflow-hidden border-t border-line dark:border-line-strong bg-surface-muted dark:bg-btn-secondary-hover'
+                                        : '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-0 rounded-b-card overflow-hidden border-t border-line dark:border-line-strong bg-surface-muted dark:bg-btn-secondary-hover'
                                 }
                             >
                                 <button
