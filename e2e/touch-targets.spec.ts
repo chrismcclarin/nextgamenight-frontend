@@ -933,6 +933,129 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       'R21: at 200% text and 320px the logo touches the menu button',
     ).toBeGreaterThanOrEqual(8);
     await expect(brand, 'R21: with the name hidden from sight the home link lost its name').toHaveCount(1);
+
+    // R21 (88.9-52 R4 S2), RENDERED: from md up. The round-3 capture found, at 768px with text at
+    // 200%, the desktop header's 40px name run straight into Home and the list run off the right
+    // edge. From md the desktop list is drawn only while the strip is at least 42rem wide
+    // (src/app/Header.js ("DECISION Phase 88.9-52 (R4 S2, the round-3 capture: at 768px with doubled text the")); under that it is the
+    // phone header, so every link is in the menu. Three states are read: 768 at 200% (the phone
+    // header), 1400 at 200% (43.75rem: the desktop list, with room), 768 at 100% (unchanged).
+    const readWide = () =>
+      page.evaluate(() => {
+        const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
+        const strip = nav.parentElement as HTMLElement;
+        const backdrop = strip.previousElementSibling as HTMLElement;
+        const link = nav.querySelector('a[href="/"]') as HTMLElement;
+        const name = Array.from(link.querySelectorAll('span')).find(
+          (el) => (el.textContent ?? '').trim() === 'Next Game Night',
+        ) as HTMLElement;
+        const menu = nav.querySelector('button[aria-label="Toggle menu"]') as HTMLElement;
+        const list = Array.from(nav.querySelectorAll('ul')).find((ul) => ul.className.split(/\s+/).includes('md:flex')) as HTMLElement;
+        const items = Array.from(list.children) as HTMLElement[];
+        const cs = getComputedStyle(name);
+        const n = name.getBoundingClientRect();
+        const m = menu.getBoundingClientRect();
+        const first = items[0].getBoundingClientRect();
+        const last = items[items.length - 1].getBoundingClientRect();
+        return {
+          rootFontPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
+          window: document.documentElement.clientWidth,
+          listDrawn: getComputedStyle(list).display !== 'none',
+          menuDrawn: getComputedStyle(menu).display !== 'none',
+          menuOpen: menu.getAttribute('aria-expanded'),
+          fontPx: parseFloat(cs.fontSize),
+          linePx: parseFloat(cs.lineHeight),
+          name: { right: n.right, width: n.width, height: n.height, bottom: n.bottom },
+          menuLeft: m.left,
+          listLeft: first.left,
+          listRight: last.right,
+          listItems: items.length,
+          stripBottom: strip.getBoundingClientRect().bottom,
+          stripOverflow: strip.scrollWidth - strip.clientWidth,
+          backdropOpacity: getComputedStyle(backdrop).opacity,
+          backdropDrawn: getComputedStyle(backdrop).display !== 'none',
+        };
+      });
+    const navLinks = page.getByRole('navigation', { name: 'Main', exact: true });
+
+    // 768 wide, text at 200%: 24rem, under the switch. The phone header.
+    await page.setViewportSize({ width: 768, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 S2: the window did not become 768px wide' })
+      .toBe(768);
+    const mid = await readWide();
+    expect(mid.rootFontPx, 'R21 S2: text is not at 200% for the 768px step').toBe(32);
+    expect(mid.listDrawn, 'R21 S2: at 768px and 200% text the desktop list is still drawn — it does not fit there').toBe(false);
+    expect(mid.menuDrawn, 'R21 S2: at 768px and 200% text the menu button is not drawn, so the links are out of reach').toBe(true);
+    expect(mid.name.width, 'R21 S2: at 768px and 200% text the site name is not drawn').toBeGreaterThan(100);
+    expect(mid.fontPx, `R21 S2: at 768px and 200% text the site name is ${mid.fontPx}px — the fit rule gives the doubled 36px there, not the 40px md size`).toBeCloseTo(36, 0);
+    expect(mid.name.height, `R21 S2: at 768px and 200% text the site name is ${mid.name.height}px tall on a ${mid.linePx}px line — it wrapped`).toBeLessThanOrEqual(mid.linePx + 1);
+    expect(
+      mid.menuLeft - mid.name.right,
+      `R21 S2: at 768px and 200% text the site name ends ${mid.menuLeft - mid.name.right}px before the menu button`,
+    ).toBeGreaterThanOrEqual(7.5);
+    expect(mid.name.bottom, 'R21 S2: at 768px and 200% text the site name runs below the header strip').toBeLessThanOrEqual(mid.stripBottom + 0.5);
+    expect(mid.stripOverflow, `R21 S2: at 768px and 200% text the header is ${mid.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
+
+    // Every link is reachable there: the menu opens, with its dim layer, and holds all four.
+    await hamburger.click();
+    await expect(hamburger, 'R21 S2: the menu did not open at 768px and 200% text').toHaveAttribute('aria-expanded', 'true');
+    for (const name of ['Home', 'Friends', 'Profile', 'Logout']) {
+      const link = navLinks.getByRole('link', { name, exact: true });
+      await expect(link, `R21 S2: the ${name} link is not shown in the open menu at 768px and 200% text`).toBeVisible();
+      const box = await link.boundingBox();
+      expect(box, `R21 S2: the ${name} link has no box`).not.toBeNull();
+      expect((box?.x ?? 0) + (box?.width ?? 0), `R21 S2: the ${name} link runs off the right edge at 768px`).toBeLessThanOrEqual(768);
+      expect(box?.x ?? -1, `R21 S2: the ${name} link starts off the left edge at 768px`).toBeGreaterThanOrEqual(0);
+    }
+    await expect
+      .poll(async () => (await readWide()).backdropOpacity, { message: 'R21 S2: the dim layer behind the open menu is not shown from md' })
+      .toBe('1');
+    expect((await readWide()).backdropDrawn, 'R21 S2: the dim layer behind the open menu is not drawn from md').toBe(true);
+
+    // 1400 wide, text still at 200%: 43.75rem, over the switch. The desktop list comes back with
+    // room after the name, nothing runs off the edge, and the menu left open closes itself.
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).listDrawn, { message: 'R21 S2: at 1400px and 200% text the desktop list is not drawn' })
+      .toBe(true);
+    await expect
+      .poll(async () => (await readWide()).menuOpen, { message: 'R21 S2: the menu left open stayed open after the desktop list came back' })
+      .toBe('false');
+    await expect
+      .poll(async () => (await readWide()).backdropOpacity, { message: 'R21 S2: the dim layer stayed over the page after the desktop list came back' })
+      .toBe('0');
+    const wide = await readWide();
+    expect(wide.menuDrawn, 'R21 S2: at 1400px and 200% text the menu button is still drawn beside the desktop list').toBe(false);
+    expect(wide.fontPx, `R21 S2: at 1400px and 200% text the site name is ${wide.fontPx}px, not its doubled md size (40px)`).toBeCloseTo(40, 0);
+    expect(wide.listItems, 'R21 S2: the desktop list is not the signed-in list (Home, Friends, Profile, Logout, the theme switch)').toBe(5);
+    expect(
+      wide.listLeft - wide.name.right,
+      `R21 S2: at 1400px and 200% text the site name ends ${wide.listLeft - wide.name.right}px before Home — under one list gap (48px)`,
+    ).toBeGreaterThanOrEqual(48);
+    expect(wide.listRight, `R21 S2: at 1400px and 200% text the desktop list ends at ${wide.listRight}px, off the 1400px screen`).toBeLessThanOrEqual(1400);
+    expect(wide.stripOverflow, `R21 S2: at 1400px and 200% text the header is ${wide.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
+
+    // 768 wide at ordinary text: nothing changed. The desktop list, the 20px name, no menu button.
+    await page.addStyleTag({ content: 'html{font-size:100% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R21 S2: the root font size did not go back to 16px',
+      })
+      .toBe('16px');
+    await page.setViewportSize({ width: 768, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 S2: the window did not go back to 768px wide' })
+      .toBe(768);
+    const plainMd = await readWide();
+    expect(plainMd.listDrawn, 'R21 S2: at 768px and ordinary text the desktop list is not drawn — the md header changed').toBe(true);
+    expect(plainMd.menuDrawn, 'R21 S2: at 768px and ordinary text the menu button is drawn — the md header changed').toBe(false);
+    expect(plainMd.fontPx, `R21 S2: at 768px and ordinary text the site name is ${plainMd.fontPx}px, not its 20px`).toBeCloseTo(20, 1);
+    expect(
+      plainMd.listLeft - plainMd.name.right,
+      `R21 S2: at 768px and ordinary text the site name ends ${plainMd.listLeft - plainMd.name.right}px before Home`,
+    ).toBeGreaterThanOrEqual(24);
+    expect(plainMd.listRight, 'R21 S2: at 768px and ordinary text the desktop list runs off the screen').toBeLessThanOrEqual(768);
   });
   /* DECISION Phase 88-30 (D-36 / DEF-1): the `.btn-compact` half of this test measures
      PLANTED probe elements, chosen OVER driving the two shipped `w-8 h-8` steppers in

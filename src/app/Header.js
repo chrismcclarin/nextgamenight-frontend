@@ -17,6 +17,8 @@ function Header(){
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const triggerRef = useRef(null);
     const wasOpenRef = useRef(false);
+    // The header strip, watched while the menu is open (88.9-52 R4 S2, the effect below).
+    const stripRef = useRef(null);
 
     // MOB-08 (Plan 77-01): mobile hamburger unread-indicator dot.
     // Same totalCount source as the in-menu bell badge — the
@@ -86,6 +88,28 @@ function Header(){
         wasOpenRef.current = mobileMenuOpen;
     }, [mobileMenuOpen]);
 
+    // DECISION Phase 88.9-52 (R4 S2): an open menu closes when its own button stops being drawn,
+    // which is the moment the stylesheet swaps the phone header for the desktop list (the marker
+    // on the strip below has the rule). CHOSEN OVER leaving the state open behind a hidden
+    // panel, as it was: the dim layer behind the menu is a sibling of the strip, cannot read the
+    // strip's width, and so can no longer be hidden by a class of its own; left open it would
+    // dim the page and swallow the first click with no menu on screen. CHOSEN OVER a script that
+    // works out the width for itself (the R21 marker's rejected script): this reads only what
+    // the stylesheet decided, so the 42rem rule lives in one place. The watcher exists only
+    // while the menu is open. Focus is not moved: the button it would go back to is not drawn.
+    // Removing this while the dim layer has no md class brings that stuck dim layer back.
+    useEffect(() => {
+        if (typeof ResizeObserver === 'undefined' || !mobileMenuOpen) return;
+        const strip = stripRef.current;
+        const trigger = triggerRef.current;
+        if (!strip || !trigger) return;
+        const observer = new ResizeObserver(() => {
+            if (getComputedStyle(trigger).display === 'none') setMobileMenuOpen(false);
+        });
+        observer.observe(strip);
+        return () => observer.disconnect();
+    }, [mobileMenuOpen]);
+
     // DECISION Phase 88.9-52 (W6, owner at the after-build look page: no logo and no menu until the
     // check finishes): while the session is still being read the header is the real strip with the
     // brand in it, chosen OVER the empty strip this line used to return (a page that shows its own
@@ -113,9 +137,14 @@ function Header(){
             {/* Dim backdrop — sibling of the header so it sits above the page
                 but below the menu in z-order. Rendered unconditionally with
                 class-toggle so the fade animation plays on both directions.
-                pointer-events-none on closed state ensures it never eats clicks. */}
+                pointer-events-none on closed state ensures it never eats clicks.
+                AMENDED Phase 88.9-52 (R4 S2): its md class is gone. From md the menu can now be
+                open (a strip under 42rem, the marker on the strip below), and this layer is
+                outside the strip, so no class here can follow that rule. It is drawn whenever
+                the menu is open, and the menu closes itself when its button stops being drawn
+                (this file ("an open menu closes when its own button stops being drawn")). */}
             <div
-                className={`md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity duration-200 ease-out ${
+                className={`fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity duration-200 ease-out ${
                     mobileMenuOpen
                         ? 'opacity-100'
                         : 'opacity-0 pointer-events-none'
@@ -160,7 +189,34 @@ function Header(){
                 AMENDED Phase 88.9-05 (owner pick A3d, 2026-10-31): the amber scope ends at the bell panel — its
                 light card section re-scopes --ring to the page ring
                 (src/app/components/NotificationBell.js ("DECISION Phase 88.9-05")); the chrome itself keeps amber-400. */}
-            <div className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)]">
+            {/* DECISION Phase 88.9-52 (R4 S2, the round-3 capture: at 768px with doubled text the
+                40px site name ran straight into Home, and the desktop list ran off the right edge
+                of the screen: Profile cut, Logout and the theme switch out of reach): from md the
+                desktop list is drawn only while this strip is at least 42rem wide. Under that the
+                header is the phone header: the menu button, its panel, and the site name on R21's
+                fit rule. The strip is a named query container and four sites read it, each
+                keeping its md class: the list (hidden again under 42rem), the menu button and the
+                panel (drawn again under 42rem) and the name (its md rung only from 42rem). A
+                container max is exclusive and a min inclusive, so the two spellings meet exactly.
+                WHY 42rem: the name at its md size (34px logo, 0.625rem gap, 7.87em of 1.25rem)
+                and the signed-in list (about 23rem: four words, the bell, the theme switch, five
+                1.5rem gaps) need about 35.6rem + 34px of the strip, counting its 2rem of side
+                padding; 42rem leaves 6.4rem less 34px between them, 69px at ordinary text and
+                172px doubled. At ordinary text the strip is 48rem at md, so md alone still
+                decides and nothing changes. The list's width is read off a capture frame, not
+                measured in a browser by this change; e2e/touch-targets.spec.ts ("R21 (88.9-52 R4 S2)") is the
+                rendered proof and Header.test.tsx (S2 arithmetic) works the sum.
+                CHOSEN OVER the R21 clamp or the logo alone beside the list (at 768 doubled the
+                list alone is about 740px of a 704px row, so links stay out of reach whatever the
+                name does), OVER letting the list wrap (the bar is 4rem tall and the bell and the
+                theme switch are 2.25rem each: two lines do not fit), OVER a list that scrolls
+                sideways (it would clip the bell's panel), and OVER a script that measures. In the
+                phone header every link is in the menu, so every link is reachable.
+                The floating feedback button still shows from md (its own md class): at these
+                sizes the menu's Send feedback row and the button are both there, on purpose.
+                Changing 42rem at one site and not the others splits the header: Header.test.tsx
+                (S2 tokens) holds the four together. */}
+            <div ref={stripRef} className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)] @container/header">
                 {/* DECISION Phase 88.6.1-45 (AC-18, HEADER-NAV-LANDMARK-RULING, copy row H5):
                     CHOSEN — this inner container is the ONE nav landmark, named by
                     MAIN_NAV_LABEL. It is the nearest element that holds BOTH lists — the desktop
@@ -244,8 +300,16 @@ function Header(){
                                 than at ordinary text); a script that measures the row (a class rule
                                 does it). Changing the constants without re-measuring the name, the
                                 logo size, the gap or the menu button is a decision, not a cleanup:
-                                Header.test.tsx (R21 lockstep) holds them together. */}
-                            <span className="text-[length:clamp(18px,calc((100cqw_-_34px_-_3.375rem_-_8px)_/_8),1.125rem)] leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only md:text-xl font-bold tracking-tight text-white">
+                                Header.test.tsx (R21 lockstep) holds them together.
+                                AMENDED Phase 88.9-52 (R4 S2): "From md the menu button is gone and
+                                the md rung applies unchanged" above is now true only while the
+                                strip is at least 42rem wide (ordinary text: always). Under that the
+                                menu button is back from md too, so the md rung waits for the same
+                                42rem and this fit rule holds the name instead: at 768 with doubled
+                                text it is the full doubled 36px on one line, 8px or more before the
+                                button. The marker is on the strip:
+                                this file ("desktop list is drawn only while this strip is at least 42rem wide"). */}
+                            <span className="text-[length:clamp(18px,calc((100cqw_-_34px_-_3.375rem_-_8px)_/_8),1.125rem)] leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only md:@min-[42rem]/header:text-xl font-bold tracking-tight text-white">
                                 Next Game Night
                             </span>
                         </Link>
@@ -258,7 +322,8 @@ function Header(){
                             the page already comes from `text-white` on the dark header ground, so
                             400 loses nothing. `text-sm` STAYS — Label 14 is the correct rung for a
                             nav label and is already on the scale. Restoring 500 is a decision. */}
-                        {sessionKnown && <ul className="hidden md:flex gap-x-6 items-center text-white text-sm">
+                        {/* 88.9-52 R4 S2: hidden again from md while the strip is under 42rem (the marker on the strip). */}
+                        {sessionKnown && <ul className="hidden md:flex gap-x-6 items-center text-white text-sm md:@max-[42rem]/header:hidden">
                             {navLinks.map(({ href, label, isLink }, index) => (
                                 <li key={label} className="flex items-center gap-x-6">
                                     {isLink ? (
@@ -302,10 +367,12 @@ function Header(){
                             left of the container's `px-4` edge and nothing reflows.
                             87.8-08 logged this as a "40x40 FAIL" by arithmetic and RESEARCH
                             flagged it as assumption A7 (never measured in a browser); 88-30's
-                            e2e is what settles it. Going back to `p-2` is a decision. */}
+                            e2e is what settles it. Going back to `p-2` is a decision.
+                            88.9-52 R4 S2: drawn again from md while the strip is under 42rem (the
+                            marker on the strip); inline-block is a button's own display. */}
                         {sessionKnown && <button
                             ref={triggerRef}
-                            className="relative md:hidden text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                            className="relative md:hidden md:@max-[42rem]/header:inline-block text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             aria-label="Toggle menu"
                             aria-expanded={mobileMenuOpen}
@@ -394,9 +461,11 @@ function Header(){
                         conditional mount R3-D rejected: R3-D is about open and closed, and the exit
                         animation it protects cannot be running while there is no button to have
                         opened the menu. Once the session is known the panel is mounted for good,
-                        closed and inert, exactly as before. */}
+                        closed and inert, exactly as before.
+                        88.9-52 R4 S2: drawn again from md while the strip is under 42rem (the
+                        marker on the strip). */}
                     {sessionKnown && <div
-                        className={`md:hidden absolute top-16 left-0 right-0 bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
+                        className={`md:hidden absolute top-16 left-0 right-0 md:@max-[42rem]/header:block bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
                             mobileMenuOpen
                                 ? 'translate-y-0 opacity-100'
                                 : '-translate-y-full opacity-0 pointer-events-none'

@@ -12,7 +12,7 @@
 // `.tsx` is mandatory: vitest.config.mts only collects `.ts`/`.tsx`; its jsx-in-js transform
 // handles the `.js` component under test.
 import * as React from 'react';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { auth, unreadState } = vi.hoisted(() => ({
@@ -331,7 +331,10 @@ describe('R21 (88.9-52): the header site name fits one line at enlarged text, or
     expect(hide, 'the give-way rule (visually hidden under a row width) is on the name').toBeTruthy();
     expect(cls).toContain('whitespace-nowrap');
     // The desktop rung of the owner-accepted pair (C10a) is kept; the phone rung is now the fit rule's cap.
-    expect(cls).toContain('md:text-xl');
+    // Since 88.9-52 R4 S2 the desktop rung applies only while the desktop list is drawn (the S2
+    // describe below); a bare md rung would put the 20px name back beside the menu button.
+    expect(cls).toContain('md:@min-[42rem]/header:text-xl');
+    expect(cls).not.toContain('md:text-xl');
     expect(cls).not.toContain('text-lg');
     // The row that holds the brand link and the menu button is the query container.
     const row = link.parentElement as HTMLElement;
@@ -425,6 +428,141 @@ describe('the header home link is named by the product name alone (88.9-52)', ()
       const outsideLogo = Array.from(link.querySelectorAll('span')).filter((el) => !logo.contains(el));
       expect(outsideLogo.map((el) => el.textContent?.trim())).toEqual(['Next Game Night']);
       cleanup();
+    }
+  });
+});
+
+// 88.9-52 R4 S2 (the round-3 capture, 768px with doubled text): the desktop header's 40px site
+// name ran straight into Home with no gap, and the list ran off the right edge of the screen
+// (Profile was cut, Logout and the theme switch were not reachable). From md the header now shows
+// the desktop list only while the strip is at least 42rem wide; under that it is the phone header:
+// the menu button, the panel, and the name on R21's fit rule. At ordinary text the strip is 48rem
+// at md, so nothing changes there. jsdom resolves no media or container query, so these pin the
+// class tokens, work the arithmetic, and drive the one piece of script (the menu closes when its
+// button stops being drawn). The rendered proof is in e2e/touch-targets.spec.ts ("R21 (88.9-52 R4 S2)").
+describe('S2 (88.9-52 R4): from md the header falls back to the phone menu while the desktop list cannot fit', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  const WHEN_NARROW = 'md:@max-[42rem]/header:';
+  const WHEN_WIDE = 'md:@min-[42rem]/header:';
+
+  const parts = () => {
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const strip = nav.parentElement as HTMLElement;
+    const menu = screen.getByRole('button', { name: 'Toggle menu' });
+    const list = Array.from(nav.querySelectorAll('ul')).find((ul) => tokens(ul).includes('md:flex')) as HTMLElement;
+    const panel = nav.querySelector('[inert]') as HTMLElement;
+    const backdrop = strip.previousElementSibling as HTMLElement;
+    const link = screen.getByRole('link', { name: 'Next Game Night' });
+    const name = Array.from(link.querySelectorAll('span')).find((el) => el.textContent?.trim() === 'Next Game Night') as HTMLElement;
+    return { nav, strip, menu, list, panel, backdrop, name };
+  };
+
+  it('S2 tokens: one 42rem width on the strip switches the list, the menu button, the panel and the name together', () => {
+    render(<Header />);
+    const { strip, menu, list, panel, backdrop, name } = parts();
+    // The strip (the full-width bar) is the named container all four read.
+    expect(tokens(strip)).toContain('@container/header');
+    // Each keeps its md class and gains the opposite display for a strip under 42rem.
+    expect(tokens(list)).toEqual(expect.arrayContaining(['hidden', 'md:flex', WHEN_NARROW + 'hidden']));
+    expect(tokens(menu)).toEqual(expect.arrayContaining(['md:hidden', WHEN_NARROW + 'inline-block']));
+    expect(tokens(panel)).toEqual(expect.arrayContaining(['md:hidden', WHEN_NARROW + 'block']));
+    expect(tokens(name)).toContain(WHEN_WIDE + 'text-xl');
+    // One width, written the same way at every site (a container max is exclusive and a min is
+    // inclusive, so the two forms meet with no gap and no overlap).
+    const widths = [strip.parentElement as HTMLElement]
+      .flatMap((root) => Array.from(root.querySelectorAll('[class]')))
+      .flatMap((el) => tokens(el))
+      .filter((t) => t.includes('/header:'))
+      .map((t) => /^md:@(?:min|max)-\[([^\]]+)\]\/header:/.exec(t)?.[1]);
+    expect(widths).toHaveLength(4);
+    expect(new Set(widths)).toEqual(new Set(['42rem']));
+    // The dim layer behind the open menu is outside the strip and cannot read its width, so it
+    // carries no md class: it is drawn whenever the menu is open, at any width.
+    expect(tokens(backdrop)).toEqual(expect.arrayContaining(['fixed', 'inset-0']));
+    expect(tokens(backdrop)).not.toContain('md:hidden');
+    expect(backdrop).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('S2 arithmetic: under 42rem the name keeps its 8px before the menu button from 768 up; from 42rem the name and the list fit with room between', () => {
+    // The name is 7.87em wide (capture j: 157.4px at 20px).
+    const NAME_EM = 157.4 / 20;
+    // R21's fit rule, the same constants its lockstep test reads off the class.
+    const fit = (strip: number, rem: number) => {
+      const row = strip - 2 * rem;
+      const shown = row >= 186 + 3.375 * rem;
+      const fontPx = Math.min(Math.max(18, (row - 34 - 3.375 * rem - 8) / 8), 1.125 * rem);
+      return { shown, fontPx, clearance: row - 34 - 3.375 * rem - NAME_EM * fontPx };
+    };
+    // The desktop list's width in rem. Its words were read off the capture frame at 28px text
+    // (Home 80px, Friends 96px, Profile 84px; Logout taken as 96px): 11.125rem. The bell is
+    // p-1.5 round a w-6 icon and the theme switch p-2 round a w-5 icon, 2.25rem each. Five
+    // gap-x-6 gaps: four between the five items and one between Profile and the bell.
+    const LIST_REM = 356 / 32 + 2.25 * 2 + 1.5 * 5;
+    const desktopGap = (strip: number, rem: number) =>
+      strip - 2 * rem - 34 - 0.625 * rem - NAME_EM * 1.25 * rem - LIST_REM * rem;
+
+    for (const rem of [16, 18, 20, 24, 28, 32]) {
+      for (let viewport = 768; viewport <= 1600; viewport += 1) {
+        if (viewport < 42 * rem) {
+          // The phone header, above md: the name is on one line, at least 18px, 8px clear.
+          const { shown, fontPx, clearance } = fit(viewport, rem);
+          expect(shown, viewport + ' at ' + rem).toBe(true);
+          expect(fontPx, viewport + ' at ' + rem).toBeGreaterThanOrEqual(18);
+          expect(clearance, viewport + ' at ' + rem).toBeGreaterThanOrEqual(8);
+        } else {
+          // The desktop list: at least 1.5rem (one of its own gaps) between the name and Home.
+          expect(desktopGap(viewport, rem), viewport + ' at ' + rem).toBeGreaterThanOrEqual(1.5 * rem);
+        }
+      }
+    }
+    // Ordinary text: the strip is 48rem at md, over the 42rem switch, so md alone still decides.
+    expect(768 / 16).toBeGreaterThanOrEqual(42);
+    // The captured defect: 768 with doubled text is 24rem, far under 42rem, so it is the phone header.
+    expect(768 / 32).toBeLessThan(42);
+    // And what it was: the old md-only rule put the list beside the name there, short by this much.
+    expect(desktopGap(768, 32)).toBeLessThan(0);
+  });
+
+  it('S2 close: an open menu closes when its button stops being drawn (the strip grew past the switch)', () => {
+    const observers: Array<{ cb: () => void; targets: Element[]; live: boolean }> = [];
+    class FakeResizeObserver {
+      private entry: { cb: () => void; targets: Element[]; live: boolean };
+      constructor(cb: () => void) {
+        this.entry = { cb, targets: [], live: true };
+        observers.push(this.entry);
+      }
+      observe(el: Element) {
+        this.entry.targets.push(el);
+      }
+      unobserve() {}
+      disconnect() {
+        this.entry.live = false;
+      }
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    try {
+      render(<Header />);
+      const { strip, menu, panel } = parts();
+      // Closed: nothing is watching.
+      expect(observers.filter((o) => o.live)).toHaveLength(0);
+      fireEvent.click(menu);
+      expect(menu).toHaveAttribute('aria-expanded', 'true');
+      const live = observers.filter((o) => o.live);
+      expect(live).toHaveLength(1);
+      expect(live[0].targets).toEqual([strip]);
+      // A resize that leaves the button drawn changes nothing.
+      act(() => live[0].cb());
+      expect(menu).toHaveAttribute('aria-expanded', 'true');
+      expect(panel).not.toHaveAttribute('inert');
+      // The strip passes the switch: the stylesheet stops drawing the button. The menu closes.
+      menu.style.display = 'none';
+      act(() => live[0].cb());
+      expect(menu).toHaveAttribute('aria-expanded', 'false');
+      expect(panel).toHaveAttribute('inert');
+      // And the watcher is gone with it.
+      expect(observers.filter((o) => o.live)).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 });
