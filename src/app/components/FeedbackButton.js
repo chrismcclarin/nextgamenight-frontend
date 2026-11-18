@@ -466,7 +466,16 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
             text overlapped it by 48px); padding added to the end of every page so the corner is
             empty (owner: an awkward blank space); raising it only while the footer is on screen
             (shown as the second mock, not picked). Changing the size, the units or the offset is
-            a decision, not a cleanup. */}
+            a decision, not a cleanup.
+            AMENDED Phase 88.9-52 (R4 S1, the round-3 capture): nothing on this button changes. The
+            3rem above is true only while the copyright is one line, and at 768px with doubled text
+            it broke onto two and this button sat on it (button 740 to 796px, copyright 726 to
+            801px). The footer now keeps this corner clear from md: its copyright never breaks,
+            its row breaks instead, and its link group stops 8px short of this box
+            (src/app/components/Footer.js ("DECISION Phase 88.9-52 (R4 S1, the round-3 capture")). REJECTED here: a taller offset
+            for a two-line copyright (the offset is the owner's pick and a class cannot count
+            lines). The R5 lockstep test in this file's test holds the footer's classes to the
+            24px, 56px and 3rem written on this line. */}
         <Button
           variant="primary"
           size="iconSquare"

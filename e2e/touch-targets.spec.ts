@@ -3142,5 +3142,58 @@ test.describe('Phase 88.9-52 R5 — the floating feedback button, fixed size and
       })
       .toBe('32px');
     check('200% text', await readAtPageEnd('200% text'), 104);
+
+    // R5 (88.9-52 R4 S1, 768 wide and up at 200% text): the round-3 capture found the copyright
+    // broken onto two lines at 768px with the button sitting on it (button 740 to 796px, copyright
+    // 726 to 801px). From md the footer keeps the button's corner clear
+    // (src/app/components/Footer.js ("DECISION Phase 88.9-52 (R4 S1, the round-3 capture")): the copyright stays one line,
+    // and nothing readable in the footer is under the button's box at the page end. The button
+    // itself has not moved: still 56px, 24px in, 104px up. 768 is the narrowest width that draws it.
+    for (const width of [768, 900, 1100]) {
+      await page.setViewportSize({ width, height: 900 });
+      const label = `200% text, ${width} wide`;
+      const read = await readAtPageEnd(label);
+      expect(read.viewportWidth, `R5 (${label}): the window is not ${width}px wide`).toBe(width);
+      expect(read.fab.width, `R5 (${label}): the button is ${read.fab.width}px wide, not 56px`).toBeCloseTo(56, 0);
+      expect(read.fab.height, `R5 (${label}): the button is ${read.fab.height}px tall, not 56px`).toBeCloseTo(56, 0);
+      expect(read.viewportWidth - read.fab.right, `R5 (${label}): the button is not 24px from the right edge`).toBeCloseTo(24, 0);
+      expect(read.viewportHeight - read.fab.bottom, `R5 (${label}): the button is not 104px off the bottom`).toBeCloseTo(104, 0);
+      const footer = await page.evaluate(() => {
+        const button = Array.from(document.querySelectorAll('button[aria-label="Send feedback"]')).find(
+          (el) => (el.textContent ?? '').trim() === '',
+        ) as HTMLElement;
+        const b = button.getBoundingClientRect();
+        const line = Array.from(document.querySelectorAll('footer span')).find((el) =>
+          /^\s*©\s*\d{4}\s+Next Game Night\s*$/.test(el.textContent ?? ''),
+        ) as HTMLElement;
+        const l = line.getBoundingClientRect();
+        // Everything a person reads or taps in the footer: the links, Report bug, the BGG mark, the copyright.
+        const things = [line, ...Array.from(document.querySelectorAll('footer a, footer button, footer img'))] as HTMLElement[];
+        const under = things
+          .map((el) => ({ el, r: el.getBoundingClientRect() }))
+          .filter(({ r }) => r.width > 0 && r.height > 0 && r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top)
+          .map(({ el, r }) => `${el.tagName.toLowerCase()} "${(el.textContent ?? '').trim().slice(0, 30)}" ${Math.round(r.left)}-${Math.round(r.right)} x ${Math.round(r.top)}-${Math.round(r.bottom)}`);
+        return {
+          under,
+          copyrightHeight: l.height,
+          copyrightLine: parseFloat(getComputedStyle(line).lineHeight),
+          copyrightRight: l.right,
+          copyrightTop: l.top,
+          fabBottom: b.bottom,
+          footerControls: things.length,
+        };
+      });
+      expect(footer.footerControls, `R5 (${label}): the footer's links were not found, so nothing was compared`).toBeGreaterThanOrEqual(5);
+      expect(footer.under, `R5 (${label}): the feedback button covers footer content: ${footer.under.join('; ')}`).toEqual([]);
+      expect(
+        footer.copyrightHeight,
+        `R5 (${label}): the copyright is ${footer.copyrightHeight}px tall on a ${footer.copyrightLine}px line — it broke onto a second line`,
+      ).toBeLessThanOrEqual(footer.copyrightLine + 1);
+      expect(
+        footer.copyrightTop - footer.fabBottom,
+        `R5 (${label}): the copyright line starts ${footer.copyrightTop - footer.fabBottom}px under the button's bottom edge — they overlap`,
+      ).toBeGreaterThanOrEqual(4);
+      expect(footer.copyrightRight, `R5 (${label}): the copyright runs past the right edge of the window`).toBeLessThanOrEqual(width);
+    }
   });
 });

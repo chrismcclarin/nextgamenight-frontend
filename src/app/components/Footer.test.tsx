@@ -96,4 +96,32 @@ describe('X1 (88.9 B5a) — the footer controls', () => {
       cleanup();
     }
   });
+
+  // 88.9-52 R4 S1: the floating feedback button sits 3rem + 8px off the page bottom, 24px in from
+  // the right, 56px square (src/app/components/FeedbackButton.js ("AMENDED Phase 88.9-52 (R5, owner 2026-11-17, pick Always)")).
+  // At 768px with doubled text the copyright wrapped onto two lines inside the one footer row and
+  // the button sat on it. From md the footer keeps that corner clear: the copyright never breaks
+  // (so its top is never above 3rem), the row may break instead and the copyright group keeps the
+  // right-hand end of its own line, and the link group stops 8px short of the button's box.
+  // jsdom lays nothing out, so this pins the class tokens; the rendered proof is the R5 e2e test.
+  it('S1 (88.9-52 R4): from md the copyright stays on one line at the right and the links stop short of the feedback button', () => {
+    for (const loggedOut of [true, false]) {
+      h.loggedOut = loggedOut;
+      render(<Footer />);
+      const who = loggedOut ? 'signed out' : 'signed in';
+      const links = within(screen.getByRole('contentinfo')).getByRole('link', { name: 'About' })
+        .parentElement as HTMLElement;
+      const row = links.parentElement as HTMLElement;
+      expect(row, who).toHaveClass('flex', 'flex-col', 'md:flex-row', 'md:flex-wrap', 'items-center', 'justify-between', 'gap-3');
+      // 88px = the button's 24px inset + its 56px + an 8px gap; 1rem is the footer's own side padding.
+      expect(links, who).toHaveClass('md:max-w-[calc(100%_-_88px_+_1rem)]');
+      const copyright = screen.getByText(/^© \d{4} Next Game Night$/);
+      const group = copyright.parentElement as HTMLElement;
+      expect(group.parentElement, who).toBe(row);
+      expect(group, who).toHaveClass('md:ms-auto', 'md:whitespace-nowrap');
+      // Below md nothing changed: the copyright may still break on a phone.
+      expect(group.className.split(/\s+/), who).not.toContain('whitespace-nowrap');
+      cleanup();
+    }
+  });
 });
