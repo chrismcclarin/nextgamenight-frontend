@@ -1010,6 +1010,85 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     }
   });
 
+  // 88.9-52 R4 B1 (the round-4 re-shoot). With text at 200% the request card was wider than the
+  // screen (438px at 375, 437px at 320): the name column could shrink to one letter and the
+  // Accept / Decline pair could not shrink or drop. Now each of the four rows may wrap, the name
+  // breaks between words (inside a word only when that word is wider than the row), and the
+  // action keeps to the right on a line of its own. jsdom lays nothing out, so this pins the
+  // tokens; the rendered widths are in e2e/friends-page.spec.ts ("R4 B1 (88.9-52)").
+  // The marker is at src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot").
+  it('R4 B1 (88.9-52): the friend, request, sent and found rows may wrap, their names break between words, and the action keeps to the right', async () => {
+    const tokens = (el: Element | null | undefined) => (el?.className ?? '').split(/\s+/);
+    const checkName = (name: HTMLElement, what: string) => {
+      expect(tokens(name), `${what}: the name breaks between words`).toContain('wrap-break-word');
+      expect(tokens(name), `${what}: the name may not break at any letter`).not.toContain('wrap-anywhere');
+    };
+    const checkRow = (row: HTMLElement | null, what: string) => {
+      expect(row, `${what}: no row`).not.toBeNull();
+      expect(tokens(row), `${what}: the row may wrap`).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'gap-3']));
+      const column = (row as HTMLElement).firstElementChild as HTMLElement;
+      // The text column's floor is its longest word, capped at the row: never zero.
+      expect(tokens(column), `${what}: the text column`).toEqual(expect.arrayContaining(['flex-1', 'max-w-full']));
+      expect(tokens(column), `${what}: the text column may not shrink to nothing`).not.toContain('min-w-0');
+      const action = (row as HTMLElement).lastElementChild as HTMLElement;
+      expect(action, `${what}: the action is a second child`).not.toBe(column);
+      expect(tokens(action), `${what}: the action keeps to the right`).toContain('ml-auto');
+      return action;
+    };
+
+    providerCtx.receivedRequests = [SAM_REQUEST];
+    renderFriends({ sent: [ALEX_SENT] });
+    // Friends tab: the friend row.
+    const dana = await screen.findByText('Dana');
+    checkName(dana, 'friend row');
+    const friendRow = dana.closest('[data-friend-row]') as HTMLElement;
+    const remove = checkRow(friendRow, 'friend row');
+    expect(remove.tagName, 'friend row: the action is Remove').toBe('BUTTON');
+    // The name and the already-in-group note share a line that may wrap.
+    expect(tokens(dana.parentElement), 'friend row: the name line may wrap').toContain('flex-wrap');
+
+    // The found row.
+    const found = await searchShows(MORGAN_HIT, 'morgan@example.com');
+    checkName(found, 'found row');
+    const foundAction = checkRow(found.closest('[data-found-row]') as HTMLElement, 'found row');
+    expect(tokens(foundAction), 'found row: the action is capped at the row').toContain('max-w-full');
+    expect(tokens(foundAction), 'found row: the action may shrink to the row').not.toContain('shrink-0');
+
+    // Requests tab: the request row. Accept and Decline may stack inside the row.
+    fireEvent.click(screen.getByRole('button', { name: /^Requests/ }));
+    const sam = await screen.findByText('Sam');
+    checkName(sam, 'request row');
+    const pair = checkRow(sam.closest('[data-request-row]') as HTMLElement, 'request row');
+    expect(tokens(pair), 'request row: the pair').toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'justify-end', 'max-w-full', 'gap-2']));
+    expect(tokens(pair), 'request row: the pair may shrink to the row').not.toContain('shrink-0');
+    expect(within(pair).getAllByRole('button').map((b) => b.textContent)).toEqual(['Accept', 'Decline']);
+
+    // Sent tab: the sent row.
+    fireEvent.click(screen.getByRole('button', { name: /^Sent/ }));
+    const alex = await screen.findByText('Alex');
+    checkName(alex, 'sent row');
+    const pill = checkRow(alex.closest('[data-sent-row]') as HTMLElement, 'sent row');
+    expect(pill.textContent).toBe('Pending');
+  });
+
+  // 88.9-52 R4 B1b (the round-4 re-shoot, 375 with text at 200%): the address field was squeezed
+  // to about 80px beside the Search button. The search row may wrap and the field asks for 8rem
+  // before it shares a line, so at large text the button drops under a full-width field.
+  // The marker is at src/app/friends/page.js ("DECISION Phase 88.9-52 (R4 B1b, the round-4 re-shoot").
+  it('R4 B1b (88.9-52): the search row may wrap and the address field asks for 8rem before it shares a line', async () => {
+    renderFriends();
+    await screen.findByText('Dana');
+    const field = emailField();
+    const form = field.closest('form') as HTMLFormElement;
+    expect(form.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'gap-3']));
+    const classes = field.className.split(/\s+/);
+    expect(classes).toEqual(expect.arrayContaining(['grow', 'basis-32']));
+    // flex-1 is a zero basis: with it the row never wraps and the field is the part that gives.
+    expect(classes).not.toContain('flex-1');
+    // The button is the field's sibling in the same row.
+    expect(within(form).getByRole('button', { name: 'Search' }).parentElement).toBe(form);
+  });
+
   it('B-gate: Invite to Group is aria-disabled (never native), refuses a gated press, and sends once for two presses (D-35)', async () => {
     await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
     const invite = inviteButton();

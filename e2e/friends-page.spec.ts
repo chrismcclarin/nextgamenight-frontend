@@ -740,4 +740,177 @@ test.describe('friends page — what the Requests tab and the batch say (88.6.1-
     expect(jump, `X69: the armed Remove changed width by ${jump}px between Wait (3) and its live label (${trace})`).toBeLessThanOrEqual(0.5);
     await expectNoSidewaysScroll(page);
   });
+
+  // R4 B1 + B1b (88.9-52), RENDERED. The round-4 re-shoot found that the tab strip fix held but
+  // the page still scrolled sideways with Requests open at 200% text (438px on a 375 screen, 437px
+  // on a 320 one): in the request card the name was one letter per line and Decline ran off the
+  // right edge. It also found the address field squeezed to about 80px beside Search. Now every
+  // row may wrap, a name breaks between words, the action sits whole under it, and the Search
+  // button drops under a full-width field
+  // (src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot") and
+  // src/app/friends/page.js ("DECISION Phase 88.9-52 (R4 B1b, the round-4 re-shoot")).
+  // The three lists are answered in the browser with one row each, so every tab has a card to
+  // measure; no control that writes is pressed, and the describe's hold fails the test if one is.
+  test('R4 B1 (88.9-52): at 200% text no Friends tab scrolls the page sideways at 375 or 320; names break between words, the row actions stay whole, and Search drops under its field', async ({ page }) => {
+    const friend = { id: 'e2e-friends-b1-f', friend: { id: '8861a072-0000-4000-8000-0000000000d1', username: 'E2E Friend Charlie' } };
+    const request = { id: 'e2e-friends-b1-r', Requester: { id: '8861a072-0000-4000-8000-0000000000d2', username: 'E2E Requester Charlie' } };
+    const sent = { id: 'e2e-friends-b1-s', Addressee: { id: '8861a072-0000-4000-8000-0000000000d3', username: 'E2E Addressee Charlie' } };
+    await page.route(
+      (url) => url.pathname.endsWith('/friendships'),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        const params = new URL(route.request().url()).searchParams;
+        if (params.get('status') === 'accepted') await route.fulfill({ status: 200, json: [friend] });
+        else if (params.get('direction') === 'received') await route.fulfill({ status: 200, json: [request] });
+        else if (params.get('direction') === 'sent') await route.fulfill({ status: 200, json: [sent] });
+        else await route.fallback();
+      },
+    );
+    await page.goto('/friends');
+    const field = page.getByLabel("Friend's email address");
+    await expect(field).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(`[data-friend-row="${friend.id}"]`), 'R4 B1: the routed friend row never rendered').toBeVisible({ timeout: 15_000 });
+
+    // One read of a row: the row's box, each word of the name (how many line boxes it has: a word
+    // broken inside itself has more than one), and every control or tag after the name.
+    const readRow = (selector: string) =>
+      page.evaluate((sel) => {
+        const row = document.querySelector(sel) as HTMLElement | null;
+        if (!row) return null;
+        const box = row.getBoundingClientRect();
+        const name = row.querySelector('p') as HTMLElement;
+        const node = Array.from(name.childNodes).find((n) => n.nodeType === Node.TEXT_NODE) as Text;
+        const text = node.textContent ?? '';
+        const words: Array<{ letters: number; lines: number }> = [];
+        const pattern = /\S+/g;
+        for (let m = pattern.exec(text); m; m = pattern.exec(text)) {
+          const range = document.createRange();
+          range.setStart(node, m.index);
+          range.setEnd(node, m.index + m[0].length);
+          words.push({ letters: m[0].length, lines: range.getClientRects().length });
+        }
+        const nameBox = name.getBoundingClientRect();
+        const pad = parseFloat(getComputedStyle(row).paddingRight);
+        const parts = (Array.from(row.querySelectorAll('button, span.rounded-full')) as HTMLElement[]).map((el) => {
+          const r = el.getBoundingClientRect();
+          return { tag: el.tagName.toLowerCase(), left: r.left, right: r.right, width: r.width, height: r.height };
+        });
+        return {
+          left: box.left,
+          right: box.right,
+          innerLeft: box.left + pad,
+          innerRight: box.right - pad,
+          name: { left: nameBox.left, right: nameBox.right },
+          words,
+          parts,
+        };
+      }, selector);
+    const readPage = () =>
+      page.evaluate(() => {
+        const doc = document.documentElement;
+        const wide = (Array.from(document.querySelectorAll('main *, body > div *')) as HTMLElement[])
+          .filter((el) => el.getBoundingClientRect().right > doc.clientWidth + 1 && !el.closest('.overflow-x-auto'))
+          .slice(0, 5)
+          .map((el) => `${el.tagName.toLowerCase()} to ${Math.round(el.getBoundingClientRect().right)}px`);
+        return { window: doc.clientWidth, sideways: doc.scrollWidth - doc.clientWidth, wide };
+      });
+    const readSearch = () =>
+      field.evaluate((el) => {
+        const form = el.closest('form') as HTMLElement;
+        const button = form.querySelector('button') as HTMLElement;
+        const f = el.getBoundingClientRect();
+        const b = button.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        const content = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        return {
+          form: form.getBoundingClientRect().width,
+          field: { width: f.width, top: f.top, bottom: f.bottom },
+          button: { top: b.top, bottom: b.bottom, right: b.right, width: b.width, height: b.height },
+          contentEm: content / parseFloat(style.fontSize),
+        };
+      });
+    const checkRow = async (where: string, selector: string, wantParts: number) => {
+      const row = await readRow(selector);
+      expect(row, `${where}: the row is not on the page`).not.toBeNull();
+      const r = row!;
+      expect(r.words.length, `${where}: the name has no words`).toBeGreaterThan(0);
+      for (const w of r.words) {
+        expect(w.lines, `${where}: a ${w.letters}-letter word of the name is on ${w.lines} lines`).toBe(1);
+      }
+      expect(r.name.left, `${where}: the name starts at ${r.name.left}, the row's inside at ${r.innerLeft}`).toBeGreaterThanOrEqual(r.innerLeft - 0.5);
+      expect(r.name.right, `${where}: the name ends at ${r.name.right}, the row's inside at ${r.innerRight}`).toBeLessThanOrEqual(r.innerRight + 0.5);
+      expect(r.parts.length, `${where}: the row's controls and tags`).toBe(wantParts);
+      for (const p of r.parts) {
+        expect(p.left, `${where}: a ${p.tag} starts at ${p.left}, the row's inside at ${r.innerLeft}`).toBeGreaterThanOrEqual(r.innerLeft - 0.5);
+        expect(p.right, `${where}: a ${p.tag} ends at ${p.right}, the row's inside at ${r.innerRight}`).toBeLessThanOrEqual(r.innerRight + 0.5);
+        if (p.tag === 'button') {
+          expect(p.width, `${where}: a button is ${p.width}px wide`).toBeGreaterThanOrEqual(44);
+          expect(p.height, `${where}: a button is ${p.height}px tall`).toBeGreaterThanOrEqual(44);
+        }
+      }
+    };
+    const pressTab = (label: string) =>
+      // A DOM click: Playwright's own click would scroll the tab into view first.
+      page.evaluate((name) => {
+        const b = Array.from(document.querySelectorAll('button')).find((el) => new RegExp('^' + name + '\\s*\\d*$').test((el.textContent ?? '').trim())) as HTMLElement;
+        b.click();
+      }, label);
+
+    // Ordinary text first: nothing moved. Search sits beside its field, and the request card
+    // keeps its name and both buttons on one line.
+    expect(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize)), 'R4 B1: text is not at its ordinary size').toBe(16);
+    const restSearch = await readSearch();
+    expect(restSearch.button.top, `R4 B1b (ordinary text): Search starts at ${restSearch.button.top}, under the field's bottom ${restSearch.field.bottom}`).toBeLessThan(restSearch.field.bottom);
+    await pressTab('Requests');
+    const requestSelector = `[data-request-row="${request.id}"]`;
+    await expect(page.locator(requestSelector)).toBeVisible({ timeout: 15_000 });
+    await checkRow('ordinary text, request row', requestSelector, 2);
+    const restRow = await page.locator(requestSelector).evaluate((el) => {
+      const name = (el.querySelector('p') as HTMLElement).getBoundingClientRect();
+      const buttons = (Array.from(el.querySelectorAll('button')) as HTMLElement[]).map((b) => b.getBoundingClientRect());
+      return { nameBottom: name.bottom, nameTop: name.top, tops: buttons.map((b) => b.top), bottoms: buttons.map((b) => b.bottom) };
+    });
+    expect(Math.abs(restRow.tops[0] - restRow.tops[1]), 'R4 B1 (ordinary text): Accept and Decline are not on one line').toBeLessThanOrEqual(0.5);
+    expect(restRow.tops[0], `R4 B1 (ordinary text): the buttons start at ${restRow.tops[0]}, under the name's bottom ${restRow.nameBottom}`).toBeLessThan(restRow.nameBottom);
+    expect((await readPage()).sideways, 'R4 B1 (ordinary text): the page scrolls sideways').toBeLessThanOrEqual(0);
+
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R4 B1: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe('32px');
+    for (const width of [375, 320]) {
+      await page.setViewportSize({ width, height: 740 });
+      await expect.poll(async () => (await readPage()).window, { message: `R4 B1: the window did not become ${width}px wide` }).toBe(width);
+      const where = `200% text, ${width} wide`;
+
+      // B1b: the field has the whole row and Search is under it, inside the card.
+      const search = await readSearch();
+      expect(search.field.width, `R4 B1b (${where}): the field is ${search.field.width}px of a ${search.form}px row`).toBeGreaterThanOrEqual(search.form - 1);
+      expect(search.button.top, `R4 B1b (${where}): Search starts at ${search.button.top}, the field ends at ${search.field.bottom}`).toBeGreaterThanOrEqual(search.field.bottom);
+      expect(search.button.right, `R4 B1b (${where}): Search ends at ${search.button.right}px`).toBeLessThanOrEqual(width);
+      expect(search.button.height, `R4 B1b (${where}): Search is ${search.button.height}px tall`).toBeGreaterThanOrEqual(44);
+      // Room for typed letters, in ems of the field's own text. Half an em a letter: 6em is twelve
+      // letters. At 320 the card's own padding leaves the full-width field about 5.4em (172px of
+      // 32px text), which is all the row has, so the floor there is 5em.
+      const floorEm = width >= 375 ? 6 : 5;
+      expect(search.contentEm, `R4 B1b (${where}): the field shows ${search.contentEm}em of text`).toBeGreaterThanOrEqual(floorEm);
+
+      for (const [label, selector, parts] of [
+        ['Requests', requestSelector, 2],
+        ['Sent', `[data-sent-row="${sent.id}"]`, 1],
+        ['Friends', `[data-friend-row="${friend.id}"]`, 1],
+      ] as const) {
+        await pressTab(label);
+        await expect(page.locator(selector), `R4 B1 (${where}): the ${label} card never rendered`).toBeVisible({ timeout: 15_000 });
+        const now = await readPage();
+        expect(now.sideways, `R4 B1 (${where}, ${label} open): the page scrolls sideways by ${now.sideways}px (${now.wide.join('; ')})`).toBeLessThanOrEqual(1);
+        await checkRow(`R4 B1 (${where}, ${label} card)`, selector, parts);
+      }
+    }
+  });
 });

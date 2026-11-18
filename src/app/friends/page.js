@@ -1073,7 +1073,17 @@ function FriendsPage() {
                 {/* Search Section */}
                 <div className="card p-3 md:p-6 mb-6">
                     <Heading ref={addFriendHeadingRef} level={2} size="heading" className="text-content-primary mb-3">Add Friend</Heading>
-                    <form onSubmit={handleSearch} className="flex gap-3">
+                    {/* DECISION Phase 88.9-52 (R4 B1b, the round-4 re-shoot: at 375 with text at 200% the
+                        field was squeezed to about 80px beside the Search button and showed three
+                        letters of what was typed): the row may wrap, and the field asks for 8rem
+                        before it shares a line (grow basis-32 in place of flex-1), so when 8rem,
+                        the gap and the button no longer fit, the button drops under a full-width
+                        field. CHOSEN OVER stacking from a screen width (a breakpoint knows the
+                        screen, not the text size, and the squeeze comes from the text size) and
+                        OVER a larger basis (10rem and up would drop the button at 320 with
+                        ordinary text while its spinner shows: 160 + 12 + about 104 against 262).
+                        At ordinary text nothing moves: 128 + 12 + about 104 fits 262. */}
+                    <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
                         {/* 88-33 Task 8 (fork 5): id/name + explicit name — the section
                             heading ("Add Friend") names the card, not the field. */}
                         <Input
@@ -1084,7 +1094,7 @@ function FriendsPage() {
                             value={searchEmail}
                             onChange={(e) => setSearchEmail(e.target.value)}
                             placeholder="Enter friend's email address"
-                            className="flex-1"
+                            className="grow basis-32"
                             required
                         />
                         {/* DECISION Phase 88.9-46 (rule 1 B21-B25): every in-flight friends button keeps its
@@ -1149,15 +1159,34 @@ function FriendsPage() {
                         message={searchFoundName ? foundAnnouncement(searchFoundName) : ''}
                     />
 
-                    {/* DECISION Phase 88.9-66 (X13-1, owner at the round-2 glance): a long address wraps (wrap-anywhere, the house rule for unbroken user text) and the action column never shrinks, chosen OVER truncating it (an ellipsis hides the address the person is checking); the same on the request, sent and friend rows. Matches FriendInvitePanel's found-person row. AMENDED Phase 88.9-52 (Q66): the long text these rows can hold is the NAME (the backend sends no address for another person, so the address line is gone); the wrap rule is unchanged. */}
+                    {/* DECISION Phase 88.9-66 (X13-1, owner at the round-2 glance): a long address wraps (wrap-anywhere, the house rule for unbroken user text) and the action column never shrinks, chosen OVER truncating it (an ellipsis hides the address the person is checking); the same on the request, sent and friend rows. Matches FriendInvitePanel's found-person row. AMENDED Phase 88.9-52 (Q66): the long text these rows can hold is the NAME (the backend sends no address for another person, so the address line is gone); the wrap rule is unchanged.
+                        AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot: with text at 200% the
+                        request card was wider than a 375 or 320 screen, 438 and 437px, its name
+                        one letter per line and Decline off the right edge): the four rows may
+                        now WRAP (flex-wrap), so the action drops under the name when the two no
+                        longer fit on one line, and it keeps to the right (ml-auto). The name
+                        breaks between words, and inside a word only when that one word is wider
+                        than the whole row: wrap-break-word in place of wrap-anywhere, and the
+                        text column's floor is its longest word (min-width auto) capped at the
+                        row (max-w-full) in place of min-w-0. This SUPERSEDES two parts of X13-1
+                        above: wrap-anywhere (it let the column shrink to one letter) and the
+                        action column that never shrinks (alone on a line it is now capped at
+                        the row, Accept and Decline may sit one above the other, and a button's
+                        own words may wrap as the last resort). REJECTED: a fixed rem floor for
+                        the name (any value that helps at 200% also drops the buttons at 320
+                        with ordinary text); flex-basis auto on the name (a two-word name that
+                        fits on two lines beside the buttons would push them down at ordinary
+                        text). A 50-character unbroken name still breaks inside the row; held by
+                        e2e/friends-long-address.spec.ts ("a friend request from a long name keeps Accept and Decline inside a 375 screen").
+                        At ordinary text with an ordinary name nothing moves. */}
                     {searchResult && !searching && (
-                        <div className="mt-4 p-4 border border-line rounded-lg flex items-center justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                                <p className="font-bold text-content-primary wrap-anywhere">
+                        <div data-found-row="" className="mt-4 p-4 border border-line rounded-lg flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex-1 max-w-full">
+                                <p className="font-bold text-content-primary wrap-break-word">
                                     {searchResult.username}
                                 </p>
                             </div>
-                            <div className="shrink-0">
+                            <div className="ml-auto max-w-full">
                                 {(() => {
                                     const action = getSearchResultAction(searchResult);
                                     if (!action) return null;
@@ -1572,9 +1601,10 @@ function FriendsPage() {
                                                     <div
                                                         key={friendship.id}
                                                         data-friend-row={friendship.id}
-                                                        className="flex items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
+                                                        className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
                                                     >
-                                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                        {/* 88.9-52 R4 B1 (marker above the found-person row): the column's floor is the checkbox plus the longest word, capped at the row. */}
+                                                        <div className="flex items-center gap-3 flex-1 max-w-full">
                                                             <input
                                                                 id={`bulk-invite-${friendship.id}`}
                                                                 name={`bulk-invite-${friendship.id}`}
@@ -1590,12 +1620,12 @@ function FriendsPage() {
                                                                 }`}
                                                             />
                                                             <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center gap-2 min-w-0">
-                                                                    <p className="font-bold text-content-primary min-w-0 wrap-anywhere">
+                                                                <div className="flex flex-wrap items-center gap-x-2 min-w-0">
+                                                                    <p className="font-bold text-content-primary min-w-0 wrap-break-word">
                                                                         {friend.username}
                                                                     </p>
                                                                     {isInGroup && (
-                                                                        <span className="text-xs text-content-muted italic shrink-0">(already in group)</span>
+                                                                        <span className="text-xs text-content-muted italic">(already in group)</span>
                                                                     )}
                                                                 </div>
                                                                 {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
@@ -1644,7 +1674,7 @@ function FriendsPage() {
                                                                     // shrink-0, with NO border in any state, so the armed state speaks
                                                                     // in weight alone. REJECTED: the outlined box it drew when armed
                                                                     // (the only one of the three with a box).
-                                                                    className={`inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
                                                                         armed ? 'font-semibold' : ''
                                                                     }`}
                                                                 >
@@ -1778,14 +1808,15 @@ function FriendsPage() {
                                                 <div
                                                     key={request.id}
                                                     data-request-row={request.id}
-                                                    className="flex items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
+                                                    className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
                                                 >
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-bold text-content-primary wrap-anywhere">
+                                                    <div className="flex-1 max-w-full">
+                                                        <p className="font-bold text-content-primary wrap-break-word">
                                                             {requester.username}
                                                         </p>
                                                     </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
+                                                    {/* 88.9-52 R4 B1 (marker above the found-person row): on a line of its own this pair is capped at the row and may stack. */}
+                                                    <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
                                                         <Button
                                                             variant="primary"
                                                             size="default"
@@ -1890,14 +1921,15 @@ function FriendsPage() {
                                             return (
                                                 <div
                                                     key={request.id}
-                                                    className="flex items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
+                                                    data-sent-row={request.id}
+                                                    className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
                                                 >
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-bold text-content-primary wrap-anywhere">
+                                                    <div className="flex-1 max-w-full">
+                                                        <p className="font-bold text-content-primary wrap-break-word">
                                                             {addressee.username}
                                                         </p>
                                                     </div>
-                                                    <span className="shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
+                                                    <span className="ml-auto shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                                         Pending
                                                     </span>
                                                 </div>
