@@ -555,12 +555,30 @@ export default function KebabMenu({
            the inset band); and OVER switching shape on arming (the menu would jump). Written as
            whole class names on the count, not a parent-state selector: the count is known here.
            The replica in e2e/touch-targets.spec.ts ("UI-SPEC §9.3 E6: the kebab popover stays inside 375px") follows these strings in lockstep.
-           Changing either shape is a decision, not a cleanup. */
+           Changing either shape is a decision, not a cleanup.
+           AMENDED Phase 88.9-52 (G3, round 4, 2026-11-18; the after-build capture r3-l rendered
+           the several-item menu):
+           - NEIGHBOURING BANDS ARE 2px APART (space-y-0.5 on the list; the gap is between ROWS,
+             so every item keeps its own 44px floor). As built two neighbours touched: an armed
+             band and a hovered band met with 0px between them, which is not an inset band on
+             that side. Chosen OVER 4px (nearer the 5px edges, but it moves further from the
+             picture the owner picked, where rows sat edge to edge) and OVER shrinking the item
+             inside its row (the tap height would drop under 44px). A several-item menu is 2px
+             taller per row after the first; the size still follows the COUNT, never the armed
+             state. A one-item menu takes none of it.
+           - AN ITEM HOVERS ON THE GHOST WASH (enabled-hover:bg-surface-ghost-hover, the owner's
+             R8c ruling: a visible hover fill), chosen OVER the shared hover wash it wore
+             (hover:bg-surface-hover: #faf8f5 on the white menu, 1.06, near invisible in both
+             shapes). Light #e3dad1: 1.38 off the menu, primary ink 13.02 and danger ink 6.02 on
+             it. Dark is the same colour as before (the token names the shared wash there): 1.23
+             off the menu, inks 10.64 and 5.94. The enabled-hover form also means a gated or
+             busy (aria-disabled) item no longer lights under the pointer, the house rule
+             (src/components/ui/Button.tsx ("/* DECISION Phase 88.6-06 (D10): the hover elevation above, and the ghost")). The trigger keeps its own wash. */
         <ul
           id={listId}
           role="list"
           className={`absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg ${
-            soloItem ? 'py-0 overflow-hidden' : 'py-1'
+            soloItem ? 'py-0 overflow-hidden' : 'py-1 space-y-0.5'
           }`}
         >
           {items.map((item, index) => {
@@ -673,8 +691,8 @@ export default function KebabMenu({
                      items. Owner confirm from one picture (88.9-23 task 3). */
                   className={`w-full min-h-11 text-left ${soloItem ? 'px-3' : 'px-2 rounded-sm'} py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                     danger
-                      ? `text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}`
-                      : 'text-content-primary hover:bg-surface-hover'
+                      ? `text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'enabled-hover:bg-surface-ghost-hover'}`
+                      : 'text-content-primary enabled-hover:bg-surface-ghost-hover'
                   }`}
                 >
                   {/* X69 width (88.9-67): a twoTap item holds the widest of Wait (3), (2), (1) and its

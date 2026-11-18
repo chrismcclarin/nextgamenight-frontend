@@ -658,6 +658,55 @@ describe('R20 (88.9-52): the item band fills a one-item menu and is an inset rou
     expect(list.className).toBe(listBefore);
     expect(within(list).getAllByRole('button').map(geometry)).toEqual(before);
   });
+
+  // G3 (88.9-52 round 4): the after-build capture (r3-l) found two neighbouring bands touching (0px
+  // between an armed band and a hovered one) and the light hover band near invisible (#faf8f5 on
+  // the white menu, 1.06). Rows are now 2px apart, and an item hovers on the owner-ruled ghost
+  // wash (R8c: #e3dad1 on the card 1.38 in light; dark is the shared wash, as before). jsdom lays
+  // nothing out and has no hover: these pin the classes.
+  it('G3 several items: neighbouring bands are 2px apart, the 44px tap height stays, and a one-item menu takes no gap', () => {
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { list } = openMenu();
+    expect(tokens(list)).toContain('space-y-0.5');
+    for (const item of within(list).getAllByRole('button')) {
+      // The gap is the ROW's, outside the item: every item keeps its own 44px floor.
+      expect(tokens(item)).toContain('min-h-11');
+      expect(tokens(item).filter((t) => /^m[ytb]?-/.test(t))).toEqual([]);
+      expect(tokens(item.parentElement as Element)).toEqual(['px-1']);
+    }
+    cleanup();
+    render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[{ label: 'Cancel event', danger: true, twoTap: true, onClick: vi.fn() }]}
+      />
+    );
+    const solo = openMenu('Event actions').list;
+    expect(tokens(solo).filter((t) => t.startsWith('space-y-'))).toEqual([]);
+  });
+
+  it('G3 hover: every resting item hovers on the ghost wash and only while it can be pressed; an armed item keeps its red band', () => {
+    const WASH = 'enabled-hover:bg-surface-ghost-hover';
+    const anyHoverFill = (el: Element) => tokens(el).filter((t) => /hover:bg-/.test(t));
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { list } = openMenu();
+    const [plain, remove, transfer] = within(list).getAllByRole('button');
+    // A plain item, a resting two-tap danger item and a plain danger item: one wash, nothing else.
+    for (const item of [plain, remove, transfer]) expect(anyHoverFill(item)).toEqual([WASH]);
+    fireEvent.click(remove);
+    expect(remove).toHaveClass('bg-status-error-subtle');
+    expect(anyHoverFill(remove)).toEqual([]);
+    expect(anyHoverFill(plain)).toEqual([WASH]);
+    cleanup();
+    render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[{ label: 'Cancel event', danger: true, twoTap: true, onClick: vi.fn() }]}
+      />
+    );
+    const solo = openMenu('Event actions').list;
+    expect(anyHoverFill(within(solo).getByRole('button', { name: 'Cancel event' }))).toEqual([WASH]);
+  });
 });
 
 // R13 (88.9-52, owner 2026-11-17, pick Everywhere): an armed, live item SHOWS Tap again and is
