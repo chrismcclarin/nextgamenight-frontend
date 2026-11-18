@@ -378,8 +378,40 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
           the toggle behaves as written with no new one-off unlayered rule.
           The wrapper encloses ONLY the button — the modal below stays an
           independently-toggleable sibling, mounted at every viewport, or the
-          phone nav row would open a display:none modal. */}
-      <div className="hidden md:block">
+          phone nav row would open a display:none modal.
+
+          AMENDED Phase 88.9-52 (R4 C4, owner 2026-11-18: "When it switches to the menu, we
+          should just let the menu hold the feedback button and lose it on the main screen,
+          like the phone does"): the toggle gains a second condition and a box around it.
+          From md the header falls back to its phone-menu form while its strip is under
+          40.25rem (src/app/Header.js ("AMENDED Phase 88.9-52 (R4 B4, round 4, 2026-11-18): the width is 40.25rem, not 42rem.")),
+          and while it does this button is not drawn: the menu's own Send feedback row is the
+          entry, exactly as below md. It is drawn again when the desktop list is.
+          HOW IT LEARNS THE HEADER'S STATE, with no script. The header decides by a container
+          query on its own strip, and this button is outside that strip, so it cannot read it.
+          It reads a container of its own that is the SAME WIDTH BY CONSTRUCTION: a zero-height
+          box fixed to the left, right and bottom edges of the screen (the strip is the full
+          width of the page; both leave out a classic scrollbar). Same width, same 40.25rem,
+          same md gate, so the two always flip together; FeedbackButton.test.tsx (R4 C4) holds
+          the width to the header's.
+          WHY THE BOX IS FIXED TO THE BOTTOM EDGE AND HAS NO HEIGHT. Browsers disagree on
+          whether a query container is also the containing block of a fixed descendant (it was
+          in the first version of the standard and was later taken out). With the box pinned
+          to the screen's bottom and side edges, the button's bottom and right offsets measure
+          from the same two lines either way, so R5's position holds in both. The box carries
+          the button's own z-30 so the tier (87.8 D-09/D-10) is the same either way too, and at
+          zero height it covers nothing and takes no taps.
+          REJECTED: moving the header's named container up to an ancestor both share (every
+          fixed thing under it, this button and the open-menu dim layer included, could then
+          be positioned against the page instead of the screen in a browser of the first
+          kind); mirroring the header's state into script state or an attribute the way the
+          S2 close effect reads the stylesheet's decision (it works, but it is a second source
+          of truth with a frame of lag, where a stylesheet route exists); keeping the button
+          and the menu row both on screen (the owner ruled it out).
+          The footer's corner reserve (R4 S1) is unchanged. Changing 40.25rem here and not in
+          the header, or unpinning the box from the bottom edge, is a decision, not a cleanup. */}
+      <div className="@container/fab fixed inset-x-0 bottom-0 h-0 z-30">
+      <div className="hidden md:block md:@max-[40.25rem]/fab:hidden">
         {/* Floating feedback button.
             DECISION Phase 87.8 (D-09/D-10): `z-30` chosen OVER raising the
             overlays — the FAB is the element in the wrong tier, and one value
@@ -498,6 +530,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
         </Button>
+      </div>
       </div>
 
       {/* Feedback modal — stays mounted on THIS (layout-root) instance at every

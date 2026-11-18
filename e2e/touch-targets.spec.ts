@@ -949,6 +949,14 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // list: whichever header is drawn there, it is whole. The open menu's last three rows are
     // also read at rest: the re-shoot saw a lighter Send feedback row, which was the row's hover
     // fill under the capture's pointer, not a fill of its own.
+    // EXTENDED by 88.9-52 R4 C4 (owner 2026-11-18): from md, while the header is in this
+    // phone-menu form the floating feedback button is not drawn (the menu's Send feedback row is
+    // the entry), and it is drawn again with the desktop list
+    // (src/app/components/FeedbackButton.js ("HOW IT LEARNS THE HEADER'S STATE, with no script.")).
+    // Every read below carries fabDrawn, and at every step it must equal listDrawn: 768 at 200%
+    // with the menu closed and open (not drawn), 1400 and 1320 at 200% (drawn), 1264 at 200%
+    // (not drawn), the four text sizes at 768, and 768 at ordinary text (drawn). The floating
+    // button is the one named Send feedback that is outside the nav.
     const readWide = () =>
       page.evaluate(() => {
         const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
@@ -966,7 +974,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         const m = menu.getBoundingClientRect();
         const first = items[0].getBoundingClientRect();
         const last = items[items.length - 1].getBoundingClientRect();
+        const fab = Array.from(document.querySelectorAll('button[aria-label="Send feedback"]')).find((el) => !el.closest('nav')) as
+          | HTMLElement
+          | undefined;
         return {
+          fabFound: Boolean(fab),
+          fabDrawn: Boolean(fab && fab.getClientRects().length > 0),
           rootFontPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
           window: document.documentElement.clientWidth,
           listDrawn: getComputedStyle(list).display !== 'none',
@@ -986,6 +999,14 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         };
       });
     const navLinks = page.getByRole('navigation', { name: 'Main', exact: true });
+    // R4 C4: the floating button follows the desktop list, never the menu button.
+    const expectFabFollowsList = (r: Awaited<ReturnType<typeof readWide>>, where: string) => {
+      expect(r.fabFound, `R21 C4: ${where} the floating feedback button is not in the page at all, so its display proves nothing`).toBe(true);
+      expect(
+        r.fabDrawn,
+        `R21 C4: ${where} the desktop list drawn is ${r.listDrawn} and the floating feedback button drawn is ${r.fabDrawn}: the button is drawn exactly when the list is`,
+      ).toBe(r.listDrawn);
+    };
 
     // 768 wide, text at 200%: 24rem, under the switch. The phone header.
     await page.setViewportSize({ width: 768, height: 900 });
@@ -996,6 +1017,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     expect(mid.rootFontPx, 'R21 S2: text is not at 200% for the 768px step').toBe(32);
     expect(mid.listDrawn, 'R21 S2: at 768px and 200% text the desktop list is still drawn — it does not fit there').toBe(false);
     expect(mid.menuDrawn, 'R21 S2: at 768px and 200% text the menu button is not drawn, so the links are out of reach').toBe(true);
+    expect(mid.fabDrawn, 'R21 C4: at 768px and 200% text, menu closed, the floating feedback button is still drawn beside the phone menu').toBe(false);
+    expectFabFollowsList(mid, 'at 768px and 200% text, menu closed,');
     expect(mid.name.width, 'R21 S2: at 768px and 200% text the site name is not drawn').toBeGreaterThan(100);
     expect(mid.fontPx, `R21 S2: at 768px and 200% text the site name is ${mid.fontPx}px — the fit rule gives the doubled 36px there, not the 40px md size`).toBeCloseTo(36, 0);
     expect(mid.name.height, `R21 S2: at 768px and 200% text the site name is ${mid.name.height}px tall on a ${mid.linePx}px line — it wrapped`).toBeLessThanOrEqual(mid.linePx + 1);
@@ -1021,6 +1044,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       .poll(async () => (await readWide()).backdropOpacity, { message: 'R21 S2: the dim layer behind the open menu is not shown from md' })
       .toBe('1');
     expect((await readWide()).backdropDrawn, 'R21 S2: the dim layer behind the open menu is not drawn from md').toBe(true);
+    // R4 C4: with the menu open the floating button is still not drawn, and the menu's own row is on screen.
+    expect((await readWide()).fabDrawn, 'R21 C4: at 768px and 200% text, menu open, the floating feedback button is drawn over the open menu').toBe(false);
+    await expect(
+      navLinks.getByRole('button', { name: 'Send feedback' }),
+      'R21 C4: the open menu has no visible Send feedback row, so at this size there is no way to send feedback',
+    ).toBeVisible();
     // R4 B4: at rest (the pointer parked in the corner, nothing focused in the panel) the Theme row
     // and the Send feedback row paint the same fill, which is none of their own.
     await page.mouse.move(0, 0);
@@ -1053,6 +1082,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       .toBe('0');
     const wide = await readWide();
     expect(wide.menuDrawn, 'R21 S2: at 1400px and 200% text the menu button is still drawn beside the desktop list').toBe(false);
+    expect(wide.fabDrawn, 'R21 C4: at 1400px and 200% text the desktop list is back but the floating feedback button is not').toBe(true);
+    expectFabFollowsList(wide, 'at 1400px and 200% text');
     expect(wide.fontPx, `R21 S2: at 1400px and 200% text the site name is ${wide.fontPx}px, not its doubled md size (40px)`).toBeCloseTo(40, 0);
     expect(wide.listItems, 'R21 S2: the desktop list is not the signed-in list (Home, Friends, Profile, Logout, the theme switch)').toBe(5);
     expect(
@@ -1072,6 +1103,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const justOver = await readWide();
     expect(justOver.listDrawn, 'R21 B4: at 1320px and 200% text (41.25rem) the desktop list is not drawn').toBe(true);
     expect(justOver.menuDrawn, 'R21 B4: at 1320px and 200% text the menu button is drawn beside the desktop list').toBe(false);
+    expectFabFollowsList(justOver, 'at 1320px and 200% text');
     expect(
       justOver.listLeft - justOver.name.right,
       `R21 B4: at 1320px and 200% text the site name ends ${justOver.listLeft - justOver.name.right}px before Home, under 48px`,
@@ -1085,6 +1117,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const justUnder = await readWide();
     expect(justUnder.listDrawn, 'R21 B4: at 1264px and 200% text (39.5rem) the desktop list is drawn — 54px short of the switch').toBe(false);
     expect(justUnder.menuDrawn, 'R21 B4: at 1264px and 200% text the menu button is not drawn').toBe(true);
+    expectFabFollowsList(justUnder, 'at 1264px and 200% text');
 
     // R4 B4: text sizes between 100% and 200% on a 768px screen, the narrowest that can draw the
     // desktop list. 110% and 118% leave the strip over the switch (43.6rem and 40.7rem): the list,
@@ -1108,6 +1141,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       const where = `at 768px and ${percent}% text`;
       expect(at.listDrawn, `R21 B4: ${where} the desktop list drawn is ${at.listDrawn}`).toBe(wantList);
       expect(at.menuDrawn, `R21 B4: ${where} the menu button and the desktop list are both drawn, or neither`).toBe(!wantList);
+      expectFabFollowsList(at, where);
       if (at.listDrawn) {
         expect(
           at.listLeft - at.name.right,
@@ -1134,6 +1168,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const plainMd = await readWide();
     expect(plainMd.listDrawn, 'R21 S2: at 768px and ordinary text the desktop list is not drawn — the md header changed').toBe(true);
     expect(plainMd.menuDrawn, 'R21 S2: at 768px and ordinary text the menu button is drawn — the md header changed').toBe(false);
+    expect(plainMd.fabDrawn, 'R21 C4: at 768px and ordinary text the floating feedback button is not drawn — the md page changed').toBe(true);
+    expectFabFollowsList(plainMd, 'at 768px and ordinary text');
     expect(plainMd.fontPx, `R21 S2: at 768px and ordinary text the site name is ${plainMd.fontPx}px, not its 20px`).toBeCloseTo(20, 1);
     expect(
       plainMd.listLeft - plainMd.name.right,
@@ -3382,7 +3418,45 @@ test.describe('Phase 88.9-52 R5 — the floating feedback button, fixed size and
         message: 'R5: the root font size did not become 32px after the 200% style tag',
       })
       .toBe('32px');
-    check('200% text', await readAtPageEnd('200% text'), 104);
+    // AMENDED Phase 88.9-52 (R4 C4, owner 2026-11-18): with text at 200% the header is in its
+    // phone-menu form on any screen under 1288px (40.25rem of 32px), and while it is the floating
+    // button is not drawn (src/app/components/FeedbackButton.js ("HOW IT LEARNS THE HEADER'S STATE, with no script.")).
+    // This project's 1280px window is 8px short of that, so the 200% reads moved to windows that
+    // draw the button (1400 here; 1300, 1400 and 1600 for the footer arm below, where the arm read
+    // 768, 900 and 1100), and those three narrower widths now prove the opposite: no floating
+    // button, the copyright still on one line.
+    const fabDrawn = () =>
+      page.evaluate(() => {
+        const button = Array.from(document.querySelectorAll('button[aria-label="Send feedback"]')).find(
+          (el) => (el.textContent ?? '').trim() === '',
+        ) as HTMLElement | undefined;
+        return { found: Boolean(button), drawn: Boolean(button && button.getClientRects().length > 0) };
+      });
+    expect((await fabDrawn()).found, 'R5 C4: the floating feedback button is not in the page at all').toBe(true);
+    await expect
+      .poll(async () => (await fabDrawn()).drawn, { message: 'R5 C4: at 1280px and 200% text (40rem, under the 40.25rem switch) the floating feedback button is still drawn' })
+      .toBe(false);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await expect
+      .poll(async () => (await fabDrawn()).drawn, { message: 'R5 C4: at 1400px and 200% text (43.75rem) the floating feedback button is not drawn' })
+      .toBe(true);
+    check('200% text, 1400 wide', await readAtPageEnd('200% text, 1400 wide'), 104);
+
+    for (const width of [768, 900, 1100]) {
+      await page.setViewportSize({ width, height: 900 });
+      const label = `200% text, ${width} wide`;
+      await expect
+        .poll(async () => (await fabDrawn()).drawn, { message: `R5 C4 (${label}): the floating feedback button is drawn although the header is in its menu form` })
+        .toBe(false);
+      const line = await page.evaluate(() => {
+        const el = Array.from(document.querySelectorAll('footer span')).find((span) =>
+          /^\s*©\s*\d{4}\s+Next Game Night\s*$/.test(span.textContent ?? ''),
+        ) as HTMLElement;
+        return { window: document.documentElement.clientWidth, height: el.getBoundingClientRect().height, linePx: parseFloat(getComputedStyle(el).lineHeight) };
+      });
+      expect(line.window, `R5 C4 (${label}): the window is not ${width}px wide`).toBe(width);
+      expect(line.height, `R5 C4 (${label}): the copyright is ${line.height}px tall on a ${line.linePx}px line — it broke onto a second line`).toBeLessThanOrEqual(line.linePx + 1);
+    }
 
     // R5 (88.9-52 R4 S1, 768 wide and up at 200% text): the round-3 capture found the copyright
     // broken onto two lines at 768px with the button sitting on it (button 740 to 796px, copyright
@@ -3390,7 +3464,9 @@ test.describe('Phase 88.9-52 R5 — the floating feedback button, fixed size and
     // (src/app/components/Footer.js ("DECISION Phase 88.9-52 (R4 S1, the round-3 capture")): the copyright stays one line,
     // and nothing readable in the footer is under the button's box at the page end. The button
     // itself has not moved: still 56px, 24px in, 104px up. 768 is the narrowest width that draws it.
-    for (const width of [768, 900, 1100]) {
+    // AMENDED Phase 88.9-52 (R4 C4): at 200% text the narrowest width that draws it is now 1288px,
+    // so this arm reads 1300, 1400 and 1600; the footer's corner reserve itself is unchanged.
+    for (const width of [1300, 1400, 1600]) {
       await page.setViewportSize({ width, height: 900 });
       const label = `200% text, ${width} wide`;
       const read = await readAtPageEnd(label);

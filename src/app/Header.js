@@ -214,6 +214,10 @@ function Header(){
                 phone header every link is in the menu, so every link is reachable.
                 The floating feedback button still shows from md (its own md class): at these
                 sizes the menu's Send feedback row and the button are both there, on purpose.
+                (AMENDED Phase 88.9-52 (R4 C4, owner 2026-11-18): no longer. While this strip is
+                under the switch the floating button is not drawn and the menu's row is the one
+                entry, as on a phone. The button reads the same width from a box of its own:
+                src/app/components/FeedbackButton.js ("HOW IT LEARNS THE HEADER'S STATE, with no script.").)
                 Changing 42rem at one site and not the others splits the header: Header.test.tsx
                 (S2 tokens) holds the four together.
                 AMENDED Phase 88.9-52 (R4 B4, round 4, 2026-11-18): the width is 40.25rem, not 42rem.

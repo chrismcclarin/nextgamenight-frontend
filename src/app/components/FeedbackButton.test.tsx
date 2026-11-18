@@ -509,6 +509,41 @@ describe('R5 (88.9-52): the floating feedback button is a fixed size and is rais
     expect(cls).toContain('z-30');
   });
 
+  // 88.9-52 R4 C4 (owner 2026-11-18: "When it switches to the menu, we should just let the menu
+  // hold the feedback button and lose it on the main screen, like the phone does"). From md the
+  // header falls back to its phone-menu form while its strip is under 40.25rem (R4 S2 / B4), and
+  // while it does the floating button is not drawn; the menu's Send feedback row is the entry.
+  // The button cannot read the header's container (it is outside it), so it reads a container
+  // of its own that is the same width by construction: a zero-height box fixed across the bottom
+  // of the screen. jsdom resolves no container query, so this pins the tokens and holds the
+  // width to the header's; the rendered proof is e2e/touch-targets.spec.ts (the R21 and R5 tests).
+  it('R4 C4: from md the floating button is not drawn while the header is in its menu form: its own full-width container, switched at the header width', async () => {
+    const fab = renderFab();
+    const toggle = fab.parentElement as HTMLElement;
+    const container = toggle.parentElement as HTMLElement;
+    // The DEC-2 wrapper keeps its phone rule and gains the header's condition.
+    expect(tokens(toggle)).toEqual(['hidden', 'md:block', 'md:@max-[40.25rem]/fab:hidden']);
+    // The container: fixed across the bottom edge, no height, the button's own tier. Whether or
+    // not a browser makes a query container the containing block of a fixed descendant, the
+    // button lands in the same place (the box's bottom and right edges are the screen's).
+    expect(tokens(container).sort()).toEqual(['@container/fab', 'bottom-0', 'fixed', 'h-0', 'inset-x-0', 'z-30'].sort());
+    expect(container.children).toHaveLength(1);
+    // The button itself is unchanged (R5).
+    expect(tokens(fab)).toEqual(expect.arrayContaining(['fixed', 'z-30', 'right-[24px]', 'bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))]']));
+    // LOCKSTEP with the header: one width, the one every /header: token carries.
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const header = readFileSync(resolve(process.cwd(), 'src/app/Header.js'), 'utf8');
+    const headerWidths = new Set(
+      [...header.matchAll(/className=(?:"|\{`)[^"`]*?md:@(?:min|max)-\[([^\]]+)\]\/header:/g)].map((m) => m[1]),
+    );
+    expect(headerWidths.size, 'the header switches at more than one width, or none was found').toBe(1);
+    const fabWidth = /^md:@max-\[([^\]]+)\]\/fab:hidden$/.exec(tokens(toggle)[2])?.[1];
+    expect(fabWidth).toBe([...headerWidths][0]);
+    // The header strip is full width (the same width as a box fixed from edge to edge).
+    expect(header).toMatch(/className="w-full h-16 [^"]*@container\/header"/);
+  });
+
   it('R5 position: the bottom offset is the footer copyright line top (3rem) plus an 8px gap plus the safe area', () => {
     const fab = renderFab();
     expect(tokens(fab)).toContain('bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))]');
