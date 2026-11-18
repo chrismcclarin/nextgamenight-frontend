@@ -10,6 +10,8 @@
 //
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`.
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
+import { join as joinPath } from 'node:path';
 import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1283,4 +1285,31 @@ describe('restore/group/[token] — Q69 the failure glyph by cause (88.9-52)', (
       cleanup();
     }
   }, 20000);
+
+  // Phase 88.9-52 (R28, owner 2026-11-17 "Yes"): the auth layer answers the take-over 410
+  // account_deleted for a deleted account. The link is fine; the account is not. Same red X card,
+  // the register's own sentence for that code in place of the dead-link line.
+  it('R28 (88.9-52): a take-over 410 account_deleted says the account was deleted, on the red X card, never that the link is dead', async () => {
+    signedIn();
+    accept().mockRejectedValue(new ApiError('HTTP error! status: 410', 'account_deleted', 410));
+    const { container } = renderPage();
+    await tapTakeOver();
+    await screen.findByRole('heading', HEADLINE);
+    expectTone(container, 'red', 'accept 410 account_deleted');
+    expect(screen.getByText('This account has already been deleted.', VISIBLE_ONLY)).toBeInTheDocument();
+    expect(screen.queryByText(/no longer valid/i, VISIBLE_ONLY)).toBeNull();
+    expect(screen.queryByText(/erased/i, VISIBLE_ONLY)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Sign in to try again' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go Home' })).toHaveAttribute('href', '/');
+    expect(screen.getByTestId('restore-page-status').textContent).toBe(
+      'Unable to restore this group This account has already been deleted.'
+    );
+    // Terminal and latched, like the other 410s: one POST, no second chance to fire.
+    expect(accept()).toHaveBeenCalledTimes(1);
+
+    // The sentence is the register's, read by code: the page file holds no copy of it.
+    const source = readFileSync(joinPath(process.cwd(), 'src/app/restore/group/[token]/page.tsx'), 'utf8');
+    expect(source).not.toContain('already been deleted');
+  });
 });

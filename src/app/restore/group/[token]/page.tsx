@@ -44,6 +44,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 import { formatLongDate } from '@/lib/datetime';
 
@@ -500,8 +501,25 @@ function RestoreGroupPage() {
           // Split by CAUSE, not by status. Three different codes land on 410
           // and only one of them means the group is gone; the fallback is
           // always the weaker message, never the destructive claim.
+          //
+          // DECISION Phase 88.9-52 (R28, owner 2026-11-17 "Yes"): a FOURTH code lands on 410
+          // here, account_deleted, sent by the auth layer in front of every signed-in route
+          // (backend:Sonnet/middleware/auth0.js, sendError account_deleted), not by the
+          // take-over handler. It shows the register's own sentence for that code
+          // (getFetchErrorMessage, read by CODE, never the caught message), chosen OVER the
+          // LINK_DEAD fallback it used to take: the link is fine, the account is not. Same red
+          // X card, still terminal and latched, no way back offered. REJECTED: a literal copy
+          // of the sentence on this page (one register, one wording). Every other unknown code
+          // still falls to LINK_DEAD. Folding this code back into the fallback is a decision,
+          // not a cleanup.
           setStatus('error');
-          setError(err.code === 'window_expired' ? WINDOW_EXPIRED : LINK_DEAD);
+          setError(
+            err.code === 'window_expired'
+              ? WINDOW_EXPIRED
+              : err.code === 'account_deleted'
+                ? getFetchErrorMessage(err)
+                : LINK_DEAD
+          );
           return;
         }
       }
@@ -554,7 +572,8 @@ function RestoreGroupPage() {
   // the pressed button takes focus and focus speaks it, so the region saying it too would be heard
   // twice; the '' between two settled outcomes is also what lets an identical outcome re-announce.
   // The already-restored hand-off line is left out: it changes mid-read (R-7). Every part is a
-  // string this page already renders; a caught error's message is never read.
+  // string this page already renders; a caught error's message is never read. (R28, 88.9-52: the
+  // deleted-account line comes from the shared register by the error's CODE, the same rule.)
   let announcement = '';
   if (regionDwell) {
     announcement = '';
