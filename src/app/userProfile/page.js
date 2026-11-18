@@ -3383,8 +3383,18 @@ function Profile(){
                         AMENDED Phase 88.9-68 (X57, owner at N48: the overall text is centered, so adding the checkmark makes the text move a little): the glyph's space is reserved in both states (invisible, not absent), chosen OVER mounting it only when pressed; the shared min width stands.
 
                         `enabled-hover:bg-*` pins the SELECTED arm's fill through hover: ghost's base
-                        carries `enabled-hover:bg-surface-hover`, which would otherwise wash the amber
-                        (and the purple) on hover — a fill change P6 forbids. */}
+                        carries `enabled-hover:bg-surface-ghost-hover`, which would otherwise wash the
+                        pressed fill on hover — a fill change P6 forbids.
+                        AMENDED Phase 88.9-52 (R8c, owner 2026-11-17, pick Fill): the UNPRESSED arm of both
+                        toggles hovers on the ghost family's own key, enabled-hover:bg-surface-ghost-hover
+                        (light: the visible secondary fill #e3dad1, 1.3802 off the card, the arm's ink 7.59
+                        on it; dark: the shared wash, unchanged), chosen OVER the enabled-hover:bg-surface-hover
+                        it restated (1.0601 off the light card). The arm sets its own card fill, so it must
+                        restate the hover after it, and the restated class wins over the variant's: leaving
+                        the old key here kept the old hover on these two buttons alone. The pressed arm is
+                        untouched (THEME_TOGGLE_PRESSED holds its muted fill through hover). In light a
+                        hovered unpressed toggle (#e3dad1) is 1.0902 from the pressed fill (#dbd1c7); the
+                        accent border, the accent ink and the check glyph still tell the two apart. */}
                     {themeMounted ? (
                         <div className="flex gap-3">
                             <Button
@@ -3394,7 +3404,7 @@ function Profile(){
                                 className={`border min-w-32 transition-colors ${
                                     resolvedTheme === 'light'
                                         ? THEME_TOGGLE_PRESSED
-                                        : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
+                                        : 'border-line bg-surface-card enabled-hover:bg-surface-ghost-hover text-content-secondary'
                                 }`}
                             >
                                 <span aria-hidden="true" className={resolvedTheme === 'light' ? undefined : 'invisible'}>{'\u2713'}</span>
@@ -3410,7 +3420,7 @@ function Profile(){
                                 className={`border min-w-32 transition-colors ${
                                     resolvedTheme === 'dark'
                                         ? THEME_TOGGLE_PRESSED
-                                        : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
+                                        : 'border-line bg-surface-card enabled-hover:bg-surface-ghost-hover text-content-secondary'
                                 }`}
                             >
                                 <span aria-hidden="true" className={resolvedTheme === 'dark' ? undefined : 'invisible'}>{'\u2713'}</span>

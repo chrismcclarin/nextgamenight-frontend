@@ -2211,8 +2211,10 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     expect(dark.className.split(/\s+/)).toContain('border-line');
 
     // The selected fill is PINNED through hover: ghost's base carries
-    // `enabled-hover:bg-surface-hover`, which would otherwise wash the pressed fill on hover.
+    // `enabled-hover:bg-surface-ghost-hover` (R8c, 88.9-52; it was `enabled-hover:bg-surface-hover`),
+    // which would otherwise wash the pressed fill on hover. Neither wash is on the pressed arm.
     expect(lightClasses).not.toContain('enabled-hover:bg-surface-hover');
+    expect(lightClasses).not.toContain('enabled-hover:bg-surface-ghost-hover');
 
     // The dead classes went with the migration.
     for (const dead of ['px-4', 'py-2', 'rounded-lg', 'font-semibold', 'gap-2']) {
@@ -2295,15 +2297,25 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     for (const gone of ['bg-amber-50', 'border-amber-500', 'enabled-hover:bg-surface-hover']) {
       expect(lightClasses).not.toContain(gone);
     }
-    // `resolvedTheme` is mocked 'light', so Dark renders its UNSELECTED arm, byte-unchanged.
+    // `resolvedTheme` is mocked 'light', so Dark renders its UNSELECTED arm.
     const darkClasses = dark.className.split(/\s+/);
     expect(darkClasses).toContain('border-line');
     expect(darkClasses).toContain('bg-surface-card');
+    // R8c (88.9-52, owner pick Fill, 2026-11-17): the unpressed arm hovers on the ghost family's
+    // visible fill. The arm restates the hover after its own card fill, so it has to name the
+    // ghost key itself; the old shared wash left here would win over the variant's and keep the
+    // near-invisible light hover (1.06 off the card) on these two buttons only.
+    expect(darkClasses).toContain('enabled-hover:bg-surface-ghost-hover');
+    expect(darkClasses).not.toContain('enabled-hover:bg-surface-hover');
+    expect(lightClasses).not.toContain('enabled-hover:bg-surface-ghost-hover');
 
     // The pressed Dark arm is unreachable under this mock, so the ONE constant is held at the source.
     const source = await pageSource();
     expect(source.split("const THEME_TOGGLE_PRESSED = 'border-line-accent bg-surface-muted enabled-hover:bg-surface-muted text-content-accent';").length - 1).toBe(1);
     expect(source.split('? THEME_TOGGLE_PRESSED').length - 1).toBe(2);
+    // Both unpressed arms (the Light one is unreachable under this mock) are the same string.
+    expect(source.split(": 'border-line bg-surface-card enabled-hover:bg-surface-ghost-hover text-content-secondary'").length - 1).toBe(2);
+    expect(source).not.toContain("bg-surface-card enabled-hover:bg-surface-hover");
     expect(source).not.toContain('bg-purple-900 enabled-hover:bg-purple-900');
     expect(source).not.toContain("'border-amber-500");
 
