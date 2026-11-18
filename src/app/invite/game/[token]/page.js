@@ -64,7 +64,8 @@ function GameInvitePage() {
      connection); the register's session line and the restore page's link words are reused, no
      new string. Putting Retry back on a 401 is a decision, not a cleanup.
      AMENDED Phase 88.9-52 (PIX-5): the connection hint is now left out for every cause but a
-     network failure; see the PIX-5 marker on connectionHint below. */
+     network failure; see the PIX-5 marker below.
+     AMENDED Phase 88.9-52 (P3, owner 2026-11-17 "Drop"): the hint is gone for every cause. */
   const [needsSignIn, setNeedsSignIn] = useState(false);
   /* DECISION Phase 88.9-52 (PIX-5, picture pass, the Q69 as-is note): the small line under the
      failure sentence (Check your connection and try again.) shows ONLY when the failure is a
@@ -74,8 +75,13 @@ function GameInvitePage() {
      429, the CSRF refusal, an unreadable 2xx, a raw transport error that carries no code) shows
      the register sentence and Retry alone. Keyed on the code, never on the message text (the
      classifier's rule below). No string was added or changed. Showing the line for another cause
-     is a decision, not a cleanup. */
-  const [connectionHint, setConnectionHint] = useState(false);
+     is a decision, not a cleanup.
+     AMENDED Phase 88.9-52 (P3, owner 2026-11-17 "Drop"): the small line is REMOVED for a network
+     failure too, and with it the connectionHint state this marker sat on and the line's string.
+     Chosen OVER PIX-5's network-only form: on a network failure the register sentence above it
+     already ends with the same words, so the card said them twice. The transient card is now the
+     register sentence and Retry for every cause. Bringing the small line back, for any cause, is
+     a decision, not a cleanup. */
   /* DECISION Phase 88.9-52 (R27, owner 2026-11-17 "Yes"): a join answered 410 with the envelope
      code account_deleted lands on the red X permanent card with the register's own sentence for
      that code (getFetchErrorMessage) and WITHOUT the contact-the-group-owner line, chosen OVER
@@ -195,8 +201,6 @@ function GameInvitePage() {
           // X68 (88.9-66, owner ruled 2026-11-14): the transient branch renders Retry, so its line
           // is the register line's beside-retry form.
           setError(messageBesideRetry(getFetchErrorMessage(err)));
-          // PIX-5 (88.9-52): the connection line is for a network failure only.
-          setConnectionHint(err?.code === 'network');
         } else {
           setStatus('error-permanent');
           setError('This invite link is no longer valid.');
@@ -243,7 +247,6 @@ function GameInvitePage() {
           // Defensive: backend returned an unexpected shape.
           setStatus('error-transient');
           setError('Unexpected response from server.');
-          setConnectionHint(false);
         }
       })
       .catch((err) => {
@@ -284,8 +287,6 @@ function GameInvitePage() {
         // register line too.
         const signIn = err?.status === 401;
         setNeedsSignIn(signIn);
-        // PIX-5 (88.9-52): the connection line is for a network failure only.
-        setConnectionHint(err?.code === 'network');
         setError(
           permanent || signIn ? getFetchErrorMessage(err) : messageBesideRetry(getFetchErrorMessage(err))
         );
@@ -328,7 +329,6 @@ function GameInvitePage() {
     }, REGION_EMPTY_DWELL_MS);
     joiningRef.current = false;
     setNeedsSignIn(false);
-    setConnectionHint(false);
     setError(null);
     setStatus('loading');
     setEventInfo(null);
@@ -575,8 +575,10 @@ function GameInvitePage() {
         {/* Transient error — D-INVITE-LANDING-03 transient branch: inline
             error + Retry button. Network failures, 5xx, ambiguous errors.
             AMENDED Phase 88.9-52 (PIX-5): the small connection line under the error shows for a
-            network failure only (the PIX-5 marker on connectionHint above); without it the error
-            line carries the 24px gap to Retry, as the sign-in arm's does. */}
+            network failure only (the PIX-5 marker above); without it the error
+            line carries the 24px gap to Retry, as the sign-in arm's does.
+            AMENDED Phase 88.9-52 (P3, owner 2026-11-17 "Drop"): the small line never shows now,
+            so the error line always carries the 24px gap to Retry. */}
         {/* DECISION Phase 88.9-52 (Q69-2 / Q69-3, owner 2026-11-16 "approve all"): this card draws
             the X on the amber warning pair (the group invite page's amber arm: warning ink on the
             warning circle, 5.50 light / 4.95 dark), chosen OVER the shipped warning triangle on
@@ -608,12 +610,7 @@ function GameInvitePage() {
               </>
             ) : (
               <>
-                <p className={connectionHint ? 'text-content-secondary mb-2' : 'text-content-secondary mb-6'}>{error}</p>
-                {connectionHint && (
-                  <p className="text-xs text-content-muted mb-6">
-                    Check your connection and try again.
-                  </p>
-                )}
+                <p className="text-content-secondary mb-6">{error}</p>
                 <Button
                   variant="primary"
                   size="default"
