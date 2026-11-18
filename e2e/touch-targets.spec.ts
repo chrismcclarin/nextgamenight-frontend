@@ -936,10 +936,17 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
     // R21 (88.9-52 R4 S2), RENDERED: from md up. The round-3 capture found, at 768px with text at
     // 200%, the desktop header's 40px name run straight into Home and the list run off the right
-    // edge. From md the desktop list is drawn only while the strip is at least 42rem wide
+    // edge. From md the desktop list is drawn only while the strip is at least 40.25rem wide
     // (src/app/Header.js ("DECISION Phase 88.9-52 (R4 S2, the round-3 capture: at 768px with doubled text the")); under that it is the
     // phone header, so every link is in the menu. Three states are read: 768 at 200% (the phone
     // header), 1400 at 200% (43.75rem: the desktop list, with room), 768 at 100% (unchanged).
+    // AMENDED Phase 88.9-52 (R4 B4): the switch moved from 42rem to 40.25rem
+    // (src/app/Header.js ("AMENDED Phase 88.9-52 (R4 B4, round 4, 2026-11-18): the width is 40.25rem, not 42rem.")), so two more
+    // widths are read at 200%, one each side of it (1320 and 1264; 1288 is the switch), and four
+    // text sizes between 100% and 200% are read at 768, the narrowest screen that can draw the
+    // list: whichever header is drawn there, it is whole. The open menu's last three rows are
+    // also read at rest: the re-shoot saw a lighter Send feedback row, which was the row's hover
+    // fill under the capture's pointer, not a fill of its own.
     const readWide = () =>
       page.evaluate(() => {
         const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
@@ -1012,6 +1019,23 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       .poll(async () => (await readWide()).backdropOpacity, { message: 'R21 S2: the dim layer behind the open menu is not shown from md' })
       .toBe('1');
     expect((await readWide()).backdropDrawn, 'R21 S2: the dim layer behind the open menu is not drawn from md').toBe(true);
+    // R4 B4: at rest (the pointer parked in the corner, nothing focused in the panel) the Theme row
+    // and the Send feedback row paint the same fill, which is none of their own.
+    await page.mouse.move(0, 0);
+    const rowFills = await page.evaluate(() => {
+      const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
+      const panel = nav.querySelector(':scope > div:last-child') as HTMLElement;
+      const rows = Array.from(panel.querySelectorAll(':scope > div > button')) as HTMLElement[];
+      return rows.map((b) => ({ name: b.getAttribute('aria-label') ?? (b.textContent ?? '').trim(), fill: getComputedStyle(b).backgroundColor, hovered: b.matches(':hover') }));
+    });
+    const feedbackRow = rowFills.find((r) => r.name === 'Send feedback');
+    expect(feedbackRow, `R21 B4: the open menu has no Send feedback row (${rowFills.map((r) => r.name).join(', ')})`).toBeTruthy();
+    expect(rowFills.length, 'R21 B4: the open menu holds fewer than two full-width rows under its links').toBeGreaterThanOrEqual(2);
+    for (const r of rowFills) {
+      expect(r.hovered, `R21 B4: the ${r.name} row is under the pointer, so its fill is its hover fill`).toBe(false);
+      expect(r.fill, `R21 B4: at rest the ${r.name} row paints ${r.fill}, the Send feedback row ${feedbackRow?.fill}`).toBe(feedbackRow?.fill);
+    }
+    expect(feedbackRow?.fill, 'R21 B4: at rest the Send feedback row paints a fill of its own').toBe('rgba(0, 0, 0, 0)');
 
     // 1400 wide, text still at 200%: 43.75rem, over the switch. The desktop list comes back with
     // room after the name, nothing runs off the edge, and the menu left open closes itself.
@@ -1035,6 +1059,64 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     ).toBeGreaterThanOrEqual(48);
     expect(wide.listRight, `R21 S2: at 1400px and 200% text the desktop list ends at ${wide.listRight}px, off the 1400px screen`).toBeLessThanOrEqual(1400);
     expect(wide.stripOverflow, `R21 S2: at 1400px and 200% text the header is ${wide.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
+
+    // R4 B4: either side of the 40.25rem switch at 200% text (1288px). 1320 is 41.25rem: the
+    // desktop list, 142px after the name by the measured line (screen width less 1178). 1264 is
+    // 39.5rem: the phone header. 42rem would have kept the phone header at 1320.
+    await page.setViewportSize({ width: 1320, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 B4: the window did not become 1320px wide' })
+      .toBe(1320);
+    const justOver = await readWide();
+    expect(justOver.listDrawn, 'R21 B4: at 1320px and 200% text (41.25rem) the desktop list is not drawn').toBe(true);
+    expect(justOver.menuDrawn, 'R21 B4: at 1320px and 200% text the menu button is drawn beside the desktop list').toBe(false);
+    expect(
+      justOver.listLeft - justOver.name.right,
+      `R21 B4: at 1320px and 200% text the site name ends ${justOver.listLeft - justOver.name.right}px before Home, under 48px`,
+    ).toBeGreaterThanOrEqual(48);
+    expect(justOver.listRight, `R21 B4: at 1320px and 200% text the desktop list ends at ${justOver.listRight}px, off the screen`).toBeLessThanOrEqual(1320);
+    expect(justOver.stripOverflow, `R21 B4: at 1320px and 200% text the header is ${justOver.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
+    await page.setViewportSize({ width: 1264, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 B4: the window did not become 1264px wide' })
+      .toBe(1264);
+    const justUnder = await readWide();
+    expect(justUnder.listDrawn, 'R21 B4: at 1264px and 200% text (39.5rem) the desktop list is drawn — 54px short of the switch').toBe(false);
+    expect(justUnder.menuDrawn, 'R21 B4: at 1264px and 200% text the menu button is not drawn').toBe(true);
+
+    // R4 B4: text sizes between 100% and 200% on a 768px screen, the narrowest that can draw the
+    // desktop list. 110% and 118% leave the strip over the switch (43.6rem and 40.7rem): the list,
+    // with at least 48px after the name (about 105px and 59px by the sum). 125% and 150% put it
+    // under (38.4rem and 32rem): the phone header. Whichever is drawn, nothing runs off the screen.
+    await page.setViewportSize({ width: 768, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 B4: the window did not go back to 768px wide' })
+      .toBe(768);
+    for (const [percent, wantList] of [
+      [110, true],
+      [118, true],
+      [125, false],
+      [150, false],
+    ] as const) {
+      await page.addStyleTag({ content: `html{font-size:${percent}% !important}` });
+      await expect
+        .poll(async () => (await readWide()).rootFontPx, { message: `R21 B4: the root font size did not become ${percent}%` })
+        .toBeCloseTo((16 * percent) / 100, 1);
+      const at = await readWide();
+      const where = `at 768px and ${percent}% text`;
+      expect(at.listDrawn, `R21 B4: ${where} the desktop list drawn is ${at.listDrawn}`).toBe(wantList);
+      expect(at.menuDrawn, `R21 B4: ${where} the menu button and the desktop list are both drawn, or neither`).toBe(!wantList);
+      if (at.listDrawn) {
+        expect(
+          at.listLeft - at.name.right,
+          `R21 B4: ${where} the site name ends ${at.listLeft - at.name.right}px before Home, under 48px`,
+        ).toBeGreaterThanOrEqual(48);
+        expect(at.listRight, `R21 B4: ${where} the desktop list ends at ${at.listRight}px, off the screen`).toBeLessThanOrEqual(768);
+      } else {
+        expect(at.menuLeft - at.name.right, `R21 B4: ${where} the site name ends ${at.menuLeft - at.name.right}px before the menu button`).toBeGreaterThanOrEqual(7.5);
+      }
+      expect(at.stripOverflow, `R21 B4: ${where} the header is ${at.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
+    }
 
     // 768 wide at ordinary text: nothing changed. The desktop list, the 20px name, no menu button.
     await page.addStyleTag({ content: 'html{font-size:100% !important}' });

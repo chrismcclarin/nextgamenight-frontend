@@ -333,7 +333,7 @@ describe('R21 (88.9-52): the header site name fits one line at enlarged text, or
     // The desktop rung of the owner-accepted pair (C10a) is kept; the phone rung is now the fit rule's cap.
     // Since 88.9-52 R4 S2 the desktop rung applies only while the desktop list is drawn (the S2
     // describe below); a bare md rung would put the 20px name back beside the menu button.
-    expect(cls).toContain('md:@min-[42rem]/header:text-xl');
+    expect(cls).toContain('md:@min-[40.25rem]/header:text-xl');
     expect(cls).not.toContain('md:text-xl');
     expect(cls).not.toContain('text-lg');
     // The row that holds the brand link and the menu button is the query container.
@@ -435,15 +435,19 @@ describe('the header home link is named by the product name alone (88.9-52)', ()
 // 88.9-52 R4 S2 (the round-3 capture, 768px with doubled text): the desktop header's 40px site
 // name ran straight into Home with no gap, and the list ran off the right edge of the screen
 // (Profile was cut, Logout and the theme switch were not reachable). From md the header now shows
-// the desktop list only while the strip is at least 42rem wide; under that it is the phone header:
+// the desktop list only while the strip is at least 40.25rem wide (42rem until R4 B4, which
+// measured the list in a browser); under that it is the phone header:
 // the menu button, the panel, and the name on R21's fit rule. At ordinary text the strip is 48rem
 // at md, so nothing changes there. jsdom resolves no media or container query, so these pin the
 // class tokens, work the arithmetic, and drive the one piece of script (the menu closes when its
 // button stops being drawn). The rendered proof is in e2e/touch-targets.spec.ts ("R21 (88.9-52 R4 S2)").
 describe('S2 (88.9-52 R4): from md the header falls back to the phone menu while the desktop list cannot fit', () => {
   const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
-  const WHEN_NARROW = 'md:@max-[42rem]/header:';
-  const WHEN_WIDE = 'md:@min-[42rem]/header:';
+  // AMENDED Phase 88.9-52 (R4 B4): 40.25rem, from the widths measured in the browser (the
+  // arithmetic test below works it); 42rem rested on widths read off a picture.
+  const SWITCH_REM = 40.25;
+  const WHEN_NARROW = 'md:@max-[40.25rem]/header:';
+  const WHEN_WIDE = 'md:@min-[40.25rem]/header:';
 
   const parts = () => {
     const nav = screen.getByRole('navigation', { name: 'Main' });
@@ -457,12 +461,12 @@ describe('S2 (88.9-52 R4): from md the header falls back to the phone menu while
     return { nav, strip, menu, list, panel, backdrop, name };
   };
 
-  it('S2 tokens: one 42rem width on the strip switches the list, the menu button, the panel and the name together', () => {
+  it('S2 tokens: one 40.25rem width on the strip switches the list, the menu button, the panel and the name together', () => {
     render(<Header />);
     const { strip, menu, list, panel, backdrop, name } = parts();
     // The strip (the full-width bar) is the named container all four read.
     expect(tokens(strip)).toContain('@container/header');
-    // Each keeps its md class and gains the opposite display for a strip under 42rem.
+    // Each keeps its md class and gains the opposite display for a strip under the switch.
     expect(tokens(list)).toEqual(expect.arrayContaining(['hidden', 'md:flex', WHEN_NARROW + 'hidden']));
     expect(tokens(menu)).toEqual(expect.arrayContaining(['md:hidden', WHEN_NARROW + 'inline-block']));
     expect(tokens(panel)).toEqual(expect.arrayContaining(['md:hidden', WHEN_NARROW + 'block']));
@@ -475,7 +479,7 @@ describe('S2 (88.9-52 R4): from md the header falls back to the phone menu while
       .filter((t) => t.includes('/header:'))
       .map((t) => /^md:@(?:min|max)-\[([^\]]+)\]\/header:/.exec(t)?.[1]);
     expect(widths).toHaveLength(4);
-    expect(new Set(widths)).toEqual(new Set(['42rem']));
+    expect(new Set(widths)).toEqual(new Set([SWITCH_REM + 'rem']));
     // The dim layer behind the open menu is outside the strip and cannot read its width, so it
     // carries no md class: it is drawn whenever the menu is open, at any width.
     expect(tokens(backdrop)).toEqual(expect.arrayContaining(['fixed', 'inset-0']));
@@ -483,7 +487,7 @@ describe('S2 (88.9-52 R4): from md the header falls back to the phone menu while
     expect(backdrop).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('S2 arithmetic: under 42rem the name keeps its 8px before the menu button from 768 up; from 42rem the name and the list fit with room between', () => {
+  it('S2 arithmetic: under the switch the name keeps its 8px before the menu button from 768 up; from the switch the name and the list keep at least 48px between them at every text size from 100% to 200%', () => {
     // The name is 7.87em wide (capture j: 157.4px at 20px).
     const NAME_EM = 157.4 / 20;
     // R21's fit rule, the same constants its lockstep test reads off the class.
@@ -493,32 +497,71 @@ describe('S2 (88.9-52 R4): from md the header falls back to the phone menu while
       const fontPx = Math.min(Math.max(18, (row - 34 - 3.375 * rem - 8) / 8), 1.125 * rem);
       return { shown, fontPx, clearance: row - 34 - 3.375 * rem - NAME_EM * fontPx };
     };
-    // The desktop list's width in rem. Its words were read off the capture frame at 28px text
-    // (Home 80px, Friends 96px, Profile 84px; Logout taken as 96px): 11.125rem. The bell is
-    // p-1.5 round a w-6 icon and the theme switch p-2 round a w-5 icon, 2.25rem each. Five
-    // gap-x-6 gaps: four between the five items and one between Profile and the bell.
-    const LIST_REM = 356 / 32 + 2.25 * 2 + 1.5 * 5;
+    // The desktop list's width in rem. AMENDED Phase 88.9-52 (R4 B4): MEASURED in the browser by
+    // the round-4 re-shoot (r4-m), 745.3px at 200% text (a 32px root), the same at 1200, 1280 and
+    // 1344 wide. It was an estimate read off a picture (23.125rem); it is 23.29rem.
+    const LIST_REM = 745.3 / 32;
+    // The space between the name and Home: the strip less its 2rem of side padding, the 34px
+    // logo, the 0.625rem gap, the name at its md size (7.87em of 1.25rem) and the list. At a
+    // 32px root that is strip - 1178.1, the re-shoot's own measured line (22px at 1200, 102px
+    // at 1280, 166px at 1344: screen width less 1178).
     const desktopGap = (strip: number, rem: number) =>
       strip - 2 * rem - 34 - 0.625 * rem - NAME_EM * 1.25 * rem - LIST_REM * rem;
+    expect(desktopGap(1200, 32)).toBeCloseTo(22, 0);
+    expect(desktopGap(1280, 32)).toBeCloseTo(102, 0);
+    expect(desktopGap(1344, 32)).toBeCloseTo(166, 0);
 
-    for (const rem of [16, 18, 20, 24, 28, 32]) {
+    // WHERE THE SWITCH MUST SIT. The list is drawn when the screen is at least md (768px: a
+    // media query, which a larger root text size does not move) AND the strip is at least the
+    // switch (in rem of the root, which it does move). The tightest case is not 200%: it is the
+    // text size at which the switch falls exactly on 768px, because there the list is drawn on
+    // the narrowest screen that can draw it. With the switch at T rem that size is 768 / T px,
+    // and the gap there is 768 - 34 - 35.75rem x (768 / T). Asking 48px of it gives
+    // T >= 35.75 x 768 / 686 = 40.03rem. The smallest quarter-rem step over that is 40.25.
+    const PX_PARTS = 34;
+    const REM_PARTS = 2 + 0.625 + NAME_EM * 1.25 + LIST_REM;
+    const smallest = (REM_PARTS * 768) / (768 - PX_PARTS - 48);
+    expect(smallest).toBeGreaterThan(40);
+    expect(smallest).toBeLessThanOrEqual(SWITCH_REM);
+    expect(SWITCH_REM - smallest).toBeLessThan(0.25);
+    // The tightest gap any drawn desktop list has, for a given switch, over every root size from
+    // 16px to 32px (hundredths of a pixel) and every screen from 768px up.
+    const tightest = (switchRem: number) => {
+      let least = Infinity;
+      for (let rem = 16; rem <= 32.0001; rem += 0.01) {
+        const narrowestDrawn = Math.max(768, Math.ceil(switchRem * rem));
+        least = Math.min(least, desktopGap(narrowestDrawn, rem));
+      }
+      return least;
+    };
+    expect(tightest(SWITCH_REM)).toBeGreaterThanOrEqual(48);
+    // 38.5rem, the value the 200% case alone asks for (1226px / 32 = 38.3rem), is too small: at
+    // a 20px root (text at 125%) it draws the list on a 770px screen with about 21px after the name.
+    expect(tightest(38.5)).toBeLessThan(30);
+    // 40rem misses by half a pixel (47.5px at a 19.2px root on a 768px screen).
+    expect(tightest(40)).toBeLessThan(48);
+
+    for (const rem of [16, 18, 19, 19.2, 20, 24, 28, 32]) {
       for (let viewport = 768; viewport <= 1600; viewport += 1) {
-        if (viewport < 42 * rem) {
+        if (viewport < SWITCH_REM * rem) {
           // The phone header, above md: the name is on one line, at least 18px, 8px clear.
           const { shown, fontPx, clearance } = fit(viewport, rem);
           expect(shown, viewport + ' at ' + rem).toBe(true);
           expect(fontPx, viewport + ' at ' + rem).toBeGreaterThanOrEqual(18);
           expect(clearance, viewport + ' at ' + rem).toBeGreaterThanOrEqual(8);
         } else {
-          // The desktop list: at least 1.5rem (one of its own gaps) between the name and Home.
-          expect(desktopGap(viewport, rem), viewport + ' at ' + rem).toBeGreaterThanOrEqual(1.5 * rem);
+          // The desktop list: at least 48px, and at least 1.5rem (one of its own gaps), between the name and Home.
+          expect(desktopGap(viewport, rem), viewport + ' at ' + rem).toBeGreaterThanOrEqual(Math.max(48, 1.5 * rem));
         }
       }
     }
-    // Ordinary text: the strip is 48rem at md, over the 42rem switch, so md alone still decides.
-    expect(768 / 16).toBeGreaterThanOrEqual(42);
-    // The captured defect: 768 with doubled text is 24rem, far under 42rem, so it is the phone header.
-    expect(768 / 32).toBeLessThan(42);
+    // Ordinary text: the strip is 48rem at md, over the switch, so md alone still decides.
+    expect(768 / 16).toBeGreaterThanOrEqual(SWITCH_REM);
+    // The captured defect: 768 with doubled text is 24rem, far under the switch, so it is the phone header.
+    expect(768 / 32).toBeLessThan(SWITCH_REM);
+    // Doubled text: the desktop list is back from 1288px (it was 1344px at 42rem), with 110px after the name.
+    expect(SWITCH_REM * 32).toBe(1288);
+    expect(desktopGap(1288, 32)).toBeCloseTo(110, 0);
     // And what it was: the old md-only rule put the list beside the name there, short by this much.
     expect(desktopGap(768, 32)).toBeLessThan(0);
   });

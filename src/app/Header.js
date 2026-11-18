@@ -95,7 +95,7 @@ function Header(){
     // strip's width, and so can no longer be hidden by a class of its own; left open it would
     // dim the page and swallow the first click with no menu on screen. CHOSEN OVER a script that
     // works out the width for itself (the R21 marker's rejected script): this reads only what
-    // the stylesheet decided, so the 42rem rule lives in one place. The watcher exists only
+    // the stylesheet decided, so the 40.25rem rule lives in one place. The watcher exists only
     // while the menu is open. Focus is not moved: the button it would go back to is not drawn.
     // Removing this while the dim layer has no md class brings that stuck dim layer back.
     useEffect(() => {
@@ -139,7 +139,7 @@ function Header(){
                 class-toggle so the fade animation plays on both directions.
                 pointer-events-none on closed state ensures it never eats clicks.
                 AMENDED Phase 88.9-52 (R4 S2): its md class is gone. From md the menu can now be
-                open (a strip under 42rem, the marker on the strip below), and this layer is
+                open (a strip under 40.25rem, the marker on the strip below), and this layer is
                 outside the strip, so no class here can follow that rule. It is drawn whenever
                 the menu is open, and the menu closes itself when its button stops being drawn
                 (this file ("an open menu closes when its own button stops being drawn")). */}
@@ -215,7 +215,26 @@ function Header(){
                 The floating feedback button still shows from md (its own md class): at these
                 sizes the menu's Send feedback row and the button are both there, on purpose.
                 Changing 42rem at one site and not the others splits the header: Header.test.tsx
-                (S2 tokens) holds the four together. */}
+                (S2 tokens) holds the four together.
+                AMENDED Phase 88.9-52 (R4 B4, round 4, 2026-11-18): the width is 40.25rem, not 42rem.
+                The round-4 re-shoot (r4-m) measured what the lines above estimated: at 200% text
+                the list is 745.3px (23.29rem) and the space after the 40px name is the screen
+                width less 1178px (22px at 1200, 102px at 1280, 166px at 1344), which is 2rem of
+                padding + the 34px logo + 0.625rem + the 9.84rem name + the list: 34px + 35.75rem.
+                THE SUM: the list is drawn when the screen is at least md (768px, a media query
+                that a larger root text size does not move) and this strip is at least the
+                switch (rem of the root, which it does move). The tightest case is the text size
+                at which the switch lands exactly on 768px: with the switch at T rem that is a
+                root of 768 / T px, and the space after the name there is
+                768 - 34 - 35.75 x 768 / T. For 48px: T >= 35.75 x 768 / 686 = 40.03rem. 40.25rem
+                is the next quarter step: its tightest case is 51.8px, at text about 119% on a
+                768px screen. At 200% the desktop list now returns at 1288px (it was 1344px) with
+                110px after the name. REJECTED: 38.5rem, the number the 200% case alone gives
+                (1226px / 32): at 125% text it draws the list on a 770px screen with 21px after
+                the name. REJECTED: 40rem, which also brings the list back at exactly 1280px
+                doubled: its tightest case is 47.5px, half a pixel short. At ordinary text the
+                strip is 48rem at md, so md alone still decides and nothing changes.
+                Header.test.tsx (S2 arithmetic) works this sum from the measured numbers. */}
             <div ref={stripRef} className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)] @container/header">
                 {/* DECISION Phase 88.6.1-45 (AC-18, HEADER-NAV-LANDMARK-RULING, copy row H5):
                     CHOSEN — this inner container is the ONE nav landmark, named by
@@ -303,13 +322,13 @@ function Header(){
                                 Header.test.tsx (R21 lockstep) holds them together.
                                 AMENDED Phase 88.9-52 (R4 S2): "From md the menu button is gone and
                                 the md rung applies unchanged" above is now true only while the
-                                strip is at least 42rem wide (ordinary text: always). Under that the
+                                strip is at least 40.25rem wide (ordinary text: always). Under that the
                                 menu button is back from md too, so the md rung waits for the same
-                                42rem and this fit rule holds the name instead: at 768 with doubled
+                                40.25rem and this fit rule holds the name instead: at 768 with doubled
                                 text it is the full doubled 36px on one line, 8px or more before the
                                 button. The marker is on the strip:
                                 this file ("desktop list is drawn only while this strip is at least 42rem wide"). */}
-                            <span className="text-[length:clamp(18px,calc((100cqw_-_34px_-_3.375rem_-_8px)_/_8),1.125rem)] leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only md:@min-[42rem]/header:text-xl font-bold tracking-tight text-white">
+                            <span className="text-[length:clamp(18px,calc((100cqw_-_34px_-_3.375rem_-_8px)_/_8),1.125rem)] leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only md:@min-[40.25rem]/header:text-xl font-bold tracking-tight text-white">
                                 Next Game Night
                             </span>
                         </Link>
@@ -322,8 +341,8 @@ function Header(){
                             the page already comes from `text-white` on the dark header ground, so
                             400 loses nothing. `text-sm` STAYS — Label 14 is the correct rung for a
                             nav label and is already on the scale. Restoring 500 is a decision. */}
-                        {/* 88.9-52 R4 S2: hidden again from md while the strip is under 42rem (the marker on the strip). */}
-                        {sessionKnown && <ul className="hidden md:flex gap-x-6 items-center text-white text-sm md:@max-[42rem]/header:hidden">
+                        {/* 88.9-52 R4 S2: hidden again from md while the strip is under 40.25rem (the marker on the strip). */}
+                        {sessionKnown && <ul className="hidden md:flex gap-x-6 items-center text-white text-sm md:@max-[40.25rem]/header:hidden">
                             {navLinks.map(({ href, label, isLink }, index) => (
                                 <li key={label} className="flex items-center gap-x-6">
                                     {isLink ? (
@@ -368,11 +387,11 @@ function Header(){
                             87.8-08 logged this as a "40x40 FAIL" by arithmetic and RESEARCH
                             flagged it as assumption A7 (never measured in a browser); 88-30's
                             e2e is what settles it. Going back to `p-2` is a decision.
-                            88.9-52 R4 S2: drawn again from md while the strip is under 42rem (the
+                            88.9-52 R4 S2: drawn again from md while the strip is under 40.25rem (the
                             marker on the strip); inline-block is a button's own display. */}
                         {sessionKnown && <button
                             ref={triggerRef}
-                            className="relative md:hidden md:@max-[42rem]/header:inline-block text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                            className="relative md:hidden md:@max-[40.25rem]/header:inline-block text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             aria-label="Toggle menu"
                             aria-expanded={mobileMenuOpen}
@@ -462,10 +481,10 @@ function Header(){
                         animation it protects cannot be running while there is no button to have
                         opened the menu. Once the session is known the panel is mounted for good,
                         closed and inert, exactly as before.
-                        88.9-52 R4 S2: drawn again from md while the strip is under 42rem (the
+                        88.9-52 R4 S2: drawn again from md while the strip is under 40.25rem (the
                         marker on the strip). */}
                     {sessionKnown && <div
-                        className={`md:hidden absolute top-16 left-0 right-0 md:@max-[42rem]/header:block bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
+                        className={`md:hidden absolute top-16 left-0 right-0 md:@max-[40.25rem]/header:block bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
                             mobileMenuOpen
                                 ? 'translate-y-0 opacity-100'
                                 : '-translate-y-full opacity-0 pointer-events-none'
