@@ -929,10 +929,9 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
         'focus-visible:ring-2',
         'focus-visible:ring-inset',
         'focus-visible:ring-focus-ring',
-        // The label sits clear of the 2px ring on every side: 12px at each side, 3px under it
-        // (the measured shift that centres the word and its count pill in the 44px tab).
+        // The label sits clear of the 2px ring at each side (12px). Up and down it is centred by
+        // the tab itself (88.9-52 R4 S3, the test below), no longer by a 3px bottom padding.
         'px-3',
-        'pb-[3px]',
         'min-h-11',
         'min-w-11',
         // A tab never shrinks or wraps its label: the gaps between tabs give way instead.
@@ -944,6 +943,7 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
       // The outset form is gone whole: no offset, no halo colour, no bottom-only padding.
       expect(tab.className).not.toContain('ring-offset');
       expect(classes).not.toContain('pb-3');
+      expect(classes).not.toContain('pb-[3px]');
     }
     // The strip row holds the three tabs and the two gaps between them, nothing else; a gap is not
     // exposed to a screen reader and may narrow (the tabs may not).
@@ -958,6 +958,56 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     expect(tabs[0]).toHaveAttribute('aria-current', 'true');
     expect(tabs[0].className.split(/\s+/)).toEqual(expect.arrayContaining(['border-b-2', 'border-btn-primary']));
     expect(tabs[1]).not.toHaveAttribute('aria-current');
+  });
+
+  // 88.9-52 R4 S3 (the round-3 capture). Two defects in what R11 built. (1) At 200% text the
+  // three tabs came to 549px in a 311px strip and the PAGE scrolled sideways, with Sent off
+  // screen: the strip now scrolls inside itself, the house rule for a tab strip
+  // (src/components/ui/Tabs.tsx ("the strip SCROLLS at 375px, it does not wrap")), and a pressed tab is brought into view.
+  // (2) The word was not in the middle of its tab (11.5 above and 12.5 below on Requests, 10.5
+  // and 13.5 on Friends, 11.5 and 14.5 on Sent): each tab is now a centring flex box, so the
+  // word and its count pill share one centre line, and the active tab's 2px underline is paid
+  // for by 2px of top padding. jsdom lays nothing out, so this pins the tokens and the scroll
+  // call; the rendered numbers are in e2e/friends-page.spec.ts ("R4 S3 (88.9-52)").
+  it('R4 S3 (88.9-52): the strip scrolls inside itself, a pressed tab is brought into view, and each label is centred by its tab', async () => {
+    const scrolled: Array<{ label: string | null; arg: unknown }> = [];
+    const original = (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = function (this: Element, arg: unknown) {
+      scrolled.push({ label: this.textContent, arg });
+    };
+    try {
+      renderFriends();
+      await screen.findByText('Dana');
+      const tabs = [/^Friends/, /^Requests/, /^Sent/].map((name) => screen.getByRole('button', { name }));
+      const row = tabs[0].parentElement as HTMLElement;
+      // The row is the scroll box; the strip line stays on its parent, outside the scroll box.
+      expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto']));
+      expect(row.className.split(/\s+/)).not.toContain('flex-wrap');
+      expect((row.parentElement as HTMLElement).className.split(/\s+/)).toEqual(expect.arrayContaining(['border-b', 'border-line']));
+      for (const tab of tabs) {
+        const classes = tab.className.split(/\s+/);
+        expect(classes).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'justify-center']));
+        const active = tab.getAttribute('aria-current') === 'true';
+        // Only the active tab has the underline, and only it has the 2px that balances it.
+        expect(classes.includes('border-b-2'), tab.textContent ?? '').toBe(active);
+        expect(classes.includes('pt-[2px]'), tab.textContent ?? '').toBe(active);
+        // No other up-or-down padding or margin is left to push the label off the middle.
+        expect(classes.filter((c) => /^-?(p[ytb]|m[ytb])-/.test(c) && c !== 'pt-[2px]')).toEqual([]);
+      }
+      // Nothing scrolled on arrival.
+      expect(scrolled).toEqual([]);
+      fireEvent.click(tabs[2]);
+      expect(scrolled).toHaveLength(1);
+      expect(scrolled[0].label).toMatch(/^Sent/);
+      // Nearest both ways: a tab already in view moves nothing, and the page is not re-centred.
+      expect(scrolled[0].arg).toEqual({ block: 'nearest', inline: 'nearest' });
+      const now = [/^Friends/, /^Requests/, /^Sent/].map((name) => screen.getByRole('button', { name }));
+      expect(now[2]).toHaveAttribute('aria-current', 'true');
+      expect(now[2].className.split(/\s+/)).toEqual(expect.arrayContaining(['border-b-2', 'pt-[2px]']));
+      expect(now[0].className.split(/\s+/)).not.toContain('pt-[2px]');
+    } finally {
+      (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = original;
+    }
   });
 
   it('B-gate: Invite to Group is aria-disabled (never native), refuses a gated press, and sends once for two presses (D-35)', async () => {

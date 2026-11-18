@@ -1214,7 +1214,21 @@ function FriendsPage() {
 
                 {/* Tabs */}
                 <div className="border-b border-line mb-6">
-                    <div className="flex">
+                    {/* DECISION Phase 88.9-52 (R4 S3, the round-3 capture: at 200% text the three
+                        tabs were 549px in a 311px strip, the PAGE scrolled sideways, 581px on a
+                        375px screen, and Sent was off screen): this row scrolls inside itself.
+                        CHOSEN because it is the house rule for a tab strip
+                        (src/components/ui/Tabs.tsx ("the strip SCROLLS at 375px, it does not wrap")): a wrapped strip turns a one-line
+                        control into a block that reflows the page under the thumb. The group
+                        page's own tab row has two short tabs and neither wraps nor scrolls, so it
+                        decides nothing here. REJECTED: letting the tabs shrink (R11's marker
+                        below: the count pill drops under its word); wrapping the row. The strip
+                        line stays on the parent, outside the scroll box, and the tabs fill the
+                        row's height, so there is nothing to scroll up or down. A pressed tab is
+                        brought fully into view (the click handler below); a tab reached by
+                        keyboard is scrolled to by the browser. At ordinary text the three tabs
+                        fit and nothing scrolls. */}
+                    <div className="flex overflow-x-auto">
                         {tabs.map(({ key, label, count }, index) => (
                             /* DECISION Phase 88.6-19, two calls at this one control.
 
@@ -1283,7 +1297,27 @@ function FriendsPage() {
                                padding the three tabs and two 32px gaps come to about 338px of the 343px a
                                375px phone gives the strip, so one more digit in a count, or a 320px screen,
                                would otherwise squeeze a tab and wrap its count pill under its word. Putting
-                               gap-8 back, or dropping shrink-0, brings that wrap back. */
+                               gap-8 back, or dropping shrink-0, brings that wrap back.
+                               AMENDED Phase 88.9-52 (R4 S3, the round-3 capture measured R11 as built):
+                               the 3px bottom padding did not centre the label. From the word-and-pill
+                               box to the tab's edges it measured 11.5 above and 12.5 below on Requests,
+                               10.5 and 13.5 on Friends (the active tab: its 2px underline lifted the
+                               label a pixel, so the word also jumped when a tab was chosen), 11.5 and
+                               14.5 on Sent (no pill: the pill hangs 1px under the word's line, so no
+                               one padding suits a tab with a pill and a tab without). Now each tab is
+                               a centring flex box (inline-flex items-center justify-center) with no
+                               padding up or down: the word's line and the pill are both 20px tall at
+                               ordinary text and share one centre line, the middle of the tab. The
+                               active tab alone has the 2px underline, and alone has 2px of top padding
+                               (pt-[2px]) to balance it, so its label sits where the other labels sit.
+                               Computed: 12 above and 12 below with a pill, 13 and 13 without, in every
+                               tab, at any text size. Left and right stay 12 and 12 (px-3). This
+                               SUPERSEDES pb-[3px] above. REJECTED: a transparent 2px border on every
+                               tab in place of the top padding (the ring is drawn inside the border,
+                               so every focused tab would show 10 above the label and 8 below);
+                               another fixed padding (see Sent). On the focused ACTIVE tab the ring
+                               stops at the underline, so inside the ring it is 10 above and 8 below,
+                               with the underline directly under the ring: reported, not hidden. */
                             <Fragment key={key}>
                             {index > 0 && <span aria-hidden="true" className="w-8 shrink min-w-0" />}
                             <button
@@ -1295,11 +1329,19 @@ function FriendsPage() {
                                         setRemoveError(null);
                                     }
                                     setActiveTab(key);
+                                    // 88.9-52 R4 S3: a pressed tab that is partly outside the strip's
+                                    // scroll box is brought fully into view. Nearest both ways, so a
+                                    // tab already in view moves nothing. Guarded as at
+                                    // src/app/components/ParticipantRow.js ("if (typeof node.scrollIntoView === 'function') {").
+                                    const pressed = tabRefs[key].current;
+                                    if (pressed && typeof pressed.scrollIntoView === 'function') {
+                                        pressed.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                                    }
                                 }}
                                 aria-current={activeTab === key ? 'true' : undefined}
-                                className={`shrink-0 whitespace-nowrap px-3 pb-[3px] text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring min-h-11 min-w-11 ${
+                                className={`inline-flex items-center justify-center shrink-0 whitespace-nowrap px-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring min-h-11 min-w-11 ${
                                     activeTab === key
-                                        ? 'border-b-2 border-btn-primary text-content-primary'
+                                        ? 'border-b-2 border-btn-primary pt-[2px] text-content-primary'
                                         : 'text-content-secondary hover:text-content-primary'
                                 }`}
                             >

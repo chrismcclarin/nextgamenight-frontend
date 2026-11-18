@@ -119,9 +119,14 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
       expect(pill.bottom, `pill bottom ${pill.bottom} vs ring inner edge ${inner.bottom}`).toBeLessThanOrEqual(inner.bottom);
       // R11: the same space above the label as below it. The count pill is the tallest painted
       // thing in the label; the picture the owner picked measured 9.5px each way on this tab.
-      const above = pill.top - inner.top;
-      const below = inner.bottom - pill.bottom;
-      expect(Math.abs(above - below), `space above the pill ${above} vs below it ${below}`).toBeLessThanOrEqual(1.5);
+      // AMENDED Phase 88.9-52 (R4 S3): measured to the TAB's own top and bottom edges, as the
+      // round-3 capture measured it (10.5 above, 13.5 below on this tab as R11 was built), and
+      // held to half a pixel. This tab is the active one: its ring stops at its 2px underline,
+      // so inside the ring the pill has 2px less under it than over it; that is the underline,
+      // not an off-centre label, and the all-tabs read below holds every tab to its own edges.
+      const above = pill.top - box.top;
+      const below = box.bottom - pill.bottom;
+      expect(Math.abs(above - below), `space above the pill ${above} vs below it ${below}, to the tab's edges`).toBeLessThanOrEqual(0.5);
     }
     // The ring stays inside the tab, and the tab ends on the strip line without crossing it.
     expect(lineTop, 'the strip draws a bottom line').not.toBeNull();
@@ -139,6 +144,110 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
     await page.keyboard.press('Tab');
     await expect(tab).not.toBeFocused();
     expect(await boxShadow(tab), 'no inset ring once blurred').not.toContain(RING_SPREAD);
+
+    // R4 S3 (88.9-52), RENDERED. The round-3 capture found two things in the strip R11 built:
+    // the label was not in the middle of its tab (11.5 / 12.5 on Requests, 10.5 / 13.5 on Friends,
+    // 11.5 / 14.5 on Sent), and at 200% text the tabs (549px) overran the strip (311px), the page
+    // scrolled sideways (581px on a 375px screen) and Sent was off screen. Now every tab centres
+    // its word and pill, and the strip scrolls inside itself
+    // (src/app/friends/page.js ("DECISION Phase 88.9-52 (R4 S3, the round-3 capture: at 200% text the three")).
+    // Read-only: pressing a tab writes nothing.
+    const readStrip = () =>
+      page.evaluate(() => {
+        const first = Array.from(document.querySelectorAll('button')).find((b) => /^Friends\s*\d*$/.test((b.textContent ?? '').trim())) as HTMLElement;
+        const row = first.parentElement as HTMLElement;
+        const r = row.getBoundingClientRect();
+        const doc = document.documentElement;
+        const tabs = (Array.from(row.querySelectorAll(':scope > button')) as HTMLElement[]).map((b) => {
+          const box = b.getBoundingClientRect();
+          const word = Array.from(b.childNodes).find((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim() !== '');
+          const range = document.createRange();
+          if (word) range.selectNodeContents(word);
+          const w = range.getBoundingClientRect();
+          const pill = b.querySelector('span');
+          const p = pill ? pill.getBoundingClientRect() : null;
+          const top = Math.min(w.top, p ? p.top : w.top);
+          const bottom = Math.max(w.bottom, p ? p.bottom : w.bottom);
+          return {
+            label: (word?.textContent ?? '').trim(),
+            current: b.getAttribute('aria-current') === 'true',
+            left: box.left,
+            right: box.right,
+            height: box.height,
+            above: top - box.top,
+            below: box.bottom - bottom,
+            sideLeft: w.left - box.left,
+            sideRight: box.right - (p ? p.right : w.right),
+            wordLines: Math.round(w.height / parseFloat(getComputedStyle(b).lineHeight)),
+          };
+        });
+        // What reaches past the right edge of the window, for the failure message only (tag and width, no text).
+        const wide = (Array.from(document.querySelectorAll('body *')) as HTMLElement[])
+          .filter((el) => el.getBoundingClientRect().right > doc.clientWidth + 1 && !row.contains(el))
+          .slice(0, 5)
+          .map((el) => `${el.tagName.toLowerCase()} to ${Math.round(el.getBoundingClientRect().right)}px`);
+        return {
+          rootFontPx: parseFloat(getComputedStyle(doc).fontSize),
+          window: doc.clientWidth,
+          pageSideways: doc.scrollWidth - doc.clientWidth,
+          wide,
+          row: { left: r.left, right: r.right, scrolls: row.scrollWidth - row.clientWidth, upDown: row.scrollHeight - row.clientHeight },
+          tabs,
+        };
+      });
+    const pressTab = (label: string) =>
+      // A DOM click: Playwright's own click would scroll the tab into view first and hide whether the page does.
+      page.evaluate((name) => {
+        const b = Array.from(document.querySelectorAll('button')).find((el) => new RegExp('^' + name + '\\s*\\d*$').test((el.textContent ?? '').trim())) as HTMLElement;
+        b.click();
+      }, label);
+    const checkCentred = (where: string, strip: Awaited<ReturnType<typeof readStrip>>) => {
+      expect(strip.tabs.map((t) => t.label), `${where}: the three tabs`).toEqual(['Friends', 'Requests', 'Sent']);
+      for (const t of strip.tabs) {
+        expect(Math.abs(t.above - t.below), `${where}: ${t.label} has ${t.above}px above its label and ${t.below}px below`).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(t.sideLeft - t.sideRight), `${where}: ${t.label} has ${t.sideLeft}px left of its label and ${t.sideRight}px right`).toBeLessThanOrEqual(0.5);
+        expect(t.wordLines, `${where}: the ${t.label} label is on ${t.wordLines} lines`).toBe(1);
+      }
+      // Every label on one line across the strip: the word does not jump when a tab is chosen.
+      expect(strip.row.upDown, `${where}: the strip scrolls up and down by ${strip.row.upDown}px`).toBeLessThanOrEqual(0);
+    };
+
+    const rest = await readStrip();
+    expect(rest.rootFontPx, 'R4 S3: text is not at its ordinary size before the 200% step').toBe(16);
+    checkCentred('ordinary text', rest);
+    expect(rest.row.scrolls, `R4 S3: at ordinary text the strip scrolls sideways by ${rest.row.scrolls}px — the three tabs should fit`).toBeLessThanOrEqual(0);
+
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R4 S3: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe('32px');
+    for (const width of [375, 320]) {
+      await page.setViewportSize({ width, height: 740 });
+      await expect.poll(async () => (await readStrip()).window, { message: `R4 S3: the window did not become ${width}px wide` }).toBe(width);
+      const where = `200% text, ${width} wide`;
+      const big = await readStrip();
+      expect(big.pageSideways, `R4 S3 (${where}): the page scrolls sideways by ${big.pageSideways}px (${big.wide.join('; ')})`).toBeLessThanOrEqual(1);
+      expect(big.row.right, `R4 S3 (${where}): the strip runs past the right edge of the window`).toBeLessThanOrEqual(width + 0.5);
+      expect(big.row.scrolls, `R4 S3 (${where}): the strip does not scroll, so a tab past its edge could not be reached`).toBeGreaterThan(0);
+      checkCentred(where, big);
+      // Each tab in turn: pressed, it is the current tab and lies wholly inside the strip.
+      for (const label of ['Sent', 'Requests', 'Friends']) {
+        await pressTab(label);
+        await expect
+          .poll(
+            async () => {
+              const now = await readStrip();
+              const t = now.tabs.find((x) => x.label === label);
+              return Boolean(t && t.current && t.left >= now.row.left - 0.5 && t.right <= now.row.right + 0.5);
+            },
+            { message: `R4 S3 (${where}): the pressed ${label} tab is not current and wholly inside the strip` },
+          )
+          .toBe(true);
+        checkCentred(`${where}, ${label} chosen`, await readStrip());
+      }
+    }
   });
 
   test('Invite to Group pressed twice by keyboard sends one invite, keeps focus and shows the outcome', async ({
