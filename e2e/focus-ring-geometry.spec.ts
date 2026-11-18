@@ -528,7 +528,26 @@ test.describe('focus ring geometry, measured (plan 88.9-66, X61)', () => {
       }
 
       await measure(ctx, brandLink(page), 'the header logo', true);
-      await measure(ctx, page.getByRole('button', { name: /^Requests(\s*\d+)?$/ }), 'the Requests tab', true);
+      // AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred): the Friends tabs paint their ring
+      // INSIDE the tab, so the Requests tab is no longer held to the offset house ring here (it was
+      // measured with mustBeHouse true). It is still recorded and still must paint an indicator;
+      // what R11 ruled is asserted just below. The marker is at
+      // src/app/friends/page.js ("AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred").
+      const requestsTab = page.getByRole('button', { name: /^Requests(\s*\d+)?$/ });
+      await measure(ctx, requestsTab, 'the Requests tab', false);
+      // Still focused: measure() leaves the focus where it put it.
+      const tabRing = await readRing(requestsTab);
+      const tabWhere = `the Requests tab (${theme}, ${testInfo.project.name})`;
+      expect
+        .soft(
+          tabRing.layers.some((layer) => layer.inset && layer.spread === 2 && !isTransparent(layer.colour)),
+          `${tabWhere}: no 2px inset ring is painted (box-shadow: ${tabRing.boxShadow})`,
+        )
+        .toBe(true);
+      expect.soft(tabRing.outward, `${tabWhere}: the ring reaches ${tabRing.outward}px outside the tab; R11 puts it inside`).toBe(0);
+      expect
+        .soft(tabRing.pastStripLine, `${tabWhere}: the ring crosses the strip line by ${tabRing.pastStripLine}px`)
+        .toBeLessThanOrEqual(0.5);
       await measure(ctx, page.getByRole('button', { name: 'Search', exact: true }), 'Search', true);
 
       // Every other visible, enabled control in the page body, in document order.

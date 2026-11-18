@@ -915,21 +915,49 @@ async function renderWithGroups(
 }
 
 describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-40)', () => {
-  it('T: each tab button carries the house OUTSET ring, never the inset form (Req 7, AC-23)', async () => {
+  // AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred): this test held the OUTSET ring (Req 7,
+  // AC-23) and now holds the ring INSIDE the tab with the label padded clear of it. The marker is at
+  // src/app/friends/page.js ("AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred").
+  it('T: each tab button carries the INSET ring with the label padded clear of it, never the outset form (R11)', async () => {
     renderFriends();
     await screen.findByText('Dana');
-    for (const name of [/^Friends/, /^Requests/, /^Sent/]) {
-      const tab = screen.getByRole('button', { name });
+    const tabs = [/^Friends/, /^Requests/, /^Sent/].map((name) => screen.getByRole('button', { name }));
+    for (const tab of tabs) {
+      const classes = tab.className.split(/\s+/);
       for (const token of [
         'focus:outline-hidden',
         'focus-visible:ring-2',
+        'focus-visible:ring-inset',
         'focus-visible:ring-focus-ring',
-        'focus-visible:ring-offset-2',
+        // The label sits clear of the 2px ring on every side: 12px at each side, 3px under it
+        // (the measured shift that centres the word and its count pill in the 44px tab).
+        'px-3',
+        'pb-[3px]',
+        'min-h-11',
+        'min-w-11',
+        // A tab never shrinks or wraps its label: the gaps between tabs give way instead.
+        'shrink-0',
+        'whitespace-nowrap',
       ]) {
-        expect(tab.className.split(/\s+/)).toContain(token);
+        expect(classes, token).toContain(token);
       }
-      expect(tab.className).not.toContain('focus-visible:ring-inset');
+      // The outset form is gone whole: no offset, no halo colour, no bottom-only padding.
+      expect(tab.className).not.toContain('ring-offset');
+      expect(classes).not.toContain('pb-3');
     }
+    // The strip row holds the three tabs and the two gaps between them, nothing else; a gap is not
+    // exposed to a screen reader and may narrow (the tabs may not).
+    const row = tabs[0].parentElement as HTMLElement;
+    expect(Array.from(row.children).map((el) => el.tagName)).toEqual(['BUTTON', 'SPAN', 'BUTTON', 'SPAN', 'BUTTON']);
+    for (const gap of Array.from(row.children).filter((el) => el.tagName === 'SPAN')) {
+      expect(gap).toHaveAttribute('aria-hidden', 'true');
+      expect(gap.className.split(/\s+/)).toEqual(expect.arrayContaining(['w-8', 'shrink', 'min-w-0']));
+    }
+    expect(row.className.split(/\s+/)).not.toContain('gap-8');
+    // The active tab keeps its underline and its spoken state.
+    expect(tabs[0]).toHaveAttribute('aria-current', 'true');
+    expect(tabs[0].className.split(/\s+/)).toEqual(expect.arrayContaining(['border-b-2', 'border-btn-primary']));
+    expect(tabs[1]).not.toHaveAttribute('aria-current');
   });
 
   it('B-gate: Invite to Group is aria-disabled (never native), refuses a gated press, and sends once for two presses (D-35)', async () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
@@ -1214,8 +1214,8 @@ function FriendsPage() {
 
                 {/* Tabs */}
                 <div className="border-b border-line mb-6">
-                    <div className="flex gap-8">
-                        {tabs.map(({ key, label, count }) => (
+                    <div className="flex">
+                        {tabs.map(({ key, label, count }, index) => (
                             /* DECISION Phase 88.6-19, two calls at this one control.
 
                                (1) D-16 RE-INK: the count pill's ACTIVE arm carried
@@ -1261,9 +1261,32 @@ function FriendsPage() {
                                (4.34 light, 2.99 dark against the page; its dark number is a hair under
                                the 3.0 edge floor and is reported to the owner, not changed here). The
                                active tab is still told apart by more than colour: the 2px underline
-                               and aria-current. Held by src/app/tokenContrast.test.ts ("PIX-8 (88.9-52): the Friends tab labels on the page"). */
+                               and aria-current. Held by src/app/tokenContrast.test.ts ("PIX-8 (88.9-52): the Friends tab labels on the page").
+                               AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred; his words: make it like
+                               a padding, the same distance below the word as above): the ring is INSIDE the
+                               tab (ring-inset, 2px, the group-home tabs' form) and the label is padded clear
+                               of it: 12px at each side (px-3) and 3px under it (pb-[3px]) in place of the
+                               12px bottom-only padding. The 3px is a measured value, not a guess: the count
+                               pill sits 1.5px under the middle of its line, so 3px of bottom padding puts the
+                               word and its pill in the middle of the 44px tab. The ring now ends on the
+                               strip line (on the active tab, on top of its 2px underline) and no longer
+                               crosses it. This SUPERSEDES the outset ring above (88.6.1-40) and its page
+                               halo (88.9-10 owner option (a)): with no offset there is no halo to colour.
+                               REJECTED: the outset ring as built (the word sat high in the box, 10px above
+                               and 19px below, and the box crossed the strip line by 4px); the inset ring
+                               with no padding (painted under the first and last glyphs, the reason 88.6.1-40
+                               gave); pb-0.5 or pb-1, the nearest steps on the scale (the label would sit
+                               half a pixel off the middle). The 44 x 44 floor (A7a), the underline and
+                               aria-current stand.
+                               The gaps between the tabs are their own elements (w-8, may shrink) and the
+                               tabs never shrink or wrap, chosen OVER the row's former fixed gap-8: with the
+                               padding the three tabs and two 32px gaps come to about 338px of the 343px a
+                               375px phone gives the strip, so one more digit in a count, or a 320px screen,
+                               would otherwise squeeze a tab and wrap its count pill under its word. Putting
+                               gap-8 back, or dropping shrink-0, brings that wrap back. */
+                            <Fragment key={key}>
+                            {index > 0 && <span aria-hidden="true" className="w-8 shrink min-w-0" />}
                             <button
-                                key={key}
                                 ref={tabRefs[key]}
                                 onClick={() => {
                                     // A tab change clears both action lines: DECISION Phase 88.6.1-72 (N5 / N6; D-33 row 22; D-42).
@@ -1274,7 +1297,7 @@ function FriendsPage() {
                                     setActiveTab(key);
                                 }}
                                 aria-current={activeTab === key ? 'true' : undefined}
-                                className={`pb-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11 min-w-11 ${
+                                className={`shrink-0 whitespace-nowrap px-3 pb-[3px] text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring min-h-11 min-w-11 ${
                                     activeTab === key
                                         ? 'border-b-2 border-btn-primary text-content-primary'
                                         : 'text-content-secondary hover:text-content-primary'
@@ -1297,6 +1320,7 @@ function FriendsPage() {
                                     </span>
                                 )}
                             </button>
+                            </Fragment>
                         ))}
                     </div>
                 </div>

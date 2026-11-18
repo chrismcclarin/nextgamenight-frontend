@@ -2,11 +2,14 @@
 // its Invite to Group button in a real browser, in BOTH projects (`phone` at 375 and `journeys`).
 //
 // What this proves:
-//   1. the keyboard-focused Friends tab paints the house OUTSET ring (a non-inset box-shadow with
-//      a 4px spread: Tailwind 4.3.3 composes `ring-2` + `ring-offset-2` into a 2px offset shadow
-//      and a `0 0 0 calc(2px + 2px)` ring shadow, probed against the installed compiler), the
-//      tab's label text lies inside the tab's box, its count pill lies inside the ring's inner
-//      edge (the box plus the 2px offset), and once focus moves on the 4px spread is gone;
+//   1. the keyboard-focused Friends tab paints its ring INSIDE the tab (an inset box-shadow with a
+//      2px spread and no outset layer), the ring stops at the strip line, the label and its count
+//      pill lie inside the ring's inner edge (the box less 2px), the count pill sits in the middle
+//      of the tab between the ring's top edge and the active underline, the three tabs fit the
+//      strip on one line, and once focus moves on the inset ring is gone.
+//      AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred): this used to prove the house OUTSET
+//      ring (88.6.1-40 Req 7, a 4px spread outside the box). The marker is at
+//      src/app/friends/page.js ("AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred").
 //   2. Invite to Group pressed by keyboard (Enter twice) sends exactly ONE invite POST, keeps
 //      focus, carries aria-disabled (never the native attribute) at full opacity once the batch
 //      settled, and the outcome is shown in the always-mounted polite region.
@@ -24,7 +27,8 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 import { describeSamples, paintedTexts, recordLabel, spread, stopLabelRecorder, valuesAt } from './support/labelRecorder';
 
 const INVITE_ROUTE = '**/invites/send';
-const RING_SPREAD = '0px 0px 0px 4px';
+const RING_SPREAD = '0px 0px 0px 2px inset';
+const RING_WIDTH = 2;
 
 function friendsTab(page: Page): Locator {
   // The tab's name is its label plus its count pill, e.g. "Friends" or "Friends 3".
@@ -36,7 +40,7 @@ async function boxShadow(locator: Locator): Promise<string> {
 }
 
 test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () => {
-  test('the keyboard-focused Friends tab paints an outset ring clear of its label, gone once blurred', async ({
+  test('the keyboard-focused Friends tab paints an inset ring clear of its centred label, gone once blurred', async ({
     page,
   }) => {
     await page.goto('/friends');
@@ -49,8 +53,8 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
     await expect(tab).toBeFocused();
 
     const focused = await boxShadow(tab);
-    expect(focused, 'the focused tab paints a 4px ring spread').toContain(RING_SPREAD);
-    expect(focused, 'the ring is outset, never inset').not.toContain('inset');
+    expect(focused, 'the focused tab paints a 2px inset ring').toContain(RING_SPREAD);
+    expect(focused, 'no outset ring is left').not.toContain('0px 0px 0px 4px');
 
     const geometry = await tab.evaluate((el) => {
       const box = el.getBoundingClientRect();
@@ -63,33 +67,78 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
       const pill = el.querySelector('span');
       const pillBox = pill ? pill.getBoundingClientRect() : null;
       const toPlain = (r: DOMRect) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      // The strip is the first ancestor that draws a bottom border; its line starts at the bottom
+      // of its padding box. The row is the tabs' own parent.
+      let lineTop: number | null = null;
+      for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+        const line = parseFloat(getComputedStyle(up).borderBottomWidth);
+        if (line > 0) {
+          lineTop = up.getBoundingClientRect().bottom - line;
+          break;
+        }
+      }
+      const row = el.parentElement as HTMLElement;
+      const tabs = Array.from(row.querySelectorAll(':scope > button')).map((b) => {
+        const r = b.getBoundingClientRect();
+        return { width: r.width, height: r.height, right: r.right };
+      });
       return {
         hasLabel: Boolean(label),
         box: toPlain(box),
         text: toPlain(text),
         pill: pillBox ? toPlain(pillBox) : null,
+        underline: parseFloat(getComputedStyle(el).borderBottomWidth) || 0,
+        lineTop,
+        rowRight: row.getBoundingClientRect().right,
+        tabs,
       };
     });
     expect(geometry.hasLabel, 'the tab has a text label').toBe(true);
-    const { box, text, pill } = geometry;
-    // Non-strict: the label may touch the box edge; the outset ring is drawn outside the box.
-    expect(text.left, `label left ${text.left} vs box left ${box.left}`).toBeGreaterThanOrEqual(box.left);
-    expect(text.right, `label right ${text.right} vs box right ${box.right}`).toBeLessThanOrEqual(box.right);
-    expect(text.top, `label top ${text.top} vs box top ${box.top}`).toBeGreaterThanOrEqual(box.top);
-    expect(text.bottom, `label bottom ${text.bottom} vs box bottom ${box.bottom}`).toBeLessThanOrEqual(box.bottom);
+    const { box, text, pill, underline, lineTop, rowRight, tabs } = geometry;
+    // The ring is the 2px band just inside the tab's box (on the active tab its bottom edge sits
+    // on top of the underline, which is the tab's own bottom border). The label is clear of it.
+    const inner = {
+      left: box.left + RING_WIDTH,
+      top: box.top + RING_WIDTH,
+      right: box.right - RING_WIDTH,
+      bottom: box.bottom - underline - RING_WIDTH,
+    };
+    expect(text.left, `label left ${text.left} vs ring inner edge ${inner.left}`).toBeGreaterThanOrEqual(inner.left);
+    expect(text.right, `label right ${text.right} vs ring inner edge ${inner.right}`).toBeLessThanOrEqual(inner.right);
+    expect(text.top, `label top ${text.top} vs ring inner edge ${inner.top}`).toBeGreaterThanOrEqual(inner.top);
+    expect(text.bottom, `label bottom ${text.bottom} vs ring inner edge ${inner.bottom}`).toBeLessThanOrEqual(inner.bottom);
+    // Equal space at the two sides: the word starts as far from the ring as the label ends.
+    const labelRight = pill ? pill.right : text.right;
+    const sideLeft = text.left - inner.left;
+    const sideRight = inner.right - labelRight;
+    expect(Math.abs(sideLeft - sideRight), `side space ${sideLeft} left vs ${sideRight} right`).toBeLessThanOrEqual(1.5);
     if (pill) {
-      // The ring starts 2px outside the box (ring-offset-2), so the pill is clear of it while it
-      // stays inside the box widened by those 2px.
-      expect(pill.left, `pill left ${pill.left} vs ring inner edge ${box.left - 2}`).toBeGreaterThanOrEqual(box.left - 2);
-      expect(pill.right, `pill right ${pill.right} vs ring inner edge ${box.right + 2}`).toBeLessThanOrEqual(box.right + 2);
-      expect(pill.top, `pill top ${pill.top} vs ring inner edge ${box.top - 2}`).toBeGreaterThanOrEqual(box.top - 2);
-      expect(pill.bottom, `pill bottom ${pill.bottom} vs ring inner edge ${box.bottom + 2}`).toBeLessThanOrEqual(box.bottom + 2);
+      expect(pill.left, `pill left ${pill.left} vs ring inner edge ${inner.left}`).toBeGreaterThanOrEqual(inner.left);
+      expect(pill.right, `pill right ${pill.right} vs ring inner edge ${inner.right}`).toBeLessThanOrEqual(inner.right);
+      expect(pill.top, `pill top ${pill.top} vs ring inner edge ${inner.top}`).toBeGreaterThanOrEqual(inner.top);
+      expect(pill.bottom, `pill bottom ${pill.bottom} vs ring inner edge ${inner.bottom}`).toBeLessThanOrEqual(inner.bottom);
+      // R11: the same space above the label as below it. The count pill is the tallest painted
+      // thing in the label; the picture the owner picked measured 9.5px each way on this tab.
+      const above = pill.top - inner.top;
+      const below = inner.bottom - pill.bottom;
+      expect(Math.abs(above - below), `space above the pill ${above} vs below it ${below}`).toBeLessThanOrEqual(1.5);
     }
+    // The ring stays inside the tab, and the tab ends on the strip line without crossing it.
+    expect(lineTop, 'the strip draws a bottom line').not.toBeNull();
+    expect(box.bottom - (lineTop as number), `the tab ends ${box.bottom - (lineTop as number)}px past the strip line`).toBeLessThanOrEqual(0.5);
+    // Three tabs, each at least 44 x 44, all on one line inside the strip.
+    expect(tabs.length, 'the strip holds three tabs').toBe(3);
+    for (const t of tabs) {
+      expect(t.width, `a tab is ${t.width}px wide`).toBeGreaterThanOrEqual(44);
+      expect(t.height, `a tab is ${t.height}px tall`).toBeGreaterThanOrEqual(44);
+      expect(t.height, `a tab is ${t.height}px tall, so its label wrapped`).toBeLessThanOrEqual(45);
+    }
+    expect(tabs[2].right, `the last tab ends at ${tabs[2].right}, the strip at ${rowRight}`).toBeLessThanOrEqual(rowRight + 0.5);
 
     // Positive control: focus moves on, and the Friends tab no longer paints the ring.
     await page.keyboard.press('Tab');
     await expect(tab).not.toBeFocused();
-    expect(await boxShadow(tab), 'no 4px ring spread once blurred').not.toContain(RING_SPREAD);
+    expect(await boxShadow(tab), 'no inset ring once blurred').not.toContain(RING_SPREAD);
   });
 
   test('Invite to Group pressed twice by keyboard sends one invite, keeps focus and shows the outcome', async ({
