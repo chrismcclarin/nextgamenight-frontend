@@ -3404,13 +3404,13 @@ function Profile(){
                         pressed fill on hover — a fill change P6 forbids.
                         AMENDED Phase 88.9-52 (R8c, owner 2026-11-17, pick Fill): the UNPRESSED arm of both
                         toggles hovers on the ghost family's own key, enabled-hover:bg-surface-ghost-hover
-                        (light: the visible secondary fill #e3dad1, 1.3802 off the card, the arm's ink 7.59
+                        (light: the visible secondary fill, 1.3802 off the card, the arm's ink 7.59
                         on it; dark: the shared wash, unchanged), chosen OVER the enabled-hover:bg-surface-hover
                         it restated (1.0601 off the light card). The arm sets its own card fill, so it must
                         restate the hover after it, and the restated class wins over the variant's: leaving
                         the old key here kept the old hover on these two buttons alone. The pressed arm is
                         untouched (THEME_TOGGLE_PRESSED holds its muted fill through hover). In light a
-                        hovered unpressed toggle (#e3dad1) is 1.0902 from the pressed fill (#dbd1c7); the
+                        hovered unpressed toggle is 1.0902 from the pressed fill; the
                         accent border, the accent ink and the check glyph still tell the two apart. */}
                     {themeMounted ? (
                         <div className="flex gap-3">
@@ -4759,8 +4759,8 @@ function Profile(){
                             the cards, or the bar left equal to them), rule 1.4467, words 10.64. Giving the bar a
                             dark fill of its own is the owner's ruling to make, not a cleanup.
                             AMENDED Phase 88.9-52 (W45, owner 2026-11-17, pick B): the owner ruled. In DARK the bar
-                            is the LIGHTER strip: fill purple-700 #42536e (dark:bg-btn-secondary-hover, the step a
-                            pressable secondary surface already lifts to in dark) under a purple-500 #6b7fa3 top
+                            is the LIGHTER strip: fill purple-700 (dark:bg-btn-secondary-hover, the step a
+                            pressable secondary surface already lifts to in dark) under a purple-500 top
                             rule (dark:border-line-strong), chosen OVER the bar left equal to the game cards (the
                             muted fill, 1.0000 from them) and OVER the darker bar (mock A, purple-950: it read as a
                             gap, the page showing through). This supersedes the two W45 lines above for dark; the
