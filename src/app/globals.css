@@ -3011,6 +3011,9 @@ body {
    controls — so DESKTOP is still deliberately floorless at ~37px until the Button migration sets
    each height with intent. The full derivation lives at the media block's own marker below; the
    old sentence is amended rather than deleted so a reader who remembers it can find where it went.
+   AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): the opt-out half of that answer is gone. The
+   two steppers are 44x44 squares now and `.btn-compact` no longer exists; the phone floor is
+   unchanged. The full note is at the place the rule used to stand, below.
    AMENDED BY PHASE 88.8 (plan 13, DR-C) — the SELECTOR was narrowed, the RULE was
    not. It now reads `.btn:active:not(:disabled):not([aria-disabled="true"])`, so a
    control gated with `aria-disabled` no longer brightens to 0.75 on press while
@@ -3389,7 +3392,15 @@ body {
        the tie on source order. Moving it above, or putting either rule inside `@layer`, re-breaks
        the opt-out with no build error.
    Changing the breakpoint, layering either rule, reordering them, or promoting the floor to all
-   viewports is a decision, not a cleanup. */
+   viewports is a decision, not a cleanup.
+   AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18), text above KEPT AS
+   HISTORY: the second of the "both rules" is gone. The two BrowseMoreModal steppers are 44x44
+   squares (`w-11 h-11`), so no control opts out of this floor any more and `.btn-compact` was
+   removed (the note where it stood, below, has what was chosen and what was rejected). THIS rule
+   is untouched: still unlayered, still phone-only. The REJECTED all-viewport floor stays rejected
+   on the record as written; its stated reason (it would deform the 32px steppers) no longer has a
+   subject, and whether desktop `.btn` should now take the floor is a separate question nobody
+   has ruled on, not something this amendment decides. */
 @media (width < 48rem) {
   .btn {
     min-height: 2.75rem;
@@ -3434,54 +3445,76 @@ body {
    The POSITION is load-bearing and silent when broken — this repo has hit that twice already
    (87.8 DEC-2/DEC-3). `src/app/cascadeOrder.test.ts` pins both directions of the order on
    comment-stripped source, and pins that neither rule sits inside an `@layer`. Reordering this, or
-   layering it, is a decision, not a cleanup. */
+   layering it, is a decision, not a cleanup.
+   AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): `.btn-compact` is retired (see the note
+   below), so the collision this position was chosen to prevent cannot happen and there is no
+   second rule to order against. `.btn-sm` stays exactly here: still unlayered, still after the
+   phone floor, and now the rule `.btn-fuse-bottom` is pinned to come after. The suite pins that
+   `.btn-compact` stays gone instead of pinning the order. */
 .btn-sm {
   padding-left: 0.5rem;
   padding-right: 0.5rem;
 }
 
-.btn-compact {
-  min-height: 0;
-  /* DECISION Phase 88.3-17: zero the HORIZONTAL padding, chosen OVER dropping
-     plan 88.3-14's `.btn-secondary` border on compact controls and OVER
-     loosening the gate that caught this.
+/* The `.btn-compact` rule stood here until Phase 88.9-52 (R4 C2). It read, in full:
+     min-height: 0;  padding-left: 0;  padding-right: 0;
+   under the marker that follows, which is kept word for word as the record of why (only its
+   e2e cite was re-pointed at the renamed probe).
 
-     FOUND BY CI, NOT BY REVIEW — e2e/touch-targets.spec.ts (D-36),
-     dispatch run 33137056149, 2026-08-28: `.btn.btn-compact probe measured
-     34x32 — the steppers are square BY DESIGN`. It is a regression plan
-     88.3-14 introduced two waves earlier and nothing local could see, because
-     it is pure geometry in a real browser.
+   DECISION Phase 88.3-17: zero the HORIZONTAL padding, chosen OVER dropping
+   plan 88.3-14's `.btn-secondary` border on compact controls and OVER
+   loosening the gate that caught this.
 
-     THE ARITHMETIC, so nobody has to re-derive it. `.btn` is
-     `padding: 0.5rem 1rem`, i.e. 16px + 16px = 32px horizontally. Plan 88.3-14
-     gave `.btn-secondary` `border: 1px solid var(--color-border-control)`
-     (owner ruling 2 — secondary controls had no edge at all in light). Both
-     shipped call sites are `btn btn-compact btn-secondary w-8 h-8`
-     (src/app/components/BrowseMoreModal.js ("these two stay RAW")), and `w-8` is 32px. With
-     `box-sizing: border-box` the used width cannot go below
-     padding + border = 16 + 16 + 1 + 1 = **34px**, so `w-8` was silently
-     clamped and the stepper went 32x32 -> 34x32. The VERTICAL padding
-     (8 + 8 + 2 = 18px) stays under `h-8`'s 32px, which is why only the width
-     moved and why a height-only assertion would have passed.
+   FOUND BY CI, NOT BY REVIEW — e2e/touch-targets.spec.ts (D-36),
+   dispatch run 33137056149, 2026-08-28: `.btn.btn-compact probe measured
+   34x32 — the steppers are square BY DESIGN`. It is a regression plan
+   88.3-14 introduced two waves earlier and nothing local could see, because
+   it is pure geometry in a real browser.
 
-     Zeroing horizontal padding is a no-op on these two controls by
-     construction: the box is fixed at 32x32 by `w-8 h-8`, the content is a
-     single glyph, and `.btn` centres it with `justify-content: center`. It
-     restores the exact pre-phase geometry rather than introducing a new one.
+   THE ARITHMETIC, so nobody has to re-derive it. `.btn` is
+   `padding: 0.5rem 1rem`, i.e. 16px + 16px = 32px horizontally. Plan 88.3-14
+   gave `.btn-secondary` `border: 1px solid var(--color-border-control)`
+   (owner ruling 2 — secondary controls had no edge at all in light). Both
+   shipped call sites are `btn btn-compact btn-secondary w-8 h-8`
+   (src/app/components/BrowseMoreModal.js ("these two stay RAW")), and `w-8` is 32px. With
+   `box-sizing: border-box` the used width cannot go below
+   padding + border = 16 + 16 + 1 + 1 = **34px**, so `w-8` was silently
+   clamped and the stepper went 32x32 -> 34x32. The VERTICAL padding
+   (8 + 8 + 2 = 18px) stays under `h-8`'s 32px, which is why only the width
+   moved and why a height-only assertion would have passed.
 
-     REJECTED — exempt `.btn-compact` from the `.btn-secondary` border: it takes
-     the edge back off two secondary controls on a phone surface, which is the
-     thing owner ruling 2 exists to fix, on a surface nobody has looked at.
-     REJECTED — relax the `<= 1` squareness assertion to `<= 2`: a gate weakened
-     to admit the shape it caught is worse than the shape. That assertion exists
-     precisely because a height-only check would have missed a deformation.
+   Zeroing horizontal padding is a no-op on these two controls by
+   construction: the box is fixed at 32x32 by `w-8 h-8`, the content is a
+   single glyph, and `.btn` centres it with `justify-content: center`. It
+   restores the exact pre-phase geometry rather than introducing a new one.
 
-     This rule stays UNLAYERED and stays authored AFTER the media block above —
-     both are load-bearing (see the D-36 marker). Re-adding horizontal padding
-     here re-deforms both steppers and reds e2e/touch-targets.spec.ts ("Math.abs(probes.compact.width - probes.compact.height)"). */
-  padding-left: 0;
-  padding-right: 0;
-}
+   REJECTED — exempt `.btn-compact` from the `.btn-secondary` border: it takes
+   the edge back off two secondary controls on a phone surface, which is the
+   thing owner ruling 2 exists to fix, on a surface nobody has looked at.
+   REJECTED — relax the `<= 1` squareness assertion to `<= 2`: a gate weakened
+   to admit the shape it caught is worse than the shape. That assertion exists
+   precisely because a height-only check would have missed a deformation.
+
+   This rule stays UNLAYERED and stays authored AFTER the media block above —
+   both are load-bearing (see the D-36 marker). Re-adding horizontal padding
+   here re-deforms both steppers and reds e2e/touch-targets.spec.ts ("Math.abs(probes.stepper.width - probes.stepper.height)").
+
+   AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18: "follow
+   recommendations and fix"): the stepper opt-out is RETIRED, rule and class both. Its only two
+   wearers, the player-count steppers (src/app/components/BrowseMoreModal.js ("these two stay RAW")),
+   are now 44x44 squares, `btn btn-secondary w-11 h-11`, and nothing else in src/ wore the class.
+   CHOSEN OVER keeping the 32x32 pair behind the opt-out (REJECTED: two small targets 4px apart;
+   the D-36 / D-10 reasoning was a shape argument that only ever weighed a 32x44 lozenge, never a
+   44 square) and OVER leaving the rule in place unused (REJECTED: a dormant class that silently
+   takes the phone floor off whatever wears it is a trap, not a spare part).
+   WHY NO REPLACEMENT RULE IS NEEDED. The 88.3-17 arithmetic above was about a box NARROWER than
+   its own padding: 16 + 16 + 1 + 1 = 34px could not fit in `w-8` (32px). `w-11` is 2.75rem =
+   44px against that same 34px, so the side padding stays and nothing clamps; `h-11` equals the
+   phone floor (2.75rem) and `.btn` declares no height at any width, so the utility pair holds a
+   square everywhere. All of it is rem, so the square survives enlarged text.
+   Pinned by src/app/cascadeOrder.test.ts ("Re-adding a sub-44 opt-out is a decision, not a cleanup.")
+   and rendered by e2e/touch-targets.spec.ts ("Math.abs(probes.stepper.width - probes.stepper.height)").
+   Bringing back a sub-44 opt-out is a decision, not a cleanup. */
 
 /* DECISION Phase 88.9-28 N1: a square 44x44 icon button is an unlayered padding-0 class placed
    after .btn, chosen OVER a padding utility (every @layer utilities rule loses to the unlayered

@@ -484,37 +484,33 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
     const floorAt = floor!.index as number;
 
     const smAt = css.indexOf('.btn-sm {');
-    const compactAt = css.indexOf('.btn-compact {');
     expect(smAt, '`.btn-sm {` must exist in comment-stripped globals.css.').toBeGreaterThan(-1);
-    expect(compactAt, '`.btn-compact {` must exist in comment-stripped globals.css.').toBeGreaterThan(-1);
 
     expect(
       smAt,
       '`.btn-sm` must be authored AFTER the `@media (width < 48rem)` phone-floor block.',
     ).toBeGreaterThan(floorAt);
-    expect(
-      compactAt,
-      '`.btn-compact` must be authored AFTER the `@media (width < 48rem)` phone-floor block — ' +
-        'that is how it wins the tie and keeps its `min-height: 0` opt-out (D-36).',
-    ).toBeGreaterThan(floorAt);
 
-    // The ruled direction. There is ONE order; it is not conditional.
+    // AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): the second direction this test pinned
+    // (.btn-sm BEFORE .btn-compact, owner ruling 2026-09-09 AC-9, written after CI found the
+    // stepper deformation at e2e/touch-targets.spec.ts ("the steppers are square BY DESIGN"),
+    // dispatch run 33137056149) has no second rule left to order against: the .btn-compact
+    // opt-out is RETIRED with its only two wearers, the BrowseMoreModal steppers, now 44x44
+    // squares. What is pinned instead is that the rule stays gone: a .btn-compact rule that
+    // came back would silently take the phone floor off whatever wore it.
     expect(
-      compactAt,
-      'OWNER RULING 2026-09-09 (AC-9): `.btn-sm` sits BEFORE `.btn-compact`. Both are (0,1,0), so ' +
-        'on an element carrying both, LATER source order wins — an after-positioned `.btn-sm` puts ' +
-        'back the 8px horizontal padding that `DECISION Phase 88.3-17` removed after CI found the ' +
-        'BrowseMoreModal stepper deformation (e2e/touch-targets.spec.ts ("the steppers are square BY DESIGN"), the squareness ' +
-        'assertion, re-derived 2026-09-15 — the shipped 88.3-17 marker still cites the stale ' +
-        '`:428`; dispatch run ' +
-        '33137056149). Flipping this pin is a decision, not a cleanup.',
-    ).toBeGreaterThan(smAt);
+      css.indexOf('.btn-compact'),
+      'A `.btn-compact` rule is back in comment-stripped globals.css. The opt-out from the phone ' +
+        'floor was retired by 88.9-52 R4 C2 (owner 2026-11-18): the two steppers that wore it are ' +
+        '44x44 squares now. Re-adding a sub-44 opt-out is a decision, not a cleanup.',
+    ).toBe(-1);
   });
 
-  it('8. `.btn-sm`, `.btn-compact` and `.btn-fuse-bottom` sit outside every `@layer` — they must beat utilities', () => {
+  it('8. `.btn-sm` and `.btn-fuse-bottom` sit outside every `@layer` — they must beat utilities (`.btn-compact` retired, 88.9-52 R4 C2)', () => {
     const css = strip(readGlobals());
-    for (const sel of ['.btn-sm {', '.btn-compact {']) {
+    for (const sel of ['.btn-sm {']) {
       const at = css.indexOf(sel);
+      expect(at, `\`${sel}\` must exist in comment-stripped globals.css.`).toBeGreaterThan(-1);
       const layer = layerAt(css, at);
       expect(
         layer,
@@ -526,16 +522,17 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
     }
 
     // 88.9-36 G2a: the phone-only attached-disclosure modifier must stay unlayered, after
-    // .btn-compact, inside the 40rem media block, or the unlayered .btn border-radius wins and the
+    // .btn-sm (AMENDED 88.9-52 R4 C2: this read .btn-compact, retired; .btn-sm is the last
+    // (0,1,0) .btn-family rule before it), inside the 40rem media block, or the unlayered .btn border-radius wins and the
     // open Show Filters & Sort toggle keeps its rounded bottom corners with no build error. The
     // index is asserted first: an absent selector would make the layer check pass vacuously.
     const fuseAt = css.indexOf('.btn-fuse-bottom {');
     expect(fuseAt, '`.btn-fuse-bottom {` must exist in comment-stripped globals.css.').toBeGreaterThan(-1);
     expect(
       fuseAt,
-      '`.btn-fuse-bottom` must be authored AFTER `.btn-compact` (and so after `.btn`): both are ' +
+      '`.btn-fuse-bottom` must be authored AFTER `.btn-sm` (and so after `.btn`): both are ' +
         '(0,1,0), so it wins the border-radius tie only on source order.',
-    ).toBeGreaterThan(css.indexOf('.btn-compact {'));
+    ).toBeGreaterThan(css.indexOf('.btn-sm {'));
     expect(layerAt(css, fuseAt), '`.btn-fuse-bottom` must stay UNLAYERED.').toBeNull();
     expect(depthAt(css, fuseAt), '`.btn-fuse-bottom` must sit directly inside ONE block (its media query).').toBe(1);
     const mediaAt = css.lastIndexOf('@media', fuseAt);

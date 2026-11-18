@@ -304,6 +304,89 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
     }
   });
 
+  // 88.9-52 R4 C2 (accessibility once-over A3, owner 2026-11-18), RENDERED. The two steppers were
+  // 32 by 32, 4px apart; they are 44 by 44 squares now (w-11 h-11 on a raw .btn, no opt-out
+  // class). Three widths of the same open dialog: 375 at ordinary text (the square, the order
+  // and the 4px gaps), 320 at ordinary text (still one line, inside the toolbar: 44 + 4 + 64 +
+  // 4 + 44 of 264px), and 320 with text at 200% (the squares are 88px because every length is
+  // rem; the three controls cannot share 208px, so the group wraps and nothing leaves the
+  // toolbar). 200% is the root font size doubled by a style tag
+  // (e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")), not browser zoom. Read-only: nothing is
+  // clicked after the dialog opens, and the suggestions response is this file's route.
+  // RED on the tree before R4 C2: the first size assertion reads 32.
+  test('R4 C2 (88.9-52): the player-count steppers are 44 by 44 squares, the row fits at 320px, and with text at 200% nothing in it leaves the dialog', async ({ page }) => {
+    const route = await installSuggestionsRoute(page);
+    try {
+      const browse = await openBrowseGames(page);
+      const controls = browse.getByTestId('browse-more-controls');
+      const decrement = browse.getByRole('button', { name: 'Decrease player count' });
+      const increment = browse.getByRole('button', { name: 'Increase player count' });
+      const count = browse.getByRole('spinbutton', { name: 'Player count' });
+      await guardResolved(decrement, 'the "Decrease player count" stepper');
+      await guardResolved(increment, 'the "Increase player count" stepper');
+      const rect = async (locator: Locator, what: string) => {
+        const box = await locator.boundingBox();
+        expect(box, `${what} has no layout box`).not.toBeNull();
+        return { left: box!.x, right: box!.x + box!.width, top: box!.y, width: box!.width, height: box!.height };
+      };
+      const readRow = async () => ({
+        dec: await rect(decrement, 'the decrease stepper'),
+        inc: await rect(increment, 'the increase stepper'),
+        box: await rect(count, 'the player-count box'),
+        bar: await rect(controls, 'the filter toolbar'),
+        barOverflow: await controls.evaluate((el) => el.scrollWidth - el.clientWidth),
+      });
+      const expectSquare = (r: { width: number; height: number }, side: number, what: string) => {
+        expect(Math.abs(r.width - side), `R4 C2: ${what} is ${r.width}px wide, expected ${side}`).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(r.height - side), `R4 C2: ${what} is ${r.height}px tall, expected ${side}`).toBeLessThanOrEqual(0.5);
+      };
+      const expectInsideBar = (row: Awaited<ReturnType<typeof readRow>>, at: string) => {
+        for (const [name, r] of [['the decrease stepper', row.dec], ['the player-count box', row.box], ['the increase stepper', row.inc]] as const) {
+          expect(r.left, `R4 C2 (${at}): ${name} starts ${row.bar.left - r.left}px left of the toolbar`).toBeGreaterThanOrEqual(row.bar.left - 0.5);
+          expect(r.right, `R4 C2 (${at}): ${name} ends ${r.right - row.bar.right}px past the toolbar's right edge`).toBeLessThanOrEqual(row.bar.right + 0.5);
+        }
+        expect(row.barOverflow, `R4 C2 (${at}): the toolbar scrolls sideways by ${row.barOverflow}px`).toBeLessThanOrEqual(1);
+      };
+
+      // 375, ordinary text.
+      const phone = await readRow();
+      expectSquare(phone.dec, 44, 'the decrease stepper at 375');
+      expectSquare(phone.inc, 44, 'the increase stepper at 375');
+      expect(Math.abs(phone.dec.top - phone.inc.top), 'R4 C2: at 375 the two steppers are not on one line').toBeLessThanOrEqual(1);
+      expect(Math.abs(phone.box.left - phone.dec.right - 4), `R4 C2: at 375 the box starts ${phone.box.left - phone.dec.right}px after the decrease stepper, expected 4`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(phone.inc.left - phone.box.right - 4), `R4 C2: at 375 the increase stepper starts ${phone.inc.left - phone.box.right}px after the box, expected 4`).toBeLessThanOrEqual(0.5);
+      expectInsideBar(phone, '375');
+
+      // 320, ordinary text: still one line, inside the toolbar.
+      const viewport = page.viewportSize();
+      expect(viewport, 'the page has no viewport size').not.toBeNull();
+      await page.setViewportSize({ width: 320, height: viewport!.height });
+      await expect.poll(async () => (await rect(controls, 'the filter toolbar')).width, { message: 'R4 C2: the toolbar did not narrow at 320px' }).toBeLessThan(300);
+      const narrow = await readRow();
+      expectSquare(narrow.dec, 44, 'the decrease stepper at 320');
+      expectSquare(narrow.inc, 44, 'the increase stepper at 320');
+      expect(Math.abs(narrow.dec.top - narrow.inc.top), 'R4 C2: at 320 and ordinary text the count row wrapped').toBeLessThanOrEqual(1);
+      expect(narrow.dec.right, 'R4 C2: at 320 the box is not between the steppers').toBeLessThanOrEqual(narrow.box.left + 0.5);
+      expect(narrow.box.right, 'R4 C2: at 320 the box is not between the steppers').toBeLessThanOrEqual(narrow.inc.left + 0.5);
+      expectInsideBar(narrow, '320');
+
+      // 320 with text at 200%: 88px squares, wrapped, nothing outside the toolbar.
+      await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+      await expect
+        .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+          message: 'R4 C2: the root font size did not become 32px after the 200% style tag',
+        })
+        .toBe('32px');
+      await expect.poll(async () => (await rect(decrement, 'the decrease stepper')).width, { message: 'R4 C2: the decrease stepper did not grow to 88px at 200% text' }).toBeGreaterThan(87);
+      const big = await readRow();
+      expectSquare(big.dec, 88, 'the decrease stepper at 320 / 200%');
+      expectSquare(big.inc, 88, 'the increase stepper at 320 / 200%');
+      expectInsideBar(big, '320 / 200%');
+    } finally {
+      route.release();
+    }
+  });
+
   test('D15b (88.9): the results dim to 85% while a refresh is in flight, the meta line still reads, and they return to full after', async ({ page }) => {
     // The RULINGS Q7 default (85%); plan 88.9-44 builds it as the only value. 70% is not built:
     // the muted meta line reads 3.29 / 3.72 through it.

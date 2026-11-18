@@ -70,6 +70,8 @@ import { expectTouchTarget } from './support/touchTarget';
  * wrong by a factor that mattered (it described the hamburger). Both are now measured at
  * 375px here. 88-30 also adds the D-36 `.btn` phone-floor pair: the floor is live on a
  * shipped bare-`.btn` call site, and the `.btn-compact` opt-out still wins the cascade.
+ * AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): the opt-out is retired. The D-36 test now
+ * measures the stepper class string as a 44x44 square instead.
  */
 
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
@@ -1172,14 +1174,27 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
      What the probe DOES claim, and it is the half nothing else can see: that in the EMITTED
      stylesheet at 375px, `.btn-compact` still beats the unlayered `.btn { min-height: 2.75rem }`
-     phone floor. That is a pure cascade fact about authoring order (src/app/globals.css ("or promoting the floor to all") authored before src/app/globals.css (".btn-compact {")),
+     phone floor. That is a pure cascade fact about authoring order (src/app/globals.css ("or promoting the floor to all") authored before the .btn-compact rule, which stood where src/app/globals.css ("the stepper opt-out is RETIRED") is now),
      which jsdom cannot evaluate and which src/app/decisionMarkers.test.ts ("5. the phone floor and its opt-out really are shipped, so the markers are not lying") can only pin at
      SOURCE level. The two are complementary: that suite proves the call sites wear the class
      and the rule exists; this proves the browser resolves them the way the marker claims.
 
      The bare-`.btn` probe alongside it is the anti-vacuity guard: if the media query stopped
      applying (a breakpoint edit, a layering "cleanup"), the compact probe would pass at 32px
-     for the WRONG reason. Both probes must disagree, or the test is meaningless. */
+     for the WRONG reason. Both probes must disagree, or the test is meaningless.
+
+     AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18), everything
+     above KEPT AS HISTORY: the opt-out half is superseded. The two steppers are 44x44 squares
+     and the .btn-compact rule is retired, so there is no cascade fight left to measure. The
+     planted stepper probe now wears the class string the steppers ship with today and must
+     measure 44 by 44: the height from h-11 (and the phone floor, which agrees with it), the
+     width from w-11 with the .btn side padding still in place (34px of padding and border
+     inside a 44px box, the sum 88.3-17 found failing at 32). A second probe wears the RETIRED
+     class on the old 32px string and must be floored to 44 tall like any other .btn: that is
+     the rendered proof the opt-out is gone, where the unit pin can only read source. The real
+     steppers are measured in e2e/browse-games-modal.spec.ts ("R4 C2 (88.9-52): the player-count steppers are 44 by 44 squares"),
+     which reaches them through a routed suggestions response. The test title is unchanged
+     (it is the handle other records use); read "still opts out" as history. */
   test('D-36: the .btn phone floor is live on a shipped call site, and .btn-compact still opts out', async ({ page }) => {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertDarkTheme(page);
@@ -1211,7 +1226,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      * If a real bare-`.btn` call site still exists after every sweep, prefer the planted probe
      * anyway — an arm whose subject can be migrated away is an arm with an expiry date. (The two
      * `BrowseMoreModal` steppers are not a candidate: they carry `.btn-compact`, which opts OUT
-     * of the floor by design.)
+     * of the floor by design.) AMENDED 88.9-52 R4 C2: they no longer do; they carry w-11 h-11,
+     * which would hold 44 with or without the media rule, so they still prove nothing about it.
      */
     const probes = await page.evaluate(() => {
       const make = (className: string) => {
@@ -1222,9 +1238,13 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         document.body.appendChild(el);
         return el;
       };
-      // Same class list the shipped steppers wear (BrowseMoreModal.js), plus a bare
-      // control for the floor. `w-8`/`h-8` are emitted because those steppers use them.
-      const compact = make('btn btn-compact btn-secondary w-8 h-8');
+      // Same class list the shipped steppers wear (BrowseMoreModal.js) since 88.9-52 R4 C2,
+      // plus a bare control for the floor. `w-11`/`h-11` are emitted because those steppers
+      // (and many other src/ files) use them.
+      const stepper = make('btn btn-secondary w-11 h-11');
+      // The RETIRED string. `w-8`/`h-8` are still emitted (other src/ files wear them); the
+      // btn-compact token matches no rule any more.
+      const retired = make('btn btn-compact btn-secondary w-8 h-8');
       const bare = make('btn btn-secondary');
       // The re-pointed real-call-site arm: "Manage Members"'s own shipped class string
       // as of 2026-09-15 (since migrated to a Button, src/app/groupHomePage/page.js ("onClick={() => setMemberModal(true)}")). Every class here but md:text-base (desktop-only, inert at 375px) is emitted because some src/ file
@@ -1240,28 +1260,39 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         const r = el.getBoundingClientRect();
         return { width: r.width, height: r.height, minHeight: getComputedStyle(el).minHeight };
       };
-      const result = { compact: read(compact), bare: read(bare), shipped: read(shipped) };
-      compact.remove();
+      const result = { stepper: read(stepper), retired: read(retired), bare: read(bare), shipped: read(shipped) };
+      stepper.remove();
+      retired.remove();
       bare.remove();
       shipped.remove();
       return result;
     });
 
-    // (a) The floor is live at 375px — if this fails, the compact result below means nothing.
+    // (a) The floor is live at 375px — if this fails, the retired-class result below means nothing.
     expect(
       probes.bare.height,
-      `bare .btn probe measured ${probes.bare.height}px (min-height: ${probes.bare.minHeight}) — the D-36 phone floor is NOT applying at 375px, which makes the .btn-compact assertion below vacuous. Look at globals.css's @media (width < 48rem) block and its authoring order, not at BrowseMoreModal`,
+      `bare .btn probe measured ${probes.bare.height}px (min-height: ${probes.bare.minHeight}) — the D-36 phone floor is NOT applying at 375px. Look at globals.css's @media (width < 48rem) block and its authoring order, not at BrowseMoreModal`,
     ).toBeGreaterThanOrEqual(44);
 
-    // (b) The opt-out wins: the stepper stays SQUARE, not stretched into a 32x44 lozenge.
+    // (b) AMENDED 88.9-52 R4 C2: the stepper string is a 44x44 SQUARE, in both axes.
     expect(
-      probes.compact.height,
-      `.btn.btn-compact probe measured ${probes.compact.height}px tall (min-height: ${probes.compact.minHeight}) — expected 32px. The opt-out lost the cascade: 87.8 AF-2 rejected an all-viewport floor precisely because it deforms these w-8 h-8 steppers into 32x44. Check that .btn-compact is still UNLAYERED and still authored AFTER the media block`,
-    ).toBeCloseTo(32, 1);
+      probes.stepper.height,
+      `the stepper-string probe (btn btn-secondary w-11 h-11) measured ${probes.stepper.height}px tall (min-height: ${probes.stepper.minHeight}) — expected 44px`,
+    ).toBeCloseTo(44, 1);
     expect(
-      Math.abs(probes.compact.width - probes.compact.height),
-      `.btn.btn-compact probe measured ${probes.compact.width}x${probes.compact.height} — the steppers are square BY DESIGN and a height-only assertion would not have caught a 32x44 deformation`,
+      probes.stepper.width,
+      `the stepper-string probe measured ${probes.stepper.width}px wide — expected 44px. The .btn side padding and border are 34px, so nothing should clamp a 44px box`,
+    ).toBeCloseTo(44, 1);
+    expect(
+      Math.abs(probes.stepper.width - probes.stepper.height),
+      `the stepper-string probe measured ${probes.stepper.width}x${probes.stepper.height} — the steppers are square BY DESIGN and a height-only assertion would not have caught a lozenge`,
     ).toBeLessThanOrEqual(1);
+    // (b2) The opt-out is gone: the retired class no longer lowers the floor. With its rule in
+    // place this probe measured 32px tall; without it the phone floor holds it at 44.
+    expect(
+      probes.retired.height,
+      `a probe wearing the retired btn-compact class measured ${probes.retired.height}px tall (min-height: ${probes.retired.minHeight}) — a rule for that class is back and takes the phone floor off whatever wears it (88.9-52 R4 C2 retired it)`,
+    ).toBeGreaterThanOrEqual(44);
 
     // (c) The RE-POINTED real-call-site arm (AMENDED Phase 88.6-12, see the block above): the
     // same shape "Manage Members" ships with — `.btn` plus a pile of utilities, no `min-h-*` —

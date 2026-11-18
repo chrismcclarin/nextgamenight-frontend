@@ -175,8 +175,12 @@ const buttonVariants = cva(
        `min-h-0` is therefore DESKTOP-ONLY — and plan 12's AC-2 desktop arm
        flags it as a violation, so it is not a quiet escape hatch either.
        `.btn-compact` is not a path: it is unlayered at ALL widths, it also
-       zeroes horizontal padding (src/app/globals.css (".btn-compact {")), and it is scoped by
+       zeroes horizontal padding, and it is scoped by
        construction to those same two shipped sites.
+       AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): `.btn-compact` is retired
+       and the two steppers named above are 44x44 squares; the note is at
+       src/app/globals.css ("the stepper opt-out is RETIRED"). The floor on this
+       base is unchanged.
 
        ANY SUB-44 `Button` IS A PHASE 88.9 DECISION, not a cleanup — see the
        `DECISION Phase 88.6-06 (C.1 / D-09)` marker in the size map below. */

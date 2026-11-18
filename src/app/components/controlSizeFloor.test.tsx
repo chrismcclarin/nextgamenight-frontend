@@ -394,14 +394,21 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
      * LATENT AT HEAD, on purpose. No live `<Button>` wears `btn-compact`, and the two
      * `BrowseMoreModal` steppers that do are raw `.btn` and are declared exempt (D-36). The
      * value of this arm is that the hole stays closed while plans 17-39 migrate ~100 files.
+     *
+     * AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): shape (2) is history. The .btn-compact
+     * rule is retired (the two steppers are 44x44 squares, and nothing wears the class), so
+     * the class would do nothing today. The token check below is KEPT, chosen OVER deleting it:
+     * a className that still carries the retired name is either a leftover or the first half
+     * of someone bringing the opt-out back, and either is worth a red here. That the rule
+     * itself stays gone is pinned in src/app/cascadeOrder.test.ts ("Re-adding a sub-44 opt-out is a decision, not a cleanup.").
      */
     const offenders: string[] = [];
     for (const site of buttonSites) {
       for (const { raw, base } of tagTokens(site.tag)) {
         if (base === 'btn-compact') {
           offenders.push(
-            `${site.where} — carries \`${raw}\`, an UNLAYERED min-height:0 class that beats the ` +
-              '`Button` cva base\'s `min-h-11` utility at EVERY width (globals.css, `.btn-compact { min-height: 0 }`)',
+            `${site.where} — carries \`${raw}\`, the RETIRED opt-out class (88.9-52 R4 C2). While its rule existed it was an UNLAYERED min-height:0 that beat the ` +
+              '`Button` cva base\'s `min-h-11` utility at EVERY width; no control may go back under 44 through it',
           );
           continue;
         }

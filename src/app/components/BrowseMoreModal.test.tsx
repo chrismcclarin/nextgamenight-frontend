@@ -107,19 +107,32 @@ describe('BrowseMoreModal (migrated onto <Modal size="lg">)', () => {
   // ground under the ring); the owner accepted the 4px reach into the row gap with the picture in
   // front of him. Pinned so a later "consistency" sweep cannot migrate them or swap the ring form
   // back without reading the markers at the site.
-  it('leaves both player-count steppers on `.btn-compact` with the house OFFSET focus ring on the card halo (88.9 B7a)', async () => {
+  // AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18): the SIZE half
+  // is superseded. Both steppers are 44x44 squares (w-11 h-11) and no longer wear the
+  // btn-compact opt-out, which is retired; they are still raw .btn (not a Button) and the ring
+  // half above is unchanged. 32x32 was REJECTED (two small targets 4px apart).
+  it('R4 C2: both player-count steppers are raw .btn 44x44 squares with no btn-compact opt-out, and keep the house OFFSET focus ring on the card halo (88.9 B7a)', async () => {
     render(<BrowseMoreModal {...baseProps} />);
     await screen.findByRole('dialog');
     for (const name of [/decrease player count/i, /increase player count/i]) {
       const stepper = screen.getByRole('button', { name });
-      expect(stepper).toHaveClass('btn-compact');
+      expect(stepper).toHaveClass('btn');
+      expect(stepper).toHaveClass('btn-secondary');
+      expect(stepper).not.toHaveClass('btn-compact');
       expect(stepper).toHaveClass('focus-visible:ring-offset-2');
       expect(stepper).toHaveClass('focus-visible:ring-offset-surface-card');
       expect(stepper.className).not.toMatch(/ring-inset/);
-      // The exemption is about SIZE — 32x32, above WCAG 2.5.8's 24px floor.
-      expect(stepper).toHaveClass('w-8');
-      expect(stepper).toHaveClass('h-8');
+      // The house 44x44 floor, as a square at every width (a utility pair no unlayered .btn
+      // declaration contests: .btn sets no width and no height).
+      expect(stepper).toHaveClass('w-11');
+      expect(stepper).toHaveClass('h-11');
+      expect(stepper).not.toHaveClass('w-8');
+      expect(stepper).not.toHaveClass('h-8');
     }
+    // At 320 / 200% the three controls cannot share one line (88 + 128 + 88 plus gaps is over
+    // the 208px the toolbar has), so the group wraps instead of running off the dialog.
+    const group = screen.getByRole('button', { name: /decrease player count/i }).parentElement as HTMLElement;
+    expect(group).toHaveClass('flex-wrap');
   });
 
   // Plan 88.9-44 (owner pick O12a, 88.9-PICKS-B8B.json, 2026-11-07): the sort direction is the
@@ -585,6 +598,8 @@ async function refreshWith(
 }
 
 describe('BrowseMoreModal decrement at 1 and the capture latch (88.6.1-32, AC-13, W006)', () => {
+  // AMENDED 88.9-52 R4 C2 (owner 2026-11-18): the square it keeps is 44x44 (w-11 h-11) with no
+  // opt-out class; the title is unchanged.
   it('H: at 1 the decrement is aria-disabled, not natively disabled, and keeps its compact square', async () => {
     const user = userEvent.setup();
     await renderSettledWith({ defaultPlayerCount: 2 });
@@ -594,10 +609,10 @@ describe('BrowseMoreModal decrement at 1 and the capture latch (88.6.1-32, AC-13
     expect(dec).toHaveAttribute('aria-disabled', 'true');
     expect(dec).not.toHaveAttribute('disabled');
     expect(dec.className).not.toMatch(/(^|\s)disabled:/);
-    expect(dec).toHaveClass('btn-compact');
+    expect(dec).not.toHaveClass('btn-compact');
     expect(dec).toHaveClass('focus-visible:ring-offset-2');
-    expect(dec).toHaveClass('w-8');
-    expect(dec).toHaveClass('h-8');
+    expect(dec).toHaveClass('w-11');
+    expect(dec).toHaveClass('h-11');
   });
 
   it('I: a press at 1 writes nothing and sends no request', async () => {

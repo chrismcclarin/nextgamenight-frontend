@@ -385,8 +385,37 @@ export default function BrowseMoreModal({
                 32x32 exemption and the inset ring above are unchanged (88.6-32 D-10, AC-10).
                 AMENDED Phase 88.9-44 (owner pick B7a): the ring is now the offset form; the
                 exemption is still unchanged.
-                Changing any of this is a decision, not a cleanup. */}
-            <div className="flex items-center gap-1" title="Player count">
+
+                AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18:
+                "follow recommendations and fix"), every SIZE statement above KEPT AS HISTORY
+                and superseded: both steppers are 44x44 SQUARES at every width (w-11 h-11), and
+                the btn-compact opt-out is gone from these two lines and RETIRED from
+                globals.css (src/app/globals.css ("the stepper opt-out is RETIRED")), because
+                nothing else wore it. CHOSEN OVER keeping 32x32 (REJECTED: two small targets
+                4px apart is the classic mis-tap pair for a tremor or limited dexterity; it
+                clears WCAG 2.5.8's 24px but not the house 44). The 88-17 D-36 and 88.6-32 D-10
+                reasoning was a SHAPE argument: the only alternative it weighed was the 32x44
+                lozenge the phone floor would have made. A 44 square was never weighed, and it
+                keeps the shape. Still true from above: the two stay RAW .btn (a Button would
+                add the elevation pair, a look nobody has ruled on); the offset ring (B7a); the
+                aria-disabled limit at 1.
+                WHY TWO UTILITIES ARE ENOUGH NOW, where the marker above says a utility cannot
+                work: that was about LOWERING the floor (a minimum-height utility loses to the
+                unlayered .btn rules). w-11 and h-11 set width and height, which .btn declares
+                nowhere, and they sit ON the floor instead of under it: 2.75rem tall equals the
+                phone minimum, and 2.75rem wide clears the .btn side padding plus border
+                (1rem + 1rem + 2px), so nothing clamps the square the way 88.3-17 found at
+                w-8. Every length is rem, so the square holds at enlarged text.
+                THE ROW: minus, box, plus, word = 44 + 4 + 64 + 4 + 44 + 4 + 4 + about 38 =
+                about 206px at ordinary text; the toolbar has 264px at a 320 screen (320 less
+                the dialog's 24px inset and 32px padding), so it fits on one line. With text
+                at 200% the same sum is about 400px against 208px, so the group now WRAPS
+                (flex-wrap, new here) instead of running off the dialog; at 32px squares it
+                already overran there (about 352px). REJECTED: shrinking the number box to
+                make room (at 320 / 200% it would be left 24px wide).
+                Going back under 44, or re-adding an opt-out class, is a decision, not a
+                cleanup. */}
+            <div className="flex flex-wrap items-center gap-1" title="Player count">
               <button
                 type="button"
                 onClick={() => {
@@ -394,7 +423,7 @@ export default function BrowseMoreModal({
                   setPlayerCount((p) => Math.max(1, (p || 1) - 1));
                 }}
                 aria-disabled={decrementDisabled || undefined}
-                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                className="btn btn-secondary w-11 h-11 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                 aria-label="Decrease player count"
               >
                 −
@@ -424,7 +453,12 @@ export default function BrowseMoreModal({
                    against a call-site census, "never a blanket rule with no census", and that
                    census is DEF-88-20-01's, not this plan's. Req 1 is the 16px TEXT floor, which
                    is what changes here; the touch-target question stays with its owner.
-                   Swapping this for the bare primitive is a decision, not a cleanup. */
+                   Swapping this for the bare primitive is a decision, not a cleanup.
+                   AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): the premise moved. The two
+                   steppers beside this box are 44x44 now, so the "square button beside a tall
+                   box" objection no longer describes this row; the box itself is unchanged
+                   (about 34px tall, centred between them) because its height is a look nobody
+                   has ruled on. Reported to the owner by R4-C as an open call. */
                 className="w-16 text-center p-1 border border-line rounded-btn text-content-primary bg-surface-input text-base"
                 aria-label="Player count"
               />
@@ -434,8 +468,10 @@ export default function BrowseMoreModal({
                 /* btn-compact, the D-10 permanent exemption and the AC-10 ring (the offset form
                    since 88.9-44, B7a): see the markers on the decrement twin above. This pair
                    migrates and stays together — one standardised beside one un-standardised is
-                   the defect. */
-                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                   the defect.
+                   AMENDED Phase 88.9-52 (R4 C2): 44x44 like its twin, and no opt-out class
+                   (the decrement's marker has what was chosen and what was rejected). */
+                className="btn btn-secondary w-11 h-11 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                 aria-label="Increase player count"
               >
                 +
