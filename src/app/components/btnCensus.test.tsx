@@ -384,6 +384,10 @@ const BTN_EXEMPT: ExemptionRoster = {
   // respelled `shadow-theme-lg` with an `enabled-hover:` pin in the same commit (see
   // `shadowTier.test.ts`). The `row` variant's trigger is NOT a census site and is untouched — it
   // never wore `.btn`. Entry DELETED rather than zeroed; the roster is exact in both directions.
+  // AMENDED Phase 88.9-52 (R5, owner 2026-11-17, pick Always): the FAB's size key is `iconSquare`
+  // (zero padding), its size is `w-[56px] h-[56px]` with px floors (fixed, no doubling at 200%
+  // text), and its position is `bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))]
+  // right-[24px]`; the `size="icon"`, `w-14 h-14` and `bottom-6 right-6` named above are superseded.
   // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
   // carried `sites: 2` and the count was EXACT — the modal footer's Cancel (`btn btn-secondary`)
   // and Submit (`btn btn-primary`). Both are `<Button size="default">` now; Submit carries an

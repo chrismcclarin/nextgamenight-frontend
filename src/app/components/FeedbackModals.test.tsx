@@ -226,15 +226,20 @@ describe('FeedbackButton — Phase 88.6-31 (the FAB, the capture, the timer)', (
     expect(fab.className).not.toContain('bg-transparent');
   });
 
-  it('the FAB keeps its 56px box (a FLOOR is not a size), takes `size="icon"`, and sheds its dead classes and its per-site ring', () => {
+  it('the FAB keeps its 56px box (a FLOOR is not a size), takes `size="iconSquare"`, and sheds its dead classes and its per-site ring', () => {
     const fab = renderFab();
 
-    // `w-14 h-14` = 56px EXCEEDS the 44px floor `size="icon"` contributes. Dropping it on the
-    // belief that "the primitive supplies the size" would shrink the control by 12px (P6).
-    expect(fab.className).toContain('w-14');
-    expect(fab.className).toContain('h-14');
-    expect(fab.className).toContain('min-h-11');
-    expect(fab.className).toContain('min-w-11');
+    // The 56px box EXCEEDS the 44px floor the primitive contributes. Dropping it on the belief
+    // that "the primitive supplies the size" would shrink the control by 12px (P6).
+    // AMENDED Phase 88.9-52 (R5, owner 2026-11-17, pick Always): the 56px box is a FIXED px size
+    // (it no longer doubles at 200% text), its floors are px too, and the size key is iconSquare
+    // for its zero padding; the rem spelling w-14 h-14 over the size icon floor is superseded.
+    expect(fab.className).toContain('w-[56px]');
+    expect(fab.className).toContain('h-[56px]');
+    expect(fab.className).toContain('min-w-[56px]');
+    expect(fab.className).toContain('min-h-[56px]');
+    expect(fab.className).toContain('btn-icon-square');
+    expect(fab.className).not.toContain('min-h-11');
     // Live layout kept — `.btn` declares no position and no z-index.
     expect(fab.className).toContain('fixed');
     expect(fab.className).toContain('z-30');

@@ -3488,7 +3488,9 @@ body {
    .btn) and OVER an inline style on the call site (the primitive owns its sizes) — moving it above
    .btn silently restores the 16px side padding. Emitted only by the Button size key iconSquare
    (src/components/ui/Button.tsx ("iconSquare: 'btn-icon-square")), the month-nav chevrons
-   (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07). */
+   (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07).
+   AMENDED Phase 88.9-52 (R5, owner 2026-11-17): the floating feedback button takes the same size
+   key, for a fixed 56px box with no side padding. */
 .btn-icon-square {
   padding: 0;
 }

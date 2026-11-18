@@ -264,6 +264,9 @@ const buttonVariants = cva(
          sites (FeedbackButton, FeedbackForm, PendingMemberBanner, BottomSheet close) keep their
          52x44 lozenge, because the owner's N1 picture showed the calendar chevrons, not those
          controls.
+         AMENDED Phase 88.9-52 (R5, owner 2026-11-17): the floating feedback button takes
+         iconSquare too (a fixed 56px box needs the zero padding), so the chevrons are no longer
+         its only users and FeedbackButton's floating button leaves the size icon list above.
 
          (2) `min-h-11` LIVES ON THE cva BASE — chosen OVER widening the
          `@media (width < 48rem)` rule on the `.btn` class. D-36's reasoning is
