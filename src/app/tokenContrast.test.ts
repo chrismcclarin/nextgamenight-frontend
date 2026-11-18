@@ -3218,6 +3218,42 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(gridSrc, 'N1b: the legend keeps its light steps').toContain('w-4 h-4 bg-green-300 dark:bg-surface-avail-preferred');
   });
+
+  it('N1c (88.9-52): If Need Be carries a fine diagonal stripe in both themes — the stripe 1.30 or more off its own fill, one utility reading one token, on the If Need Be cell and swatch only', () => {
+    // Owner pick N1c "Stripe" (2026-11-17): Preferred and If Need Be were told apart by hue alone
+    // (their fills are 1.0651 apart in light and 1.0239 in dark, so a greyscale copy shows one
+    // grey). The stripe is the cue that needs no colour: a 2px line every 6px at 45 degrees, in a
+    // darker step of the cell's own hue. Measured with src/lib/wcag.ts, stripe on its fill: light
+    // #cfb83a on #fde047 1.5070, dark #805d22 on #9c712a 1.3714. A pattern, not text and not a
+    // control edge, so the floor here records the picked look and is no WCAG number.
+    const PICK = { light: '#cfb83a', dark: '#805d22' } as const;
+    expect(declIn(blockOf('theme'), '--color-surface-avail-if-need-be-stripe'), 'N1c: the stripe colour is bridged').toBe('var(--color-avail-if-need-be-stripe)');
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expect(resolve(theme, '--color-avail-if-need-be-stripe'), `N1c [${theme}] stripe`).toBe(PICK[theme]);
+      expectRatio(theme, '--color-avail-if-need-be-stripe', '--color-avail-if-need-be-bg', 1.3, 'N1c the stripe on the If Need Be fill');
+      // Without the stripe the two states are one grey: the reason the cue exists.
+      expectRatioBelow(theme, '--color-avail-preferred-bg', '--color-avail-if-need-be-bg', 1.1, 'N1c Preferred against If Need Be, fill alone');
+      measured += 2;
+    }
+    expect(measured, 'anti-vacuity: 2 themes x 2 pairs').toBe(4);
+
+    const body = braceBlock(
+      uniqueMatch(/^@utility avail-if-need-be-stripe[ \t]*\{/gm, '@utility avail-if-need-be-stripe {'),
+      'utility avail-if-need-be-stripe',
+    ).replace(/\s+/g, ' ').trim();
+    expect(body).toBe(
+      'background-image: repeating-linear-gradient( 45deg, var(--color-avail-if-need-be-stripe) 0 2px, transparent 2px 6px );',
+    );
+
+    const gridSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'AvailabilityGrid.js'), 'utf8'),
+    );
+    // One cell constant and one legend swatch, each beside the If Need Be fill; never beside Preferred.
+    expect(gridSrc.split('avail-if-need-be-stripe').length - 1, 'N1c: the stripe class on the cells and on the legend').toBe(2);
+    expect(gridSrc.split('dark:bg-surface-avail-if-need-be avail-if-need-be-stripe').length - 1).toBe(2);
+    expect(gridSrc).not.toMatch(/avail-preferred[^'"\n]*avail-if-need-be-stripe/);
+  });
 });
 
 // =====================================================================================

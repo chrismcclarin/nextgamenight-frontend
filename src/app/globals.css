@@ -595,6 +595,9 @@
      the light block. */
   --color-surface-avail-preferred: var(--color-avail-preferred-bg);
   --color-surface-avail-if-need-be: var(--color-avail-if-need-be-bg);
+  /* 88.9-52 N1c: the If Need Be stripe colour. The avail-if-need-be-stripe utility reads the
+     runtime property directly; the key is bridged with the two fills it sits on. */
+  --color-surface-avail-if-need-be-stripe: var(--color-avail-if-need-be-stripe);
   /* Bell count badge (bg-badge-count) — see the DECISION Phase 88.9-01 (M3b) marker in the light block. */
   --color-badge-count: var(--color-badge-count-bg);
 
@@ -2070,6 +2073,10 @@
      light one. */
   --color-avail-preferred-bg: #86efac;
   --color-avail-if-need-be-bg: #fde047;
+  /* 88.9-52 N1c (owner pick "Stripe", 2026-11-17): the stripe on If Need Be, a darker step of the
+     cell's own yellow, rgb(207,184,58): 1.5070 on the fill. DECISION marker at the
+     avail-if-need-be-stripe utility. */
+  --color-avail-if-need-be-stripe: #cfb83a;
 
   /* Header (warm neutral, NOT purple) */
   --color-bg-header: var(--warm-800);
@@ -2442,6 +2449,8 @@
      luminance; the stripe (N1c) is the cue that does not need colour. Light marker has the rule. */
   --color-avail-preferred-bg: #288758;
   --color-avail-if-need-be-bg: #9c712a;
+  /* 88.9-52 N1c: the dark stripe, a darker step of the ochre, rgb(128,93,34): 1.3714 on the fill. */
+  --color-avail-if-need-be-stripe: #805d22;
 
   /* Header (warm neutral) */
   --color-bg-header: var(--warm-900);
@@ -2790,6 +2799,29 @@ body {
   --error-bg: var(--color-status-error-subtle);
   --error-border: var(--color-status-error-border);
   --error-text: var(--color-status-error-text);
+}
+
+/* DECISION Phase 88.9-52 (N1c, owner pick "Stripe", 2026-11-17): an If Need Be cell, and its
+   legend swatch, carry a fine diagonal stripe over the fill in BOTH themes: a 2px line every 6px
+   at 45 degrees, in a darker step of the cell's own hue (light rgb(207,184,58) on the yellow,
+   1.5070; dark rgb(128,93,34) on the ochre, 1.3714). Preferred has no stripe.
+   WHY: the two states were told apart by hue alone. Their fills are 1.0651 apart in light and
+   1.0239 in dark, so in a greyscale copy they are one grey; with the stripe the owner's greyscale
+   picture reads at a glance (WCAG 1.4.1, Use of Color).
+   Chosen OVER a dot in the cell centre and OVER a corner triangle (both pictured: the dot is
+   small, the corner has to be looked for), and OVER changing a fill's lightness (the N1b pick
+   fixed both dark fills). A layered utility, so it is emitted only where the class is written
+   and any call-site background utility could still override it; the stripe is a background
+   IMAGE, so it sits over the background COLOUR the fill classes set and neither replaces the
+   other. Built on the check-in grid only (src/app/components/AvailabilityGrid.js); the other
+   places these two states are drawn are listed in the 88.9-52 fix report. Gate A row N1c.
+   Removing the stripe, or moving it to Preferred, is a decision, not a cleanup. */
+@utility avail-if-need-be-stripe {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--color-avail-if-need-be-stripe) 0 2px,
+    transparent 2px 6px
+  );
 }
 
 /* DECISION Phase 88.6-05 (W19): `.btn`'s `border: none` RESET — and ONLY that one declaration —

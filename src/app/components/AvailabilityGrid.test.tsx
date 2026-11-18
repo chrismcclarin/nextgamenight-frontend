@@ -861,6 +861,20 @@ describe('88.9-52 N1b / N1c — painted cells and the legend', () => {
     expect(notAvailable).not.toContain(IF_NEED_BE_DARK);
   });
 
+  it('N1c: an If Need Be cell and its legend swatch carry the stripe; Preferred, empty and Not Available never do', () => {
+    paintOneOfEach();
+    const STRIPE = 'avail-if-need-be-stripe';
+    expect(tokensOf(slotCellsAt(1))).toContain(STRIPE);
+    expect(tokensOf(swatchOf('If Need Be'))).toContain(STRIPE);
+    for (const plain of [slotCellsAt(0), slotCellsAt(2), swatchOf('Preferred'), swatchOf('Not Available')]) {
+      expect(tokensOf(plain)).not.toContain(STRIPE);
+    }
+    // Un-painting the cell (If Need Be mode, tap again) takes the stripe off with the fill.
+    mouseTap(slotCellsAt(1));
+    expect(slotCellsAt(1)).toHaveAccessibleName(/, not selected$/);
+    expect(tokensOf(slotCellsAt(1))).not.toContain(STRIPE);
+  });
+
   it('N1b: in the unavailable-week mode a painted cell keeps the disabled look and takes no state fill', () => {
     const onChange = paintOneOfEach();
     const value = lastEmitted(onChange);
@@ -874,6 +888,7 @@ describe('88.9-52 N1b / N1c — painted cells and the legend', () => {
       expect(cell).toContain('opacity-50');
       expect(cell).not.toContain(PREFERRED_DARK);
       expect(cell).not.toContain(IF_NEED_BE_DARK);
+      expect(cell).not.toContain('avail-if-need-be-stripe');
     }
   });
 });

@@ -83,7 +83,12 @@ function selectionSummaryText(selection) {
 // (Tailwind would emit nothing).
 const CELL_BASE_CLASS = 'transition-colors duration-75';
 const CELL_PREFERRED_CLASS = 'transition-colors duration-75 dark:bg-surface-avail-preferred';
-const CELL_IF_NEED_BE_CLASS = 'transition-colors duration-75 dark:bg-surface-avail-if-need-be';
+// AMENDED Phase 88.9-52 (N1c, owner pick "Stripe", 2026-11-17): the If Need Be cell also carries a
+// fine diagonal stripe in both themes (the avail-if-need-be-stripe utility), so the two states
+// differ without colour; chosen OVER a centre dot and a corner mark, both pictured. Preferred has
+// none. The legend's If Need Be swatch carries it too. Marker with the measurements:
+// src/app/globals.css ("an If Need Be cell, and its").
+const CELL_IF_NEED_BE_CLASS = 'transition-colors duration-75 dark:bg-surface-avail-if-need-be avail-if-need-be-stripe';
 function writeCellClass(preference, disabled) {
   if (disabled) return CELL_BASE_CLASS;
   if (preference === 'preferred') return CELL_PREFERRED_CLASS;
@@ -972,7 +977,7 @@ export default function AvailabilityGrid({
           <span className="text-content-secondary">Preferred</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-yellow-300 dark:bg-surface-avail-if-need-be border border-line rounded-xs" />
+          <div className="w-4 h-4 bg-yellow-300 dark:bg-surface-avail-if-need-be avail-if-need-be-stripe border border-line rounded-xs" />
           <span className="text-content-secondary">If Need Be</span>
         </div>
         <div className="flex items-center gap-1.5">
