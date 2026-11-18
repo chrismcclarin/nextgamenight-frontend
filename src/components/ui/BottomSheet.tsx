@@ -307,9 +307,16 @@ const BottomSheet = React.forwardRef<
           </div>
 
           {/* Body: the only scrolling region. `min-h-0` is what lets it actually
-              shrink inside the flex column instead of overflowing the sheet. */}
+              shrink inside the flex column instead of overflowing the sheet.
+              DECISION Phase 88.9-52 (R4 L3b, round 4, 2026-11-18): the body is POSITIONED
+              (relative), chosen OVER leaving each consumer to position its own content. A
+              screen-reader-only box is position absolute; with no positioned ancestor inside
+              the body it is laid out against the sheet, does not travel with the scrolled
+              content, and can give the clipping sheet something to scroll to. Same rule and
+              reasons as src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18)").
+              Removing it is a decision, not a cleanup. */}
           <div
-            className={cn('min-h-0 flex-1 overflow-y-auto p-4', bodyClassName)}
+            className={cn('relative min-h-0 flex-1 overflow-y-auto p-4', bodyClassName)}
           >
             {children}
           </div>

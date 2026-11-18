@@ -414,3 +414,25 @@ describe('BottomSheet announcer region (88.9-52, A-47)', () => {
     expect(document.querySelector('[data-announcer="root"]')).toBeEmptyDOMElement();
   });
 });
+
+// R4 L3b (88.9-52 round 4): the sheet's form of the Modal rule,
+// src/app/components/Modal.test.tsx ("88.9-52 (R4 L3): Modal.Body holds the absolute boxes a consumer puts in it").
+// A screen-reader-only box is position absolute and is laid out against its nearest POSITIONED
+// ancestor. The sheet body scrolls; while it was not positioned, such a box in it was laid out
+// against the sheet itself, did not travel with the scrolled content, and could give the
+// clipping sheet something to scroll to (a blank band at its foot). jsdom lays nothing out, so
+// this reads class tokens.
+describe('88.9-52 (R4 L3b): the sheet body holds the absolute boxes a consumer puts in it', () => {
+  it('the scrolling body is positioned, with and without a consumer bodyClassName', () => {
+    for (const bodyClassName of [undefined, 'flex min-h-0 flex-col overflow-hidden']) {
+      render(
+        <BottomSheet open onClose={() => {}} title={TITLE} bodyClassName={bodyClassName}>
+          <span className="sr-only" data-testid="in-body">, saving</span>
+        </BottomSheet>
+      );
+      const body = screen.getByTestId('in-body').parentElement as HTMLElement;
+      expect((body.getAttribute('class') ?? '').split(/\s+/)).toContain('relative');
+      cleanup();
+    }
+  });
+});
