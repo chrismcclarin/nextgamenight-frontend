@@ -2030,6 +2030,19 @@ function GroupHomePage(){
                 <RetainedContentFocusGuard retained={eventsRetained} focusTarget={calendarHeadingRef} />
 
                 {/* Play history section (GroupGamesList) */}
+                {/* DECISION Phase 88.9-52 (R4-A3, round-3 capture): the list sits in ONE wrap-break-word
+                    box, chosen OVER leaving its lines to the default wrap. At 320px with text at 200%
+                    the card's words column is about 46px wide (the 4rem picture and the rem gaps and
+                    paddings double with the text), a word such as reviews) is wider than that, and it
+                    ran past the card and the page edge: the page scrolled sideways by 14px. overflow-wrap
+                    inherits, so the box reaches every line of every card, the breadcrumb nav's recorded
+                    pattern above; a word breaks only where it would otherwise overflow, so nothing
+                    changes at any size where the words fit. REJECTED: the token on this page's root (it
+                    would also reach the calendar, where a count that is too wide for its cell would
+                    break in two); clipping the page with overflow-x (it hides the words). The box holds
+                    the list alone and adds no margin, padding or role. Removing it is a decision, not a
+                    cleanup. */}
+                <div className="wrap-break-word">
                 <GroupGamesList
                     games={gamesList}
                     groupId={Router}
@@ -2040,6 +2053,7 @@ function GroupHomePage(){
                     retained={gamesRetained}
                     focusRef={gamesFocusRef}
                 />
+                </div>
                 {/* After the list, never before it: see DECISION Phase 88.6.1-56 (C3 + C10, games). */}
                 <RetainedContentFocusGuard retained={gamesRetained} focusTarget={gamesFocusRef} />
               </>

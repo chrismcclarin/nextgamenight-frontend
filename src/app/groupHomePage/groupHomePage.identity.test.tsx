@@ -119,7 +119,8 @@ vi.mock('@/app/components/GroupGamesList', () => ({
   default: (props: NonNullable<typeof h.gamesListProps>) => {
     h.gamesListProps = props;
     h.gamesListLog.push(props);
-    return null;
+    // An empty marker (88.9-52 R4-A3): where the page mounts the list, so its wrapper can be read.
+    return <div data-testid="games-list-stub" />;
   },
 }));
 vi.mock('@/app/components/EventCalendar', () => ({
@@ -2151,5 +2152,22 @@ describe('group page name, one source (88.9-52 R3)', () => {
     expect(count(src, 'srHeading={GROUP_PAGE_NAME}'), 'the could-not-load frame').toBe(1);
     expect(count(src, '{Group?.name || GROUP_PAGE_NAME}'), 'the visible level-1 title and the breadcrumb crumb').toBe(2);
     expect(count(src, "Group?.name || 'Group'"), 'a hand-typed fallback').toBe(0);
+  });
+});
+
+// 88.9-52 round 4 (R4-A3): at 320px with text at 200% the group page scrolled sideways by 14px.
+// The play-history card's words column is about 46px wide there (the 4rem picture and the rem gaps
+// double with the text), and a word such as reviews) is wider than that, so it ran past the card and
+// the page edge. overflow-wrap inherits, so the page wraps the list in one wrap-break-word box (the
+// breadcrumb's recorded pattern). jsdom has no layout: the rendered proof is
+// e2e/group-home-games-refresh.spec.ts ("R4-A3 (88.9-52): at 320px with text at 200%").
+describe('groupHomePage — play history never widens the page (88.9-52 R4-A3)', () => {
+  it('R4-A3: the play-history list is mounted alone inside a wrap-break-word box', async () => {
+    await renderHeaderAt('member');
+    const stub = await screen.findByTestId('games-list-stub');
+    const box = stub.parentElement as HTMLElement;
+    expect(box.className.split(/\s+/)).toEqual(['wrap-break-word']);
+    // The box holds the list alone, so nothing else on the page changes how it wraps.
+    expect(box.children).toHaveLength(1);
   });
 });

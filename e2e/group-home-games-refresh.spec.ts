@@ -116,4 +116,78 @@ test.describe('group home games refresh — phone', () => {
     await expect(page.getByText(GAMES_TITLE, { exact: true })).toHaveCount(0, { timeout: 15_000 });
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
+
+  // 88.9-52 round 4 (R4-A3), RENDERED. The round-3 capture found the group page scrolling sideways
+  // by 14px at 320px with text at 200% (scrollWidth 334): in a play-history card the words column
+  // is about 46px wide there, and the review count's last word ran past the card and the page
+  // edge. The fix is one wrap box round the list
+  // (src/app/groupHomePage/page.js ("DECISION Phase 88.9-52 (R4-A3, round-3 capture)")).
+  // 200% is the root font size doubled by a style tag, the injection the capture used
+  // (e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")); it is not browser zoom.
+  // READ-ONLY: writes are held by holdWrites and none is pressed. The games GET is answered in the
+  // browser with ONE made-up game that has a rating and two reviews, so the line under test is on
+  // screen whatever the shared group holds; the fields are the ones the card reads
+  // (src/app/components/GroupGamesList.js ("{game.review_count === 1 ? 'review' : 'reviews'}")).
+  test('R4-A3 (88.9-52): at 320px with text at 200% a play-history card with a review count does not make the group page scroll sideways', async ({
+    page,
+  }) => {
+    await page.route(isGroupGamesRead, async (route: Route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        json: [
+          {
+            id: '00000000-0000-4000-8000-0000000000a3',
+            name: 'Reflow',
+            image_url: null,
+            play_count: 3,
+            last_played: '2026-01-15T18:00:00.000Z',
+            avg_rating: 4.5,
+            review_count: 2,
+            theme: null,
+            min_players: 2,
+            max_players: 4,
+          },
+        ],
+      });
+    });
+
+    await page.setViewportSize({ width: 320, height: 667 });
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    const reviews = page.getByText('(2 reviews)');
+    await expect(reviews, 'R4-A3: the made-up game card with its review count did not render').toBeVisible({ timeout: 15_000 });
+
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await expect
+      .poll(async () => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize)), {
+        message: 'R4-A3: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe(32);
+    await reviews.scrollIntoViewIfNeeded();
+
+    // One read, after the layout has settled at 200%.
+    const read = await reviews.evaluate((el) => {
+      const rects = Array.from(el.getClientRects());
+      const card = el.closest('a') as HTMLElement;
+      return {
+        viewport: document.documentElement.clientWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        wordsRight: Math.max(...rects.map((r) => r.right)),
+        cardRight: card.getBoundingClientRect().right,
+      };
+    });
+    expect(read.viewport, 'R4-A3: the viewport is not 320px wide').toBe(320);
+    expect(
+      read.wordsRight,
+      `R4-A3: the review count ends at ${read.wordsRight}px, past its card's right edge at ${read.cardRight}px`,
+    ).toBeLessThanOrEqual(read.cardRight + 0.5);
+    expect(
+      read.pageScrollWidth,
+      `R4-A3: at 320px and 200% text the group page is ${read.pageScrollWidth}px wide — it scrolls sideways by ${read.pageScrollWidth - read.viewport}px`,
+    ).toBeLessThanOrEqual(read.viewport);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
 });
