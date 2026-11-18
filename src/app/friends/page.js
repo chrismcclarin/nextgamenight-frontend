@@ -1346,7 +1346,27 @@ function FriendsPage() {
                                so every focused tab would show 10 above the label and 8 below);
                                another fixed padding (see Sent). On the focused ACTIVE tab the ring
                                stops at the underline, so inside the ring it is 10 above and 8 below,
-                               with the underline directly under the ring: reported, not hidden. */
+                               with the underline directly under the ring: reported, not hidden.
+                               AMENDED Phase 88.9-52 (R4 D7, owner page pick S3 = Merge, 2026-11-18): on the
+                               focused ACTIVE tab the underline is now drawn OVER the ring's bottom edge,
+                               so inside the ring the label has 10 above and 10 below (it was 10 / 8).
+                               HOW, on the active tab only and only under focus-visible: the 2px bottom
+                               border goes (border-b-0), 2px of bottom padding takes its place (so the
+                               label does not move by a pixel when focus arrives), and the underline is
+                               painted as an inset band, 2px at the bottom edge, in the border's own
+                               colour (--color-btn-primary), through the inset-shadow slot. That slot
+                               is listed before the ring in the composed box-shadow, so the band is
+                               painted on top of the ring's bottom edge; the ring is a full 2px box
+                               again and reads as a ring on its top, left and right sides, in its own
+                               colour (its contrast against the strip is unchanged: nothing about the
+                               ring's colour or the ground moved). Without focus the tab is exactly as
+                               it was (a real border). CHOSEN OVER the ring stopping at the underline
+                               (as built: 10 / 8, the label visibly low in the box), OVER the ring
+                               drawn over the underline (the selected cue would vanish while focused)
+                               and OVER an underline on every tab. The band must stay in the
+                               inset-shadow slot: moved to the plain shadow slot it is painted UNDER
+                               the ring and the selected cue disappears on focus.
+                               e2e/friends-page.spec.ts ("R4 D7: while focused the underline is a band") is the rendered proof. */
                             <Fragment key={key}>
                             {index > 0 && <span aria-hidden="true" className="w-8 shrink min-w-0" />}
                             <button
@@ -1370,7 +1390,7 @@ function FriendsPage() {
                                 aria-current={activeTab === key ? 'true' : undefined}
                                 className={`inline-flex items-center justify-center shrink-0 whitespace-nowrap px-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring min-h-11 min-w-11 ${
                                     activeTab === key
-                                        ? 'border-b-2 border-btn-primary pt-[2px] text-content-primary'
+                                        ? 'border-b-2 border-btn-primary pt-[2px] text-content-primary focus-visible:border-b-0 focus-visible:pb-[2px] focus-visible:inset-shadow-[0_-2px_0_0_var(--color-btn-primary)]'
                                         : 'text-content-secondary hover:text-content-primary'
                                 }`}
                             >

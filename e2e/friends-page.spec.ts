@@ -95,8 +95,22 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
     });
     expect(geometry.hasLabel, 'the tab has a text label').toBe(true);
     const { box, text, pill, underline, lineTop, rowRight, tabs } = geometry;
-    // The ring is the 2px band just inside the tab's box (on the active tab its bottom edge sits
-    // on top of the underline, which is the tab's own bottom border). The label is clear of it.
+    // R4 D7 (88.9-52, owner page pick S3 = Merge): while the active tab is focused its underline is
+    // not a border under the ring but a 2px band painted over the ring's bottom edge
+    // (src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 D7, owner page pick S3 = Merge, 2026-11-18)")).
+    // So: no bottom border while focused, a 2px band at the bottom edge listed BEFORE the ring in
+    // the box-shadow (earlier layers are painted on top), in a colour that is not the ring's.
+    expect(underline, 'R4 D7: while focused the underline is a band, not a border under the ring').toBe(0);
+    const layers = focused.split(/,(?![^(]*\))/).map((layer) => layer.trim());
+    const bandAt = layers.findIndex((layer) => layer.endsWith('0px -2px 0px 0px inset'));
+    const ringAt = layers.findIndex((layer) => layer.endsWith(RING_SPREAD));
+    expect(bandAt, `R4 D7: no 2px underline band in the focused tab's box-shadow (${focused})`).toBeGreaterThanOrEqual(0);
+    expect(bandAt, `R4 D7: the underline band is painted under the ring (${focused})`).toBeLessThan(ringAt);
+    expect(layers[bandAt].replace('0px -2px 0px 0px inset', '').trim(), 'R4 D7: the band and the ring are one colour, so the underline cannot be told from the ring').not.toBe(
+      layers[ringAt].replace(RING_SPREAD, '').trim(),
+    );
+    // The ring is the 2px band just inside the tab's box, on all four sides now (R4 D7: the
+    // underline is painted over its bottom edge). The label is clear of it.
     const inner = {
       left: box.left + RING_WIDTH,
       top: box.top + RING_WIDTH,
@@ -121,9 +135,9 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
       // thing in the label; the picture the owner picked measured 9.5px each way on this tab.
       // AMENDED Phase 88.9-52 (R4 S3): measured to the TAB's own top and bottom edges, as the
       // round-3 capture measured it (10.5 above, 13.5 below on this tab as R11 was built), and
-      // held to half a pixel. This tab is the active one: its ring stops at its 2px underline,
-      // so inside the ring the pill has 2px less under it than over it; that is the underline,
-      // not an off-centre label, and the all-tabs read below holds every tab to its own edges.
+      // held to half a pixel. This tab is the active one. Until R4 D7 its ring stopped at its 2px
+      // underline, so inside the ring the pill had 2px less under it than over it; now the ring is
+      // 2px on every side, so equal to the tab's edges is equal inside the ring too.
       const above = pill.top - box.top;
       const below = box.bottom - pill.bottom;
       expect(Math.abs(above - below), `space above the pill ${above} vs below it ${below}, to the tab's edges`).toBeLessThanOrEqual(0.5);
@@ -144,6 +158,9 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
     await page.keyboard.press('Tab');
     await expect(tab).not.toBeFocused();
     expect(await boxShadow(tab), 'no inset ring once blurred').not.toContain(RING_SPREAD);
+    // R4 D7: without focus the underline is the tab's real 2px bottom border again, no band.
+    expect(await tab.evaluate((el) => getComputedStyle(el).borderBottomWidth), 'R4 D7: the blurred active tab has no 2px bottom border').toBe('2px');
+    expect(await boxShadow(tab), 'R4 D7: the underline band is still painted once blurred').not.toContain('0px -2px 0px 0px inset');
 
     // R4 S3 (88.9-52), RENDERED. The round-3 capture found two things in the strip R11 built:
     // the label was not in the middle of its tab (11.5 / 12.5 on Requests, 10.5 / 13.5 on Friends,

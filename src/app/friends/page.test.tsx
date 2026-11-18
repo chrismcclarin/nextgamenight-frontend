@@ -991,6 +991,20 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
         // Only the active tab has the underline, and only it has the 2px that balances it.
         expect(classes.includes('border-b-2'), tab.textContent ?? '').toBe(active);
         expect(classes.includes('pt-[2px]'), tab.textContent ?? '').toBe(active);
+        // R4 D7 (owner page pick S3 = Merge, 2026-11-18): while the ACTIVE tab has keyboard focus
+        // its underline is not a border under the ring but a 2px band drawn over the ring's bottom
+        // edge, so inside the ring the label has the same space above and below (10 / 10; it was
+        // 10 / 8). Three classes, all on the active tab only and all behind focus-visible: the
+        // border goes, 2px of bottom padding takes its place (the label does not move), and an
+        // inset band in the underline's own colour is painted above the ring layer.
+        // The marker is at src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 D7, owner page pick S3 = Merge, 2026-11-18)").
+        for (const merged of ['focus-visible:border-b-0', 'focus-visible:pb-[2px]', 'focus-visible:inset-shadow-[0_-2px_0_0_var(--color-btn-primary)]']) {
+          expect(classes.includes(merged), merged + ' on ' + (tab.textContent ?? '')).toBe(active);
+        }
+        // The ring itself is unchanged on every tab: 2px, inset, the focus-ring colour.
+        expect(classes).toEqual(expect.arrayContaining(['focus-visible:ring-2', 'focus-visible:ring-inset', 'focus-visible:ring-focus-ring']));
+        // The underline keeps its colour: the band reads the same token the border class names.
+        if (active) expect(classes).toContain('border-btn-primary');
         // No other up-or-down padding or margin is left to push the label off the middle.
         expect(classes.filter((c) => /^-?(p[ytb]|m[ytb])-/.test(c) && c !== 'pt-[2px]')).toEqual([]);
       }
