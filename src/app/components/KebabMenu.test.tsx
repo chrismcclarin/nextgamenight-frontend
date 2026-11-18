@@ -591,3 +591,70 @@ describe('KebabMenu trigger host halo (88.9-35)', () => {
     expect(probe[0]).toMatch(HOST_PROP);
   });
 });
+
+// 88.9-52 R20 (owner 2026-11-17, pick Rule; his words: "When it's by itself, it should fill the
+// box."): a menu with ONE item paints the item's band over the whole menu, to its rounded corners;
+// a menu with SEVERAL items paints an evenly inset rounded band, the same on a first, middle or
+// last item. The rule is the item COUNT, never the armed state, so no menu changes size when an
+// item arms. jsdom performs no layout, so these pin the classes the two shapes are made of; the
+// rendered numbers are the capture's (5px inset on every side; 1px inside the border when alone).
+describe('R20 (88.9-52): the item band fills a one-item menu and is an inset rounded band in a longer one', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  const GEOMETRY = /^(p[xytblr]?-|m[xytblr]?-|min-h-|min-w-|w-|rounded|overflow-)/;
+  const geometry = (el: Element) => tokens(el).filter((t) => GEOMETRY.test(t)).sort();
+
+  it('R20 one item: the list has no vertical padding and clips to its corners, and the item keeps its 12px text inset', () => {
+    render(
+      <KebabMenu
+        ariaLabel="Event actions"
+        items={[{ label: 'Cancel event', danger: true, twoTap: true, onClick: vi.fn() }]}
+      />
+    );
+    const { list } = openMenu('Event actions');
+    const item = within(list).getByRole('button', { name: 'Cancel event' });
+    expect(tokens(list)).toContain('py-0');
+    expect(tokens(list)).toContain('overflow-hidden');
+    expect(tokens(list)).not.toContain('py-1');
+    expect(tokens(list)).toContain('rounded-md');
+    expect(tokens(item.parentElement as Element)).toEqual([]);
+    expect(tokens(item)).toContain('px-3');
+    expect(tokens(item)).not.toContain('rounded-sm');
+
+    // Arming changes ink, fill and weight only: every size class on the list and the item stays.
+    const listBefore = list.className;
+    const itemBefore = geometry(item);
+    fireEvent.click(item);
+    expect(item).toHaveClass('bg-status-error-subtle');
+    expect(list.className).toBe(listBefore);
+    expect(geometry(item)).toEqual(itemBefore);
+  });
+
+  it('R20 several items: every item is the same inset rounded band, first, middle and last, armed or not', () => {
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { list } = openMenu();
+    const items = within(list).getAllByRole('button');
+    expect(items).toHaveLength(3);
+    // 4px of list padding above the first and below the last, 4px of row padding at the sides:
+    // with the 1px border, 5px on every side of the band.
+    expect(tokens(list)).toContain('py-1');
+    expect(tokens(list)).not.toContain('py-0');
+    expect(tokens(list)).not.toContain('overflow-hidden');
+    for (const item of items) {
+      expect(tokens(item.parentElement as Element)).toEqual(['px-1']);
+      expect(tokens(item)).toContain('px-2');
+      expect(tokens(item)).toContain('rounded-sm');
+      expect(tokens(item)).not.toContain('px-3');
+      expect(geometry(item)).toEqual(geometry(items[0]));
+    }
+    // The text starts where it did: 4px (row) + 8px (item) is the 12px the item used to carry alone.
+    expect(1 * 4 + 2 * 4).toBe(3 * 4);
+
+    // The middle item is the one that arms (Remove): the band is the item's own box.
+    const listBefore = list.className;
+    const before = items.map(geometry);
+    fireEvent.click(items[1]);
+    expect(items[1]).toHaveClass('bg-status-error-subtle');
+    expect(list.className).toBe(listBefore);
+    expect(within(list).getAllByRole('button').map(geometry)).toEqual(before);
+  });
+});

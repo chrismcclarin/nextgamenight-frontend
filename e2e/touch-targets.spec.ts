@@ -1382,24 +1382,36 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       anchor.setAttribute('style', 'position: relative; margin-left: auto; width: 44px;');
       host.appendChild(anchor);
 
-      const LIST_CLASS =
-        'absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg py-1';
+      // AMENDED Phase 88.9-52 (R20, owner 2026-11-17): the band's shape follows the item count,
+      // transcribed in lockstep from the component: ONE item drops the list's vertical padding and
+      // clips to its corners (the item keeps px-3); SEVERAL items keep py-1, each row is px-1 and
+      // each item px-2 rounded-sm. buildList below picks by its own label count, as the component does.
+      const LIST_BASE =
+        'absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg';
+      const LIST_SOLO = 'py-0 overflow-hidden';
+      const LIST_SEVERAL = 'py-1';
+      const ROW_SEVERAL = 'px-1';
+      const ITEM_HEAD = 'w-full min-h-11 text-left';
+      const ITEM_SOLO = 'px-3';
+      const ITEM_SEVERAL = 'px-2 rounded-sm';
       // AMENDED Phase 88.9-23 (O-17): the gated item's look is muted ink, transcribed in lockstep.
-      const ITEM_CLASS =
-        'w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
+      const ITEM_TAIL =
+        'py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
       const ARMED_EXTRA = 'text-content-status-error bg-status-error-subtle font-semibold';
       const RESTING_EXTRA = 'text-content-primary hover:bg-surface-hover';
 
       const buildList = (labels: Array<{ text: string; armed?: boolean }>) => {
+        const solo = labels.length === 1;
         const ul = document.createElement('ul');
-        ul.className = LIST_CLASS;
+        ul.className = `${LIST_BASE} ${solo ? LIST_SOLO : LIST_SEVERAL}`;
         ul.setAttribute('role', 'list');
         const buttons: HTMLElement[] = [];
         for (const { text, armed } of labels) {
           const li = document.createElement('li');
+          if (!solo) li.className = ROW_SEVERAL;
           const b = document.createElement('button');
           b.type = 'button';
-          b.className = `${ITEM_CLASS} ${armed ? ARMED_EXTRA : RESTING_EXTRA}`;
+          b.className = `${ITEM_HEAD} ${solo ? ITEM_SOLO : ITEM_SEVERAL} ${ITEM_TAIL} ${armed ? ARMED_EXTRA : RESTING_EXTRA}`;
           b.textContent = text;
           li.appendChild(b);
           ul.appendChild(li);

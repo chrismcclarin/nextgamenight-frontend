@@ -390,6 +390,9 @@ export default function KebabMenu({
      first, so this early return never changes hook order. */
   if (items.length === 0) return null;
 
+  // 88.9-52 (R20): the band's shape follows the item COUNT (the marker is on the list below).
+  const soloItem = items.length === 1;
+
   return (
     <div
       className="relative shrink-0"
@@ -530,10 +533,30 @@ export default function KebabMenu({
            owner word). An absolute right-0 box in the 44px trigger wrapper shrank to 44px, so the
            floor fixed every menu at 160px and the armed lines wrapped. Long labels still wrap at
            the cap (E6). */
+        /* DECISION Phase 88.9-52 (R20, owner 2026-11-17, pick Rule; his words: "When it's by
+           itself, it should fill the box."): the band an item paints (the armed red, and the hover
+           fill) has ONE rule by item count. A menu with ONE item: the list drops its vertical
+           padding and clips to its own rounded corners, so the band fills the whole menu, 1px
+           inside the border. A menu with SEVERAL items: each row is inset 4px at the sides and
+           the item is rounded, which with the list's 4px vertical padding and 1px border is an
+           even 5px on every side of the band, the same on a first, middle or last item. The text
+           starts where it did (4px row + 8px item is the 12px the item carried alone), so no menu
+           changes width, and the shape is set by the COUNT, never by the armed state, so no menu
+           changes size when an item arms. A one-item menu is 8px shorter than it was (46px with
+           the 44px item), at rest and armed alike.
+           Chosen OVER the square band between two 5px strips of card that every menu had (W32,
+           the look half: in the one-item Event actions menu it read as a stripe in a box); OVER
+           filling to the corners in every menu (in the three-item member menu the owner preferred
+           the inset band); and OVER switching shape on arming (the menu would jump). Written as
+           whole class names on the count, not a parent-state selector: the count is known here.
+           The replica in e2e/touch-targets.spec.ts ("UI-SPEC §9.3 E6: the kebab popover stays inside 375px") follows these strings in lockstep.
+           Changing either shape is a decision, not a cleanup. */
         <ul
           id={listId}
           role="list"
-          className="absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg py-1"
+          className={`absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg ${
+            soloItem ? 'py-0 overflow-hidden' : 'py-1'
+          }`}
         >
           {items.map((item, index) => {
             const isArmed = item.twoTap && armedIndex === index;
@@ -571,7 +594,7 @@ export default function KebabMenu({
                  render sites passes one, so an `id ?? index` form is dead in every
                  branch. The documented Items API above is where explicit identity
                  would be added if a future render site ever needs it. */
-              <li key={index}>
+              <li key={index} className={soloItem ? undefined : 'px-1'}>
                 <button
                   type="button"
                   onClick={(event) => handleItemClick(item, index, event.currentTarget)}
@@ -630,7 +653,7 @@ export default function KebabMenu({
                      forbids the dim, and the wash this item carried was that test's blind spot (a
                      variant-prefixed utility). It also restyles the in-flight Cancelling… / Leaving…
                      items. Owner confirm from one picture (88.9-23 task 3). */
-                  className={`w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                  className={`w-full min-h-11 text-left ${soloItem ? 'px-3' : 'px-2 rounded-sm'} py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                     danger
                       ? `text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}`
                       : 'text-content-primary hover:bg-surface-hover'
