@@ -3,7 +3,7 @@
 /**
  * Button — the one button primitive (PRIM-01 / D-01 elevation, D-02 variants).
  *
- * Six variants (`primary` / `secondary` / `danger` / `ghost` / `ghostDanger` / `accent`) and
+ * Seven variants (`primary` / `secondary` / `danger` / `ghost` / `ghostDanger` / `accent` / `admin`) and
  * four sizes (`default` / `icon` / `iconSquare` / `sm`), on the repo's `cva` + `cn()` +
  * `forwardRef` + `displayName` idiom established by {@link Banner}. Names are
  * deliberately aligned with `Modal.tsx`'s `ModalActionVariant` so the later
@@ -199,6 +199,9 @@ const buttonVariants = cva(
         // `--color-btn-accent-text` is `#ffffff` in both (under the same two markers) — white on
         // amber-700 = 5.0216:1.
         accent: 'btn-accent',
+        // DECISION Phase 88.9-52 (R6, owner pick "D + D2", 2026-11-17, "Red is the wrong color"): the Admin-blue confirm is its own variant emitting the CLASS, chosen OVER colour utilities at the call site (dead or half-dead on a .btn, and a second expression of the pair) and OVER the danger variant the Make admin confirm wore.
+        // The fills, inks, hover, pressed and waiting pairs are in src/app/globals.css ("a confirm that hands out a role, and deletes nothing"). One consumer today.
+        admin: 'btn-admin',
         // No legacy class exists for ghost, and `.btn` sets no background,
         // so utilities are the correct tool here.
         // Hover gating, added 2026-09-05 (code review #37) as

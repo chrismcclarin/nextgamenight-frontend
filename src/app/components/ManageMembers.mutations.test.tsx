@@ -378,7 +378,12 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     ).toBeInTheDocument();
     // F9b: the confirm opens gated with its countdown label, then reads the verb.
     expect(confirmButton('Make admin, wait 3 seconds')).toHaveTextContent('Wait (3)');
-    expect(await liveConfirm('Make admin')).toBeInTheDocument();
+    // 88.9-52 R6 (owner 2026-11-17, "Red is the wrong color"): the Admin blue while it waits and live.
+    expect(confirmButton('Make admin, wait 3 seconds')).toHaveClass('btn-admin');
+    expect(confirmButton('Make admin, wait 3 seconds')).not.toHaveClass('btn-danger');
+    const liveMakeAdmin = await liveConfirm('Make admin');
+    expect(liveMakeAdmin).toHaveClass('btn-admin');
+    expect(liveMakeAdmin).not.toHaveClass('btn-danger');
     expect(groupsAPI.updateUserRole as Mock).not.toHaveBeenCalled();
   });
 

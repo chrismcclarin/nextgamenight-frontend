@@ -637,6 +637,30 @@ describe('ConfirmDialog — dialog tier', () => {
     expect(screen.queryByRole('button', { name: /^(OK|Yes)$/ })).not.toBeInTheDocument();
   });
 
+  // 88.9-52 R6 (owner 2026-11-17): a confirm that is not destructive can ask for the Admin blue.
+  it('confirmVariant="admin" paints the confirm btn-admin, never btn-danger, live and while it waits (R6)', () => {
+    const { rerender } = renderConfirmDialog({ confirmLabel: 'Make admin', confirmVariant: 'admin' });
+    const live = screen.getByRole('button', { name: 'Make admin' });
+    expect(live).toHaveClass('btn', 'btn-admin');
+    expect(live).not.toHaveClass('btn-danger');
+    rerender(
+      <ConfirmDialog
+        tier="dialog"
+        open
+        title="Make Target an admin?"
+        confirmLabel="Make admin"
+        confirmVariant="admin"
+        confirmDelay
+        onCancel={() => {}}
+        onConfirm={() => {}}
+        confirmDisabled={() => false}
+      />
+    );
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(cancel).toHaveClass('btn-secondary');
+    expect(cancel).not.toHaveClass('btn-admin');
+  });
+
   it('focuses Cancel on open, not the confirm or the close affordance', async () => {
     renderConfirmDialog();
     await waitFor(() =>

@@ -258,6 +258,20 @@ describe('Button', () => {
       }
     });
 
+    // 88.9-52 R6 (owner 2026-11-17): the Admin-blue confirm. Like accent it emits the CLASS only;
+    // the fills, inks and the waiting pair live in globals.css over the btn-admin tokens.
+    it('variant="admin" emits btn-admin, no other fill class and no colour utility of its own (R6)', () => {
+      render(<Button variant="admin">Make admin</Button>);
+      const btn = screen.getByRole('button', { name: 'Make admin' });
+      expect(btn).toHaveClass('btn', 'btn-admin');
+      for (const filled of ['btn-primary', 'btn-secondary', 'btn-danger', 'btn-accent']) {
+        expect(btn).not.toHaveClass(filled);
+      }
+      for (const tok of tokensOf(btn.className)) {
+        expect(tok, `R6: admin must emit the CLASS, never a colour utility; found ${tok}`).not.toMatch(/^(bg-|text-content-|border)/);
+      }
+    });
+
     it('size="sm" emits btn-sm and no padding or font-size utility (they would be DEAD)', () => {
       render(<Button size="sm">Invite guest</Button>);
       const btn = screen.getByRole('button', { name: 'Invite guest' });
@@ -390,7 +404,7 @@ describe('Button', () => {
       expect(link).not.toHaveAttribute('type');
     });
 
-    it('the derived key list really is the whole 6 x 4 surface', () => {
+    it('the derived key list really is the whole 7 x 4 surface', () => {
       // A derivation that silently returns [] makes every matrix assertion
       // vacuous, so the anti-vacuity check comes first and names the mechanism.
       expect(
@@ -400,6 +414,7 @@ describe('Button', () => {
       expect(ALL_SIZES).not.toHaveLength(0);
       expect([...ALL_VARIANTS].sort()).toEqual([
         'accent',
+        'admin',
         'danger',
         'ghost',
         'ghostDanger',
@@ -415,7 +430,10 @@ describe('Button', () => {
       // AMENDED Phase 88.9-65 (X49): the variant map gained ghostDanger (ghost weight, danger ink),
       // so the surface is 6 x 4 = 24, chosen OVER leaving the 5 x 4 expectation, which the new
       // variant makes false. The title moved with it.
-      expect(ALL_VARIANTS.length * ALL_SIZES.length).toBe(24);
+      // AMENDED Phase 88.9-52 (R6, owner 2026-11-17): the variant map gained admin (the Admin-blue
+      // confirm), so the surface is 7 x 4 = 28, chosen OVER leaving the 6 x 4 expectation, which
+      // the new variant makes false. The title moved with it.
+      expect(ALL_VARIANTS.length * ALL_SIZES.length).toBe(28);
     });
 
     it('SOURCE SCAN: no unprefixed hover token in the cva base or the variant map', () => {

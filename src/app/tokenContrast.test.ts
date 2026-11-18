@@ -3062,6 +3062,81 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(measured, 'anti-vacuity: 3 answers x 2 themes x (circle + glyph)').toBe(12);
   });
+
+  it('R6 (88.9-52): the Make admin confirm is a flat Admin blue — the picked fills and inks in both themes, words 4.5 at rest, hovered, pressed and waiting, the live fill 3.0 off the dialog, no edge', () => {
+    // Owner pick R6 "D + D2" (2026-11-17, "Red is the wrong color"): live light #1e40af with white
+    // words, live dark #60a5fa with #10151d words; waiting is the Admin pill pair. The hover and
+    // pressed fills are derived the way the danger family derives its own (a stepped fill at
+    // opacity 1): light steps darker under white words, dark steps lighter under dark words.
+    // Measured with src/lib/wcag.ts, light / dark: live fill on the dialog 8.7224 / 5.4471, words
+    // 8.7224 / 7.2010, hovered words 10.3580 / 10.1526, pressed words 14.6948 / 12.8845, waiting
+    // words 6.1395 / 7.1408, waiting fill on the dialog 1.4207 / 1.5896, ring on the 2px gap
+    // 7.7948 / 8.2958.
+    const PICK = {
+      light: { bg: '#1e40af', text: '#ffffff', gatedBg: '#c4dafc', gatedText: '#1e40af' },
+      dark: { bg: '#60a5fa', text: '#10151d', gatedBg: '#2b4b7e', gatedText: '#dbeafe' },
+    } as const;
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expect(resolve(theme, '--color-btn-admin-bg'), `R6 [${theme}] live fill`).toBe(PICK[theme].bg);
+      expect(resolve(theme, '--color-btn-admin-text'), `R6 [${theme}] live words`).toBe(PICK[theme].text);
+      expect(resolve(theme, '--color-btn-admin-gated-bg'), `R6 [${theme}] waiting fill`).toBe(PICK[theme].gatedBg);
+      expect(resolve(theme, '--color-btn-admin-gated-text'), `R6 [${theme}] waiting words`).toBe(PICK[theme].gatedText);
+      // The waiting pair IS the Admin pill pair, by reference, so the two cannot drift.
+      expect(resolveRaw(theme, '--color-btn-admin-gated-bg')).toBe(resolveRaw(theme, '--color-pill-blue-bg'));
+      expect(resolveRaw(theme, '--color-btn-admin-gated-text')).toBe(resolveRaw(theme, '--color-pill-blue-text'));
+
+      expectRatio(theme, '--color-btn-admin-text', '--color-btn-admin-bg', 4.5, 'R6 live words');
+      expectRatio(theme, '--color-btn-admin-text', '--color-btn-admin-hover', 4.5, 'R6 hovered words');
+      expectRatio(theme, '--color-btn-admin-text', '--color-btn-admin-active', 4.5, 'R6 pressed words');
+      expectRatio(theme, '--color-btn-admin-gated-text', '--color-btn-admin-gated-bg', 4.5, 'R6 waiting words');
+      // Flat, no edge: the live fill itself is what stands off the dialog (the card ground).
+      expectRatio(theme, '--color-btn-admin-bg', '--color-bg-card', 3.0, 'R6 live fill on the dialog');
+      // Each state is a visible step from the one before it.
+      expectRatio(theme, '--color-btn-admin-hover', '--color-btn-admin-bg', 1.15, 'R6 hover against rest');
+      expectRatio(theme, '--color-btn-admin-active', '--color-btn-admin-hover', 1.15, 'R6 pressed against hover');
+      expectDelta(theme, '--color-btn-admin-gated-bg', '--color-btn-admin-bg', 8, 'R6 waiting fill vs live fill');
+      // The ring sits on a 2px gap in the dialog colour.
+      expectRatio(theme, '--color-focus-ring', '--color-bg-card', 3.0, 'R6 ring on the gap');
+      measured += 9;
+    }
+    expect(measured, 'anti-vacuity: 9 pairs x 2 themes').toBe(18);
+
+    // The four rules, read from the comment-masked stylesheet: each exists once and reads its token.
+    const ruleBody = (selector: string): string => {
+      const needle = `\n${selector} {`;
+      const first = MASKED.indexOf(needle);
+      if (first < 0) throw new TokenContrastParseError(`R6: no rule \`${selector} {\` in globals.css`);
+      if (MASKED.indexOf(needle, first + 1) >= 0) throw new TokenContrastParseError(`R6: two rules \`${selector} {\``);
+      return braceBlock(first + 1, selector);
+    };
+    const rest = ruleBody('.btn-admin');
+    expect(rest).toContain('background-color: var(--color-btn-admin-bg);');
+    expect(rest).toContain('color: var(--color-btn-admin-text);');
+    expect(rest, 'R6: flat, no edge of its own').not.toMatch(/border|box-shadow|outline/);
+    expect(ruleBody(".btn-admin:hover:not(:disabled):not([aria-disabled='true'])")).toContain('background-color: var(--color-btn-admin-hover);');
+    const pressed = ruleBody(".btn-admin:active:not(:disabled):not([aria-disabled='true'])");
+    expect(pressed).toContain('background-color: var(--color-btn-admin-active);');
+    // The pressed step is a fill at full opacity, never the shared .75 dim (it would composite the words).
+    expect(pressed).toMatch(/opacity:\s*1;/);
+    const waiting = ruleBody(".btn-admin[aria-disabled='true']");
+    expect(waiting).toContain('background-color: var(--color-btn-admin-gated-bg);');
+    expect(waiting).toContain('color: var(--color-btn-admin-gated-text);');
+    expect(waiting, 'R6: the waiting state is colour, never opacity').not.toMatch(/opacity/);
+
+    // The variant emits the class and nothing else, and the one consumer asks for it.
+    const buttonSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, '..', 'components', 'ui', 'Button.tsx'), 'utf8'),
+    );
+    expect(/\badmin:\s*'([^']*)'/.exec(buttonSrc)?.[1], 'R6: the admin variant emits the class').toBe('btn-admin');
+    const membersSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'ManageMembers.js'), 'utf8'),
+    );
+    expect(
+      membersSrc.match(/<ConfirmDialog \{\.\.\.promoteAdminGate\.dialogProps\}[^>]*confirmVariant="admin"/g) ?? [],
+      'R6: the Make admin confirm asks for the admin variant',
+    ).toHaveLength(1);
+  });
 });
 
 // =====================================================================================

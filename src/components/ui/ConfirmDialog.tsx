@@ -17,6 +17,8 @@
  * Visual contract (UI-SPEC §8.7): title 20px/700 (`Modal.Header`), body 16px/400
  * `content-secondary`, confirm on the `danger` Button variant labelled with the
  * VERB ALONE, Cancel on `secondary`, 12px radius inherited from `.modal-content`.
+ * AMENDED Phase 88.9-52 (R6, owner 2026-11-17): a confirm that is not destructive may ask for
+ * the Admin blue through `confirmVariant`; danger stays the default.
  * Opening focus: Cancel on button-only tiers; the TYPED tier focuses its
  * type-to-confirm input instead (88-33 Task 4, walk rows 431/439 — see the
  * DECISION marker at the Modal mount below).
@@ -113,6 +115,13 @@ export interface ConfirmDialogProps {
    * CR-5 / A-75 cue, re-shaped). Omitted, the confirm keeps `confirmLabel` with no spinner throughout.
    */
   busySuffix?: string;
+  /**
+   * The confirm's Button variant. `danger` (the default) is the destructive red; `admin` is the
+   * flat Admin blue for a confirm that grants a role and deletes nothing (88.9-52 R6). The hook's
+   * `dialogProps` does not carry it: the mount passes it, so a gate's tier stays a one-word edit.
+   * @default 'danger'
+   */
+  confirmVariant?: 'danger' | 'admin';
   /** @default 'Cancel' */
   cancelLabel?: string;
   /**
@@ -160,6 +169,7 @@ export function ConfirmDialog({
   body,
   confirmLabel,
   busySuffix,
+  confirmVariant = 'danger',
   cancelLabel = 'Cancel',
   confirmDelay = false,
   expectedPhrase,
@@ -343,8 +353,16 @@ export function ConfirmDialog({
              The gate is aria-disabled (the .btn-danger colour pair, tokenContrast test 53), never
              native disabled and never opacity, per DECISION Phase 88.6.1-22 (R123 / D-39) and
              O-17. */
+          /* AMENDED Phase 88.9-52 (R6, owner pick "D + D2", 2026-11-17, "Red is the wrong color"):
+             the confirm's variant is a prop, danger by default; the Make admin confirm passes
+             admin (flat Admin blue live, the Admin pill pair while it waits or commits). Chosen
+             OVER a className override at the mount (colour utilities lose to the unlayered
+             btn-danger fill) and OVER re-pointing every dialog-tier confirm (the other gates
+             delete or remove something, and stay red). Where the notes above say the
+             btn-danger pair, read: the pair of whichever variant the confirm wears; both
+             families gate by colour, never opacity. */
           <Button
-            variant="danger"
+            variant={confirmVariant}
             onClick={() => {
               if (gated || pending) return;
               onConfirm(committedValue);

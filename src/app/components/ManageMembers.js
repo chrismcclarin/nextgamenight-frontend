@@ -1427,7 +1427,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         {resetInviteGate.statusNode}
         {/* onCancel is overridden (and only here) so aborting also drops the pending
             escalation target — that is what makes the select revert. */}
-        <ConfirmDialog {...promoteAdminGate.dialogProps} onCancel={cancelPromoteAdmin} />
+        {/* AMENDED Phase 88.9-52 (R6, owner pick "D + D2", 2026-11-17, in his words "Red is the
+            wrong color"): this confirm wears the flat Admin blue (the admin variant), chosen
+            OVER the danger red every dialog-tier confirm defaults to (the same red as Remove)
+            and OVER the Admin pill pair as the live button (the earlier W25 ruling, which this
+            supersedes: too soft to read as live). Granting a role deletes nothing; the gate
+            itself (DECISION Phase 88-12, escalation only) is unchanged. Values and ratios:
+            src/app/globals.css ("a confirm that hands out a role, and deletes nothing"). */}
+        <ConfirmDialog {...promoteAdminGate.dialogProps} confirmVariant="admin" onCancel={cancelPromoteAdmin} />
         {promoteAdminGate.statusNode}
 
         {/* Invite members modal — sibling overlay so it stacks above ManageMembers

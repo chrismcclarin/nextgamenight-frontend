@@ -535,6 +535,12 @@
   --color-btn-secondary: var(--color-btn-secondary-bg);
   --color-btn-secondary-hover: var(--secondary-hover);
   --color-btn-secondary-text: var(--secondary-foreground);
+  /* 88.9-52 R6 (owner 2026-11-17): the Admin-blue confirm's fill and ink, bridged like the pill
+     pair beside it in name (surface- / content-), so neither key self-references its runtime
+     property. The rules read the runtime properties; the DECISION marker is at the btn-admin
+     rule. */
+  --color-surface-btn-admin: var(--color-btn-admin-bg);
+  --color-content-btn-admin: var(--color-btn-admin-text);
   /* 88.9-59 X8 (owner pick G2): the home-card gear's fill and hover. The key names differ from the
      runtime properties (gear-bg, gear-hover), so neither self-references (the 87.7 rule above). */
   --color-btn-gear: var(--color-gear-bg);
@@ -1810,6 +1816,17 @@
   --color-btn-danger-active: #991b1b;
   --color-btn-accent-gated-bg: var(--amber-200);
   --color-btn-accent-gated-text: var(--amber-900);
+  /* 88.9-52 R6 (owner pick "D + D2", 2026-11-17): the Admin-blue confirm, light arm. The live
+     fill is the Admin pill's own ink colour under white words (8.7224, and 8.7224 off the white
+     dialog); hover and pressed step darker, the danger family's shape (10.3580, 14.6948). The
+     waiting pair IS the Admin pill pair, by reference (6.1395; fill 1.4207 off the dialog).
+     DECISION marker at the btn-admin rule. */
+  --color-btn-admin-bg: #1e40af;
+  --color-btn-admin-text: #ffffff;
+  --color-btn-admin-hover: #1e3a8a;
+  --color-btn-admin-active: #172554;
+  --color-btn-admin-gated-bg: var(--color-pill-blue-bg);
+  --color-btn-admin-gated-text: var(--color-pill-blue-text);
   /* Phase 88.3-14 (owner ruling 2): the secondary-control RING and its hover step. Bridged as
      `ring-line-control` / `border-line-control` in `@theme inline` above. Dark is `transparent`
      (declared in `.dark`, not omitted, so the 1px is unconditional and the theme toggle shifts
@@ -2292,6 +2309,15 @@
   --color-btn-danger-active: #7f1d1d;
   --color-btn-accent-gated-bg: var(--amber-900);
   --color-btn-accent-gated-text: var(--amber-200);
+  /* 88.9-52 R6 (owner pick D2, 2026-11-17): the Admin-blue confirm, dark arm. A mid blue under
+     dark words (7.2010; 5.4471 off the dark dialog), the one new colour pair the pick names.
+     Hover and pressed step LIGHTER here, because the words are dark: a darker step would walk
+     them toward the floor (10.1526, 12.8845). Waiting is the dark Admin pill pair (7.1408; fill
+     1.5896 off the dialog). */
+  --color-btn-admin-bg: #60a5fa;
+  --color-btn-admin-text: #10151d;
+  --color-btn-admin-hover: #93c5fd;
+  --color-btn-admin-active: #bfdbfe;
   /* Phase 88.3-14 (owner ruling 2): ruling 2 is LIGHT-ONLY. Dark `.btn-secondary` is `purple-800`
      on a `purple-900` page and already carries a tonal edge, so both control-edge tokens resolve to
      `transparent` here. DECLARED rather than omitted on purpose: that keeps the 1px border
@@ -2884,6 +2910,13 @@ body {
   color: var(--color-btn-accent-gated-text);
 }
 
+/* 88.9-52 R6: the waiting Admin-blue confirm wears the Admin pill pair (marker at the btn-admin
+   rule below). Colour, never opacity, like every gated arm above. */
+.btn-admin[aria-disabled='true'] {
+  background-color: var(--color-btn-admin-gated-bg);
+  color: var(--color-btn-admin-gated-text);
+}
+
 /* DECISION Phase 87.8 (D-12): pressed state is an INSTANT OPACITY DIM, chosen OVER a
    background-colour swap and OVER a scale/translate press.
    - Background swap loses, MEASURED: `--theme-transition` (declared above — background-color,
@@ -3221,6 +3254,38 @@ body {
 
 .btn-danger:active:not(:disabled):not([aria-disabled='true']) {
   background-color: var(--color-btn-danger-active);
+  opacity: 1;
+  transition-duration: 0s;
+}
+
+/* DECISION Phase 88.9-52 (R6, owner pick "D + D2", 2026-11-17, in his words "Red is the wrong
+   color"): a confirm that hands out a role, and deletes nothing, is a flat Admin blue with its
+   own class. Live: light #1e40af under white words, dark #60a5fa under #10151d. Waiting (the
+   Wait (3) countdown): the Admin pill pair. No edge and no shadow of its own.
+   Chosen OVER the danger red it wore (the same red as a Delete), OVER the Admin pill pair as the
+   LIVE button (the earlier W25 ruling: soft, 1.42 off the dialog, close to a gated look), OVER
+   that pair with a 1px edge (option A), OVER the house primary (option C: the same look as Plan
+   Game Session), and in dark OVER the pale pill fill as the live button (option D1).
+   Hover and pressed are a stepped fill at full opacity, the danger family's shape, chosen OVER
+   the shared .75 press dim: the dim composites the words with the fill and lands at 4.67 in both
+   themes on the rest fill, with nothing left over the hover fill. Light steps darker, dark steps
+   lighter (dark words). These two steps were derived here, not pictured for the owner.
+   Measured with src/lib/wcag.ts, light / dark: live fill on the dialog 8.7224 / 5.4471; words
+   live 8.7224 / 7.2010, hovered 10.3580 / 10.1526, pressed 14.6948 / 12.8845, waiting 6.1395 /
+   7.1408; waiting fill on the dialog 1.4207 / 1.5896; focus ring on its 2px gap 7.7948 / 8.2958.
+   Gate A row R6 pins all of it. One consumer: the Make admin confirm in Manage Members.
+   Pointing another confirm at this class, or this confirm back at danger, is a decision. */
+.btn-admin {
+  background-color: var(--color-btn-admin-bg);
+  color: var(--color-btn-admin-text);
+}
+
+.btn-admin:hover:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--color-btn-admin-hover);
+}
+
+.btn-admin:active:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--color-btn-admin-active);
   opacity: 1;
   transition-duration: 0s;
 }
@@ -3574,6 +3639,11 @@ body {
   /* 88.9-CR m5: the M4a danger press step lands within the tap under reduced motion too; 0s is
      less motion, not more. this file ("AMENDED Phase 88.9-01 (M4a; owner pick M4a") */
   .btn-danger:active:not(:disabled):not([aria-disabled='true']) {
+    transition-duration: 0s !important;
+  }
+
+  /* 88.9-52 R6: the Admin-blue press step is held at 0s the same way (a step, not a motion). */
+  .btn-admin:active:not(:disabled):not([aria-disabled='true']) {
     transition-duration: 0s !important;
   }
 }
