@@ -473,13 +473,26 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
          sets the header's floor (88-CODE-REVIEW D1, see the marker below), so the old 20px was
          pure dead space at phone width. Measured header height at 375px: 85px -> 61px (44px box
          + 2x8px padding + the 1px rule); desktop 85px -> 69px. Growing these back re-opens both
-         the alignment step and the phone-height budget. */
+         the alignment step and the phone-height budget.
+
+         AMENDED Phase 88.9-52 (R4 B3, round 4, 2026-11-18; the re-shoot r4-m: in Manage Members at
+         320 with 200% text the close button's focus box ran past the dialog's right edge). The
+         title is a flex item that could not shrink below its longest word, so that word plus the
+         88px close box were wider than the 224px the header has there, and the close box was
+         pushed out to the right, under the shell's clip. Now the title may shrink (min-w-0) and
+         breaks inside a word only when that one word cannot fit (wrap-break-word), the close box
+         never shrinks (shrink-0), and the two keep 8px apart (gap-2). CHOSEN OVER wrap-anywhere
+         on the title (it would let a title break mid-word wherever the line ends) and OVER
+         letting the close box shrink (it is the 44px floor of 88-CODE-REVIEW D1). A title whose
+         words fit beside the close box, every title at ordinary text, is laid out as before.
+         Arithmetic on the class sizes; the rendered proof is
+         e2e/manage-members-refresh.spec.ts ("G4 (88.9-52): the member menu is whole"). */
       className={cn(
-        'flex items-center justify-between border-b border-border px-3 py-2 md:px-6 md:py-3',
+        'flex items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-6 md:py-3',
         className
       )}
     >
-      <DialogTitle className="text-content-primary">
+      <DialogTitle className="min-w-0 wrap-break-word text-content-primary">
         {children}
       </DialogTitle>
       {/* 88-CODE-REVIEW D1 (2026-08-06): 44px REAL box (min-h-11/min-w-11, the KebabMenu/88-28
@@ -501,7 +514,7 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
         aria-label="Close"
         aria-disabled={closeDisabled || undefined}
         className={cn(
-          'inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
+          'inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
           // Unavailable presentation only — stays focusable (a real `disabled`
           // would drop keyboard focus mid-interaction); the consumer's onClose
           // guard is what makes the click inert. See `closeDisabled` doc above.

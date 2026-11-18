@@ -295,7 +295,35 @@ export default function KebabMenu({
      for the head of it). A layout effect, so the first paint is already fitted.
      NOT DONE: it does not refit while open (a rotation or a text-size change with the menu open
      closes nothing and moves nothing). With no layout to measure (a box of no width: a test
-     page) it touches nothing. Changing this is a decision, not a cleanup. */
+     page) it touches nothing. Changing this is a decision, not a cleanup.
+     AMENDED Phase 88.9-52 (R4 B3, round 4, 2026-11-18; CI run 44381640391 and the re-shoot r4-m):
+     the fit above knew the clipping box's WIDTH only. At 200% text the Manage Members body is
+     262px tall on a 375 phone and 173px on a 320 one, and the member menu is 314 and 354px: the
+     reveal could show the top of the menu or the bottom of it, never both, and Transfer
+     ownership sat under the dialog's footer line where it cannot be tapped. Now a menu TALLER
+     than the room it has takes that room as its max height (the clipping box's height, or the
+     screen's, less 8px above and below; never under one item) and scrolls INSIDE ITSELF; the
+     reveal then puts the whole capped box in view. A menu that fits is not touched, so every
+     menu at ordinary text is exactly as it was.
+     CHOSEN OVER drawing the open list outside the clipping box (a portal or a fixed layer placed
+     by the trigger). Swept first: three markers in this file refuse that move, each for a
+     reason that still holds. (1) The dismissal hook reasons about CONTAINMENT (the outside
+     mousedown and the focusout rule ask whether the target is inside this wrapper; a portalled
+     list is outside it, so a tap on an item would read as a tap outside and a Tab into the list
+     as focus leaving). (2) The list is the next thing in the DOM after its trigger, which is
+     what gives the keyboard order trigger, item, item with no focus management of our own; a
+     portalled list sits at the end of the body and needs a focus trap or a roving order built
+     for it, on six sites. (3) Two of the six sites are inside the Radix dialog, which makes
+     everything outside its content inert and aria-hidden: a list portalled to the body there
+     cannot be focused or read at all, and one portalled into the dialog shell is still clipped
+     by the shell's own overflow-hidden. A list that scrolls inside itself changes none of
+     that: same element, same place, same order, so Escape, the focus return to the trigger, the
+     armed and busy states and keepOpen are untouched on all six sites, and a Tab to an item
+     below the fold scrolls it into view natively. Its cost is said plainly: at 320 with 200%
+     text the menu shows less than two of its three items at once and the rest is a scroll
+     away; the cut item at the fold is the cue.
+     The inline overflow replaces a one-item menu's own clip (overflow-hidden) only while
+     capped, and sideways it stays hidden, so the rounded corners still clip the band. */
   const listRef = useRef(null);
   useLayoutEffect(() => {
     if (!open) return;
@@ -303,20 +331,43 @@ export default function KebabMenu({
     if (!list) return;
     let left = 0;
     let right = document.documentElement.clientWidth;
+    // Up and down: the screen, narrowed to the clipping box when that box clips up and down.
+    const screenHeight = document.documentElement.clientHeight;
+    let top = 0;
+    let bottom = screenHeight;
     for (let el = list.parentElement; el && el !== document.body; el = el.parentElement) {
       const style = window.getComputedStyle(el);
-      if ((style.overflowX || 'visible') !== 'visible' || (style.overflowY || 'visible') !== 'visible') {
+      const clipsY = (style.overflowY || 'visible') !== 'visible';
+      if ((style.overflowX || 'visible') !== 'visible' || clipsY) {
         const box = el.getBoundingClientRect();
         left = box.left;
         right = box.right;
+        if (clipsY) {
+          top = screenHeight > 0 ? Math.max(box.top, 0) : box.top;
+          bottom = screenHeight > 0 ? Math.min(box.bottom, screenHeight) : box.bottom;
+        }
         break;
       }
     }
     if (right - left <= 0) return;
     const room = right - left - 2 * MENU_EDGE_GAP_PX;
     if (room > 0) list.style.maxWidth = `min(calc(100vw - 2rem), ${Math.floor(room)}px)`;
-    const shift = left + MENU_EDGE_GAP_PX - list.getBoundingClientRect().left;
+    // R4 B3: measured after the width cap (a narrower menu wraps its labels and grows taller) and
+    // with any earlier cap cleared, so this reads the menu's own height.
+    list.style.maxHeight = '';
+    list.style.overflowY = '';
+    list.style.overflowX = '';
+    const own = list.getBoundingClientRect();
+    const shift = left + MENU_EDGE_GAP_PX - own.left;
     list.style.translate = shift > 0.5 ? `${Math.ceil(shift)}px 0` : '';
+    const roomY = bottom - top - 2 * MENU_EDGE_GAP_PX;
+    if (roomY > 0 && own.height > roomY + 0.5) {
+      const firstItem = list.querySelector('button');
+      const oneItem = firstItem ? Math.ceil(firstItem.getBoundingClientRect().height) : 0;
+      list.style.maxHeight = `${Math.max(Math.floor(roomY), oneItem)}px`;
+      list.style.overflowY = 'auto';
+      list.style.overflowX = 'hidden';
+    }
     if (typeof list.scrollIntoView === 'function') list.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [open]);
 

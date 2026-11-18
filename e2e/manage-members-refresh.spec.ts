@@ -788,6 +788,15 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
   // screen from side to side, and every item is whole inside the body, at once where the menu is
   // shorter than the body and after scrolling to it where it is taller. Nothing is tapped in the
   // menu: no member write.
+  // AMENDED Phase 88.9-52 (R4 B3; CI run 44381640391 failed this test at 320 with 200% text, the
+  // body 275px of content in 270, and the re-shoot found Transfer ownership cut by the footer
+  // line at 200% on both widths): the open menu is now WHOLE inside the body at every size, top
+  // and bottom too. Where it is taller than the room it has, it scrolls inside itself
+  // (src/app/components/KebabMenu.js ("AMENDED Phase 88.9-52 (R4 B3, round 4")): each item is then
+  // scrolled to and must be whole inside both the menu and the body, and be the thing under a
+  // finger at its centre. Every item is at least 44px tall. The header's close box ends at least
+  // 2px (its focus ring) inside the dialog's right edge and starts after the title
+  // (src/app/components/Modal.tsx ("AMENDED Phase 88.9-52 (R4 B3, round 4")).
   test('G4 (88.9-52): the member menu is whole inside the dialog at 375 and 320, at 100% and 200% text', async ({ page }) => {
     const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
     await expect(dialog).toBeVisible({ timeout: 15_000 });
@@ -806,9 +815,23 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
       let body: HTMLElement | null = el.parentElement;
       while (body && getComputedStyle(body).overflowY === 'visible') body = body.parentElement;
       if (!list || !body) return null;
+      const shell = el.closest('[role="dialog"]');
+      const close = shell?.querySelector('[data-modal-close]') ?? null;
+      const title = shell?.querySelector('h2') ?? null;
+      const buttons = Array.from(list.querySelectorAll('button'));
       return {
         menu: box(list),
-        items: Array.from(list.querySelectorAll('button')).map(box),
+        menuScrolls: list.scrollHeight - list.clientHeight,
+        items: buttons.map(box),
+        // Is each item the thing under a finger at its centre?
+        onTop: buttons.map((b) => {
+          const r = b.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return Boolean(hit && b.contains(hit));
+        }),
+        shell: shell ? box(shell) : null,
+        close: close ? box(close) : null,
+        title: title ? box(title) : null,
         body: box(body),
         bodyScrollWidth: body.scrollWidth,
         bodyClientWidth: body.clientWidth,
@@ -847,21 +870,37 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
         expect(read.menu.right, `${label}: the menu ends right of the dialog body (${line})`).toBeLessThanOrEqual(read.body.right + 0.5);
         expect(read.menu.left, `${label}: the menu starts left of the screen (${line})`).toBeGreaterThanOrEqual(0);
         expect(read.menu.right, `${label}: the menu ends right of the screen (${line})`).toBeLessThanOrEqual(read.screen + 0.5);
-        if (read.menu.bottom - read.menu.top <= read.bodyClientHeight) {
-          // The menu is no taller than the body: opening it shows all of it, with no scroll by hand.
+        // R4 B3: the whole menu box is inside the body as it opens, top and bottom too.
+        expect(inside(read.menu, read.body), `${label}: the open menu is not whole inside the dialog body (${line})`).toBe(true);
+        for (const [index, item] of read.items.entries()) {
+          expect(item.bottom - item.top, `${label}: item ${index} is ${item.bottom - item.top}px tall (${line})`).toBeGreaterThanOrEqual(44);
+        }
+        if (read.menuScrolls <= 1) {
+          // The menu fits the room it has: opening it shows every item, with no scroll by hand.
           for (const [index, item] of read.items.entries()) {
             expect(inside(item, read.body), `${label}: item ${index} is not whole inside the dialog body when the menu opens (${line})`).toBe(true);
+            expect(read.onTop[index], `${label}: item ${index} is not the thing under a finger at its centre (${line})`).toBe(true);
           }
         } else {
-          // Taller than the body (large text on a short screen): every item can be scrolled whole into it.
+          // Taller than the room it has (large text on a short screen): the menu scrolls inside
+          // itself, and every item can be scrolled whole into the menu and the body.
           const list = page.locator(`[id="${await trigger.getAttribute('aria-controls')}"]`);
           for (const index of [0, 1, 2]) {
             await list.getByRole('button').nth(index).scrollIntoViewIfNeeded();
             const after = await trigger.evaluate(readMenu);
             if (!after) throw new Error(`${label}: the menu closed while scrolling to item ${index}`);
-            expect(inside(after.items[index], after.body), `${label}: item ${index} cannot be scrolled whole into the dialog body (${JSON.stringify(after)})`).toBe(true);
+            const afterLine = JSON.stringify(after);
+            expect(inside(after.menu, after.body), `${label}: the menu left the dialog body while scrolling to item ${index} (${afterLine})`).toBe(true);
+            expect(inside(after.items[index], after.menu), `${label}: item ${index} cannot be scrolled whole into the menu (${afterLine})`).toBe(true);
+            expect(inside(after.items[index], after.body), `${label}: item ${index} cannot be scrolled whole into the dialog body (${afterLine})`).toBe(true);
+            expect(after.onTop[index], `${label}: item ${index}, scrolled to, is not the thing under a finger at its centre (${afterLine})`).toBe(true);
           }
         }
+        // R4 B3: the header's close box, with its 2px focus ring, ends inside the dialog and starts after the title.
+        if (!read.shell || !read.close || !read.title) throw new Error(`${label}: the dialog, its close button or its title was not found`);
+        expect(read.close.right + 2, `${label}: the close button's focus box ends past the dialog's right edge (${line})`).toBeLessThanOrEqual(read.shell.right + 0.5);
+        expect(read.close.left, `${label}: the close button starts over the title (${line})`).toBeGreaterThanOrEqual(read.title.right - 0.5);
+        expect(read.close.right - read.close.left, `${label}: the close button is ${read.close.right - read.close.left}px wide`).toBeGreaterThanOrEqual(44);
         // Closed from its trigger (a tap does not focus the item on WebKit, so no Escape here).
         await trigger.scrollIntoViewIfNeeded();
         await trigger.tap();

@@ -906,6 +906,24 @@ describe('Modal padding scale (fork 6)', () => {
     expect(close.className).toContain('min-w-11');
   });
 
+  // R4 B3 (88.9-52, the round-4 re-shoot: in Manage Members at 320 with 200% text the close
+  // button's focus box ran past the dialog's right edge). The title could not shrink below its
+  // longest word, so title plus the 88px close box were wider than the header and the close box
+  // was pushed out. The title may now shrink and breaks inside a word only when that word cannot
+  // fit; the close box never shrinks and keeps a gap from the title.
+  // The marker is at src/app/components/Modal.tsx ("AMENDED Phase 88.9-52 (R4 B3, round 4").
+  it('R4 B3 (88.9-52): the header title may shrink and break, and the close box never shrinks', () => {
+    renderModal();
+    const header = headerEl();
+    expect(header.className.split(/\s+/)).toContain('gap-2');
+    const title = header.querySelector('h2') as HTMLElement;
+    expect(title, 'the header holds the dialog title').not.toBeNull();
+    for (const t of ['min-w-0', 'wrap-break-word']) expect(title.className.split(/\s+/), `the title lacks ${t}`).toContain(t);
+    const close = screen.getByRole('button', { name: 'Close' });
+    expect(close.parentElement).toBe(header);
+    expect(close.className.split(/\s+/)).toContain('shrink-0');
+  });
+
   it('88.6.1 code review A-44: the header close carries the stable `data-modal-close` hook (consumers never match its label text)', () => {
     renderModal();
     const close = screen.getByRole('button', { name: 'Close' });
@@ -934,7 +952,9 @@ describe('Phase 88.9 round 2 — dialog fleet (C6a, E8b, C2a)', () => {
     expect(t, 'no leading-none on the title').not.toContain('leading-none');
     expect(t, 'no tracking-tight on the title').not.toContain('tracking-tight');
     // The header passes ink only: re-passing a text size makes tailwind-merge drop the base's leading.
-    expect(MODAL_SRC).toContain('<DialogTitle className="text-content-primary">');
+    // AMENDED Phase 88.9-52 (R4 B3): ink plus the two tokens that let a long title shrink and break
+    // (the test R4 B3 below); still no text size.
+    expect(MODAL_SRC).toContain('<DialogTitle className="min-w-0 wrap-break-word text-content-primary">');
   });
 
   it('E8b: header close is the stroked SVG, label Close, 44 box', () => {

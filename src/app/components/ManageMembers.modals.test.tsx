@@ -532,7 +532,8 @@ describe('Phase 88.9-30 — D4a row chips in Manage Members', () => {
         .map((el) => el.closest('[class*="hover:bg-surface-hover"]'))
         .find(Boolean) as HTMLElement | undefined;
       expect(row, `${name}: an active row`).toBeTruthy();
-      const container = row!.querySelector('.gap-3') as HTMLElement;
+      // 88.9-52 R4 B3: the name block's gap is gap-x-3 (with gap-y-1), no longer gap-3.
+      const container = row!.querySelector('.gap-x-3') as HTMLElement;
       const chip = container.firstElementChild as HTMLElement;
       expect(chip.tagName, `${name}: the chip opens the row`).toBe('SPAN');
       expect(chip).toHaveAttribute('aria-hidden', 'true');
@@ -644,8 +645,16 @@ describe('G4 (88.9-52) — a member row fits the dialog at large text', () => {
     const block = row.firstElementChild as HTMLElement;
     for (const t of ['flex-[1_1_10rem]', 'min-w-0']) expect(tokens(block), `the name block lacks ${t}`).toContain(t);
     expect(tokens(block), 'the name block keeps the no-shrink basis').not.toContain('flex-1');
+    // R4 B3 (88.9-52, CI run 44381640391: at 320 with 200% text the body was 275px of content in
+    // 270): the chip took 64px and its gap 24px of the row's 156px, which left the text column
+    // 68px, and the role pill (about 130px, one word that cannot break) ran past the dialog body.
+    // The block may now wrap inside itself: the text column asks for 6rem and drops under the
+    // chip when chip, gap and 6rem no longer fit, where it has the whole row.
+    for (const t of ['flex-wrap', 'gap-x-3', 'gap-y-1']) expect(tokens(block), `the name block lacks ${t}`).toContain(t);
+    expect(tokens(block), 'gap-3 would also space the wrapped lines 12px apart').not.toContain('gap-3');
     const text = block.lastElementChild as HTMLElement;
-    for (const t of ['flex-1', 'min-w-0']) expect(tokens(text), `the text column lacks ${t}`).toContain(t);
+    for (const t of ['flex-[1_1_6rem]', 'min-w-0']) expect(tokens(text), `the text column lacks ${t}`).toContain(t);
+    expect(tokens(text), 'a zero basis never wraps: the text column would be squeezed beside the chip').not.toContain('flex-1');
     const line = text.firstElementChild as HTMLElement;
     for (const t of ['flex', 'flex-wrap', 'items-center', 'gap-x-2', 'gap-y-1']) expect(tokens(line), `the name line lacks ${t}`).toContain(t);
     const name = line.firstElementChild as HTMLElement;

@@ -874,6 +874,57 @@ describe('G4 (88.9-52): an open menu stays inside the box that clips it', () => 
     }
   });
 
+  // R4 B3 (88.9-52, CI run 44381640391 and the round-4 re-shoot): G4's fit knew the clipping box's
+  // width only. At 200% text the Manage Members body is 262px tall on a 375 phone and 173px on a
+  // 320 one while the member menu is 314 and 354px, so Transfer ownership sat under the footer
+  // line and could not be reached. A menu taller than the room it has now takes that room as its
+  // max height and scrolls inside itself; a menu that fits is not touched.
+  // The marker is at src/app/components/KebabMenu.js ("AMENDED Phase 88.9-52 (R4 B3, round 4").
+  it('R4 B3: a menu taller than the box that clips it takes the box less 8px each end as its height and scrolls inside itself', () => {
+    // The dialog body at 320 with 200% text (CI): x 25..295, y 217..390 (173 tall). The menu: 354 tall.
+    const boxes = withBoxes(rect(25, 217, 270, 173), rect(33, 233, 254, 354));
+    try {
+      render(
+        <div data-testid="clip" style={{ overflowY: 'auto' }}>
+          <KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />
+        </div>
+      );
+      const { list } = openMenu();
+      // 173px of box less an 8px gap above and below.
+      expect(list.style.maxHeight).toBe('157px');
+      expect(list.style.overflowY).toBe('auto');
+      expect(list.style.overflowX).toBe('hidden');
+      // Capped first, then brought into view: the reveal moves the capped box.
+      expect(boxes.scrolled).toEqual([{ el: list, arg: { block: 'nearest', inline: 'nearest' } }]);
+      // Still the same list in the same place in the document: three items, in order.
+      expect(within(list).getAllByRole('button').map((b) => b.textContent)).toEqual([
+        'Make admin',
+        expect.stringContaining('Remove'),
+        'Transfer ownership to this member',
+      ]);
+    } finally {
+      boxes.restore();
+    }
+  });
+
+  it('R4 B3: a menu that fits the box that clips it keeps its own height and does not scroll', () => {
+    // The dialog body at 375 with ordinary text: 400 tall. The menu: 142 tall.
+    const boxes = withBoxes(rect(12, 100, 351, 400), rect(80.8, 300, 252.23, 142));
+    try {
+      render(
+        <div data-testid="clip" style={{ overflowY: 'auto' }}>
+          <KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />
+        </div>
+      );
+      const { list } = openMenu();
+      expect(list.style.maxHeight).toBe('');
+      expect(list.style.overflowY).toBe('');
+      expect(list.style.overflowX).toBe('');
+    } finally {
+      boxes.restore();
+    }
+  });
+
   it('G4: with no layout to measure (a box of no width) the menu is left exactly as it is', () => {
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
     const { list } = openMenu();

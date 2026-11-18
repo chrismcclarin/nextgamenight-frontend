@@ -955,19 +955,33 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                        large text (D4a put it there). Arithmetic on the class sizes, not a rendered
                                        read; the rendered proof is e2e/manage-members-refresh.spec.ts ("G4 (88.9-52): the member menu is whole").
                                        The pending rows above and the invite rows below take the same rule.
-                                       Changing this is a decision, not a cleanup. */
+                                       Changing this is a decision, not a cleanup.
+                                       AMENDED Phase 88.9-52 (R4 B3, round 4, 2026-11-18; CI run 44381640391: at 320
+                                       with 200% text the dialog body held 275px of content in 270, the re-shoot read
+                                       277 in 270): the name block may also wrap INSIDE itself. There the row's inside
+                                       is 156px; the chip takes 64px and its gap 24px, which left the text column 68px,
+                                       and the role pill (one word, about 130px, it cannot break) ran from 170 to 300,
+                                       5px past the body's right edge at 295. Arithmetic from the CI read, not a
+                                       rendered frame of this dialog. The text column now asks for 6rem
+                                       (flex-[1_1_6rem] in place of flex-1): when chip, gap and 6rem no longer fit,
+                                       it drops under the chip and has the whole row (156px there), which holds the
+                                       pill. gap-3 became gap-x-3 gap-y-1 so the dropped column sits 4px under the
+                                       chip, not 12. At ordinary text chip + gap + 6rem is 140px, under the 150px the
+                                       block has at its narrowest (320, beside the actions button), so nothing moves.
+                                       REJECTED: hiding the chip at large text (D4a put it there); letting the pill
+                                       shrink (a clipped role word). */
                                     <div
                                         key={member.id}
                                         className="flex flex-wrap items-center justify-between gap-y-2 p-4 border border-line rounded-lg hover:bg-surface-hover"
                                     >
-                                        <div className="flex items-center gap-3 flex-[1_1_10rem] min-w-0">
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 flex-[1_1_10rem] min-w-0">
                                             {/* DECISION Phase 88.9-30 D4a (owner pick D4a, 88.9-PICKS-B3.json, votes-b3 v12 + chat
                                                 2026-11-06 'the manage members spot is great'): a 32px D1b chip opens each ACTIVE
                                                 row, chosen OVER name text alone (W62) and OVER chips on the pending rows too (the
                                                 build contract's pin names active rows; a pending row is a request on the warning
                                                 box, not a member yet). The chip is aria-hidden: identity is the name beside it. */}
                                             <MemberChip label={member.username || member.email} colorKey={member.id} />
-                                            <div className="flex-1 min-w-0">
+                                            <div className="flex-[1_1_6rem] min-w-0">
                                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                     <p className="font-bold text-content-primary min-w-0 wrap-anywhere">
                                                         <ClickableMemberName userId={member.id} username={member.username || member.email} />
