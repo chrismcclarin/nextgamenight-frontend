@@ -11,7 +11,8 @@ import { AVAILABILITY_DRAG_PATH } from '../mockData';
  * Shows how a single member fills out an availability prompt. Animates a
  * click-drag across Friday 6:00 PM - 8:30 PM (matching production's
  * pointerdown→pointerenter paint mechanic). Cells turn bg-green-300 (the
- * "preferred" preference color from the real AvailabilityGrid) one at a time
+ * "preferred" preference color from the real AvailabilityGrid; in dark its
+ * mid green, since 88.9-52 N1b) one at a time
  * so the user sees the drag motion, not a flash-fill.
  *
  * Stage progression (driven by parent timer):
@@ -39,8 +40,13 @@ export default function AvailabilityPromptDemo({ stage }) {
     const isCursor = cursor && cursor[0] === row && cursor[1] === col && !allPainted;
 
     if (isPainted) {
+      // DECISION Phase 88.9-52 (N1b, owner pick Mid, 2026-11-17): a painted demo cell takes the real
+      // grid's dark Preferred fill (src/app/components/AvailabilityGrid.js ("const CELL_PREFERRED_CLASS =")),
+      // chosen OVER leaving the bare light colour, which showed bright mint in dark: a look the real
+      // grid no longer has. Light is unchanged. The heatmap demos' green count ramp is a different
+      // thing and is left alone.
       return {
-        className: 'bg-green-300 border-green-400',
+        className: 'bg-green-300 dark:bg-surface-avail-preferred border-green-400',
         content: '',
       };
     }

@@ -37,7 +37,7 @@ import ScheduleDemo from './simulated/ScheduleDemo';
  *     Skip is mid-row, near the action — not buried in a corner.
  *
  * Visual fidelity: AvailabilityPromptDemo uses bg-green-300 (matching the
- * real AvailabilityGrid's "Preferred" preference). HeatmapDemo uses
+ * real AvailabilityGrid's "Preferred" preference; in dark, its mid green since 88.9-52 N1b). HeatmapDemo uses
  * bg-green-100..500 (matching the canonical availability ramp exactly — `mergedCellColor` in
  * `lib/availabilityColor.ts`. This used to name MergedHeatmap's LEGEND_ITEMS; that component was
  * DELETED by plan 88.1-16 and its legend was the same ramp, so the anchor moved to the ramp
