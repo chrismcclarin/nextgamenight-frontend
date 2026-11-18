@@ -621,6 +621,105 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     expect(tokens(word), 'the word does not give way in a narrow grid').toContain('@max-[32rem]:hidden');
   });
 
+  // 88.9-52 (R22 + R26, owner pick C, 2026-11-17): when the compact day grid is under 14rem wide
+  // (about 200% text on a phone) a column is too narrow for a tile or for +N, so each day shows
+  // ONE bold count of its nights instead, and the day numbers are held inside their own cells.
+  // The count is CSS content read from data-count, so no text is added to the page and nothing
+  // changes above the threshold. jsdom lays nothing out: these are class pins plus the
+  // arithmetic the sizes were chosen by. The rendered read is the after-build picture.
+  it('R22 + R26 (88.9-52): under 14rem the compact grid shows one bold count per day in place of the tiles and +N, a one-game day stays one named button, and the day number is held inside its cell', () => {
+    const { cells } = renderGrid({ variant: 'compact', events: [...crowd(1, 18), ...crowd(3, 20), ...crowd(12, 22), ...crowd(101, 24)] });
+    const grid = cells[0].parentElement as HTMLElement;
+    const stackOf = (count: number): HTMLElement => {
+      const hits = grid.querySelectorAll(`[data-count="${count}"]`);
+      expect(hits, `the day with ${count} nights carries no count`).toHaveLength(1);
+      return hits[0] as HTMLElement;
+    };
+    const SIZE_2 = 'before:text-[length:clamp(12px,calc((100cqw_+_0.25rem_-_28px)_/_8.8),0.75rem)]';
+    const SIZE_3 = 'before:text-[length:clamp(12px,calc((100cqw_+_0.25rem_-_28px)_/_13.2),0.75rem)]';
+    const HELD = '@max-[14rem]:text-[length:clamp(12px,calc((100cqw_-_3.25rem_-_21px)_/_8.4),0.75rem)]';
+
+    // The count: hidden until the grid is narrow, then a bold line in the day number's ink, lifted
+    // like the +N label it replaces (S-B2), one size arm per digit count.
+    for (const [count, size, others] of [[1, 'before:text-xs', [SIZE_2, SIZE_3]], [3, 'before:text-xs', [SIZE_2, SIZE_3]], [12, SIZE_2, ['before:text-xs', SIZE_3]], [101, SIZE_3, ['before:text-xs', SIZE_2]]] as const) {
+      const stack = stackOf(count);
+      for (const t of ['relative', 'before:hidden', '@max-[14rem]:before:block', 'before:content-[attr(data-count)]', 'before:relative', 'before:z-10', 'before:font-bold', 'before:text-content-primary', 'before:whitespace-nowrap', size]) {
+        expect(tokens(stack), `the ${count}-night day's count lacks ${t}`).toContain(t);
+      }
+      for (const t of others) expect(tokens(stack), `the ${count}-night day's count carries a second size, ${t}`).not.toContain(t);
+      if (size !== 'before:text-xs') expect(tokens(stack), `the ${count}-night day's count has no line height`).toContain('before:leading-4');
+      // No count text in the page: the number lives in the attribute only.
+      expect(Array.from(stack.childNodes).filter((n) => n.nodeType === 3), `the ${count}-night day prints its count as text`).toHaveLength(0);
+    }
+
+    // A day with several nights: every tile and the +N label give way; the day target (unchanged
+    // name) is the one stop.
+    const three = stackOf(3);
+    const tiles = within(three).getAllByRole('button');
+    expect(tiles).toHaveLength(2);
+    for (const tile of tiles) expect(tokens(tile), 'a tile of a several-night day stays in a narrow grid').toContain('@max-[14rem]:hidden');
+    const more = within(three).getByRole('img', { name: '1 more event' });
+    for (const t of ['@max-[14rem]:hidden', 'relative', 'z-10', 'whitespace-nowrap', '@max-[14rem]:-mx-1']) expect(tokens(more), `the +N label lacks ${t}`).toContain(t);
+    expect(screen.getByRole('button', { name: 'Saturday, September 20, 3 games. Open this day.' })).toBeTruthy();
+
+    // A one-game day has no day target (W39), so its tile must stay a button: it becomes a clear
+    // overlay on the count, with the same name and the same handlers, and only its name text hides.
+    const solo = within(stackOf(1)).getByRole('button', { name: 'Game 0 - Crowd' });
+    for (const t of ['@max-[14rem]:absolute', '@max-[14rem]:inset-0', '@max-[14rem]:bg-transparent!', '@max-[14rem]:border-0!']) {
+      expect(tokens(solo), `the one-game day's tile lacks ${t}`).toContain(t);
+    }
+    expect(tokens(solo), "the one-game day's tile is removed in a narrow grid, leaving the day with no button").not.toContain('@max-[14rem]:hidden');
+    expect(solo.getAttribute('tabindex')).toBe('0');
+    expect(solo.children).toHaveLength(1);
+    expect(tokens(solo.children[0]), "the one-game day's tile name does not give way to the count").toEqual(expect.arrayContaining(['truncate', '@max-[14rem]:hidden']));
+    expect((solo.textContent ?? '').trim()).toBe('Game 0');
+    for (const tile of tiles) expect(tokens(tile), 'a several-night tile takes the overlay').not.toContain('@max-[14rem]:absolute');
+
+    // The day numbers: the normal size, and under 14rem a size that follows the column.
+    const dayNumbers = cells.map((cell) => cell.firstElementChild as HTMLElement).filter((el) => el && /^\d{1,2}$/.test((el.textContent ?? '').trim()));
+    expect(dayNumbers.length).toBeGreaterThanOrEqual(28);
+    for (const el of dayNumbers) {
+      expect(tokens(el), `day ${el.textContent}: the number lost its normal size`).toContain('text-xs');
+      expect(tokens(el), `day ${el.textContent}: the number is not held in a narrow grid`).toContain(HELD);
+    }
+
+    // The arithmetic behind the three sizes (px; root = the root text size, grid = the day grid's
+    // width; a cell is (grid - 6 gaps of 0.25rem) / 7; text starts 0.25rem + 1px inside its cell).
+    // Digit widths are estimates from capture g's label widths: 0.625em a plain digit, 0.63em bold.
+    const clamp = (lo: number, v: number, hi: number) => Math.min(Math.max(v, lo), hi);
+    const held = (grid: number, root: number) => clamp(12, (grid - 3.25 * root - 21) / 8.4, 0.75 * root);
+    const countSize = (grid: number, root: number, divisor: number) => clamp(12, (grid + 0.25 * root - 28) / divisor, 0.75 * root);
+    // 375 at normal text (grid 319, capture g): nothing is held, everything is its normal 12px.
+    expect(held(319, 16)).toBe(12);
+    expect(countSize(319, 16, 8.8)).toBe(12);
+    expect(countSize(319, 16, 13.2)).toBe(12);
+    // Up to the threshold itself the number is its full scaled size: no jump where the query flips.
+    expect(held(448, 32)).toBe(24);
+    for (const [gridPx, root] of [[263, 32], [208, 32]] as const) {
+      const cell = (gridPx - 1.5 * root) / 7;
+      const pitch = cell + 0.25 * root;
+      const start = 0.25 * root + 1;
+      // A two-digit day number ends inside its own cell, or at most 2px past it where the 12px
+      // floor holds (a 320 phone at 200%: 1.1px past; the next cell is 8px further on).
+      expect(start + held(gridPx, root) * 1.25, `grid ${gridPx}: a two-digit day number leaves its cell`).toBeLessThanOrEqual(cell + 2);
+      // A count ends before the next day's count starts, for one, two and three digits.
+      for (const [digits, divisor] of [[1, Infinity], [2, 8.8], [3, 13.2]] as const) {
+        const size = divisor === Infinity ? 0.75 * root : countSize(gridPx, root, divisor);
+        expect(start + size * 0.63 * digits, `grid ${gridPx}: a ${digits}-digit count reaches the next day's count`).toBeLessThan(pitch + start);
+      }
+    }
+    // As built, the 24px day number at 375 / 200% ended 7px past its cell: what capture g saw.
+    expect(0.25 * 32 + 1 + 24 * 1.25 - (263 - 48) / 7).toBeGreaterThan(7);
+  });
+
+  it('R22 + R26 (88.9-52): the full grid takes none of it', () => {
+    const { cells } = renderGrid({ variant: 'full', events: [...crowd(1, 18), ...crowd(3, 20)] });
+    const grid = cells[0].parentElement as HTMLElement;
+    expect(grid.querySelectorAll('[data-count]'), 'the full grid carries a count').toHaveLength(0);
+    const narrow = Array.from(grid.querySelectorAll('*')).flatMap((el) => tokens(el)).filter((t) => t.startsWith('@max-[14rem]:') || t.startsWith('before:'));
+    expect(narrow, 'the full grid reads the 14rem threshold').toEqual([]);
+  });
+
   const rsvpEvent = {
     id: 'evt-rsvp',
     start_date: '2031-09-20T19:00:00',
@@ -722,7 +821,9 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     }
     expect(tokens(compactGuest), 'the compact guest tile still carries the 70% dark edge').not.toContain('dark:border-amber-500/70');
     const compactMember = screen.getByRole('button', { name: 'Wingspan - Home Crew' });
-    expect(tokens(compactMember).filter((t) => /(^|:)border(-|$)/.test(t)), 'a compact member tile carries a border').toEqual([]);
+    // 88.9-52 (R22 + R26): a one-night tile carries one border token, the narrow-grid switch that
+    // takes a border OFF (width 0); it paints none, so it is the one token let through here.
+    expect(tokens(compactMember).filter((t) => /(^|:)border(-|$)/.test(t) && t !== '@max-[14rem]:border-0!'), 'a compact member tile carries a border').toEqual([]);
     cleanup();
 
     // The word sits before the RSVP counts in the compact name.

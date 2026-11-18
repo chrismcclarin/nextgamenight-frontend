@@ -457,7 +457,7 @@ test.describe('the month nav row at phone width (88.9-62, X22 + X28)', () => {
     // green with the seeded dates, for a defect this plan does not fix (recorded in the plan's
     // SUMMARY for routing). Asserting the card here is a decision, not a cleanup.
     const fit = await card.evaluate((el) => {
-      const out = { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, dayNumbers: 0, overlaps: 0, error: '' };
+      const out = { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, dayNumbers: 0, overlaps: 0, error: '', pastCell: 0, counts: 0, badCounts: [] as string[], shownTiles: 0, shownMore: 0 };
       // The day grid, by structure: the one element under the card holding whole weeks of cells.
       const grids = Array.from(el.querySelectorAll('div')).filter((d) => [28, 35, 42].includes(d.children.length));
       if (grids.length !== 1) {
@@ -473,9 +473,26 @@ test.describe('the month nav row at phone width (88.9-62, X22 + X28)', () => {
           const range = document.createRange();
           range.selectNodeContents(node);
           const rect = range.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) rects.push(rect);
+          if (rect.width > 0 && rect.height > 0) {
+            rects.push(rect);
+            // R22 + R26 (88.9-52): how far the day number runs past its own cell's right edge.
+            out.pastCell = Math.max(out.pastCell, rect.right - cell.getBoundingClientRect().right);
+          }
           break;
         }
+      }
+      // R22 + R26 (88.9-52): in this narrow grid each day with nights shows one count (CSS content
+      // read from data-count); a several-night day shows no tile, and no +N label shows anywhere.
+      const shown = (node: Element) => node.getClientRects().length > 0;
+      for (const stack of Array.from(grids[0].querySelectorAll('[data-count]'))) {
+        const nights = stack.getAttribute('data-count') ?? '';
+        const before = getComputedStyle(stack, '::before');
+        out.counts += 1;
+        // Chromium reports the resolved string; an engine that reports the attr() form is let through.
+        const content = before.content.replace(/"/g, '');
+        if (before.display === 'none' || (content !== nights && content !== 'attr(data-count)')) out.badCounts.push(`${nights}: display ${before.display}, content ${before.content}`);
+        if (nights !== '1') out.shownTiles += Array.from(stack.querySelectorAll('[role="button"]')).filter(shown).length;
+        out.shownMore += Array.from(stack.querySelectorAll('[role="img"]')).filter(shown).length;
       }
       out.dayNumbers = rects.length;
       for (let i = 0; i < rects.length; i++) {
@@ -493,6 +510,15 @@ test.describe('the month nav row at phone width (88.9-62, X22 + X28)', () => {
     expect(fit.error, `${label}: ${fit.error}`).toBe('');
     expect(fit.dayNumbers, `${label}: fewer than 28 day numbers were read from the month grid`).toBeGreaterThanOrEqual(28);
     expect(fit.overlaps, `${label}: ${fit.overlaps} pairs of day numbers overlap`).toBe(0);
+    // R22 + R26 (88.9-52, owner pick C): the day numbers are held inside their own cells (2px of
+    // slack: the 12px floor on a narrower phone), and the tiles and +N give way to one count.
+    // The seeded month may hold no night at all, so the number of counts is logged, not asserted.
+    // eslint-disable-next-line no-console -- how many days carried a count is recorded from the CI log (seed-dependent)
+    console.log(`[88.9-52 R22 + R26] ${label}: ${fit.counts} days carry a count; the widest day number ends ${fit.pastCell.toFixed(1)}px past its cell edge`);
+    expect(fit.pastCell, `${label}: a day number runs ${fit.pastCell.toFixed(1)}px past its own cell`).toBeLessThanOrEqual(2);
+    expect(fit.badCounts, `${label}: a day with nights does not show its count`).toEqual([]);
+    expect(fit.shownTiles, `${label}: ${fit.shownTiles} tiles still show on days with several nights`).toBe(0);
+    expect(fit.shownMore, `${label}: ${fit.shownMore} +N labels still show`).toBe(0);
   });
 });
 

@@ -43,6 +43,59 @@ const isFuture = (date) => {
 
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+/* DECISION Phase 88.9-52 (R22 + R26, owner pick C, 2026-11-17, 88.9-RULINGS.md picture page final
+   picks): when the COMPACT day grid is under 14rem wide (the Q62 / X28 threshold: about 200% text
+   on a phone; never at normal text, where 14rem is 224px and a 375 phone's grid is 319px) each day
+   shows ONE bold count of its nights in place of its tiles and the +N label, chosen OVER the tiles
+   as built (A: slivers with half a letter each, and +10 +99 +2 printed as one run) and OVER a
+   coloured dot per game (B). The day numbers are held at a size that stays inside their own cell.
+   Above the threshold nothing changes, and the full grid takes none of it.
+   HOW, and what was rejected:
+   - The count is CSS content read from data-count on the day's events box (the mock's own form),
+     chosen OVER a second element holding the number: in a test page (no CSS) such an element
+     prints a bare 3 beside the day number 3, and every lookup by that text finds two. The count
+     is the day number's ink, bold, on the same cell grounds. It is lifted (relative z-10) for the
+     reason the +N label is (S-B2: a later cell's ground paints over an overflow).
+   - A day with SEVERAL nights hides its tiles and its +N label; its day target is the stop, name
+     unchanged (N games. Open this day.).
+   - A day with ONE night has no day target (W39 above: its tile is the stop). Hiding that tile
+     would leave the day with no button and no spoken name, for exactly the large-text reader this
+     threshold serves. So the tile STAYS, as a clear overlay on the count: same name, same
+     handlers, its ground and edge switched off and its name text hidden. REJECTED: a second
+     button for the count (two buttons with one name in the tree), and turning the day target on
+     for one-night days (W39 rejects two stops for one action, and the grid width is not known to
+     the script).
+   - The overlay's two switches carry Tailwind's important mark, on purpose: the tile's ground
+     arms include dark: and hover: forms that Tailwind emits AFTER a container query, so a plain
+     @max-[14rem]:bg-transparent loses to them (compiled and read on tailwindcss 4, 2026-11-18).
+     REJECTED: stacking a plain override (the winner is emission order).
+   - SIZES (arithmetic on capture g's widths, not a rendered read; a cell is (grid - 6 gaps of
+     0.25rem) / 7 and text starts 0.25rem + 1px inside it; a plain digit about 0.625em, a bold one
+     about 0.63em). Day number: the largest size, never over its scaled 0.75rem and never under
+     12px, at which two digits end inside the cell. At 375 / 200% (grid 263px) that is 16.4px
+     where it was 24px and ended 7px past its cell (capture g: 20 21 and 29 30 1 ran together);
+     on a 320 phone at 200% it is the 12px floor. From 9.5rem up to the threshold the formula
+     gives the full 0.75rem, so nothing jumps where the query flips. Count: one digit is the
+     mock's 0.75rem; two and three digits take the largest size that ends 4px before the next
+     day's count (two digits stay 0.75rem at 375 / 200%; three, a day with 100 nights, 18.4px).
+     Four digits are not sized. The owner's own rule from the same sitting (R21): cap it as
+     large as fits.
+   LOST, recorded: under the threshold a guest night has no visible cue on the grid (the dashed
+   tile is gone, as the picked picture showed); a one-night guest day still SPEAKS Guest from its
+   tile's name, and the day sheet shows the Guest pill. A screen reader may read the bare count as
+   text after the day's name; not measured. Pinned by
+   src/app/components/CalendarMonthView.test.tsx ("R22 + R26 (88.9-52): under 14rem the compact grid shows one bold count").
+   Changing any of this is a decision, not a cleanup. */
+const NARROW_COUNT = 'relative before:hidden @max-[14rem]:before:block before:content-[attr(data-count)] before:relative before:z-10 before:font-bold before:text-content-primary before:whitespace-nowrap';
+// One arm per digit count: 1, 2, 3 or more. Whole literals (Tailwind emits nothing for a built class name).
+const NARROW_COUNT_SIZE = [
+  'before:text-xs',
+  'before:text-[length:clamp(12px,calc((100cqw_+_0.25rem_-_28px)_/_8.8),0.75rem)] before:leading-4',
+  'before:text-[length:clamp(12px,calc((100cqw_+_0.25rem_-_28px)_/_13.2),0.75rem)] before:leading-4',
+];
+const NARROW_SOLO_TILE = '@max-[14rem]:absolute @max-[14rem]:inset-0 @max-[14rem]:bg-transparent! @max-[14rem]:border-0!';
+const NARROW_DAY_NUMBER = '@max-[14rem]:text-[length:clamp(12px,calc((100cqw_-_3.25rem_-_21px)_/_8.4),0.75rem)]';
+
 /*
  * The tile's text TREATMENT (shadow + stroke) for a given rendered ground.
  *
@@ -370,6 +423,10 @@ export default function CalendarMonthView({
              branching its `aria-label` on `dayEvents.length` the way `handleDayClick` branches.
              That fixes the wrong NAME but leaves two stops for one action.
 
+             AMENDED Phase 88.9-52 (R22 + R26): that tile is why a one-night day keeps its tile as
+             a button when a narrow compact grid swaps tiles for a count (NARROW_COUNT at the top of
+             this file); this gate is unchanged.
+
              The narrowing costs nothing — every 1-event day is already fully keyboard-operable
              through its tile — and it holds for every consumer: `<CalendarMonthView` has exactly
              one render site in `src/` (`EventCalendar.js`). This is a decision, not a cleanup. */
@@ -575,7 +632,7 @@ export default function CalendarMonthView({
                        `aria-label` above either — the state now sits on the focused node and a
                        name segment would double-announce. This is a decision, not a cleanup. */
                     aria-current={isCurrentDay ? 'date' : undefined}
-                    className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} mb-1 ${
+                    className={`${variant === 'compact' ? `text-xs ${NARROW_DAY_NUMBER}` : 'text-sm'} mb-1 ${
                       dayTargetActive
                         ? 'rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset '
                         : ''
@@ -589,7 +646,11 @@ export default function CalendarMonthView({
                     {date.getDate()}
                   </div>
                   {dayEvents.length > 0 ? (
-                    <div className={variant === 'compact' ? 'space-y-0.5' : 'space-y-1'}>
+                    /* 88.9-52 (R22 + R26): the compact events box carries the day's night count for a narrow grid; see NARROW_COUNT at the top of this file. */
+                    <div
+                      data-count={variant === 'compact' ? dayEvents.length : undefined}
+                      className={variant === 'compact' ? `space-y-0.5 ${NARROW_COUNT} ${NARROW_COUNT_SIZE[Math.min(String(dayEvents.length).length, 3) - 1]}` : 'space-y-1'}
+                    >
                       {dayEvents.slice(0, 2).map(event => {
                         // HOISTED by plan 88.3-16 so BOTH tile variants read ONE
                         // set of values. Duplicating the ground gate per variant
@@ -1022,6 +1083,13 @@ export default function CalendarMonthView({
                                holds for the part that mattered: the untinted FILL hover stays inside it, and a
                                tinted member tile still fades to 90% exactly as before.
 
+                               AMENDED Phase 88.9-52 (R22 + R26, owner 2026-11-17, pick C): under 14rem of grid
+                               width this tile gives way to the day's count. On a day with several nights it is
+                               hidden; on a one-night day it stays as a clear overlay on the count with this
+                               same name and these same handlers, chosen OVER hiding it (that day has no other
+                               button). The choice and the rejected forms are at NARROW_COUNT at the top of
+                               this file. The W14 dashed guest edge therefore shows above the threshold only.
+
                                Any of this is a decision, not a cleanup. */
                             <div
                               key={event.id}
@@ -1059,7 +1127,7 @@ export default function CalendarMonthView({
                                  MEASURED BEFORE: ~20px (ARITHMETIC, not a rendered read — 16px
                                  `text-xs` line box + 2px `p-0.5` top and bottom). This is a
                                  decision, not a cleanup. */
-                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}${compactGuest ? ` ${GUEST_TILE_EDGE} ${GUEST_TILE_HOVER}` : tinted ? ' hover:opacity-90' : ''}`}
+                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}${compactGuest ? ` ${GUEST_TILE_EDGE} ${GUEST_TILE_HOVER}` : tinted ? ' hover:opacity-90' : ''} ${dayEvents.length === 1 ? NARROW_SOLO_TILE : '@max-[14rem]:hidden'}`}
                               style={{
                                 ...(tinted && {
                                   '--group-ground': ground,
@@ -1137,7 +1205,7 @@ export default function CalendarMonthView({
                                 onEventClick(event);
                               }}
                             >
-                              <div className="truncate">{event.Game?.name || 'Game Night'}</div>
+                              <div className={dayEvents.length === 1 ? 'truncate @max-[14rem]:hidden' : 'truncate'}>{event.Game?.name || 'Game Night'}</div>
                             </div>
                           );
                         }
@@ -1372,12 +1440,20 @@ export default function CalendarMonthView({
                              Spoken name: the ruling's words, N more event(s), from a labelled leaf in the weekday
                              header's form (role img, aria-label, tabIndex -1, printed text aria-hidden), chosen OVER
                              leaving the bare text, which reads as plus 1. Before this the label had no spoken name
-                             of its own. Not measured on a device. Changing any of this is a decision, not a cleanup. */
+                             of its own. Not measured on a device. Changing any of this is a decision, not a cleanup.
+                             AMENDED Phase 88.9-52 (R22 + R26, owner 2026-11-17, pick C): under 14rem of grid width
+                             the compact label is HIDDEN; the day's one count stands in for the tiles and for it
+                             (NARROW_COUNT at the top of this file), chosen OVER the label as built, where
+                             capture g measured +10 running 2.3px over +99 and +99 4.5px over +2 at 200% text
+                             (worse than the S-B2 arithmetic above; the NOT FIXED case there is closed by this).
+                             So the -mx-1 pull and the S-B2 lift no longer show anywhere under the threshold;
+                             both classes stay, the lift by instruction, and above 14rem the label, its
+                             one line and its spoken name are exactly as Q62 ruled. */
                           role="img"
                           aria-label={`${dayEvents.length - 2} more ${dayEvents.length - 2 === 1 ? 'event' : 'events'}`}
                           tabIndex={-1}
                           className={variant === 'compact'
-                            ? 'relative z-10 text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap @max-[14rem]:-mx-1'
+                            ? 'relative z-10 text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap @max-[14rem]:-mx-1 @max-[14rem]:hidden'
                             : 'text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap'}
                           title={`Tap the day to see all ${dayEvents.length} games`}
                         >
