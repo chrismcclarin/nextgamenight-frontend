@@ -13,8 +13,8 @@ import { TUTORIAL_DAYS, TUTORIAL_TIME_SLOTS } from '../mockData';
  * so the same grid serves availability painting, heatmap density, and the
  * schedule drag-select with no extra abstractions.
  *
- * @param {(row: number, col: number) => React.ReactNode} renderCell
- *   Called for each cell. Return the className string and any inner content.
+ * @param {{ renderCell: (row: number, col: number) => { className: string, content: import('react').ReactNode } }} props
+ *   `renderCell` is called for each cell and returns the className string and any inner content.
  *   Signature: renderCell(rowIdx, colIdx) -> { className, content }
  */
 /* DECISION Phase 88.6-35 (D-01 / UI-SPEC §4.2): the day header, the time-gutter label and the
