@@ -3000,6 +3000,28 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
   });
 
+  it('R15c lock (88.9-52 R4 D9): the lock on the read-only participant name box clears 3.0 on the box fill in both themes', () => {
+    // Owner pick Lock (an interim, 2026-11-18). The lock is a graphic (WCAG 1.4.11, 3:1), drawn in
+    // the muted ink on the box's own input fill. The capture's mock measured 6.58 light and 4.88
+    // dark. Both classes are read from the call site.
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'ParticipantRow.js'), 'utf8'),
+    );
+    const box = /className="relative p-2 pr-8 border border-input rounded-btn bg-([a-z0-9-]+) /.exec(src);
+    expect(box, 'LOCATOR: the read-only name box names its fill').not.toBeNull();
+    const icon = /<Icon name="Lock" className="[^"]*\btext-([a-z0-9-]+)\b[^"]*"/.exec(src);
+    expect(icon, 'LOCATOR: the lock names its colour').not.toBeNull();
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, runtimeProp(icon![1]), runtimeProp(box![1]), 3.0, 'R15c the lock on the read-only name box');
+    }
+  });
+
   it('X52d (88.9-68; W45 re-pointed 88.9-52): the collection bar is at least 1.20 from the section card in both themes, its top rule 1.20 from it, its words 4.5 on it', () => {
     // Owner ruling X52d (pick page 10c): the bar reads as a bar against the section card it closes,
     // floor 1.20 (the same floor e2e/profile-look-fixes.spec.ts ("X52d dark bar against the card ground") holds

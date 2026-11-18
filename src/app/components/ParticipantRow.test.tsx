@@ -6,7 +6,7 @@
 // refactor that re-splits the atomic patch fails HERE with a precise message
 // rather than as a mysterious typing bug two files away.
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import ParticipantRow from './ParticipantRow';
@@ -256,7 +256,7 @@ describe('C5a (88.9) — the form labels on Label 14', () => {
 // / max-md:min-w-11); from md up the label is compact so the line is one text line. Still ONE checkbox.
 describe('X40 + X43 (88.9-65) — one New Player box, one label ink', () => {
   it('X40 + X43 (88.9-65): one New Player checkbox per row with no width-gated twin, its label a 44px box below md on the Participant Name line, and the four labels share text-content-primary', () => {
-    const tokensOf = (el: Element) => el.className.split(/\s+/).filter((token) => token.length > 0);
+    const tokensOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter((token) => token.length > 0);
     const rows: Array<[string, Record<string, unknown>]> = [
       ['a member row', { participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } }],
       ['a custom row', {}],
@@ -312,7 +312,7 @@ describe('X40 + X43 (88.9-65) — one New Player box, one label ink', () => {
 // jsdom lays nothing out: the 42px heights are computed from the classes (16px text at 1.5 = 24, plus
 // 16 padding, plus 2 border), not measured here.
 describe('R15c (88.9-52) — the three boxes take the type-in field look', () => {
-  const tokensOf = (el: Element) => el.className.split(/\s+/).filter((token) => token.length > 0);
+  const tokensOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter((token) => token.length > 0);
   const FIELD_LOOK = ['p-2', 'rounded-btn', 'border', 'border-input', 'bg-surface-input', 'text-base', 'text-content-primary'];
 
   it('R15c (88.9-52): Score and Faction are the house Input with its own padding, no p-1 override', () => {
@@ -338,6 +338,40 @@ describe('R15c (88.9-52) — the three boxes take the type-in field look', () =>
     expect(box).not.toHaveAttribute('role');
     expect(screen.queryByRole('textbox', { name: 'Participant Name' })).toBeNull();
   });
+
+  // R4 D9 (88.9-52, owner pick Lock, an INTERIM, 2026-11-18): the read-only member name box and
+  // the editable hand-typed one looked the same. The read-only box now carries a small lock at
+  // its right inside edge, in the muted ink, decorative (no new visible or spoken string). The
+  // name keeps 2rem on that side so a long name never runs under the icon. The editable box is
+  // unchanged. The marker is at src/app/components/ParticipantRow.js ("DECISION Phase 88.9-52 (R15c, owner 2026-11-18): a lock icon").
+  it('R4 D9 (88.9-52): the read-only member name box carries a decorative lock at its right inside edge; the editable name box does not', () => {
+    renderRow({ participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } });
+    const box = screen.getByText('Alice', { exact: false }).closest('div')!;
+    expect(tokensOf(box)).toEqual(expect.arrayContaining(['relative', 'pr-8', ...FIELD_LOOK]));
+    const locks = box.querySelectorAll('svg');
+    expect(locks).toHaveLength(1);
+    const lock = locks[0];
+    expect(lock).toHaveAttribute('aria-hidden', 'true');
+    expect(lock).not.toHaveAttribute('role');
+    expect(lock).not.toHaveAttribute('aria-label');
+    expect(lock.querySelector('title')).toBeNull();
+    expect((lock.getAttribute('class') ?? '').split(/\s+/)).toEqual(
+      expect.arrayContaining(['lucide-lock', 'absolute', 'right-2', 'top-1/2', '-translate-y-1/2', 'w-4', 'h-4', 'text-content-muted', 'pointer-events-none']),
+    );
+    // Nothing new is read or shown: the box's words are the name alone, and it is still no control.
+    expect(box.textContent).toBe('Alice');
+    expect(box).not.toHaveAttribute('tabindex');
+    expect(within(box).queryByRole('button')).toBeNull();
+    expect(within(box).queryByRole('img')).toBeNull();
+    cleanup();
+
+    // The hand-typed row: a real text box, no lock anywhere in the name column.
+    renderRow({ participant: { user_id: '', username: 'Sam', isFromGroup: false } });
+    const input = screen.getByRole('textbox', { name: 'Participant Name' });
+    expect(tokensOf(input)).not.toContain('pr-8');
+    const row = input.closest('.border-line-strong') as HTMLElement;
+    expect(row.querySelectorAll('svg')).toHaveLength(0);
+  });
 });
 
 // Phase 88.9-52, R15b (owner pick "As is", 2026-11-17; mock one-line-remove-as-is, and phone-two-line).
@@ -346,7 +380,7 @@ describe('R15c (88.9-52) — the three boxes take the type-in field look', () =>
 // Remove left at 44px and bottom-aligned with Score and Faction. Below md the row keeps two lines.
 // jsdom lays nothing out, so these are class pins; the measured sizes are the capture's (report j, row E).
 describe('R15b (88.9-52) — one line from md up, labels 4px above their boxes', () => {
-  const tokensOf = (el: Element) => el.className.split(/\s+/).filter((token) => token.length > 0);
+  const tokensOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter((token) => token.length > 0);
 
   it('R15b (88.9-52): the row is one line from md, two lines below it, and nothing is gated at sm', () => {
     for (const overrides of [{}, { participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } }]) {

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useId, useRef } from 'react';
 import { Input } from '@/components/ui/Input';
+import { Icon } from '@/components/ui/Icon';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 
 export default function ParticipantRow({ participant, index, groupMembers, onParticipantChange, onToggleParticipant, duplicateOfName = null, requestNameFocus = false, onNameFocusHandled = undefined }) {
@@ -113,7 +114,23 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
              picked phone mock keeps this box at 42px. Edge against the list box fill around it (the same
              input fill): 4.11 light, 2.79 dark, exactly what Score and Faction already measure here
              (was 2.31 light, 1.45 dark with the lighter edge). */
-          <div className="p-2 border border-input rounded-btn bg-surface-input text-content-primary text-base break-words">
+          /* DECISION Phase 88.9-52 (R15c, owner 2026-11-18): a lock icon, chosen OVER plain text with
+             no box (reads as a second label) and OVER leaving the two boxes identical. INTERIM by
+             the owner's ruling: 'locks ... represent a field that you chose to tie down. Generally
+             they have an ability to unlock. There is an implication there that the website doesn't
+             fulfill. I don't want to add an unlock function. I think there is a different look we
+             can do, and we might just have to wait till a different time.' Do not add an unlock;
+             replacing this cue is a design decision for a later milestone.
+             HOW (R4 D9): a 1rem lucide Lock (16px at ordinary text; it grows with the text) pinned
+             to the box's right inside edge, 0.5rem in, centred on the box's height, in the muted
+             ink (6.58 light, 4.88 dark on the box fill by the capture; 3.0 is the floor for a
+             graphic, held in tokenContrast.test.ts). It is decorative: aria-hidden, no title, no
+             role, nothing new shown or spoken, and it takes no pointer events. The box stays the
+             plain read-only div it was. The name's right padding is 2rem (pr-8) in place of
+             0.5rem, so a long name wraps before it reaches the icon (0.5rem + 1rem icon + 0.5rem
+             clear). The editable hand-typed box below is unchanged: no lock. */
+          <div className="relative p-2 pr-8 border border-input rounded-btn bg-surface-input text-content-primary text-base break-words">
+            <Icon name="Lock" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-content-muted" />
             {participant.username || `Participant ${index + 1}`}
             {participant.is_guest && (
               /* §4.5's pill/chip-ink row: 600/500 -> 700, with 400 REJECTED because a FILLED
