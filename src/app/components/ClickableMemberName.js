@@ -16,6 +16,7 @@ import {
 } from '@floating-ui/react';
 import { FriendshipContext } from './FriendshipStatusProvider';
 import { Button } from '../../components/ui/Button';
+import { Icon } from '../../components/ui/Icon';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { hostGroundHalo } from '../../components/ui/hostGround';
@@ -621,6 +622,28 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // both themes (purple-600 on the muted circle read 1.99 in dark, under the 3:1 a glyph needs)
   // and OVER the link ink (forbidden on the muted ground, src/test-utils/inkRules.ts ("export const FORBIDDEN_INK_ON_MUTED")).
   // On the circle: light 3.76, unchanged; dark 4.02.
+  // DECISION Phase 88.9-52 (R4 C5, owner 2026-11-18, from the See-all picture: "the + needs to be
+  // centered in the gray circle it is in front of. Right now it looks off"): the plus is a DRAWN
+  // icon (the shared Icon, lucide Plus), chosen OVER the text character it was.
+  // WHY THE CHARACTER SAT OFF CENTRE: inline-flex with items-center and justify-center centres
+  // the button's content BOX, and for text that box is the line (text-sm: a 20px line in the
+  // 24px circle, 2px above and below). Inside its line a character sits where the font puts it:
+  // a plus is drawn about the font's maths axis, a little above the baseline, which is not the
+  // middle of the line (the font's ascent above the baseline is far larger than its descent
+  // below), so the glyph rode low, by an amount that changes with the font, the fallback font
+  // and the text size. No class can read that offset.
+  // WHY THE ICON IS CENTRED: its box is a square and its two arms cross at the box's own centre
+  // (M5 12h14 and M12 5v14 in a 24 box), so centring the box centres the plus, on both axes, in
+  // any font and at any text size. 0.75rem (w-3 h-3) in the 1.5rem circle leaves 0.375rem on all
+  // four sides, whole pixels at ordinary and at doubled text. Stroke 3 of 24 is 1.5px at 12px,
+  // the weight the bold character had; the arms measure about 8.5px with their round ends, as
+  // the character did.
+  // REJECTED: nudging the character with a line-height or a translate (it fixes one font at one
+  // size and is wrong again with the fallback font or enlarged text); a wider circle (the 24px
+  // circle is a recorded size, and it would not centre anything).
+  // The accessible name is unchanged (the button's label); the icon is decorative and adds
+  // nothing spoken. text-sm and font-bold went with the character: they styled nothing else.
+  // The ink is unchanged (the W36 note above): the icon strokes in the button's colour.
   const renderAddButton = () => (
     <button
       type="button"
@@ -630,12 +653,12 @@ export default function ClickableMemberName({ userId, username, children, showIn
       aria-disabled={sendingFrom === 'inline' ? 'true' : undefined}
       disabled={sendingFrom === 'popover'}
       className={cn(
-        "md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-toggle-on text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card",
+        "md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-toggle-on cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card",
         hostGroundHalo(hostGround),
       )}
       aria-label={`Add ${username} as a friend`}
     >
-      +
+      <Icon name="Plus" strokeWidth={3} className="w-3 h-3 shrink-0" />
     </button>
   );
 

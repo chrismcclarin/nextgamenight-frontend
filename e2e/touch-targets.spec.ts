@@ -1946,6 +1946,51 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       geometry.effectiveHeight,
       `add-friend effective height ${geometry.effectiveHeight}px < 32px — expected 24 + 4 + 4 = 32 (own ${geometry.ownHeight}px + 4px -inset-y each side; 32 not 44 is the OWNER-ACCEPTED asymmetric floor of 2026-08-02 — the 4px space-y-1 row gap forbids a symmetric extension); insets: ${JSON.stringify(geometry.insets)}`,
     ).toBeGreaterThanOrEqual(32);
+
+    // 88.9-52 R4 C5 (owner 2026-11-18: "the + needs to be centered in the gray circle it is in
+    // front of"), RENDERED. The plus was a text character and rode low in its line; it is a drawn
+    // icon now (src/app/components/ClickableMemberName.js ("DECISION Phase 88.9-52 (R4 C5, owner 2026-11-18, from the See-all picture")),
+    // a square whose arms cross at its own centre (the unit test pins the two arms). So the
+    // centre of the icon's box is the centre of the plus, and it must sit within half a pixel of
+    // the circle's centre on both axes, at ordinary text and with text at 200% (the root font
+    // size doubled by a style tag, e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")). Read-only.
+    const readCentring = () =>
+      addFriend.first().evaluate((button) => {
+        const glyph = button.querySelector('svg');
+        if (!glyph) return null;
+        const b = button.getBoundingClientRect();
+        const g = glyph.getBoundingClientRect();
+        return {
+          dx: g.left + g.width / 2 - (b.left + b.width / 2),
+          dy: g.top + g.height / 2 - (b.top + b.height / 2),
+          glyphWidth: g.width,
+          glyphHeight: g.height,
+          circleWidth: b.width,
+          circleHeight: b.height,
+          text: (button.textContent ?? '').trim(),
+        };
+      });
+    const expectCentred = (c: Awaited<ReturnType<typeof readCentring>>, at: string, circle: number, glyph: number) => {
+      expect(c, `R4 C5 (${at}): the add-friend control holds no drawn icon`).not.toBeNull();
+      expect(c!.text, `R4 C5 (${at}): the add-friend control still holds a text character`).toBe('');
+      expect(Math.abs(c!.circleWidth - circle), `R4 C5 (${at}): the circle is ${c!.circleWidth}px wide, expected ${circle}`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.circleHeight - circle), `R4 C5 (${at}): the circle is ${c!.circleHeight}px tall, expected ${circle}`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.glyphWidth - glyph), `R4 C5 (${at}): the plus is ${c!.glyphWidth}px wide, expected ${glyph}`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.glyphHeight - glyph), `R4 C5 (${at}): the plus is ${c!.glyphHeight}px tall, expected ${glyph}`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.dx), `R4 C5 (${at}): the plus sits ${c!.dx}px right of the circle's centre`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.dy), `R4 C5 (${at}): the plus sits ${c!.dy}px below the circle's centre`).toBeLessThanOrEqual(0.5);
+    };
+    expectCentred(await readCentring(), 'ordinary text', 24, 12);
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R4 C5: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe('32px');
+    await expect
+      .poll(async () => (await readCentring())?.circleWidth ?? 0, { message: 'R4 C5: the circle did not grow to 48px at 200% text' })
+      .toBeGreaterThan(47);
+    expectCentred(await readCentring(), 'text at 200%', 48, 24);
   });
 
   test('D-13: tap isolation on both axes — the extension never steals the username\'s or the adjacent row\'s taps', async ({ page }) => {

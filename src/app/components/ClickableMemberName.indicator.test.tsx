@@ -185,6 +185,46 @@ describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () 
   });
 });
 
+// 88.9-52 R4 C5 (owner 2026-11-18, from the See-all picture: "the + needs to be centered in the
+// gray circle it is in front of. Right now it looks off"). The plus was a text character, and a
+// character sits where its font puts it inside the line, not in the middle of the box: the
+// centring classes centred the 20px LINE in the 24px circle, and the glyph rides low in that
+// line. It is now a drawn plus (the shared Icon), a square whose arms cross at its own centre,
+// so centring the square centres the plus at every text size. jsdom lays nothing out, so this
+// pins what the centring is made of; the rendered check (centres within half a pixel) is in
+// e2e/touch-targets.spec.ts, the R4 add-friend test.
+describe('88.9-52 R4 C5: the add-friend plus is a drawn icon centred in its circle', () => {
+  it('R4 C5: the button holds one decorative square svg and no text, keeps its accessible name, and centres its content on both axes', () => {
+    renderName('none');
+    const plus = addFriendPlus()!;
+    const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+    // No character left to ride on a font's metrics.
+    expect(plus.textContent).toBe('');
+    expect(plus.children).toHaveLength(1);
+    const svg = plus.firstElementChild as SVGElement;
+    expect(svg.tagName.toLowerCase()).toBe('svg');
+    // Decorative: the button's name is still its label, and nothing new is spoken.
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(svg).not.toHaveAttribute('aria-label');
+    expect(plus).toHaveAccessibleName('Add ada as a friend');
+    // A square, in rem like the circle, so the two scale together with the text size:
+    // 0.75rem in a 1.5rem circle leaves the same 0.375rem on all four sides.
+    expect(tokens(svg)).toEqual(expect.arrayContaining(['w-3', 'h-3', 'shrink-0']));
+    // The lucide plus: two arms through the centre of a 24 box.
+    expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
+    const arms = Array.from(svg.querySelectorAll('path')).map((p) => p.getAttribute('d'));
+    expect(arms.sort()).toEqual(['M12 5v14', 'M5 12h14']);
+    // The circle centres its one child on both axes and is still 24 by 24.
+    expect(tokens(plus)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'justify-center', 'w-6', 'h-6', 'rounded-full']));
+    // The text-only classes went with the character.
+    expect(tokens(plus)).not.toContain('text-sm');
+    expect(tokens(plus)).not.toContain('font-bold');
+    // The ink is unchanged (W36): the svg strokes in the button's own colour.
+    expect(tokens(plus)).toContain('text-toggle-on');
+    expect(svg.getAttribute('stroke')).toBe('currentColor');
+  });
+});
+
 // Plan 88.6-63 (review round 2 #22). Before this, a failed mobile "+" replaced the FOCUSED button
 // with a bare "Failed" span: focus dropped to <body>, nothing was announced, and there was no way to
 // retry. The two cases below pin the fix: the failure is an assertive alert that holds focus where
