@@ -856,7 +856,7 @@ describe('gameDetail role-gated session affordances', () => {
     const classes = (el: HTMLElement) => el.className.split(/\s+/);
     expect(classes(del)).toContain('text-content-status-error');
     expect(classes(del)).toContain('bg-transparent');
-    expect(classes(del)).toContain('enabled-hover:bg-surface-hover');
+    expect(classes(del)).toContain('enabled-hover:bg-surface-ghost-hover');
     expect(classes(del)).not.toContain('text-content-secondary');
     expect(classes(del)).not.toContain('btn-danger');
     expect(classes(edit)).toContain('text-content-secondary');
