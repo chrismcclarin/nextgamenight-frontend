@@ -54,6 +54,23 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
     // Faction and Remove would then sink to the hint's line. Going back to md:items-end, or to labels
     // beside their boxes, is a decision, not a cleanup.
     // Below md the row keeps its two lines (name; then Score, Faction, Remove), with the same box look.
+    // AMENDED Phase 88.9-52 (R4 D6, owner page pick G6 = C, 2026-11-18): the one-line layout is taken
+    // from sm (640px) in place of md, chosen by the owner on the capture's mock at 700 OVER keeping
+    // two lines up to 767 (pick A) and over the mock's other arm. Every md: class in this row is now
+    // sm: (the row, the name column, the New Player label, the controls group, Faction, Remove's
+    // cluster), and the list box's 15rem cap in createEvent.js moves with it. THE SUM at 640, the
+    // narrowest it applies: the dialog is 616px, its body 592, the list box inside 574, the row
+    // inside 558; Score 64 + Faction 96 + Remove 73 + three 16px gaps = 281, so the name box is
+    // 277px (335px at 700, the mock's number), and its label line holds Participant Name (114) and
+    // the compact New Player (92). Boxes 42px, labels 4px above, bottoms level with Remove (44px),
+    // rows 83px: R15b's numbers, now from 640.
+    // WHAT MOVES WITH IT: the three type-in boxes carry the Input primitive's phone floor (44px
+    // below md). Left alone they would be 44px between 640 and 767 beside a 42px read-only name box
+    // and the bottoms would not be level, so each box here switches that floor off below md and
+    // puts it back below sm (max-md:min-h-0 max-sm:min-h-11): 44px on a phone as before, 42px on
+    // the one-line row. Chosen OVER a 44px floor on the read-only box between 640 and 767 (the
+    // picked mock shows 42 / 42 / 42). The New Player label's 44 by 44 box is likewise kept below
+    // sm only. Below 640 nothing changes. Going back to md is a decision, not a cleanup.
     //
     // DECISION Phase 88-26 (D-35/D-34): this row divider is the ONE site in the 41-site sweep
     // promoted to the STRONG hairline instead of taking the mechanical `-line` default. Rows
@@ -63,11 +80,12 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
     // neutral was rejected as a 280-site re-theme). In-repo precedent for the same role:
     // gameDetail/page.js's between-session rule and Header.js's sticky-header underline.
     // Demoting this to the neutral is a decision, not a consistency cleanup.
-    <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-4 p-2 border-b border-line-strong">
-      <div className="md:flex-1 md:min-w-0">
+    <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 p-2 border-b border-line-strong">
+      <div className="sm:flex-1 sm:min-w-0">
         {/* DECISION Phase 88.9-65 (X40, owner at N32: right justified on the participant name line): ONE New Player checkbox there at every width, its label a real 44px box (WCAG 2.5.8 floor 24, house floor 44), chosen OVER two width-gated twins (two controls for one value) and OVER an invisible extension (it would cover the name input). The line grows about 24px.
             It replaces the owner refinement of 2026-08-04 on F-3, which put a phone-only twin on this line and kept a second checkbox in the controls row from the small breakpoint up.
-            AMENDED Phase 88.9-52 (R15b, owner 2026-11-17: "couldn't they sit closer to the form? Does the checkbox need that much space around it?"): from md up the label is COMPACT (no 44px box, a 6px gap), so the line is one 20px text line and Participant Name sits 4px above its box (was 15.5px, held off by the 44px box); the desktop compaction is the owner's ruling, chosen OVER the 44px box at every width. Below md the 44 by 44 tap box is KEPT (max-md:min-h-11 / max-md:min-w-11). Still ONE checkbox, on this line, at every width: never a second copy. The line is centred (items-center, was items-baseline) so the phone's 44px box and the name label share a middle. */}
+            AMENDED Phase 88.9-52 (R15b, owner 2026-11-17: "couldn't they sit closer to the form? Does the checkbox need that much space around it?"): from md up the label is COMPACT (no 44px box, a 6px gap), so the line is one 20px text line and Participant Name sits 4px above its box (was 15.5px, held off by the 44px box); the desktop compaction is the owner's ruling, chosen OVER the 44px box at every width. Below md the 44 by 44 tap box is KEPT (max-md:min-h-11 / max-md:min-w-11). Still ONE checkbox, on this line, at every width: never a second copy. The line is centred (items-center, was items-baseline) so the phone's 44px box and the name label share a middle.
+            AMENDED Phase 88.9-52 (R4 D6, owner 2026-11-18): compact from sm (640px), with the one-line row; the 44 by 44 box is kept below sm (max-sm:min-h-11 / max-sm:min-w-11). The marker is at the top of this row. */}
         {/* DECISION Phase 88.9-65 (X43): every label here reads text-content-primary, R2-14's measured ink (17.97 / 10.64), chosen OVER the lighter ink Participant Name alone carried. */}
         <div className="flex items-center justify-between mb-1">
           {/* 88-33 Task 8 (census class B — the 3 red-tag broken label[for]): member rows
@@ -79,7 +97,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           ) : (
             <label htmlFor={nameId} className="text-sm text-content-primary block">Participant Name</label>
           )}
-          <label className="inline-flex max-md:min-h-11 max-md:min-w-11 items-center gap-2 md:gap-1.5">
+          <label className="inline-flex max-sm:min-h-11 max-sm:min-w-11 items-center gap-2 sm:gap-1.5">
             <input
               id={newPlayerId}
               name={newPlayerId}
@@ -174,6 +192,8 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                   user_id: matchingMember ? matchingMember.id : '',
                 });
               }}
+              // R4 D6: the phone floor holds below sm only (the marker at the top of this row).
+              className="max-md:min-h-0 max-sm:min-h-11"
               placeholder="Type name (group member or custom)"
               // 88-33 Task 6 (fork 2, RULED 2026-08-17): person names cap at 50 AT
               // ENTRY (matches the username cap in userProfile); display always
@@ -219,8 +239,9 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           longer strands alone below. sm:+ keeps the original centered flow.
           AMENDED Phase 88.9-52 (R15b): items-end now holds at EVERY width (the centred flow from sm is
           gone: it put Remove 7px above the boxes' bottoms), and from md the group never wraps and takes
-          the row's 16px gap. The marker is at the top of this row. */}
-      <div className="flex flex-wrap md:flex-nowrap gap-2 md:gap-4 items-end">
+          the row's 16px gap. The marker is at the top of this row.
+          AMENDED Phase 88.9-52 (R4 D6): from sm in place of md. */}
+      <div className="flex flex-wrap sm:flex-nowrap gap-2 sm:gap-4 items-end">
         <div>
           {/* block at phone: label ABOVE the box (owner round 3) — inline-left
               labels were also silently eating Faction's stretch room. sm:+ keeps
@@ -241,7 +262,9 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               on Score and Faction, so both take the Input's own p-2 (42px tall from md up, the name
               box's height; 44px on a phone), chosen OVER keeping p-1 (34px boxes beside a 42px name
               box, the R15b complaint). The WIDTHS are kept: w-16 here, and Faction's phone stretch,
-              so the three still share one line at 375 (64 + 8 + at least 96 + 8 + 73 inside 291). */}
+              so the three still share one line at 375 (64 + 8 + at least 96 + 8 + 73 inside 291).
+              AMENDED Phase 88.9-52 (R4 D6): 42px from sm up now (was from md), 44px below sm: the
+              floor classes on each box, explained at the top of this row. */}
           <Input
             id={scoreId}
             name={scoreId}
@@ -249,12 +272,12 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             step="0.01"
             value={participant.score || ''}
             onChange={(e) => onParticipantChange(index, 'score', e.target.value)}
-            className="w-16"
+            className="w-16 max-md:min-h-0 max-sm:min-h-11"
             placeholder="0"
           />
         </div>
 
-        <div className="flex-1 min-w-24 md:flex-none">
+        <div className="flex-1 min-w-24 sm:flex-none">
           <label htmlFor={factionId} className="text-sm text-content-primary block mb-1">Faction</label>
           <Input
             id={factionId}
@@ -262,7 +285,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             type="text"
             value={participant.faction || ''}
             onChange={(e) => onParticipantChange(index, 'faction', e.target.value)}
-            className="w-full md:w-24"
+            className="w-full sm:w-24 max-md:min-h-0 max-sm:min-h-11"
             placeholder="Optional"
           />
         </div>
@@ -312,8 +335,8 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             refinement round 2 — a guest row's tight line was stranding Remove alone below).
             Remove stays outermost right: destructive control at the end of the row, matching the
             session-row Edit/Delete side (owner call 2026-08-04). sm:+ keeps the original flow
-            (from md since 88.9-52 R15b; Remove itself is untouched, 44px at every width). */}
-        <div className="flex gap-2 ml-auto md:ml-0">
+            (from md since 88.9-52 R15b, from sm again since R4 D6; Remove itself is untouched, 44px at every width). */}
+        <div className="flex gap-2 ml-auto sm:ml-0">
           {/* 88-33 Task 6: min-h-11 — Task 5 imposes the 44px floor on the
               equivalent controls elsewhere in this plan; leaving this one below
               it would be a same-plan inconsistency (r2/r3 triage). Grows the row

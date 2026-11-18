@@ -254,8 +254,11 @@ describe('C5a (88.9) — the form labels on Label 14', () => {
 // jsdom lays nothing out: the 44 by 44 box and the shared line at 375 are the phone spec's.
 // AMENDED Phase 88.9-52 (R15b, owner 2026-11-17): the 44px box is kept BELOW md only (max-md:min-h-11
 // / max-md:min-w-11); from md up the label is compact so the line is one text line. Still ONE checkbox.
+// AMENDED Phase 88.9-52 (R4 D6, owner page pick G6 = C, 2026-11-18): the one-line layout starts at sm
+// (640px), so the 44px box is kept below sm (max-sm:min-h-11 / max-sm:min-w-11) and the label is
+// compact from sm.
 describe('X40 + X43 (88.9-65) — one New Player box, one label ink', () => {
-  it('X40 + X43 (88.9-65): one New Player checkbox per row with no width-gated twin, its label a 44px box below md on the Participant Name line, and the four labels share text-content-primary', () => {
+  it('X40 + X43 (88.9-65): one New Player checkbox per row with no width-gated twin, its label a 44px box below sm on the Participant Name line, and the four labels share text-content-primary', () => {
     const tokensOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter((token) => token.length > 0);
     const rows: Array<[string, Record<string, unknown>]> = [
       ['a member row', { participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } }],
@@ -281,8 +284,9 @@ describe('X40 + X43 (88.9-65) — one New Player box, one label ink', () => {
       // Its label is a real box (the house 44px floor), on the Participant Name line.
       const label = box.closest('label');
       expect(label, `${what}: the checkbox sits inside its label`).not.toBeNull();
-      expect(tokensOf(label as Element)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'max-md:min-h-11', 'max-md:min-w-11']));
-      // R15b: compact from md up, so no unconditional floor may survive on the label.
+      expect(tokensOf(label as Element)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'max-sm:min-h-11', 'max-sm:min-w-11', 'gap-2', 'sm:gap-1.5']));
+      // R15b, then D6: compact from sm up, so no unconditional floor and no md-gated one may survive on the label.
+      expect(tokensOf(label as Element).filter((token) => /^(max-)?md:/.test(token))).toEqual([]);
       expect(tokensOf(label as Element)).not.toContain('min-h-11');
       expect(tokensOf(label as Element)).not.toContain('min-w-11');
       const line = (label as Element).parentElement as HTMLElement;
@@ -379,24 +383,42 @@ describe('R15c (88.9-52) — the three boxes take the type-in field look', () =>
 // (mb-1), the columns top-aligned so the three boxes sit level (same 20px label line, same 42px box),
 // Remove left at 44px and bottom-aligned with Score and Faction. Below md the row keeps two lines.
 // jsdom lays nothing out, so these are class pins; the measured sizes are the capture's (report j, row E).
-describe('R15b (88.9-52) — one line from md up, labels 4px above their boxes', () => {
+// AMENDED Phase 88.9-52 (R4 D6, owner page pick G6 = C, 2026-11-18): the one-line layout is taken from
+// sm (640px) in place of md. The capture's mock at 700 measured the name box about 335px, Score 64px,
+// Faction 96px, Remove 44px tall, rows 83px, labels 4px above the boxes, box bottoms level with
+// Remove. Every md: class on the row became sm:, and the three type-in boxes drop the Input's phone
+// floor from sm (42px, level with the read-only name box) and keep it below sm (44px).
+describe('R15b (88.9-52) — one line from sm up (R4 D6; from md until then), labels 4px above their boxes', () => {
   const tokensOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter((token) => token.length > 0);
 
-  it('R15b (88.9-52): the row is one line from md, two lines below it, and nothing is gated at sm', () => {
+  it('R15b + R4 D6 (88.9-52): the row is one line from sm, two lines below it, and nothing is gated at md', () => {
     for (const overrides of [{}, { participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } }]) {
       renderRow(overrides);
       const remove = screen.getByRole('button', { name: 'Remove' });
       const row = remove.closest('.border-line-strong') as HTMLElement;
-      expect(tokensOf(row)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'md:flex-row', 'md:items-start', 'gap-2', 'md:gap-4']));
-      const smGated = [row, ...Array.from(row.querySelectorAll('*'))].flatMap((el) =>
-        tokensOf(el).filter((token) => token.startsWith('sm:')),
+      expect(tokensOf(row)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'sm:flex-row', 'sm:items-start', 'gap-2', 'sm:gap-4']));
+      // Nothing in the row is left on the md breakpoint, in either direction, except the Input
+      // primitive's own phone floor, which each box switches off again (read below).
+      const mdGated = [row, ...Array.from(row.querySelectorAll('*'))].flatMap((el) =>
+        tokensOf(el).filter((token) => /^(max-)?md:/.test(token)),
       );
-      expect(smGated).toEqual([]);
+      expect(mdGated.filter((token) => token !== 'max-md:min-h-0')).toEqual([]);
+      // The type-in boxes: 44px below sm, the Input's own 42px from sm (level with the read-only name box).
+      for (const input of Array.from(row.querySelectorAll('input:not([type="checkbox"])'))) {
+        expect(tokensOf(input), input.id).toEqual(expect.arrayContaining(['max-md:min-h-0', 'max-sm:min-h-11']));
+        expect(tokensOf(input), input.id).not.toContain('max-md:min-h-11');
+      }
+      const name = row.firstElementChild as HTMLElement;
+      expect(tokensOf(name)).toEqual(['sm:flex-1', 'sm:min-w-0']);
 
       const score = screen.getByLabelText('Score');
       const controls = score.parentElement!.parentElement as HTMLElement;
       expect(controls.parentElement).toBe(row);
-      expect(tokensOf(controls)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'md:flex-nowrap', 'items-end', 'gap-2', 'md:gap-4']));
+      expect(tokensOf(controls)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'sm:flex-nowrap', 'items-end', 'gap-2', 'sm:gap-4']));
+      const faction = screen.getByLabelText('Faction');
+      expect(tokensOf(faction)).toEqual(expect.arrayContaining(['w-full', 'sm:w-24']));
+      expect(tokensOf(faction.parentElement as HTMLElement)).toEqual(['flex-1', 'min-w-24', 'sm:flex-none']);
+      expect(tokensOf(remove.parentElement as HTMLElement)).toEqual(['flex', 'gap-2', 'ml-auto', 'sm:ml-0']);
       expect(controls.contains(remove)).toBe(true);
       // Remove is left as it is: the 44px floor at every width.
       expect(tokensOf(remove)).toContain('min-h-11');

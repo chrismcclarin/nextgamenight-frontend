@@ -299,13 +299,16 @@ describe('add-participant focus (UAT row 542)', () => {
 // Phase 88.9-52, R15a (owner pick B, 2026-11-17): on a phone the participant list box is capped at
 // 24rem (384px), which shows two whole participant rows (the picked mock measured 2.13 rows of 179px;
 // the 15rem cap showed 1.33). From md up the 15rem cap is kept (rows are one 83px line there).
+// AMENDED Phase 88.9-52 (R4 D6, owner page pick G6 = C, 2026-11-18): the one-line rows start at sm
+// (640px), so the 15rem cap starts there with them.
 // jsdom lays nothing out: this pins the classes, the row count is the capture's.
 describe('R15a (88.9-52) — the participant list box shows two whole people on a phone', () => {
-  it('R15a (88.9-52): the list box is capped at 24rem below md and 15rem from md, and still scrolls', async () => {
+  it('R15a + R4 D6 (88.9-52): the list box is capped at 24rem below sm and 15rem from sm, and still scrolls', async () => {
     await renderModal();
     const box = screen.getByRole('group', { name: /^Participants/ });
     const tokens = box.className.split(/\s+/);
-    expect(tokens).toEqual(expect.arrayContaining(['max-h-96', 'md:max-h-60', 'overflow-y-auto']));
+    expect(tokens).toEqual(expect.arrayContaining(['max-h-96', 'sm:max-h-60', 'overflow-y-auto']));
+    expect(tokens).not.toContain('md:max-h-60');
     expect(tokens).not.toContain('max-h-60');
   });
 });

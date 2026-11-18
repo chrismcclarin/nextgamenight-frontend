@@ -1826,11 +1826,14 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                 cap is KEPT: a row is one 83px line there, so it already shows two and a half. A custom
                 row is 2px taller on a phone (its name is a 44px Input), so two custom rows lose the last
                 4px of the second row's bottom padding, never a control. Lowering the phone cap is a
-                decision, not a cleanup. */}
+                decision, not a cleanup.
+                AMENDED Phase 88.9-52 (R4 D6, owner page pick G6 = C, 2026-11-18): the one-line rows
+                start at sm (640px) now, so the 15rem cap starts there with them (at 700 the mock
+                measured 83px rows in a 240px box, about 2.9 rows); below sm the 24rem cap is kept. */}
             <div
               role="group"
               aria-labelledby="participants-section-label"
-              className="relative space-y-2 max-h-96 md:max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
+              className="relative space-y-2 max-h-96 sm:max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
             >
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
