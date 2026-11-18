@@ -2731,7 +2731,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     const inkKey = tokens.map((token) => /^text-([a-z0-9-]+)$/.exec(token)?.[1]).find((key) => key !== undefined);
     const washKey = tokens.map((token) => /^enabled-hover:bg-([a-z0-9-]+)$/.exec(token)?.[1]).find((key) => key !== undefined);
     expect(inkKey, 'the variant names an ink utility').toBe('content-status-error');
-    expect(washKey, 'the variant names an enabled-hover wash utility').toBe('surface-hover');
+    // AMENDED Phase 88.9-52 (R8c, owner 2026-11-17): the wash is the ghost family's own key; its
+    // light value is the secondary fill (row R8c below), so the light numbers above moved: the
+    // danger ink on the hover fill is 6.0210 (was 7.8393). Dark is unchanged (5.9413).
+    expect(washKey, 'the variant names an enabled-hover wash utility').toBe('surface-ghost-hover');
     expect(tokens, 'a ghost paints no fill at rest').toContain('bg-transparent');
 
     const themeBlock = blockOf('theme');
@@ -3136,6 +3139,45 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       membersSrc.match(/<ConfirmDialog \{\.\.\.promoteAdminGate\.dialogProps\}[^>]*confirmVariant="admin"/g) ?? [],
       'R6: the Make admin confirm asks for the admin variant',
     ).toHaveLength(1);
+  });
+
+  it('R8c (88.9-52): a hovered ghost button fills with the secondary fill in light (1.30 or more off the card), dark keeps the hover wash, and both ghost inks clear 4.5 on it in both themes', () => {
+    // Owner pick R8c "Fill" (2026-11-17): the light ghost hover was the near-white wash (warm-50,
+    // 1.0601 off the white card: "very hard to see"); it takes the visible secondary fill.
+    // Measured with src/lib/wcag.ts: light fill on the card 1.3802, ghost ink on it 7.5898, danger
+    // ink 6.0210; dark unchanged, wash on the card 1.2281, inks 7.0680 and 5.9413.
+    const buttonSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, '..', 'components', 'ui', 'Button.tsx'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    expect(runtimeProp('surface-ghost-hover')).toBe('--color-btn-ghost-hover');
+    // By reference, so the hover cannot drift from the fill it was ruled to be, nor dark from its wash.
+    expect(resolveRaw('light', '--color-btn-ghost-hover')).toBe(resolveRaw('light', '--color-btn-secondary-bg'));
+    expect(resolve('light', '--color-btn-ghost-hover')).toBe('#e3dad1');
+    expect(declIn(blockOf('dark'), '--color-btn-ghost-hover'), 'dark keeps the shared hover wash').toBe('var(--color-bg-hover)');
+    expectRatio('light', '--color-btn-ghost-hover', '--color-bg-card', 1.3, 'R8c the light hover fill on the card');
+    expectRatioBelow('light', '--color-bg-hover', '--color-bg-card', 1.1, 'R8c the retired light wash on the card');
+
+    let measured = 0;
+    for (const name of ['ghost', 'ghostDanger'] as const) {
+      const variant = new RegExp(`\\b${name}:\\s*'([^']*)'`).exec(buttonSrc);
+      expect(variant, `LOCATOR: no ${name} variant string in Button.tsx`).not.toBeNull();
+      const tokens = variant![1].split(/\s+/).filter((token) => token.length > 0);
+      expect(tokens, `${name} hovers on the ghost fill`).toContain('enabled-hover:bg-surface-ghost-hover');
+      expect(tokens, `${name} no longer names the shared wash`).not.toContain('enabled-hover:bg-surface-hover');
+      const inkKey = tokens.map((token) => /^text-([a-z0-9-]+)$/.exec(token)?.[1]).find((key) => key !== undefined);
+      expect(inkKey, `${name} names an ink utility`).toBeDefined();
+      for (const theme of ['light', 'dark'] as const) {
+        expectRatio(theme, runtimeProp(inkKey as string), '--color-btn-ghost-hover', 4.5, `R8c the ${name} ink on the hover fill`);
+        measured += 1;
+      }
+    }
+    expect(measured, 'anti-vacuity: 2 variants x 2 themes').toBe(4);
   });
 });
 

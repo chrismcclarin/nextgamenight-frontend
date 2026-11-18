@@ -539,6 +539,10 @@
      pair beside it in name (surface- / content-), so neither key self-references its runtime
      property. The rules read the runtime properties; the DECISION marker is at the btn-admin
      rule. */
+  /* 88.9-52 R8c (owner pick "Fill", 2026-11-17): the hovered fill of a ghost Button, its own key
+     (the runtime property is btn-ghost-hover, so no self-reference). Marker at the runtime
+     property in the light block. */
+  --color-surface-ghost-hover: var(--color-btn-ghost-hover);
   --color-surface-btn-admin: var(--color-btn-admin-bg);
   --color-content-btn-admin: var(--color-btn-admin-text);
   /* 88.9-59 X8 (owner pick G2): the home-card gear's fill and hover. The key names differ from the
@@ -1716,6 +1720,15 @@
   --color-btn-secondary-bg: #e3dad1;
   --color-btn-secondary-hover: #cdc1b4;
   --color-btn-secondary-text: var(--warm-800);
+  /* DECISION Phase 88.9-52 (R8c, owner pick "Fill", 2026-11-17): a hovered ghost Button fills
+     with the secondary button's resting fill in LIGHT, by reference (#e3dad1: 1.3802 off the
+     white card; ghost ink on it 7.5898, the ghostDanger ink 6.0210). Chosen OVER the shared
+     hover wash it wore (warm-50, 1.0601 off the card: on the owner's picture "very hard to
+     see") and OVER moving the shared wash itself (every row, card and menu hover in the app
+     reads it). Dark is unchanged: it names the shared wash there (purple-800, 1.2281 off the
+     card, inks 7.0680 and 5.9413). A ghost with its own call-site hover still wins over this
+     (tailwind-merge drops the variant's). Gate A row R8c. Changing this is a decision. */
+  --color-btn-ghost-hover: var(--color-btn-secondary-bg);
   /* DECISION Phase 88.9-58 (X60 De3, owner pick page 11, 2026-11-14: I would like the line to be
      bolder/heavier than the options presented to me): the secondary button's OWN edge is warm-400,
      1px — fill 1.6734, card 2.3096, page 1.7690 — chosen OVER the lighter steps on the pick page
@@ -2275,6 +2288,8 @@
   --color-btn-secondary-bg: var(--purple-800);
   --color-btn-secondary-hover: var(--purple-700);
   --color-btn-secondary-text: var(--warm-200);
+  /* 88.9-52 R8c: dark ghost hover is unchanged, the shared hover wash (light marker). */
+  --color-btn-ghost-hover: var(--color-bg-hover);
   /* Phase 88.9-58 (X60): both new secondary tokens are INERT in dark. The button's own edge is
      transparent (declared, not omitted, so the 1px never shifts, like the shared control edge
      below), and the page-fill token is purple-800, the dark secondary fill, so a page-ground

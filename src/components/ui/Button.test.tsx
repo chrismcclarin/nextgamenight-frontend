@@ -175,7 +175,7 @@ describe('Button', () => {
     expect(btn).toHaveClass(
       'bg-transparent',
       'text-content-status-error',
-      'enabled-hover:bg-surface-hover',
+      'enabled-hover:bg-surface-ghost-hover',
       'aria-disabled:text-content-muted'
     );
     for (const filled of ['btn-primary', 'btn-secondary', 'btn-danger', 'btn-accent']) {
@@ -347,7 +347,10 @@ describe('Button', () => {
       expect(
         ghost,
         "88.6-06 D10 — a NATIVELY-disabled ghost washed on hover until this narrowing: the shipped `aria-disabled:hover:bg-transparent` override only ever reached the ARIA half"
-      ).toContain('enabled-hover:bg-surface-hover');
+      ).toContain('enabled-hover:bg-surface-ghost-hover');
+      // AMENDED Phase 88.9-52 (R8c, owner 2026-11-17): the wash is the ghost family's own key (light:
+      // the visible secondary fill). The narrowing this test pins, enabled-hover, is unchanged.
+      expect(ghost).not.toContain('enabled-hover:bg-surface-hover');
       // Gate A test 53's pin (src/app/tokenContrast.test.ts ("53. 88.8 HIGH-A")) scans this same
       // string: the gated state is COLOUR, never element opacity.
       expect(ghost).toContain('aria-disabled:text-content-muted');

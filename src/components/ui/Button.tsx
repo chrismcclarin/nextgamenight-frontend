@@ -225,12 +225,20 @@ const buttonVariants = cva(
         // `.btn[aria-disabled]` marker). Its ground is the card; Gate A test 53
         // pins `--color-text-muted` on `--color-bg-card` in both themes and scans
         // this string.
+        // AMENDED Phase 88.9-52 (R8c, owner pick "Fill", 2026-11-17): the hover fill is the ghost family's
+        // own key, enabled-hover:bg-surface-ghost-hover (light: the visible secondary fill, 1.3802 off the
+        // card; dark: the shared wash, unchanged), chosen OVER the shared wash this string carried until
+        // now, which read: bg-transparent text-content-secondary enabled-hover:bg-surface-hover aria-disabled:text-content-muted
+        // (1.0601 off the light card). The enabled-hover gating and the gated ink are untouched. ghostDanger
+        // moves with it, so a Delete beside an Edit hovers the same. Where the notes above say the
+        // surface-hover wash, read this key.
         ghost:
-          'bg-transparent text-content-secondary enabled-hover:bg-surface-hover aria-disabled:text-content-muted',
+          'bg-transparent text-content-secondary enabled-hover:bg-surface-ghost-hover aria-disabled:text-content-muted',
         // DECISION Phase 88.9-65 (X49, owner 2026-11-13: Yes, That is fine.): ghost weight with the danger ink, composed like ghost, chosen OVER a per-site colour class (every future destructive ghost would copy it) and OVER the danger variant (its fill reverses F-6c).
         // Measured with src/lib/wcag.ts, ink on the card / on the hover wash: light 8.3101 / 7.8393, dark 7.2966 / 5.9413 (Gate A's X49 test reads this string). The gated ink is ghost's.
+        // AMENDED Phase 88.9-52 (R8c, owner 2026-11-17): the hover is the ghost fill key; on it the danger ink reads 6.0210 in light (was 7.8393 on the old wash), dark unchanged 5.9413. Chosen OVER leaving ghostDanger on the old wash (a Delete would hover differently from the Edit beside it).
         ghostDanger:
-          'bg-transparent text-content-status-error enabled-hover:bg-surface-hover aria-disabled:text-content-muted',
+          'bg-transparent text-content-status-error enabled-hover:bg-surface-ghost-hover aria-disabled:text-content-muted',
       },
       /* DECISION Phase 88.6-06 (C.1 / D-09): three choices are recorded here,
          each with the alternative it was chosen over.
