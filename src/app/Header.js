@@ -190,7 +190,9 @@ function Header(){
                     and OVER the fleet no-offset ring-ring (A10a, not picked).
                     Splitting, moving or renaming this landmark is a decision, not a cleanup. */}
                 <nav aria-label={MAIN_NAV_LABEL} className="w-full max-w-[100rem] mx-auto px-4 h-full">
-                    <div className="flex justify-between items-center h-full">
+                    {/* 88.9-52 (R21): this row is the query container the site name measures itself
+                        against (its DECISION marker is on the name below). */}
+                    <div className="@container flex justify-between items-center h-full">
                         {/* Brand */}
                         <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-header">
                             <DieLogo size={34} />
@@ -209,8 +211,41 @@ function Header(){
                                 width, the desktop wordmark shrinks a rung) and C10c (20 at every width,
                                 the phone wordmark grows a rung). The exemption is now an owner accept,
                                 not a pending look call; collapsing the pair is a decision, not a
-                                cleanup. */}
-                            <span className="text-lg md:text-xl font-bold tracking-tight text-white">
+                                cleanup.
+                                AMENDED Phase 88.9-52 (R21, owner 2026-11-17, pick Fit or logo; his
+                                words: "we should at least cap it as large as we can before it creates
+                                the line breaks. If that's 18, that's fine."): at enlarged text the
+                                name is held at the LARGEST size that keeps it on one line between the
+                                logo and the menu button, never below its ordinary 18px, and where
+                                18px cannot fit the logo stands alone. At ordinary text nothing
+                                changes: C10a's pair above still reads 18 on a phone and 20 from md
+                                (the phone rung is now the cap of the fit rule, 1.125rem, in place of
+                                the text-lg class; the line height is the same 1.75rem).
+                                HOW, with no script measuring: the row above is a query container.
+                                The size is clamp(18px, (row - 34px logo - 3.375rem - 8px) / 8,
+                                1.125rem): 3.375rem is the gap after the logo (gap-2.5) plus the menu
+                                button (p-2.5 round a w-6 icon), both of which grow with text, 8px is
+                                the clearance kept before the button, and 8 is the name's width in em
+                                (measured 7.87 at this weight and tracking, rounded up). The name
+                                never wraps. Under a row of 186px + 3.375rem, which is exactly where
+                                that size would pass under 18px (34 + 8 + 18 x 8), the name is
+                                visually hidden; it stays in the link, so the home link keeps its
+                                name for a screen reader.
+                                WHERE EACH STATE HOLDS (computed from the rule; the row is the screen
+                                less 2rem): at doubled text the logo stands alone under 358px wide
+                                (so at 320), the name is about 20px at 375 (the capture measured 20px
+                                as the largest fit there) and reaches its doubled 36px from 502px; at
+                                150% the logo stands alone under 315px and the name is 25.5px at 375.
+                                From md the menu button is gone and the md rung applies unchanged.
+                                REJECTED: the name at its text-scaled size (36px at doubled text: it
+                                broke onto 3 lines and spilled out of the bar, capture g); a flat
+                                18px cap at every enlarged size (the owner asked for the largest that
+                                fits); shrinking under 18px to stay on screen (13px at 320, smaller
+                                than at ordinary text); a script that measures the row (a class rule
+                                does it). Changing the constants without re-measuring the name, the
+                                logo size, the gap or the menu button is a decision, not a cleanup:
+                                Header.test.tsx (R21 lockstep) holds them together. */}
+                            <span className="text-[length:clamp(18px,calc((100cqw_-_34px_-_3.375rem_-_8px)_/_8),1.125rem)] leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only md:text-xl font-bold tracking-tight text-white">
                                 Next Game Night
                             </span>
                         </Link>

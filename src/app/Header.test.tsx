@@ -298,3 +298,107 @@ describe('Header — one Main navigation landmark (AC-18, copy row H5)', () => {
     expect(document.querySelectorAll('[inert]')).toHaveLength(0);
   });
 });
+
+// 88.9-52 R21 (owner 2026-11-17, pick Fit or logo): at enlarged text the site name is held at the
+// largest size that keeps it on one line between the logo and the menu button, never below its
+// ordinary 18px; where 18px cannot fit, the logo stands alone and the link keeps its name.
+// jsdom performs no layout and resolves no container query, so this reads the two class tokens
+// the rule is written in and works the same arithmetic the browser does, at the widths the
+// capture measured (20px fits at 375 with doubled text; at 320 with doubled text only 13px would).
+describe('R21 (88.9-52): the header site name fits one line at enlarged text, or gives way to the logo', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  const SIZE = /^text-\[length:clamp\((\d+)px,calc\(\(100cqw_-_(\d+)px_-_([\d.]+)rem_-_(\d+)px\)_\/_([\d.]+)\),([\d.]+)rem\)\]$/;
+  const HIDE = /^@max-\[calc\((\d+)px_\+_([\d.]+)rem\)\]:sr-only$/;
+  // Measured by capture j on the real element: the name is 157.4px wide at 20px and 102.3px at 13px.
+  const NAME_WIDTH_EM = 157.4 / 20;
+
+  const read = () => {
+    render(<Header />);
+    // The name is matched as a part: the logo inside the same link carries a label of its own.
+    const link = screen.getByRole('link', { name: /Next Game Night$/ });
+    const name = Array.from(link.querySelectorAll('span')).find((s) => s.textContent?.trim() === 'Next Game Night') as HTMLElement;
+    const cls = tokens(name);
+    const size = cls.map((t) => SIZE.exec(t)).find(Boolean);
+    const hide = cls.map((t) => HIDE.exec(t)).find(Boolean);
+    return { link, name, cls, size, hide };
+  };
+  const numbers = (m: RegExpExecArray) => m.slice(1).map(Number);
+
+  it('R21 tokens: the name carries one fit rule and one give-way rule, never wraps, and its row is the measured container', () => {
+    const { link, name, cls, size, hide } = read();
+    expect(size, 'the fit rule (a clamp on the row width) is on the name').toBeTruthy();
+    expect(hide, 'the give-way rule (visually hidden under a row width) is on the name').toBeTruthy();
+    expect(cls).toContain('whitespace-nowrap');
+    // The desktop rung of the owner-accepted pair (C10a) is kept; the phone rung is now the fit rule's cap.
+    expect(cls).toContain('md:text-xl');
+    expect(cls).not.toContain('text-lg');
+    // The row that holds the brand link and the menu button is the query container.
+    const row = link.parentElement as HTMLElement;
+    expect(tokens(row)).toContain('@container');
+    expect(row.contains(screen.getByRole('button', { name: 'Toggle menu' }))).toBe(true);
+    // Hidden from sight only: the name stays in the link, so the link keeps its name.
+    expect(link.contains(name)).toBe(true);
+  });
+
+  it('R21 lockstep: the constants in the two rules are the logo, the gap after it, the menu button and an 8px clearance', () => {
+    const { link, size, hide } = read();
+    const [minPx, logoPx, remTerm, clearPx, divisor, capRem] = numbers(size as RegExpExecArray);
+    const [hidePx, hideRem] = numbers(hide as RegExpExecArray);
+    expect(minPx).toBe(18);
+    expect(capRem * 16).toBe(18);
+    // The logo is a fixed px size: it does not grow with text.
+    const logo = link.querySelector('svg') as SVGElement;
+    expect(Number(logo.getAttribute('width'))).toBe(logoPx);
+    // gap-2.5 after the logo (0.625rem) plus the menu button, p-2.5 round a w-6 icon (2.75rem).
+    expect(tokens(link)).toContain('gap-2.5');
+    const menu = screen.getByRole('button', { name: 'Toggle menu' });
+    expect(tokens(menu)).toContain('p-2.5');
+    expect(tokens(menu.querySelector('svg') as Element)).toEqual(['w-6', 'h-6']);
+    expect(remTerm).toBe(0.625 + 0.625 * 2 + 1.5);
+    expect(clearPx).toBe(8);
+    // The divisor is the name's measured width in em, rounded up, so the clearance is never eaten.
+    expect(divisor).toBeGreaterThanOrEqual(NAME_WIDTH_EM);
+    expect(divisor).toBeLessThanOrEqual(NAME_WIDTH_EM * 1.03);
+    // The give-way width is exactly where the fit rule reaches its 18px floor.
+    expect(hideRem).toBe(remTerm);
+    expect(hidePx).toBe(logoPx + clearPx + minPx * divisor);
+  });
+
+  it('R21 arithmetic: 18px at ordinary text, about 20px at 375 with doubled text, the logo alone at 320 with doubled text', () => {
+    const { size, hide } = read();
+    const [minPx, logoPx, remTerm, clearPx, divisor, capRem] = numbers(size as RegExpExecArray);
+    const [hidePx, hideRem] = numbers(hide as RegExpExecArray);
+    // The row is the screen less the nav's px-4 on each side (1rem each).
+    const row = (viewport: number, rem: number) => viewport - 2 * rem;
+    const shown = (viewport: number, rem: number) => row(viewport, rem) >= hidePx + hideRem * rem;
+    const fontPx = (viewport: number, rem: number) =>
+      Math.min(Math.max(minPx, (row(viewport, rem) - logoPx - remTerm * rem - clearPx) / divisor), capRem * rem);
+    // What is left between the end of the name and the menu button.
+    const clearance = (viewport: number, rem: number) =>
+      row(viewport, rem) - logoPx - remTerm * rem - NAME_WIDTH_EM * fontPx(viewport, rem);
+
+    // Ordinary text: nothing changes, at either phone width.
+    expect(shown(375, 16)).toBe(true);
+    expect(fontPx(375, 16)).toBe(18);
+    expect(shown(320, 16)).toBe(true);
+    expect(fontPx(320, 16)).toBe(18);
+    // Doubled text at 375: the capture measured 20px as the largest size with 8px clear.
+    expect(shown(375, 32)).toBe(true);
+    expect(fontPx(375, 32)).toBeGreaterThanOrEqual(20);
+    expect(fontPx(375, 32)).toBeLessThan(20.5);
+    expect(clearance(375, 32)).toBeGreaterThanOrEqual(8);
+    // Doubled text at 320: 18px cannot fit (the capture measured 13px), so the logo stands alone.
+    expect(shown(320, 32)).toBe(false);
+    // Wide enough, doubled text: the name reaches its doubled size (36px) and still clears the button.
+    expect(fontPx(600, 32)).toBe(36);
+    expect(clearance(600, 32)).toBeGreaterThanOrEqual(8);
+    // Never under 18px while shown, at any width and text size on the way.
+    for (const rem of [16, 20, 24, 28, 32, 40]) {
+      for (let viewport = 280; viewport <= 767; viewport += 1) {
+        if (!shown(viewport, rem)) continue;
+        expect(fontPx(viewport, rem)).toBeGreaterThanOrEqual(18);
+        expect(clearance(viewport, rem), viewport + ' at ' + rem).toBeGreaterThanOrEqual(8);
+      }
+    }
+  });
+});
