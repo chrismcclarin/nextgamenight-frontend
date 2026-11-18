@@ -9,10 +9,11 @@
  *
  * THE BREAKPOINT (moved here from EventScheduler.tsx by 88.6.1-09): the line every
  * phone/desktop render fork that reads this hook branches on — Tailwind's `md`, so "md and below"
- * is `max-width: 767px`. The same query is also read imperatively by the game title's two expand
- * handlers, both gated on the state src/app/gameDetail/page.js ("const [titleOverflows, setTitleOverflows] = useState(false);")
- * declares: a one-shot read of the current match inside a click, with no state and no
- * subscription — the same query, NOT the same shape.
+ * is `max-width: 767px`. Until Phase 88.9-52 (R4 C1) the same query was also read imperatively
+ * by the game title's two expand handlers: a one-shot read of the current match inside a click,
+ * with no state and no subscription. Those handlers went when the title's clamp did
+ * (src/app/gameDetail/page.js ("AMENDED Phase 88.9-52 (R4 C1, accessibility once-over A2, owner 2026-11-18): the TITLE")),
+ * so this hook is now the query's only reader.
  *
  * A VIEWPORT breakpoint, not a container query, and deliberately so: `md` is this codebase's
  * phone/desktop line and every sibling on these surfaces switches on it (`UserHomePage.js`,

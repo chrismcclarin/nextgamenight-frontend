@@ -2956,6 +2956,8 @@ describe('gameDetail session date filter bounds (Phase 88.6-47)', () => {
 // plan 88.6.1-52), both inside the game-TITLE overflow
 // handlers on the page body — neither is reachable from any dialog rendered here. One tree, one run
 // per rule set per dialog, no resize.
+// AMENDED Phase 88.9-52 (R4 C1): those two reads are gone with the title clamp, so the page now
+// calls window.matchMedia nowhere and the heading of this paragraph holds outright.
 //
 // THIS FILE HAS NO STACKED `ConfirmDialog`-over-`Modal` STATE, contrary to RESEARCH §Q1's reading
 // of its two imports: `removeParticipantGate` (`page.js:1104`, `const removeParticipantGate`) is `tier: 'two-tap'` and renders
