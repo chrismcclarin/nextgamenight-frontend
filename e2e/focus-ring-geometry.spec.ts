@@ -401,7 +401,7 @@ async function answerFriendsLists(page: Page) {
 }
 
 function brandLink(page: Page): Locator {
-  // The logo's own label joins the link's accessible name, so the name is matched by a pattern.
+  // Matched by a pattern from when the logo carried a label of its own (decoration since 88.9-52; the pattern still holds).
   return page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: /Next Game Night/ });
 }
 

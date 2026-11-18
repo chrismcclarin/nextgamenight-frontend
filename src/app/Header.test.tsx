@@ -314,7 +314,8 @@ describe('R21 (88.9-52): the header site name fits one line at enlarged text, or
 
   const read = () => {
     render(<Header />);
-    // The name is matched as a part: the logo inside the same link carries a label of its own.
+    // Matched as a pattern from when the logo carried a label of its own; the logo is decoration
+    // since 88.9-52 and the exact name is pinned in the last describe of this file.
     const link = screen.getByRole('link', { name: /Next Game Night$/ });
     const name = Array.from(link.querySelectorAll('span')).find((s) => s.textContent?.trim() === 'Next Game Night') as HTMLElement;
     const cls = tokens(name);
@@ -399,6 +400,30 @@ describe('R21 (88.9-52): the header site name fits one line at enlarged text, or
         expect(fontPx(viewport, rem)).toBeGreaterThanOrEqual(18);
         expect(clearance(viewport, rem), viewport + ' at ' + rem).toBeGreaterThanOrEqual(8);
       }
+    }
+  });
+});
+
+// 88.9-52 (found by the R21 fixer): the logo inside the home link carried a label of its own with
+// the legacy name of one group, so the link was spoken with that name in front of the product's.
+// The logo is decoration there: the link's name is the product name, once, and nothing else.
+describe('the header home link is named by the product name alone (88.9-52)', () => {
+  it('brand name: signed in and signed out, the home link is named exactly Next Game Night and the logo is hidden from assistive tech', () => {
+    for (const signedIn of [true, false]) {
+      auth.user = signedIn ? { sub: 'auth0|me', name: 'Me' } : undefined;
+      render(<Header />);
+      // A string name is an exact match of the whole computed name.
+      const link = screen.getByRole('link', { name: 'Next Game Night' });
+      expect(link).toHaveAttribute('href', '/');
+      const logo = link.querySelector('svg') as SVGElement;
+      expect(logo).not.toBeNull();
+      expect(logo).toHaveAttribute('aria-hidden', 'true');
+      expect(logo).not.toHaveAttribute('aria-label');
+      expect(document.querySelector('[aria-label*="Periodic"]')).toBeNull();
+      // The give-way state of R21 keeps the name in the link as text, so the name does not depend
+      // on the word being drawn: the span is still the link's only text.
+      expect(link.textContent?.trim()).toBe('Next Game Night');
+      cleanup();
     }
   });
 });

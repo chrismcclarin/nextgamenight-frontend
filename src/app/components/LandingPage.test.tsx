@@ -148,3 +148,17 @@ describe('Phase 88.9-33 — the landing hero (O01a, L1b, B4a)', () => {
     expect(tokensOf(getStarted)).toContain('focus-visible:ring-offset-surface-hero');
   });
 });
+
+// 88.9-52: the hero logo carried a label with the legacy name of one group. It is decoration: it
+// sits in no link and no heading, and the product is named by the header's home link above it.
+describe('the landing hero logo is decoration (88.9-52)', () => {
+  it('hero logo: hidden from assistive tech, with no label, and no image role on the page carries a name', () => {
+    const { root } = renderHero();
+    const logo = root.querySelector('svg[viewBox="0 0 40 40"]') as SVGElement;
+    expect(logo).not.toBeNull();
+    expect(logo).toHaveAttribute('aria-hidden', 'true');
+    expect(logo).not.toHaveAttribute('aria-label');
+    expect(document.querySelector('[aria-label*="Periodic"]')).toBeNull();
+    expect(screen.queryByRole('img')).toBeNull();
+  });
+});

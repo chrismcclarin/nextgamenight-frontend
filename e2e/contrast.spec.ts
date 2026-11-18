@@ -590,7 +590,7 @@ async function bellAcceptRing(page: Page, theme: 'light' | 'dark'): Promise<void
 async function brandLinkRing(page: Page, theme: 'light' | 'dark'): Promise<void> {
   await page.goto('/');
   await assertTheme(page, theme);
-  // The logo SVG's aria-label joins the link's accessible name, so the name is matched by a regex.
+  // Matched by a regex from when the logo carried a label of its own (decoration since 88.9-52; the pattern still holds).
   const link = page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: /Next Game Night/ });
   await expect(link, `A10c (${theme}): the header brand link is not visible.`).toBeVisible({ timeout: 15_000 });
   const label = `header brand link focus ring (A10c, ${theme})`;

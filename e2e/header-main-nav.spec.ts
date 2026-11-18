@@ -57,7 +57,7 @@ async function expectHouseRing(page: Page, link: Locator, label: string): Promis
 async function desktopLinkRings(page: Page, theme: 'light' | 'dark'): Promise<void> {
   const main = page.getByRole('navigation', { name: 'Main', exact: true });
   await test.step(`the brand link (${theme})`, async () => {
-    // The logo SVG's aria-label joins the link's accessible name, so the name is matched by a regex.
+    // Matched by a regex from when the logo carried a label of its own (decoration since 88.9-52; the pattern still holds).
     const brand = main.getByRole('link', { name: /Next Game Night/ });
     await expectHouseRing(page, brand, `desktop header brand link focus ring (A10c, ${theme})`);
   });
