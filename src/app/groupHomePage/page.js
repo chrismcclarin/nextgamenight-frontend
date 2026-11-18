@@ -1655,6 +1655,9 @@ function GroupHomePage(){
                                 de-dupe under tailwind-merge, so both would survive.
                                 AMENDED Phase 88.9-64 (X30): the call site sets the hover;
                                 tailwind-merge drops the ghost one. Item 2 stands.
+                                AMENDED Phase 88.9-52 (R8c, owner 2026-11-17): the ghost variant's hover is no longer the class named in this item. It is `enabled-hover:bg-surface-ghost-hover`, the ghost family's own key:
+                                src/components/ui/Button.tsx ("the hover fill is the ghost family's")
+                                Nothing changes on this control: its call-site hover (X30, above and at the className below) is kept by that recorded decision and still replaces the ghost one in the merge. The X30 marker's ghost-hover numbers measured the former shared wash.
                              2. `dark:hover:bg-white/20` becomes `dark:enabled-hover:bg-white/20`,
                                 and this one is LOAD-BEARING rather than tidy. `enabled-hover`
                                 compiles to `&:not(:disabled):not([aria-disabled='true']):hover`
