@@ -215,11 +215,10 @@ const MATCH_MEDIA_SITES: ExemptionRoster = {
     why: 'subscribes to (hover: none), input modality that gates swipe, a different media feature from the viewport width this hook owns',
     owner: { kind: 'decision', marker: MARKER },
   },
-  'app/gameDetail/page.js': {
-    sites: 2,
-    why: 'one-shot reads inside the game title\'s two expand click handlers; a subscription would re-render the page for a value read only on click',
-    owner: { kind: 'decision', marker: MARKER },
-  },
+  // REMOVED by 88.9-52 R4 C1 (owner 2026-11-18): app/gameDetail/page.js carried sites: 2, the
+  // one-shot reads inside the game title's two expand click handlers. The title no longer
+  // clamps or expands, so the handlers and both reads are gone. The roster is exact in both
+  // directions, so the entry is deleted, not zeroed.
   // ADDED by quick-261026-pi6 (2026-10-26), surfaced by the full-suite run: the card tap's scroll.
   'app/groupPlanning/page.js': {
     sites: 1,
@@ -234,11 +233,8 @@ const PHONE_QUERY_LITERAL_SITES: ExemptionRoster = {
     why: 'the exported PHONE_MEDIA_QUERY constant, the one place the breakpoint is written for a subscription',
     owner: { kind: 'decision', marker: MARKER },
   },
-  'app/gameDetail/page.js': {
-    sites: 2,
-    why: 'the two click-time reads of the game title expand write the breakpoint inline; they are not subscriptions',
-    owner: { kind: 'decision', marker: MARKER },
-  },
+  // REMOVED by 88.9-52 R4 C1: app/gameDetail/page.js carried sites: 2 (the same two click-time
+  // reads, which wrote the breakpoint inline). The hook's constant is the only place it is written.
 };
 
 describe('one phone-viewport mechanism (88.6.1-09, D-16)', () => {
