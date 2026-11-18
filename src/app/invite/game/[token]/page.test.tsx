@@ -14,6 +14,8 @@
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only,
 // so a `.js` sibling would be silently never run.
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
+import { join as join_path } from 'node:path';
 import { render, screen, cleanup, act, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -618,6 +620,43 @@ describe('invite/game/[token] — Q69 the failure glyph by cause (88.9-52)', () 
     expect(screen.queryByText('Check your connection and try again.')).toBeNull();
     expect(screen.getByRole('link', { name: 'Go Home' })).toHaveAttribute('href', '/');
     expect(join()).toHaveBeenCalledTimes(1);
+  });
+
+  // Phase 88.9-52 (R27, owner 2026-11-17 "Yes"): the auth layer answers every signed-in route 410
+  // account_deleted for a deleted account, so the join has TWO 410s. The status alone sent this one
+  // to the passed-game-night card, which is untrue for this person.
+  it('R27 (88.9-52): a join 410 account_deleted draws the red X card with the register sentence, not the passed game night, and no contact line', async () => {
+    const CONTACT = 'Contact the group owner for a new invite link.';
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(EVENT);
+    join().mockRejectedValue(new ApiError('HTTP error! status: 410', 'account_deleted', 410));
+    const { container } = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'This invite is no longer valid' });
+    expectTone(container, 'red', 'join 410 account_deleted');
+    expect(screen.queryByRole('heading', { name: 'Game Night Has Passed' })).toBeNull();
+    expect(screen.getByText('This account has already been deleted.')).toBeInTheDocument();
+    expect(screen.queryByText(CONTACT), 'a new invite link cannot help a deleted account').toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go Home' })).toHaveAttribute('href', '/');
+    expect(screen.getByTestId('game-invite-page-status').textContent).toBe(
+      'This invite is no longer valid This account has already been deleted.'
+    );
+    expect(join()).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    // The other permanent card keeps its contact line: a dead link is what a new link fixes.
+    preview().mockReset();
+    join().mockReset();
+    preview().mockResolvedValue(EVENT);
+    join().mockRejectedValue(postAliasDropError(404, 'not_found'));
+    render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'This invite is no longer valid' });
+    expect(screen.getByText(CONTACT)).toBeInTheDocument();
+    cleanup();
+
+    // The sentence is the register's, read by code: the page file holds no copy of it.
+    const source = readFileSync(join_path(process.cwd(), 'src/app/invite/game/[token]/page.js'), 'utf8');
+    expect(source).not.toContain('already been deleted');
   });
 });
 

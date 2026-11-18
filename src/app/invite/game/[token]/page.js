@@ -76,6 +76,14 @@ function GameInvitePage() {
      classifier's rule below). No string was added or changed. Showing the line for another cause
      is a decision, not a cleanup. */
   const [connectionHint, setConnectionHint] = useState(false);
+  /* DECISION Phase 88.9-52 (R27, owner 2026-11-17 "Yes"): a join answered 410 with the envelope
+     code account_deleted lands on the red X permanent card with the register's own sentence for
+     that code (getFetchErrorMessage) and WITHOUT the contact-the-group-owner line, chosen OVER
+     the grey passed-game-night card the status alone selected (untrue for this person) and OVER
+     keeping the contact line (a new invite link cannot help a deleted account). This flag is
+     what leaves that line out; it is set in the join catch only (the preview is public and has
+     no account). Showing the contact line on this card is a decision, not a cleanup. */
+  const [accountDeleted, setAccountDeleted] = useState(false);
 
   // Classify a thrown error as transient (retryable) or permanent. Used by
   // both the preview fetch catch and the join POST catch so backend-down /
@@ -116,7 +124,15 @@ function GameInvitePage() {
        REJECTED: the review's gated shape (keep the text arms, run them only when there is no
        HTTP status). Without a status `isPermanent` is already false, so the gated arms could
        never change the answer — dead code defended by a comment.
-       Re-adding a message-text test to this classifier is a decision, not a cleanup. */
+       Re-adding a message-text test to this classifier is a decision, not a cleanup.
+
+       AMENDED Phase 88.9-52 (R27, owner 2026-11-17): this classifier still decides on the status
+       alone, and a 410 account_deleted is permanent by it. What changed is the EXPIRED arm in the
+       join catch below: it no longer keys on the 410 status alone, because the measurement above
+       missed a second 410 on the join route, the auth layer's tombstone refusal
+       (backend:Sonnet/middleware/auth0.js, sendError account_deleted, on every signed-in route).
+       That arm now reads the envelope code, the remedy the 88.6-23 and 88.6-58 markers named;
+       REJECTED again: matching the backend prose. */
     const isPermanent = httpStatus === 404 || httpStatus === 410;
     // Ambiguous → treat as transient. findOrCreate makes retry idempotent.
     return isPermanent ? 'permanent' : 'transient';
@@ -160,7 +176,11 @@ function GameInvitePage() {
            so 410 on this call means "passed" and nothing else. If a second 410 is ever added
            to that route, this branch needs an envelope `code` — it does not need the prose
            back. Pinned by `page.test.tsx`, whose 410/404 arms are built with the
-           POST-alias-drop message shape so a green run proves the branch is alias-independent. */
+           POST-alias-drop message shape so a green run proves the branch is alias-independent.
+           AMENDED Phase 88.9-52 (R27, owner 2026-11-17): unchanged HERE, and still status-only:
+           the preview is public (no auth layer in front of it), so its one 410 is still the
+           has-passed gate. The JOIN catch below now reads the envelope code, because its route
+           does have a second 410 (account_deleted). */
         if (err?.status === 410) {
           setStatus('expired');
           return;
@@ -242,10 +262,21 @@ function GameInvitePage() {
         // 2026-09-28). Chosen OVER rendering the backend `message` (R1: never upstream text)
         // and OVER the register's generic 410 line (wrong copy for a known, authored state).
         // A second 410 on that route would need an envelope `code`, not prose.
-        if (err?.status === 410) {
+        // AMENDED Phase 88.9-52 (R27, owner 2026-11-17): the join route HAS a second 410. The
+        // auth layer in front of every signed-in route answers a deleted account 410 with the
+        // envelope code account_deleted, so "the join handler's only 410" above is true of the
+        // handler and false of the route. Chosen: the expired arm skips that code, which then
+        // falls to the permanent card below with the register's account_deleted sentence;
+        // superseded: selecting expired on the 410 status alone (88.6-58, and the 88.6-23
+        // precondition it copied). Rejected: the passed-game-night card for a deleted account
+        // (the owner saw it and ruled it untrue), and matching prose. The has-passed 410 carries
+        // no envelope code and still lands on expired.
+        if (err?.status === 410 && err?.code !== 'account_deleted') {
           setStatus('expired');
           return;
         }
+        // R27 (88.9-52): the permanent card leaves its contact line out for a deleted account.
+        setAccountDeleted(err?.code === 'account_deleted');
         // X68 (88.9-66): Retry shows on the transient branch only, so only that branch takes the
         // beside-retry form; the permanent branch keeps the register line.
         const permanent = classifyError(err) === 'permanent';
@@ -616,9 +647,12 @@ function GameInvitePage() {
               {PERMANENT_HEADLINE}
             </Heading>
             <p className="text-content-secondary mb-6">{error}</p>
-            <p className="text-sm text-content-muted mb-6">
-              Contact the group owner for a new invite link.
-            </p>
+            {/* R27 (88.9-52): left out for a deleted account; see the marker on accountDeleted. */}
+            {!accountDeleted && (
+              <p className="text-sm text-content-muted mb-6">
+                Contact the group owner for a new invite link.
+              </p>
+            )}
             <Button asChild variant="primary" size="default" className="w-full text-center">
               <Link href="/">
                 Go Home
