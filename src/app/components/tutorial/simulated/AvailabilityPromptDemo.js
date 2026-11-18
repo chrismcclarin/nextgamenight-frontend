@@ -20,7 +20,7 @@ import { AVAILABILITY_DRAG_PATH } from '../mockData';
  *   1-N - drag advances to AVAILABILITY_DRAG_PATH[N-1]
  *   AVAILABILITY_DRAG_PATH.length+1 - all painted, "Save" button highlighted
  *
- * @param {number} stage - Current animation stage. 0 = empty.
+ * @param {{ stage: number }} props - `stage` is the current animation stage. 0 = empty.
  */
 export default function AvailabilityPromptDemo({ stage }) {
   // How many cells have been "painted" so far (0..AVAILABILITY_DRAG_PATH.length)
