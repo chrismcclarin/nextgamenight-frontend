@@ -1595,10 +1595,15 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       // transcribed in lockstep from the component: ONE item drops the list's vertical padding and
       // clips to its corners (the item keeps px-3); SEVERAL items keep py-1, each row is px-1 and
       // each item px-2 rounded-sm. buildList below picks by its own label count, as the component does.
+      // AMENDED Phase 88.9-52 (R4 L2, after G3 and G4): three constants re-transcribed in lockstep from
+      // src/app/components/KebabMenu.js ("soloItem ? 'py-0 overflow-hidden' : 'py-1 space-y-0.5'"): the list
+      // carries scroll-m-2 (G4), several rows sit 2px apart (space-y-0.5, G3) and a resting item hovers on
+      // the gated ghost wash (G3). The replica had kept the pre-G3 strings, so it measured a menu 4px
+      // shorter than the shipped three-item one.
       const LIST_BASE =
-        'absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg';
+        'absolute right-0 top-full mt-1 z-20 scroll-m-2 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg';
       const LIST_SOLO = 'py-0 overflow-hidden';
-      const LIST_SEVERAL = 'py-1';
+      const LIST_SEVERAL = 'py-1 space-y-0.5';
       const ROW_SEVERAL = 'px-1';
       const ITEM_HEAD = 'w-full min-h-11 text-left';
       const ITEM_SOLO = 'px-3';
@@ -1607,7 +1612,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       const ITEM_TAIL =
         'py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
       const ARMED_EXTRA = 'text-content-status-error bg-status-error-subtle font-semibold';
-      const RESTING_EXTRA = 'text-content-primary hover:bg-surface-hover';
+      const RESTING_EXTRA = 'text-content-primary enabled-hover:bg-surface-ghost-hover';
 
       const buildList = (labels: Array<{ text: string; armed?: boolean }>) => {
         const solo = labels.length === 1;
