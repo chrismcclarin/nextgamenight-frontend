@@ -300,3 +300,37 @@ describe('X40 + X43 (88.9-65) — one New Player box, one label ink', () => {
     }
   });
 });
+
+// Phase 88.9-52, R15c (owner pick "Field", 2026-11-17): the three boxes of the row share the type-in
+// field look, the house Input's (rounded-btn, border-input, bg-surface-input, p-2). Score and Faction
+// drop their p-1 override; the read-only member name box takes the same look and stays a plain div.
+// jsdom lays nothing out: the 42px heights are computed from the classes (16px text at 1.5 = 24, plus
+// 16 padding, plus 2 border), not measured here.
+describe('R15c (88.9-52) — the three boxes take the type-in field look', () => {
+  const tokensOf = (el: Element) => el.className.split(/\s+/).filter((token) => token.length > 0);
+  const FIELD_LOOK = ['p-2', 'rounded-btn', 'border', 'border-input', 'bg-surface-input', 'text-base', 'text-content-primary'];
+
+  it('R15c (88.9-52): Score and Faction are the house Input with its own padding, no p-1 override', () => {
+    renderRow();
+    for (const name of ['Score', 'Faction']) {
+      const tokens = tokensOf(screen.getByLabelText(name));
+      expect(tokens, name).toEqual(expect.arrayContaining(FIELD_LOOK));
+      expect(tokens, name).not.toContain('p-1');
+    }
+    expect(tokensOf(screen.getByLabelText('Score'))).toContain('w-16');
+  });
+
+  it('R15c (88.9-52): the read-only member name box wears the same look and is still not a control', () => {
+    renderRow({ participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } });
+    const box = screen.getByText('Alice', { exact: false }).closest('div')!;
+    const tokens = tokensOf(box);
+    expect(tokens).toEqual(expect.arrayContaining(FIELD_LOOK));
+    for (const old of ['border-line', 'rounded-sm', 'bg-surface-elevated']) {
+      expect(tokens, old).not.toContain(old);
+    }
+    expect(box.tagName).toBe('DIV');
+    expect(box).not.toHaveAttribute('tabindex');
+    expect(box).not.toHaveAttribute('role');
+    expect(screen.queryByRole('textbox', { name: 'Participant Name' })).toBeNull();
+  });
+});

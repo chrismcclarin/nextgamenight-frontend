@@ -85,7 +85,19 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
              so the read-only branch was the odd one out at 14, and a member row and a custom row
              printed the same name at two different sizes. Everything else in this row is §4.3's
              metadata/label case and does NOT move. */
-          <div className="p-2 border border-line rounded-sm bg-surface-elevated text-content-primary text-base break-words">
+          /* DECISION Phase 88.9-52 (R15c, owner pick Field, 2026-11-17): this read-only box wears the
+             type-in field look, the house Input's own classes (rounded-btn, border-input,
+             bg-surface-input, p-2; 42px tall at one line), chosen OVER the lighter display look it had
+             (border-line, rounded-sm, bg-surface-elevated), which the first mock copied ONTO Score and
+             Faction and made the editable fields read as displays (capture j, item 3). It stays a
+             plain div: no caret, no tab stop, no focus ring, and its label is a span. No recorded
+             house look for a read-only field exists (searched the ui primitives and globals.css), so
+             none is added; giving it a different fill or edge again is a decision, not a cleanup.
+             The phone floor (max-md:min-h-11) is NOT copied: nothing here is tappable, and the
+             picked phone mock keeps this box at 42px. Edge against the list box fill around it (the same
+             input fill): 4.11 light, 2.79 dark, exactly what Score and Faction already measure here
+             (was 2.31 light, 1.45 dark with the lighter edge). */
+          <div className="p-2 border border-input rounded-btn bg-surface-input text-content-primary text-base break-words">
             {participant.username || `Participant ${index + 1}`}
             {participant.is_guest && (
               /* §4.5's pill/chip-ink row: 600/500 -> 700, with 400 REJECTED because a FILLED
@@ -185,7 +197,12 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               Remove below) — see the block comment above this row. Widening them back to the
               primitive default re-breaks that layout; it is a decision, not a cleanup. The
               primitive's `max-md:min-h-11` touch floor IS taken, because that grows the row
-              vertically, which the tuning never constrained. */}
+              vertically, which the tuning never constrained.
+              AMENDED Phase 88.9-52 (R15c, owner pick Field, 2026-11-17): the p-1 override is DROPPED
+              on Score and Faction, so both take the Input's own p-2 (42px tall from md up, the name
+              box's height; 44px on a phone), chosen OVER keeping p-1 (34px boxes beside a 42px name
+              box, the R15b complaint). The WIDTHS are kept: w-16 here, and Faction's phone stretch,
+              so the three still share one line at 375 (64 + 8 + at least 96 + 8 + 73 inside 291). */}
           <Input
             id={scoreId}
             name={scoreId}
@@ -193,7 +210,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             step="0.01"
             value={participant.score || ''}
             onChange={(e) => onParticipantChange(index, 'score', e.target.value)}
-            className="w-16 p-1"
+            className="w-16"
             placeholder="0"
           />
         </div>
@@ -206,7 +223,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             type="text"
             value={participant.faction || ''}
             onChange={(e) => onParticipantChange(index, 'faction', e.target.value)}
-            className="w-full sm:w-24 p-1"
+            className="w-full sm:w-24"
             placeholder="Optional"
           />
         </div>
