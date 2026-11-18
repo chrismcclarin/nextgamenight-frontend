@@ -134,8 +134,14 @@ function renderMemberName(extra?: { onParentKeyDown?: (e: React.KeyboardEvent) =
   return render(
     <FriendshipContext.Provider value={friendshipValue as never}>
       {/* mirrors grouplist.js: the name renders INSIDE a role="button" card that has its
-          own Enter/Space handler. This is the nesting the stopPropagation pin is about. */}
-      <div role="button" tabIndex={0} onKeyDown={extra?.onParentKeyDown}>
+          own Enter/Space handler. This is the nesting the stopPropagation pin is about.
+          AMENDED 88.9-52 R4 C5: the card carries a label of its own. Unlabelled, its name is
+          computed from its contents, and that was only ever different from the trigger's name
+          because the add-friend control inside it held a text plus; the plus is a drawn icon
+          now, so the two names met. The shipped card is labelled too
+          (src/app/components/grouplist.js ("an explicit label REPLACES the name computed")), and the sibling harness in
+          ClickableMemberName.indicator.test.tsx labels its card for the same reason. */}
+      <div role="button" tabIndex={0} aria-label="open group" onKeyDown={extra?.onParentKeyDown}>
         <ClickableMemberName userId="u1" username="ada" />
       </div>
     </FriendshipContext.Provider>,

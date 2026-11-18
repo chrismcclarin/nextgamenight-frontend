@@ -2984,7 +2984,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     const src = withoutComments(
       fs.readFileSync(path.join(__dirname, 'components', 'ClickableMemberName.js'), 'utf8'),
     );
-    const cls = /rounded-full bg-([a-z0-9-]+) text-([a-z0-9-]+) text-sm font-bold/.exec(src);
+    // AMENDED 88.9-52 R4 C5: the plus is a drawn icon now, so the two text-only classes that
+    // closed this locator are gone from the call site; cursor-pointer is the next token. The
+    // icon strokes in the button's own colour, so the pair read here is still what is painted.
+    const cls = /rounded-full bg-([a-z0-9-]+) text-([a-z0-9-]+) cursor-pointer/.exec(src);
     expect(cls, 'LOCATOR: the round add-friend button names a fill and a glyph colour').not.toBeNull();
     const themeBlock = blockOf('theme');
     const runtimeProp = (key: string): string => {
