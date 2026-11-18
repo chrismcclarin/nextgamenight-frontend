@@ -17,14 +17,19 @@
  * plan 88.6.1-70's refresh notice, and the full banner shows only while nothing is retained.
  */
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'America/New_York', setTimezone: vi.fn() }),
 }));
-vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
+// 88.9-52 R4 C3: the stub was a null; it now draws an empty marker that carries the class string
+// the card hands the picture, so the test below can read it. It has no text and no role.
+vi.mock('@/app/components/SafeImage', () => ({
+  default: ({ className }: { className?: string }) =>
+    React.createElement('span', { 'data-testid': 'card-picture', className }),
+}));
 
 import GroupGamesList from './GroupGamesList';
 import { ApiError } from '@/lib/api';
@@ -226,6 +231,47 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     const card = screen.getByRole('heading', { level: 3, name: 'Wingspan' });
     expect(card).toHaveClass('text-base', 'font-bold');
     expect(card).not.toHaveClass('text-xl');
+  });
+
+  // 88.9-52 R4 C3 (owner 2026-11-18: "lose the picture at the large text"). At 320 with text at
+  // 200% the card's words had 46px beside a 128px picture and every word broke mid-word. The card
+  // is a query container and the picture is not drawn while the card's inside is under 15rem.
+  // THE SUM the threshold is: the picture (w-16, 4rem) + the row gap (gap-4, 1rem) + a 10rem
+  // words column = 15rem, so wherever the picture IS drawn the words have at least 10rem. jsdom
+  // lays nothing out, so this pins the tokens and the sum; the rendered proof is the R4-A3 test
+  // in e2e/group-home-games-refresh.spec.ts.
+  it('R4 C3: the game card is a query container and its picture is not drawn under 15rem (4rem picture + 1rem gap + 10rem of words)', () => {
+    render(
+      <GroupGamesList
+        {...anyProps({
+          games: [WINGSPAN],
+          groupId: 'g1',
+          userRole: 'member',
+          onAddEvent: vi.fn(),
+        })}
+      />
+    );
+    const card = screen.getByRole('heading', { level: 3, name: 'Wingspan' }).closest('a') as HTMLElement;
+    const picture = within(card).getByTestId('card-picture');
+    const row = picture.parentElement as HTMLElement;
+    const tokens = (el: HTMLElement) => el.className.split(/\s+/);
+    // The card itself is the container: its width answers to the screen AND the text size.
+    expect(tokens(card)).toContain('@container');
+    // The picture: 4rem square, gone under the threshold. One max token and no min twin (a second
+    // threshold on this element would be a second rule to keep in step).
+    expect(tokens(picture)).toEqual(expect.arrayContaining(['w-16', 'h-16']));
+    const queries = tokens(picture).filter((t) => t.startsWith('@'));
+    expect(queries).toEqual(['@max-[15rem]:hidden']);
+    expect(tokens(row)).toEqual(expect.arrayContaining(['flex', 'gap-4']));
+    // The words column takes whatever the row has: all of it once the picture is gone.
+    expect(tokens(row.lastElementChild as HTMLElement)).toEqual(expect.arrayContaining(['flex-1', 'min-w-0']));
+    // The sum, from the tokens just read (Tailwind's spacing step is 0.25rem).
+    const PICTURE_REM = 16 * 0.25;
+    const GAP_REM = 4 * 0.25;
+    const WORDS_FLOOR_REM = 10;
+    expect(PICTURE_REM + GAP_REM + WORDS_FLOOR_REM).toBe(15);
+    // Nothing is lost for a screen reader when the picture goes: the card's name is its heading.
+    expect(within(card).getByRole('heading', { level: 3, name: 'Wingspan' })).toBeInTheDocument();
   });
 
   // 88.9-52 W10: at 375px with doubled text the sort row was one unbreakable line (Sort by, the

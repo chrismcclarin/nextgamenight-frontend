@@ -35,15 +35,48 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
         // list with `space-y` between rows, so an outset ring has room and reads as a
         // card outline rather than an inner line at 375px.
         // DECISION Phase 88.9-58 (X14): this whole-card control keeps its own hover wash; the card utility has none (owner 2026-11-11).
+        // DECISION Phase 88.9-52 (R4 C3, owner 2026-11-18: "lose the picture at the large text"):
+        // the card is a query container, and its picture is not drawn while the card's inside
+        // is under 15rem; the words then take the full width. Round 4 found the words column
+        // 46px wide beside a 128px picture at 320 with text at 200%, so every word broke
+        // mid-word (the owner: large text exists because small text blurs together for some
+        // people; cutting it up to keep a layout defeats the setting).
+        // THE SUM: picture 4rem (w-16) + gap 1rem (gap-4) + a words column of at least 10rem
+        // = 15rem. A container width is the card's inside (its padding and border are outside
+        // the number), and rem is the root text size, so the one threshold answers to the
+        // screen and the text size together. Worked cases, card = screen less 2rem of page
+        // padding, inside = card less 1.5rem of padding and 2px of border:
+        //   320 at ordinary text: inside 262px = 16.4rem, picture drawn, words 182px (11.4rem)
+        //   375 at ordinary text: inside 317px = 19.8rem, picture drawn, words 237px
+        //   320 at 200%: inside 206px = 6.4rem, no picture, words 206px (they had 46px)
+        //   375 at 200%: inside 261px = 8.2rem, no picture, words 261px (they had 101px)
+        // At ordinary text the picture only goes on a phone under about 298px. From md the page
+        // padding is 3rem, the card padding 3rem and the grid has two columns, three from lg
+        // (1rem gaps). The tightest ordinary-text case is three columns at exactly 1024:
+        // (1024 - 48 - 32) / 3 = 314.7px a card, inside 264.7px = 16.5rem, picture drawn; two
+        // columns at 768 give 302px = 18.9rem. So at ordinary text nothing changes anywhere.
+        // CHOSEN OVER a viewport breakpoint (it cannot see the text size, and this card sits in
+        // columns of different widths), OVER shrinking the picture (at 6.4rem of card even a
+        // 2rem picture leaves 3.4rem of words), OVER stacking the picture above the words (the
+        // owner ruled: lose it), and OVER a script that measures. The house pattern is the one
+        // in src/app/components/CalendarMonthView.js ("const NARROW_CELL = '@max-[14rem]:relative';").
+        // NOTHING IS LOST FOR A SCREEN READER: the picture's alt is the game's name, and the
+        // same name is the card's heading right beside it, so with the picture drawn the link
+        // reads the name twice and without it once. The alt is left as it is (making the
+        // picture silent is a change to what is spoken, which nobody has ruled on).
+        // The page-level wrap box (src/app/groupHomePage/page.js ("DECISION Phase 88.9-52 (R4-A3, round-3 capture)"))
+        // STAYS: it is what lets a single word wider than the whole card (a long theme) break
+        // instead of pushing the page sideways, with or without a picture.
+        // Changing 15rem, or the picture's size or the gap without it, is a decision, not a cleanup.
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-            className="block card p-3 md:p-6 hover:bg-surface-hover hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+            className="@container block card p-3 md:p-6 hover:bg-surface-hover hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
         >
             <div className="flex items-start gap-4">
                 <SafeImage
                     src={game.image_url}
                     alt={game.name}
-                    className="w-16 h-16 object-cover rounded-sm"
+                    className="w-16 h-16 object-cover rounded-sm @max-[15rem]:hidden"
                 />
                 <div className="flex-1 min-w-0">
                     {/* A1 (the tracer's ruling, plan 88.6-15, applied here): an
