@@ -474,3 +474,56 @@ describe('FeedbackButton — the success timer and late outcomes (88.6.1-33, W01
     }
   });
 });
+
+// 88.9-52 R5 (owner 2026-11-17, pick Always): the floating button is a fixed 56px at every text
+// size and sits just above the footer's copyright line everywhere. jsdom performs no layout, so
+// these pin the class tokens the size and the position are made of; the rendered numbers are the
+// capture's (57px and 104px off the bottom in the mock, 8px above the copyright line).
+describe('R5 (88.9-52): the floating feedback button is a fixed size and is raised above the copyright line', () => {
+  const renderFab = () => {
+    render(
+      <FeedbackModalProvider>
+        <FeedbackButton label="Send feedback" onOpen={vi.fn()} />
+      </FeedbackModalProvider>
+    );
+    return screen.getByRole('button', { name: 'Send feedback' });
+  };
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+
+  it('R5 size: every size, floor and offset on the button is written in px, and its padding is the zero-padding square', () => {
+    const fab = renderFab();
+    const cls = tokens(fab);
+    for (const token of ['w-[56px]', 'h-[56px]', 'min-w-[56px]', 'min-h-[56px]', 'right-[24px]']) {
+      expect(cls, token).toContain(token);
+    }
+    // The unlayered zero-padding class: the 16px side padding .btn carries is in rem and would
+    // widen a 56px box to 64px at doubled text.
+    expect(cls).toContain('btn-icon-square');
+    // No size, floor or inset left on the rem scale (w-14 is 112px at doubled text).
+    const remSized = cls.filter((token) => /^(min-)?[wh]-\d/.test(token) || /^(bottom|right)-\d/.test(token));
+    expect(remSized).toEqual([]);
+    const icon = fab.querySelector('svg');
+    expect(tokens(icon as Element)).toEqual(['w-[24px]', 'h-[24px]']);
+    // Kept: the position model and the tier (DECISION Phase 87.8 D-09/D-10).
+    expect(cls).toContain('fixed');
+    expect(cls).toContain('z-30');
+  });
+
+  it('R5 position: the bottom offset is the footer copyright line top (3rem) plus an 8px gap plus the safe area', () => {
+    const fab = renderFab();
+    expect(tokens(fab)).toContain('bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))]');
+  });
+
+  it('R5 lockstep: the 3rem in the offset is the footer bottom padding, the centring of the line in the link row, and the line itself', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const footer = readFileSync(resolve(process.cwd(), 'src/app/components/Footer.js'), 'utf8');
+    // 1rem: the bottom padding of each footer's inner wrapper (two footers).
+    expect(footer.match(/className="max-w-\[100rem\] mx-auto px-4 py-4"/g)?.length).toBe(2);
+    // 2.75rem row (the 44px links) around a 1.25rem line (text-sm): (2.75 - 1.25) / 2 = 0.75rem
+    // under the line, then the 1.25rem line. 1 + 0.75 + 1.25 = 3rem.
+    expect(footer.match(/className="flex flex-col md:flex-row items-center justify-between gap-3 text-sm text-content-muted"/g)?.length).toBe(2);
+    expect(footer).toContain('className="min-h-11 inline-flex items-center');
+    expect(1 + (2.75 - 1.25) / 2 + 1.25).toBe(3);
+  });
+});

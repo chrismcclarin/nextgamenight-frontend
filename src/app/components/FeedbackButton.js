@@ -441,12 +441,37 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
             `align-items` and `justify-content` unlayered). `fixed bottom-6 right-6 z-30` are
             ALIVE and stay — `z-30` in particular is the shipped `DECISION Phase 87.8 D-09/D-10`
             above. MEASURED while editing: the FAB's class line carried NO separate `bg-*` utility, so the
-            purple fill travels entirely on `btn-primary` and no live fill was deleted. */}
+            purple fill travels entirely on `btn-primary` and no live fill was deleted.
+
+            AMENDED Phase 88.9-52 (R5, owner 2026-11-17, pick Always): the 56px size of (2) is KEPT
+            and is now a FIXED size, and the position changes. Supersedes (2)'s `w-14 h-14` over the
+            `size="icon"` floor and (5)'s `bottom-6 right-6`.
+            SIZE: `w-[56px] h-[56px] min-w-[56px] min-h-[56px]`, the icon `w-[24px] h-[24px]`, the
+            side inset `right-[24px]`, and `size="iconSquare"` for its unlayered zero padding
+            (src/components/ui/Button.tsx ("iconSquare: 'btn-icon-square")). Every one of those was
+            on the rem scale, so at doubled text the button measured 112px and covered the footer
+            (capture f); the 16px side padding .btn carries is in rem too and would widen a 56px
+            box to 64px, and a padding utility here is dead under unlayered .btn, which is why the
+            size key changes. 56px is over the 44px floor at every text size. The min pair is
+            written so cn() drops the key's own rem floors (2.75rem is 88px at doubled text).
+            POSITION: raised everywhere so that at the end of the page it sits 8px above the
+            footer's copyright line: 3rem is that line's top, measured from the page bottom (the
+            footer's 1rem bottom padding, 0.75rem to centre a 1.25rem line in the 2.75rem link
+            row, the 1.25rem line; the signed-in footer, src/app/components/Footer.js ("function AuthFooter()"),
+            pinned in this file's test, R5 lockstep), so 56px off the bottom at ordinary text and
+            104px at doubled text. The safe-area term is zero today (the page does not draw under
+            the home indicator) and keeps the gap if it ever does. Mid-page it covers whatever is
+            56px up from the corner; the owner: "It might cover something, but it should be fine."
+            REJECTED: the old corner at 24px (it hid the end of the copyright line, and at doubled
+            text overlapped it by 48px); padding added to the end of every page so the corner is
+            empty (owner: an awkward blank space); raising it only while the footer is on screen
+            (shown as the second mock, not picked). Changing the size, the units or the offset is
+            a decision, not a cleanup. */}
         <Button
           variant="primary"
-          size="icon"
+          size="iconSquare"
           onClick={(e) => open(e.currentTarget)}
-          className="fixed bottom-6 right-6 z-30 w-14 h-14 shadow-theme-lg enabled-hover:shadow-theme-lg focus-visible:ring-offset-surface-page"
+          className="fixed bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))] right-[24px] z-30 w-[56px] h-[56px] min-w-[56px] min-h-[56px] shadow-theme-lg enabled-hover:shadow-theme-lg focus-visible:ring-offset-surface-page"
           aria-label="Send feedback"
         >
           <svg
@@ -457,7 +482,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="w-6 h-6"
+            className="w-[24px] h-[24px]"
             aria-hidden="true"
             focusable="false"
           >
