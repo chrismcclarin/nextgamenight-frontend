@@ -72,7 +72,12 @@ function GroupHomePage(){
     // own group. Identity-unresolved is a LOADING state, never "removed".
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
     // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
+    // AMENDED Phase 88.9-52 (P1, owner 2026-11-17): the rule's source is read as three plain values and joins the page-load state below (this file ("DECISION Phase 88.9-52 (P1, owner 2026-11-17: Banner)")); the page keeps no error state of its own for the identity read, because the small notice that state fed is gone from this page.
+    const {
+        isError: selfIdentityFailed,
+        error: selfIdentityFailure,
+        refetch: refetchSelfIdentity,
+    } = selfIdentityErrorSource(selfIdentityQuery, selfUuid);
     const [Group, setGroup] = useState(null);
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
@@ -641,11 +646,41 @@ function GroupHomePage(){
     // unchanged and still drives the members notice and `membersRetained`.
     const membersBlocking = membersErrorState.showError && !membersRetained;
     const groupBlocking = groupErrorState.showError && !groupRetained;
+    /* DECISION Phase 88.9-52 (P1, owner 2026-11-17: Banner): an identity read that failed with NO row
+       held, before the membership check has passed, is a THIRD load of the ONE page-load state: the
+       page shows its full banner (copy row G7, Try again) because the membership check can never
+       run without the row, so nothing of the group can be shown. CHOSEN OVER the small notice under
+       the loading line (D-08, what shipped: the line still claimed loading and the notice said only
+       that some personal controls were unavailable, when the whole page was) and OVER a banner of
+       its own for the identity read (the marker on getGroup, REJECTED (a): two banners can swap
+       under a focused Try again, and an outage that failed two loads would need two presses).
+       ORDER: members, then the group record, then identity. Identity is LAST on purpose: a kept
+       group failure holds its banner through the press (its error stays until its newest run
+       succeeds), where the identity query reports pending from the press to its answer
+       (node_modules:@tanstack/query-core/build/modern/query.js ("...data === void 0 && {")), so
+       with identity first the banner's sentence would change under the pressed control. Members
+       and identity cannot both block: the members read is never sent without the row.
+       WHILE THE RETRY IS OUT, with identity the only failing load, the page-load state shows
+       nothing and the paint gate's loading frame is on screen and heard (A-45); a second failure
+       brings the banner back (inserted with its words, so said once), a row lets the membership
+       effect run. Focus at the press is caught by the banner's own recovery (the floor), the
+       recorded limit for a caller that swaps its banner out for the retry
+       (src/components/ui/FetchErrorBanner.tsx ("LIMIT, named honestly: where the CALLER swaps the banner out for the retry")).
+       GATED on the membership check: a row that is held never fails by the no-row rule, and a
+       page that has painted is not withdrawn by this arm.
+       A 401 on the identity read is the page-load state's 401: the sign-in guard below reads it.
+       No new words: the title, the register line and the controls are the banner's own.
+       Changing any of this is a decision, not a cleanup. */
+    const identityBlocking = selfIdentityFailed && !membershipChecked;
     const membersBlockingRef = useRef(false);
     const groupBlockingRef = useRef(false);
+    const identityBlockingRef = useRef(false);
+    const refetchSelfIdentityRef = useRef(refetchSelfIdentity);
     useEffect(() => {
         membersBlockingRef.current = membersBlocking;
         groupBlockingRef.current = groupBlocking;
+        identityBlockingRef.current = identityBlocking;
+        refetchSelfIdentityRef.current = refetchSelfIdentity;
     });
     const retryPageLoad = useCallback(async () => {
         // Both retries start in this synchronous turn, before the first await, so each joins a
@@ -653,13 +688,16 @@ function GroupHomePage(){
         const runs = [];
         if (membersBlockingRef.current) runs.push(retryMembers());
         if (groupBlockingRef.current) runs.push(retryGroup());
+        // P1: the identity read's own refetch (what the small notice's Retry called). TanStack's
+        // refetch resolves a result carrying `isError`, the shape the two lines below read.
+        if (identityBlockingRef.current) runs.push(refetchSelfIdentityRef.current());
         if (runs.length === 0) return undefined;
         const results = await Promise.all(runs);
         if (results.some((result) => result?.isError === true)) return LOAD_FAILED;
         if (results.every((result) => result?.isError === false)) return LOAD_OK;
         return undefined;
     }, [retryMembers, retryGroup]);
-    const pageLoadError = membersBlocking ? membersError : groupBlocking ? groupError : null;
+    const pageLoadError = membersBlocking ? membersError : groupBlocking ? groupError : identityBlocking ? selfIdentityFailure : null;
     const pageLoadErrorState = useFetchErrorState({
         isError: Boolean(pageLoadError),
         error: pageLoadError,
@@ -771,6 +809,8 @@ function GroupHomePage(){
     // AMENDED 88.6.1-89 (close ruling P-79): the gate reads the page-load state — the members load
     // OR the group record's load failing with nothing retained, members first — so one banner and
     // one Try again cover both (the marker on getGroup, REJECTED (a)).
+    // AMENDED Phase 88.9-52 (P1, owner 2026-11-17): the page-load state also holds an identity read
+    // that failed with no row (the P1 marker beside identityBlocking, above).
     // DECISION Phase 88.9-52 (A-45): the three waiting frames below (the redirect hold, the paint gate,
     // Loading games) are HEARD. Each keeps ONE visually hidden polite region as the FIRST child of its
     // wrapper, mounted empty and fed the frame's own visible words after the house dwell (the X35
@@ -838,8 +878,8 @@ function GroupHomePage(){
                     <p className="text-content-secondary">Loading group…</p>
                     {/* D-08: if identity resolution permanently fails, the membership
                         check can never complete — surface a compact, non-blocking
-                        degrade notice instead of an indefinite silent spinner (D-11). */}
-                    <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
+                        degrade notice instead of an indefinite silent spinner (D-11).
+                        AMENDED Phase 88.9-52 (P1, owner 2026-11-17): a failed identity read with no row now shows the page's FULL banner (copy row G7 with Try again, through the page-load gate above this one), chosen OVER the compact notice this comment describes, which is REJECTED here and no longer mounted in this frame: the whole page is blocked, not some personal controls, and the line above it still claimed loading. This frame is now only ever a real wait (identity pending, the membership check, the group's first load). The silent-spinner rule D-08 / D-11 set still holds: the failure is told, by the banner. Putting the notice back is a decision, not a cleanup. */}
                 </div>
                 {membersFocusGuard}
                 {groupFocusGuard}

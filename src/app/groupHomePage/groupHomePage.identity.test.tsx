@@ -300,35 +300,127 @@ describe('groupHomePage membership gate vs unresolved identity', () => {
     expect(pushSpy).not.toHaveBeenCalled();
   });
 
-  // PIX-6 (88.9-52, picture pass): with the identity read failed and no row held, the page stays on
-  // its loading line. That is the recorded state, not a loader with no exit: the D-08 marker at the
-  // paint gate (the membership check cannot complete, so the small notice is shown with Retry), and
-  // Retry is the identity read's own refetch; once the row lands the gate opens. Whether the page
-  // should show its full load-failed banner there instead is an owner question, not pinned here.
-  it('PIX-6 (88.9-52): a failed identity read keeps the loading line WITH the small notice, and its Retry re-reads the identity and opens the page', async () => {
-    const refetch = vi.fn(() => Promise.resolve({ isError: true }));
-    h.isPending = false;
-    h.identityQuery = { isError: true, error: new ApiError('Request failed', 'internal', 500), refetch };
-    const { rerender } = render(<GroupHomePage />);
+  // P1 (88.9-52, owner 2026-11-17: Banner): with the identity read failed and no row held, the whole
+  // page is blocked (the membership check cannot run), so the page shows its full load-failed banner,
+  // the one a failed group load shows, in place of the loading line plus the small notice that PIX-6
+  // pinned here (that pin moved to these two tests). Try again is the identity read's own refetch.
+  // The mock models TanStack for a query that holds no row: a refetch reports pending (no error)
+  // until it answers, so the page shows its loading frame while the retry is out.
+  const P1_TITLE = "Couldn't load this group";
+  const P1_SMALL_NOTICE = 'Some personal controls are unavailable.';
+  const identityFailure = () => new ApiError('Request failed', 'internal', 500);
 
-    await waitFor(() => expect(visibleLoadingLine()).toBeInTheDocument());
-    // The failure is said on the loading frame itself, with a way out.
-    expect(await screen.findByText('Some personal controls are unavailable.', { ignore: '.sr-only' })).toBeInTheDocument();
-    const retry = screen.getByRole('button', { name: /Retry/ });
+  it('P1 (88.9-52): a failed identity read with no row shows the group banner with Try again, never the loading line with the small notice', async () => {
+    const refetch = vi.fn(() => Promise.resolve({ isError: true }));
+    const failure = identityFailure();
+    h.isPending = false;
+    h.identityQuery = { isError: true, error: failure, refetch };
+    renderInMain();
+
+    // The banner: the title, the register line for this failure, and ONE Try again.
+    await screen.findAllByText(P1_TITLE);
+    expect(screen.getAllByText(messageBesideRetry(getFetchErrorMessage(failure))).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    // Said once, by the banner's own assertive region (an inserted alert holding its words).
+    const alerts = screen.getAllByRole('alert').filter((n) => (n.textContent ?? '').includes(P1_TITLE));
+    expect(alerts).toHaveLength(1);
+    // The banner-only screen keeps the page's one level-1 heading, for screen readers only (A-04 / R3).
+    expect(screen.getAllByRole('heading')).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Group' })).toHaveClass('sr-only');
+    // Nothing of the old state: no loading line, visible or spoken, and no small notice or Retry.
+    expectNoLoadingLine();
+    expect(screen.queryByText(P1_SMALL_NOTICE)).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Retry/ })).toBeNull();
+    // No report link before a retry has failed (the banner's own rule).
+    expect(screen.queryByRole('button', { name: 'Report this' })).toBeNull();
     expect(groupsAPI.getGroupMembers as Mock).not.toHaveBeenCalled();
     expect(pushSpy).not.toHaveBeenCalled();
+  });
 
-    await userEvent.setup().click(retry);
-    await waitFor(() => expect(refetch).toHaveBeenCalledTimes(1));
+  it('P1 (88.9-52): Try again re-reads the identity; the loading frame shows while it is out, a second failure returns to the banner, and a row opens the page', async () => {
+    const first = deferred<{ isError: boolean }>();
+    const second = deferred<{ isError: boolean }>();
+    const refetch = vi.fn<() => Promise<unknown>>();
+    refetch.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    // A fresh element each time: React skips a re-render handed the very same element.
+    const page = () => (
+      <main>
+        <GroupHomePage />
+      </main>
+    );
+    h.isPending = false;
+    h.identityQuery = { isError: true, error: identityFailure(), refetch };
+    const { rerender } = render(page());
+    await screen.findAllByText(P1_TITLE);
+    const user = userEvent.setup();
 
-    // The re-read answers with the row: the membership check runs and the gate opens.
+    // Press: the identity read is asked again, once, and nothing else is.
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(groupsAPI.getGroupMembers as Mock).not.toHaveBeenCalled();
+    // In flight (TanStack: pending, no error): the normal loading frame, heard, and no banner.
+    h.isPending = true;
+    h.identityQuery = { isError: false, error: null, refetch };
+    rerender(page());
+    await waitFor(() => expect(visibleLoadingLine()).toBeInTheDocument());
+    await expectSpokenByHiddenRegion('Loading group…');
+    expect(screen.queryAllByText(P1_TITLE)).toHaveLength(0);
+    expect(screen.queryByText(P1_SMALL_NOTICE)).toBeNull();
+    // The pressed control left with the banner: focus is caught inside main, never the body.
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.querySelector('main')!.contains(document.activeElement)).toBe(true);
+    });
+
+    // It fails again: back to the banner, with Try again, and now the report link (a retry failed).
+    const again = identityFailure();
+    h.isPending = false;
+    h.identityQuery = { isError: true, error: again, refetch };
+    await act(async () => {
+      first.resolve({ isError: true });
+    });
+    rerender(page());
+    await screen.findAllByText(P1_TITLE);
+    expectNoLoadingLine();
+    expect(screen.queryByText(P1_SMALL_NOTICE)).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    expect(screen.getAllByRole('alert').filter((n) => (n.textContent ?? '').includes(P1_TITLE))).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Group' })).toHaveClass('sr-only');
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.querySelector('main')!.contains(document.activeElement)).toBe(true);
+    expect(groupsAPI.getGroupMembers as Mock).not.toHaveBeenCalled();
+
+    // Second press: the row lands, the membership check runs and the page opens.
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(refetch).toHaveBeenCalledTimes(2);
     h.selfUuid = SELF_UUID;
     h.identityQuery = null;
-    rerender(<GroupHomePage />);
-    await waitFor(() => expect(listsAPI.getGroupGames as Mock).toHaveBeenCalled());
-    expect(screen.queryByText('Some personal controls are unavailable.')).toBeNull();
-    expect(screen.queryByText('Loading group…', { selector: 'p' })).toBeNull();
+    await act(async () => {
+      second.resolve({ isError: false });
+    });
+    rerender(page());
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(1);
+    expect(screen.queryAllByText(P1_TITLE)).toHaveLength(0);
+    expectNoLoadingLine();
+    expect(screen.getByRole('heading', { level: 1, name: 'My Group' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.querySelector('main')!.contains(document.activeElement)).toBe(true);
+    });
     expect(pushSpy).not.toHaveBeenCalled();
+  });
+
+  it('P1 (88.9-52): a held identity row whose re-read fails never raises the banner (the no-row rule)', async () => {
+    // CONFIRM-ONLY: green before and after. TanStack keeps the row when a refetch fails, and the
+    // page keys on the row, so a loaded page is never withdrawn for this.
+    h.selfUuid = SELF_UUID;
+    h.isPending = false;
+    h.identityQuery = { isError: true, error: identityFailure(), refetch: vi.fn() };
+    render(<GroupHomePage />);
+    await screen.findByRole('link', { name: 'Plan Game Session' });
+    expect(screen.queryAllByText(P1_TITLE)).toHaveLength(0);
+    expect(screen.queryByText(P1_SMALL_NOTICE)).toBeNull();
   });
 });
 
