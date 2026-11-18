@@ -848,6 +848,92 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await assertMin44(firstItem, 'KebabMenu item row');
   });
 
+  // 88.9-52 R21 (owner 2026-11-17, pick Fit or logo), RENDERED. With text at 200% the header site
+  // name is held at the largest size that keeps it on one line between the logo and the menu
+  // button, never under its ordinary 18px; where 18px cannot fit, the logo stands alone and the
+  // home link keeps its name. The rule is a container-query class on the name
+  // (src/app/Header.js ("AMENDED Phase 88.9-52 (R21, owner 2026-11-17, pick Fit or logo;")); jsdom lays nothing out, so
+  // src/app/Header.test.tsx ("R21 arithmetic: 18px at ordinary text") can only work the sum. This reads the boxes.
+  // 200% is the root font size doubled by a style tag, the injection the capture used
+  // (e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")); it is not browser zoom. Read-only: no write, no route.
+  test('R21 (88.9-52): with text at 200% the header site name stays on one line beside the menu button at 375px, and gives way to the logo at 320px', async ({ page }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+    expect(page.viewportSize()?.width, 'R21: the phone project is not 375px wide, so the numbers below are not the measured case').toBe(375);
+
+    const brand = page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: /Next Game Night/ });
+    const hamburger = page.getByRole('button', { name: 'Toggle menu' });
+    await guardResolved(brand, 'the header brand link');
+    await guardResolved(hamburger, 'the Header hamburger (md:hidden — phone only)');
+
+    // Every box in ONE page read.
+    const readHeader = () =>
+      page.evaluate(() => {
+        const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
+        const link = nav.querySelector('a[href="/"]') as HTMLElement;
+        const name = Array.from(link.querySelectorAll('span')).find(
+          (el) => (el.textContent ?? '').trim() === 'Next Game Night',
+        ) as HTMLElement;
+        const logo = link.querySelector('svg') as SVGElement;
+        const menu = nav.querySelector('button[aria-label="Toggle menu"]') as HTMLElement;
+        const strip = nav.parentElement as HTMLElement;
+        const cs = getComputedStyle(name);
+        const n = name.getBoundingClientRect();
+        const l = logo.getBoundingClientRect();
+        const m = menu.getBoundingClientRect();
+        return {
+          rootFontPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
+          fontPx: parseFloat(cs.fontSize),
+          linePx: parseFloat(cs.lineHeight),
+          name: { left: n.left, right: n.right, width: n.width, height: n.height, bottom: n.bottom },
+          logo: { right: l.right, width: l.width },
+          menu: { left: m.left, width: m.width },
+          stripBottom: strip.getBoundingClientRect().bottom,
+        };
+      });
+
+    // Ordinary text: nothing changed. 18px, one line.
+    const plain = await readHeader();
+    expect(plain.rootFontPx, 'R21: the root font size is not 16px before the 200% step').toBe(16);
+    expect(plain.fontPx, `R21: at ordinary text the site name is ${plain.fontPx}px, not its 18px`).toBeCloseTo(18, 1);
+    expect(plain.name.width, 'R21: at ordinary text the site name has no width — it is hidden, or the locator is wrong').toBeGreaterThan(100);
+    expect(plain.name.height, `R21: at ordinary text the site name is ${plain.name.height}px tall on a ${plain.linePx}px line — more than one line`).toBeLessThanOrEqual(plain.linePx + 1);
+
+    // Text at 200%, 375 wide: the largest one-line size (the capture measured 20px), clear of the button.
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R21: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe('32px');
+    await expect
+      .poll(async () => (await readHeader()).menu.width, { message: 'R21: the menu button did not grow to 88px at 200% text' })
+      .toBeCloseTo(88, 0);
+    const big = await readHeader();
+    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px — under its ordinary 18px`).toBeGreaterThanOrEqual(18);
+    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px; the largest size that fits is about 20px`).toBeGreaterThanOrEqual(19.5);
+    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px; about 20px is all that fits`).toBeLessThan(21);
+    expect(big.name.height, `R21: at 200% text the site name is ${big.name.height}px tall on a ${big.linePx}px line — it wrapped`).toBeLessThanOrEqual(big.linePx + 1);
+    expect(
+      big.menu.left - big.name.right,
+      `R21: at 200% text the site name ends ${big.menu.left - big.name.right}px before the menu button (name right ${big.name.right}, button left ${big.menu.left}) — under the 8px clearance`,
+    ).toBeGreaterThanOrEqual(7.5);
+    expect(big.logo.width, `R21: at 200% text the logo is ${big.logo.width}px wide — squeezed under its 34px`).toBeCloseTo(34, 0);
+    expect(big.name.bottom, 'R21: at 200% text the site name runs below the header strip').toBeLessThanOrEqual(big.stripBottom + 0.5);
+
+    // Text at 200%, 320 wide: 18px cannot fit, so the logo stands alone and the link keeps its name.
+    await page.setViewportSize({ width: 320, height: 667 });
+    await expect
+      .poll(async () => (await readHeader()).name.width, { message: 'R21: at 200% text and 320px the site name is still drawn — it should give way to the logo' })
+      .toBeLessThanOrEqual(1.5);
+    const narrow = await readHeader();
+    expect(narrow.logo.width, `R21: at 200% text and 320px the logo is ${narrow.logo.width}px wide — squeezed under its 34px`).toBeCloseTo(34, 0);
+    expect(
+      narrow.menu.left - narrow.logo.right,
+      'R21: at 200% text and 320px the logo touches the menu button',
+    ).toBeGreaterThanOrEqual(8);
+    await expect(brand, 'R21: with the name hidden from sight the home link lost its name').toHaveCount(1);
+  });
   /* DECISION Phase 88-30 (D-36 / DEF-1): the `.btn-compact` half of this test measures
      PLANTED probe elements, chosen OVER driving the two shipped `w-8 h-8` steppers in
      `BrowseMoreModal.js` — which is the obvious move and the thing a future reader will
@@ -2978,5 +3064,83 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
       `D10 item 6 / UI-SPEC §3.4 rule 2: the pinned probe hovered to the base's \`md\` tier (\`${mdValue}\`) instead of its own \`lg\` pin — the inverted-elevation defect itself`,
     ).not.toBe(mdValue);
     await page.mouse.move(1, 1);
+  });
+});
+
+// 88.9-52 R5 (owner 2026-11-17, pick Always), RENDERED. The floating feedback button is a fixed
+// 56px (it does not double with text) and is raised everywhere so that at the end of the page it
+// sits just above the footer's copyright line, with no padding added to the page
+// (src/app/components/FeedbackButton.js ("AMENDED Phase 88.9-52 (R5, owner 2026-11-17, pick Always)")). The capture's mock
+// measured 57px off the bottom at ordinary text and 104px at 200%, 8px above the line in both; the
+// build computes 56px and 104px. The button is not rendered below md, so this is desktop only.
+test.describe('Phase 88.9-52 R5 — the floating feedback button, fixed size and raised (journeys/desktop project)', () => {
+  test.skip(({ isMobile }) => isMobile, 'R5: the floating feedback button is not rendered below md — desktop project only');
+
+  test('R5 (88.9-52): the floating feedback button is 56px at 100% and at 200% text, and at the end of the page sits just above the footer copyright line', async ({
+    page,
+    isMobile,
+  }) => {
+    expect(isMobile, 'R5: running in a MOBILE project — the button is not rendered there and nothing below would be measured').toBe(false);
+
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    // The floating button is the icon-only one (e2e/feedback-stacking.spec.ts (".filter({ hasNotText: 'Send feedback' });")).
+    const fab = page.getByRole('button', { name: 'Send feedback' }).filter({ hasNotText: 'Send feedback' });
+    await guardResolved(fab, 'the floating feedback button (desktop only)');
+    const copyright = page.getByRole('contentinfo').locator('span').filter({ hasText: /^\s*©\s*\d{4}\s+Next Game Night\s*$/ });
+    await guardResolved(copyright, 'the footer copyright line');
+
+    const readAtPageEnd = async (label: string) => {
+      let read = { atEnd: false, fab: { top: 0, bottom: 0, right: 0, width: 0, height: 0 }, copyrightTop: 0, viewportHeight: 0, viewportWidth: 0 };
+      await expect(async () => {
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        read = await page.evaluate(() => {
+          const button = Array.from(document.querySelectorAll('button[aria-label="Send feedback"]')).find(
+            (el) => (el.textContent ?? '').trim() === '',
+          ) as HTMLElement;
+          const line = Array.from(document.querySelectorAll('footer span')).find((el) =>
+            /^\s*©\s*\d{4}\s+Next Game Night\s*$/.test(el.textContent ?? ''),
+          ) as HTMLElement;
+          const b = button.getBoundingClientRect();
+          const doc = document.documentElement;
+          return {
+            atEnd: Math.abs(window.innerHeight + window.scrollY - doc.scrollHeight) <= 1,
+            fab: { top: b.top, bottom: b.bottom, right: b.right, width: b.width, height: b.height },
+            copyrightTop: line.getBoundingClientRect().top,
+            viewportHeight: doc.clientHeight,
+            viewportWidth: doc.clientWidth,
+          };
+        });
+        expect(read.atEnd, `R5 (${label}): the page is not scrolled to its end, so the footer is not where the button is compared`).toBe(true);
+      }).toPass({ timeout: 15_000 });
+      return read;
+    };
+
+    const check = (label: string, read: Awaited<ReturnType<typeof readAtPageEnd>>, offBottom: number) => {
+      expect(read.fab.width, `R5 (${label}): the button is ${read.fab.width}px wide, not 56px`).toBeCloseTo(56, 0);
+      expect(read.fab.height, `R5 (${label}): the button is ${read.fab.height}px tall, not 56px`).toBeCloseTo(56, 0);
+      expect(
+        read.viewportWidth - read.fab.right,
+        `R5 (${label}): the button is ${read.viewportWidth - read.fab.right}px from the right edge, not 24px`,
+      ).toBeCloseTo(24, 0);
+      expect(
+        read.viewportHeight - read.fab.bottom,
+        `R5 (${label}): the button is ${read.viewportHeight - read.fab.bottom}px off the bottom, not ${offBottom}px`,
+      ).toBeCloseTo(offBottom, 0);
+      const gap = read.copyrightTop - read.fab.bottom;
+      expect(gap, `R5 (${label}): the button's bottom edge is ${gap}px above the copyright line's top (want about 8px) — it overlaps the line or floats well above it`).toBeGreaterThanOrEqual(4);
+      expect(gap, `R5 (${label}): the button's bottom edge is ${gap}px above the copyright line's top (want about 8px)`).toBeLessThanOrEqual(14);
+    };
+
+    check('100% text', await readAtPageEnd('100% text'), 56);
+
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R5: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe('32px');
+    check('200% text', await readAtPageEnd('200% text'), 104);
   });
 });
