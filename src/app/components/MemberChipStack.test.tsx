@@ -29,7 +29,7 @@
  *    each pin also asserts the enclosing card's handler did not fire (the tap-stealing twin).
  *
  * 4. THE ACCESSIBLE NAME (UI-SPEC A-8, WCAG 1.4.1). Owner ruling D-15 suppresses the inline
- *    `✓ Friend` / `⏳ Pending` text on chips, which leaves the ring — a COLOUR — as the only
+ *    Friend pill / `⏳ Pending` text on chips (the pill was ticked Friend text until 88.9-52 R19), which leaves the ring — a COLOUR — as the only
  *    status carrier a sighted user gets, and initials carry no status at all. So each expanded
  *    chip's accessible NAME must state identity plus relationship in words. That is invisible
  *    to a visible-text assertion, so the A-8 pins query by accessible name on purpose.
@@ -597,7 +597,8 @@ describe('MemberChipStack — expanded row', () => {
   it('30. D-15: no Friend text, no Pending text and no add-friend `+` anywhere in the row', () => {
     renderStack();
     fireEvent.click(collapsed());
-    expect(screen.queryByText(/✓ Friend/)).not.toBeInTheDocument();
+    // The indicator is the Friend pill since 88.9-52 R19 (no tick in it), so it is found by its hook.
+    expect(document.querySelector('[data-friend-indicator]')).toBeNull();
     expect(screen.queryByText(/⏳ Pending/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /as a friend$/ })).not.toBeInTheDocument();
   });

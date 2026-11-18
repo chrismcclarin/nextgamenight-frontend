@@ -101,7 +101,8 @@ test.describe('Phase 88.9-21 C5a — the participant row at 375 (phone project)'
   // for one value, each hidden at one width; at 375 the visible one's tap area measured 90 by 20,
   // under WCAG 2.5.8's 24px. There is now ONE checkbox, on the Participant Name line (owner at
   // N32: right justified on that line), and its label is a real 44 by 44 box that stops above the
-  // name input. The same opener as the test above; nothing is submitted; closed with Escape.
+  // name input (since 88.9-52 R15b that 44 by 44 box holds below md only; desktop is compact, and
+  // this test measures at 375). The same opener as the test above; nothing is submitted; closed with Escape.
   test('X40 (88.9-65): at 375 the one New Player checkbox sits on the Participant Name line and its label box is at least 44 by 44, while Score, Faction and Remove still share one line', async ({
     page,
   }) => {

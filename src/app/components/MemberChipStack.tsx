@@ -346,7 +346,7 @@ const memberLabel = (m: ChipMember): string => m.username || m.email || 'Unknown
  * DECISION Phase 88.5 (D-15, UI-SPEC section 10 row A-8, WCAG 1.4.1): each expanded chip's
  * ACCESSIBLE NAME states identity plus relationship in words, chosen OVER relying on the ring.
  *
- * D-15 suppresses the inline `✓ Friend` / `⏳ Pending` siblings on chips, which is correct for
+ * D-15 suppresses the inline Friend pill (ticked Friend text until 88.9-52 R19) / `⏳ Pending` siblings on chips, which is correct for
  * the sighted layout — but it means the ring, a COLOUR, becomes the only status carrier a
  * sighted user gets, and the initials carry no status at all. WCAG 1.4.1 requires a text
  * carrier, so the name is constructed affirmatively here. Suppressing the indicator does NOT
@@ -660,7 +660,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
 
               /*
                * DECISION Phase 88.5 (D-15): every chip trigger passes
-               * `showInlineIndicator={false}`, so the inline `md:hidden` `✓ Friend` /
+               * `showInlineIndicator={false}`, so the inline `md:hidden` Friend pill (ticked Friend text until 88.9-52 R19) /
                * `⏳ Pending` text and the add-friend `+` button never render in this row —
                * status is carried by the RING for sighted users and by the accessible name
                * above for everyone else, and add-friend lives only in the popover. The two-tap
