@@ -3016,19 +3016,28 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
       return ref[1];
     };
-    const bars = [...src.matchAll(/rounded-b-card overflow-hidden border-t border-([a-z0-9-]+) bg-([a-z0-9-]+)(?: dark:bg-([a-z0-9-]+))?'/g)];
+    // AMENDED 88.9-52 (W45, owner 2026-11-17: the lighter bar, picture-page pick B): W45 is no longer
+    // open. In dark the bar is purple-700 with a purple-500 top rule, so it also parts from the game
+    // cards. Dark now measures bar 1.7767 against the section card, 1.4467 against the game cards,
+    // rule 1.9263, words 7.3532; light is unchanged. The locator reads an optional dark: rule too.
+    const bars = [...src.matchAll(/rounded-b-card overflow-hidden border-t border-([a-z0-9-]+)(?: dark:border-([a-z0-9-]+))? bg-([a-z0-9-]+)(?: dark:bg-([a-z0-9-]+))?'/g)];
     expect(bars, 'LOCATOR: both arms of the collection bar wrapper name a rule and a fill').toHaveLength(2);
     const ink = /flex w-full min-h-12 items-center justify-center gap-2 text-sm text-([a-z0-9-]+) /.exec(src);
     expect(ink, 'LOCATOR: the bar button names its ink').not.toBeNull();
     let measured = 0;
     for (const bar of bars) {
       for (const theme of ['light', 'dark'] as const) {
-        const fill = propOf(theme === 'dark' && bar[3] ? bar[3] : bar[2]);
+        const fill = propOf(theme === 'dark' && bar[4] ? bar[4] : bar[3]);
         const barHex = resolve(theme, fill);
         const groundHex = resolve(theme, propOf('surface-card'));
         const apart = ratioHex(barHex, groundHex, 'X52d bar against the section card');
         expect(apart, `X52d — [${theme}] the bar (${barHex}) against the section card (${groundHex}) measures ${apart.toFixed(4)}:1, floor 1.20:1`).toBeGreaterThanOrEqual(1.2);
-        const rule = ratioHex(resolve(theme, propOf(bar[1])), barHex, 'X52d top rule against the bar');
+        const rule = ratioHex(resolve(theme, propOf(theme === 'dark' && bar[2] ? bar[2] : bar[1])), barHex, 'X52d top rule against the bar');
+        if (theme === 'dark') {
+          const cardsHex = resolve(theme, propOf('surface-elevated'));
+          const fromCards = ratioHex(barHex, cardsHex, 'W45 dark bar against the game cards');
+          expect(fromCards, `W45 — [dark] the bar (${barHex}) against the game cards (${cardsHex}) measures ${fromCards.toFixed(4)}:1, floor 1.20:1`).toBeGreaterThanOrEqual(1.2);
+        }
         expect(rule, `X52d — [${theme}] the top rule against the bar (${barHex}) measures ${rule.toFixed(4)}:1, floor 1.20:1`).toBeGreaterThanOrEqual(1.2);
         expectRatio(theme, propOf(ink![1]), fill, 4.5, 'X52d the bar words');
         measured += 3;
