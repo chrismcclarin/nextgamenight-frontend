@@ -421,8 +421,9 @@ describe('the header home link is named by the product name alone (88.9-52)', ()
       expect(logo).not.toHaveAttribute('aria-label');
       expect(document.querySelector('[aria-label*="Periodic"]')).toBeNull();
       // The give-way state of R21 keeps the name in the link as text, so the name does not depend
-      // on the word being drawn: the span is still the link's only text.
-      expect(link.textContent?.trim()).toBe('Next Game Night');
+      // on the word being drawn: outside the hidden logo, the name span is the link's only text.
+      const outsideLogo = Array.from(link.querySelectorAll('span')).filter((el) => !logo.contains(el));
+      expect(outsideLogo.map((el) => el.textContent?.trim())).toEqual(['Next Game Night']);
       cleanup();
     }
   });
