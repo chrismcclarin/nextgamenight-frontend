@@ -1028,3 +1028,61 @@ describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edi
     expect(initialDate.toISOString().slice(0, 10)).toBe('2026-11-16');
   });
 });
+
+// G5 (88.9-52 round 4): the after-build capture (r3-l) showed the Edit Event dialog with its header
+// gone and an empty band as tall as the header at the bottom, the Comments box under it. CAUSE: a
+// screen-reader-only box is position absolute, and an absolute box is laid out against its nearest
+// POSITIONED ancestor. The dialog's scrolling Body is not positioned, so every such box in the form
+// was laid out against the dialog shell: it did not scroll with the form, it sat where the form
+// would be with no scroll (far below the shell's foot), and that made the shell itself scrollable
+// although it clips. Anything that scrolls an ancestor to bring a field to the top (the capture's
+// own scrollIntoView did; a browser's find-in-page does) then slid the whole shell up by the height
+// of its header. The same boxes inside the participant list box were not scrolled by the list
+// either. The rule pinned here: walking up from every absolute box in the dialog, a positioned
+// ancestor comes BEFORE any scrolling box that is not itself positioned.
+// jsdom lays nothing out, so this reads class tokens: the rendered symptom is the capture's.
+describe('G5 (88.9-52) — no absolute box in the event dialog escapes its scrolling box', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  const POSITIONED = new Set(['relative', 'absolute', 'fixed', 'sticky']);
+  const isPositioned = (el: Element) => tokens(el).some((t) => POSITIONED.has(t));
+  const scrolls = (el: Element) => tokens(el).some((t) => /^overflow(-[xy])?-(auto|scroll)$/.test(t));
+
+  // The first ancestor that decides: a positioned one (held) or a scrolling one that is not (escaped).
+  const escapes = (dialog: HTMLElement): string[] => {
+    const out: string[] = [];
+    for (const el of Array.from(dialog.querySelectorAll('*'))) {
+      if (!tokens(el).some((t) => t === 'sr-only' || t === 'absolute')) continue;
+      for (let up = el.parentElement; up && up !== dialog; up = up.parentElement) {
+        if (isPositioned(up)) break;
+        if (scrolls(up)) {
+          out.push(`${el.tagName.toLowerCase()}.${tokens(el).join('.')} escapes ${up.tagName.toLowerCase()}.${tokens(up).join('.')}`);
+          break;
+        }
+      }
+    }
+    return out;
+  };
+
+  it('G5: every sr-only or absolute box under the dialog Body is held by a positioned ancestor inside it', async () => {
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    // A typed-in (non-member) row carries the duplicate-name hint, which is sr-only while empty.
+    fireEvent.click(screen.getByRole('button', { name: /add participant/i }));
+    // Guard: the form does hold such boxes, inside the list box and outside it, so an empty
+    // result below is not empty by having nothing to check.
+    const box = screen.getByRole('group', { name: /^Participants/ });
+    const hidden = Array.from(dialog.querySelectorAll('.sr-only'));
+    expect(hidden.some((el) => box.contains(el)), 'no sr-only box inside the participant list').toBe(true);
+    expect(hidden.some((el) => !box.contains(el) && box.closest('form')?.contains(el)), 'no sr-only box in the form outside the list').toBe(true);
+    expect(escapes(dialog)).toEqual([]);
+    // The two boxes that hold them: the list box (it scrolls its own rows) and the Body's region.
+    expect(tokens(box)).toEqual(expect.arrayContaining(['relative', 'overflow-y-auto']));
+    const region = box.closest('form')?.parentElement as HTMLElement;
+    expect(tokens(region)).toContain('relative');
+  });
+
+  it('G5: the same holds with the visual calendar showing', async () => {
+    await renderModal({ hideVisualCalendar: false });
+    expect(escapes(screen.getByRole('dialog'))).toEqual([]);
+  });
+});

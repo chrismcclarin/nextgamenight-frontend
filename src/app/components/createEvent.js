@@ -1368,7 +1368,25 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
         {!bodyGateOpen && (
           <p className="text-content-primary">{editingEvent ? LOADING_GAME_NIGHT_LABEL : 'Loading group members...'}</p>
         )}
-        <div aria-busy={!bodyGateOpen || undefined}>
+        {/* DECISION Phase 88.9-52 (G5, round 4, 2026-11-18): this region is POSITIONED (relative), and
+            so is the participant list box below. A screen-reader-only box is position absolute, and
+            an absolute box is laid out against its nearest positioned ancestor. Modal.Body scrolls
+            but is not positioned, so the form's sr-only boxes (the removal announcer under the list,
+            the scheduler's, a typed-in row's empty hint) were laid out against the dialog SHELL:
+            they did not scroll with the form, they sat where the unscrolled form put them, far
+            below the shell's foot, and that made the shell scrollable although it clips. Anything
+            that scrolls an ancestor to bring a field to the top then slid the whole shell up by
+            its header: the header gone, and a blank band of the header's height at the foot with
+            the Comments box under it (the after-build capture r3-l, whose own scrollIntoView did
+            it; a browser's find-in-page does the same). Not caused by R15a or R15b: the boxes and
+            the unpositioned Body are older than round 3.
+            Chosen OVER positioning Modal.Body or clipping the shell without scrolling (the right
+            fix for every dialog, in a file this package does not own: reported), and OVER giving
+            each sr-only box its own positioned wrapper (one per box, and the next box added would
+            escape again). The list box needs its own because it scrolls its own rows.
+            Pinned by src/app/components/createEvent.participants.test.tsx ("G5: every sr-only or absolute box under the dialog Body is held by a positioned ancestor inside it").
+            Removing either relative is a decision, not a cleanup. */}
+        <div aria-busy={!bodyGateOpen || undefined} className="relative">
         {!bodyGateOpen ? null : (
           <>
         {/* Phase 62-02: nudge user to set profile TZ before editing/creating
@@ -1805,7 +1823,7 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
             <div
               role="group"
               aria-labelledby="participants-section-label"
-              className="space-y-2 max-h-96 md:max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
+              className="relative space-y-2 max-h-96 md:max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
             >
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
