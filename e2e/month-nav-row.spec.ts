@@ -457,7 +457,7 @@ test.describe('the month nav row at phone width (88.9-62, X22 + X28)', () => {
     // green with the seeded dates, for a defect this plan does not fix (recorded in the plan's
     // SUMMARY for routing). Asserting the card here is a decision, not a cleanup.
     const fit = await card.evaluate((el) => {
-      const out = { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, dayNumbers: 0, overlaps: 0, error: '', pastCell: 0, counts: 0, badCounts: [] as string[], shownTiles: 0, shownMore: 0 };
+      const out = { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, dayNumbers: 0, overlaps: 0, error: '', pastCell: 0, counts: 0, badCounts: [] as string[], shownTiles: 0, shownMore: 0, countsOutside: [] as string[], smallOverlays: [] as string[] };
       // The day grid, by structure: the one element under the card holding whole weeks of cells.
       const grids = Array.from(el.querySelectorAll('div')).filter((d) => [28, 35, 42].includes(d.children.length));
       if (grids.length !== 1) {
@@ -492,6 +492,23 @@ test.describe('the month nav row at phone width (88.9-62, X22 + X28)', () => {
         const content = before.content.replace(/"/g, '');
         if (before.display === 'none' || (content !== nights && content !== 'attr(data-count)')) out.badCounts.push(`${nights}: display ${before.display}, content ${before.content}`);
         if (nights !== '1') out.shownTiles += Array.from(stack.querySelectorAll('[role="button"]')).filter(shown).length;
+        // G1 (88.9-52 round 4): a one- or two-digit count's ink ends inside its own cell. The count
+        // is CSS content, which no Range can read, so its ink is measured on a canvas in the
+        // count's own computed font and placed from the count line's margin and padding. Three
+        // digits are left out: on a 320 phone at 200% no size at or above 12px holds them.
+        const cell = stack.parentElement?.getBoundingClientRect();
+        const canvas = document.createElement('canvas').getContext('2d');
+        if (cell && canvas && before.display !== 'none' && nights.length <= 2) {
+          canvas.font = `${before.fontWeight} ${before.fontSize} ${before.fontFamily}`;
+          const ink = canvas.measureText(nights).width;
+          const left = stack.getBoundingClientRect().left + (parseFloat(before.marginLeft) || 0) + (parseFloat(before.paddingLeft) || 0);
+          if (left < cell.left - 0.5 || left + ink > cell.right + 0.5) out.countsOutside.push(`${nights}: ink ${left.toFixed(1)}..${(left + ink).toFixed(1)} at ${before.fontSize}, cell ${cell.left.toFixed(1)}..${cell.right.toFixed(1)}`);
+        }
+        // G1: a one-night day's clear overlay button covers its day cell (2px each way: the border).
+        if (cell && nights === '1') {
+          const overlay = stack.querySelector('[role="button"]')?.getBoundingClientRect();
+          if (!overlay || overlay.width < cell.width - 2.5 || overlay.height < cell.height - 2.5) out.smallOverlays.push(overlay ? `${overlay.width.toFixed(1)} x ${overlay.height.toFixed(1)} in a ${cell.width.toFixed(1)} x ${cell.height.toFixed(1)} cell` : 'no button on a one-night day');
+        }
         out.shownMore += Array.from(stack.querySelectorAll('[role="img"]')).filter(shown).length;
       }
       out.dayNumbers = rects.length;
@@ -519,6 +536,9 @@ test.describe('the month nav row at phone width (88.9-62, X22 + X28)', () => {
     expect(fit.badCounts, `${label}: a day with nights does not show its count`).toEqual([]);
     expect(fit.shownTiles, `${label}: ${fit.shownTiles} tiles still show on days with several nights`).toBe(0);
     expect(fit.shownMore, `${label}: ${fit.shownMore} +N labels still show`).toBe(0);
+    // G1 (88.9-52 round 4): counts end inside their own cells, and a one-night day's button is its cell.
+    expect(fit.countsOutside, `${label}: a count's ink leaves its own cell`).toEqual([]);
+    expect(fit.smallOverlays, `${label}: a one-night day's button does not cover its cell`).toEqual([]);
   });
 });
 

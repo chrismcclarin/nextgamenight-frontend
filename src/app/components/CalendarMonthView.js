@@ -85,14 +85,40 @@ const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
    tile's name, and the day sheet shows the Guest pill. A screen reader may read the bare count as
    text after the day's name; not measured. Pinned by
    src/app/components/CalendarMonthView.test.tsx ("R22 + R26 (88.9-52): under 14rem the compact grid shows one bold count").
+   AMENDED Phase 88.9-52 (G1, round 4, 2026-11-18; the after-build capture r3-l rendered this):
+   - THE OVERLAY COVERS THE DAY'S CELL. As built the events box was the positioning box, so the
+     one-night overlay was the count's own box: 12.7 x 48px at 375 / 200% and 8 x 48px at 320.
+     Now the CELL is the positioning box in a narrow grid (NARROW_CELL) and the events box is
+     not positioned at all, chosen OVER growing the events box to the cell (it would move the
+     count) and OVER a min size on the overlay (a cell is 22.9px wide on a 320 phone; nothing
+     larger than the cell can be honest). The count lets a tap through (pointer-events-none), so
+     the whole cell, digit included, is the one named button.
+   - A COUNT ENDS INSIDE ITS OWN CELL. The SIZES line above aimed two and three digits at the
+     NEXT day's count, on a 0.63em digit; rendered, 12 and 101 ended 2.3 to 7.7px past their
+     cell and one digit 0.8px past it on a 320 phone. Measured ink at 24px bold (r3-l): 1 is
+     9.7px, 2 is 14.3px, 3 is 14.7px, and 0 is 0.70em, the widest read, so the arithmetic now
+     takes 0.71em a digit. The count's line is pulled out to the cell's inner edges (the +N
+     label's pull) and its start is a clamp: the day number's start (0.25rem in) wherever the
+     count fits from there, further left where it does not, never past the cell's edge. Two and
+     three digits take the largest size, never over 0.75rem and never under 12px, whose widest
+     form fits that line: at 375 / 200% 19.5px and 13.0px, on a 320 phone 14.0px and the 12px
+     floor. Chosen OVER shrinking alone (two digits would be 13.9px beside a 24px single digit)
+     and OVER centring every count (the picked picture has it under the day number).
+     NOT HELD, and why: three digits (100 or more nights on one day) on a 320 phone at 200%.
+     The cell is 22.9px; three of the widest digits need 25.6px at the 12px floor, so the
+     widest forms end up to 3.7px past the cell. 101 itself (18.1px) fits.
+     Arithmetic on the capture's measured widths, not a rendered read.
    Changing any of this is a decision, not a cleanup. */
-const NARROW_COUNT = 'relative before:hidden @max-[14rem]:before:block before:content-[attr(data-count)] before:relative before:z-10 before:font-bold before:text-content-primary before:whitespace-nowrap';
+const NARROW_COUNT = 'before:hidden @max-[14rem]:before:block before:content-[attr(data-count)] before:relative before:z-10 before:-mx-1 before:pointer-events-none before:font-bold before:text-content-primary before:whitespace-nowrap';
 // One arm per digit count: 1, 2, 3 or more. Whole literals (Tailwind emits nothing for a built class name).
+// Each arm: the size, then the start (the padding clamp: 0.71em a digit, 1px kept clear at the end).
 const NARROW_COUNT_SIZE = [
-  'before:text-xs',
-  'before:text-[length:clamp(12px,calc((100cqw_+_0.25rem_-_28px)_/_8.8),0.75rem)] before:leading-4',
-  'before:text-[length:clamp(12px,calc((100cqw_+_0.25rem_-_28px)_/_13.2),0.75rem)] before:leading-4',
+  'before:text-xs before:pl-[clamp(0px,calc(100%_+_0.5rem_-_0.71em_-_1px),0.25rem)]',
+  'before:text-[length:clamp(12px,calc((100cqw_-_1.5rem_-_21px)_/_9.94),0.75rem)] before:leading-4 before:pl-[clamp(0px,calc(100%_+_0.5rem_-_1.42em_-_1px),0.25rem)]',
+  'before:text-[length:clamp(12px,calc((100cqw_-_1.5rem_-_21px)_/_14.91),0.75rem)] before:leading-4 before:pl-[clamp(0px,calc(100%_+_0.5rem_-_2.13em_-_1px),0.25rem)]',
 ];
+// G1: the compact cell is the one-night overlay's positioning box, in a narrow grid only.
+const NARROW_CELL = '@max-[14rem]:relative';
 const NARROW_SOLO_TILE = '@max-[14rem]:absolute @max-[14rem]:inset-0 @max-[14rem]:bg-transparent! @max-[14rem]:border-0!';
 const NARROW_DAY_NUMBER = '@max-[14rem]:text-[length:clamp(12px,calc((100cqw_-_3.25rem_-_21px)_/_8.4),0.75rem)]';
 
@@ -512,7 +538,7 @@ export default function CalendarMonthView({
                  no outline; adjacent cells — leading and trailing — stay untiled on the page ground
                  (the A4b reading), chosen OVER the shipped 1px line outline on a card-white cell. */
               /* #204 (register, routed to the plan that next touches this file, 88.9-07): the today and full-variant past arms precede the clickable arm, so a clickable today or past cell never got the pointer; added here, no look change. */
-              className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} rounded-md p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+              className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} rounded-md p-1 ${variant === 'compact' ? `flex flex-col ${NARROW_CELL}` : ''} ${
                 cellClickable && (isCurrentDay || (variant === 'full' && isPastDate)) ? 'cursor-pointer ' : ''
               }${
                 !date ? 'bg-surface-page border border-transparent' :
@@ -1089,6 +1115,8 @@ export default function CalendarMonthView({
                                same name and these same handlers, chosen OVER hiding it (that day has no other
                                button). The choice and the rejected forms are at NARROW_COUNT at the top of
                                this file. The W14 dashed guest edge therefore shows above the threshold only.
+                               AMENDED Phase 88.9-52 (G1, round 4): the overlay sizes to the day's CELL (the
+                               cell is the positioning box in a narrow grid), not to the count's box.
 
                                Any of this is a decision, not a cleanup. */
                             <div

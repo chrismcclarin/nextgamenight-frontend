@@ -635,15 +635,28 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
       expect(hits, `the day with ${count} nights carries no count`).toHaveLength(1);
       return hits[0] as HTMLElement;
     };
-    const SIZE_2 = 'before:text-[length:clamp(12px,calc((100cqw_+_0.25rem_-_28px)_/_8.8),0.75rem)]';
-    const SIZE_3 = 'before:text-[length:clamp(12px,calc((100cqw_+_0.25rem_-_28px)_/_13.2),0.75rem)]';
+    // G1 (88.9-52 round 4): the two- and three-digit sizes end inside the day's OWN cell (they ended
+    // before the next count, and the after-build capture read 12 and 101 up to 7.7px past their cell).
+    const SIZE_2 = 'before:text-[length:clamp(12px,calc((100cqw_-_1.5rem_-_21px)_/_9.94),0.75rem)]';
+    const SIZE_3 = 'before:text-[length:clamp(12px,calc((100cqw_-_1.5rem_-_21px)_/_14.91),0.75rem)]';
+    // The count's line spans the cell (the pull) and starts under the day number wherever the
+    // number fits there; where it does not, the start moves left, never past the cell's edge.
+    const START = (digits: number) => `before:pl-[clamp(0px,calc(100%_+_0.5rem_-_${(0.71 * digits).toFixed(2)}em_-_1px),0.25rem)]`;
     const HELD = '@max-[14rem]:text-[length:clamp(12px,calc((100cqw_-_3.25rem_-_21px)_/_8.4),0.75rem)]';
 
     // The count: hidden until the grid is narrow, then a bold line in the day number's ink, lifted
     // like the +N label it replaces (S-B2), one size arm per digit count.
     for (const [count, size, others] of [[1, 'before:text-xs', [SIZE_2, SIZE_3]], [3, 'before:text-xs', [SIZE_2, SIZE_3]], [12, SIZE_2, ['before:text-xs', SIZE_3]], [101, SIZE_3, ['before:text-xs', SIZE_2]]] as const) {
       const stack = stackOf(count);
-      for (const t of ['relative', 'before:hidden', '@max-[14rem]:before:block', 'before:content-[attr(data-count)]', 'before:relative', 'before:z-10', 'before:font-bold', 'before:text-content-primary', 'before:whitespace-nowrap', size]) {
+      // G1: the stack is NOT a positioning box (its one-night tile must size to the cell, below),
+      // the count's line is pulled out to the cell's inner edges, starts by its digit count, and
+      // lets a tap through to the tile under it.
+      expect(tokens(stack), `the ${count}-night day's stack is a positioning box`).not.toContain('relative');
+      const digits = String(count).length;
+      for (const t of ['before:-mx-1', 'before:pointer-events-none', START(digits)]) expect(tokens(stack), `the ${count}-night day's count lacks ${t}`).toContain(t);
+      for (const other of [1, 2, 3].filter((d) => d !== digits)) expect(tokens(stack), `the ${count}-night day's count carries a second start`).not.toContain(START(other));
+      expect(tokens(stack.parentElement as HTMLElement), `the ${count}-night day's cell is not the overlay's positioning box in a narrow grid`).toContain('@max-[14rem]:relative');
+      for (const t of ['before:hidden', '@max-[14rem]:before:block', 'before:content-[attr(data-count)]', 'before:relative', 'before:z-10', 'before:font-bold', 'before:text-content-primary', 'before:whitespace-nowrap', size]) {
         expect(tokens(stack), `the ${count}-night day's count lacks ${t}`).toContain(t);
       }
       for (const t of others) expect(tokens(stack), `the ${count}-night day's count carries a second size, ${t}`).not.toContain(t);
@@ -668,6 +681,21 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
     for (const t of ['@max-[14rem]:absolute', '@max-[14rem]:inset-0', '@max-[14rem]:bg-transparent!', '@max-[14rem]:border-0!']) {
       expect(tokens(solo), `the one-game day's tile lacks ${t}`).toContain(t);
     }
+    // G1 (88.9-52 round 4): the overlay covers the day's CELL, not the count's 12.7 x 48px box the
+    // after-build capture measured. An absolute box sizes to its nearest positioned ancestor, so
+    // between the tile and its cell exactly the cell is positioned (in a narrow grid only).
+    {
+      const cell = cells.find((c) => c.contains(solo)) as HTMLElement;
+      expect(cell, "the one-game day's tile sits in no day cell").toBeTruthy();
+      const positioned: HTMLElement[] = [];
+      for (let el = solo.parentElement as HTMLElement | null; el; el = el === cell ? null : el.parentElement) {
+        // A before: token positions the count's own line, not the element.
+        if (tokens(el).some((t) => !t.startsWith('before:') && /(^|:)(relative|absolute|fixed|sticky)$/.test(t))) positioned.push(el);
+      }
+      expect(positioned, "the one-game day's overlay does not size to its cell").toEqual([cell]);
+      expect(tokens(cell)).toContain('@max-[14rem]:relative');
+      expect(tokens(cell), 'the cell is positioned above the threshold too').not.toContain('relative');
+    }
     expect(tokens(solo), "the one-game day's tile is removed in a narrow grid, leaving the day with no button").not.toContain('@max-[14rem]:hidden');
     expect(solo.getAttribute('tabindex')).toBe('0');
     expect(solo.children).toHaveLength(1);
@@ -685,14 +713,16 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
 
     // The arithmetic behind the three sizes (px; root = the root text size, grid = the day grid's
     // width; a cell is (grid - 6 gaps of 0.25rem) / 7; text starts 0.25rem + 1px inside its cell).
-    // Digit widths are estimates from capture g's label widths: 0.625em a plain digit, 0.63em bold.
+    // A plain digit is an estimate from capture g's label widths (0.625em). A bold digit is at most
+    // 0.71em: the after-build capture (r3-l) read the count's ink at 24px bold as 9.7px for 1,
+    // 14.3px for 2, 14.7px for 3 and, from 101, 0.70em for 0, the widest it read.
     const clamp = (lo: number, v: number, hi: number) => Math.min(Math.max(v, lo), hi);
     const held = (grid: number, root: number) => clamp(12, (grid - 3.25 * root - 21) / 8.4, 0.75 * root);
-    const countSize = (grid: number, root: number, divisor: number) => clamp(12, (grid + 0.25 * root - 28) / divisor, 0.75 * root);
+    const countSize = (grid: number, root: number, divisor: number) => clamp(12, (grid - 1.5 * root - 21) / divisor, 0.75 * root);
     // 375 at normal text (grid 319, capture g): nothing is held, everything is its normal 12px.
     expect(held(319, 16)).toBe(12);
-    expect(countSize(319, 16, 8.8)).toBe(12);
-    expect(countSize(319, 16, 13.2)).toBe(12);
+    expect(countSize(319, 16, 9.94)).toBe(12);
+    expect(countSize(319, 16, 14.91)).toBe(12);
     // Up to the threshold itself the number is its full scaled size: no jump where the query flips.
     expect(held(448, 32)).toBe(24);
     for (const [gridPx, root] of [[263, 32], [208, 32]] as const) {
@@ -702,12 +732,30 @@ describe('CalendarMonthView — round-2 look (88.9-28)', () => {
       // A two-digit day number ends inside its own cell, or at most 2px past it where the 12px
       // floor holds (a 320 phone at 200%: 1.1px past; the next cell is 8px further on).
       expect(start + held(gridPx, root) * 1.25, `grid ${gridPx}: a two-digit day number leaves its cell`).toBeLessThanOrEqual(cell + 2);
-      // A count ends before the next day's count starts, for one, two and three digits.
-      for (const [digits, divisor] of [[1, Infinity], [2, 8.8], [3, 13.2]] as const) {
+      // G1: a count ends inside its OWN cell, for one, two and three digits, at the widest digit
+      // the capture read (0.71em). Its line spans the cell's inner width (cell - 2px of border);
+      // its start is the day number's (0.25rem in) wherever that fits and moves left otherwise.
+      // The one case no size at or above 12px can hold is three digits on a 320 phone at 200%.
+      for (const [digits, divisor] of [[1, Infinity], [2, 9.94], [3, 14.91]] as const) {
         const size = divisor === Infinity ? 0.75 * root : countSize(gridPx, root, divisor);
-        expect(start + size * 0.63 * digits, `grid ${gridPx}: a ${digits}-digit count reaches the next day's count`).toBeLessThan(pitch + start);
+        const ink = size * 0.71 * digits;
+        const line = cell - 2;
+        const pad = clamp(0, line - ink - 1, 0.25 * root);
+        const end = 1 + pad + ink;
+        if (digits === 3 && gridPx === 208) {
+          expect(size, 'three digits at 320 / 200% sit on the 12px floor').toBe(12);
+          expect(end, 'three digits at 320 / 200%: the 12px floor is wider than the cell at the widest digits').toBeGreaterThan(cell);
+          // The number the capture staged, 101, does fit there: 1 0 1 at 12px is 18.1px of ink.
+          expect(1 + clamp(0, line - 12 * (0.404 + 0.702 + 0.404) - 1, 0.25 * root) + 12 * (0.404 + 0.702 + 0.404)).toBeLessThanOrEqual(cell);
+          continue;
+        }
+        expect(end, `grid ${gridPx}: a ${digits}-digit count leaves its own cell`).toBeLessThanOrEqual(cell);
+        expect(end, `grid ${gridPx}: a ${digits}-digit count reaches the next day's count`).toBeLessThan(pitch);
       }
     }
+    // As built in round 3 the two sizes ended before the NEXT count, not inside the cell: at 375 /
+    // 200% a two-digit count was 24px, and 12 (24px of ink) ended 2.3px past its cell (r3-l).
+    expect(0.25 * 32 + 1 + 24 - (263 - 48) / 7).toBeGreaterThan(2);
     // As built, the 24px day number at 375 / 200% ended 7px past its cell: what capture g saw.
     expect(0.25 * 32 + 1 + 24 * 1.25 - (263 - 48) / 7).toBeGreaterThan(7);
   });
