@@ -424,7 +424,8 @@ function GuestInviteButton({ groupId, userId, guestName }) {
                `inline-flex items-center`, `transition-colors`, and `min-h-11` (now on the cva
                base at every viewport, 88.6-06 D-09).
                The idle branch's `hover:bg-surface-hover` is DELETED rather than carried: the
-               ghost variant already supplies the byte-equal `enabled-hover:bg-surface-hover`,
+               ghost variant already supplies its own gated hover (`enabled-hover:bg-surface-hover`
+               when this was written; since 88.9-52 R8c it is `enabled-hover:bg-surface-ghost-hover`),
                and a BARE `hover:` would re-light the control while it is `aria-disabled`
                mid-send, which is the exact failure `enabled-hover` exists to prevent
                (`Button.tsx`'s D10 marker). The `error` branch's hover is spelled
