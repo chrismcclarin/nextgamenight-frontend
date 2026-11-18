@@ -42,11 +42,11 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 //
 // CI ONLY: both projects need the signed-in storage state, which does not exist locally.
 //
-// Phase 88.9 plan 69 (X61 beyond Friends) adds five surfaces the same remarks named, on the same
+// Phase 88.9 plan 69 (X61 beyond Friends) adds four surfaces the same remarks named, on the same
 // helpers and under the same rule (recorded, and only the house ring asserted): the Home small
 // notice's Retry, the event view's group breadcrumb link and its Retry, a name in the RSVP list of
-// the game page's upcoming event card, the group page's Loading group gate Retry and the Plan Game
-// Session Retry. Each small notice is staged by answering the self-identity read with a 500 in the
+// the game page's upcoming event card and the Plan Game Session Retry (a fifth, the group page's
+// Loading group gate Retry, left with that notice in 88.9-52 P1: the page shows its full banner). Each small notice is staged by answering the self-identity read with a 500 in the
 // browser (the state the captured frames were in); the game page's upcoming night and its two
 // replies are made up and answered in the browser. Nothing is written and no control is pressed.
 
@@ -413,7 +413,7 @@ async function openInTheme(page: Page, path: string, theme: 'dark' | 'light') {
 
 const THEMES = ['dark', 'light'] as const;
 
-// ---- Plan 88.9-69: the five surfaces outside Friends ----
+// ---- Plan 88.9-69: the four surfaces outside Friends ----
 
 // Seeded fixtures minted by the backend's scripts/e2e-fixtures.js in CI (the padding-budget idiom).
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
@@ -727,23 +727,6 @@ test.describe('focus ring geometry, measured (plan 88.9-66, X61)', () => {
       });
       await expect(name).toHaveCount(1);
       await measure(ctx, name, "game page: a name in the upcoming event card's RSVP list", true);
-    }
-    await publish(testInfo, records);
-  });
-
-  test('X61 (88.9-69): group page — the Loading group gate Retry records its ring against its ink', async ({ page }, testInfo) => {
-    const records: RingRecord[] = [];
-    await failIdentityRead(page);
-
-    for (const theme of THEMES) {
-      const ctx: Context = { page, testInfo, theme, records };
-      await openInTheme(page, `/groupHomePage?id=${E2E_GROUP_ID}`, theme);
-      // With no identity the membership check never completes, so the gate stays up.
-      await expect(
-        page.locator('p', { hasText: 'Loading group…' }).first(),
-        `X61 (${theme}): the group page is not on its Loading group gate`,
-      ).toBeVisible({ timeout: 30_000 });
-      await measureVisibleRetries(ctx, 'group page gate');
     }
     await publish(testInfo, records);
   });

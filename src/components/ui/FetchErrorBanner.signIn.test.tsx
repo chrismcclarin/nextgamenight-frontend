@@ -217,8 +217,6 @@ describe('FetchErrorBanner — R073 mount grounds (88.9-50)', () => {
     { file: 'src/app/gameDetail/page.js', anchor: '<TimezoneNudgeBanner />', key: 'page' },
     // the reviews card
     { file: 'src/app/gameDetail/page.js', anchor: '<div className="card p-3 md:p-6">', key: 'card' },
-    // the unpainted Loading group gate, so the body's page ground
-    { file: 'src/app/groupHomePage/page.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact', key: 'page' },
     // the unpainted page wrapper, so the body's page ground
     { file: 'src/app/groupPlanning/page.js', anchor: '<FetchErrorBanner state={personalControlsErrorState} compact', key: 'page' },
     // the desktop-only column (hidden below md), unpainted to the body
