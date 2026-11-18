@@ -1275,6 +1275,45 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
     }
   });
 
+  it('R4 B5 (88.9-52): on a phone the Friend pill sits 4px after a guest name, as it does after a member name', async () => {
+    // The round-4 re-shoot measured, at 375, the Friend pill 6px after the name on a guest row
+    // and 4px on a member row. A member row's phone pill is drawn by ClickableMemberName inside
+    // the name, 4px after it (src/app/components/ClickableMemberName.js ("'md:hidden ml-1 inline-flex items-center align-middle'")).
+    // A guest row's pill is the page's own, a sibling of the name in a line whose items sit 6px
+    // apart (space-x-1.5): below md it now pulls 2px back (max-md:-ms-0.5), so 6 - 2 = 4.
+    // From md both rows draw the page's pill 6px after the name, so the pull stops there.
+    pinClockBeforeTheNight();
+    try {
+      const user = userEvent.setup();
+      friendship.accepted.add('p-1');
+      // A roster member who is a friend (the row the R19 test above reads) beside the guest.
+      friendship.accepted.add(OTHER_UUID);
+      const participants = [participantRow(), ...SIX_PARTICIPANTS.slice(0, 5).map((p) => (p.user_id === 'p-1' ? { ...p, is_guest: true } : p))];
+      renderEventDetail({ role: 'owner', participants });
+      await screen.findByText('Player 0');
+      const dialog = await openParticipantsModal(user);
+      const guestLine = within(dialog).getByText('Player 1').closest('div') as HTMLElement;
+      // The line's own spacing is 6px between items.
+      expect(guestLine.className.split(/\s+/)).toContain('space-x-1.5');
+      const guestPill = within(guestLine).getByText('Friend');
+      expect(guestPill.parentElement, 'the guest pill is the page\'s own, a sibling of the name').toBe(guestLine);
+      expect(guestPill.className.split(/\s+/)).toEqual(expect.arrayContaining(['inline-flex', 'max-md:-ms-0.5']));
+      // No pull that would also apply from md, where 6px is the gap on every row.
+      expect(guestPill.className.split(/\s+/).filter((c) => /^-?m[sxl]-/.test(c))).toEqual([]);
+      // A roster friend's page pill is the desktop twin: hidden on a phone, and it takes no pull.
+      const memberPills = within(dialog)
+        .getAllByText('Friend')
+        .filter((el) => el !== guestPill && el.className.split(/\s+/).includes('md:inline-flex'));
+      expect(memberPills.length, 'a roster friend draws the desktop pill').toBeGreaterThanOrEqual(1);
+      for (const pill of memberPills) {
+        expect(pill.className.split(/\s+/)).toContain('hidden');
+        expect(pill.className.split(/\s+/).some((c) => c.includes('-ms-'))).toBe(false);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('closes the participants list on Esc', async () => {
     const user = userEvent.setup();
     renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });

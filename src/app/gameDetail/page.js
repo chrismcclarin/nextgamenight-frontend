@@ -3402,7 +3402,15 @@ export default function GameDetailPage() {
                                             // above); Friend is still drawn, and said, once per row.
                                             // Both display arms are whole class names (Tailwind v4 emits nothing
                                             // for a built one); the pill's look is written once.
-                                            <span className={`${memberUuid ? 'hidden md:inline-flex' : 'inline-flex'} items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold`}>
+                                            // AMENDED Phase 88.9-52 (R4 B5, the round-4 re-shoot: at 375 the pill
+                                            // sat 6px after a guest's name and 4px after a member's): below md the
+                                            // guest arm pulls 2px back (max-md:-ms-0.5), so it sits 4px after the
+                                            // name, where ClickableMemberName puts a member's phone pill (its ml-1).
+                                            // The 6px is this line's own item spacing (space-x-1.5). From md every
+                                            // row draws THIS pill, 6px after the name, so the pull is phone only.
+                                            // Chosen OVER moving the member pill to 6px (R19's picked look, and
+                                            // the component's gap on every other surface).
+                                            <span className={`${memberUuid ? 'hidden md:inline-flex' : 'inline-flex max-md:-ms-0.5'} items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold`}>
                                                 Friend
                                             </span>
                                         )}
