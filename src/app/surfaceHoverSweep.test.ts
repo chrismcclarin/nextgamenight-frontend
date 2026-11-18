@@ -171,7 +171,7 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
       legacyHoverUses(`<div className="${HOVER_PREFIX}${LEGACY} p-4">`),
     ).toHaveLength(1);
     // A template-literal ternary branch — reachable by grep only by accident, and the shape
-    // src/app/components/KebabMenu.js ("${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}")
+    // src/app/components/KebabMenu.js ("${isArmed ? 'bg-status-error-subtle font-semibold' : 'enabled-hover:bg-surface-ghost-hover'}")
     // and src/app/components/FriendInvitePanel.js ("? 'border-accent bg-surface-muted cursor-pointer'") actually ship.
     expect(
       legacyHoverUses(
@@ -224,12 +224,21 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     //     control — the exact defect `enabled-hover` exists to prevent
     //     (`Button.tsx`'s `DECISION Phase 88.6-06 (D10)`).
     //  2-4. the hand-rolled event-actions kebab's trigger and its two destructive items —
-    //     RETIRED onto the shared `KebabMenu`, whose own trigger and items carry the wash and
-    //     are already counted in this set: the trigger,
-    //     src/app/components/KebabMenu.js ("text-2xl text-content-muted hover:text-content-primary"),
-    //     and the two item arms,
-    //     src/app/components/KebabMenu.js ("${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}")
-    //     and src/app/components/KebabMenu.js ("'text-content-primary hover:bg-surface-hover'").
+    //     RETIRED onto the shared `KebabMenu`, whose own trigger carries the wash and is
+    //     already counted in this set:
+    //     src/app/components/KebabMenu.js ("text-2xl text-content-muted hover:text-content-primary").
+    //     AMENDED Phase 88.9-52 (R4 L1, after G3 / R20): this sentence used to say the trigger AND
+    //     the two item arms carry the wash and are counted here. That is now true of the trigger
+    //     only. G3 moved both item arms onto the gated ghost wash, and this scanner counts only
+    //     the bare token, so they left this set:
+    //     src/app/components/KebabMenu.js ("${isArmed ? 'bg-status-error-subtle font-semibold' : 'enabled-hover:bg-surface-ghost-hover'}")
+    //     and src/app/components/KebabMenu.js ("'text-content-primary enabled-hover:bg-surface-ghost-hover'").
+    //     TWO DEPARTING SITES NAMED, FLOOR NOT LOWERED: the measured total went 33 -> 31 with
+    //     them (measured 2026-11-18) and the floor stays at 30, chosen OVER lowering it (nothing
+    //     needs it) and OVER re-spelling the items back onto the bare wash to keep the count (the
+    //     owner picked the ghost wash for menu items, and the gated form is what stops a busy
+    //     item lighting). Neither item lost its hover; only the token and its spelling changed.
+    //     The slack is now one site, so the departure after next turns this test red.
     //
     // 32 -> 31, plan 88.6-21 task 2 (wave 7, 2026-09-16), WITH ITS ONE DEPARTING SITE NAMED:
     // `app/groupHomePage/page.js`'s "Manage Members" header CTA, migrated to
