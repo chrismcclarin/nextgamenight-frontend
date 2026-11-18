@@ -1083,7 +1083,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
           render because a row only overflows at its widest state and a short-label probe would
           pass on a row that breaks in production. *[CORRECTED 2026-09-28, plan 88.6-58 / review
           H1: after plan 88.6-18 the widest states are the settled invite `<span>` ("Already a
-          member") and the ARMED two-tap Remove ("Tap again to confirm") — a `Remove {name}`
+          member") and the ARMED two-tap Remove ("Tap again to confirm"; since R13, 88.9-52, the words it shows are "Tap again", its widest painted states being that and Wait (3)) — a `Remove {name}`
           label never renders. The replica is now derived from the shipped `<Button>` classes
           and pinned in lockstep by src/components/ui/Button.e2eReplica.test.ts; current
           cites: the row, the settled span and the Remove className, each anchored in item 1 above.]*
@@ -1144,7 +1144,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       //   - REMOVE: the two-tap Remove in its ARMED state — `cn(buttonVariants({ variant:
       //     'ghost', size: 'sm' }), 'border shrink-0 ' + <the isConfirming classes>)`, those classes being src/app/gameDetail/page.js ("bg-status-error-subtle border-status-error text-content-status-error font-semibold")
       //     TRANSCRIBED as a literal (e2e cannot import `src/`), with `useConfirmAction`'s
-      //     `DEFAULT_ARMED_LABEL` 'Tap again to confirm' (src/components/ui/useConfirmAction.ts ("export const DEFAULT_ARMED_LABEL"); gameDetail
+      //     `DEFAULT_ARMED_LABEL` 'Tap again' (R13, 88.9-52: the visible words; src/components/ui/useConfirmAction.ts ("export const DEFAULT_ARMED_LABEL"); gameDetail
       //     passes no `armedLabel`, src/app/gameDetail/page.js ("const removeParticipantGate = useConfirmAction({")). The old comment here said `labelFor`
       //     renders `Remove {username}` — it never did: the resting label is 'Remove' (src/app/gameDetail/page.js ("removeParticipantGate.labelFor(p.user_id, 'Remove')")),
       //     and the target's name lives only in the accessible name.
@@ -1164,7 +1164,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       const remove = make(
         'button',
         'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11 enabled-hover:bg-surface-ghost-hover aria-disabled:text-content-muted btn-sm border shrink-0 bg-status-error-subtle border-status-error text-content-status-error font-semibold',
-        'Tap again to confirm',
+        'Tap again',
       );
 
       host.appendChild(row);

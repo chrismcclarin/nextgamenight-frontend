@@ -185,7 +185,7 @@ test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone proj
     // F9b (88.9-23): the armed item is gated for 3 s; wait for the live label before the
     // committing tap (the 5 s expect timeout covers the gate).
     const confirmRemove = dialog.getByRole('button', { name: 'Tap again to remove' });
-    await expect(confirmRemove).toHaveText('Tap again to remove');
+    await expect(confirmRemove).toHaveText('Tap again');
     await confirmRemove.tap();
 
     // POSITIVE signal: the refresh after the removal reached the route and is held.
@@ -595,9 +595,10 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
   // The owner's member menu holds the largest shipped item set (Make admin, Remove, Transfer
   // ownership to this member). Every item must sit on ONE line at 375 (each as tall as the
   // one-word Make admin item), the menu must stay inside the viewport, and the armed Remove must
-  // read Wait (3), (2), (1) then Tap again to remove without the item or the menu changing size.
+  // read Wait (3), (2), (1) then Tap again without the item or the menu changing size (R13,
+  // 88.9-52: the words it shows are the short ones; it is named Tap again to remove).
   // One tap only: nothing is removed.
-  test('X69 + X67 (88.9): the member kebab Remove reads Wait (3), (2), (1) then Tap again to remove, every item on one line at 375 and the menu one width from the arm', async ({
+  test('X69 + X67 (88.9): the member kebab Remove reads Wait (3), (2), (1) then Tap again, every item on one line at 375 and the menu one width from the arm', async ({
     page,
   }) => {
     expect(page.viewportSize()?.width).toBe(375);
@@ -647,22 +648,23 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
     await remove.tap();
     // The live label, after the 3 s gate.
     const armed = dialog.getByRole('button', { name: 'Tap again to remove' });
-    await expect(armed).toHaveText('Tap again to remove', { timeout: 10_000 });
+    await expect(armed).toHaveText('Tap again', { timeout: 10_000 });
     const samples = await stopLabelRecorder(page);
 
     const WAITING = ['Wait (3)', 'Wait (2)', 'Wait (1)'];
-    const FROM_THE_ARM = [...WAITING, 'Tap again to remove'];
+    const FROM_THE_ARM = [...WAITING, 'Tap again'];
     const trace = describeSamples(samples);
     // eslint-disable-next-line no-console -- the measured widths are recorded from the CI log (plan 88.9-67)
     console.log(`[88.9-67 X69 kebab Remove] phone: ${trace}`);
-    expect(paintedTexts(samples), `X69: the item did not run Remove, Wait (3), (2), (1), Tap again to remove (${trace})`).toEqual([
+    expect(paintedTexts(samples), `X69: the item did not run Remove, Wait (3), (2), (1), Tap again (${trace})`).toEqual([
       'Remove',
       ...FROM_THE_ARM,
     ]);
     expect(valuesAt(samples, 'Wait (3)', 'name')).toEqual(['Remove, wait 3 seconds']);
     expect(valuesAt(samples, 'Wait (2)', 'name')).toEqual(['Remove, wait 2 seconds']);
     expect(valuesAt(samples, 'Wait (1)', 'name')).toEqual(['Remove, wait 1 second']);
-    expect(valuesAt(samples, 'Tap again to remove', 'name')).toEqual([null]);
+    // R13 (88.9-52): live, the item carries its sentence as its name.
+    expect(valuesAt(samples, 'Tap again', 'name')).toEqual(['Tap again to remove']);
     // One line through every state: the item never grows past the one-word height.
     const tallest = Math.max(...samples.map((sample) => sample.height));
     expect(tallest - oneLine, `X67: the armed item grew to ${tallest}px from ${oneLine}px, so a label wrapped (${trace})`).toBeLessThanOrEqual(0.5);
@@ -740,7 +742,7 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
       await dialog.getByRole('button', { name: 'Member actions for E2E Removable' }).tap();
       await dialog.getByRole('button', { name: 'Remove', exact: true }).tap();
       const confirmRemove = dialog.getByRole('button', { name: 'Tap again to remove' });
-      await expect(confirmRemove).toHaveText('Tap again to remove', { timeout: 10_000 });
+      await expect(confirmRemove).toHaveText('Tap again', { timeout: 10_000 });
       await confirmRemove.tap();
 
       // POSITIVE signal: the DELETE reached the route and is held there.

@@ -16,7 +16,13 @@ import { cn } from '@/lib/cn';
    WHAT IT DOES NOT SET: weight, colour or wrapping. A reserve span inherits the weight its host
    paints at, so it measures what the visible label measures. A host whose reserved label paints
    at another weight than the host does at that moment passes it through reserveClassName (the
-   Profile collection x reserves its armed 600 at rest, DECISION Phase 88.6-17 (D-03 / T-88.6-41)). */
+   Profile collection x reserves its armed 600 at rest, DECISION Phase 88.6-17 (D-03 / T-88.6-41)).
+
+   AMENDED Phase 88.9-52 (R13): one more optional occupant, reserveTrailing: a string plus trailing
+   room, for a label that gains an element after its word (the kebab item's busy spinner). It is the
+   same kind of empty span, painted from its own attribute (data-reserve-trailing) so every reader
+   of data-reserve still sees the label strings alone, and it does NOT take reserveClassName: it
+   measures the label at the weight the host paints it with that element beside it. */
 
 export interface ReservedLabelProps {
   /** The visible label. */
@@ -28,11 +34,16 @@ export interface ReservedLabelProps {
   reserve: readonly string[];
   /** Whole-literal classes for every reserve span, for example the weight the reserved label paints at. */
   reserveClassName?: string;
+  /**
+   * One more width to hold: `text` followed by the room `className` adds (whole-literal padding
+   * classes), for a label that gains a trailing element. Omitted, nothing more is reserved.
+   */
+  reserveTrailing?: { text: string; className: string };
   /** Whole-literal classes joined after inline-grid on the root span. */
   className?: string;
 }
 
-export function ReservedLabel({ children, reserve, reserveClassName, className }: ReservedLabelProps) {
+export function ReservedLabel({ children, reserve, reserveClassName, reserveTrailing, className }: ReservedLabelProps) {
   return (
     <span className={cn('inline-grid', className)}>
       {reserve.map((text, index) => (
@@ -43,6 +54,16 @@ export function ReservedLabel({ children, reserve, reserveClassName, className }
           className={cn('invisible col-start-1 row-start-1 before:content-[attr(data-reserve)]', reserveClassName)}
         />
       ))}
+      {reserveTrailing ? (
+        <span
+          aria-hidden="true"
+          data-reserve-trailing={reserveTrailing.text}
+          className={cn(
+            'invisible col-start-1 row-start-1 before:content-[attr(data-reserve-trailing)]',
+            reserveTrailing.className
+          )}
+        />
+      ) : null}
       <span className="col-start-1 row-start-1">{children}</span>
     </span>
   );

@@ -1283,13 +1283,14 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
 // 88-33 Task 5 (fork 7): the hand-rolled handler converged onto useConfirmAction.
 // Contract shifts pinned here: the resting accessible name now NAMES THE TARGET
 // ("Remove Player 0 from this event", was a bare 'Remove'); the armed copy is the
-// fleet default ('Tap again to confirm', was the divergent click-again wording);
+// fleet default (named 'Tap again to confirm', was the divergent click-again wording;
+// since R13, 88.9-52, the words it SHOWS are the short 'Tap again', pinned below);
 // the control meets the 44px floor. The 65-02 INTERACTION — inline second click,
 // 3s revert, never a modal — is unchanged and re-pinned below.
 const RESTING_REMOVE = /^Remove .+ from this event$/;
 const ARMED_REMOVE = 'Tap again to confirm';
 // F9b (88.9-23): the armed NAME while the gate runs (the label counts Wait 3, 2, 1, then
-// ARMED_REMOVE). X69 (88.9-67): the resting name, then the wait.
+// Tap again, named ARMED_REMOVE). X69 (88.9-67): the resting name, then the wait.
 const GATED_REMOVE = /^Remove .+ from this event, wait \d seconds?$/;
 
 describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)', () => {
@@ -2596,7 +2597,7 @@ describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-
     act(() => {
       vi.advanceTimersByTime(CONFIRM_DELAY_MS - 1000);
     });
-    expect(cancel).toHaveTextContent('Tap again to confirm');
+    expect(cancel).toHaveTextContent(/^Tap again$/);
     await user.click(cancel);
 
     expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);

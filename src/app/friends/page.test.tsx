@@ -556,7 +556,7 @@ describe('remove friend (two-tap tier)', () => {
     passGate();
 
     const armed = screen.getByRole('button', { name: 'Tap again to confirm' });
-    expect(armed).toHaveTextContent('Tap again to confirm');
+    expect(armed).toHaveTextContent(/^Tap again$/);
     expect(armed).toHaveAttribute('aria-pressed', 'true');
     // The live region names the target so a row switch re-announces.
     expect(gateStatus()).toHaveTextContent(
@@ -2749,7 +2749,7 @@ describe('friend Remove takes the one inline two-tap look (88.9-52: W38)', () =>
     expect(reserveRoot.querySelectorAll('[data-reserve]').length).toBeGreaterThan(0);
     expect(reserveRoot.className.split(/\s+/)).toContain('justify-items-end');
     passGate();
-    expect(remove).toHaveTextContent('Tap again to confirm');
+    expect(remove).toHaveTextContent(/^Tap again$/);
     expect(borderClasses(remove)).toEqual([]);
     expect(classes()).toContain('font-semibold');
 

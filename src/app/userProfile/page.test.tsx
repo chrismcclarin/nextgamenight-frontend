@@ -3223,7 +3223,7 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
     // The SAME node is now armed, and live once the wait has passed.
     expect(remove).toHaveAttribute('aria-pressed', 'true');
     passGate();
-    expect(remove).toHaveTextContent('Tap again to remove');
+    expect(remove).toHaveTextContent(/^Tap again$/);
     fireEvent.click(remove);
     // POSITIVE settle on the same node: the removal is running (no longer armed).
     await waitFor(() => expect(remove).not.toHaveAttribute('aria-pressed'));
@@ -3233,7 +3233,7 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
     expect(remove).toHaveTextContent('Remove');
-    expect(remove).not.toHaveTextContent('Tap again to remove');
+    expect(remove).not.toHaveTextContent('Tap again');
     expect(remove).not.toHaveAttribute('aria-pressed');
     expect(remove).toHaveAttribute('aria-disabled', 'true');
 
@@ -7003,7 +7003,7 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     await vi.waitFor(() => expect(overrideDelete).not.toHaveAttribute('aria-disabled'));
   });
 
-  it('X36b (88.9-68): the phone Remove is the shared gated two-tap: a tap while it counts down sends nothing, the live label is Tap again to remove, two live taps send one removePhone, and while it runs it is aria-disabled, named Remove, removing, with the house spinner', async () => {
+  it('X36b (88.9-68): the phone Remove is the shared gated two-tap: a tap while it counts down sends nothing, the live label is Tap again (named Tap again to remove), two live taps send one removePhone, and while it runs it is aria-disabled, named Remove, removing, with the house spinner', async () => {
     const { usersAPI } = await import('@/lib/api');
     const removal = deferred();
     (usersAPI.removePhone as Mock).mockImplementation(() => removal.promise);
@@ -7030,9 +7030,9 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expect(remove).toHaveAttribute('aria-disabled', 'true');
     expect(statusTexts().filter((text) => text.startsWith('Press again'))).toEqual([]);
 
-    // Live: the shipped words, named by them, and the gate's region says what to do, once.
+    // Live: the short words (R13, 88.9-52), named by the shipped sentence, and the gate's region says what to do, once.
     advance(1);
-    expect(remove).toHaveTextContent('Tap again to remove');
+    expect(remove).toHaveTextContent(/^Tap again$/);
     expect(remove).toHaveAccessibleName('Tap again to remove');
     expect(remove).toHaveAttribute('aria-pressed', 'true');
     expect(remove).not.toHaveAttribute('aria-disabled');
@@ -7049,7 +7049,7 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expect(remove).toHaveAttribute('aria-disabled', 'true');
     expect(remove).toHaveAttribute('aria-label', 'Remove, removing');
     expect(remove).toHaveTextContent('Remove');
-    expect(remove).not.toHaveTextContent('Tap again to remove');
+    expect(remove).not.toHaveTextContent('Tap again');
     expectSpinnerAppearsAfterTheDelay(remove);
     // W38 (88.9-52): this control is LEFT-anchored, so its spinner trails the word (a leading one
     // would push the word 24px right); the right-anchored Delete and x lead with theirs.

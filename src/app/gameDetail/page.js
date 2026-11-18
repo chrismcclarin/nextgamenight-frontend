@@ -3485,7 +3485,8 @@ export default function GameDetailPage() {
                                                 }`}
                                             >
                                                 {/* X69 width (88.9-67): from the arm the label holds the widest of
-                                                    Wait (3), (2), (1) and Tap again to confirm; at rest nothing
+                                                    Wait (3), (2), (1) and Tap again (R13, 88.9-52: the short visible words,
+                                                    so at 375 the armed control stays on the name's line); at rest nothing
                                                     is reserved. */}
                                                 <ReservedLabel reserve={removeParticipantGate.reserveFor(p.user_id)}>
                                                     {removeParticipantGate.labelFor(p.user_id, 'Remove')}

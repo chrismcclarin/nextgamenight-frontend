@@ -115,7 +115,8 @@ describe('E10 planted replica is byte-derived from the SHIPPED gameDetail row co
     expect(gate.slice(0, gate.indexOf('});'))).not.toContain('armedLabel');
     expect(controls.invite?.label).toBe('Already a member');
     expect(controls.remove?.label).toBe(armedDefault![1]);
-    expect(controls.remove?.label).toBe('Tap again to confirm');
+    // R13 (88.9-52): the armed words a person sees are the short label; the sentence is the name.
+    expect(controls.remove?.label).toBe('Tap again');
   });
 
   it('carries no pre-migration residue: no `Remove Bartholomew`, no `text-xs`', () => {

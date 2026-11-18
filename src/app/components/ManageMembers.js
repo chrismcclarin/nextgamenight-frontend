@@ -1131,7 +1131,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                         label: 'Remove',
                                                                         danger: true,
                                                                         twoTap: true,
-                                                                        confirmLabel: 'Tap again to remove',
+                                                                        armedName: 'Tap again to remove',
                                                                         keepOpen: true,
                                                                         busy: removingMemberIds.has(member.id),
                                                                         busySuffix: ', removing',

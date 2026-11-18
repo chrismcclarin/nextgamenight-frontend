@@ -1619,7 +1619,7 @@ function FriendsPage() {
                                                                         Moving it back after the word is a decision, not a cleanup. */}
                                                                     <DelayedSpinner busy={removing} className="mr-2" />
                                                                     {/* X69 width (88.9-67): from the arm the label holds the widest of
-                                                                        Wait (3), (2), (1) and Tap again to confirm, so the row does not
+                                                                        Wait (3), (2), (1) and Tap again (R13, 88.9-52: the short visible words), so the row does not
                                                                         move when the wait ends; at rest nothing is reserved.
                                                                         AMENDED Phase 88.9-52 (PIX-2, W38 one look, picture pass): the label is
                                                                         anchored to the RIGHT end of that reserve (justify-items-end), the schedule

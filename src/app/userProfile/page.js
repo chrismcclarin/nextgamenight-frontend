@@ -1206,11 +1206,15 @@ function Profile(){
         // Dialog-tier copy, accepted and ignored by two-tap (superset config); dormant.
         title: 'Remove your phone number?',
         confirmLabel: 'Remove',
-        // The shipped live words of this control, kept (the hook's default reads as an instruction).
-        armedLabel: 'Tap again to remove',
+        // The shipped live words of this control, kept as its SPOKEN name (the hook's default reads
+        // as an instruction). AMENDED Phase 88.9-52 (R13, owner 2026-11-17, pick Everywhere): the
+        // words it SHOWS are the house Tap again, chosen OVER showing this sentence (X36b); the
+        // ruling is at src/components/ui/useConfirmAction.ts ("DECISION Phase 88.9-52 (R13, owner").
+        armedName: 'Tap again to remove',
         onConfirm: (_targetId, ctx) => performRemovePhone(ctx),
     });
-    // No id (one target) and no resting name: the visible label IS the name at rest and live. The
+    // No id (one target) and no resting name: the visible label IS the name at rest; live, the hook
+    // names it with the sentence above (R13). The
     // target label makes the live-edge line name what is removed.
     const removePhoneTriggerProps = removePhoneGate.triggerProps(undefined, 'your phone number');
     // The identity guards stay on the tap, before the gate sees it.
@@ -3194,7 +3198,7 @@ function Profile(){
                                             >
                                                 {/* X69 width (88.9-67): held from the arm, nothing at rest.
                                                     W39 (88.9-52): left-anchored in the reserve, so Wait (3) starts where Remove
-                                                    started and Tap again to remove starts there too (a button centres its
+                                                    started and Tap again starts there too (a button centres its
                                                     text, which set Wait (3) to the right of both). */}
                                                 <ReservedLabel className="justify-items-start" reserve={removePhoneGate.reserveFor()}>
                                                     {removePhoneGate.labelFor(undefined, 'Remove')}

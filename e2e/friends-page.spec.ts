@@ -567,11 +567,12 @@ test.describe('friends page — what the Requests tab and the batch say (88.6.1-
   // Plan 88.9-67 (52-X69 widened, owner 2026-11-14: a waiting confirm says Wait, so a person can
   // see that pressing is not an option yet). An armed friend Remove is recorded in the browser
   // from the tap to the live label: what it paints, what it is named, and how wide it is. The
-  // width must not change between Wait (3) and Tap again to confirm (unreserved, the live label is
-  // about 84px wider than Wait (1) and shoves the row). One tap only: nothing is removed, and the
+  // width must not change between Wait (3) and the live label (unreserved, the live label was
+  // about 84px wider than Wait (1) and shoved the row). R13 (88.9-52, owner 2026-11-17): the live
+  // label a person sees is Tap again; the full sentence stays as the control's name. One tap only: nothing is removed, and the
   // describe's write hold fails the test if any write is sent. Both lists are answered in the
   // browser.
-  test('X69 (88.9): an armed friend Remove reads Wait (3), (2), (1) then Tap again to confirm at one width from the arm, named Remove E2E Friend, wait N seconds while it waits', async ({ page }, testInfo) => {
+  test('X69 (88.9): an armed friend Remove reads Wait (3), (2), (1) then Tap again at one width from the arm, named Tap again to confirm once live and named Remove E2E Friend, wait N seconds while it waits', async ({ page }, testInfo) => {
     const friend = { id: 'e2e-friends-x69-f', friend: { id: '8861a072-0000-4000-8000-0000000000c1', username: 'E2E Friend' } };
     await page.route(
       (url) => isFriendshipList(url, 'status', 'accepted'),
@@ -595,23 +596,24 @@ test.describe('friends page — what the Requests tab and the batch say (88.6.1-
     await remove.scrollIntoViewIfNeeded();
     await recordLabel(remove);
     await remove.click();
-    // The live label, after the 3 s gate. Its name is the armed words (Label in Name).
+    // The live label, after the 3 s gate. Its name is the full sentence, which starts with the
+    // visible words (Label in Name).
     await expect(row.getByRole('button', { name: 'Tap again to confirm', exact: true })).toBeVisible({ timeout: 10_000 });
     const samples = await stopLabelRecorder(page);
 
     const WAITING = ['Wait (3)', 'Wait (2)', 'Wait (1)'];
-    const FROM_THE_ARM = [...WAITING, 'Tap again to confirm'];
+    const FROM_THE_ARM = [...WAITING, 'Tap again'];
     const trace = describeSamples(samples);
     // eslint-disable-next-line no-console -- the measured widths are recorded from the CI log (plan 88.9-67)
     console.log(`[88.9-67 X69 friend Remove] ${testInfo.project.name}: ${trace}`);
-    expect(paintedTexts(samples), `X69: the label did not run Remove, Wait (3), (2), (1), Tap again to confirm (${trace})`).toEqual([
+    expect(paintedTexts(samples), `X69: the label did not run Remove, Wait (3), (2), (1), Tap again (${trace})`).toEqual([
       'Remove',
       ...FROM_THE_ARM,
     ]);
     expect(valuesAt(samples, 'Wait (3)', 'name')).toEqual(['Remove E2E Friend, wait 3 seconds']);
     expect(valuesAt(samples, 'Wait (2)', 'name')).toEqual(['Remove E2E Friend, wait 2 seconds']);
     expect(valuesAt(samples, 'Wait (1)', 'name')).toEqual(['Remove E2E Friend, wait 1 second']);
-    expect(valuesAt(samples, 'Tap again to confirm', 'name')).toEqual(['Tap again to confirm']);
+    expect(valuesAt(samples, 'Tap again', 'name')).toEqual(['Tap again to confirm']);
     const jump = spread(samples, FROM_THE_ARM, 'width');
     expect(jump, `X69: the armed Remove changed width by ${jump}px between Wait (3) and its live label (${trace})`).toBeLessThanOrEqual(0.5);
     await expectNoSidewaysScroll(page);

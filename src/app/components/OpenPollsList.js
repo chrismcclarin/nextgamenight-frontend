@@ -597,7 +597,7 @@ function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSel
                 label: 'End check-in',
                 danger: true,
                 twoTap: true,
-                confirmLabel: 'Tap again to end',
+                armedName: 'Tap again to end',
                 ariaDisabled: closing,
                 onClick: () => onClose(prompt.id),
               },

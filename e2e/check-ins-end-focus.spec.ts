@@ -124,7 +124,8 @@ async function endFirstCheckIn(page: Page): Promise<Locator> {
   // F9b (88.9-23): the armed item is gated for 3 s (Wait (3)…(1), X69 88.9-67); wait for the live label
   // before the committing tap (the 5 s expect timeout covers the gate).
   const end = list.getByRole('button', { name: 'Tap again to end' });
-  await expect(end).toHaveText('Tap again to end');
+  // R13 (88.9-52): the item shows the short words and is named by its sentence.
+  await expect(end).toHaveText('Tap again');
   await end.click();
   return trigger;
 }

@@ -32,7 +32,7 @@ import { axe } from 'vitest-axe';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
+import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
 import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the appear and hold budgets
 import KebabMenu from './KebabMenu';
 
@@ -57,7 +57,7 @@ const LARGEST_SHIPPED_ITEMS = () => [
     label: 'Remove',
     danger: true,
     twoTap: true,
-    confirmLabel: 'Tap again to remove',
+    armedName: 'Tap again to remove',
     onClick: vi.fn(),
   },
   { label: 'Transfer ownership to this member', danger: true, onClick: vi.fn() },
@@ -189,13 +189,14 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
   it('E6-long-text (source half). No clipping utility on the item, disarmed OR armed, and the height is a FLOOR', () => {
     const LONG =
       'Transfer ownership of this group to this member right now, permanently and irreversibly';
-    // F9b (88.9-23): the long armed label shows once the gate has run out.
+    // F9b (88.9-23): the armed, live branch shows once the gate has run out. R13 (88.9-52): its
+    // visible words are always Tap again, so the LONG text is the resting label only.
     vi.useFakeTimers();
     render(
       <KebabMenu
         ariaLabel="Member actions"
         items={[
-          { label: LONG, danger: true, twoTap: true, confirmLabel: `${LONG} — tap again`, onClick: vi.fn() },
+          { label: LONG, danger: true, twoTap: true, onClick: vi.fn() },
         ]}
       />,
     );
@@ -219,7 +220,7 @@ describe('UI-SPEC §9.3 E6 backstops — SOURCE halves (geometry is in e2e/touch
     act(() => {
       vi.advanceTimersByTime(CONFIRM_DELAY_MS);
     });
-    const armed = within(list).getByRole('button', { name: `${LONG} — tap again` });
+    const armed = within(list).getByRole('button', { name: 'Tap again to confirm' });
     expect(armed, 'the armed label swap must not remount the item').toBe(disarmed);
     expect(
       armed.className,
@@ -296,7 +297,7 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
     act(() => {
       vi.advanceTimersByTime(CONFIRM_DELAY_MS - 2500);
     });
-    expect(item).toHaveTextContent('Tap again to confirm');
+    expect(item.textContent).toBe('Tap again');
     expect(item).toHaveAccessibleName('Tap again to confirm');
     expect(item).not.toHaveAttribute('aria-disabled');
     expect(screen.getByRole('status').textContent).toBe('Press again to confirm: Close poll');
@@ -349,13 +350,13 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
     const { list } = openMenu();
     const remove = within(list).getByRole('button', { name: 'Remove' });
-    expect(reserved(remove)).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again to remove']);
+    expect(reserved(remove)).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again']);
     expect(remove.textContent).toBe('Remove');
     expect(reserved(within(list).getByRole('button', { name: 'Make admin' }))).toEqual([]);
     expect(reserved(within(list).getByRole('button', { name: 'Transfer ownership to this member' }))).toEqual([]);
     cleanup();
 
-    // No confirmLabel of its own: the menu's default armed words are the ones held.
+    // R13 (88.9-52): every item holds the same short armed words, whatever its spoken sentence.
     render(
       <KebabMenu
         ariaLabel="Poll actions"
@@ -367,7 +368,7 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
       'Wait (3)',
       'Wait (2)',
       'Wait (1)',
-      'Tap again to confirm',
+      'Tap again',
     ]);
   });
 
@@ -383,7 +384,7 @@ describe('KebabMenu F9b delayed enable and the O-17 gated look (88.9-23)', () =>
       <KebabMenu
         ariaLabel="Member actions"
         items={[
-          { label: 'Remove', danger: true, twoTap: true, keepOpen: true, confirmLabel: 'Tap again to remove', onClick: onRemove },
+          { label: 'Remove', danger: true, twoTap: true, keepOpen: true, armedName: 'Tap again to remove', onClick: onRemove },
           { label: 'Leave event', keepOpen: true, onClick: onLeave },
         ]}
       />
@@ -472,7 +473,7 @@ describe('KebabMenu busy item (rule 1, 88.9-46)', () => {
       <KebabMenu
         ariaLabel="Member actions"
         items={[
-          { label: 'Remove', danger: true, twoTap: true, keepOpen: true, confirmLabel: 'Tap again to remove', ariaDisabled: true, busy: true, busySuffix: ', removing', onClick: vi.fn() },
+          { label: 'Remove', danger: true, twoTap: true, keepOpen: true, armedName: 'Tap again to remove', ariaDisabled: true, busy: true, busySuffix: ', removing', onClick: vi.fn() },
           { label: 'Leave event', ariaDisabled: true, busy: true, busySuffix: ', leaving', onClick: vi.fn() },
         ]}
       />
@@ -656,5 +657,73 @@ describe('R20 (88.9-52): the item band fills a one-item menu and is an inset rou
     expect(items[1]).toHaveClass('bg-status-error-subtle');
     expect(list.className).toBe(listBefore);
     expect(within(list).getAllByRole('button').map(geometry)).toEqual(before);
+  });
+});
+
+// R13 (88.9-52, owner 2026-11-17, pick Everywhere): an armed, live item SHOWS Tap again and is
+// NAMED by the full sentence (its own armedName, else the menu's default), and the width it holds
+// from open follows the short words. The marker is at src/app/components/KebabMenu.js ("DECISION Phase 88.9-52 (R13)").
+describe('R13 (88.9-52): an armed kebab item shows Tap again and is named by its sentence', () => {
+  const reserved = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('[data-reserve]')).map((span) => span.getAttribute('data-reserve'));
+
+  it('R13 words: live, the item shows Tap again and is named Tap again to remove; with no sentence of its own, Tap again to confirm', () => {
+    vi.useFakeTimers();
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { list } = openMenu();
+    const remove = within(list).getByRole('button', { name: 'Remove' });
+    fireEvent.click(remove);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(remove.textContent).toBe('Tap again');
+    expect(remove).toHaveAttribute('aria-label', 'Tap again to remove');
+    expect(remove).toHaveAccessibleName('Tap again to remove');
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(remove).not.toHaveAttribute('aria-disabled');
+    // The window ends: the item is named by its own text again.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_LIVE_MS);
+    });
+    expect(remove.textContent).toBe('Remove');
+    expect(remove).not.toHaveAttribute('aria-label');
+    cleanup();
+
+    render(
+      <KebabMenu
+        ariaLabel="Poll actions"
+        items={[{ label: 'Close poll', danger: true, twoTap: true, onClick: vi.fn() }]}
+      />
+    );
+    const poll = openMenu('Poll actions');
+    const close = within(poll.list).getByRole('button', { name: 'Close poll' });
+    fireEvent.click(close);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(close.textContent).toBe('Tap again');
+    expect(close).toHaveAccessibleName('Tap again to confirm');
+  });
+
+  it('R13 width: from open the item holds Wait (3), (2), (1) and Tap again, never the spoken sentence, and room for its busy spinner after its own word', () => {
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { list } = openMenu();
+    const remove = within(list).getByRole('button', { name: 'Remove' });
+    expect(reserved(remove)).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again']);
+    // The busy look is the resting word plus the spinner (its ml-2 and its w-4 are 1.5rem, pr-6):
+    // the short words above no longer cover that width by themselves, so it is held by name.
+    const trailing = Array.from(remove.querySelectorAll('[data-reserve-trailing]'));
+    expect(trailing.map((span) => span.getAttribute('data-reserve-trailing'))).toEqual(['Remove']);
+    const classes = trailing[0].className.split(/\s+/);
+    expect(classes).toContain('pr-6');
+    expect(classes).toContain('invisible');
+    expect(classes).toContain('before:content-[attr(data-reserve-trailing)]');
+    expect(classes).not.toContain('font-semibold');
+    expect(trailing[0].getAttribute('aria-hidden')).toBe('true');
+    expect(trailing[0].textContent).toBe('');
+    expect(remove.textContent).toBe('Remove');
+    // A plain item holds nothing.
+    const plain = within(list).getByRole('button', { name: 'Make admin' });
+    expect(plain.querySelectorAll('[data-reserve], [data-reserve-trailing]')).toHaveLength(0);
   });
 });

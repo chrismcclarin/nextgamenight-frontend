@@ -12,7 +12,7 @@ describe('ReservedLabel (88.9-67)', () => {
   it("X69 (88.9): every reserve string sits in the visible label's grid cell as an aria-hidden, invisible pseudo-element span, and the host's text and name are the visible label alone", () => {
     render(
       <button type="button">
-        <ReservedLabel reserve={['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again to confirm']} reserveClassName="font-semibold">
+        <ReservedLabel reserve={['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again']} reserveClassName="font-semibold">
           Wait (3)
         </ReservedLabel>
       </button>
@@ -27,7 +27,7 @@ describe('ReservedLabel (88.9-67)', () => {
       'Wait (3)',
       'Wait (2)',
       'Wait (1)',
-      'Tap again to confirm',
+      'Tap again',
     ]);
     for (const span of reserves) {
       expect(span.getAttribute('aria-hidden')).toBe('true');
@@ -71,5 +71,46 @@ describe('ReservedLabel (88.9-67)', () => {
     expect(root.className.split(/\s+/)).toEqual(['inline-grid', 'justify-items-end']);
     expect(root.children).toHaveLength(1);
     expect((root.firstElementChild as HTMLElement).className.split(/\s+/)).toEqual(['col-start-1', 'row-start-1']);
+  });
+
+  // R13 (88.9-52): the armed words are short now, so a host whose label gains a trailing element
+  // (the kebab item's busy spinner) holds that width by name.
+  it('R13 (88.9-52): reserveTrailing adds one more hidden occupant with its own attribute and its trailing room, and takes no reserve weight', () => {
+    render(
+      <button type="button">
+        <ReservedLabel
+          reserve={['Wait (3)', 'Tap again']}
+          reserveClassName="font-semibold"
+          reserveTrailing={{ text: 'Remove', className: 'pr-6' }}
+        >
+          Remove
+        </ReservedLabel>
+      </button>
+    );
+
+    const host = screen.getByRole('button', { name: 'Remove' });
+    expect(host.textContent).toBe('Remove');
+    // Readers of data-reserve still see the label strings alone.
+    expect(Array.from(host.querySelectorAll('[data-reserve]')).map((span) => span.getAttribute('data-reserve'))).toEqual([
+      'Wait (3)',
+      'Tap again',
+    ]);
+    const trailing = host.querySelectorAll('[data-reserve-trailing]');
+    expect(trailing).toHaveLength(1);
+    const span = trailing[0] as HTMLElement;
+    expect(span.getAttribute('data-reserve-trailing')).toBe('Remove');
+    expect(span.getAttribute('aria-hidden')).toBe('true');
+    expect(span.childNodes).toHaveLength(0);
+    expect(span.className.split(/\s+/)).toEqual([
+      'invisible',
+      'col-start-1',
+      'row-start-1',
+      'before:content-[attr(data-reserve-trailing)]',
+      'pr-6',
+    ]);
+    // The visible label is still the last occupant of the one cell.
+    const root = host.firstElementChild as HTMLElement;
+    expect((root.lastElementChild as HTMLElement).textContent).toBe('Remove');
+    expect(root.children).toHaveLength(4);
   });
 });

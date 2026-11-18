@@ -34,6 +34,7 @@ import {
   useConfirmAction,
   TWO_TAP_WINDOW_MS,
   DEFAULT_ARMED_LABEL,
+  DEFAULT_ARMED_NAME,
   type UseConfirmActionConfig,
 } from './useConfirmAction';
 
@@ -541,7 +542,8 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
       vi.advanceTimersByTime(CONFIRM_DELAY_MS - 2000);
     });
     expect(alex).toHaveTextContent(DEFAULT_ARMED_LABEL);
-    expect(alex).toHaveAttribute('aria-label', DEFAULT_ARMED_LABEL);
+    // R13 (88.9-52): the visible words are the short label; the name is the full sentence.
+    expect(alex).toHaveAttribute('aria-label', DEFAULT_ARMED_NAME);
     expect(alex).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -558,7 +560,7 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
     expect(alex).toHaveAttribute('aria-label', 'Remove Alex');
   });
 
-  it('names the action only while it waits when the caller supplies no name', () => {
+  it('names the action while it waits, and the full sentence once live, when the caller supplies no name', () => {
     function NoAriaLabelHarness() {
       const confirm = useConfirmAction({
         tier: 'two-tap',
@@ -583,8 +585,10 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
     act(() => {
       vi.advanceTimersByTime(CONFIRM_DELAY_MS);
     });
-    expect(screen.getByTestId('trigger')).not.toHaveAttribute('aria-label');
-    expect(screen.getByTestId('trigger')).toHaveTextContent(DEFAULT_ARMED_LABEL);
+    // R13 (88.9-52): live, the hook names this control too. Its visible words are the short
+    // Tap again, which alone would not say what the second tap does.
+    expect(screen.getByTestId('trigger')).toHaveAttribute('aria-label', DEFAULT_ARMED_NAME);
+    expect(screen.getByTestId('trigger').textContent).toBe(DEFAULT_ARMED_LABEL);
   });
 });
 

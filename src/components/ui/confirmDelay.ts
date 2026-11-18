@@ -21,6 +21,8 @@
  * (the W3C best practice puts the visible word first; rejected because the control refuses every
  * press while waiting and the action tells a screen-reader user what it is); nothing is announced
  * per second.
+ * AMENDED Phase 88.9-52 (R13): the words AFTER the wait are not this module's; the live label
+ * (Tap again) and its spoken sentence live at src/components/ui/useConfirmAction.ts ("export const DEFAULT_ARMED_LABEL").
  */
 import * as React from 'react';
 

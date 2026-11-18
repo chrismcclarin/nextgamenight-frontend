@@ -686,7 +686,7 @@ describe('KebabMenu focusout — the keyboard half beside the shipped mousedown 
       label: 'Remove',
       danger: true,
       twoTap: true,
-      confirmLabel: 'Tap again to remove',
+      armedName: 'Tap again to remove',
       onClick: onRemove,
     },
   ];
@@ -785,7 +785,7 @@ describe('KebabMenu aria-pressed — present only while armed (legal only once t
         ariaLabel={KEBAB_LABEL}
         items={[
           // a twoTap item, unarmed
-          { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+          { label: 'Remove', danger: true, twoTap: true, armedName: 'Tap again to remove', onClick: vi.fn() },
           // a NON-toggle action: `aria-pressed="false"` here would announce a plain action as an
           // unpressed toggle, which is the inverse of the house idiom (`gameDetail/page.js:1430`,
           // `twoTap: false`).
@@ -814,7 +814,7 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
   installKebabGateClock();
 
   const announcingItems = () => [
-    { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+    { label: 'Remove', danger: true, twoTap: true, armedName: 'Tap again to remove', onClick: vi.fn() },
   ];
 
   it('KM-12. the region is in the DOM BEFORE any arming, and its content changes on arm', () => {
@@ -862,7 +862,7 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
             ariaLabel={`Member actions ${i}`}
             items={[
               { label: 'Make admin', onClick: vi.fn() },
-              { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+              { label: 'Remove', danger: true, twoTap: true, armedName: 'Tap again to remove', onClick: vi.fn() },
             ]}
           />
         ))}
@@ -880,8 +880,8 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
       <KebabMenu
         ariaLabel={KEBAB_LABEL}
         items={[
-          { label: 'End check-in', danger: true, twoTap: true, confirmLabel: 'Tap again to end', onClick: vi.fn() },
-          { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+          { label: 'End check-in', danger: true, twoTap: true, armedName: 'Tap again to end', onClick: vi.fn() },
+          { label: 'Remove', danger: true, twoTap: true, armedName: 'Tap again to remove', onClick: vi.fn() },
         ]}
       />,
     );
@@ -903,7 +903,7 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
     render(
       <KebabMenu
         ariaLabel={KEBAB_LABEL}
-        items={[{ label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: onRemove }]}
+        items={[{ label: 'Remove', danger: true, twoTap: true, armedName: 'Tap again to remove', onClick: onRemove }]}
       />,
     );
     const { list } = openKebab();
@@ -951,7 +951,7 @@ describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () =
         <KebabMenu
           ariaLabel={KEBAB_LABEL}
           items={[
-            { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: onRemove },
+            { label: 'Remove', danger: true, twoTap: true, armedName: 'Tap again to remove', onClick: onRemove },
           ]}
         />,
       );
@@ -1216,7 +1216,7 @@ describe('KebabMenu outside pointer — the pointer half, extracted to useDismis
         <KebabMenu
           ariaLabel={KEBAB_LABEL}
           items={[
-            { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+            { label: 'Remove', danger: true, twoTap: true, armedName: 'Tap again to remove', onClick: vi.fn() },
           ]}
         />
         <button type="button">outside</button>

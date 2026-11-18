@@ -66,8 +66,24 @@ export type ConfirmTier = 'typed' | 'dialog' | 'two-tap';
  */
 export const TWO_TAP_WINDOW_MS = CONFIRM_DELAY_MS + CONFIRM_LIVE_MS;
 
-/** The armed visible label, matching `KebabMenu.js`'s shipped default. */
-export const DEFAULT_ARMED_LABEL = 'Tap again to confirm';
+/* DECISION Phase 88.9-52 (R13, owner 2026-11-17, pick Everywhere; his words: What if we just made
+   it "tap again"? would that work?): the live armed label a person SEES is Tap again on every
+   two-tap control, and the name a screen reader HEARS stays the full sentence the control spoke
+   before (Tap again to confirm, or the caller's own, such as Tap again to remove). Chosen OVER the
+   full sentence as the visible label (what shipped: at 375 it pushed the see-all Remove onto a
+   second line and the row jumped from 62px to 98px on the first tap) and OVER shortening the name
+   too (a name of Tap again alone would not say what the second tap does). The name STARTS with the
+   visible words, so Label in Name (WCAG 2.5.3) holds. The width reserve follows the visible label
+   (reserveFor below), which is the point of the ruling. The kebab's items follow the same two
+   constants (src/app/components/KebabMenu.js ("DECISION Phase 88.9-52 (R13)")). Supersedes the
+   one-string armed label of Phase 88-05 and the Profile phone Remove's visible sentence (X36b).
+   NOT covered: a control whose live label is its own verb (the Profile collection x arms to
+   Remove by an earlier owner ruling, fork 7); it passes armedLabel and is unchanged.
+   Lengthening the visible label again is a decision, not a cleanup. */
+/** The armed VISIBLE label of every two-tap control. */
+export const DEFAULT_ARMED_LABEL = 'Tap again';
+/** The armed SPOKEN name where the caller gives none. It starts with the visible label. */
+export const DEFAULT_ARMED_NAME = 'Tap again to confirm';
 
 /** Key used when a two-tap gate has exactly one target and passes no id. */
 const SOLE_TARGET_KEY = '__sole__';
@@ -92,8 +108,18 @@ export interface UseConfirmActionConfig {
   cancelLabel?: string;
   /** `typed` tier only: the phrase that must be entered EXACTLY. */
   expectedPhrase?: string;
-  /** `two-tap` tier only: the armed visible label. @default 'Tap again to confirm' */
+  /**
+   * `two-tap` tier only: the armed VISIBLE label. @default 'Tap again'. Passed only by a control
+   * whose live label is its own verb (the Profile collection x, fork 7); every other control
+   * shows the default (R13).
+   */
   armedLabel?: string;
+  /**
+   * `two-tap` tier only: the armed SPOKEN name, a sentence that STARTS with the visible label
+   * ('Tap again to remove'). @default 'Tap again to confirm' with the default visible label, and
+   * the visible label itself when the caller passes its own `armedLabel`.
+   */
+  armedName?: string;
   /**
    * `two-tap` tier only: builds the live-region text. It MUST name the target —
    * a target switch is then a guaranteed text change and therefore a guaranteed
@@ -196,7 +222,7 @@ export interface ConfirmActionState {
   labelFor: (targetId: string | undefined, restingLabel: string) => string;
   /**
    * `two-tap` (X69 width, 88.9-67): the strings whose width this target's label must hold, the
-   * three countdown labels and the armed label, while the target is armed; with `atRest` also at
+   * three countdown labels and the armed VISIBLE label (R13: the short one, never the spoken name), while the target is armed; with `atRest` also at
    * rest (a control whose arming must not reflow its neighbour). An empty list otherwise and in
    * the other tiers. Strings, not markup: the caller hands them to `ReservedLabel`.
    */
@@ -276,9 +302,14 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     cancelLabel = 'Cancel',
     expectedPhrase,
     armedLabel = DEFAULT_ARMED_LABEL,
+    armedName: armedNameConfig,
     armedAnnouncement = defaultAnnouncement,
     onConfirm,
   } = config;
+  // R13: the spoken name of the live armed control. A caller with its own visible label and no
+  // name of its own is named by that label, as before.
+  const armedName =
+    armedNameConfig ?? (armedLabel === DEFAULT_ARMED_LABEL ? DEFAULT_ARMED_NAME : armedLabel);
 
   const [open, setOpen] = React.useState(false);
   const [pending, setPending] = React.useState(false);
@@ -532,12 +563,17 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       // failure this exists to prevent — so when armed, the name is the armed
       // label; when the caller supplies no name at all, none is invented.
       // F9b (88.9-23, MED-61): once live, "the armed label" is the string labelFor renders.
+      // AMENDED Phase 88.9-52 (R13): once live the name is armedName, the full sentence, which
+      // starts with the visible Tap again; and the hook now names the live control for EVERY
+      // caller whose name differs from its visible label, a caller with no resting name included
+      // (the Profile phone Remove), because the visible words alone no longer say what happens.
       // AMENDED Phase 88.9-67 (X69): while gated the name is <resting name>, wait n seconds — it
       // contains the visible word (W3C Understanding 2.5.3) and tracks every step; the only window
       // in which the hook names a control itself, chosen OVER a name equal to Wait (n), which
       // would not say what the button does.
-      const accessibleName = armed ? armedText : restingAriaLabel;
       const waiting = armed && gated;
+      const live = armed && !gated;
+      const liveNeedsName = restingAriaLabel !== undefined || armedName !== armedLabel;
       return {
         type: 'button',
         // DECISION 88.6.1 code review A-74: the click's `currentTarget` is threaded to `onConfirm`
@@ -550,12 +586,16 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
         ...(armed && gated ? { 'aria-disabled': true as const } : {}),
         ...(waiting
           ? { 'aria-label': countdownName(restingAriaLabel ?? confirmLabel, secondsLeft) }
-          : restingAriaLabel !== undefined && accessibleName !== undefined
-            ? { 'aria-label': accessibleName }
-            : {}),
+          : live
+            ? liveNeedsName
+              ? { 'aria-label': armedName }
+              : {}
+            : restingAriaLabel !== undefined
+              ? { 'aria-label': restingAriaLabel }
+              : {}),
       };
     },
-    [isArmed, armedText, gated, trigger, confirmLabel, secondsLeft]
+    [isArmed, armedLabel, armedName, gated, trigger, confirmLabel, secondsLeft]
   );
 
   const statusNode = React.useMemo(

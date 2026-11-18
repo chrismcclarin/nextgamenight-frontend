@@ -14,6 +14,7 @@ import {
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { DelayedSpinner } from '@/components/ui/DelayedSpinner';
 import { ReservedLabel } from '@/components/ui/ReservedLabel';
+import { DEFAULT_ARMED_LABEL, DEFAULT_ARMED_NAME } from '@/components/ui/useConfirmAction';
 import { useDismissal } from '@/components/ui/useDismissal';
 import { hostGroundHalo } from '@/components/ui/hostGround';
 import { cn } from '@/lib/cn';
@@ -26,7 +27,7 @@ import { cn } from '@/lib/cn';
  * event-actions kebab (Phase 65-02) for visual consistency.
  *
  * twoTap items follow the Phase 65-02 destructive-confirm pattern:
- *   - First tap: label flips to "Tap again to confirm" (or item.confirmLabel),
+ *   - First tap: label flips to "Tap again to confirm" (or item.confirmLabel; both superseded, see R13 below),
  *     3s revert timer arms, item highlights red.
  *   - Second tap on same item within 3s: invokes item.onClick + closes menu.
  *   - Timeout or another item tap reverts the armed state.
@@ -36,6 +37,8 @@ import { cn } from '@/lib/cn';
  *   twoTap item stays open after its commit.
  *   AMENDED Phase 88.9-67 (X69, owner 2026-11-14): the gated item reads Wait (3)…(1), named
  *   <item>, wait n seconds; live words and the live-edge announcement unchanged.
+ *   AMENDED Phase 88.9-52 (R13, owner 2026-11-17): the live item SHOWS Tap again and is NAMED by
+ *   the full sentence (item.armedName, else the menu's armedName); see the R13 marker at the item.
  *
  * Dismissal (outside mousedown, container Escape, the non-null relatedTarget
  * `focusout` rule, and the guarded focus restore to the trigger) is owned by the
@@ -60,7 +63,9 @@ const REVERT_ANNOUNCEMENT = 'Confirmation cancelled.';
  * @property {() => void} onClick - Invoked on activation (twoTap: on the SECOND tap).
  * @property {boolean} [danger] - Destructive ink.
  * @property {boolean} [twoTap] - Phase 65-02 destructive-confirm tier.
- * @property {string} [confirmLabel] - Armed label for this item, overriding the menu default.
+ * @property {string} [armedName] - The SPOKEN name of this item while armed and live, a sentence
+ *   that starts with the visible Tap again ('Tap again to remove'); overrides the menu default.
+ *   The visible armed words are always Tap again (R13) and are not an item's to set.
  * @property {boolean} [disabled] - Native `disabled`. For a control NOBODY is standing on.
  * @property {boolean} [ariaDisabled] - `aria-disabled` + a handler refusal, never the native
  *   attribute. For the control being ACTED ON, whose label must stay readable and which must
@@ -78,14 +83,14 @@ const REVERT_ANNOUNCEMENT = 'Confirmation cancelled.';
  * @param {Object} props
  * @param {string} [props.ariaLabel] - Accessible label for the trigger button.
  * @param {KebabMenuItem[]} [props.items] - Action items. An EMPTY array renders no trigger.
- * @param {string} [props.confirmLabel] - Default label for armed twoTap items.
- *                                        Each item can override via item.confirmLabel.
+ * @param {string} [props.armedName] - Default spoken name for armed, live twoTap items.
+ *                                     Each item can override via item.armedName.
  * @param {import('@/components/ui/hostGround').HostGround} [props.hostGround='card'] - The ground the HOST paints under the trigger; selects its focus halo.
  */
 export default function KebabMenu({
   ariaLabel = 'Actions',
   items = [],
-  confirmLabel = 'Tap again to confirm',
+  armedName = DEFAULT_ARMED_NAME,
   hostGround = 'card',
 }) {
   const [open, setOpen] = useState(false);
@@ -562,10 +567,20 @@ export default function KebabMenu({
             const isArmed = item.twoTap && armedIndex === index;
             // F9b: an armed item counts down while gated, then reads its armed label.
             const isGated = isArmed && !armedLive;
+            /* DECISION Phase 88.9-52 (R13): the live armed item SHOWS the house words Tap again
+               (src/components/ui/useConfirmAction.ts ("export const DEFAULT_ARMED_LABEL"), where the
+               ruling and its reasons are written) and is NAMED by the full sentence, the item's
+               armedName or the menu's; chosen OVER the sentence as the visible label (what shipped)
+               and OVER dropping the sentence from the name. The item field and the menu prop were
+               called confirmLabel while they WERE the visible label; they are armedName now, so the
+               name of the field says which string it holds. R20's band rule, W31 and W32 are
+               untouched: the shape still follows the item count and the reserve is still measured
+               at the armed weight. Showing the sentence again is a decision, not a cleanup. */
+            const isLiveArmed = isArmed && !isGated;
             const label = isArmed
               ? isGated
                 ? countdownLabel(secondsLeft)
-                : item.confirmLabel || confirmLabel
+                : DEFAULT_ARMED_LABEL
               : item.label;
             const danger = item.danger || isArmed;
             // 88.9-52 (W31): which of the two spinner mounts below this item uses. A property of the
@@ -643,6 +658,9 @@ export default function KebabMenu({
                   /* X69 (88.9-67): only while gated the item carries a name of its own — its resting
                      label, then the wait — because Wait (n) alone would not say what it does. */
                   {...(isGated ? { 'aria-label': countdownName(item.label, secondsLeft) } : {})}
+                  /* R13 (88.9-52): live, the name is the full sentence; it starts with the visible
+                     Tap again (Label in Name). At rest the item is named by its own text. */
+                  {...(isLiveArmed ? { 'aria-label': item.armedName || armedName } : {})}
                   /* 88-CODE-REVIEW MED#13: min-h-11 — the 87.8-08 census FAIL row (~36px)
                      these items still carried after D-40 made this menu the SOLE phone
                      path to destructive row actions. The trigger was floored by 88-28;
@@ -672,11 +690,18 @@ export default function KebabMenu({
                        whose cell holds Tap again to remove). The cell is as wide as its widest
                        occupant, so the word plus the spinner still fits the reserved width for every
                        shipped label. A plain item has no reserved cell and keeps the spinner after its
-                       label. Moving it back out is a decision, not a cleanup. */}
+                       label. Moving it back out is a decision, not a cleanup.
+                       AMENDED Phase 88.9-52 (R13): the cell now holds the short Tap again, which no
+                       longer covers the resting word plus the spinner by itself, so that width is
+                       reserved by name: the item's own label with the spinner's room after it (pr-6 is
+                       the spinner's ml-2 plus its w-4), at the resting weight a busy item paints at.
+                       Chosen OVER leaving it to the short words, where a one-item menu at enlarged
+                       text would widen by the spinner when the request starts. */}
                   {reservesLabel ? (
                     <ReservedLabel
-                      reserve={[...COUNTDOWN_LABELS, item.confirmLabel || confirmLabel]}
+                      reserve={[...COUNTDOWN_LABELS, DEFAULT_ARMED_LABEL]}
                       reserveClassName="font-semibold"
+                      reserveTrailing={{ text: item.label, className: 'pr-6' }}
                     >
                       {label}
                       <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />

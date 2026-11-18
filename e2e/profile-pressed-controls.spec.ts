@@ -367,7 +367,7 @@ test.describe('Profile phone block focus and Remove in flight (plan 88.6.1-53)',
       await page.waitForTimeout(500);
       expect(removal.count(), 'a press while the Remove counted down sent a removal').toBe(0);
       // The live label (the 10 s timeout covers the 3 s gate), then the committing press.
-      await expect(remove).toHaveText('Tap again to remove', { timeout: 10_000 });
+      await expect(remove).toHaveText('Tap again', { timeout: 10_000 });
       await page.keyboard.press('Enter');
       await removal.arrived;
 
@@ -604,7 +604,7 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await page.keyboard.press('Enter');
     // F9b (88.9-23): the second press is refused for 3 s after arming; wait for the live label
     // (the 5 s expect timeout covers the gate) before the committing press.
-    await expect(monday).toHaveText('Tap again to confirm');
+    await expect(monday).toHaveText('Tap again');
     // W37 (88.9-52): arming neither grows the row nor re-wraps the hours (its first line), and the
     // widest label still ends inside the row. Read while the live label shows.
     // AMENDED Phase 88.9-52 (W37, CI on e2e2331): the paragraph-width equality is the PHONE arm only.
@@ -670,7 +670,7 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await focusByKeyboard(page, tuesday);
     await page.keyboard.press('Enter');
     // F9b (88.9-23): as above, wait for the live label before the committing press.
-    await expect(tuesday).toHaveText('Tap again to confirm');
+    await expect(tuesday).toHaveText('Tap again');
     await page.keyboard.press('Enter');
     // The Tuesday DELETE is answered at once: the shared hold was released in Arm 1, and
     // holdUntilReleased answers any later match at once after release (its `arrived` already
