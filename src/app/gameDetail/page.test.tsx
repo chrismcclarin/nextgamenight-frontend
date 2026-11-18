@@ -2364,7 +2364,6 @@ describe('gameDetail expand affordances (rows 326/334)', () => {
     renderGameDetail({ game: GAME_WITH_DESC }); // default jsdom: 0/0 — no overflow
     await screen.findByRole('heading', { name: 'Game Sessions (1)' });
     expect(screen.queryByRole('button', { name: 'Show More' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Show full title' })).toBeNull();
   });
 
   it('shows the toggle with disclosure semantics when it overflows; Esc collapses; editable-origin Esc does not (rows 326+334)', async () => {
@@ -2406,15 +2405,30 @@ describe('gameDetail expand affordances (rows 326/334)', () => {
     expect(screen.getByRole('button', { name: 'Show Less' })).toBeInTheDocument();
   });
 
-  it('the title twin gains a keyboard-reachable expand when clamped and overflowing', async () => {
+  // 88.9-52 R4 C1 (accessibility once-over A2, owner 2026-11-18): the page title is never cut.
+  // The measured overflow is forced so the old code would have drawn its clamp and its hidden
+  // button; the title must carry neither, in the BGG arm and in the custom-game arm.
+  it.each([
+    ['BGG game', GAME_WITH_DESC],
+    ['custom game', { ...GAME_WITH_DESC, is_custom: true, bgg_id: null }],
+  ])('R4 C1: the %s title wraps in full: no clamp, no tap-to-expand, no hidden button', async (_arm, game) => {
     setMeasuredOverflow(100, 50);
-    renderGameDetail({ game: GAME_WITH_DESC });
+    renderGameDetail({ game });
 
-    const titleButton = await screen.findByRole('button', { name: 'Show full title' });
-    expect(titleButton).toHaveAttribute('aria-controls', 'game-title');
-    fireEvent.click(titleButton);
-    // One-shot expand (Phase 76 design preserved): the affordance leaves once expanded.
-    expect(screen.queryByRole('button', { name: 'Show full title' })).toBeNull();
+    const title = await screen.findByRole('heading', { level: 1, name: game.name });
+    expect(title).toHaveAttribute('id', 'game-title');
+    expect(title.className).not.toMatch(/line-clamp/);
+    expect(title.className).not.toMatch(/cursor-pointer/);
+    // A single over-long word breaks only when it cannot fit: the Heading primitive's own
+    // overflow-wrap token (never break-all, which would cut every word).
+    expect(title.className).toMatch(/(^|\s)wrap-anywhere(\s|$)/);
+    expect(title.className).not.toMatch(/break-all/);
+    expect(screen.queryByRole('button', { name: /full title/i })).toBeNull();
+    expect(document.querySelector('[aria-controls="game-title"]')).toBeNull();
+    // A tap on the title changes nothing about it (there is nothing to expand).
+    const before = title.className;
+    fireEvent.click(title);
+    expect(title.className).toBe(before);
   });
 });
 

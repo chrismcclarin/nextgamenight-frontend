@@ -702,7 +702,14 @@ export default function GameDetailPage() {
     // Desktop (md: ≥768px) renders untouched via `md:line-clamp-none` overrides;
     // a media-query check inside the title onClick keeps the BGG <a> link
     // navigating on touch-laptops at desktop widths.
-    const [titleExpanded, setTitleExpanded] = useState(false);
+    // AMENDED Phase 88.9-52 (R4 C1, accessibility once-over A2, owner 2026-11-18): the TITLE
+    // half is gone. The page's own h1 now wraps in full at every width, CHOSEN OVER (a) the
+    // two-line clamp with tap-to-expand kept (REJECTED: with text at 200% the h1 is 60px, two
+    // lines at 375 hold about 16 to 20 characters, and the only sign that more exists was an
+    // ellipsis) and (b) a visible expand button like the description's (REJECTED: a page
+    // title is the one line that says where you are; nobody should have to ask for it).
+    // The titleExpanded / titleOverflows state, the title's overflow observer and its
+    // media-query onClick went with it. The DESCRIPTION half below is unchanged.
     const [descExpanded, setDescExpanded] = useState(false);
 
     // 88-33 Task 9 (UAT row 326): the expand affordances render only when the
@@ -716,10 +723,10 @@ export default function GameDetailPage() {
     // so a plain ref object would be null at the only dep-driven effect re-run
     // and the affordance would never appear — a real mount-timing bug the test
     // suite caught. Node-in-state makes node attachment itself a dependency.
+    // AMENDED Phase 88.9-52 (R4 C1): this now serves the description only; the title's twin
+    // node, flag and observer were removed with its clamp (see the amended EVT-09 marker above).
     const [descNode, setDescNode] = useState(null);
-    const [titleNode, setTitleNode] = useState(null);
     const [descOverflows, setDescOverflows] = useState(false);
-    const [titleOverflows, setTitleOverflows] = useState(false);
 
     useEffect(() => {
         if (!descNode || descExpanded) return;
@@ -733,19 +740,6 @@ export default function GameDetailPage() {
         ro.observe(descNode);
         return () => ro.disconnect();
     }, [descNode, descExpanded, game?.description]);
-
-    useEffect(() => {
-        if (!titleNode || titleExpanded) return;
-        const measure = () => {
-            const overflows = titleNode.scrollHeight > titleNode.clientHeight;
-            setTitleOverflows(prev => (prev === overflows ? prev : overflows));
-        };
-        measure();
-        if (typeof ResizeObserver === 'undefined') return;
-        const ro = new ResizeObserver(measure);
-        ro.observe(titleNode);
-        return () => ro.disconnect();
-    }, [titleNode, titleExpanded, game?.name]);
 
     // 88-33 Task 9 (UAT row 334): Esc collapses the expanded description on the
     // MAIN page. Bail conditions (r1/r3 triage): a dialog is open (the modal
@@ -1907,9 +1901,11 @@ export default function GameDetailPage() {
     const gameRetained = useRetainedContent(loadedFor === entityKey, gameErrorState);
     // 88.6.1-74: ONE composed ref for both game titles — RF1's focus target and the title-overflow
     // observer's node.
+    // AMENDED Phase 88.9-52 (R4 C1): the overflow observer is gone with the title clamp, so this
+    // is RF1's focus target only. The callback is kept (not swapped for the bare ref object) so
+    // both title arms keep one stable ref identity.
     const attachGameTitle = useCallback((node) => {
         gameTitleRef.current = node;
-        setTitleNode(node);
     }, []);
 
     // 88.6.1-25 (AC-5): the event view's adapter, copied from the game view's above (the same ref hop,
@@ -3807,7 +3803,21 @@ export default function GameDetailPage() {
                             button gives keyboard users the same expand (the tap was
                             pointer-only; role="button" on an h1 wrapping a link is invalid).
                             The ONE-SHOT semantics (expand only, no re-collapse) are Phase 76's
-                            recorded design and are preserved. */}
+                            recorded design and are preserved.
+                            AMENDED Phase 88.9-52 (R4 C1, accessibility once-over A2, owner
+                            2026-11-18: large text exists because small text blurs together for
+                            some people, so cutting text to keep a layout tidy defeats the
+                            setting): BOTH of the above are superseded. The title wraps in full
+                            at every width; there is no clamp, no tap-to-expand and no button.
+                            CHOSEN OVER keeping the two-line clamp (REJECTED: at 200% text two
+                            lines at 375 hold about 16 to 20 characters, and the expand was a
+                            tap nothing on screen announced plus a button that only showed on
+                            keyboard focus) and OVER a visible expand button (REJECTED: a page
+                            title should not need asking for). A word longer than the line
+                            breaks only when it cannot fit, by the Heading primitive's own
+                            overflow-wrap token, so nothing scrolls sideways at 320 / 200%.
+                            Every tap on a linked title now goes straight to the BGG link.
+                            Re-adding a clamp here is a decision, not a cleanup. */}
                         {/* RESEARCH §C.5 corrects D-04: this is NOT a size-less heading. It is
                             an h1 already at `text-3xl`, i.e. already at Display 30, so the
                             migration is a SPELLING move with no size change. Treating it as the
@@ -3819,13 +3829,7 @@ export default function GameDetailPage() {
                             ref={attachGameTitle}
                             id="game-title"
                             tabIndex={-1}
-                            onClick={(e) => {
-                                if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded && titleOverflows) {
-                                    e.preventDefault();
-                                    setTitleExpanded(true);
-                                }
-                            }}
-                            className={`text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
+                            className="text-content-primary mb-2"
                         >
                             {game.bgg_id ? (
                                 <a
@@ -3840,23 +3844,6 @@ export default function GameDetailPage() {
                                 game.name
                             )}
                         </Heading>
-                        {!titleExpanded && titleOverflows && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setTitleExpanded(true);
-                                    /* Wave-12 review LOW #22: this one-shot button unmounts on
-                                       activation — move focus to the now-expanded title
-                                       (tabIndex -1) instead of dropping it to body. */
-                                    document.getElementById('game-title')?.focus();
-                                }}
-                                aria-expanded={false}
-                                aria-controls="game-title"
-                                className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link"
-                            >
-                                Show full title
-                            </button>
-                        )}
                         {game.theme && (
                             <p className="text-content-secondary mb-2">Theme: {game.theme}</p>
                         )}
@@ -3879,7 +3866,11 @@ export default function GameDetailPage() {
                                 First mobile tap expands; subsequent taps fall through to
                                 the BGG <a>. Desktop renders full text + native link click.
                                 88-33 Task 9: overflow-gated + keyboard path — see the
-                                custom-branch twin's comment above; same treatment. */}
+                                custom-branch twin's comment above; same treatment.
+                                AMENDED Phase 88.9-52 (R4 C1, owner 2026-11-18): superseded, as
+                                in the custom-branch twin above: the title wraps in full, with
+                                no clamp, no tap-to-expand and no button (the clamp and a
+                                visible expand button were both REJECTED there, with the why). */}
                             {/* RESEARCH §C.5, same correction as the custom-game twin above:
                                 already an h1 at Display 30, so no size change. */}
                             <Heading
@@ -3888,13 +3879,7 @@ export default function GameDetailPage() {
                                 ref={attachGameTitle}
                                 id="game-title"
                                 tabIndex={-1}
-                                onClick={(e) => {
-                                    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded && titleOverflows) {
-                                        e.preventDefault();
-                                        setTitleExpanded(true);
-                                    }
-                                }}
-                                className={`text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
+                                className="text-content-primary mb-2"
                             >
                                 {game.bgg_id ? (
                                     <a
@@ -3909,23 +3894,6 @@ export default function GameDetailPage() {
                                     game.name
                                 )}
                             </Heading>
-                            {!titleExpanded && titleOverflows && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTitleExpanded(true);
-                                        /* Wave-12 review LOW #22: this one-shot button unmounts on
-                                           activation — move focus to the now-expanded title
-                                           (tabIndex -1) instead of dropping it to body. */
-                                        document.getElementById('game-title')?.focus();
-                                    }}
-                                    aria-expanded={false}
-                                    aria-controls="game-title"
-                                    className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link"
-                                >
-                                    Show full title
-                                </button>
-                            )}
                             {game.year_published && (
                                 <p className="text-content-secondary mb-2">Published: {game.year_published}</p>
                             )}
