@@ -814,3 +814,66 @@ describe('88.6.1-39 (D-16 / D-33 rows 11 and 17, copy rows A1 / A3 / A4) — wha
     }
   });
 });
+
+// 88.9-52 N1b / N1c (owner picks "Mid" and "Stripe", 2026-11-17). jsdom paints nothing, so these
+// read the class tokens the cells and the legend ship; the values those tokens resolve to, and
+// the ratios, are pinned in the token contrast suite (rows N1b and N1c).
+describe('88.9-52 N1b / N1c — painted cells and the legend', () => {
+  const PREFERRED_DARK = 'dark:bg-surface-avail-preferred';
+  const IF_NEED_BE_DARK = 'dark:bg-surface-avail-if-need-be';
+  const tokensOf = (el: Element) => el.className.toString().split(/\s+/);
+  const swatchOf = (label: string) => screen.getByText(label).previousElementSibling as HTMLElement;
+
+  // Cell 0 painted Preferred, cell 1 painted If Need Be, cell 2 left empty.
+  function paintOneOfEach() {
+    const onChange = renderHarness(1);
+    mouseTap(slotCellsAt(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Adding: Preferred' }));
+    mouseTap(slotCellsAt(1));
+    expect(slotCellsAt(0)).toHaveAccessibleName(/, preferred$/);
+    expect(slotCellsAt(1)).toHaveAccessibleName(/, if need be$/);
+    expect(slotCellsAt(2)).toHaveAccessibleName(/, not selected$/);
+    return onChange;
+  }
+
+  it('N1b: a painted cell carries the dark fill of its own state beside its light fill, the legend swatches match, and an empty cell carries neither', () => {
+    paintOneOfEach();
+    const preferred = tokensOf(slotCellsAt(0));
+    const ifNeedBe = tokensOf(slotCellsAt(1));
+    const empty = tokensOf(slotCellsAt(2));
+    // Light is unchanged: the shared write-cell colour still leads the class string.
+    expect(preferred).toContain('bg-green-300');
+    expect(preferred).toContain(PREFERRED_DARK);
+    expect(preferred).not.toContain(IF_NEED_BE_DARK);
+    expect(ifNeedBe).toContain('bg-yellow-300');
+    expect(ifNeedBe).toContain(IF_NEED_BE_DARK);
+    expect(ifNeedBe).not.toContain(PREFERRED_DARK);
+    expect(empty).not.toContain(PREFERRED_DARK);
+    expect(empty).not.toContain(IF_NEED_BE_DARK);
+    for (const cell of [preferred, ifNeedBe, empty]) expect(cell).toContain('transition-colors');
+
+    const preferredSwatch = tokensOf(swatchOf('Preferred'));
+    const ifNeedBeSwatch = tokensOf(swatchOf('If Need Be'));
+    expect(preferredSwatch).toEqual(expect.arrayContaining(['bg-green-300', PREFERRED_DARK]));
+    expect(ifNeedBeSwatch).toEqual(expect.arrayContaining(['bg-yellow-300', IF_NEED_BE_DARK]));
+    const notAvailable = tokensOf(swatchOf('Not Available'));
+    expect(notAvailable).not.toContain(PREFERRED_DARK);
+    expect(notAvailable).not.toContain(IF_NEED_BE_DARK);
+  });
+
+  it('N1b: in the unavailable-week mode a painted cell keeps the disabled look and takes no state fill', () => {
+    const onChange = paintOneOfEach();
+    const value = lastEmitted(onChange);
+    expect(value).toHaveLength(2);
+    cleanup();
+    render(
+      <Grid value={value} onChange={() => {}} numDays={1} weekStartDate={WEEK_START} timezone={PROFILE_TZ} disabled />
+    );
+    for (const i of [0, 1]) {
+      const cell = tokensOf(slotCellsAt(i));
+      expect(cell).toContain('opacity-50');
+      expect(cell).not.toContain(PREFERRED_DARK);
+      expect(cell).not.toContain(IF_NEED_BE_DARK);
+    }
+  });
+});

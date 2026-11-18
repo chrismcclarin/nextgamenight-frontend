@@ -3179,6 +3179,45 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     expect(measured, 'anti-vacuity: 2 variants x 2 themes').toBe(4);
   });
+
+  it('N1b (88.9-52): dark painted availability cells are the mid green and ochre — 2.0 or more off an empty cell, under 3.5 so they do not glow, light the unchanged palette steps, cells and legend on the same tokens', () => {
+    // Owner pick N1b "Mid" (2026-11-17): in dark the painted cells kept the light theme's mint and
+    // yellow (8.03 and 8.55 against an empty cell, "the loudest thing on the dark card"). Measured
+    // with src/lib/wcag.ts, dark: Preferred #288758 2.5220 against an empty cell and 3.0973 against
+    // the card; If Need Be #9c712a 2.5823 and 3.1714; the grid line on them 1.7433 and 1.7850. The
+    // two fills are 1.0239 apart: hue alone tells them apart, which row N1c answers.
+    const PICK = { preferred: '#288758', 'if-need-be': '#9c712a' } as const;
+    const paletteStep = (step: string): string => {
+      const hits = [...MASKED.matchAll(new RegExp(`^[ \\t]*--color-${step}:[ \\t]*(#[0-9a-f]{6});`, 'gm'))];
+      if (hits.length !== 1) throw new TokenContrastParseError(`N1b: expected one --color-${step} palette declaration, found ${hits.length}`);
+      return hits[0][1];
+    };
+    const LIGHT = { preferred: paletteStep('green-300'), 'if-need-be': paletteStep('yellow-300') } as const;
+    const themeBlock = blockOf('theme');
+    const gridSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'AvailabilityGrid.js'), 'utf8'),
+    );
+    let measured = 0;
+    for (const state of ['preferred', 'if-need-be'] as const) {
+      const token = `--color-avail-${state}-bg`;
+      expect(declIn(themeBlock, `--color-surface-avail-${state}`), `N1b: the ${state} fill is bridged`).toBe(`var(${token})`);
+      expect(resolve('dark', token), `N1b [dark] ${state}`).toBe(PICK[state]);
+      // Light is unchanged: the token names the palette step the light class already paints.
+      expect(resolve('light', token), `N1b [light] ${state}`).toBe(LIGHT[state]);
+      expectRatio('dark', token, '--color-bg-elevated', 2.0, `N1b the dark ${state} cell against an empty cell`);
+      expectRatioBelow('dark', token, '--color-bg-elevated', 3.5, `N1b the dark ${state} cell must not glow`);
+      measured += 2;
+      // One cell constant and one legend swatch name the dark class, each beside the light step.
+      const darkClass = `dark:bg-surface-avail-${state}`;
+      expect(gridSrc.split(darkClass).length - 1, `N1b: ${darkClass} on the cells and on the legend`).toBe(2);
+    }
+    expect(measured, 'anti-vacuity: 2 states x 2 bounds').toBe(4);
+    // The raw light steps this row replaces in dark were far over the ceiling.
+    for (const hex of [LIGHT.preferred, LIGHT['if-need-be']]) {
+      expect(ratioHex(hex, resolve('dark', '--color-bg-elevated'), 'N1b the retired dark look')).toBeGreaterThan(8);
+    }
+    expect(gridSrc, 'N1b: the legend keeps its light steps').toContain('w-4 h-4 bg-green-300 dark:bg-surface-avail-preferred');
+  });
 });
 
 // =====================================================================================

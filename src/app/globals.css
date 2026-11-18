@@ -590,6 +590,11 @@
   --color-content-pill-amber: var(--color-pill-amber-text);
   --color-surface-pill-emerald: var(--color-pill-emerald-bg);
   --color-content-pill-emerald: var(--color-pill-emerald-text);
+  /* 88.9-52 N1b (owner pick "Mid", 2026-11-17): the painted availability cells, bridged so the
+     check-in grid's cells and legend name one fill per state. Marker at the runtime properties in
+     the light block. */
+  --color-surface-avail-preferred: var(--color-avail-preferred-bg);
+  --color-surface-avail-if-need-be: var(--color-avail-if-need-be-bg);
   /* Bell count badge (bg-badge-count) — see the DECISION Phase 88.9-01 (M3b) marker in the light block. */
   --color-badge-count: var(--color-badge-count-bg);
 
@@ -2053,6 +2058,18 @@
   --color-pill-amber-text: #92400e;
   --color-pill-emerald-bg: #b7ead9;
   --color-pill-emerald-text: #065f46;
+  /* DECISION Phase 88.9-52 (N1b, owner pick "Mid", 2026-11-17): the check-in grid's painted cells
+     get a DARK fill of their own, a mid green for Preferred and an ochre for If Need Be (declared
+     in the dark block). Chosen OVER the light theme's mint and yellow carried into dark (8.03 and
+     8.55 against an empty cell: on the owner's picture the loudest thing on the dark card) and
+     OVER the deeper pill fills (option "tint": 1.57 and 1.60 against an empty cell, with the grid
+     lines nearly gone at 1.08). LIGHT IS UNCHANGED: the two values here are the palette steps
+     the light class already paints (green-300, yellow-300), declared so the token resolves in
+     both themes; Gate A row N1b holds them equal to those steps. Consumers: the cells and the
+     legend swatches in src/app/components/AvailabilityGrid.js, through a dark: class beside the
+     light one. */
+  --color-avail-preferred-bg: #86efac;
+  --color-avail-if-need-be-bg: #fde047;
 
   /* Header (warm neutral, NOT purple) */
   --color-bg-header: var(--warm-800);
@@ -2419,6 +2436,12 @@
   --color-pill-amber-text: #fde68a;
   --color-pill-emerald-bg: #1c5e55;
   --color-pill-emerald-text: #a7f3d0;
+  /* 88.9-52 N1b (owner pick "Mid"): dark painted availability cells. Preferred rgb(40,135,88):
+     2.5220 against an empty cell (purple-800), 3.0973 against the card, the grid line 1.7433 on
+     it. If Need Be rgb(156,113,42): 2.5823, 3.1714 and 1.7850. The two fills are 1.0239 apart in
+     luminance; the stripe (N1c) is the cue that does not need colour. Light marker has the rule. */
+  --color-avail-preferred-bg: #288758;
+  --color-avail-if-need-be-bg: #9c712a;
 
   /* Header (warm neutral) */
   --color-bg-header: var(--warm-900);

@@ -71,6 +71,26 @@ function selectionSummaryText(selection) {
   );
 }
 
+// DECISION Phase 88.9-52 (N1b, owner pick "Mid", 2026-11-17): a painted cell gets a DARK fill of
+// its own state (mid green for Preferred, ochre for If Need Be), added HERE as a dark: class
+// after the shared write-cell colour, chosen OVER changing the shared colour function
+// (src/lib/availabilityColor.ts ("if (preference === 'preferred') return 'bg-green-300';")): its strings are pinned byte-identical and it also
+// feeds the week grid's write arm, which the owner's picture did not show. Light is unchanged:
+// the shared colour still paints it and a dark: utility does nothing there. The legend swatches
+// below carry the same two classes. A disabled grid (the unavailable week) takes neither: the
+// shared function returns one disabled look for every cell. Values and ratios:
+// src/app/globals.css ("the check-in grid's painted cells"). Whole class names, never built by interpolation
+// (Tailwind would emit nothing).
+const CELL_BASE_CLASS = 'transition-colors duration-75';
+const CELL_PREFERRED_CLASS = 'transition-colors duration-75 dark:bg-surface-avail-preferred';
+const CELL_IF_NEED_BE_CLASS = 'transition-colors duration-75 dark:bg-surface-avail-if-need-be';
+function writeCellClass(preference, disabled) {
+  if (disabled) return CELL_BASE_CLASS;
+  if (preference === 'preferred') return CELL_PREFERRED_CLASS;
+  if (preference === 'if-need-be') return CELL_IF_NEED_BE_CLASS;
+  return CELL_BASE_CLASS;
+}
+
 /**
  * AvailabilityGrid - Paint-to-select availability grid component
  *
@@ -948,11 +968,11 @@ export default function AvailabilityGrid({
       {/* Legend */}
       <div className="flex items-center gap-4 mb-3 text-sm">
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-green-300 border border-line rounded-xs" />
+          <div className="w-4 h-4 bg-green-300 dark:bg-surface-avail-preferred border border-line rounded-xs" />
           <span className="text-content-secondary">Preferred</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-yellow-300 border border-line rounded-xs" />
+          <div className="w-4 h-4 bg-yellow-300 dark:bg-surface-avail-if-need-be border border-line rounded-xs" />
           <span className="text-content-secondary">If Need Be</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -1136,7 +1156,7 @@ export default function AvailabilityGrid({
                       onPointerDown={handlePointerDown}
                       onPointerEnter={handlePointerEnter}
                       cellRef={getCellRef(key)}
-                      className="transition-colors duration-75"
+                      className={writeCellClass(preference, disabled)}
                     />
                   </div>
                 );
