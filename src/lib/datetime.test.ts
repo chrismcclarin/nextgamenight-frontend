@@ -17,6 +17,9 @@ import {
   formatDuration,
   formatWithTzAbbr,
   withYearOutsideCurrent,
+  parseDateOnly,
+  dateOnlyDayStart,
+  dateOnlyDayEnd,
 } from './datetime';
 
 const TZ = 'America/New_York';
@@ -185,5 +188,79 @@ describe('withYearOutsideCurrent — the one year rule for date headings', () =>
 
     // The default now is the real clock: a night a hundred years out always carries its year.
     expect(withYearOutsideCurrent(PATTERN, new Date('2126-06-01T12:00:00.000Z'), TZ)).toBe('EEEE, MMMM d, yyyy');
+  });
+});
+
+// 88.9-52 round 4 (R4-A2): a date-only value ('2026-11-27', a DATEONLY column or an override's
+// pattern_data.date) names a calendar day, not an instant. new Date('2026-11-27') reads it as UTC
+// midnight, so west of UTC the old formatDate printed the day before (the capture saw Nov 26 on
+// Profile in Pacific). Each test sets the process zone itself, so it is red on the old code on any
+// host (CI runs in UTC, where the old code happened to be right).
+describe('date-only values keep their own calendar day in every zone (R4-A2)', () => {
+  const HOST_TZ = process.env.TZ;
+  const inZone = (zone: string, run: () => void) => {
+    process.env.TZ = zone;
+    try {
+      run();
+    } finally {
+      if (HOST_TZ === undefined) delete process.env.TZ;
+      else process.env.TZ = HOST_TZ;
+    }
+  };
+
+  beforeAll(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+  });
+  afterAll(() => {
+    vi.useRealTimers();
+  });
+
+  it('formatDate shows a date-only string as its own day west of UTC, east of UTC and in UTC', () => {
+    for (const zone of ['America/Los_Angeles', 'Pacific/Kiritimati', 'UTC']) {
+      inZone(zone, () => {
+        expect(formatDate('2026-11-27'), zone).toBe('Nov 27');
+        expect(formatDate('2026-01-01'), zone).toBe('Jan 1');
+        expect(formatDate('2026-12-31'), zone).toBe('Dec 31');
+        // The year rule reads the day's own year: 1 Jan of another year never borrows this one.
+        expect(formatDate('2027-01-01'), zone).toBe('Jan 1, 2027');
+        expect(formatDate('2025-12-31'), zone).toBe('Dec 31, 2025');
+      });
+    }
+  });
+
+  it('formatDate ignores the viewer zone for a date-only string: no shift and no zone letters', () => {
+    inZone('America/Los_Angeles', () => {
+      expect(formatDate('2026-11-27', 'America/New_York')).toBe('Nov 27');
+      expect(formatDate('2026-11-27', 'Pacific/Kiritimati')).toBe('Nov 27');
+    });
+  });
+
+  it('formatDate still reads an instant in the zone it is given (unchanged)', () => {
+    inZone('America/Los_Angeles', () => {
+      expect(formatDate(SAME_YEAR, TZ)).toBe('Jun 14, EDT');
+      expect(formatDate('2026-11-27T02:00:00Z', TZ)).toBe('Nov 26, EST');
+    });
+  });
+
+  it('parseDateOnly gives local midnight of that day, and null for anything that is not a real YYYY-MM-DD', () => {
+    inZone('America/Los_Angeles', () => {
+      const day = parseDateOnly('2026-11-27');
+      expect(day && [day.getFullYear(), day.getMonth(), day.getDate(), day.getHours()]).toEqual([2026, 10, 27, 0]);
+    });
+    for (const bad of ['2026-02-31', '2026-13-01', '2026-11-27T00:00:00Z', '26-11-27', '', null, undefined, 20261127]) {
+      expect(parseDateOnly(bad), String(bad)).toBeNull();
+    }
+  });
+
+  it('dateOnlyDayStart / dateOnlyDayEnd bound the day in the viewer zone, or in the local zone when none is given', () => {
+    inZone('America/Los_Angeles', () => {
+      expect(dateOnlyDayStart('2026-11-27', 'America/New_York')?.toISOString()).toBe('2026-11-27T05:00:00.000Z');
+      expect(dateOnlyDayEnd('2026-11-27', 'America/New_York')?.toISOString()).toBe('2026-11-28T04:59:59.999Z');
+      expect(dateOnlyDayStart('2026-11-27', null)?.toISOString()).toBe('2026-11-27T08:00:00.000Z');
+      expect(dateOnlyDayEnd('2026-11-27', null)?.toISOString()).toBe('2026-11-28T07:59:59.999Z');
+      expect(dateOnlyDayStart('not a date', 'UTC')).toBeNull();
+      expect(dateOnlyDayEnd('', 'UTC')).toBeNull();
+    });
   });
 });

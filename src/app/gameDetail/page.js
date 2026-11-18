@@ -17,7 +17,7 @@ import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import QRCodeModal from '../components/QRCodeModal';
 import { Modal } from '../components/Modal';
-import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate } from '../../lib/datetime';
+import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate, dateOnlyDayStart, dateOnlyDayEnd } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import TimezoneNudgeBanner from '../components/TimezoneNudgeBanner';
 import SafeImage from '../components/SafeImage';
@@ -2218,13 +2218,20 @@ export default function GameDetailPage() {
         let filtered = [...historyEvents];
         
         // Date range filter
-        if (filters.dateFrom) {
-            const fromDate = new Date(filters.dateFrom);
+        /* DECISION Phase 88.9-52 (R4-A2): From and To are CALENDAR DAYS in the viewer's zone, the zone
+           each session card prints its date in, bounded by the house date-only helpers, chosen OVER
+           new Date(value) (UTC midnight) with a browser-local setHours end: west of UTC that ended
+           the To day at 07:59 UTC of the day itself, so the filter dropped the To date's own
+           sessions (the Profile override printed a day early for the same reason). A value that is
+           not a YYYY-MM-DD day (a five-digit year) bounds nothing, where the old parse bounded
+           by whatever the engine made of it. The zone is a dependency of this effect. Going back to new Date on these two strings is
+           a decision, not a cleanup. */
+        const fromDate = dateOnlyDayStart(filters.dateFrom, timezone);
+        if (fromDate) {
             filtered = filtered.filter(event => new Date(event.start_date) >= fromDate);
         }
-        if (filters.dateTo) {
-            const toDate = new Date(filters.dateTo);
-            toDate.setHours(23, 59, 59, 999); // Include entire end date
+        const toDate = dateOnlyDayEnd(filters.dateTo, timezone); // the whole To day is included
+        if (toDate) {
             filtered = filtered.filter(event => new Date(event.start_date) <= toDate);
         }
         
@@ -2309,7 +2316,7 @@ export default function GameDetailPage() {
         
         setFilteredEvents(filtered);
         setVisibleSessions(3); // Reset visible count when filters change
-    }, [historyEvents, filters]);
+    }, [historyEvents, filters, timezone]);
 
     const handleFilterChange = (key, value) => {
         setFilters(prev => ({ ...prev, [key]: value }));

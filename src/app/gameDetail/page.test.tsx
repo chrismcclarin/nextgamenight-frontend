@@ -4061,6 +4061,35 @@ describe('gameDetail Sessions date filter explains a backwards range (E5, 88.6.1
     expectToDateValid(to);
   });
 
+  // 88.9-52 round 4 (R4-A2): the To date is a calendar day in the viewer's zone (UTC in this file),
+  // read through the house date-only helper. new Date('2026-01-15') is UTC midnight, and the old
+  // setHours(23, 59, 59, 999) then ended the day in the BROWSER's zone: in Pacific that was
+  // 07:59 UTC on the 15th, so a session at 18:00 UTC on the To date itself was filtered out. The
+  // test sets the process zone itself, so it is red on the old code on any host.
+  it('R4-A2: a To date keeps the sessions of that day itself, whatever zone the browser is in', async () => {
+    const hostTz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      renderGameDetail({ role: 'member' });
+      const { from, to } = await openSessionFilters();
+      fireEvent.change(to, { target: { value: '2026-01-15' } });
+      expect(to.value).toBe('2026-01-15');
+      expect(await screen.findByRole('heading', { name: 'Game Sessions (1)' })).toBeInTheDocument();
+      expect(screen.queryByText('No sessions match your filters.')).toBeNull();
+      // The day before still excludes it, and a From date on the day itself keeps it.
+      fireEvent.change(to, { target: { value: '2026-01-14' } });
+      expect(await screen.findByText('No sessions match your filters.')).toBeInTheDocument();
+      fireEvent.change(to, { target: { value: '' } });
+      fireEvent.change(from, { target: { value: '2026-01-15' } });
+      expect(await screen.findByRole('heading', { name: 'Game Sessions (1)' })).toBeInTheDocument();
+      fireEvent.change(from, { target: { value: '2026-01-16' } });
+      expect(await screen.findByText('No sessions match your filters.')).toBeInTheDocument();
+    } finally {
+      if (hostTz === undefined) delete process.env.TZ;
+      else process.env.TZ = hostTz;
+    }
+  });
+
   // Control (green before and after): zero look change at rest.
   it('E5-4: at rest the To label keeps its exact classes and the To input carries no error wiring', async () => {
     renderGameDetail({ role: 'member' });

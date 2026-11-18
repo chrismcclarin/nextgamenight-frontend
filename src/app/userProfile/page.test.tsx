@@ -7134,6 +7134,34 @@ describe('phone layout of the availability panels and the inline two-tap control
     }
   });
 
+  it('R4-A2 (88.9-52): an override stored as 2026-11-27 reads Nov 27, and a schedule from 2026-01-01 to 2026-12-31 reads Jan 1 - Dec 31, with the browser in Pacific', async () => {
+    // The round-3 capture: the override row read Nov 26, a day early. A date-only string is a
+    // calendar day; new Date() read it as UTC midnight and the browser's zone moved it back. The
+    // test sets the process zone itself, so it is red on the old code on any host (CI is UTC).
+    // The year is optional in each pattern so the test still holds after 2026.
+    const before = h.patterns;
+    const hostTz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    h.patterns = [
+      PATTERNS[0],
+      { id: 'override-a2', type: 'specific_override', is_available: true, pattern_data: { date: '2026-11-27', startTime: '18:00', endTime: '22:00' } },
+    ];
+    try {
+      renderProfile();
+      const scheduleDelete = await screen.findByRole('button', { name: 'Delete Monday schedule' });
+      const dates = (scheduleDelete.parentElement as HTMLElement).children[1] as HTMLElement;
+      expect(dates.textContent).toMatch(/^Jan 1(, 2026)? - Dec 31(, 2026)?$/);
+      fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
+      const overrideDelete = await screen.findByRole('button', { name: /^Delete Nov 27(, 2026)? override$/ });
+      const line = (overrideDelete.parentElement as HTMLElement).children[0] as HTMLElement;
+      expect(line.textContent).toMatch(/^Nov 27(, 2026)?: 6:00 PM - 10:00 PM$/);
+    } finally {
+      h.patterns = before;
+      if (hostTz === undefined) delete process.env.TZ;
+      else process.env.TZ = hostTz;
+    }
+  });
+
   it('W39 (88.9-52): on a phone Phone verified takes the first line, Change number and Remove share the second, and the Remove label is left-anchored in its reserve', async () => {
     renderProfile({ sms_enabled: true, phone: '+1 415 555 2671', phone_verified: true });
     const verified = await screen.findByText('Phone verified');
