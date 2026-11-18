@@ -780,4 +780,94 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
       await Promise.all(answers);
     }
   });
+
+  // G4 (88.9-52 round 4): the after-build capture (r3-m) found the member menu starting 24px off
+  // the left of the screen at 200% text with the dialog body scrolled sideways, and its last item
+  // cut by the dialog's footer line at every text size. At 375 and 320, at 100% and 200% text:
+  // the dialog body does not scroll sideways, the open menu is inside the body's box and the
+  // screen from side to side, and every item is whole inside the body, at once where the menu is
+  // shorter than the body and after scrolling to it where it is taller. Nothing is tapped in the
+  // menu: no member write.
+  test('G4 (88.9-52): the member menu is whole inside the dialog at 375 and 320, at 100% and 200% text', async ({ page }) => {
+    const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
+    await settleAnimations(dialog);
+    const height = page.viewportSize()?.height ?? 667;
+    const trigger = dialog.getByRole('button', { name: 'Member actions for E2E Removable' });
+
+    type Box = { left: number; right: number; top: number; bottom: number };
+    const readMenu = (el: HTMLElement) => {
+      const box = (node: Element): Box => {
+        const r = node.getBoundingClientRect();
+        return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+      };
+      const list = document.getElementById(el.getAttribute('aria-controls') ?? '');
+      let body: HTMLElement | null = el.parentElement;
+      while (body && getComputedStyle(body).overflowY === 'visible') body = body.parentElement;
+      if (!list || !body) return null;
+      return {
+        menu: box(list),
+        items: Array.from(list.querySelectorAll('button')).map(box),
+        body: box(body),
+        bodyScrollWidth: body.scrollWidth,
+        bodyClientWidth: body.clientWidth,
+        bodyClientHeight: body.clientHeight,
+        screen: document.documentElement.clientWidth,
+      };
+    };
+    const inside = (inner: Box, outer: Box) =>
+      inner.left >= outer.left - 0.5 && inner.right <= outer.right + 0.5 && inner.top >= outer.top - 0.5 && inner.bottom <= outer.bottom + 0.5;
+
+    for (const scale of ['100%', '200%'] as const) {
+      if (scale === '200%') {
+        await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+        await expect
+          .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+            message: 'G4: the root font size did not become 32px after the 200% style tag',
+          })
+          .toBe('32px');
+      }
+      for (const width of [375, 320] as const) {
+        const label = `G4, ${width} wide, ${scale} text`;
+        await page.setViewportSize({ width, height });
+        await settleAnimations(dialog);
+        await trigger.scrollIntoViewIfNeeded();
+        await trigger.tap();
+        await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+        await expect(dialog.getByRole('button', { name: 'Transfer ownership to this member', exact: true })).toBeVisible();
+        const read = await trigger.evaluate(readMenu);
+        if (!read) throw new Error(`${label}: the open menu or the dialog's scrolling body was not found`);
+        const line = JSON.stringify(read);
+        // eslint-disable-next-line no-console -- the measured menu is recorded from the CI log
+        console.log(`[88.9-52 G4 member menu] ${label}: ${line}`);
+        expect(read.items, `${label}: the owner's member menu holds three items`).toHaveLength(3);
+        expect(read.bodyScrollWidth, `${label}: the dialog body scrolls sideways (${line})`).toBeLessThanOrEqual(read.bodyClientWidth + 1);
+        expect(read.menu.left, `${label}: the menu starts left of the dialog body (${line})`).toBeGreaterThanOrEqual(read.body.left - 0.5);
+        expect(read.menu.right, `${label}: the menu ends right of the dialog body (${line})`).toBeLessThanOrEqual(read.body.right + 0.5);
+        expect(read.menu.left, `${label}: the menu starts left of the screen (${line})`).toBeGreaterThanOrEqual(0);
+        expect(read.menu.right, `${label}: the menu ends right of the screen (${line})`).toBeLessThanOrEqual(read.screen + 0.5);
+        if (read.menu.bottom - read.menu.top <= read.bodyClientHeight) {
+          // The menu is no taller than the body: opening it shows all of it, with no scroll by hand.
+          for (const [index, item] of read.items.entries()) {
+            expect(inside(item, read.body), `${label}: item ${index} is not whole inside the dialog body when the menu opens (${line})`).toBe(true);
+          }
+        } else {
+          // Taller than the body (large text on a short screen): every item can be scrolled whole into it.
+          const list = page.locator(`[id="${await trigger.getAttribute('aria-controls')}"]`);
+          for (const index of [0, 1, 2]) {
+            await list.getByRole('button').nth(index).scrollIntoViewIfNeeded();
+            const after = await trigger.evaluate(readMenu);
+            if (!after) throw new Error(`${label}: the menu closed while scrolling to item ${index}`);
+            expect(inside(after.items[index], after.body), `${label}: item ${index} cannot be scrolled whole into the dialog body (${JSON.stringify(after)})`).toBe(true);
+          }
+        }
+        // Closed from its trigger (a tap does not focus the item on WebKit, so no Escape here).
+        await trigger.scrollIntoViewIfNeeded();
+        await trigger.tap();
+        await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      }
+    }
+    expect(heldMemberWrites(), 'G4: opening and closing the menu sent no member write').toEqual([]);
+  });
 });

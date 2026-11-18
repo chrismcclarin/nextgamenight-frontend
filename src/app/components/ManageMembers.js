@@ -895,16 +895,17 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     88.9-51. */}
                                 <div className="space-y-3">
                                     {members.filter(m => m.UserGroup?.role === 'pending').map((member) => (
-                                        <div key={member.id} className="flex items-center justify-between p-4 border border-status-warning rounded-lg bg-status-warning-subtle">
-                                            <div className="flex items-center gap-3 flex-1">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="font-bold text-content-status-warning"><ClickableMemberName userId={member.id} hostGround="warning" username={member.username || member.email} /></p>
+                                        <div key={member.id} className="flex flex-wrap items-center justify-between gap-y-2 p-4 border border-status-warning rounded-lg bg-status-warning-subtle">
+                                            {/* G4 (88.9-52): this row follows the active row's wrap rule (the DECISION marker there); its name block starts at 6rem, not 10rem, so the row stays on one line beside Approve and Reject at normal text on a 375 phone. */}
+                                            <div className="flex items-center gap-3 flex-[1_1_6rem] min-w-0">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                        <p className="font-bold text-content-status-warning min-w-0 wrap-anywhere"><ClickableMemberName userId={member.id} hostGround="warning" username={member.username || member.email} /></p>
                                                         {getRoleBadge('pending')}
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
                                                 <Button
                                                     variant="primary"
                                                     size="default"
@@ -936,20 +937,39 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                 const isOwner = memberRole === 'owner';
 
                                 return (
+                                    /* DECISION Phase 88.9-52 (G4, round 4, 2026-11-18): a member row may WRAP, and its
+                                       name block may shrink and break. At 375 with 200% text the dialog body scrolled
+                                       sideways (capture r3-m): chip, name, role pill and the 88px actions button sat on
+                                       one line that could neither wrap nor shrink (a flex-1 block with no min-w-0 keeps
+                                       its content width), so the row was wider than the dialog and the member menu
+                                       opened from a button that was off to one side. This predates round 3.
+                                       THE RULE: the name block starts at 10rem and grows and shrinks from there
+                                       (flex-[1_1_10rem] min-w-0). While 10rem plus the row's actions fit, the row is the
+                                       one line it was (at normal text: 160px + the 44px actions button, or + Leave
+                                       Group, inside the 293px a 375 phone leaves). When they do not fit, the actions
+                                       drop under the name, at the right (ml-auto). Inside the block the role pill
+                                       wraps under the name, and a name or address longer than the line breaks
+                                       (wrap-anywhere) instead of widening the row.
+                                       Chosen OVER shrinking alone (at 200% the name would be left about 60px beside the
+                                       actions button and break mid-word in every row) and OVER hiding the chip at
+                                       large text (D4a put it there). Arithmetic on the class sizes, not a rendered
+                                       read; the rendered proof is e2e/manage-members-refresh.spec.ts ("G4 (88.9-52): the member menu is whole").
+                                       The pending rows above and the invite rows below take the same rule.
+                                       Changing this is a decision, not a cleanup. */
                                     <div
                                         key={member.id}
-                                        className="flex items-center justify-between p-4 border border-line rounded-lg hover:bg-surface-hover"
+                                        className="flex flex-wrap items-center justify-between gap-y-2 p-4 border border-line rounded-lg hover:bg-surface-hover"
                                     >
-                                        <div className="flex items-center gap-3 flex-1">
+                                        <div className="flex items-center gap-3 flex-[1_1_10rem] min-w-0">
                                             {/* DECISION Phase 88.9-30 D4a (owner pick D4a, 88.9-PICKS-B3.json, votes-b3 v12 + chat
                                                 2026-11-06 'the manage members spot is great'): a 32px D1b chip opens each ACTIVE
                                                 row, chosen OVER name text alone (W62) and OVER chips on the pending rows too (the
                                                 build contract's pin names active rows; a pending row is a request on the warning
                                                 box, not a member yet). The chip is aria-hidden: identity is the name beside it. */}
                                             <MemberChip label={member.username || member.email} colorKey={member.id} />
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <p className="font-bold text-content-primary">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                    <p className="font-bold text-content-primary min-w-0 wrap-anywhere">
                                                         <ClickableMemberName userId={member.id} username={member.username || member.email} />
                                                     </p>
                                                     {isCurrentUser && (
@@ -970,7 +990,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                     )}
                                                 </div>
                                                 {member.email && member.email !== member.username && (
-                                                    <p className="text-sm text-content-secondary mt-1">{member.email}</p>
+                                                    <p className="text-sm text-content-secondary mt-1 wrap-anywhere">{member.email}</p>
                                                 )}
                                             </div>
                                         </div>
@@ -1083,7 +1103,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                             test queries key on that exact string. Collapsing these
                                                             two labels into one is a decision, not a cleanup. */}
                                                         <div
-                                                            className="md:hidden"
+                                                            className="md:hidden ml-auto"
                                                             ref={(node) => {
                                                                 if (node) memberActionsNodesRef.current.set(member.id, node);
                                                                 else memberActionsNodesRef.current.delete(member.id);
@@ -1160,6 +1180,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                             <Button
                                                 variant="danger"
                                                 size="default"
+                                                className="ml-auto"
                                                 onClick={handleLeaveGroup}
                                             >
                                                 Leave Group
@@ -1190,10 +1211,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     key={invite.id}
                                     className="flex items-center justify-between p-4 border border-status-warning rounded-lg bg-status-warning-subtle"
                                 >
-                                    <div className="flex items-center gap-3 flex-1">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <p className="font-bold text-content-status-warning">
+                                    {/* G4 (88.9-52): the invited address and its pill wrap and break like a member's name (the DECISION marker at the active row). */}
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                <p className="font-bold text-content-status-warning min-w-0 wrap-anywhere">
                                                     {invite.invited_email}
                                                 </p>
                                                 <span className="px-2 py-1 rounded-sm text-xs font-bold border bg-status-warning-subtle text-content-status-warning border-status-warning">

@@ -788,3 +788,95 @@ describe('R13 (88.9-52): an armed kebab item shows Tap again and is named by its
     expect(armedTrailing).not.toContain('font-semibold');
   });
 });
+
+// G4 (88.9-52 round 4): in Manage Members at 200% text the member menu opened 24px off the left of
+// the screen, and at every text size its last item was cut by the dialog's footer line (capture
+// r3-m). The menu is an absolute box hung from the right edge of its trigger: it knows nothing of
+// the box that clips it. On open it now measures that box, caps its width to it, moves right until
+// its left edge is inside, and scrolls itself into view. jsdom lays nothing out, so the boxes are
+// supplied here; the rendered proof is e2e/manage-members-refresh.spec.ts.
+describe('G4 (88.9-52): an open menu stays inside the box that clips it', () => {
+  const rect = (left: number, top: number, width: number, height: number) =>
+    ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
+
+  const withBoxes = (clip: DOMRect, list: DOMRect) => {
+    const scrolled: Array<{ el: Element; arg: unknown }> = [];
+    const original = Element.prototype.getBoundingClientRect;
+    const rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this instanceof HTMLElement && this.dataset.testid === 'clip') return clip;
+      if (this.getAttribute('role') === 'list') return list;
+      return original.call(this);
+    });
+    const proto = Element.prototype as unknown as { scrollIntoView?: (arg?: unknown) => void };
+    const had = proto.scrollIntoView;
+    proto.scrollIntoView = function (this: Element, arg?: unknown) {
+      scrolled.push({ el: this, arg });
+    };
+    return {
+      scrolled,
+      restore: () => {
+        rectSpy.mockRestore();
+        proto.scrollIntoView = had;
+      },
+    };
+  };
+
+  it('G4: a menu that would start left of its scroll box is capped to the box and moved inside it, then scrolled into view', () => {
+    // The dialog body at 375 with 200% text: x 12..363. The menu, hung from its trigger: x -24..287.
+    const boxes = withBoxes(rect(12, 100, 351, 400), rect(-24, 300, 311, 306));
+    try {
+      render(
+        <div data-testid="clip" style={{ overflowY: 'auto' }}>
+          <KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />
+        </div>
+      );
+      const { list } = openMenu();
+      // 351px of box less an 8px gap each side.
+      expect(list.style.maxWidth).toBe('min(calc(100vw - 2rem), 335px)');
+      // From -24 to 12 + 8.
+      expect(list.style.translate).toBe('44px 0');
+      expect(boxes.scrolled).toEqual([{ el: list, arg: { block: 'nearest', inline: 'nearest' } }]);
+      // The reveal keeps 8px clear of the box's edges.
+      expect(list.className.split(/\s+/)).toContain('scroll-m-2');
+    } finally {
+      boxes.restore();
+    }
+  });
+
+  it('G4: a menu already inside its box is not moved, and with no clipping box the screen is the box', () => {
+    const boxes = withBoxes(rect(12, 100, 351, 400), rect(80.8, 300, 252.23, 142));
+    try {
+      render(
+        <div data-testid="clip" style={{ overflowY: 'auto' }}>
+          <KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />
+        </div>
+      );
+      const { list } = openMenu();
+      expect(list.style.translate).toBe('');
+      expect(list.style.maxWidth).toBe('min(calc(100vw - 2rem), 335px)');
+      expect(boxes.scrolled).toHaveLength(1);
+    } finally {
+      boxes.restore();
+    }
+    cleanup();
+
+    // No clipping ancestor: the screen (375 wide here) is the box.
+    const width = vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(375);
+    const page = withBoxes(rect(0, 0, 0, 0), rect(-5, 300, 311, 306));
+    try {
+      render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+      const { list } = openMenu();
+      expect(list.style.maxWidth).toBe('min(calc(100vw - 2rem), 359px)');
+      expect(list.style.translate).toBe('13px 0');
+    } finally {
+      page.restore();
+      width.mockRestore();
+    }
+  });
+
+  it('G4: with no layout to measure (a box of no width) the menu is left exactly as it is', () => {
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { list } = openMenu();
+    expect(list.getAttribute('style')).toBeNull();
+  });
+});

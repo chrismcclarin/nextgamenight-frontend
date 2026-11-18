@@ -613,3 +613,65 @@ describe('ManageMembers X41 (88.9) — the first paint takes the role the page h
     expect(invitesAPI.getGroupPendingInvites as Mock).not.toHaveBeenCalled();
   });
 });
+
+// G4 (88.9-52 round 4): at 375 with 200% text the dialog body scrolled sideways (capture r3-m): a
+// member row is chip + name + role pill + the 88px actions button on ONE line that cannot wrap or
+// shrink, so its content was wider than the dialog. The row may now wrap (the actions drop under
+// the name, at the right), the name block may shrink, and a long name or address breaks rather
+// than widening the row. jsdom lays nothing out: these pin the classes that allow it. The
+// rendered proof is e2e/manage-members-refresh.spec.ts.
+describe('G4 (88.9-52) — a member row fits the dialog at large text', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+
+  it('G4: an active row wraps, its name block shrinks and breaks, and its actions keep to the right', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
+      ROSTER[0],
+      { ...ROSTER[1], email: 'target-with-a-long-address' },
+      ROSTER[2],
+    ]);
+    renderManageMembers();
+    await screen.findByRole('dialog');
+    await screen.findByText('Target');
+    const row = screen
+      .getAllByText('Target')
+      .map((el) => el.closest('[class*="hover:bg-surface-hover"]'))
+      .find(Boolean) as HTMLElement;
+    expect(row, 'the active row').toBeTruthy();
+    for (const t of ['flex', 'flex-wrap', 'items-center', 'justify-between', 'gap-y-2']) expect(tokens(row), `the row lacks ${t}`).toContain(t);
+
+    // The name block: a 10rem start that grows and shrinks, so the actions wrap under it only when
+    // 10rem plus the actions no longer fit (never at normal text on a 375 or 320 phone).
+    const block = row.firstElementChild as HTMLElement;
+    for (const t of ['flex-[1_1_10rem]', 'min-w-0']) expect(tokens(block), `the name block lacks ${t}`).toContain(t);
+    expect(tokens(block), 'the name block keeps the no-shrink basis').not.toContain('flex-1');
+    const text = block.lastElementChild as HTMLElement;
+    for (const t of ['flex-1', 'min-w-0']) expect(tokens(text), `the text column lacks ${t}`).toContain(t);
+    const line = text.firstElementChild as HTMLElement;
+    for (const t of ['flex', 'flex-wrap', 'items-center', 'gap-x-2', 'gap-y-1']) expect(tokens(line), `the name line lacks ${t}`).toContain(t);
+    const name = line.firstElementChild as HTMLElement;
+    expect(name.tagName).toBe('P');
+    for (const t of ['min-w-0', 'wrap-anywhere']) expect(tokens(name), `the name lacks ${t}`).toContain(t);
+    const address = screen.getByText('target-with-a-long-address');
+    expect(tokens(address)).toContain('wrap-anywhere');
+
+    // The phone actions: pushed to the right edge when they wrap under the name.
+    const actions = within(row).getByRole('button', { name: 'Member actions for Target' }).closest('.md\\:hidden') as HTMLElement;
+    expect(actions.parentElement, 'the phone actions are a direct child of the row').toBe(row);
+    expect(tokens(actions)).toContain('ml-auto');
+  });
+
+  it('G4: a pending row and its two buttons can wrap, and its name breaks', async () => {
+    renderManageMembers();
+    await screen.findByRole('dialog');
+    const name = (await screen.findByText('Pend')).closest('p') as HTMLElement;
+    for (const t of ['min-w-0', 'wrap-anywhere']) expect(tokens(name), `the pending name lacks ${t}`).toContain(t);
+    const row = name.closest('div.rounded-lg') as HTMLElement;
+    for (const t of ['flex-wrap', 'gap-y-2']) expect(tokens(row), `the pending row lacks ${t}`).toContain(t);
+    const block = row.firstElementChild as HTMLElement;
+    // 6rem, not the active row's 10rem: Approve and Reject take more of the line than one
+    // actions button, and the row must stay on one line at normal text on a 375 phone.
+    for (const t of ['flex-[1_1_6rem]', 'min-w-0']) expect(tokens(block), `the pending name block lacks ${t}`).toContain(t);
+    const buttons = within(row).getByRole('button', { name: 'Approve' }).parentElement as HTMLElement;
+    for (const t of ['flex', 'flex-wrap', 'justify-end', 'ml-auto']) expect(tokens(buttons), `the pending buttons lack ${t}`).toContain(t);
+  });
+});

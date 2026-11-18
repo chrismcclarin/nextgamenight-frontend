@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useId } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
@@ -45,6 +45,9 @@ import { cn } from '@/lib/cn';
  * shared hook `src/components/ui/useDismissal.ts` since 88.6.1-05; this component
  * consumes it and owns only its open / armed / announcement state.
  */
+
+/* G4 (88.9-52): the clear space kept between an open menu and the edge of the box that clips it. */
+const MENU_EDGE_GAP_PX = 8;
 
 /* The sr-only copy emitted when an armed twoTap item reverts. It is NOT emitted
    on a successful commit — see the close-resets effect below. */
@@ -268,6 +271,54 @@ export default function KebabMenu({
       }
     };
   }, []);
+
+  /* DECISION Phase 88.9-52 (G4, round 4, 2026-11-18): an open menu is FITTED to the box that clips
+     it, once, when it opens. The list is an absolute box hung from the right edge of its trigger,
+     as wide as its longest item up to 100vw - 2rem. That cap knows the screen, not the box the
+     menu sits in. Inside the Manage Members dialog (two of the six render sites) the clipping box
+     is the dialog's scrolling body, which starts 12px in from the screen and whose trigger sits
+     further in again from its right: at 200% the 311px menu started 24px off
+     the left of the screen with only part of each word showing, and at every text size the last
+     item was cut by the dialog's footer line because nothing scrolled the menu into view
+     (capture r3-m). Both predate round 3 (the menu has hung this way since it first rendered in
+     a dialog; X67 let it grow to the cap).
+     WHAT RUNS ON OPEN: find the nearest ancestor that clips (any overflow other than visible),
+     else the screen; cap the width to that box less 8px each side (kept under the class's own
+     cap by min()); if the menu still starts left of the box, move it right by the difference;
+     then scroll it into view by the nearest edge (the list's scroll-m-2 keeps 8px clear), which
+     scrolls the dialog body, or the page for a menu opened at the foot of the screen.
+     Chosen OVER portalling the menu out of the dialog (the dismissal hook and the focusout rule
+     reason about containment: the same settled question the aria-controls marker below refuses
+     to reopen); OVER the house floating engine (a rebuild of a six-site component, for a
+     fix); OVER a narrower fixed cap (it would wrap Transfer ownership to this member at normal
+     text, which X67 exists to prevent); and OVER opening upward (it trades the foot of the box
+     for the head of it). A layout effect, so the first paint is already fitted.
+     NOT DONE: it does not refit while open (a rotation or a text-size change with the menu open
+     closes nothing and moves nothing). With no layout to measure (a box of no width: a test
+     page) it touches nothing. Changing this is a decision, not a cleanup. */
+  const listRef = useRef(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    if (!list) return;
+    let left = 0;
+    let right = document.documentElement.clientWidth;
+    for (let el = list.parentElement; el && el !== document.body; el = el.parentElement) {
+      const style = window.getComputedStyle(el);
+      if ((style.overflowX || 'visible') !== 'visible' || (style.overflowY || 'visible') !== 'visible') {
+        const box = el.getBoundingClientRect();
+        left = box.left;
+        right = box.right;
+        break;
+      }
+    }
+    if (right - left <= 0) return;
+    const room = right - left - 2 * MENU_EDGE_GAP_PX;
+    if (room > 0) list.style.maxWidth = `min(calc(100vw - 2rem), ${Math.floor(room)}px)`;
+    const shift = left + MENU_EDGE_GAP_PX - list.getBoundingClientRect().left;
+    list.style.translate = shift > 0.5 ? `${Math.ceil(shift)}px 0` : '';
+    if (typeof list.scrollIntoView === 'function') list.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [open]);
 
   // X13-7 (88.9-67): the keepOpen exits put focus on the item that was activated. A no-op when
   // the press already focused it (a keyboard press, a Chromium click).
@@ -576,8 +627,9 @@ export default function KebabMenu({
              (src/components/ui/Button.tsx ("/* DECISION Phase 88.6-06 (D10): the hover elevation above, and the ghost")). The trigger keeps its own wash. */
         <ul
           id={listId}
+          ref={listRef}
           role="list"
-          className={`absolute right-0 top-full mt-1 z-20 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg ${
+          className={`absolute right-0 top-full mt-1 z-20 scroll-m-2 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg ${
             soloItem ? 'py-0 overflow-hidden' : 'py-1 space-y-0.5'
           }`}
         >
