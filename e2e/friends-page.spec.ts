@@ -201,10 +201,23 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
         const b = Array.from(document.querySelectorAll('button')).find((el) => new RegExp('^' + name + '\\s*\\d*$').test((el.textContent ?? '').trim())) as HTMLElement;
         b.click();
       }, label);
-    const checkCentred = (where: string, strip: Awaited<ReturnType<typeof readStrip>>) => {
+    // AMENDED Phase 88.9-52 (R4 B2, CI run 44381640391, both projects): the up-and-down limit is
+    // half a pixel at ordinary text and ONE pixel at 200%. CI read 26px above the Requests word and
+    // 27px below at 200% (no count pill there: the CI account has no pending request). The
+    // arithmetic: the tab is 88px (min-h-11 at a 32px root) and its one line box is 40px (text-sm,
+    // 1.25rem), and that line box IS centred, 24 above and 24 below. What this read measures is
+    // the word's own glyph box inside the line, which is the font's ascent plus descent, each
+    // rounded to a whole pixel by the browser: 88 - 26 - 27 = 35px at 28px text. 40 - 35 leaves
+    // 5px of leading, 2.5 each way, and the browser places text on whole pixels, so it lands 2
+    // over and 3 under: 24 + 2 = 26 above, 24 + 3 = 27 below. An odd glyph height in an even box
+    // cannot be centred closer than that by any padding or alignment (a tab with a pill is not
+    // affected: the pill is a 40px box and reads 24 / 24). At ordinary text the same word reads
+    // 13 / 13 (an 18px glyph box in a 20px line), so the 100% limit stays at half a pixel.
+    // REJECTED: loosening both limits to 1px (the R11 defect this test exists for was 1px at 100%).
+    const checkCentred = (where: string, strip: Awaited<ReturnType<typeof readStrip>>, upDownLimit = 0.5) => {
       expect(strip.tabs.map((t) => t.label), `${where}: the three tabs`).toEqual(['Friends', 'Requests', 'Sent']);
       for (const t of strip.tabs) {
-        expect(Math.abs(t.above - t.below), `${where}: ${t.label} has ${t.above}px above its label and ${t.below}px below`).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(t.above - t.below), `${where}: ${t.label} has ${t.above}px above its label and ${t.below}px below`).toBeLessThanOrEqual(upDownLimit);
         expect(Math.abs(t.sideLeft - t.sideRight), `${where}: ${t.label} has ${t.sideLeft}px left of its label and ${t.sideRight}px right`).toBeLessThanOrEqual(0.5);
         expect(t.wordLines, `${where}: the ${t.label} label is on ${t.wordLines} lines`).toBe(1);
       }
@@ -231,7 +244,7 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
       expect(big.pageSideways, `R4 S3 (${where}): the page scrolls sideways by ${big.pageSideways}px (${big.wide.join('; ')})`).toBeLessThanOrEqual(1);
       expect(big.row.right, `R4 S3 (${where}): the strip runs past the right edge of the window`).toBeLessThanOrEqual(width + 0.5);
       expect(big.row.scrolls, `R4 S3 (${where}): the strip does not scroll, so a tab past its edge could not be reached`).toBeGreaterThan(0);
-      checkCentred(where, big);
+      checkCentred(where, big, 1);
       // Each tab in turn: pressed, it is the current tab and lies wholly inside the strip.
       for (const label of ['Sent', 'Requests', 'Friends']) {
         await pressTab(label);
@@ -245,7 +258,7 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
             { message: `R4 S3 (${where}): the pressed ${label} tab is not current and wholly inside the strip` },
           )
           .toBe(true);
-        checkCentred(`${where}, ${label} chosen`, await readStrip());
+        checkCentred(`${where}, ${label} chosen`, await readStrip(), 1);
       }
     }
   });
