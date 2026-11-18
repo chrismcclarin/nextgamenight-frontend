@@ -252,8 +252,10 @@ describe('C5a (88.9) — the form labels on Label 14', () => {
 // X43, owner: "'participant name' is a different color than 'Score' 'Faction' and 'new player'".
 // All four labels read the primary ink, the one UI-SPEC row R2-14 measured for this row.
 // jsdom lays nothing out: the 44 by 44 box and the shared line at 375 are the phone spec's.
+// AMENDED Phase 88.9-52 (R15b, owner 2026-11-17): the 44px box is kept BELOW md only (max-md:min-h-11
+// / max-md:min-w-11); from md up the label is compact so the line is one text line. Still ONE checkbox.
 describe('X40 + X43 (88.9-65) — one New Player box, one label ink', () => {
-  it('X40 + X43 (88.9-65): one New Player checkbox per row with no width-gated twin, its label a min-h-11 box on the Participant Name line, and the four labels share text-content-primary', () => {
+  it('X40 + X43 (88.9-65): one New Player checkbox per row with no width-gated twin, its label a 44px box below md on the Participant Name line, and the four labels share text-content-primary', () => {
     const tokensOf = (el: Element) => el.className.split(/\s+/).filter((token) => token.length > 0);
     const rows: Array<[string, Record<string, unknown>]> = [
       ['a member row', { participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } }],
@@ -279,9 +281,12 @@ describe('X40 + X43 (88.9-65) — one New Player box, one label ink', () => {
       // Its label is a real box (the house 44px floor), on the Participant Name line.
       const label = box.closest('label');
       expect(label, `${what}: the checkbox sits inside its label`).not.toBeNull();
-      expect(tokensOf(label as Element)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'min-h-11', 'min-w-11']));
+      expect(tokensOf(label as Element)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'max-md:min-h-11', 'max-md:min-w-11']));
+      // R15b: compact from md up, so no unconditional floor may survive on the label.
+      expect(tokensOf(label as Element)).not.toContain('min-h-11');
+      expect(tokensOf(label as Element)).not.toContain('min-w-11');
       const line = (label as Element).parentElement as HTMLElement;
-      expect(tokensOf(line)).toEqual(expect.arrayContaining(['flex', 'items-baseline', 'justify-between']));
+      expect(tokensOf(line)).toEqual(expect.arrayContaining(['flex', 'items-center', 'justify-between', 'mb-1']));
       const nameLabel = screen.getByText('Participant Name', { exact: true });
       expect(nameLabel.parentElement, `${what}: New Player shares the Participant Name line`).toBe(line);
 
@@ -332,5 +337,45 @@ describe('R15c (88.9-52) — the three boxes take the type-in field look', () =>
     expect(box).not.toHaveAttribute('tabindex');
     expect(box).not.toHaveAttribute('role');
     expect(screen.queryByRole('textbox', { name: 'Participant Name' })).toBeNull();
+  });
+});
+
+// Phase 88.9-52, R15b (owner pick "As is", 2026-11-17; mock one-line-remove-as-is, and phone-two-line).
+// From md up: Participant Name, Score and Faction on ONE line, every label a block 4px above its box
+// (mb-1), the columns top-aligned so the three boxes sit level (same 20px label line, same 42px box),
+// Remove left at 44px and bottom-aligned with Score and Faction. Below md the row keeps two lines.
+// jsdom lays nothing out, so these are class pins; the measured sizes are the capture's (report j, row E).
+describe('R15b (88.9-52) — one line from md up, labels 4px above their boxes', () => {
+  const tokensOf = (el: Element) => el.className.split(/\s+/).filter((token) => token.length > 0);
+
+  it('R15b (88.9-52): the row is one line from md, two lines below it, and nothing is gated at sm', () => {
+    for (const overrides of [{}, { participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } }]) {
+      renderRow(overrides);
+      const remove = screen.getByRole('button', { name: 'Remove' });
+      const row = remove.closest('.border-line-strong') as HTMLElement;
+      expect(tokensOf(row)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'md:flex-row', 'md:items-start', 'gap-2', 'md:gap-4']));
+      const smGated = [row, ...Array.from(row.querySelectorAll('*'))].flatMap((el) =>
+        tokensOf(el).filter((token) => token.startsWith('sm:')),
+      );
+      expect(smGated).toEqual([]);
+
+      const score = screen.getByLabelText('Score');
+      const controls = score.parentElement!.parentElement as HTMLElement;
+      expect(controls.parentElement).toBe(row);
+      expect(tokensOf(controls)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'md:flex-nowrap', 'items-end', 'gap-2', 'md:gap-4']));
+      expect(controls.contains(remove)).toBe(true);
+      // Remove is left as it is: the 44px floor at every width.
+      expect(tokensOf(remove)).toContain('min-h-11');
+      cleanup();
+    }
+  });
+
+  it('R15b (88.9-52): Score and Faction labels are blocks 4px above their boxes at every width', () => {
+    renderRow();
+    for (const text of ['Score', 'Faction']) {
+      const label = screen.getByText(text, { exact: true });
+      expect(label.tagName).toBe('LABEL');
+      expect(tokensOf(label), text).toEqual(expect.arrayContaining(['block', 'mb-1']));
+    }
   });
 });
