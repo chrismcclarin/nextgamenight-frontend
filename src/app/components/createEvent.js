@@ -1385,8 +1385,15 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
             each sr-only box its own positioned wrapper (one per box, and the next box added would
             escape again). The list box needs its own because it scrolls its own rows.
             Pinned by src/app/components/createEvent.participants.test.tsx ("G5: every sr-only or absolute box under the dialog Body is held by a positioned ancestor inside it").
-            Removing either relative is a decision, not a cleanup. */}
-        <div aria-busy={!bodyGateOpen || undefined} className="relative">
+            Removing either relative is a decision, not a cleanup.
+            AMENDED Phase 88.9-52 (R4 L3, round 4, 2026-11-18): the fleet fix landed, so this
+            region's own relative is GONE and the holder of the form's sr-only boxes is Modal.Body
+            itself, src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18)").
+            Chosen OVER keeping both (a second positioned box that does nothing, which the next
+            reader would have to work out is dead). The participant list box below KEEPS its
+            relative: it scrolls its own rows, so the boxes inside it need a holder inside it,
+            and removing that one is still a decision, not a cleanup. */}
+        <div aria-busy={!bodyGateOpen || undefined}>
         {!bodyGateOpen ? null : (
           <>
         {/* Phase 62-02: nudge user to set profile TZ before editing/creating

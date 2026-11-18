@@ -1291,3 +1291,86 @@ describe('88.9-52 (A-47): an announcement made while a Modal is open lands insid
     expect(screen.queryByText('Role updated')).toBeNull();
   });
 });
+
+// R4 L3 (88.9-52 round 4): the fleet form of G5. A screen-reader-only box is position absolute, and
+// an absolute box is laid out against its nearest POSITIONED ancestor. While Modal.Body scrolled but
+// was not positioned, every such box a consumer put in a Body was laid out against the dialog shell:
+// it did not scroll with the Body's content, it sat where the unscrolled content put it, and in a
+// dialog taller than its cap that is below the shell's foot, which made the clipping shell
+// scrollable. Anything that scrolls an ancestor to reach a field (a focus on a clipped control, a
+// find-in-page, a scrollIntoView) could then slide the shell up by its header and leave a blank
+// band at its foot. The rule pinned here is the one G5 pinned for the event dialog,
+// src/app/components/createEvent.participants.test.tsx ("G5: every sr-only or absolute box under the dialog Body is held by a positioned ancestor inside it"),
+// moved to the primitive: walking up from an absolute box, a positioned ancestor comes before, or
+// is, the first scrolling box. jsdom lays nothing out, so this reads class tokens; the rendered
+// proof is e2e/event-dialog-reopen.spec.ts ("R4 L4 (88.9-52)").
+describe('88.9-52 (R4 L3): Modal.Body holds the absolute boxes a consumer puts in it', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  const POSITIONED = new Set(['relative', 'absolute', 'fixed', 'sticky']);
+  const isPositioned = (el: Element) => tokens(el).some((t) => POSITIONED.has(t));
+  const scrolls = (el: Element) => tokens(el).some((t) => /^overflow(-[xy])?-(auto|scroll)$/.test(t));
+
+  // Every sr-only or absolute box in the dialog whose first deciding ancestor is a scrolling box
+  // that is not positioned (escaped), instead of a positioned one (held).
+  const escapes = (dialog: HTMLElement): string[] => {
+    const out: string[] = [];
+    for (const el of Array.from(dialog.querySelectorAll('*'))) {
+      if (!tokens(el).some((t) => t === 'sr-only' || t === 'absolute')) continue;
+      for (let up = el.parentElement; up && up !== dialog; up = up.parentElement) {
+        if (isPositioned(up)) break;
+        if (scrolls(up)) {
+          out.push(`${el.tagName.toLowerCase()}.${tokens(el).join('.')} escapes ${up.tagName.toLowerCase()}.${tokens(up).join('.')}`);
+          break;
+        }
+      }
+    }
+    return out;
+  };
+
+  function renderWithBody(bodyClassName?: string) {
+    render(
+      <Modal open onClose={() => {}}>
+        <Modal.Header>Send feedback</Modal.Header>
+        <Modal.Body className={bodyClassName}>
+          <span className="sr-only" data-testid="straight-in-body">, saving</span>
+          <div>
+            <input type="file" aria-label="Screenshot" className="sr-only peer" />
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Modal.Action>Send</Modal.Action>
+        </Modal.Footer>
+      </Modal>
+    );
+    const dialog = screen.getByRole('dialog');
+    const body = screen.getByTestId('straight-in-body').parentElement as HTMLElement;
+    return { dialog, body };
+  }
+
+  it('L3: an sr-only box straight in the Body, and one nested in it, are held by the Body', () => {
+    const { dialog, body } = renderWithBody();
+    // Guard: the Body is the scrolling box and it does hold such boxes, so the empty list below
+    // is not empty by having nothing to check.
+    expect(scrolls(body)).toBe(true);
+    expect(body.querySelectorAll('.sr-only')).toHaveLength(2);
+    expect(escapes(dialog)).toEqual([]);
+    expect(tokens(body)).toEqual(expect.arrayContaining(['relative', 'flex-1', 'overflow-y-auto']));
+  });
+
+  it('L3: a consumer padding or layout override on the Body keeps it positioned', () => {
+    for (const override of ['p-0 md:p-0', 'flex flex-col p-0 md:p-0', 'pt-4 md:pt-4', 'space-y-2']) {
+      const { dialog, body } = renderWithBody(override);
+      expect(tokens(body), override).toContain('relative');
+      expect(escapes(dialog), override).toEqual([]);
+      cleanup();
+    }
+  });
+
+  it('L3: the shell still clips and the Body is still the only scrolling box of the three parts', () => {
+    const { dialog, body } = renderWithBody();
+    expect(tokens(dialog)).toContain('overflow-hidden');
+    expect(scrolls(dialog)).toBe(false);
+    const parts = Array.from(dialog.children).filter((el) => el !== dialog.lastElementChild);
+    expect(parts.filter(scrolls)).toEqual([body]);
+  });
+});

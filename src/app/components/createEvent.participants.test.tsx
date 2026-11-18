@@ -1075,10 +1075,15 @@ describe('G5 (88.9-52) — no absolute box in the event dialog escapes its scrol
     expect(hidden.some((el) => box.contains(el)), 'no sr-only box inside the participant list').toBe(true);
     expect(hidden.some((el) => !box.contains(el) && box.closest('form')?.contains(el)), 'no sr-only box in the form outside the list').toBe(true);
     expect(escapes(dialog)).toEqual([]);
-    // The two boxes that hold them: the list box (it scrolls its own rows) and the Body's region.
+    // The two boxes that hold them: the list box (it scrolls its own rows) and the dialog's Body.
+    // AMENDED 88.9-52 (R4 L3): the second holder was this form's own region wrapper. Modal.Body is
+    // positioned at the primitive now, src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18)"),
+    // so the region's own relative was dead and is gone; the Body is the holder.
     expect(tokens(box)).toEqual(expect.arrayContaining(['relative', 'overflow-y-auto']));
     const region = box.closest('form')?.parentElement as HTMLElement;
-    expect(tokens(region)).toContain('relative');
+    expect(tokens(region)).not.toContain('relative');
+    const body = region.parentElement as HTMLElement;
+    expect(tokens(body)).toEqual(expect.arrayContaining(['relative', 'overflow-y-auto']));
   });
 
   it('G5: the same holds with the visual calendar showing', async () => {

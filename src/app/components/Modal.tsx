@@ -525,7 +525,7 @@ export interface ModalBodyProps {
   className?: string;
 }
 
-/** Body: `p-3 md:p-6`, flex:1, scroll-y (the only scrolling region). */
+/** Body: `p-3 md:p-6`, flex:1, scroll-y (the only scrolling region), positioned (R4 L3). */
 function ModalBody({ children, className }: ModalBodyProps) {
   return (
     /* DECISION Phase 88-32 ruling 6 (DEF-88-30-03): Body defaults to `p-3 md:p-6` —
@@ -538,7 +538,38 @@ function ModalBody({ children, className }: ModalBodyProps) {
        padding overrides must cover BOTH buckets — twMerge collapses per-modifier, so a
        bare `p-0` removes `p-3` but leaves `md:p-6` winning at desktop. Zero-padding
        consumers write `p-0 md:p-0`; longhand overrides write both too (`pt-4 md:pt-4`). */
-    <div className={cn('flex-1 overflow-y-auto p-3 md:p-6', className)}>{children}</div>
+    /* DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18): the Body is POSITIONED (`relative`),
+       chosen OVER `overflow-clip` on the shell and OVER one `relative` per consumer.
+       THE DEFECT (the fleet form of G5): a screen-reader-only box is position absolute, and an
+       absolute box is laid out against its nearest positioned ancestor. The Body scrolled but
+       was not positioned, so every such box a consumer rendered in it (a busy button's spoken
+       suffix, an `sr-only` status region, the feedback form's `sr-only` file input) was laid
+       out against the SHELL: it did not scroll with the Body's content, and in a dialog taller
+       than the 90dvh cap it sat below the shell's foot, which made the clipping shell
+       scrollable. A focus on such a box, a find-in-page or a scrollIntoView could then slide
+       the shell up by its header and leave a blank band at its foot (measured on the event
+       dialog by the after-build capture; G5 fixed that one dialog locally).
+       WHY `relative` HERE: the boxes now belong to the Body's scrolled content, so they travel
+       with the words they describe, the shell has nothing below its foot to scroll to, and a
+       focus on a clipped control scrolls the BODY to it, which is what the person needs.
+       WHY NOT `overflow-clip` ON THE SHELL: it stops the shell scrolling but leaves every box
+       where the unscrolled content put it, so a focused `sr-only` control still would not
+       bring its visible label into view; and it changes what kind of box the shell is (no
+       longer a scroll container), which three markers and two cites describe as
+       `overflow-hidden` (the D-30 marker above, EventScheduler's edge-scroll note,
+       usePaintGesture's). WHY NOT PER CONSUMER: one per dialog, and the next box added
+       escapes again (G5's own reason).
+       WHAT CANNOT CHANGE BY THIS (census 2026-11-18, by reading, not rendered): `relative`
+       with no offset moves nothing and makes no stacking context. Every absolute box WITH an
+       offset under a Body already had a positioned ancestor of its own inside the Body (the
+       kebab list, the combobox list and clear control, the star picker, the name counter in
+       createGroup, the scheduler overlay; QRCodeModal already passed `relative` to its Body),
+       so none re-anchors. Sticky bars inside a Body stick to the scrolling box, positioned or
+       not. The kebab's fit-on-open reads overflow, not position. Focus rings were clipped by
+       the Body before and are clipped by it now.
+       Pinned by this dialog's own test, "L3: an sr-only box straight in the Body, and one
+       nested in it, are held by the Body". Removing `relative` is a decision, not a cleanup. */
+    <div className={cn('relative flex-1 overflow-y-auto p-3 md:p-6', className)}>{children}</div>
   );
 }
 
