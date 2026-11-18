@@ -634,6 +634,10 @@ test.describe('Profile availability forms and username editor in flight (plan 88
       if ((page.viewportSize()?.width ?? 0) < 640) {
         // Phone (under sm): the hours own the whole first line, so their box is unchanged.
         expect(Math.abs(rowArmed.wordsWidth - rowAtRest.wordsWidth), `W37: the hours line changed width when Delete was armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+        // R17 (88.9-52, owner pick A, 2026-11-17): the phone row is 82px (was 94), at rest and armed:
+        // border 1, top padding 12, hours 24, the 44px control line, no bottom padding, border 1.
+        expect(Math.abs(rowAtRest.rowHeight - 82), `R17: the phone schedule row is not 82px at rest (${w37Read})`).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(rowArmed.rowHeight - 82), `R17: the phone schedule row is not 82px when Delete is armed (${w37Read})`).toBeLessThanOrEqual(0.5);
       } else {
         // From sm: the hours and Delete share row one; the text must end before the control.
         expect(rowArmed.textRight, `W37: the hours text runs under the armed Delete (${w37Read})`).toBeLessThanOrEqual(rowArmed.buttonLeft + 0.5);

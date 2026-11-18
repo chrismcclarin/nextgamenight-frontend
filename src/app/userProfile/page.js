@@ -4034,8 +4034,18 @@ function Profile(){
                                                at phone width or 400% zoom). From sm the row reads as before: hours over dates
                                                on the left, Delete centred on the right. The override rows below are the same.
                                                The three cells are direct children of the row; a wrapper around the two lines
-                                               would take them out of the grid. */
-                                            <div key={pattern.id} className="p-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+                                               would take them out of the grid.
+                                               AMENDED Phase 88.9-52 (R17, owner 2026-11-17, pick A): a phone row is 82px, not the
+                                               94px above: the padding UNDER the 44px control line is gone below sm (pb-0; border
+                                               1, top 12, hours 24, control line 44, border 1), chosen OVER the all-round p-3. The
+                                               20px words sit mid-way in the 44px line, so 12px still shows under them, the same
+                                               as above the hours. One height at rest, counting down, live and busy, as before.
+                                               REJECTED: keeping 94px (the owner saw both); taking the 12px off the top or
+                                               splitting it (the hours would sit closer to the edge than the dates line). From sm
+                                               the bottom padding is back (sm:pb-3) and the 70px one-line row is unchanged. On a
+                                               phone the Delete focus ring now lies over the row's bottom edge line (2px ring, 1px
+                                               line): seen whole, in the 8px gap between rows. */
+                                            <div key={pattern.id} className="px-3 pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
                                                 <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
                                                     {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                 </p>
@@ -4208,7 +4218,8 @@ function Profile(){
                                         .filter(p => p.type === 'specific_override')
                                         .map(pattern => (
                                             // W37 (88.9-52): the two-line phone grid of the schedule rows (their DECISION marker).
-                                            <div key={pattern.id} className="p-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+                                            // R17 (88.9-52): 82px on a phone, no padding under the control line (the AMENDED line there).
+                                            <div key={pattern.id} className="px-3 pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
                                                 <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
                                                     {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                 </p>

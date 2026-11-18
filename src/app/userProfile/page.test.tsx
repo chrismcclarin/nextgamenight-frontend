@@ -7055,7 +7055,7 @@ describe('phone layout of the availability panels and the inline two-tap control
     check(await screen.findByRole('button', { name: '+ Add Override' }));
   });
 
-  it('W37 (88.9-52): a schedule row is a two-line grid on a phone, hours on the first line at full width and Delete beside the dates on the second, so arming Delete neither squeezes the hours nor grows the row', async () => {
+  it('W37 (88.9-52): a schedule row is a two-line grid on a phone, hours on the first line at full width and Delete beside the dates on the second, so arming Delete neither squeezes the hours nor grows the row; R17: no padding under the control line on a phone (82px)', async () => {
     const before = h.patterns;
     h.patterns = [
       ...PATTERNS,
@@ -7069,6 +7069,13 @@ describe('phone layout of the availability panels and the inline two-tap control
           expect.arrayContaining(['grid', 'grid-cols-[minmax(0,1fr)_auto]', 'items-center', 'gap-x-2'])
         );
         expect(row.className.split(/\s+/)).not.toContain('flex');
+        // R17 (88.9-52, owner pick A, 2026-11-17): a phone row is 82px, not 94: 12px on top and at
+        // the sides and NONE under the 44px control line (1 + 12 + 24 + 44 + 0 + 1). From sm the
+        // bottom padding is back (the 70px one-line row is unchanged). Exact padding set, so a
+        // returned all-round p-3 goes red here.
+        expect(row.className.split(/\s+/).filter((token) => /^(sm:)?p[xytblr]?-/.test(token)).sort()).toEqual(
+          ['pb-0', 'pt-3', 'px-3', 'sm:pb-3']
+        );
         // Three cells, in reading order: the hours, the dates, the control.
         expect(Array.from(row.children).map((child) => child.tagName)).toEqual(['P', 'P', 'BUTTON']);
         const [hours, dates] = Array.from(row.children) as HTMLElement[];
