@@ -3316,7 +3316,20 @@ export default function GameDetailPage() {
                             //   pending_* → unchanged. ClickableMemberName provides desktop hover popover +
                             //               mobile inline indicator.
                             //   none      → unchanged. ClickableMemberName provides 'Add friend' on hover.
-                            const friendStatus = memberUuid ? getFriendshipStatus(memberUuid) : 'unknown';
+                            /* DECISION Phase 88.9-52 (R4-A1, round-3 capture): the friendship read keys on the
+                               roster id, else on the participant row's own user id (the flat Users.id the
+                               event read sends), so a GUEST who is an accepted friend shows the Friend pill
+                               here as on the game page's session rows, chosen OVER the roster id alone (a
+                               guest is not on the roster, so the row read 'unknown' and showed no Friend
+                               beside rows that did) and OVER routing the guest's name through
+                               ClickableMemberName (that would also put the + add-friend control and its
+                               popover on every non-roster row, a new action nobody ruled; the name stays the
+                               plain text the fallback below draws). A typed-in name has no account and stays
+                               'unknown'. Because no ClickableMemberName draws a phone pill on such a row, its
+                               one Friend pill below shows at every width. Keying this back on the roster
+                               alone is a decision, not a cleanup. */
+                            const friendUuid = memberUuid || (!p.is_custom && p.user_id) || null;
+                            const friendStatus = friendUuid ? getFriendshipStatus(friendUuid) : 'unknown';
                             const isSelfRow = friendStatus === 'self' || isCurrentUser;
                             return (
                                 <div
@@ -3376,7 +3389,13 @@ export default function GameDetailPage() {
                                             // History: emerald was picked to echo the
                                             // text-status-success used by that mobile inline indicator for
                                             // continuity; that indicator was the ticked text R19 replaced.
-                                            <span className="hidden md:inline-flex items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold">
+                                            // AMENDED Phase 88.9-52 (R4-A1): desktop only on a ROSTER row. A row
+                                            // with no roster member (a guest) has a plain-text name and no phone
+                                            // twin, so there this pill shows at every width (marker at friendUuid
+                                            // above); Friend is still drawn, and said, once per row.
+                                            // Both display arms are whole class names (Tailwind v4 emits nothing
+                                            // for a built one); the pill's look is written once.
+                                            <span className={`${memberUuid ? 'hidden md:inline-flex' : 'inline-flex'} items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold`}>
                                                 Friend
                                             </span>
                                         )}

@@ -1237,6 +1237,44 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
     }
   });
 
+  it('R4-A1 (88.9-52): a guest who is an accepted friend shows the Friend pill in See-all at every width, before No reply and Guest', async () => {
+    // The round-3 capture: Frank and Eve (guests, accepted friends) showed [Friend][Guest] on the
+    // game page and no Friend in See-all. A guest is not on the group roster, so the name stays
+    // plain text (no ClickableMemberName draws a phone pill for it): the page's own pill must show
+    // on a phone too, so it carries no hidden / md: pair.
+    pinClockBeforeTheNight();
+    try {
+      const user = userEvent.setup();
+      friendship.accepted.add('p-1');
+      const participants = SIX_PARTICIPANTS.map((p) =>
+        p.user_id === 'p-1' || p.user_id === 'p-2' ? { ...p, is_guest: true } : p
+      );
+      renderEventDetail({ role: 'owner', participants });
+      await screen.findByText('Player 0');
+      const dialog = await openParticipantsModal(user);
+      const friends = within(dialog).getAllByText('Friend');
+      expect(friends).toHaveLength(1);
+      const friend = friends[0];
+      const line = within(dialog).getByText('Player 1').closest('div') as HTMLElement;
+      expect(line).toContainElement(friend);
+      const noReply = within(line).getByText('No reply');
+      const guest = within(line).getByText('Guest');
+      expect(friend.compareDocumentPosition(noReply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(noReply.compareDocumentPosition(guest) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(friend).not.toHaveClass('hidden');
+      for (const cls of ['inline-flex', 'bg-surface-pill-emerald', 'text-content-pill-emerald']) {
+        expect(friend).toHaveClass(cls);
+      }
+      // The guest's name is still plain text: no name button (the stubbed ClickableMemberName is not mounted for it).
+      expect(within(line).queryByRole('button', { name: /Player 1/ })).toBeNull();
+      // A guest who is not a friend (Player 2) shows no Friend pill.
+      const other = within(dialog).getByText('Player 2').closest('div') as HTMLElement;
+      expect(within(other).queryByText('Friend')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('closes the participants list on Esc', async () => {
     const user = userEvent.setup();
     renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
