@@ -35,7 +35,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import { promptSettingsAPI, ApiError } from '@/lib/api';
 import { promptKeys } from '@/lib/queryKeys/promptKeys';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -45,7 +48,7 @@ type Mock = ReturnType<typeof vi.fn>;
 // findAllByText resolves at the first match, so a region that fills a moment later would read 1.
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // The full banner's title at this site (the component's own shipped title, unchanged).
-const FULL_TITLE = "We couldn't load your schedules";
+const FULL_TITLE = "Couldn't load your schedules";
 
 const THURSDAY = { id: 's1', template_name: 'Thursday check-in', is_active: true };
 const SUNDAY = { id: 's2', template_name: 'Sunday check-in', is_active: false };
@@ -170,7 +173,7 @@ describe('PromptScheduleReadOnly — a failed refresh keeps what loaded earlier 
       await refresh(client);
 
       expect(await screen.findByText(FULL_TITLE)).toBeInTheDocument();
-      expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(err)))).toBeInTheDocument();
       expect(screen.queryByText('Thursday check-in')).toBeNull();
       expect(screen.queryByText('Sunday check-in')).toBeNull();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);

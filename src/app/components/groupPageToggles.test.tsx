@@ -91,6 +91,41 @@ describe('GroupLibrary owner chips (88.6.1-48: D-21 / D-44)', () => {
     expect(bar.getByRole('button', { name: 'Bob' })).toHaveAttribute('aria-pressed', 'false');
   });
 
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room). A library
+  // row cut its game name and its facts line to one line each between the picture and the owner
+  // count. jsdom lays nothing out, so this holds the classes of the Friends-row form; the rendered
+  // widths are in e2e/group-home-games-refresh.spec.ts ("R4 D2 (88.9-52)").
+  // The marker is at src/app/components/GroupLibrary.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the game name wraps").
+  it('R4 D2 (88.9-52): a library row may wrap, its name and facts line are never cut, the words keep their longest word, and the owner count keeps to the right', async () => {
+    (groupsAPI.getGroupLibrary as unknown as Mock).mockResolvedValue({
+      games: [
+        { id: 'g-catan', name: 'Catan', min_players: 3, max_players: 4, playing_time: 60, weight: 2.3, owners: [{ user_id: 'u2', username: 'Bob' }] },
+      ],
+      members: [{ user_id: 'u2', username: 'Bob' }],
+    });
+    render(<GroupLibrary {...anyProps({ groupId: 'g1' })} />);
+    const name = await screen.findByText('Catan');
+    const cut = /(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere)(\s|$)/;
+    expect(name.className).not.toMatch(cut);
+    expect(name).toHaveClass('wrap-break-word', 'font-bold');
+    const column = name.parentElement as HTMLElement;
+    expect(column).toHaveClass('flex-1', 'max-w-full');
+    // min-w-0 or a clip on the words column would let the picture and the count squeeze the name under one word.
+    expect(column.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
+    expect(column.children, 'the name line and the facts line').toHaveLength(2);
+    for (const line of Array.from(column.children)) {
+      expect((line as HTMLElement).className, 'a line of the words column is cut').not.toMatch(cut);
+      expect(line).toHaveClass('wrap-break-word');
+    }
+    const row = column.parentElement as HTMLElement;
+    expect(row.tagName).toBe('BUTTON');
+    expect(row).toHaveClass('flex', 'flex-wrap', 'w-full');
+    const count = row.lastElementChild as HTMLElement;
+    expect(count).not.toBe(column);
+    // The count itself stays on one line ("2 owners" is one fact), and it moves, it does not shrink.
+    expect(count).toHaveClass('ml-auto', 'shrink-0', 'whitespace-nowrap');
+  });
+
   it('C2: All is one-way, so pressing it while pressed changes nothing', async () => {
     render(<GroupLibrary {...anyProps({ groupId: 'g1' })} />);
     const all = await screen.findByRole('button', { name: 'All' });

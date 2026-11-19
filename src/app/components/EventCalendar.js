@@ -1,9 +1,11 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { eventsAPI } from '../../lib/api';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { getDaysInMonth } from '../../lib/calendarUtils';
+import { eventDetailHref } from '../../lib/eventDetailHref';
+import { hasStartedRecently, isStillRunning } from '../../lib/upcomingEvents';
 import { loadCalendarPrefs, saveCalendarPrefs } from '../../lib/calendarViewPrefs';
 import CalendarMonthView from './CalendarMonthView';
 import CalendarListView from './CalendarListView';
@@ -14,7 +16,8 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
-import { Button } from '../../components/ui/Button';
+import { SegmentedToggle } from '../../components/ui/SegmentedToggle';
+import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { Heading } from '../../components/ui/Heading';
 import { CalendarLoadingCard } from './CalendarLoadingCard';
 import { logger, errCtx } from '../../lib/logger';
@@ -29,6 +32,14 @@ import { logger, errCtx } from '../../lib/logger';
 // events and mounts its own named notice, so it stays byte-identical with no prop to thread.
 // Changing it is a copy change (copyTable886_1.test.ts), not a cleanup.
 const CALENDAR_SECTION_NAME = 'Calendar';
+// 88.9-52 (A-18): the month branch's stand-in for the two list id sets; shared, never written to.
+const NO_EVENT_IDS = new Set();
+
+// 88.9-39 N1: the two segments of the Month | List switch (owner pick N1, votes-b7a v3).
+const VIEW_OPTIONS = [
+  { value: 'month', label: 'Month' },
+  { value: 'list', label: 'List' },
+];
 
 /* DECISION Phase 88.6.1-73 (headingRef) [orchestrator request 2026-10-05, for plan 88.6.1-71]:
    CHOSEN — a NAMED optional object-ref prop, `headingRef` (`React.RefObject<HTMLElement | null>`),
@@ -314,8 +325,14 @@ export default function EventCalendar({
          (`error.message || 'Unknown error'`); `errCtx` adds the error's NAME. Nothing else —
          no response body, no event or group title, no attendee name or email (T-84-01).
          Reported REGARDLESS of cancellation: a developer log is not user-facing context, and a
-         failure that happened still happened. */
-      logger.info('Error fetching events', errCtx(error));
+         failure that happened still happened.
+         AMENDED Phase 88.9-38 (owner ruling F1 / O-05, F1-3 = F1-1 = b, chat 2026-11-07 6:35 PM
+         Pacific; 88.9-UI-SPEC.md (d) Resolutions of (c)): the level moved to logger.warn — an
+         event of its own — chosen OVER the logger.info breadcrumb of 2026-09-13 (D2); the cost
+         paragraph above is the record of that level. ctx unchanged. Phase 89 removes this fetch
+         when the home page passes events in; the level travels with the surviving catch
+         (UserHomePage.js). */
+      logger.warn('Error fetching events', errCtx(error));
       if (isCancelled()) return undefined;
       /* §6.2: the error branch is now DISTINGUISHABLE from a genuinely empty calendar. The list
          is still cleared — a stale list beside an error banner is its own lie — but `fetchError`
@@ -351,13 +368,9 @@ export default function EventCalendar({
     setCurrentDate(new Date());
   };
 
+  // DECISION Phase 88.9 (W59): routes through eventDetailHref — see the helper's marker.
   const defaultEventClick = (event) => {
-    const isFutureEvent = event.start_date && new Date(event.start_date) >= new Date();
-    if (isFutureEvent || !event.game_id) {
-      router.push(`/gameDetail?event_id=${event.id}&group_id=${event.group_id}`);
-    } else {
-      router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
-    }
+    router.push(eventDetailHref(event, Date.now()));
   };
 
   const handleEventClick = externalOnEventClick || defaultEventClick;
@@ -399,7 +412,7 @@ export default function EventCalendar({
     ? formatWithTzAbbr(currentDate || new Date(), timezone, 'zzz')
     : null;
 
-  // CAL-01: getDaysInMonth now returns {date, isCurrentMonth}[] — 42 cells.
+  // CAL-01: getDaysInMonth now returns {date, isCurrentMonth}[] — whole weeks, 28, 35 or 42 cells (CS-05).
   const days = getDaysInMonth(currentDate);
 
   // CAL-06 (revised): if the surface has list view disabled, force month view
@@ -409,14 +422,111 @@ export default function EventCalendar({
   // suspenders for any future surface that might disable list view.
   const effectiveViewMode = !showListView && viewMode === 'list' ? 'month' : viewMode;
 
+  // Hooks before the first early return (rules of hooks); the handler reads effectiveViewMode.
+  const viewSwitchRef = useRef(null);
+  const viewSwitchRecovery = useFocusRecovery({ fallback: calendarHeadingRef });
+  /* DECISION Phase 88.9-39 N1 focus: the switch sits in two different parents (the month nav row;
+     above the list), so a press unmounts the pressed segment; useFocusRecovery moves focus to the
+     new group's pressed segment, chosen OVER one stable parent for the switch (that is N2's own row
+     above the chevrons, which the owner did not pick) and OVER a file-local isFocusLost effect
+     (useFocusRecovery REJECTED (b); this file's C12 REJECTED (c)). Changing this is a decision, not
+     a cleanup.
+     AMENDED Phase 88.9-62 (X22): in month view that parent is the controls row under the caption;
+     still two parents, the recovery is unchanged. */
+  const handleViewChange = (next, event) => {
+    if (next === effectiveViewMode) return;
+    const settle = viewSwitchRecovery.arm({
+      from: event.currentTarget,
+      preferred: () => viewSwitchRef.current?.querySelector('[aria-pressed="true"]'),
+    });
+    setViewMode(next);
+    settle();
+  };
+  /* DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
+      the List/Month toggle gains the project focus ring. This is the
+      control the owner named twice in the phone UAT — test 4 ("List view
+      on the calendar doesn't read as a button to me") and test 8c(i) —
+      and plan 88.3-16 Task 1(C) measured its RESTING treatment
+      verify-only (it inherits `.btn-secondary`'s plan-14 fill + border:
+      warm-200 fill 1.31:1 on the white card, warm-300 edge 1.22:1 on the
+      fill), leaving its FOCUS state the one half nothing had touched.
+      `.btn` defines no `focus-visible` style and there is no global one,
+      so until now this painted the browser default. `ring-*` compiles to
+      `box-shadow` and therefore survives the unlayered
+      `.btn { border: none }`; a `focus-visible:border-*` would not.
+      Pinned by the five-file scan in `groupColourRendering.test.ts`.
+      AMENDED Phase 88.9-39 (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07 1:38 PM Pacific): the one
+      toggling List View / Month View Button is now the Month | List SegmentedToggle, passed into the
+      month nav row and rendered above the list view, chosen OVER the single secondary Button that
+      relabelled itself by the view it switched TO; the ring stays — each segment carries the house
+      focus-visible ring. */
+  /* Phase 88.6-27: `btn btn-secondary` -> the primitive's secondary variant. TWO
+      classes go and neither is a loss. `text-sm` was DEAD — `.btn` declares
+      `font-size` unlayered (src/app/globals.css ("UNLAYERED with every other declaration it has today")) — and the per-site focus-ring string
+      is retired because the ring now lives ONCE in the primitive's cva base
+      (src/components/ui/Button.tsx ("focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"), A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
+      is byte-unchanged and still true: this control has a project focus ring, it just
+      no longer states it itself. `cascadeOrder.test.ts` asserts exactly one of the two
+      mechanisms exists, so keeping both would red.
+      AMENDED Phase 88.9-39 (owner pick N1): the Button this note describes is gone; the segments are
+      raw buttons that state the house ring string themselves (no .btn, so no cva base);
+      groupColourRendering lists SegmentedToggle as a ring-bearing primitive. */
+  /* DECISION Phase 88.9-62 (X28, switch): under 14rem of width (about 200% text at 375) each
+     Month | List segment drops to px-2 side padding, because px-4 needs about 268px of a 263px row
+     there, chosen OVER letting the List half run past the card (52-X28) and OVER changing the
+     primitive's padding for every caller. Both parents of the switch are size containers (the month
+     nav block; the List-mode row). Changing this is a decision, not a cleanup. */
+  const viewSwitch = showListView ? (
+    <SegmentedToggle
+      label="Calendar view"
+      className="mt-1"
+      options={VIEW_OPTIONS}
+      value={effectiveViewMode}
+      onChange={handleViewChange}
+      groupRef={viewSwitchRef}
+      segmentClassName="@max-[14rem]:px-2"
+    />
+  ) : null;
+
   // CAL-06 (post-pivot): list view shows past + future events with same styling,
   // anchored at the next upcoming event. We pass the FULL chronologically-sorted
   // events array — the list view component handles past-event windowing
   // internally (initial 30 past + all future, expand on scroll). Past events are
   // no longer dropped at this layer.
-  const chronologicalEvents = [...activeEvents]
+  // AMENDED Phase 88.9-61 (X29 A; owner 2026-11-14: 'Yes, live games should stay in upcoming'):
+  // two sections opening at the top, with the sheet's two sets so a live game begun before
+  // midnight is Upcoming (W59); routing stays on eventDetailHref. "Anchored at the next upcoming
+  // event" above is history: the list opens at its top with Past folded.
+  /* DECISION Phase 88.9-61 (X29): the sorted list is memoized on activeEvents so a host re-render
+     keeps the list's past window, chosen OVER memoizing the two id sets too, which would freeze
+     nowMs and stale the live / started classification (ML8). Removing the memo is a decision,
+     not a cleanup. (Unmemoized it was a fresh array on every render, and the list resets its
+     past window whenever the events array changes identity — so any host re-render, an RSVP on
+     the group page for one, dropped a scrolled-open Past back to its first page.) */
+  const chronologicalEvents = useMemo(() => [...activeEvents]
     .filter(event => !!event?.start_date)
-    .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+    .sort((a, b) => new Date(a.start_date) - new Date(b.start_date)), [activeEvents]);
+
+  /* The two id sets the list partitions by (88.9-61, X29 A), from the SAME shared predicates the
+     home sheet's host uses (src/lib/upcomingEvents.ts) and ONE clock per render. Plain compute on
+     purpose — see the DECISION above. Disjoint by construction (the has-check below), so the list
+     can never claim one row for both sections. This file still compares no status and no time of
+     its own.
+     AMENDED Phase 88.9-52 (A-18, code review): the two sets are built in LIST mode only; the month
+     branch below never reads them, so a month render no longer walks the whole history twice.
+     Still plain compute with one clock per list render (the X29 DECISION above stands: no memo). */
+  const listMode = effectiveViewMode !== 'month';
+  const nowMs = Date.now();
+  const happeningNowIds = listMode
+    ? new Set(chronologicalEvents.filter((event) => isStillRunning(event, nowMs)).map((event) => event.id))
+    : NO_EVENT_IDS;
+  const startedNotLiveIds = listMode
+    ? new Set(
+        chronologicalEvents
+          .filter((event) => hasStartedRecently(event, nowMs) && !happeningNowIds.has(event.id))
+          .map((event) => event.id)
+      )
+    : NO_EVENT_IDS;
 
   // WR-03: in self-fetch mode (externalEvents === null) the calendar gates its
   // fetch on selfUuid; fetchEvents early-returns on `!selfUuid` before its
@@ -446,7 +556,7 @@ export default function EventCalendar({
           <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
           <FetchErrorBanner
             state={selfIdentityErrorState}
-            title="Couldn't load your calendar"
+            thing="your calendar"
             reportContext="event calendar — self-identity resolution"
           />
         </div>
@@ -494,7 +604,7 @@ export default function EventCalendar({
             <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
             <FetchErrorBanner
               state={fetchErrorState}
-              title="Couldn't load your calendar"
+              thing="your calendar"
               reportContext="event calendar — events fetch"
               focusTarget={calendarHeadingRef}
             />
@@ -524,40 +634,12 @@ export default function EventCalendar({
   return (
     <>
     <div className="card p-3 md:p-6">
-      <div className="flex justify-between items-center mb-6">
-        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary">{title}</Heading>
-        {showListView && (
-          <div className="flex gap-2">
-            {/* DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
-                the List/Month toggle gains the project focus ring. This is the
-                control the owner named twice in the phone UAT — test 4 ("List view
-                on the calendar doesn't read as a button to me") and test 8c(i) —
-                and plan 88.3-16 Task 1(C) measured its RESTING treatment
-                verify-only (it inherits `.btn-secondary`'s plan-14 fill + border:
-                warm-200 fill 1.31:1 on the white card, warm-300 edge 1.22:1 on the
-                fill), leaving its FOCUS state the one half nothing had touched.
-                `.btn` defines no `focus-visible` style and there is no global one,
-                so until now this painted the browser default. `ring-*` compiles to
-                `box-shadow` and therefore survives the unlayered
-                `.btn { border: none }`; a `focus-visible:border-*` would not.
-                Pinned by the five-file scan in `groupColourRendering.test.ts`. */}
-            {/* Phase 88.6-27: `btn btn-secondary` -> the primitive's secondary variant. TWO
-                classes go and neither is a loss. `text-sm` was DEAD — `.btn` declares
-                `font-size` unlayered (src/app/globals.css ("UNLAYERED with every other declaration it has today")) — and the per-site focus-ring string
-                is retired because the ring now lives ONCE in the primitive's cva base
-                (src/components/ui/Button.tsx ("focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"), A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
-                is byte-unchanged and still true: this control has a project focus ring, it just
-                no longer states it itself. `cascadeOrder.test.ts` asserts exactly one of the two
-                mechanisms exists, so keeping both would red. */}
-            <Button
-              variant="secondary"
-              onClick={() => setViewMode(viewMode === 'month' ? 'list' : 'month')}
-            >
-              {viewMode === 'month' ? 'List View' : 'Month View'}
-            </Button>
-          </div>
-        )}
-      </div>
+      {/* DECISION Phase 88.9-39 CS-01: the loaded calendar's heading is sr-only, chosen OVER removing
+          it — it stays the calendarHeadingRef focus target and the region's name (WCAG 2.4.6 /
+          1.3.1); the error-branch headings stay visible; shown while it holds keyboard focus
+          (focus-visible:not-sr-only, the gameDetail idiom), chosen OVER an invisible focus target
+          after a retry. Changing this is a decision, not a cleanup. */}
+      <Heading ref={calendarHeadingRef} level={2} size="heading" className="sr-only focus-visible:not-sr-only">{title}</Heading>
 
       {/* RF1 (88.6.1-70 contract C6): mounted unconditionally in the branch that renders the
           retained calendar, above the view. The mode gate is not a `showError` gate: the mode
@@ -577,15 +659,28 @@ export default function EventCalendar({
           showEmptyDayHint={!!onEmptyDayClick}
           monthNames={monthNames}
           tzLegend={tzLegend}
+          viewerDbUserId={selfUuid}
+          viewSwitch={viewSwitch}
         />
       ) : (
-        <CalendarListView
-          events={chronologicalEvents}
-          onEventClick={handleEventClick}
-          timezone={timezone}
-          loading={loading && !retained}
-          variant={variant}
-        />
+        <>
+          {/* 88.9-39 N1: the switch above the list, so the List view always has a way back.
+              88.9-62 (X28): a size container, so the segments narrow under 14rem. */}
+          {viewSwitch && <div className="@container flex justify-center mb-4">{viewSwitch}</div>}
+          <CalendarListView
+            events={chronologicalEvents}
+            onEventClick={handleEventClick}
+            timezone={timezone}
+            loading={loading && !retained}
+            variant={variant}
+            happeningNowIds={happeningNowIds}
+            startedNotLiveIds={startedNotLiveIds}
+            /* DECISION Phase 88.9-63 (X27): the list gets the viewer id the month view already
+               gets, so a guest night is outlined on every arm; chosen OVER leaving the desktop
+               lists unmarked while the month grid and the phone sheet mark the same night. */
+            viewerDbUserId={selfUuid}
+          />
+        </>
       )}
 
       {selectedDay && (

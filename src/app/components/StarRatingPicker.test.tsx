@@ -70,3 +70,42 @@ describe('quick-260930-w9v — StarRatingPicker takes the rating the API actuall
     expect(screen.queryAllByRole('radio', { checked: true })).toHaveLength(0);
   });
 });
+
+// Phase 88.9-34 (owner pick O15b, 88.9-PICKS-B8B.json, 2026-11-07): each star box is 48 x 48
+// and each half-star radio is half of it, 24 wide by 48 tall. These are class-string pins
+// (jsdom does no layout); the rendered size is pinned by e2e/touch-targets.spec.ts (stars 48).
+describe('O15b (88.9) — 48px stars', () => {
+  it('O15b (88.9): star 48, half 24', () => {
+    renderPicker(0);
+    const radios = screen.getAllByRole('radio');
+    expect(radios).toHaveLength(10);
+    const boxes = new Set(radios.map((radio) => radio.parentElement as HTMLElement));
+    expect(boxes.size).toBe(5);
+    for (const box of boxes) {
+      const classes = box.className.split(/\s+/);
+      expect(classes).toContain('w-12');
+      expect(classes).toContain('h-12');
+      expect(classes).not.toContain('w-10');
+      expect(classes).not.toContain('h-10');
+    }
+    for (const radio of radios) {
+      const classes = radio.className.split(/\s+/);
+      expect(classes).toContain('w-1/2');
+      expect(classes).toContain('h-full');
+    }
+  });
+
+  // MED-75: the amber-400 ring the halves shipped with measured 1.67:1 on the white dialog in
+  // light (under the 3:1 non-text floor); the house ring token is the fix.
+  it('focus ring (88.9-34): each half-star radio wears the house ring', () => {
+    renderPicker(0);
+    const radios = screen.getAllByRole('radio');
+    expect(radios).toHaveLength(10);
+    for (const radio of radios) {
+      const classes = radio.className.split(/\s+/);
+      expect(classes).toContain('focus-visible:ring-focus-ring');
+      expect(classes).toContain('focus-visible:ring-2');
+      expect(classes.filter((c) => /ring-amber/.test(c))).toEqual([]);
+    }
+  });
+});

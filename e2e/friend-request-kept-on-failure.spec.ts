@@ -96,8 +96,13 @@ test.describe('friend request kept on failure — phone (375)', () => {
 
     await page.getByRole('button', { name: 'Accept', exact: true }).filter({ visible: true }).click();
 
-    // While the accept is held: the row is still there, so the page's in-flight label paints.
-    await expect(page.getByRole('button', { name: 'Accepting...', exact: true })).toBeVisible();
+    // While the accept is held: the row is still there, and the pressed Accept keeps its label with
+    // the house spinner, named "Accept, accepting" (rule 1, 88.9-46 B24; Chromium may insert a
+    // space before the sr-only comma).
+    const pressed = page.getByRole('button', { name: /^Accept ?, accepting$/ });
+    await expect(pressed).toBeVisible();
+    await expect(pressed).toHaveText(/^Accept/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(page.getByText(REQUESTER_NAME, { exact: true }).filter({ visible: true })).toBeVisible();
 
     releaseAccept();

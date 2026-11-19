@@ -12,8 +12,11 @@ import PromptScheduleSection from '../components/PromptScheduleSection';
 import { pollChipLabels, pollTitle } from '../components/OpenPollsList';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
@@ -34,6 +37,8 @@ const LOAD_FAILED = Object.freeze({ isError: true });
 // Copy row G5 (D-30): byte-equal to the route fallback label (groupPlanning/loading.tsx), so the
 // wording does not change when the route boundary hands over to the page.
 const AUTH_LOADING_MESSAGE = "Getting your group's plans...";
+// DECISION Phase 88.9-52 (R3, owner 2026-11-16: we have to remember to update the hidden headings if we modify the title): the page's name is ONE constant, read by the screen-reader-only heading on the banner-only screens (the frame's srHeading; marker at src/components/ui/CentredPageFrame.tsx ("DECISION Phase 88.9-52 (A-04 / A-38)")) and by the visible level-1 title (alone, or before the group name) and the breadcrumb current-page crumb, chosen OVER the same word typed at each site, which drifts silently. Renaming the page is one edit here.
+const PLAN_PAGE_TITLE = 'Plan Game Session';
 
 // quick-261026-pi6 (owner R3): the lead word of the line that names the poll the dashboard shows,
 // and the chip row's group name (read by screen readers; the row has no visible label).
@@ -55,7 +60,7 @@ function sameId(a, b) {
 }
 
 export default function GroupPlanningPage() {
-    const { user, isLoading: authLoading } = Auth();
+    const { user, error: authError, isLoading: authLoading } = Auth();
     // Phase 87.3-05 (D-02): resolve the caller's own Users.id UUID via the
     // shared identity primitive, collapsing the former per-page usersAPI
     // self-fetch (getUser by sub). selfUuid feeds the self-role derive
@@ -162,13 +167,6 @@ export default function GroupPlanningPage() {
         enabled: Boolean(groupId) && Boolean(userRole) && userRole !== 'pending',
     });
     const openPolls = Array.isArray(openPollsData?.prompts) ? openPollsData.prompts : [];
-
-    useEffect(() => {
-        if (!authLoading && !user) {
-            const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
-            window.location.href = `/api/auth/login?returnTo=${returnTo}`;
-        }
-    }, [authLoading, user]);
 
     /* DECISION Phase 88.6.1-16 (W060 double fetch): the group and poll loads run ONCE per user
        and group; only the role re-derive follows identity. Two effects, chosen OVER the single
@@ -502,6 +500,20 @@ export default function GroupPlanningPage() {
         error: groupError,
         refetch: retryGroup,
     });
+    // DECISION Phase 88.9-40 (SESSION-01): this page's guard is the shared useSignInRedirect (a latched
+    // location.replace, returnTo = path + search + hash from window.location), chosen OVER the effect
+    // it replaces, which assigned location.href with returnTo = path + search — the Back button
+    // returned to a page that redirected again (gameDetail's DECISION Phase 88.6.1-25 (D-01)
+    // REJECTED (c)), the hash was lost, and nothing bounded a repeat. A 401 on the group read now
+    // redirects too (SPEC A8); a return with the latch set gets the group banner with Sign in. A
+    // useUser() error shows Reload, never a redirect.
+    const signIn = useSignInRedirect({
+        authLoading,
+        signedOut: !user,
+        authError,
+        unauthorized: groupErrorState.showError && groupErrorState.code === 'unauthorized',
+        sessionProven: Boolean(group),
+    });
     const heatmapErrorState = useFetchErrorState({
         isError: Boolean(heatmapError),
         error: heatmapError,
@@ -594,10 +606,39 @@ export default function GroupPlanningPage() {
     };
 
 
-    if (!user) {
+    // 88.9-40 (SESSION-01): four branches, in order — the session still loading (G5), the redirect
+    // frame (both arms), a useUser() failure (Reload, never a redirect), and the declined signed-out
+    // return (the group banner with Sign in). The title is plan 88.9-48's target form for this page's
+    // banner title; the body is userProfile's 88-19 sentence — no new copy.
+    // AMENDED Phase 88.9-52 (W21, owner ruling R18): this page's three titles (the useUser failure, the signed-out banner, the signed-in group-load banner) read Couldn't load your group's plans, OVER Couldn't load this group, which is the group page's own title and named the wrong page here.
+    // DECISION Phase 88.9-52 (A-45): both waiting frames are HEARD. Each keeps ONE visually hidden
+    // polite region, mounted empty and fed the frame's own visible words after the house dwell (the
+    // X35 two-node shape, src/app/friends/page.js ("DECISION Phase 88.9-66 (X35, once-over R13)")),
+    // chosen OVER a status role on the visible line (a region that mounts holding its words is not
+    // announced) and OVER new spoken wording (none was ruled): the words are the visible ones, with
+    // one real ellipsis character where the visible line has three dots. The region is the first
+    // child of both wrappers, so React keeps it from the session wait into the redirect hold and the
+    // second line is spoken as a change.
+    if (authLoading && !user) {
         return <div className="flex items-center justify-center min-h-screen text-content-secondary">
-            {authLoading ? AUTH_LOADING_MESSAGE : 'Redirecting to login...'}
+            <StatusRegion settleOnMount className="sr-only" message="Getting your group's plans…" />
+            {AUTH_LOADING_MESSAGE}
         </div>;
+    }
+    if (signIn.holding) {
+        return <div className="flex items-center justify-center min-h-screen text-content-secondary">
+            <StatusRegion settleOnMount className="sr-only" message="Redirecting to login…" />
+            Redirecting to login...
+        </div>;
+    }
+    if (signIn.sessionError) {
+        return <ErrorFallback title="Couldn't load your group's plans" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />;
+    }
+    if (!user) {
+        // 88.9-66 (X64): the shared frame gives the banner its gutter and width.
+        return <CentredPageFrame srHeading={PLAN_PAGE_TITLE}>
+            <FetchErrorBanner state={signIn.signedOutErrorState} thing="your group's plans" reportContext="Group planning — signed out" />
+        </CentredPageFrame>;
     }
 
     if (!groupId) {
@@ -629,6 +670,11 @@ export default function GroupPlanningPage() {
 
     return (
         <div className="p-4 md:p-6 max-w-7xl mx-auto">
+            {/* DECISION Phase 88.9-59 (X5c, owner at the 88.9-51 glance 2026-11-11: it looks better at 1280; it should look
+                fine if the header is at 1600 and the page is 1280): this body stays max-w-7xl (1280) under the 1600 header and
+                footer, chosen OVER matching the header's 1600: a single-column page reads better at 1280. Widening it is a
+                decision, not a cleanup. Orchestrator default; the owner may
+                overrule from the 1600 picture. */}
             {/* Breadcrumbs */}
             {/* DECISION Phase 88.6-21 (#175, owner ruling 2026-09-14, option 2 — label all five
                 breadcrumb navs). THIS ATTRIBUTE IS THE ONLY EDIT PLAN 21 MAKES TO THIS FILE. The
@@ -675,18 +721,29 @@ export default function GroupPlanningPage() {
                 breadcrumb marker records (its "deliberately NOT added" sentence), which plan
                 88.6.1-55 amends while it adds the token to the shared breadcrumb scan. Removing it
                 is a decision, not a cleanup. */}
+            {/* AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the group name in this breadcrumb wraps
+                in full. It was cut at 200px with an ellipsis (max-w-[200px] truncate on an
+                inline-block link). The owner's rule: never cap, shrink or cut text to make a layout
+                fit. The link is plain inline text now, the group page's own crumb form (UAT3-D1):
+                it breaks between words, and inside a word only when that one word is longer than
+                the pill's line (the nav's wrap-break-word and max-w-full, unchanged). THE NAME'S
+                ROOM: nothing here competes with it for width. Home, the separators and the page
+                title are inline text on the same lines, so the name always has the pill's full
+                line to break on and can never be squeezed into letter-stacks; no minimum width is
+                needed and none is set. CHOSEN OVER a wider cap (still a cut) and OVER a block
+                link (it would put every crumb on its own line at every width). */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {group && (
                     <>
-                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 max-w-[200px] truncate inline-block align-bottom focus-visible:ring-offset-surface-elevated">
+                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">
                             {group.name}
                         </Link>
                         <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     </>
                 )}
-                <span aria-current="page" className="text-content-primary font-bold">Plan Game Session</span>
+                <span aria-current="page" className="text-content-primary font-bold">{PLAN_PAGE_TITLE}</span>
             </nav>
 
             {/* Header */}
@@ -708,7 +765,7 @@ export default function GroupPlanningPage() {
                             by e2e/padding-budget.spec.ts. Re-adding the clip is a decision, not a
                             cleanup. */}
                         <Heading level={1} size="display" className="text-content-primary">
-                            {group ? `Plan Game Session - ${group.name}` : 'Plan Game Session'}
+                            {group ? `${PLAN_PAGE_TITLE} - ${group.name}` : PLAN_PAGE_TITLE}
                         </Heading>
                         <p className="text-base text-content-secondary mt-1">
                             Send availability polls and manage responses
@@ -755,7 +812,7 @@ export default function GroupPlanningPage() {
                 AMENDED Phase 88.6.1-63 (AC-29): identity counts as failed only with no row held;
                 with a held row the role read runs and, if it fails, it is the failure this notice
                 tells and the request its Retry repeats; the two can no longer show at once. */}
-            <FetchErrorBanner state={personalControlsErrorState} compact />
+            <FetchErrorBanner state={personalControlsErrorState} compact hostGround="page" />
 
             {/* A failed GROUP load — the page keeps its generic "Plan Game Session" title and the
                 poll tooling below still works, so this is a banner rather than a dead-end page. */}
@@ -763,7 +820,7 @@ export default function GroupPlanningPage() {
                 <div className="mb-6">
                     <FetchErrorBanner
                         state={groupErrorState}
-                        title="We couldn't load this group"
+                        thing="your group's plans"
                         reportContext="Group planning page — group details fetch"
                     />
                 </div>
@@ -823,7 +880,7 @@ export default function GroupPlanningPage() {
                             <div className="py-4">
                                 <FetchErrorBanner
                                     state={heatmapErrorState}
-                                    title="We couldn't load the poll responses"
+                                    thing="the poll responses"
                                     reportContext="Group planning page — availability poll fetch"
                                 />
                             </div>
@@ -866,7 +923,20 @@ export default function GroupPlanningPage() {
                                     src/app/Header.js ("h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50");
                                     if a failed swap removes the control a person stood on, focus goes to the
                                     Availability Polls heading. Changing any of this is a decision, not a
-                                    cleanup. */}
+                                    cleanup.
+                                    AMENDED Phase 88.9-52 (R4 D2, the second cut on this page, routed under
+                                    the owner's ruling of 2026-11-18 that text is not cut to keep a layout
+                                    tidy): a chip's label wraps in full, by whole words, with no line limit
+                                    (wrap-break-word in place of truncate). The label is the only place an
+                                    unselected poll is named in this row, so the cut hid which poll a chip
+                                    opens. The room it keeps is its longest word: the chip is a flex item
+                                    with the automatic minimum, capped at the row by max-w-full, and the
+                                    row already wraps, so a chip takes a line of its own before a word is
+                                    broken. At 320 wide with text at 200% the row is 206px and a chip's
+                                    sides take 48, which leaves a word 158px (Weekend at 28px bold is about
+                                    136). REJECTED: a line clamp (still a cut) and wrap-anywhere (one
+                                    letter per line in a squeezed chip). A two-line label in a pill is
+                                    accepted. */}
                                 {openPolls.length >= 2 && (
                                     <div role="group" aria-label={SWITCH_POLL_LABEL} className="mb-3 flex flex-wrap gap-2">
                                         {openPolls.map((p) => {
@@ -881,7 +951,7 @@ export default function GroupPlanningPage() {
                                                         ? 'max-w-full px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card md:focus-visible:ring-offset-surface-page bg-btn-primary text-btn-primary-text'
                                                         : 'max-w-full px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card md:focus-visible:ring-offset-surface-page bg-surface-muted text-content-secondary hover:text-content-primary'}
                                                 >
-                                                    <span className="block truncate">{chipLabels.get(p.id)}</span>
+                                                    <span className="block wrap-break-word">{chipLabels.get(p.id)}</span>
                                                 </button>
                                             );
                                         })}
@@ -923,6 +993,9 @@ export default function GroupPlanningPage() {
                 reachable here today — the change makes all five mounts follow one rule. Re-adding a
                 callback that closes is a decision, not a cleanup. */}
             <CreateEvent
+                // resultInView false: this page renders no events, so a create keeps its toast — see
+                // DECISION Phase 88.9-24 (save-feedback rules 2 and 4) in createEvent.js.
+                resultInView={false}
                 group_id={groupId}
                 modal={eventModal}
                 modaltoggle={toggleEventModal}

@@ -527,7 +527,15 @@ const trigger = () => screen.getByRole('button', { name: /^delete my account$/i 
 const confirmInput = () => screen.getByPlaceholderText('delete my account');
 const cancelAction = () => screen.getByRole('button', { name: 'Cancel' });
 /** The always-mounted polite progress region (D52 piece (i)). */
-const progressRegion = () => screen.getByRole('status');
+// AMENDED Phase 88.9-52 (A-47): was screen.getByRole('status'). Every house Modal now also
+// carries the announcer's polite region as its last child
+// (src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (A-47): every house Modal carries its own announcer region")),
+// so the progress region is the dialog's one polite region without data-announcer.
+const progressRegion = () => {
+  const own = screen.getAllByRole('status').filter((node) => !node.hasAttribute('data-announcer'));
+  expect(own).toHaveLength(1);
+  return own[0];
+};
 /** Its `tabIndex={-1}` wrapper — the node the false->true focus move targets. */
 const progressFocusTarget = () => progressRegion().parentElement as HTMLElement;
 
@@ -542,7 +550,7 @@ async function enterDeletingState(user: ReturnType<typeof userEvent.setup>) {
   await user.type(confirmInput(), 'delete my account');
   await user.click(screen.getByRole('button', { name: 'Delete my account' }));
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument()
   );
   return inFlight;
 }
@@ -695,7 +703,7 @@ describe('AC-21 as amended by D52 — an in-flight DELETE cannot be dismissed', 
 
     // `aria-disabled` is advisory — the HANDLER guard is what enforces the ruling.
     await user.click(cancel);
-    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument();
     expect(confirmInput()).toHaveValue('delete my account');
   });
 
@@ -723,7 +731,7 @@ describe('AC-21 as amended by D52 — an in-flight DELETE cannot be dismissed', 
     const user = userEvent.setup();
     await enterDeletingState(user);
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument();
     expect(confirmInput()).toHaveValue('delete my account');
   });
 });
@@ -863,16 +871,56 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
     mockDeleteAccount.mockReset();
   });
 
+  // 88.9-68 (X66): the Input primitive has no disabled styling, so the field's own half-opacity
+  // wash greyed the typed phrase while the delete ran and the field looked emptied. The wash stays
+  // for the pre-flight (an EMPTY field that cannot be typed in yet); while deleting the phrase
+  // keeps its ink. The field stays natively disabled in both (DECISION Phase 88.6-30).
+  it('X66 (88.9-68): while deleting, the confirm field stays natively disabled, drops the half-opacity wash and resets its text fill to currentColor; the pre-flight arm keeps the wash', async () => {
+    const blockers = deferred<{ groups: never[] }>();
+    mockGetBlockers.mockReturnValueOnce(blockers.promise);
+    const inFlight = deferred<{ message: string }>();
+    mockDeleteAccount.mockReturnValue(inFlight.promise);
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+
+    // Pre-flight: disabled, empty, washed.
+    await waitFor(() => expect(confirmInput()).toBeDisabled());
+    const preflight = confirmInput().className.split(/\s+/);
+    expect(preflight).toContain('border-status-error');
+    expect(preflight).toContain('disabled:opacity-50');
+    expect(preflight).not.toContain('disabled:opacity-100');
+    expect(confirmInput()).toHaveValue('');
+
+    await act(async () => { blockers.resolve({ groups: [] }); });
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.type(confirmInput(), 'delete my account');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument()
+    );
+
+    // Deleting: still natively disabled, still holding the phrase, no wash, text fill reset.
+    const held = confirmInput();
+    expect(held).toBeDisabled();
+    expect(held).toHaveValue('delete my account');
+    const deletingClasses = held.className.split(/\s+/);
+    expect(deletingClasses).toContain('border-status-error');
+    expect(deletingClasses).toContain('disabled:opacity-100');
+    expect(deletingClasses).toContain('disabled:[-webkit-text-fill-color:currentColor]');
+    expect(deletingClasses).not.toContain('disabled:opacity-50');
+  });
+
   it('DZ1: the pressed danger action stays in the document with aria-disabled and NO native disabled', async () => {
     const user = userEvent.setup();
     await enterDeletingState(user);
-    const action = screen.getByRole('button', { name: 'Deleting…' });
+    const action = screen.getByRole('button', { name: 'Delete my account, deleting' });
     expect(action).toHaveAttribute('aria-disabled', 'true');
     expect(action).not.toHaveAttribute('disabled');
     expect(action.isConnected).toBe(true);
   });
 
-  it('DZ2: two synchronous presses send exactly ONE DELETE; Deleting… and aria-disabled hold until it settles', async () => {
+  it('DZ2 rule 1 (88.9): Delete my account keeps its label + spinner while busy; two presses send ONE DELETE', async () => {
     mockGetBlockers.mockResolvedValue({ groups: [] });
     const inFlight = deferred<{ message: string }>();
     mockDeleteAccount.mockReturnValue(inFlight.promise);
@@ -896,8 +944,13 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
       fireEvent.click(action);
     });
     expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
-    expect(action).toHaveTextContent('Deleting…');
+    // Rule 1 (88.9-45): the label stays, the house spinner joins it, the suffix is heard; the
+    // polite progress region still shows the in-flight line.
+    expect(action).toHaveAccessibleName('Delete my account, deleting');
+    expect(action).toHaveTextContent('Delete my account');
+    await waitFor(() => expect(action.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(action).toHaveAttribute('aria-disabled', 'true');
+    expect(progressRegion()).toHaveTextContent('Deleting…');
   });
 
   it('DZ3: idle with a partial phrase, the action is natively disabled with NO aria-disabled (rule of KIND)', async () => {
@@ -969,7 +1022,7 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
     const close = within(dialog).getByRole('button', { name: 'Close' });
     expect(close).toHaveAttribute('aria-disabled', 'true');
     await user.click(close);
-    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument();
     expect(confirmInput()).toHaveValue('delete my account');
   });
 
@@ -988,8 +1041,15 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
     expect(polite.className).toMatch(/\bsr-only\b/);
     expect(failure).toHaveTextContent('');
     expect(failure.className).toMatch(/\bsr-only\b/);
-    // Adjacency: exactly ONE polite and ONE assertive region, neither inside the other.
-    expect(screen.getAllByRole('status')).toHaveLength(1);
+    // Adjacency: exactly ONE polite and ONE assertive region of this dialog's own, neither
+    // inside the other. AMENDED Phase 88.9-52 (A-47): the polite count on the page was 1 and is
+    // now 2, the progress region and then the Modal's announcer region (empty here, last in the
+    // dialog); progressRegion() above already asserts exactly one of the dialog's own.
+    const statuses = screen.getAllByRole('status');
+    expect(statuses).toHaveLength(2);
+    expect(statuses[0]).toBe(polite);
+    expect(statuses[1]).toHaveAttribute('data-announcer', 'dialog');
+    expect(statuses[1]).toBeEmptyDOMElement();
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(polite.contains(failure) || failure.contains(polite)).toBe(false);
 
@@ -1093,7 +1153,7 @@ describe('D1 — the in-flight DELETE is BOUNDED', () => {
         await Promise.resolve();
       });
 
-      expect(screen.getByRole('button', { name: 'Deleting…' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete my account, deleting' })).toBeInTheDocument();
       expect(mockDeleteAccount).toHaveBeenCalledWith(expect.any(AbortSignal));
       // Nothing has happened yet — an unbounded request would stay here forever,
       // with Cancel guarded, Escape guarded and the overlay already closed.
@@ -1147,11 +1207,13 @@ describe('Phase 88.6-30 — source-level invariants', () => {
     expect(source).toContain('disabled={confirmInvalid}');
   });
 
-  it('DZ7 (W008): the in-flight literal appears ONCE in code and the action reads DELETING_LABEL', () => {
-    // Comment-stripped source: the hoisted constant is the one literal, so the button
-    // label and the polite announcement cannot drift apart.
+  it('DZ7 (W008, rule 1 (88.9)): the in-flight literal appears ONCE in code and only the progress region reads DELETING_LABEL', () => {
+    // Comment-stripped source: the hoisted constant is the one literal. Since rule 1 (88.9-45)
+    // the danger action keeps its label, so the constant has ONE reader — the progress region.
     expect(source.match(/'Deleting…'/g) ?? []).toHaveLength(1);
-    expect(source).toMatch(/deleting \? DELETING_LABEL : 'Delete my account'/);
+    expect(source).not.toMatch(/DELETING_LABEL : 'Delete my account'/);
+    expect(source).toMatch(/deleting \? DELETING_LABEL : null/);
+    expect(source.match(/\bDELETING_LABEL\b/g) ?? []).toHaveLength(2);
   });
 
   it('stores the generation counter in a REF, never useState and never a closured local', () => {
@@ -1214,10 +1276,12 @@ describe('Phase 88.6-30 task 3 — the primitives sweep (D-30, one pass)', () =>
     expect(btn.className).not.toMatch(/\bp[xy]-\d/);
   });
 
-  it('renders the destructive consequence copy at Body 16, not Label 14 (rule R2)', async () => {
-    // This is the text a user reads before permanently deleting their account. Under R2 it
-    // is running prose and goes to 16 — getting it wrong makes the most consequential text
-    // in the app smaller.
+  it('E5b (88.9): the three consequence paragraphs render at Label 14, not Body 16', async () => {
+    // AMENDED Phase 88.9-34 (owner pick E5b, 88.9-PICKS-B4.json, 2026-11-06): the owner chose
+    // fit-on-one-screen at 375x667 over Body 16. At 16/24 the delete-state dialog scrolled 32px
+    // and put the confirm field under the footer line; at 14/20 it fits. The rendered no-scroll
+    // check is e2e/account-delete-pending.spec.ts (E5b). The blocked branch and the card lede
+    // are not the picked state and stay Body 16.
     mockGetBlockers.mockResolvedValue({ groups: [] });
     const user = userEvent.setup();
     render(<DangerZoneDeleteAccount />);
@@ -1225,11 +1289,13 @@ describe('Phase 88.6-30 task 3 — the primitives sweep (D-30, one pass)', () =>
     await waitFor(() => expect(confirmInput()).not.toBeDisabled());
 
     const lead = screen.getByText(/This permanently deletes your account/i);
-    expect(lead).toHaveClass('text-base');
+    expect(lead).toHaveClass('text-sm');
+    expect(lead).not.toHaveClass('text-base');
     const consequences = screen.getByText(
       /The following are permanently destroyed/i
     ).parentElement as HTMLElement;
-    expect(consequences).toHaveClass('text-base');
+    expect(consequences).toHaveClass('text-sm');
+    expect(consequences).not.toHaveClass('text-base');
     // The field label stays at Label 14 — a `<label>` is not running prose.
     expect(screen.getByText(/To confirm, type/i)).toHaveClass('text-sm');
   });

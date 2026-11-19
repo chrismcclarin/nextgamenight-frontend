@@ -58,6 +58,10 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
+// Save-feedback rule 2 (88.9-24): Role updated and Member removed fire no success toast and are
+// spoken once by the root announcer instead. Automocked; the root beforeEach clears its calls.
+vi.mock('@/components/ui/announcer');
+
 vi.mock('@/app/components/ClickableMemberName', () => ({
   default: ({ username }: { username?: string }) => <span>{username}</span>,
 }));
@@ -97,7 +101,15 @@ import { logger } from '@/lib/logger';
 import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 // Plan 88.6.1-78 (C8 e): every expected register line is read through the shipped helper on the
 // SAME error object, never typed.
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
+import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner'; // X13-7 (88.9-67): the spinner's appear delay
+import { announceStatus } from '@/components/ui/announcer';
+import * as announcerStore from '@/components/ui/announcer';
+import { RootAnnouncer } from '@/components/ui/RootAnnouncer';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -123,6 +135,10 @@ function renderManageMembers() {
 }
 
 beforeEach(() => {
+  // F9b (88.9-23): the four gates below are dialog tier, gated for CONFIRM_DELAY_MS from
+  // open. A fake clock that still advances with real time (findBy and waitFor keep working)
+  // lets liveConfirm step past the gate instead of waiting it out.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.clearAllMocks();
   h.selfUuid = OWNER_UUID;
   h.invitePanelProps = null;
@@ -153,6 +169,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 /**
@@ -171,6 +188,24 @@ async function openMembersModal() {
 /** The confirm control of whichever gate dialog is currently open. */
 function confirmButton(name: string) {
   return screen.getByRole('button', { name });
+}
+
+/**
+ * F9b (88.9-23): step the clock past the dialog tier's CONFIRM_DELAY_MS gate, then find
+ * the now-live confirm by its bare verb (while gated it reads Wait (n), named for the verb, then the wait).
+ */
+async function liveConfirm(name: string): Promise<HTMLElement> {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+  return screen.findByRole('button', { name });
+}
+
+/** F9b (88.9-23): step past the kebab twoTap Remove's CONFIRM_DELAY_MS gate after arming it. */
+function passKebabGate() {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
 }
 
 /**
@@ -209,7 +244,7 @@ describe('ManageMembers group-admin mutations target member.id (UUID), not user_
   it('rejectMember is invoked with the member UUID once the gate is confirmed', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Reject'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    fireEvent.click(await liveConfirm('Reject'));
     await waitFor(() =>
       expect(groupsAPI.rejectMember as Mock).toHaveBeenCalledWith(GROUP_ID, PENDING_UUID)
     );
@@ -220,7 +255,7 @@ describe('ManageMembers group-admin mutations target member.id (UUID), not user_
     // The one role <select> belongs to the non-owner, non-self active member.
     const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Make admin' }));
+    fireEvent.click(await liveConfirm('Make admin'));
     await waitFor(() =>
       expect(groupsAPI.updateUserRole as Mock).toHaveBeenCalledWith(GROUP_ID, TARGET_UUID, 'admin')
     );
@@ -229,7 +264,7 @@ describe('ManageMembers group-admin mutations target member.id (UUID), not user_
   it('removeUserFromGroup is invoked with the member UUID once the gate is confirmed', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await waitFor(() =>
       expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledWith(GROUP_ID, TARGET_UUID)
     );
@@ -322,7 +357,7 @@ describe('ManageMembers Req 11 gates — blocking semantics (no API call until c
     expect(groupsAPI.resetInviteToken as Mock).not.toHaveBeenCalled();
 
     fireEvent.click(await screen.findByText('Reset invite link'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
+    fireEvent.click(await liveConfirm('Reset link'));
     await waitFor(() =>
       expect(groupsAPI.resetInviteToken as Mock).toHaveBeenCalledWith(GROUP_ID)
     );
@@ -341,7 +376,14 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     expect(
       screen.getByText('Admins can edit events, manage members, and approve or remove people.')
     ).toBeInTheDocument();
-    expect(confirmButton('Make admin')).toBeInTheDocument();
+    // F9b: the confirm opens gated with its countdown label, then reads the verb.
+    expect(confirmButton('Make admin, wait 3 seconds')).toHaveTextContent('Wait (3)');
+    // 88.9-52 R6 (owner 2026-11-17, "Red is the wrong color"): the Admin blue while it waits and live.
+    expect(confirmButton('Make admin, wait 3 seconds')).toHaveClass('btn-admin');
+    expect(confirmButton('Make admin, wait 3 seconds')).not.toHaveClass('btn-danger');
+    const liveMakeAdmin = await liveConfirm('Make admin');
+    expect(liveMakeAdmin).toHaveClass('btn-admin');
+    expect(liveMakeAdmin).not.toHaveClass('btn-danger');
     expect(groupsAPI.updateUserRole as Mock).not.toHaveBeenCalled();
   });
 
@@ -364,9 +406,10 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     expect(after.value).toBe('member');
   });
 
-  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): while the grant is in flight
-  // the pressed confirm reads "Promoting…" (ConfirmDialog's pendingLabel) and stays focusable.
-  it('promote: the pending confirm reads the ratified pending label until the grant settles (CR-5)', async () => {
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19), re-shaped by rule 1 (88.9-45):
+  // while the grant is in flight the pressed confirm keeps "Make admin" with the house spinner,
+  // is named "Make admin, promoting" (ConfirmDialog's busySuffix) and stays focusable.
+  it('promote: rule 1 (88.9): the pending Make admin keeps its label + spinner, named "Make admin, promoting" (CR-5)', async () => {
     let settle!: () => void;
     (groupsAPI.updateUserRole as Mock).mockImplementationOnce(
       () => new Promise<void>((resolve) => { settle = resolve; })
@@ -375,9 +418,14 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
     const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
     const dialog = await screen.findByRole('dialog', { name: 'Make Target an admin?' });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Make admin' }));
-    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Promoting\u2026' });
+    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Make admin, promoting' });
+    expect(pendingConfirm).toHaveTextContent('Make admin');
+    await waitFor(() => expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
     expect(within(dialog).queryByRole('button', { name: 'Make admin' })).not.toBeInTheDocument();
 
@@ -405,31 +453,105 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
   });
 });
 
+// R-C3a (88.9-56, owner ruling 2026-11-10, 'hear'): the Remove, Reject and Reset link confirms were
+// silent while their write ran; each now keeps its verb beside the house spinner and is heard
+// with its own derived busy word. The spinner leaves with the dialog on success.
+describe('ManageMembers R-C3a (88.9) — the Remove, Reject and Reset link confirms keep their verb with the spinner', () => {
+  // The text a sighted user reads: the button's text with its sr-only suffix removed.
+  const visibleText = (el: HTMLElement): string | null => {
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.sr-only').forEach((node) => node.remove());
+    return clone.textContent;
+  };
+
+  async function pressHeldConfirm(opener: string, dialogName: string, label: string, api: Mock) {
+    let settle!: (value: unknown) => void;
+    api.mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }));
+    await openMembersModal();
+    fireEvent.click(await screen.findByText(opener));
+    const dialog = await screen.findByRole('dialog', { name: dialogName });
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: label }));
+    return { dialog, settle: (value: unknown) => settle(value) };
+  }
+
+  async function expectHeardPendingThenClose(
+    opener: string, dialogName: string, label: string, name: string, api: Mock,
+  ) {
+    const { dialog, settle } = await pressHeldConfirm(opener, dialogName, label, api);
+    // The heard name is immediate; the visible text is exactly the label.
+    const pending = within(dialog).getByRole('button', { name });
+    expect(pending).toHaveTextContent(label);
+    expect(visibleText(pending)).toBe(label);
+    await waitFor(() => expect(pending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(pending).toHaveAttribute('aria-disabled', 'true');
+    expect(pending).not.toHaveAttribute('disabled');
+    // The hook's latch: a second press issues no second request.
+    await waitFor(() => expect(api).toHaveBeenCalledTimes(1));
+    fireEvent.click(pending);
+    await act(async () => {});
+    expect(api).toHaveBeenCalledTimes(1);
+    // The write lands: the dialog closes and the spinner leaves with it.
+    settle({});
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: dialogName })).not.toBeInTheDocument());
+  }
+
+  it("R-C3a (88.9): the pending Remove confirm keeps its verb with the spinner and is named 'Remove, removing'", async () => {
+    await expectHeardPendingThenClose('Remove', 'Remove Target from this group?', 'Remove', 'Remove, removing',
+      groupsAPI.removeUserFromGroup as Mock);
+  });
+
+  it("R-C3a (88.9): the pending Reject confirm keeps its verb with the spinner and is named 'Reject, rejecting'", async () => {
+    await expectHeardPendingThenClose('Reject', 'Reject Pend?', 'Reject', 'Reject, rejecting',
+      groupsAPI.rejectMember as Mock);
+  });
+
+  it("R-C3a (88.9): the pending Reset link confirm keeps its verb with the spinner and is named 'Reset link, resetting'", async () => {
+    await expectHeardPendingThenClose('Reset invite link', 'Reset the invite link?', 'Reset link', 'Reset link, resetting',
+      groupsAPI.resetInviteToken as Mock);
+  });
+});
+
 describe('ManageMembers Req 12 — success receipts for the two named silent mutations', () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 2): the row leaves the roster, so no success toast;
+  // the root announcer speaks the outcome once per completed action.
   it('member removal produces "Member removed" on BOTH entry points', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    fireEvent.click(await liveConfirm('Remove'));
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Member removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
 
     // The mobile kebab shares the same commit path, so it gets the same receipt.
     (toast.success as Mock).mockClear();
+    vi.mocked(announceStatus).mockClear();
     const menu = await openKebabList('Member actions for Target');
     const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
+    passKebabGate();
     fireEvent.click(removeItem);
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Member removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('a role change produces "Role updated" on the escalation AND the demotion path', async () => {
     await openMembersModal();
     const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Make admin' }));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    fireEvent.click(await liveConfirm('Make admin'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): the select shows the new role, so no success
+    // toast; the root announcer speaks the outcome once per completed change.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Role updated'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
 
     cleanup();
     (toast.success as Mock).mockClear();
+    vi.mocked(announceStatus).mockClear();
     (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
       ROSTER[0],
       { ...ROSTER[1], UserGroup: { role: 'admin' } },
@@ -438,16 +560,28 @@ describe('ManageMembers Req 12 — success receipts for the two named silent mut
     await openMembersModal();
     const demote = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(demote, { target: { value: 'member' } });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Role updated'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
+  // AMENDED Phase 88.9-24 (save-feedback rules 2/3): the receipts left the toaster, so this reads
+  // what the surface now says instead of the success mock: the spoken remove outcome and the
+  // inline Invite link reset caption.
   it('no receipt on this surface uses "successfully" or an exclamation mark', async () => {
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    fireEvent.click(await liveConfirm('Remove'));
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset invite link' }));
+    fireEvent.click(await liveConfirm('Reset link'));
+    const caption = screen.getByTestId('invite-reset-receipt');
+    await waitFor(() => expect(caption.textContent).not.toBe(''));
 
-    for (const [message] of (toast.success as Mock).mock.calls) {
+    const messages = [...vi.mocked(announceStatus).mock.calls.map(([message]) => message), caption.textContent];
+    expect(messages).toHaveLength(2);
+    expect(toast.success).not.toHaveBeenCalled();
+    for (const message of messages) {
       expect(String(message)).not.toMatch(/successfully/i);
       expect(String(message)).not.toContain('!');
       expect(String(message).split(/\s+/).length).toBeLessThanOrEqual(4);
@@ -473,7 +607,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     (groupsAPI.removeUserFromGroup as Mock).mockRejectedValue(upstream());
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     const [message] = (toast.error as Mock).mock.calls[0];
@@ -485,7 +619,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     (groupsAPI.removeUserFromGroup as Mock).mockRejectedValue(upstream());
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
 
     // POSITIVE settle signal first — the failure has to have LANDED before an
     // is-still-open claim means anything. `waitFor(expect(...).toBeInTheDocument())`
@@ -500,7 +634,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     (groupsAPI.resetInviteToken as Mock).mockRejectedValue(upstream());
     await openMembersModal();
     fireEvent.click(await screen.findByText('Reset invite link'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
+    fireEvent.click(await liveConfirm('Reset link'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(
@@ -514,7 +648,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     await openMembersModal();
     const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Make admin' }));
+    fireEvent.click(await liveConfirm('Make admin'));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(screen.getByRole('dialog', { name: 'Make Target an admin?' })).toBeInTheDocument();
@@ -538,7 +672,7 @@ describe('ManageMembers R1 — a failed mutation shows ratified copy, never the 
     (groupsAPI.removeUserFromGroup as Mock).mockRejectedValue(forbidden);
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -627,7 +761,7 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
 
   const RATIFIED_UNKNOWN_LEAVE = 'Something went wrong. Refresh the page to try again.';
 
-  it('LV1: two presses send one leave; the pressed Confirm Leave stays aria-disabled and focusable until it settles, then is released (W016 rows 14-15)', async () => {
+  it('LV1 rule 1 (88.9): Confirm Leave keeps its label + spinner while busy; two presses send one leave; the pressed Confirm Leave stays aria-disabled and focusable until it settles, then is released (W016 rows 14-15)', async () => {
     const held = deferred<unknown>();
     (groupsAPI.leaveGroup as Mock).mockReturnValueOnce(held.promise);
     const dialog = await openLeaveConfirm();
@@ -638,7 +772,9 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
     fireEvent.click(confirm);
 
     // RED halves are the attributes and the request count (C-11); focus is CONFIRM-ONLY in jsdom.
-    expect(confirm).toHaveTextContent('Leaving…');
+    expect(confirm).toHaveTextContent('Confirm Leave');
+    expect(confirm).toHaveAccessibleName('Confirm Leave, leaving');
+    await waitFor(() => expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(confirm).toHaveAttribute('aria-disabled', 'true');
     expect(confirm).not.toHaveAttribute('disabled');
     expect(confirm).toHaveClass('btn-danger');
@@ -670,11 +806,20 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
     const region = liveRegion(dialog);
     const confirm = screen.getByRole('button', { name: 'Confirm Leave' });
 
-    // Adjacency: exactly ONE live region in the leave dialog, polite, with no region inside it.
+    // Adjacency: exactly ONE live region of the leave dialog's OWN, polite, with no region inside it.
+    // AMENDED Phase 88.9-52 (A-47): was exactly one live region in the dialog. Every house Modal
+    // now also carries the announcer's region as its last child
+    // (src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (A-47): every house Modal carries its own announcer region")),
+    // so the dialog holds two: the leave outcome region, then that one. The announcer's region
+    // is empty here (this file automocks the store) and never carries the leave line.
     const statuses = within(dialog).getAllByRole('status');
-    expect(statuses).toHaveLength(1);
+    expect(statuses).toHaveLength(2);
     expect(statuses[0]).toBe(region);
-    expect(dialog.querySelectorAll('[aria-live]')).toHaveLength(1);
+    expect(statuses[1]).toHaveAttribute('data-announcer', 'dialog');
+    expect(statuses[1]).toBe(dialog.lastElementChild);
+    expect(statuses[1]).toBeEmptyDOMElement();
+    expect(dialog.querySelectorAll('[aria-live]:not([data-announcer])')).toHaveLength(1);
+    expect(dialog.querySelectorAll('[aria-live]')).toHaveLength(2);
     expect(region.querySelector('[aria-live]')).toBeNull();
 
     fireEvent.click(confirm);
@@ -684,7 +829,8 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
     fireEvent.click(confirm);
     // During the second request the handler has cleared the message: same node, empty, hidden.
     await waitFor(() => expect(groupsAPI.leaveGroup as Mock).toHaveBeenCalledTimes(2));
-    // Mid-flight the confirm reads "Leaving…", so the region is read by its captured id here.
+    // Mid-flight the confirm is named "Confirm Leave, leaving" (rule 1, 88.9-45), so the region
+    // is read by its captured id here.
     expect(dialog.querySelector(`#${CSS.escape(region.id)}`)).toBe(region);
     expect(region.textContent).toBe('');
     expect(region).toHaveClass('sr-only');
@@ -699,18 +845,35 @@ describe('ManageMembers R1 third arm — the leave failure is RENDERED and ANNOU
 });
 
 describe('ManageMembers W11 receipt + AC-2 channel', () => {
-  it('a successful invite-link reset fires the ratified "Invite link reset" receipt', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 3): was 'a successful invite-link reset fires the
+  // ratified "Invite link reset" receipt' (a toast). The caption sits beside the button in a polite
+  // region mounted empty BEFORE the press; the node is captured first and compared after.
+  it('save-feedback rule 3 (88.9): a successful invite-link reset shows the ratified Invite link reset caption beside the button, and no toast', async () => {
     await openMembersModal();
-    fireEvent.click(await screen.findByText('Reset invite link'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Invite link reset'));
+    const opener = await screen.findByRole('button', { name: 'Reset invite link' });
+    const region = screen.getByTestId('invite-reset-receipt');
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region.textContent).toBe('');
+    fireEvent.click(opener);
+    fireEvent.click(await liveConfirm('Reset link'));
+
+    await waitFor(() => expect(screen.getByTestId('invite-reset-receipt')).toHaveTextContent('Invite link reset'));
+    expect(screen.getByTestId('invite-reset-receipt')).toBe(region);
+    expect(screen.getByText('Invite link reset').closest('[role="status"]')).toBe(region);
+    expect(region).not.toHaveClass('sr-only');
+    expect(region).toHaveClass('text-content-status-success');
+    // The caption sits in the opener's own row.
+    expect(opener.parentElement?.contains(region)).toBe(true);
+    expect(toast.success).not.toHaveBeenCalled();
+    // Cross note 4: a rule-3 receipt is spoken by its own region, never also by the root announcer.
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
   });
 
   it('a failed remove still reaches a LOG CHANNEL — the user-facing message is not one', async () => {
     (groupsAPI.removeUserFromGroup as Mock).mockRejectedValue(new Error('boom'));
     await openMembersModal();
     fireEvent.click(await screen.findByText('Remove'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
 
     await waitFor(() => expect(logger.info).toHaveBeenCalled());
     const [message, ctx] = (logger.info as Mock).mock.calls.at(-1) as [string, unknown];
@@ -803,6 +966,8 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
     const menu = await openKebabList('Member actions for Target');
     const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
+    // F9b: the armed label reads once the gate has run out.
+    passKebabGate();
 
     // Armed: the SAME node swaps its label rather than the menu closing. Re-query
     // through the same open list node — it is the element `aria-controls` names, and
@@ -829,6 +994,233 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
     const menu = await openKebabList('Member actions for Target');
     fireEvent.click(within(menu).getByRole('button', { name: 'Remove' }));
     expect(groupsAPI.removeUserFromGroup as Mock).not.toHaveBeenCalled();
+  });
+
+  // 52-X13 item 7 (owner at N50: after the committing tap "nothing on screen shows it is
+  // working"). The commit used to close the menu and leave a still roster until the refresh
+  // landed. The viewer here is the owner, so the member's menu also carries Transfer ownership.
+  it('X13-7 (88.9): a committed phone Remove keeps the menu open while the remove and its refresh run — the item keeps Remove, is aria-disabled, named Remove, removing, and focused, Make admin and Transfer ownership are aria-disabled — and a third tap sends no second DELETE', async () => {
+    const heldRemove = deferred<unknown>();
+    (groupsAPI.removeUserFromGroup as Mock).mockReturnValueOnce(heldRemove.promise);
+    await openMembersModal();
+    const menu = await openKebabList('Member actions for Target');
+    const removeItem = within(menu).getByRole('button', { name: 'Remove' });
+    fireEvent.click(removeItem);
+    passKebabGate();
+    fireEvent.click(removeItem);
+    await waitFor(() => expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1));
+
+    // The DELETE is out: the menu is still open and the SAME item shows the flight.
+    const inFlight = within(menu).getByRole('button', { name: 'Remove, removing' });
+    expect(inFlight).toBe(removeItem);
+    expect(inFlight.textContent).toBe('Remove, removing');
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight).not.toHaveAttribute('disabled');
+    expect(inFlight).not.toHaveAttribute('aria-pressed');
+    // fireEvent.click never focused it (the WebKit tap): KebabMenu's keepOpen exit did.
+    expect(document.activeElement).toBe(inFlight);
+    act(() => {
+      vi.advanceTimersByTime(SPINNER_DELAY_MS);
+    });
+    expect(inFlight.querySelector('[data-slot="spinner"]')).not.toBeNull();
+
+    // The member's other items stay on screen with the menu, so they are refused meanwhile: a
+    // live one would open a dialog on a member who is being removed.
+    const makeAdmin = within(menu).getByRole('button', { name: 'Make admin' });
+    const transfer = within(menu).getByRole('button', { name: 'Transfer ownership to this member' });
+    expect(makeAdmin).toHaveAttribute('aria-disabled', 'true');
+    expect(transfer).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(makeAdmin);
+    fireEvent.click(transfer);
+    expect(screen.queryByRole('dialog', { name: 'Make Target an admin?' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /Transfer ownership to Target/ })).not.toBeInTheDocument();
+    expect(menu).toBeInTheDocument();
+
+    // A third tap, and a fourth after a full gate: the in-flight item never re-arms or commits.
+    fireEvent.click(inFlight);
+    passKebabGate();
+    fireEvent.click(inFlight);
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1);
+    expect(inFlight).not.toHaveAttribute('aria-pressed');
+
+    // The remove lands and its refresh is held: still in flight until the roster answers.
+    const heldRefresh = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(heldRefresh.promise);
+    await act(async () => {
+      heldRemove.resolve({});
+    });
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+    expect(within(menu).getByRole('button', { name: 'Remove, removing' })).toBe(removeItem);
+    await act(async () => {
+      heldRefresh.resolve(ROSTER.filter((m) => m.id !== TARGET_UUID));
+    });
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Target')).not.toBeInTheDocument());
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1);
+  });
+
+  const X13_ROBIN = {
+    id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    user_id: 'auth0|second',
+    username: 'Robin',
+    UserGroup: { role: 'member' },
+  };
+
+  /** Arm, wait out the gate and commit the phone Remove in an open member menu. */
+  function commitRemoveIn(menu: HTMLElement): HTMLElement {
+    const removeItem = within(menu).getByRole('button', { name: 'Remove' });
+    fireEvent.click(removeItem);
+    passKebabGate();
+    fireEvent.click(removeItem);
+    return removeItem;
+  }
+
+  // 88.9-52 A-22: the marker's failure promise (menu stays open, item at rest, error toast) had no
+  // test; every rejected remove in this file went through the desktop dialog.
+  it('A-22 (88.9-52): a phone Remove that FAILS keeps the menu open with every item back at rest and one error toast', async () => {
+    const heldRemove = deferred<unknown>();
+    (groupsAPI.removeUserFromGroup as Mock).mockReturnValueOnce(heldRemove.promise);
+    await openMembersModal();
+    const menu = await openKebabList('Member actions for Target');
+    const removeItem = commitRemoveIn(menu);
+    await waitFor(() => expect(within(menu).getByRole('button', { name: 'Remove, removing' })).toBe(removeItem));
+
+    await act(async () => {
+      heldRemove.reject(new Error('HTTP error! status: 500'));
+    });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+
+    // The same menu and the same item, at rest: not busy, not refused, not armed.
+    expect(menu).toBeInTheDocument();
+    await waitFor(() => expect(within(menu).getByRole('button', { name: 'Remove' })).toBe(removeItem));
+    expect(removeItem.textContent).toBe('Remove');
+    expect(removeItem).not.toHaveAttribute('aria-disabled');
+    expect(removeItem).not.toHaveAttribute('aria-pressed');
+    expect(removeItem.querySelector('[data-slot="spinner"]')).toBeNull();
+    expect(within(menu).getByRole('button', { name: 'Make admin' })).not.toHaveAttribute('aria-disabled');
+    expect(within(menu).getByRole('button', { name: 'Transfer ownership to this member' })).not.toHaveAttribute('aria-disabled');
+    // Nothing was refreshed or announced as done, and the row is still there.
+    expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(1);
+    expect(announceStatus as Mock).not.toHaveBeenCalledWith('Member removed');
+    expect(screen.getByLabelText('Member actions for Target')).toBeInTheDocument();
+  });
+
+  // 88.9-52 A-24: the DELETE succeeded but the refresh after it failed, so the kept roster still
+  // showed the removed member with a live Remove; a second Remove answered with an error toast.
+  it('A-24 (88.9-52): a remove whose refresh FAILS still drops the removed row from the kept roster, with focus on the next row', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0], ROSTER[1], X13_ROBIN]);
+    await openMembersModal();
+    await screen.findByText('Robin');
+    const next = screen.getByLabelText('Member actions for Robin');
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    const menu = await openKebabList('Member actions for Target');
+    commitRemoveIn(menu);
+
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Target')).not.toBeInTheDocument());
+    expect(screen.queryByLabelText('More actions for Target')).not.toBeInTheDocument();
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1);
+    // The rest of the kept roster stands and the remove is still spoken as done.
+    expect(screen.getByLabelText('Member actions for Robin')).toBe(next);
+    expect(announceStatus as Mock).toHaveBeenCalledWith('Member removed');
+    expect(toast.error).not.toHaveBeenCalled();
+    // Req 5: the row left, so focus goes to the next row's trigger, never to the body.
+    await waitFor(() => expect(document.activeElement).toBe(next));
+  });
+
+  // 88.9-52 A-25: one id held the flight, so a second member's remove moved the busy look off the
+  // first, and the first one landing cleared the second's while its DELETE still ran.
+  it('A-25 (88.9-52): two phone removes in flight each keep their own busy item; one landing never clears the other', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0], ROSTER[1], X13_ROBIN]);
+    const heldTarget = deferred<unknown>();
+    const heldRobin = deferred<unknown>();
+    (groupsAPI.removeUserFromGroup as Mock)
+      .mockReturnValueOnce(heldTarget.promise)
+      .mockReturnValueOnce(heldRobin.promise);
+    await openMembersModal();
+    await screen.findByText('Robin');
+
+    const targetMenu = await openKebabList('Member actions for Target');
+    const targetItem = commitRemoveIn(targetMenu);
+    await waitFor(() => expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(1));
+    const robinMenu = await openKebabList('Member actions for Robin');
+    const robinItem = commitRemoveIn(robinMenu);
+    await waitFor(() => expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(2));
+
+    // Both in flight: Robin's item is busy, and Target's flight is still on (its menu may have
+    // closed when Robin's opened, so read it where it is: the open item, or a reopened menu).
+    expect(within(robinMenu).getByRole('button', { name: 'Remove, removing' })).toBe(robinItem);
+    const targetBusy = targetItem.isConnected
+      ? targetItem
+      : within(await openKebabList('Member actions for Target')).getByRole('button', { name: /^Remove/ });
+    expect(targetBusy).toHaveAccessibleName('Remove, removing');
+    expect(targetBusy).toHaveAttribute('aria-disabled', 'true');
+
+    // Target's remove and its refresh land; Robin's DELETE is still held.
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce([ROSTER[0], X13_ROBIN]);
+    await act(async () => {
+      heldTarget.resolve({});
+    });
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Target')).not.toBeInTheDocument());
+    const robinStill = robinItem.isConnected
+      ? robinItem
+      : within(await openKebabList('Member actions for Robin')).getByRole('button', { name: /^Remove/ });
+    expect(robinStill).toHaveAccessibleName('Remove, removing');
+    expect(robinStill).toHaveAttribute('aria-disabled', 'true');
+
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce([ROSTER[0]]);
+    await act(async () => {
+      heldRobin.resolve({});
+    });
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Robin')).not.toBeInTheDocument());
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(2);
+  });
+
+  // 88.9-52 S-C2: A-24 dropped only its own id and only on its own failed refresh, so with two
+  // removes overlapping the first one's refresh was superseded (it drops nothing) and the second
+  // one's failed refresh dropped only the second: the first row stayed with a live Remove
+  // although its DELETE had landed.
+  it('S-C2 (88.9-52): two overlapping removes whose last refresh FAILS drop BOTH removed rows from the kept roster', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0], ROSTER[1], X13_ROBIN]);
+    await openMembersModal();
+    await screen.findByText('Robin');
+
+    // Target's DELETE lands; the refresh after it is held in flight.
+    const heldRefresh = deferred<unknown>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(heldRefresh.promise);
+    commitRemoveIn(await openKebabList('Member actions for Target'));
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
+
+    // Robin's DELETE lands before that refresh answers; Robin's own refresh fails.
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    commitRemoveIn(await openKebabList('Member actions for Robin'));
+    await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(3));
+    // The superseded refresh answers late with the roster it read before Robin left: ignored.
+    await act(async () => {
+      heldRefresh.resolve([ROSTER[0], X13_ROBIN]);
+    });
+
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Robin')).not.toBeInTheDocument());
+    expect(screen.queryByLabelText('Member actions for Target')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('More actions for Target')).not.toBeInTheDocument();
+    expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledTimes(2);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('S-C2 (88.9-52): a remove whose DELETE FAILED keeps its row when a later remove drops its own after a failed refresh', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0], ROSTER[1], X13_ROBIN]);
+    await openMembersModal();
+    await screen.findByText('Robin');
+
+    (groupsAPI.removeUserFromGroup as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    commitRemoveIn(await openKebabList('Member actions for Target'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(1);
+
+    (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
+    commitRemoveIn(await openKebabList('Member actions for Robin'));
+    await waitFor(() => expect(screen.queryByLabelText('Member actions for Robin')).not.toBeInTheDocument());
+    // Target was never removed on the server, so its row and its menu stay.
+    expect(screen.getByLabelText('Member actions for Target')).toBeInTheDocument();
   });
 
   it('"Make admin" from the kebab routes to the SAME escalation gate as the desktop select', async () => {
@@ -926,14 +1318,17 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
 
     const held = holdNextMembersGet();
     fireEvent.click(screen.getAllByTitle('Remove from group')[0]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await refreshRequested();
     expectRosterKept(self);
 
     await act(async () => {
       held.resolve(WITHOUT_TARGET);
     });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): spoken by the root announcer, no success toast.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Member removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.queryByText('Target')).toBeNull();
   });
 
@@ -965,7 +1360,7 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     const self = await loadRosterAndCaptureSelf();
     const held = holdNextMembersGet();
     fireEvent.click(screen.getByText('Reject'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    fireEvent.click(await liveConfirm('Reject'));
     await refreshRequested();
     // getByText ignores Radix's aria-hide, so the roster behind the open dialog is queryable.
     expectRosterKept(self);
@@ -991,7 +1386,7 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     const self = await loadRosterAndCaptureSelf();
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(new Error('HTTP error! status: 500'));
     fireEvent.click(screen.getAllByTitle('Remove from group')[0]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await waitFor(() =>
       expect(logger.info).toHaveBeenCalledWith('Error fetching members:', expect.anything())
     );
@@ -1023,7 +1418,10 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     select.focus();
     (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(ROSTER);
     fireEvent.change(select, { target: { value: 'member' } });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): spoken by the root announcer, no success toast.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Role updated'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(select);
     expect(select.isConnected).toBe(true);
   });
@@ -1045,7 +1443,10 @@ describe('ManageMembers D-09a — a refresh never blanks the roster (88.6.1-42)'
     select.focus();
     (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce(after);
     fireEvent.change(select, { target: { value: 'member' } });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): spoken by the root announcer, no success toast.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Role updated'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
     // The move committed: Target's row now follows Robin's.
     await waitFor(() =>
       expect(
@@ -1149,7 +1550,7 @@ describe('ManageMembers W027 + honest failures (88.6.1-42)', () => {
     const self = screen.getByText('(You)');
     (groupsAPI.getGroupMembers as Mock).mockResolvedValueOnce({ members: [] });
     fireEvent.click(screen.getAllByTitle('Remove from group')[0]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(await liveConfirm('Remove'));
     await waitFor(() =>
       expect(logger.info).toHaveBeenCalledWith('Members data is not an array:', { received: 'object' })
     );
@@ -1233,6 +1634,7 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     const menu = await openKebabList('Member actions for Target');
     const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
+    passKebabGate();
     fireEvent.click(removeItem);
   }
 
@@ -1248,8 +1650,13 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
       expect(groupsAPI.removeUserFromGroup as Mock).toHaveBeenCalledWith(GROUP_ID, TARGET_UUID)
     );
     await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledTimes(2));
-    // The R5 ordering backstop: focus has not moved early; KebabMenu put it back on its trigger.
-    expect(document.activeElement).toBe(screen.getByLabelText('Member actions for Target'));
+    // The R5 ordering backstop: focus has not moved early.
+    // AMENDED Phase 88.9-67 (X13-7): the committed Remove keeps its menu open while the remove and
+    // its refresh run, so focus is on that item (named Remove, removing), where KebabMenu's
+    // keepOpen exit put it, and not yet on the next row's trigger. Before this plan the commit
+    // closed the menu and focus sat on the menu's own trigger.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove, removing' }));
+    expect(document.activeElement).not.toBe(next);
     await act(async () => {
       held.resolve([ROSTER[0], ROBIN]);
     });
@@ -1300,8 +1707,11 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     opener.focus();
     await user.click(opener);
     await screen.findByRole('dialog', { name: 'Remove Target from this group?' });
-    await user.click(screen.getByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+    await user.click(await liveConfirm('Remove'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): spoken by the root announcer, no success toast.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Member removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(title()));
     expect(
       screen.getByRole('dialog', { name: 'Manage Group Members' }).contains(document.activeElement)
@@ -1324,7 +1734,7 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     expect(document.activeElement).toBe(document.body);
     fireEvent.click(opener);
     await screen.findByRole('dialog', { name: 'Reject Pend?' });
-    const confirm = screen.getByRole('button', { name: 'Reject' });
+    const confirm = await liveConfirm('Reject');
     act(() => {
       (document.activeElement as HTMLElement | null)?.blur();
     });
@@ -1346,7 +1756,7 @@ describe('ManageMembers Req 5 — focus after a row leaves (88.6.1-42, H1-H3)', 
     opener.focus();
     await user.click(opener);
     await screen.findByRole('dialog', { name: 'Reject Pend?' });
-    await user.click(screen.getByRole('button', { name: 'Reject' }));
+    await user.click(await liveConfirm('Reject'));
     await waitFor(() =>
       expect(groupsAPI.rejectMember as Mock).toHaveBeenCalledWith(GROUP_ID, PENDING_UUID)
     );
@@ -1375,7 +1785,7 @@ describe('ManageMembers 88.6.1-50 — the pressed Transfer ownership stays focus
     return { dialog, confirm };
   }
 
-  it('TR1: two presses send one transfer; the pressed confirm stays aria-disabled and focusable until it settles (R4 idempotency + concurrency)', async () => {
+  it('TR1 rule 1 (88.9): Transfer ownership keeps its label + spinner while busy; two presses send one transfer; the pressed confirm stays aria-disabled and focusable until it settles (R4 idempotency + concurrency)', async () => {
     const held = deferred<unknown>();
     (groupsAPI.transferOwnership as Mock).mockReturnValue(held.promise);
     renderManageMembers();
@@ -1389,7 +1799,9 @@ describe('ManageMembers 88.6.1-50 — the pressed Transfer ownership stays focus
     expect(confirm).toHaveAttribute('aria-disabled', 'true');
     expect(confirm).not.toHaveAttribute('disabled');
     expect(confirm).toHaveClass('btn-primary');
-    expect(confirm).toHaveTextContent('Transferring…');
+    expect(confirm).toHaveTextContent('Transfer ownership');
+    expect(confirm).toHaveAccessibleName('Transfer ownership, transferring');
+    await waitFor(() => expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     // The sibling Cancel nobody pressed keeps its native gate (rule of POSITION).
     const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
     expect(cancel).toBeDisabled();
@@ -1458,25 +1870,74 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     expect(screen.queryByRole('button', { name: /QR link/ })).toBeNull();
   });
 
-  it('RS1: while a reset runs the opener reads "Resetting…", aria-disabled and still focusable, then rests again', async () => {
+  // AMENDED Phase 88.9-64 (X13-8): the opener keeps its label, its aria-disabled state and its guard
+  // while a reset runs, but shows no spinner and speaks no busy word of its own. Since 88.9-56 the
+  // dialog's Reset link (the pressed control) carries both, and one reset showed two spinners.
+  it('RS1 rule 1 (88.9) + X13-8: Reset invite link keeps its label while busy, aria-disabled and still focusable, with no busy word of its own, then rests again', async () => {
     const held = deferred<unknown>();
     (groupsAPI.resetInviteToken as Mock).mockReturnValueOnce(held.promise);
     await openMembersModal();
+    const caption = screen.getByTestId('invite-reset-receipt');
     fireEvent.click(await screen.findByRole('button', { name: 'Reset invite link' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset link' }));
+    fireEvent.click(await liveConfirm('Reset link'));
 
     // RED half is the attribute (C-11); the focus claim (the dialog's close restore can land
     // on it) is CONFIRM-ONLY in jsdom.
-    const opener = (await screen.findByText('Resetting…')).closest('button') as HTMLElement;
-    expect(opener).toHaveAttribute('aria-disabled', 'true');
+    // The reset confirm stays open while the reset runs, and Radix's hideOthers marks the opener
+    // ITSELF aria-hidden (data-aria-hidden), so no role query can read its name (it computes to
+    // "" for a hidden node; measured 2026-11-10). The pin reads the button's own parts: the kept
+    // label as its whole text, and no sr-only busy suffix (the spinner's absence is pinned by the
+    // X13-8 test below, past the spinner's 200 ms appear delay).
+    const opener = (await screen.findByText('Reset invite link', { selector: 'button' })) as HTMLElement;
+    await waitFor(() => expect(opener).toHaveAttribute('aria-disabled', 'true'));
+    expect(opener.textContent).toBe('Reset invite link');
+    expect(opener.querySelector('.sr-only')).toBeNull();
     expect(opener).not.toHaveAttribute('disabled');
 
     await act(async () => {
       held.resolve({});
     });
-    // Positive signal first (CF-26): the receipt fired.
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Invite link reset'));
+    // Positive signal first (CF-26): the receipt showed. AMENDED Phase 88.9-24 (save-feedback rule
+    // 3): an inline caption in the region mounted before the press, not a toast.
+    await waitFor(() => expect(caption).toHaveTextContent('Invite link reset'));
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Reset invite link' })).not.toHaveAttribute('aria-disabled');
+  });
+
+  // 52-X13, the N-walk's "double spinner on Reset invite link", reproduced before this pin was
+  // written: 250 ms into a held reset the opener and the dialog's Reset link each held a spinner,
+  // and after the dialog closed the opener kept its one for the rest of the spinner's 500 ms hold.
+  it("X13-8 (88.9): one reset shows one spinner, on the dialog's Reset link; the opener behind it shows none, during the write or after the dialog closes", async () => {
+    const held = deferred<unknown>();
+    (groupsAPI.resetInviteToken as Mock).mockReturnValueOnce(held.promise);
+    await openMembersModal();
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset invite link' }));
+    const confirm = await liveConfirm('Reset link');
+    fireEvent.click(confirm);
+    const opener = (await screen.findByText('Reset invite link', { selector: 'button' })) as HTMLElement;
+    const spinnersIn = (el: ParentNode) => el.querySelectorAll('[data-slot="spinner"]').length;
+
+    // During the write: the pressed control carries the one spinner (R-C3a) once its 200 ms
+    // appear delay has passed; the opener, which would have appeared at the same moment, has none.
+    await waitFor(() => expect(spinnersIn(confirm)).toBe(1));
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(spinnersIn(opener), 'the opener behind the dialog shows a spinner during the write').toBe(0);
+    expect(spinnersIn(document), 'more than one spinner shows during one reset').toBe(1);
+    // The opener still refuses a second reset while this one runs.
+    expect(opener).toHaveAttribute('aria-disabled', 'true');
+
+    // After the write lands the dialog closes and takes its spinner with it; none is left behind.
+    await act(async () => {
+      held.resolve({});
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Reset the invite link?' })).not.toBeInTheDocument());
+    expect(spinnersIn(document), 'a spinner is left on screen after the dialog closed').toBe(0);
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(spinnersIn(document), 'a spinner is left on screen 100 ms after the dialog closed').toBe(0);
   });
 });
 
@@ -1558,7 +2019,7 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
     expect(dialog.contains(rf1Region())).toBe(true);
   });
 
-  it('RF-2. Retry holds Retrying… while the GET is held, then lands focus on the dialog title (C8 c, C2, C4; Req 5)', async () => {
+  it('RF-2. Retry stays busy (rule 1) while the GET is held, then lands focus on the dialog title (C8 c, C2, C4; Req 5)', async () => {
     await loadRoster();
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(ERR_500);
     triggerRefresh();
@@ -1573,7 +2034,8 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
 
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(retry).not.toHaveAttribute('disabled');
-    expect(retry).toHaveTextContent('Retrying…');
+    // The RF1 notice's Retry is FetchErrorBanner's (rule 1, 88.9-46 B37): label kept, suffix heard.
+    expect(retry).toHaveAccessibleName('Retry, retrying');
     expect(document.activeElement).toBe(retry);
     expect(rf1Line()).toBeTruthy();
     expect(screen.getByText('(You)')).toBeInTheDocument();
@@ -1648,7 +2110,7 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
     const err = new ApiError('Access denied', 'forbidden', 403);
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
     triggerRefresh();
-    await screen.findByText(getFetchErrorMessage(err));
+    await screen.findByText(messageBesideRetry(getFetchErrorMessage(err)));
 
     expect(screen.getByText("Couldn't load members")).toBeInTheDocument();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -1680,7 +2142,7 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
     (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    await screen.findByText(getFetchErrorMessage(err));
+    await screen.findByText(messageBesideRetry(getFetchErrorMessage(err)));
     await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
     expect(screen.queryByText('(You)')).toBeNull();
@@ -1769,7 +2231,7 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
       (groupsAPI.getGroupMembers as Mock).mockRejectedValueOnce(err);
       // No press and no onMemberAdded: the hook's tab-return re-attempt is the refresh.
       act(() => fireVisibility('visible'));
-      await screen.findByText(getFetchErrorMessage(err));
+      await screen.findByText(messageBesideRetry(getFetchErrorMessage(err)));
       await waitFor(() => expect(document.activeElement).toBe(heading));
       expect(kebab.isConnected).toBe(false);
       expect(screen.queryByText('(You)')).toBeNull();
@@ -1806,5 +2268,144 @@ describe('ManageMembers refresh notice (88.6.1-78: AC-29, RF1, D-50, 88.6.1-70 c
     act(() => fireVisibility('visible'));
     await act(async () => {});
     expect((groupsAPI.getGroupMembers as Mock).mock.calls.length).toBe(callsAtClose);
+  });
+});
+
+// Phase 88.9-30 pin (round 2): owner pick B3a (88.9-PICKS-B1.json, votes-b1 v9, 2026-11-04) and
+// research open question 11 — the pending and invite boxes ride the status-warning family.
+describe('Phase 88.9-30 — T boxes on the status-warning family', () => {
+  it('T (88.9): boxes on status-warning tokens — pending and invite boxes, pills and the Approve / Reject halo', async () => {
+    (invitesAPI.getGroupPendingInvites as Mock).mockResolvedValue([
+      { id: 'inv-1', invited_email: 'pending-invite@example.test' },
+    ]);
+    renderManageMembers();
+    const email = await screen.findByText('pending-invite@example.test');
+    const approve = await screen.findByRole('button', { name: 'Approve' });
+    const reject = screen.getByRole('button', { name: 'Reject' });
+
+    const pendingBox = approve.closest('div.rounded-lg') as HTMLElement;
+    expect(pendingBox).toHaveClass('bg-status-warning-subtle', 'border-status-warning');
+    expect(pendingBox.className).not.toContain('amber');
+    expect(screen.getByText('Pend').closest('p')).toHaveClass('text-content-status-warning');
+    for (const button of [approve, reject]) {
+      expect(button).toHaveClass('focus-visible:ring-offset-status-warning-subtle');
+    }
+
+    const inviteBox = email.closest('div.rounded-lg') as HTMLElement;
+    expect(inviteBox).toHaveClass('bg-status-warning-subtle', 'border-status-warning');
+    expect(email.closest('p')).toHaveClass('text-content-status-warning');
+
+    const countPill = (heading: string) =>
+      screen.getByRole('heading', { name: heading }).parentElement!.querySelector('span') as HTMLElement;
+    const pills = [countPill('Pending Members'), countPill('Pending Invites'), ...screen.getAllByText('Pending')];
+    expect(pills).toHaveLength(4);
+    for (const pill of pills) {
+      expect(pill).toHaveClass('text-content-status-warning', 'bg-status-warning-subtle');
+    }
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.querySelectorAll('[class*="amber-"]'), 'no raw amber class left in the dialog').toHaveLength(0);
+  });
+});
+
+// 88.9-52 (A-47). MEASURED 2026-11-16 on the owner's iPhone with VoiceOver, on production: Role
+// updated was NOT spoken after a role change in this dialog. The root announcer's region sits
+// outside the open aria-modal dialog. The words now land in the region the house Modal mounts
+// inside the dialog (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
+// This file automocks the announcer store; this block alone hands every mocked export its real
+// implementation, so the real store, the real root region and the real dialog region run.
+describe('88.9-52 (A-47): Role updated and Member removed are announced INSIDE the Manage Members dialog', () => {
+  /** Every function the automocked store exports, by name (its one constant is not a mock). */
+  const storeMocks = (): Array<[string, Mock]> =>
+    (Object.entries(announcerStore) as Array<[string, unknown]>).filter(
+      (entry): entry is [string, Mock] => vi.isMockFunction(entry[1])
+    );
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<Record<string, (...args: never[]) => unknown>>(
+      '@/components/ui/announcer'
+    );
+    for (const [name, mock] of storeMocks()) mock.mockImplementation(actual[name]);
+    render(<RootAnnouncer />);
+  });
+
+  afterEach(() => {
+    // Unmount on the REAL store first (every dialog drops its host), then back to the automock.
+    cleanup();
+    for (const [, mock] of storeMocks()) mock.mockReset();
+  });
+
+  const rootRegion = () => document.querySelector('[data-announcer="root"]') as HTMLElement;
+  const membersDialog = () => screen.getByRole('dialog', { name: 'Manage Group Members' });
+
+  /** The one node on the page that holds the words must be the members dialog's own region. */
+  async function expectSpokenInsideMembersDialog(dialog: HTMLElement, words: string) {
+    await waitFor(() => expect(within(dialog).getByText(words)).toBeInTheDocument());
+    const holder = within(dialog).getByText(words);
+    expect(holder).toHaveAttribute('data-announcer', 'dialog');
+    expect(holder).toHaveAttribute('role', 'status');
+    expect(holder).toHaveAttribute('aria-live', 'polite');
+    expect(holder.parentElement).toBe(dialog);
+    expect(screen.getAllByText(words)).toHaveLength(1);
+    expect(rootRegion()).toBeEmptyDOMElement();
+  }
+
+  it('the store is real in this block and the root region is mounted', () => {
+    expect(storeMocks().map(([name]) => name).sort()).toEqual([
+      'announceStatus',
+      'getHostSnapshot',
+      'getServerSnapshot',
+      'getSnapshot',
+      'registerAnnounceHost',
+      'releaseAnnounceHost',
+      'subscribe',
+    ]);
+    expect(rootRegion()).not.toBeNull();
+    expect(rootRegion()).toBeEmptyDOMElement();
+  });
+
+  it('a demotion (no confirm): Role updated lands in the members dialog, not the root', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
+      ROSTER[0],
+      { ...ROSTER[1], UserGroup: { role: 'admin' } },
+      ROSTER[2],
+    ]);
+    await openMembersModal();
+    const dialog = membersDialog();
+    const demote = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
+    fireEvent.change(demote, { target: { value: 'member' } });
+    await expectSpokenInsideMembersDialog(dialog, 'Role updated');
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+  });
+
+  it('an escalation through the Make admin confirm: the confirm closes and Role updated lands in the members dialog beneath it', async () => {
+    await openMembersModal();
+    const dialog = membersDialog();
+    const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'admin' } });
+    fireEvent.click(await liveConfirm('Make admin'));
+    await expectSpokenInsideMembersDialog(dialog, 'Role updated');
+    // The confirm that was on top when announceStatus ran is gone; it never held the words.
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('a removal through the Remove confirm: Member removed lands in the members dialog beneath it', async () => {
+    await openMembersModal();
+    const dialog = membersDialog();
+    fireEvent.click(await screen.findByText('Remove'));
+    fireEvent.click(await liveConfirm('Remove'));
+    await expectSpokenInsideMembersDialog(dialog, 'Member removed');
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('a removal from the phone kebab (two taps, no confirm dialog): Member removed lands in the members dialog', async () => {
+    await openMembersModal();
+    const dialog = membersDialog();
+    const menu = await openKebabList('Member actions for Target');
+    const removeItem = within(menu).getByRole('button', { name: 'Remove' });
+    fireEvent.click(removeItem);
+    passKebabGate();
+    fireEvent.click(removeItem);
+    await expectSpokenInsideMembersDialog(dialog, 'Member removed');
   });
 });

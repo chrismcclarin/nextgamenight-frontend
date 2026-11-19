@@ -44,7 +44,9 @@ const TabsList = React.forwardRef<
       // wrap utility here is a decision, not a cleanup (the class name is
       // deliberately unwritten so the phase's no-wrap grep gate cannot match this
       // comment).
-      'flex overflow-x-auto border-b border-line',
+      // The baseline is an inset shadow on the line token, inside the list's own box (X54, see the
+      // DECISION Phase 88.9-68 marker on the trigger below); the list carries no border.
+      'flex overflow-x-auto inset-shadow-[0_-1px_0_var(--color-border)]',
       className
     )}
     {...props}
@@ -72,15 +74,17 @@ const TabsTrigger = React.forwardRef<
       // are what make the list scroll instead of squeezing the labels.
       'inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap',
       'px-4 text-sm font-normal',
-      // -1px pulls the underline onto the list's own bottom border instead of
-      // stacking a second line beneath it.
-      '-mb-px border-b-2 border-transparent',
+      // DECISION Phase 88.9-68 (X54, owner at N37: a scroll bar … I can't even scroll it): the baseline is an inset shadow inside the list, chosen OVER a list border plus a -1px trigger margin (overflow-x auto makes overflow-y auto, so the margin overflowed by 1px: a scrollbar with a 1px range, and half the 2px underline clipped) and OVER overflow-y hidden alone (the underline stays clipped). The focus ring is inset, chosen OVER the outset ring with a surface gap, which the list clips on three sides. Scroll, never wrap (DECISION Phase 88-07) stands.
+      // The trigger fills the list's height, so its 2px underline paints over the 1px baseline
+      // and no vertical list padding is added (padding would bring the scroll range back).
+      'border-b-2 border-transparent',
       'text-content-secondary hover:text-content-primary',
       'transition-colors duration-200 ease-out',
       'data-[state=active]:border-line-accent data-[state=active]:text-content-primary',
       // §7.2: `focus-visible` only; `outline-hidden` keeps the transparent outline
       // forced-colors mode needs (v4's `outline-none` removes it outright).
-      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+      // X54: inset, the KebabMenu item idiom inside a clipping box.
+      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring',
       'disabled:cursor-not-allowed disabled:opacity-50',
       className
     )}

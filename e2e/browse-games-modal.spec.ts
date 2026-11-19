@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { assertTheme, forceLightMode, inkRatioThroughOpacity } from './support/contrast';
 import { settleAnimations } from './support/inFlight';
 
 /**
@@ -64,8 +65,10 @@ const GAME_ALPHA = {
   playing_time: 45,
   weight: 1.9,
   owners: [] as string[],
-  avg_group_rating: null,
-  review_count: 0,
+  // D15b (plan 88.9-21): a rating so the card renders its rating line for the DEC-2 read. Safe:
+  // every other read of ALPHA is by its button name, which comes from the title alone.
+  avg_group_rating: 4.2,
+  review_count: 3,
 };
 const GAME_BETA = {
   id: '8b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e',
@@ -149,7 +152,7 @@ const browseDialog = (page: Page) => page.getByRole('dialog', { name: 'Browse ga
  *  settled: its first card is visible and every running animation in it has finished. */
 async function openBrowseGames(page: Page): Promise<Locator> {
   await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
-  await page.getByRole('button', { name: /add new game event/i }).click();
+  await page.getByRole('button', { name: 'Create Event', exact: true }).click();
   await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
   const browseMore = page
     .getByTestId('quick-suggestions-slot')
@@ -299,5 +302,207 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
     } finally {
       route.release();
     }
+  });
+
+  // 88.9-52 R4 C2 (accessibility once-over A3, owner 2026-11-18), RENDERED. The two steppers were
+  // 32 by 32, 4px apart; they are 44 by 44 squares now (w-11 h-11 on a raw .btn, no opt-out
+  // class). Three widths of the same open dialog: 375 at ordinary text (the square, the order
+  // and the 4px gaps), 320 at ordinary text (still one line, inside the toolbar: 44 + 4 + 64 +
+  // 4 + 44 of 264px), and 320 with text at 200% (the squares are 88px because every length is
+  // rem; the three controls cannot share 208px, so the group wraps and nothing leaves the
+  // toolbar). 200% is the root font size doubled by a style tag
+  // (e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")), not browser zoom. Read-only: nothing is
+  // clicked after the dialog opens, and the suggestions response is this file's route.
+  // RED on the tree before R4 C2: the first size assertion reads 32.
+  // SPLIT Phase 88.9-52 (owner 2026-11-18): the ordinary-text reads and the 320 / 200% read are two
+  // tests over this one body, so the sizes that work stay gated while the 200% read is a known failure.
+  const stepperRowProof = async (page: Page, large: boolean) => {
+    const route = await installSuggestionsRoute(page);
+    try {
+      const browse = await openBrowseGames(page);
+      const controls = browse.getByTestId('browse-more-controls');
+      const decrement = browse.getByRole('button', { name: 'Decrease player count' });
+      const increment = browse.getByRole('button', { name: 'Increase player count' });
+      const count = browse.getByRole('spinbutton', { name: 'Player count' });
+      await guardResolved(decrement, 'the "Decrease player count" stepper');
+      await guardResolved(increment, 'the "Increase player count" stepper');
+      const rect = async (locator: Locator, what: string) => {
+        const box = await locator.boundingBox();
+        expect(box, `${what} has no layout box`).not.toBeNull();
+        return { left: box!.x, right: box!.x + box!.width, top: box!.y, width: box!.width, height: box!.height };
+      };
+      const readRow = async () => ({
+        dec: await rect(decrement, 'the decrease stepper'),
+        inc: await rect(increment, 'the increase stepper'),
+        box: await rect(count, 'the player-count box'),
+        bar: await rect(controls, 'the filter toolbar'),
+        barOverflow: await controls.evaluate((el) => el.scrollWidth - el.clientWidth),
+      });
+      const expectSquare = (r: { width: number; height: number }, side: number, what: string) => {
+        expect(Math.abs(r.width - side), `R4 C2: ${what} is ${r.width}px wide, expected ${side}`).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(r.height - side), `R4 C2: ${what} is ${r.height}px tall, expected ${side}`).toBeLessThanOrEqual(0.5);
+      };
+      const expectInsideBar = (row: Awaited<ReturnType<typeof readRow>>, at: string) => {
+        for (const [name, r] of [['the decrease stepper', row.dec], ['the player-count box', row.box], ['the increase stepper', row.inc]] as const) {
+          expect(r.left, `R4 C2 (${at}): ${name} starts ${row.bar.left - r.left}px left of the toolbar`).toBeGreaterThanOrEqual(row.bar.left - 0.5);
+          expect(r.right, `R4 C2 (${at}): ${name} ends ${r.right - row.bar.right}px past the toolbar's right edge`).toBeLessThanOrEqual(row.bar.right + 0.5);
+        }
+        expect(row.barOverflow, `R4 C2 (${at}): the toolbar scrolls sideways by ${row.barOverflow}px`).toBeLessThanOrEqual(1);
+      };
+
+      if (!large) {
+        // 375, ordinary text.
+        const phone = await readRow();
+        expectSquare(phone.dec, 44, 'the decrease stepper at 375');
+        expectSquare(phone.inc, 44, 'the increase stepper at 375');
+        expect(Math.abs(phone.dec.top - phone.inc.top), 'R4 C2: at 375 the two steppers are not on one line').toBeLessThanOrEqual(1);
+        expect(Math.abs(phone.box.left - phone.dec.right - 4), `R4 C2: at 375 the box starts ${phone.box.left - phone.dec.right}px after the decrease stepper, expected 4`).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(phone.inc.left - phone.box.right - 4), `R4 C2: at 375 the increase stepper starts ${phone.inc.left - phone.box.right}px after the box, expected 4`).toBeLessThanOrEqual(0.5);
+        expectInsideBar(phone, '375');
+      }
+
+      // 320, ordinary text: still one line, inside the toolbar.
+      const viewport = page.viewportSize();
+      expect(viewport, 'the page has no viewport size').not.toBeNull();
+      await page.setViewportSize({ width: 320, height: viewport!.height });
+      await expect.poll(async () => (await rect(controls, 'the filter toolbar')).width, { message: 'R4 C2: the toolbar did not narrow at 320px' }).toBeLessThan(300);
+      if (!large) {
+        const narrow = await readRow();
+        expectSquare(narrow.dec, 44, 'the decrease stepper at 320');
+        expectSquare(narrow.inc, 44, 'the increase stepper at 320');
+        expect(Math.abs(narrow.dec.top - narrow.inc.top), 'R4 C2: at 320 and ordinary text the count row wrapped').toBeLessThanOrEqual(1);
+        expect(narrow.dec.right, 'R4 C2: at 320 the box is not between the steppers').toBeLessThanOrEqual(narrow.box.left + 0.5);
+        expect(narrow.box.right, 'R4 C2: at 320 the box is not between the steppers').toBeLessThanOrEqual(narrow.inc.left + 0.5);
+        expectInsideBar(narrow, '320');
+        return;
+      }
+
+      // 320 with text at 200%: 88px squares, wrapped, nothing outside the toolbar.
+      await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+      await expect
+        .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+          message: 'R4 C2: the root font size did not become 32px after the 200% style tag',
+        })
+        .toBe('32px');
+      await expect.poll(async () => (await rect(decrement, 'the decrease stepper')).width, { message: 'R4 C2: the decrease stepper did not grow to 88px at 200% text' }).toBeGreaterThan(87);
+      const big = await readRow();
+      expectSquare(big.dec, 88, 'the decrease stepper at 320 / 200%');
+      expectSquare(big.inc, 88, 'the increase stepper at 320 / 200%');
+      expectInsideBar(big, '320 / 200%');
+    } finally {
+      route.release();
+    }
+  };
+
+  test('R4 C2 (88.9-52): the player-count steppers are 44 by 44 squares and the row fits at 320px', async ({ page }) => {
+    await stepperRowProof(page, false);
+  });
+
+  test('R4 C2 (88.9-52): at 320px with text at 200% the steppers are 88px squares and nothing in the row leaves the dialog', async ({ page }) => {
+    // DECISION Phase 88.9-52 (owner 2026-11-18): this 320 wide / 200% text read is marked as an
+    // expected failure, kept running, over skipping it, deleting it or patching the screen. The
+    // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
+    // the large-text method and owns this read. When the screen is fixed this test reports an
+    // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
+    test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
+    await stepperRowProof(page, true);
+  });
+
+  test('D15b (88.9): the results dim to 85% while a refresh is in flight, the meta line still reads, and they return to full after', async ({ page }) => {
+    // The RULINGS Q7 default (85%); plan 88.9-44 builds it as the only value. 70% is not built:
+    // the muted meta line reads 3.29 / 3.72 through it.
+    const DIM = 0.85;
+    const FLOOR = 4.5;
+    const route = await installSuggestionsRoute(page);
+
+    // DECISION Phase 88.9-44 D15b (both themes): the title-through-dim read rides plan 21's dim
+    // test, chosen OVER a new contrast.spec.ts test (the round-2 FLOOR chain stays 41 and the dim
+    // has one test that owns it). The read multiplies ancestor opacity
+    // (e2e/support/contrast.ts ("export async function inkRatioThroughOpacity(")); ratioAgainstGround
+    // would ignore it. The held-refresh body runs once per theme, dark first by an init script and
+    // light by emulateMedia plus forceLightMode, the plan-20 order copied as spec-local code; every
+    // read (title, meta line, rating number, star) runs in both arms, after assertTheme.
+    const heldRefreshArm = async (theme: 'light' | 'dark') => {
+      try {
+        const browse = await openBrowseGames(page);
+        await assertTheme(page, theme);
+        const results = browse.getByTestId('browse-more-results');
+        const childOpacities = () =>
+          results.evaluate((el) => Array.from(el.children).map((child) => Number.parseFloat(getComputedStyle(child).opacity)));
+
+        route.hold();
+        await browse.getByRole('button', { name: 'Increase player count' }).click();
+        await expect(results).toHaveAttribute('aria-busy', 'true');
+
+        const busy = await childOpacities();
+        expect(busy.length, `D15b (${theme}): the results region has no child to dim — the read below would be vacuous`).toBeGreaterThan(0);
+        for (const [i, value] of busy.entries()) {
+          expect(value, `D15b (${theme}): results child ${i + 1} computes opacity ${value} while busy, not ${DIM}`).toBe(DIM);
+        }
+
+        // Plan 88.9-44: the card TITLE through the dim (anti-vacuity: the opacity product must be
+        // the dim itself, so a read on an undimmed tree cannot pass the floor by accident).
+        const title = results.getByText(GAME_ALPHA.name, { exact: true });
+        const titleRead = await inkRatioThroughOpacity(title, `D15b title (${theme})`);
+        expect(titleRead.opacity, `D15b title (${theme}): reads through opacity ${titleRead.opacity}, not ${DIM} — the dim is not in the product`).toBeCloseTo(DIM, 2);
+        expect(
+          titleRead.ratio,
+          `D15b title (${theme}): ${titleRead.ratio.toFixed(3)}:1 through opacity ${titleRead.opacity}, floor ${FLOOR}:1`,
+        ).toBeGreaterThanOrEqual(FLOOR);
+
+        // ONE ink read through the dim: the first card's 14px muted meta line, the
+        // src/app/components/GameSuggestionCard.js ("flex flex-wrap gap-x-3 gap-y-1 text-sm text-content-muted") span, reached through
+        // the card's aria-describedby (the meta id is first, the rating id last when it renders,
+        // src/app/components/GameSuggestionCard.js ("const describedBy = [metaId, hasOwners ? ownersId : null, hasRating ? ratingId : null]")).
+        const card = browse.getByRole('button', { name: GAME_ALPHA.name });
+        const ids = ((await card.getAttribute('aria-describedby')) ?? '').split(/\s+/).filter(Boolean);
+        expect(ids.length, `D15b (${theme}): the first card carries no aria-describedby ids (meta + rating expected)`).toBeGreaterThanOrEqual(2);
+        const meta = browse.locator(`[id="${ids[0]}"]`);
+        const ratingLine = browse.locator(`[id="${ids[ids.length - 1]}"]`);
+        const star = ratingLine.locator('xpath=./span[1]');
+
+        const metaRead = await inkRatioThroughOpacity(meta, `D15b meta line (${theme})`);
+        expect(metaRead.opacity, `D15b (${theme}): the meta line reads through opacity ${metaRead.opacity} — the dim is not in the product`).toBeLessThan(1);
+        expect(
+          metaRead.ratio,
+          `D15b meta line (${theme}): ${metaRead.ratio.toFixed(3)}:1 through opacity ${metaRead.opacity} (ink ${metaRead.effectiveFg} on ${metaRead.ground}), floor ${FLOOR}:1`,
+        ).toBeGreaterThanOrEqual(FLOOR);
+
+        // DEC-2 (ink-agnostic): the rating number and its star through the same dim. The test
+        // names no ink; it reds on the shipped yellow and greens on the owner's pick (plan 88.9-44).
+        await expect(ratingLine, `D15b (${theme}): the rating line did not render — GAME_ALPHA carries a rating`).toBeVisible();
+        for (const [what, el] of [['rating number', ratingLine], ['rating star', star]] as const) {
+          const r = await inkRatioThroughOpacity(el, `D15b ${what} (${theme})`);
+          expect(r.opacity, `D15b ${what} (${theme}): opacity ${r.opacity} — the dim is not in the product`).toBeLessThan(1);
+          expect(
+            r.ratio,
+            `D15b ${what} (${theme}): ${r.ratio.toFixed(3)}:1 through opacity ${r.opacity} (ink ${r.effectiveFg} on ${r.ground}), floor ${FLOOR}:1`,
+          ).toBeGreaterThanOrEqual(FLOOR);
+        }
+
+        route.release();
+        await expect(results).not.toHaveAttribute('aria-busy', 'true');
+        const after = await childOpacities();
+        for (const [i, value] of after.entries()) {
+          expect(value, `D15b (${theme}): results child ${i + 1} computes opacity ${value} after the refresh, not 1`).toBe(1);
+        }
+      } finally {
+        route.release();
+      }
+    };
+
+    await test.step('D15b — dark', async () => {
+      const darkWriter = await page.addInitScript(() => window.localStorage.setItem('theme', 'dark'));
+      try {
+        await heldRefreshArm('dark');
+      } finally {
+        await darkWriter.dispose();
+      }
+    });
+    await test.step('D15b — light', async () => {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await forceLightMode(page);
+      await heldRefreshArm('light');
+    });
   });
 });

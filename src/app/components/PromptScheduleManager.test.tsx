@@ -183,7 +183,7 @@ describe('PromptScheduleManager — R7 composed axe audit (UI-SPEC §7.5)', () =
       new Error('boom')
     );
     const errored = renderManager();
-    await screen.findByText("We couldn't load your schedules");
+    await screen.findByText("Couldn't load your schedules");
     expect(
       await axe(errored.container.firstElementChild as HTMLElement, WCAG_412)
     ).toHaveNoViolations();
@@ -463,7 +463,7 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
   // so its polite region and the Retry's description say "Prompt schedule: " first and the visible line
   // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
   const SPOKEN = "Prompt schedule: Couldn't refresh. Showing what loaded earlier.";
-  const FULL_TITLE = "We couldn't load your schedules";
+  const FULL_TITLE = "Couldn't load your schedules";
 
   const getSettings = () => promptSettingsAPI.getGroupPromptSettings as unknown as Mock;
   const toggle = () => promptSettingsAPI.toggleSchedule as unknown as Mock;
@@ -636,7 +636,8 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
   });
 
   it('M5. a 401 and a 403 refresh never keep the schedules: the full banner with the register line, no RF1 (C8 e)', async () => {
-    const { getFetchErrorMessage } = await import('@/components/ui/useFetchErrorState');
+    // AMENDED Phase 88.9-66 (X68): the full banner shows Try again, so its forbidden line is the beside-retry form.
+    const { getFetchErrorMessage, messageBesideRetry } = await import('@/components/ui/useFetchErrorState');
     for (const err of [
       new ApiError('Unauthorized', 'unauthorized', 401),
       new ApiError('Forbidden', 'forbidden', 403),
@@ -648,7 +649,7 @@ describe('PromptScheduleManager — the cached list survives a failed refresh un
       fireEvent.click(await screen.findByRole('button', { name: 'Pause' }));
 
       expect(await screen.findByText(FULL_TITLE)).toBeInTheDocument();
-      expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(err)))).toBeInTheDocument();
       expect(rowHeading()).toBeNull();
       expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();

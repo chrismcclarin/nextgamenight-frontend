@@ -4,11 +4,16 @@
 // a regression that keeps the attribute strings but breaks the handler, drops the
 // RSVP suffix from the name, or leaks the keypress into the day cell reds here.
 import * as React from 'react';
-import { render, screen, cleanup, act, within } from '@testing-library/react';
+import { render, screen, cleanup, act, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CalendarMonthView from './CalendarMonthView';
 import { getDaysInMonth } from '../../lib/calendarUtils';
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
+import { blend, contrastRatio } from '../../lib/wcag';
+import { GROUP_COLOUR_PRESETS } from '../../lib/groupColourPresets';
+import * as guestEdges from './GuestPill';
 
 const day = new Date();
 day.setDate(15);
@@ -93,7 +98,7 @@ describe('CalendarMonthView compact tile — keyboard + accessible name (88.3-cr
  * THE INVARIANT IS PER RENDERED **GRID**, NOT PER MONTH, and neither half is gated on
  * `isCurrentMonth`. `isCurrentDay` is computed from the date ALONE, and the cell's ground
  * ternary awards the today treatment BEFORE the adjacent-month branch is reached (the adjacent
- * page-ground arm comes after the today and full-variant past arms, 88.9 A4b). `getDaysInMonth` returns 42 cells including adjacent-month days,
+ * page-ground arm comes straight after the today arm, its full-variant past case nested inside it, 88.9 A4b, reordered by 88.9-28 C3). `getDaysInMonth` returns whole weeks (28, 35 or 42 cells, CS-05) including any adjacent-month days,
  * so a grid whose OVERFLOW contains today already renders that overflow cell tinted as today.
  * Gating either half on `isCurrentMonth` would desync the pair — and nothing in this suite
  * asserted the pair before this plan.
@@ -110,7 +115,7 @@ describe('CalendarMonthView compact tile — keyboard + accessible name (88.3-cr
  */
 describe('CalendarMonthView — aria-current="date" is per rendered GRID (88.6-40, W41)', () => {
   // 1 September 2031. August 2031 starts on a Friday, so `getDaysInMonth(August)`'s 42-cell
-  // window runs Sun 27 Jul -> Sat 6 Sep and contains 1 September in its OVERFLOW. That is the
+  // window (a six-row month under CS-05) runs Sun 27 Jul -> Sat 6 Sep and contains 1 September in its OVERFLOW. That is the
   // case which distinguishes a per-GRID implementation from an `isCurrentMonth`-gated one.
   const PINNED_TODAY = new Date(2031, 8, 1, 12, 0, 0, 0);
 
@@ -177,7 +182,7 @@ describe('CalendarMonthView — aria-current="date" is per rendered GRID (88.6-4
     expect(cells.indexOf(tinted[0])).toBeGreaterThan(lastOfMonth);
   });
 
-  it('W41-3. a grid whose FULL 42-day window contains no today carries the attribute ZERO times', () => {
+  it('W41-3. a grid whose FULL rendered window contains no today carries the attribute ZERO times', () => {
     // Two months away, deliberately — "a month with no today" is satisfiable by an overflow day
     // and would make this arm vacuous.
     const { container } = renderGrid(new Date(2031, 10, 1, 12, 0, 0, 0)); // November 2031
@@ -246,7 +251,7 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
   it('A4b (88.9): an adjacent-month cell is undimmed on the page ground and nothing in it carries the mute', () => {
     // Compact grid, August 2031: 3 September sits in the trailing overflow and holds an event.
     const { days, cells } = renderAt(new Date(2031, 7, 1, 12, 0, 0, 0), 'compact', [eventOn('evt-adj', '2031-09-03', 'Azul')]);
-    expect(cells).toHaveLength(42);
+    expect(cells, 'August 2031 is a six-row month under CS-05 (starts on a Friday, 31 days)').toHaveLength(42);
     const i = days.findIndex((c) => !c.isCurrentMonth && c.date.getMonth() === 8 && c.date.getDate() === 3);
     expect(i).toBeGreaterThan(-1);
     const cell = cells[i];
@@ -265,7 +270,7 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
   it('A4b (88.9): a clickable PAST adjacent cell on the full grid keeps the past treatment — page ground, no hover ground', () => {
     // Full grid, September 2031: 31 August is the leading overflow day, already past, and holds an
     // event (so it is cellClickable). The no-hover half is the ARM-ORDER guard: green before and
-    // after this plan, red only if the adjacent arm is placed ahead of the full-variant past arm.
+    // after this plan; since 88.9-28 C3 the adjacent arm comes straight after the today arm and nests the full-variant past case, so this half reds only if that nested past case is lost.
     const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', [eventOn('evt-past', '2031-08-31', 'Azul')]);
     const i = days.findIndex((c) => !c.isCurrentMonth && c.date.getMonth() === 7 && c.date.getDate() === 31);
     expect(i).toBeGreaterThan(-1);
@@ -300,7 +305,9 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
     const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', [eventOn('evt-past-cm', '2031-09-10', 'Azul')]);
     const cell = cellOn(days, cells, 8, 10);
     expect(within(cell).getByText('Azul')).toBeTruthy();
-    expect(cell.classList.contains('bg-surface-page')).toBe(true);
+    // AMENDED Phase 88.9-28 (C3): a full-grid past this-month cell sits on bg-surface-tile-past
+    // (owner pick C3), chosen OVER the page ground this line read before; the pointer half is unchanged.
+    expect(cell.classList.contains('bg-surface-tile-past')).toBe(true);
     expect(cell.classList.contains('cursor-pointer')).toBe(true);
   });
 
@@ -315,7 +322,771 @@ describe('CalendarMonthView — adjacent-month cells (88.9-07, A4b + O4b)', () =
     vi.setSystemTime(new Date(2031, 8, 15, 12, 0, 0, 0));
     const { days, cells } = renderAt(new Date(2031, 8, 1, 12, 0, 0, 0), 'full', []);
     const cell = cellOn(days, cells, 8, 10);
-    expect(cell.classList.contains('bg-surface-page')).toBe(true);
+    // AMENDED Phase 88.9-28 (C3): the past this-month ground is bg-surface-tile-past now, as in (b).
+    expect(cell.classList.contains('bg-surface-tile-past')).toBe(true);
     expect(cell.classList.contains('cursor-pointer')).toBe(false);
+  });
+});
+
+// 88.9-28 round-2 look pins: N1 (month nav), C3 (soft tiles), C8a (weekday 12/700), E1a (no
+// visible compact count), F7a (light image arm) and D5a/O18a (guest edge). Same pinned clock as
+// the A4b describe above: 1 September 2031, a Monday.
+describe('CalendarMonthView — round-2 look (88.9-28)', () => {
+  const PINNED_TODAY = new Date(2031, 8, 1, 12, 0, 0, 0);
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(PINNED_TODAY);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  type GridOpts = {
+    anchor?: Date;
+    variant: 'compact' | 'full';
+    events?: unknown[];
+    viewerDbUserId?: string;
+    onNavigateMonth?: (delta: number) => void;
+    onGoToday?: () => void;
+    viewSwitch?: React.ReactNode;
+    tzLegend?: string | null;
+  };
+  function renderGrid({ anchor = new Date(2031, 8, 1, 12, 0, 0, 0), variant, events = [], viewerDbUserId, onNavigateMonth = vi.fn(), onGoToday = vi.fn(), viewSwitch, tzLegend = null }: GridOpts) {
+    const days = getDaysInMonth(anchor);
+    const out = render(
+      <CalendarMonthView
+        days={days}
+        activeEvents={events}
+        currentDate={anchor}
+        variant={variant}
+        onDayClick={vi.fn()}
+        onEventClick={vi.fn()}
+        onNavigateMonth={onNavigateMonth}
+        onGoToday={onGoToday}
+        monthNames={MONTHS}
+        tzLegend={tzLegend}
+        viewerDbUserId={viewerDbUserId}
+        viewSwitch={viewSwitch}
+      />,
+    );
+    const grids = out.container.querySelectorAll('.grid.grid-cols-7');
+    return {
+      container: out.container,
+      days,
+      weekdays: Array.from(grids[0].children) as HTMLElement[],
+      cells: Array.from(grids[1].children) as HTMLElement[],
+    };
+  }
+  const tokens = (el: Element) => el.className.split(/\s+/).filter(Boolean);
+
+  it('N1 (88.9): icon-only month nav with the accessible names Previous month / Next month, one-line title, Today pill', () => {
+    for (const variant of ['full', 'compact'] as const) {
+      const onNavigateMonth = vi.fn();
+      const onGoToday = vi.fn();
+      renderGrid({ variant, onNavigateMonth, onGoToday });
+      const prev = screen.getByRole('button', { name: 'Previous month' });
+      const next = screen.getByRole('button', { name: 'Next month' });
+      for (const [label, btn] of [['Previous month', prev], ['Next month', next]] as const) {
+        expect((btn.textContent ?? '').trim(), `${variant}: ${label} carries visible text`).toBe('');
+        for (const t of ['btn-icon-square', 'min-h-11', 'min-w-11']) {
+          expect(tokens(btn), `${variant}: ${label} lacks ${t}`).toContain(t);
+        }
+      }
+      fireEvent.click(prev);
+      expect(onNavigateMonth).toHaveBeenLastCalledWith(-1);
+      fireEvent.click(next);
+      expect(onNavigateMonth).toHaveBeenLastCalledWith(1);
+      const heading = screen.getByRole('heading', { level: 3, name: 'September 2031' });
+      for (const t of ['whitespace-nowrap', 'truncate', 'text-ellipsis']) {
+        expect(tokens(heading), `${variant}: the month title clips (${t})`).not.toContain(t);
+      }
+      expect(heading.className, `${variant}: the month title clips (line-clamp)`).not.toMatch(/line-clamp-/);
+      fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+      expect(onGoToday).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: 'Go to Today' }), `${variant}: the retired Go to Today name is still rendered`).toBeNull();
+      cleanup();
+    }
+  });
+  it('N1 (88.9): the viewSwitch slot renders in the nav row beside the Today pill', () => {
+    // 88.9-39: EventCalendar passes the Month | List switch in; the nav row seats it next to Today.
+    for (const variant of ['full', 'compact'] as const) {
+      renderGrid({ variant, viewSwitch: <span data-testid="slot" /> });
+      const slot = screen.getByTestId('slot');
+      const today = screen.getByRole('button', { name: 'Today' });
+      expect(slot.parentElement, `${variant}: the slot and the Today pill share one parent`).toBe(today.parentElement);
+      cleanup();
+    }
+    // No slot passed: nothing extra renders beside Today.
+    renderGrid({ variant: 'full' });
+    expect(screen.queryByTestId('slot')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Today' })).toBeTruthy();
+  });
+  // 88.9-62 (owner pick C at N13, 2026-11-12): the arrows sit on the month title's line. jsdom lays
+  // nothing out, so this pins the STRUCTURE the layout comes from; the boxes are read in a real
+  // engine by e2e/month-nav-row.spec.ts.
+  it("X22 (88.9): the chevrons share the title's row; the caption, then the Today pill with the switch, sit below it; Tab order is Previous month, Next month, Today, the switch", () => {
+    for (const variant of ['full', 'compact'] as const) {
+      const { container } = renderGrid({ variant, tzLegend: 'PST', viewSwitch: <button type="button">slot</button> });
+      const prev = screen.getByRole('button', { name: 'Previous month' });
+      const next = screen.getByRole('button', { name: 'Next month' });
+      const heading = screen.getByRole('heading', { level: 3, name: 'September 2031' });
+      const today = screen.getByRole('button', { name: 'Today' });
+      const slot = screen.getByRole('button', { name: 'slot' });
+      const caption = screen.getByText('Times shown in PST');
+      const titleRow = heading.parentElement as HTMLElement;
+      // One row holds the chevron, the title and the chevron, in that order (DOM order is the
+      // visual order of the wide arm).
+      expect(Array.from(titleRow.children), `${variant}: the title row is not chevron, title, chevron`).toEqual([prev, heading, next]);
+      expect(titleRow.contains(today), `${variant}: the title row holds the Today pill`).toBe(false);
+      expect(titleRow.contains(caption), `${variant}: the title row holds the caption`).toBe(false);
+      const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(follows(titleRow, caption), `${variant}: the caption does not follow the title row`).toBe(true);
+      expect(follows(caption, today), `${variant}: the Today pill does not follow the caption`).toBe(true);
+      expect(slot.parentElement, `${variant}: the switch and the Today pill do not share one row`).toBe(today.parentElement);
+      // Tab order is document order here (no positive tabindex anywhere in the nav block).
+      expect(Array.from(container.querySelectorAll('button')).slice(0, 4), `${variant}: the first four buttons are not Previous month, Next month, Today, the switch`).toEqual([prev, next, today, slot]);
+      cleanup();
+    }
+  });
+  it('X28 (88.9): the nav block is a size container and under 14rem the title takes its own line below the arrows', () => {
+    for (const variant of ['full', 'compact'] as const) {
+      renderGrid({ variant });
+      const heading = screen.getByRole('heading', { level: 3, name: 'September 2031' });
+      const navBlock = (heading.parentElement as HTMLElement).parentElement as HTMLElement;
+      expect(tokens(navBlock), `${variant}: the title row's parent is not a size container`).toContain('@container');
+      for (const t of ['min-w-0', 'flex-1', 'text-center', '@max-[14rem]:order-last', '@max-[14rem]:basis-full']) {
+        expect(tokens(heading), `${variant}: the month title lacks ${t}`).toContain(t);
+      }
+      for (const t of ['whitespace-nowrap', 'truncate', 'text-ellipsis']) {
+        expect(tokens(heading), `${variant}: the month title clips (${t})`).not.toContain(t);
+      }
+      expect(heading.className, `${variant}: the month title clips (line-clamp)`).not.toMatch(/line-clamp-/);
+      cleanup();
+    }
+  });
+  const cellOf = (days: { date: Date; isCurrentMonth: boolean }[], cells: HTMLElement[], month: number, date: number) => {
+    const i = days.findIndex((c) => c.date.getMonth() === month && c.date.getDate() === date);
+    expect(i).toBeGreaterThan(-1);
+    return cells[i];
+  };
+  const groundsOf = (el: Element) => tokens(el).filter((t) => /^bg-surface-/.test(t));
+
+  it('C3 (88.9): this-month tile / past / adjacent untiled', () => {
+    // Full grid, September 2031, today the 15th: 10 Sept is past, 20 Sept is future, 31 Aug and
+    // 2 Oct are the leading and trailing adjacent cells.
+    vi.setSystemTime(new Date(2031, 8, 15, 12, 0, 0, 0));
+    const { days, cells } = renderGrid({ variant: 'full' });
+    for (const cell of cells) {
+      expect(tokens(cell), 'every cell is radius 6px').toContain('rounded-md');
+      expect(tokens(cell), 'no cell keeps the old small radius').not.toContain('rounded-sm');
+      expect(tokens(cell), 'no cell keeps the old 1px line outline').not.toContain('border-line');
+      expect(tokens(cell).filter((t) => t === 'border'), 'every cell carries exactly one 1px border width').toHaveLength(1);
+      expect(groundsOf(cell), 'every cell carries exactly one ground').toHaveLength(1);
+    }
+    expect(groundsOf(cellOf(days, cells, 8, 20))).toEqual(['bg-surface-tile']);
+    expect(tokens(cellOf(days, cells, 8, 20))).toContain('border-transparent');
+    expect(groundsOf(cellOf(days, cells, 8, 10))).toEqual(['bg-surface-tile-past']);
+    for (const [month, date] of [[7, 31], [9, 2]] as const) {
+      const adjacent = cellOf(days, cells, month, date);
+      expect(groundsOf(adjacent), `adjacent ${month + 1}/${date} stays untiled on the page ground`).toEqual(['bg-surface-page']);
+    }
+    const today = cellOf(days, cells, 8, 15);
+    expect(groundsOf(today)).toEqual(['bg-surface-muted']);
+    expect(tokens(today)).toContain('border-line-accent');
+  });
+
+  it('C8a (88.9): weekday row 12/700', () => {
+    for (const variant of ['full', 'compact'] as const) {
+      const { weekdays } = renderGrid({ variant });
+      expect(weekdays).toHaveLength(7);
+      for (const cell of weekdays) {
+        expect(tokens(cell), `${variant}: weekday ${cell.textContent} is not 12px`).toContain('text-xs');
+        expect(tokens(cell), `${variant}: weekday ${cell.textContent} is not 700`).toContain('font-bold');
+        expect(tokens(cell), `${variant}: weekday ${cell.textContent} keeps the 14px size`).not.toContain('text-sm');
+      }
+      cleanup();
+    }
+  });
+
+  // 88.9-62 (X28, WCAG 1.4.4, and owner ruling M29 of 2026-11-14): Wed needs 1.70rem and a column
+  // at 200% text on a 375 phone is under 1rem, so each label shows one letter there; and each cell
+  // speaks its full day name from the cell itself (the labelled focusable leaf the availability
+  // chart's header uses), never a spelled letter.
+  it('X28 (88.9): each weekday label shows its three-letter name or, under 14rem, its first letter, and speaks its full day name from the cell', () => {
+    const FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (const variant of ['full', 'compact'] as const) {
+      const { weekdays } = renderGrid({ variant });
+      expect(weekdays).toHaveLength(7);
+      expect(tokens(weekdays[0].parentElement as HTMLElement), `${variant}: the weekday row is not a size container`).toContain('@container');
+      weekdays.forEach((cell, i) => {
+        const day = FULL[i];
+        expect(tokens(cell), `${variant}: ${day} is not 12px`).toContain('text-xs');
+        expect(tokens(cell), `${variant}: ${day} is not 700`).toContain('font-bold');
+        // AMENDED 88.9-52 (A-11): the cell is an img, so its name is allowed (ARIA 1.2 prohibits naming a generic) and desktop screen readers speak it.
+        expect(cell.getAttribute('role'), `${variant}: the ${day} cell is not a labelled img`).toBe('img');
+        expect(cell.getAttribute('tabindex'), `${variant}: the ${day} cell is not a focusable leaf outside the Tab order`).toBe('-1');
+        expect(cell.getAttribute('aria-label'), `${variant}: the ${day} cell does not speak its full day name`).toBe(day);
+        const parts = Array.from(cell.children);
+        expect(parts, `${variant}: the ${day} cell does not hold exactly two elements`).toHaveLength(2);
+        const [short, letter] = parts;
+        expect(short.tagName, `${variant}: ${day}'s three-letter form is not a span`).toBe('SPAN');
+        expect(short.textContent, `${variant}: ${day}'s three-letter form`).toBe(day.slice(0, 3));
+        expect(tokens(short), `${variant}: ${day}'s three-letter form stays under 14rem`).toContain('@max-[14rem]:hidden');
+        expect(letter.tagName, `${variant}: ${day}'s one-letter form is not a span`).toBe('SPAN');
+        expect(letter.textContent, `${variant}: ${day}'s one-letter form`).toBe(day[0]);
+        expect(tokens(letter), `${variant}: ${day}'s one-letter form shows at rest`).toContain('hidden');
+        expect(tokens(letter), `${variant}: ${day}'s one-letter form never shows`).toContain('@max-[14rem]:inline');
+        for (const part of parts) {
+          expect(part.getAttribute('aria-hidden'), `${variant}: a visible form of ${day} is not hidden from the accessibility tree`).toBe('true');
+        }
+      });
+      cleanup();
+    }
+  });
+
+  // 88.9-52 (A-11): a desktop screen-reader user reading the grid hears which weekday a date falls
+  // on: the weekday headers are labelled imgs (above) and the day target's name starts with the weekday.
+  it('A-11 (88.9-52): the day target names its weekday first, on a multi-game day and on an empty day with the hint', () => {
+    const two = [
+      { id: 'a11-1', start_date: '2031-09-19T18:00:00', Game: { name: 'Azul' }, Group: { name: 'Crew', background_color: null }, rsvp_summary: null },
+      { id: 'a11-2', start_date: '2031-09-19T20:00:00', Game: { name: 'Catan' }, Group: { name: 'Crew', background_color: null }, rsvp_summary: null },
+    ];
+    for (const variant of ['full', 'compact'] as const) {
+      const out = render(
+        <CalendarMonthView
+          days={getDaysInMonth(new Date(2031, 8, 1, 12))}
+          activeEvents={two}
+          currentDate={new Date(2031, 8, 1, 12)}
+          variant={variant}
+          onDayClick={vi.fn()}
+          onEventClick={vi.fn()}
+          onNavigateMonth={vi.fn()}
+          onGoToday={vi.fn()}
+          showEmptyDayHint
+          monthNames={MONTHS}
+          tzLegend={null}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Friday, September 19, 2 games. Open this day.' }), `${variant}: the two-game day`).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Saturday, September 20. Add an event on this day.' }), `${variant}: an empty day`).toBeTruthy();
+      expect(out.container.querySelectorAll('[role="button"][aria-label$="this day."]:not([aria-label*="day, "])'), `${variant}: a day target without its weekday`).toHaveLength(0);
+      cleanup();
+    }
+  });
+
+  // 88.9-52 (Q62, owner ruling A, 2026-11-16): the compact grid prints the count alone, on one
+  // line, and speaks the count in words from a labelled leaf; the full grid keeps the word and
+  // drops it only when the day grid is narrow (W18).
+  const crowd = (n: number, onDay = 20) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `evt-crowd-${onDay}-${i}`,
+      start_date: `2031-09-${String(onDay).padStart(2, '0')}T${String(10 + (i % 10)).padStart(2, '0')}:00:00`,
+      Game: { name: `Game ${i}` },
+      Group: { name: 'Crowd', background_color: null },
+      rsvp_summary: null,
+    }));
+
+  it('Q62 (88.9-52): the compact grid shows +N on one line and speaks N more event(s) from a labelled leaf', () => {
+    const { cells } = renderGrid({ variant: 'compact', events: [...crowd(3, 20), ...crowd(5, 22)] });
+    expect(tokens(cells[0].parentElement as HTMLElement), 'the day grid is not a size container').toContain('@container');
+    const one = screen.getByRole('img', { name: '1 more event' });
+    const three = screen.getByRole('img', { name: '3 more events' });
+    expect((cells[0].parentElement as HTMLElement).querySelectorAll('[role="img"]'), 'a day with one or two games prints a more label').toHaveLength(2);
+    for (const [label, text] of [[one, '+1'], [three, '+3']] as const) {
+      expect(label.textContent, 'the compact label still prints the word').toBe(text);
+      expect(label.getAttribute('tabindex'), 'the label is not a focusable leaf outside the Tab order').toBe('-1');
+      expect(label.children, 'the label holds more than its one hidden text span').toHaveLength(1);
+      expect(label.children[0].getAttribute('aria-hidden'), 'the printed count is not hidden from the accessibility tree').toBe('true');
+      // S-B2 (88.9-52): relative z-10 lifts the label above the NEXT cell's opaque ground, which
+      // otherwise paints over the end of a two-digit count at 200% text. jsdom has no paint order:
+      // this pins the classes only.
+      for (const t of ['text-xs', 'text-content-secondary', 'pointer-events-none', 'select-none', 'whitespace-nowrap', '@max-[14rem]:-mx-1', 'relative', 'z-10']) {
+        expect(tokens(label), `the compact label lacks ${t}`).toContain(t);
+      }
+    }
+  });
+
+  it('Q62 / W18 (88.9-52): the full grid keeps +N more, on one line, and hides the word when the day grid is under 32rem', () => {
+    renderGrid({ variant: 'full', events: crowd(3, 20) });
+    const label = screen.getByRole('img', { name: '1 more event' });
+    expect(label.textContent).toBe('+1 more');
+    expect(tokens(label), 'the full label can wrap').toContain('whitespace-nowrap');
+    expect(tokens(label), 'the full label takes the compact pull').not.toContain('@max-[14rem]:-mx-1');
+    expect(tokens(label), 'the full label is lifted; it has no pull and never leaves its cell').not.toContain('z-10');
+    const word = within(label).getByText('more', { exact: false, selector: 'span span' });
+    expect(word.textContent).toBe(' more');
+    expect(tokens(word), 'the word does not give way in a narrow grid').toContain('@max-[32rem]:hidden');
+  });
+
+  // 88.9-52 (R22 + R26, owner pick C, 2026-11-17): when the compact day grid is under 14rem wide
+  // (about 200% text on a phone) a column is too narrow for a tile or for +N, so each day shows
+  // ONE bold count of its nights instead, and the day numbers are held inside their own cells.
+  // The count is CSS content read from data-count, so no text is added to the page and nothing
+  // changes above the threshold. jsdom lays nothing out: these are class pins plus the
+  // arithmetic the sizes were chosen by. The rendered read is the after-build picture.
+  it('R22 + R26 (88.9-52): under 14rem the compact grid shows one bold count per day in place of the tiles and +N, a one-game day stays one named button, and the day number is held inside its cell', () => {
+    const { cells } = renderGrid({ variant: 'compact', events: [...crowd(1, 18), ...crowd(3, 20), ...crowd(12, 22), ...crowd(101, 24)] });
+    const grid = cells[0].parentElement as HTMLElement;
+    const stackOf = (count: number): HTMLElement => {
+      const hits = grid.querySelectorAll(`[data-count="${count}"]`);
+      expect(hits, `the day with ${count} nights carries no count`).toHaveLength(1);
+      return hits[0] as HTMLElement;
+    };
+    // G1 (88.9-52 round 4): the two- and three-digit sizes end inside the day's OWN cell (they ended
+    // before the next count, and the after-build capture read 12 and 101 up to 7.7px past their cell).
+    const SIZE_2 = 'before:text-[length:clamp(12px,calc((100cqw_-_1.5rem_-_21px)_/_9.94),0.75rem)]';
+    const SIZE_3 = 'before:text-[length:clamp(12px,calc((100cqw_-_1.5rem_-_21px)_/_14.91),0.75rem)]';
+    // The count's line spans the cell (the pull) and starts under the day number wherever the
+    // number fits there; where it does not, the start moves left, never past the cell's edge.
+    const START = (digits: number) => `before:pl-[clamp(0px,calc(100%_+_0.5rem_-_${(0.71 * digits).toFixed(2)}em_-_1px),0.25rem)]`;
+    const HELD = '@max-[14rem]:text-[length:clamp(12px,calc((100cqw_-_3.25rem_-_21px)_/_8.4),0.75rem)]';
+
+    // The count: hidden until the grid is narrow, then a bold line in the day number's ink, lifted
+    // like the +N label it replaces (S-B2), one size arm per digit count.
+    for (const [count, size, others] of [[1, 'before:text-xs', [SIZE_2, SIZE_3]], [3, 'before:text-xs', [SIZE_2, SIZE_3]], [12, SIZE_2, ['before:text-xs', SIZE_3]], [101, SIZE_3, ['before:text-xs', SIZE_2]]] as const) {
+      const stack = stackOf(count);
+      // G1: the stack is NOT a positioning box (its one-night tile must size to the cell, below),
+      // the count's line is pulled out to the cell's inner edges, starts by its digit count, and
+      // lets a tap through to the tile under it.
+      expect(tokens(stack), `the ${count}-night day's stack is a positioning box`).not.toContain('relative');
+      const digits = String(count).length;
+      for (const t of ['before:-mx-1', 'before:pointer-events-none', START(digits)]) expect(tokens(stack), `the ${count}-night day's count lacks ${t}`).toContain(t);
+      for (const other of [1, 2, 3].filter((d) => d !== digits)) expect(tokens(stack), `the ${count}-night day's count carries a second start`).not.toContain(START(other));
+      expect(tokens(stack.parentElement as HTMLElement), `the ${count}-night day's cell is not the overlay's positioning box in a narrow grid`).toContain('@max-[14rem]:relative');
+      for (const t of ['before:hidden', '@max-[14rem]:before:block', 'before:content-[attr(data-count)]', 'before:relative', 'before:z-10', 'before:font-bold', 'before:text-content-primary', 'before:whitespace-nowrap', size]) {
+        expect(tokens(stack), `the ${count}-night day's count lacks ${t}`).toContain(t);
+      }
+      for (const t of others) expect(tokens(stack), `the ${count}-night day's count carries a second size, ${t}`).not.toContain(t);
+      if (size !== 'before:text-xs') expect(tokens(stack), `the ${count}-night day's count has no line height`).toContain('before:leading-4');
+      // No count text in the page: the number lives in the attribute only.
+      expect(Array.from(stack.childNodes).filter((n) => n.nodeType === 3), `the ${count}-night day prints its count as text`).toHaveLength(0);
+    }
+
+    // A day with several nights: every tile and the +N label give way; the day target (unchanged
+    // name) is the one stop.
+    const three = stackOf(3);
+    const tiles = within(three).getAllByRole('button');
+    expect(tiles).toHaveLength(2);
+    for (const tile of tiles) expect(tokens(tile), 'a tile of a several-night day stays in a narrow grid').toContain('@max-[14rem]:hidden');
+    const more = within(three).getByRole('img', { name: '1 more event' });
+    for (const t of ['@max-[14rem]:hidden', 'relative', 'z-10', 'whitespace-nowrap', '@max-[14rem]:-mx-1']) expect(tokens(more), `the +N label lacks ${t}`).toContain(t);
+    expect(screen.getByRole('button', { name: 'Saturday, September 20, 3 games. Open this day.' })).toBeTruthy();
+
+    // A one-game day has no day target (W39), so its tile must stay a button: it becomes a clear
+    // overlay on the count, with the same name and the same handlers, and only its name text hides.
+    const solo = within(stackOf(1)).getByRole('button', { name: 'Game 0 - Crowd' });
+    for (const t of ['@max-[14rem]:absolute', '@max-[14rem]:inset-0', '@max-[14rem]:bg-transparent!', '@max-[14rem]:border-0!']) {
+      expect(tokens(solo), `the one-game day's tile lacks ${t}`).toContain(t);
+    }
+    // G1 (88.9-52 round 4): the overlay covers the day's CELL, not the count's 12.7 x 48px box the
+    // after-build capture measured. An absolute box sizes to its nearest positioned ancestor, so
+    // between the tile and its cell exactly the cell is positioned (in a narrow grid only).
+    {
+      const cell = cells.find((c) => c.contains(solo)) as HTMLElement;
+      expect(cell, "the one-game day's tile sits in no day cell").toBeTruthy();
+      const positioned: HTMLElement[] = [];
+      for (let el = solo.parentElement as HTMLElement | null; el; el = el === cell ? null : el.parentElement) {
+        // A before: token positions the count's own line, not the element.
+        if (tokens(el).some((t) => !t.startsWith('before:') && /(^|:)(relative|absolute|fixed|sticky)$/.test(t))) positioned.push(el);
+      }
+      expect(positioned, "the one-game day's overlay does not size to its cell").toEqual([cell]);
+      expect(tokens(cell)).toContain('@max-[14rem]:relative');
+      expect(tokens(cell), 'the cell is positioned above the threshold too').not.toContain('relative');
+    }
+    expect(tokens(solo), "the one-game day's tile is removed in a narrow grid, leaving the day with no button").not.toContain('@max-[14rem]:hidden');
+    expect(solo.getAttribute('tabindex')).toBe('0');
+    expect(solo.children).toHaveLength(1);
+    expect(tokens(solo.children[0]), "the one-game day's tile name does not give way to the count").toEqual(expect.arrayContaining(['truncate', '@max-[14rem]:hidden']));
+    expect((solo.textContent ?? '').trim()).toBe('Game 0');
+    for (const tile of tiles) expect(tokens(tile), 'a several-night tile takes the overlay').not.toContain('@max-[14rem]:absolute');
+
+    // The day numbers: the normal size, and under 14rem a size that follows the column.
+    const dayNumbers = cells.map((cell) => cell.firstElementChild as HTMLElement).filter((el) => el && /^\d{1,2}$/.test((el.textContent ?? '').trim()));
+    expect(dayNumbers.length).toBeGreaterThanOrEqual(28);
+    for (const el of dayNumbers) {
+      expect(tokens(el), `day ${el.textContent}: the number lost its normal size`).toContain('text-xs');
+      expect(tokens(el), `day ${el.textContent}: the number is not held in a narrow grid`).toContain(HELD);
+    }
+
+    // The arithmetic behind the three sizes (px; root = the root text size, grid = the day grid's
+    // width; a cell is (grid - 6 gaps of 0.25rem) / 7; text starts 0.25rem + 1px inside its cell).
+    // A plain digit is an estimate from capture g's label widths (0.625em). A bold digit is at most
+    // 0.71em: the after-build capture (r3-l) read the count's ink at 24px bold as 9.7px for 1,
+    // 14.3px for 2, 14.7px for 3 and, from 101, 0.70em for 0, the widest it read.
+    const clamp = (lo: number, v: number, hi: number) => Math.min(Math.max(v, lo), hi);
+    const held = (grid: number, root: number) => clamp(12, (grid - 3.25 * root - 21) / 8.4, 0.75 * root);
+    const countSize = (grid: number, root: number, divisor: number) => clamp(12, (grid - 1.5 * root - 21) / divisor, 0.75 * root);
+    // 375 at normal text (grid 319, capture g): nothing is held, everything is its normal 12px.
+    expect(held(319, 16)).toBe(12);
+    expect(countSize(319, 16, 9.94)).toBe(12);
+    expect(countSize(319, 16, 14.91)).toBe(12);
+    // Up to the threshold itself the number is its full scaled size: no jump where the query flips.
+    expect(held(448, 32)).toBe(24);
+    for (const [gridPx, root] of [[263, 32], [208, 32]] as const) {
+      const cell = (gridPx - 1.5 * root) / 7;
+      const pitch = cell + 0.25 * root;
+      const start = 0.25 * root + 1;
+      // A two-digit day number ends inside its own cell, or at most 2px past it where the 12px
+      // floor holds (a 320 phone at 200%: 1.1px past; the next cell is 8px further on).
+      expect(start + held(gridPx, root) * 1.25, `grid ${gridPx}: a two-digit day number leaves its cell`).toBeLessThanOrEqual(cell + 2);
+      // G1: a count ends inside its OWN cell, for one, two and three digits, at the widest digit
+      // the capture read (0.71em). Its line spans the cell's inner width (cell - 2px of border);
+      // its start is the day number's (0.25rem in) wherever that fits and moves left otherwise.
+      // The one case no size at or above 12px can hold is three digits on a 320 phone at 200%.
+      for (const [digits, divisor] of [[1, Infinity], [2, 9.94], [3, 14.91]] as const) {
+        const size = divisor === Infinity ? 0.75 * root : countSize(gridPx, root, divisor);
+        const ink = size * 0.71 * digits;
+        const line = cell - 2;
+        const pad = clamp(0, line - ink - 1, 0.25 * root);
+        const end = 1 + pad + ink;
+        if (digits === 3 && gridPx === 208) {
+          expect(size, 'three digits at 320 / 200% sit on the 12px floor').toBe(12);
+          expect(end, 'three digits at 320 / 200%: the 12px floor is wider than the cell at the widest digits').toBeGreaterThan(cell);
+          // The number the capture staged, 101, does fit there: 1 0 1 at 12px is 18.1px of ink.
+          expect(1 + clamp(0, line - 12 * (0.404 + 0.702 + 0.404) - 1, 0.25 * root) + 12 * (0.404 + 0.702 + 0.404)).toBeLessThanOrEqual(cell);
+          continue;
+        }
+        expect(end, `grid ${gridPx}: a ${digits}-digit count leaves its own cell`).toBeLessThanOrEqual(cell);
+        expect(end, `grid ${gridPx}: a ${digits}-digit count reaches the next day's count`).toBeLessThan(pitch);
+      }
+    }
+    // As built in round 3 the two sizes ended before the NEXT count, not inside the cell: at 375 /
+    // 200% a two-digit count was 24px, and 12 (24px of ink) ended 2.3px past its cell (r3-l).
+    expect(0.25 * 32 + 1 + 24 - (263 - 48) / 7).toBeGreaterThan(2);
+    // As built, the 24px day number at 375 / 200% ended 7px past its cell: what capture g saw.
+    expect(0.25 * 32 + 1 + 24 * 1.25 - (263 - 48) / 7).toBeGreaterThan(7);
+  });
+
+  it('R22 + R26 (88.9-52): the full grid takes none of it', () => {
+    const { cells } = renderGrid({ variant: 'full', events: [...crowd(1, 18), ...crowd(3, 20)] });
+    const grid = cells[0].parentElement as HTMLElement;
+    expect(grid.querySelectorAll('[data-count]'), 'the full grid carries a count').toHaveLength(0);
+    const narrow = Array.from(grid.querySelectorAll('*')).flatMap((el) => tokens(el)).filter((t) => t.startsWith('@max-[14rem]:') || t.startsWith('before:'));
+    expect(narrow, 'the full grid reads the 14rem threshold').toEqual([]);
+  });
+
+  const rsvpEvent = {
+    id: 'evt-rsvp',
+    start_date: '2031-09-20T19:00:00',
+    Game: { name: 'Catan' },
+    Group: { name: 'Tuesday Crew', background_color: '#722f37' },
+    rsvp_summary: { yes: 3, maybe: 1, no: 2 },
+  };
+
+  it('E1a (88.9): compact tile carries no RSVP count', () => {
+    renderGrid({ variant: 'compact', events: [rsvpEvent] });
+    const tile = screen.getByRole('button', { name: "Catan - Tuesday Crew, 3 going, 1 maybe, 2 can't" });
+    for (const chip of ['3Y', '1M', '2N']) {
+      expect(within(tile).queryByText(chip), `the compact tile still renders the ${chip} count chip`).toBeNull();
+    }
+    expect((tile.textContent ?? '').trim()).toBe('Catan');
+  });
+
+  // AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): this test pinned F7a (light arm
+  // with no shadow and no stroke, dark arm at the half-pixel stroke, both under a 70% white wash).
+  // A picture tile now takes the one photo text set in BOTH arms, past or not, with no wash.
+  it('X23a (88.9): an image tile takes the photo text set in both arms', () => {
+    const imageGroup = { name: 'Photo Crew', background_color: '#722f37', background_image_url: 'https://i.imgur.com/x.png' };
+    const cases = [
+      { when: 'upcoming', anchor: new Date(2031, 8, 1, 12, 0, 0, 0), start: '2031-09-20T19:00:00' },
+      { when: 'past', anchor: new Date(2020, 8, 1, 12, 0, 0, 0), start: '2020-09-20T19:00:00' },
+    ];
+    for (const { when, anchor, start } of cases) {
+      renderGrid({
+        anchor,
+        variant: 'full',
+        events: [{ ...rsvpEvent, id: `evt-image-${when}`, start_date: start, rsvp_summary: null, Group: imageGroup }],
+      });
+      const tile = screen.getByRole('button', { name: 'Catan - Photo Crew' });
+      expect(tile.style.backgroundImage, `${when}: the fixture tile paints no picture, so this pins nothing`).toContain('i.imgur.com/x.png');
+      for (const arm of ['', '-l']) {
+        const side = arm ? 'light' : 'dark';
+        expect(tile.style.getPropertyValue(`--t-color${arm}`), `${when} ${side} arm colour`).toBe('#ffffff');
+        expect(tile.style.getPropertyValue(`--t-stroke${arm}`), `${when} ${side} arm stroke`).toBe('2px #000000');
+        expect(tile.style.getPropertyValue(`--t-paint${arm}`), `${when} ${side} arm paint order`).toBe('stroke fill');
+        expect(tile.style.getPropertyValue(`--t-track${arm}`), `${when} ${side} arm letter-spacing`).toBe('0.03em');
+        expect(tile.style.getPropertyValue(`--t-shadow${arm}`), `${when} ${side} arm shadow`).toBe('none');
+      }
+      expect(tile.innerHTML, `${when}: the 70% white wash is still mounted over the tile photo`).not.toContain('rgba(255, 255, 255, 0.7)');
+      const name = within(tile).getByText('Catan');
+      for (const util of [
+        '[-webkit-text-stroke:var(--t-stroke-l)]',
+        'dark:[-webkit-text-stroke:var(--t-stroke)]',
+        '[paint-order:var(--t-paint-l,normal)]',
+        'dark:[paint-order:var(--t-paint,normal)]',
+        '[letter-spacing:var(--t-track-l,normal)]',
+        'dark:[letter-spacing:var(--t-track,normal)]',
+      ]) {
+        expect(tokens(name), `${when}: the game name does not read ${util}`).toContain(util);
+      }
+      cleanup();
+    }
+  });
+
+  it("D5a/O18a (88.9): a guest event's full tile carries the dashed amber edge, a member event's does not", () => {
+    // A synthetic viewer id (T-88.9-76): compared only, never rendered.
+    const VIEWER = '00000000-0000-4000-8000-000000000028';
+    const guestEvent = {
+      id: 'evt-guest',
+      start_date: '2031-09-20T19:00:00',
+      Game: { name: 'Azul' },
+      Group: { name: 'Guest Crew', background_color: null },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: true }],
+    };
+    const memberEvent = {
+      id: 'evt-member',
+      start_date: '2031-09-22T19:00:00',
+      Game: { name: 'Wingspan' },
+      Group: { name: 'Home Crew', background_color: null },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: false }],
+    };
+    renderGrid({ variant: 'full', events: [guestEvent, memberEvent], viewerDbUserId: VIEWER });
+    const guest = screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' });
+    // AMENDED 88.9-52 (W14 follow-up 2): the full tile's dark edge is amber-500 at full strength,
+    // not 70% (the full-tile ratio test below says why).
+    for (const t of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500']) {
+      expect(tokens(guest), `the guest tile lacks ${t}`).toContain(t);
+    }
+    expect(tokens(guest), 'the full guest tile still carries the 70% dark edge').not.toContain('dark:border-amber-500/70');
+    const member = screen.getByRole('button', { name: 'Wingspan - Home Crew' });
+    expect(tokens(member), 'a member tile is dashed').not.toContain('border-dashed');
+    cleanup();
+
+    // AMENDED 88.9-52 (W14, owner 2026-11-16: try the dashed guest edge on the compact tile): the
+    // compact guest tile takes the same edge and the same word; a compact member tile has no border
+    // at all, so its 28px text box at 375 is unchanged. Before W14 the compact tile had neither.
+    renderGrid({ variant: 'compact', events: [guestEvent, memberEvent], viewerDbUserId: VIEWER });
+    const compactGuest = screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' });
+    // AMENDED 88.9-52 (W14 follow-up): the compact tile's dark edge is amber-500 at full strength,
+    // not the full tile's 70% (the ratio test below says why).
+    for (const t of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500']) {
+      expect(tokens(compactGuest), `the compact guest tile lacks ${t}`).toContain(t);
+    }
+    expect(tokens(compactGuest), 'the compact guest tile still carries the 70% dark edge').not.toContain('dark:border-amber-500/70');
+    const compactMember = screen.getByRole('button', { name: 'Wingspan - Home Crew' });
+    // 88.9-52 (R22 + R26): a one-night tile carries one border token, the narrow-grid switch that
+    // takes a border OFF (width 0); it paints none, so it is the one token let through here.
+    expect(tokens(compactMember).filter((t) => /(^|:)border(-|$)/.test(t) && t !== '@max-[14rem]:border-0!'), 'a compact member tile carries a border').toEqual([]);
+    cleanup();
+
+    // The word sits before the RSVP counts in the compact name.
+    renderGrid({ variant: 'compact', events: [{ ...guestEvent, rsvp_summary: { yes: 2, maybe: 0, no: 1 } }], viewerDbUserId: VIEWER });
+    expect(screen.getByRole('button', { name: "Azul - Guest Crew, Guest, 2 going, 0 maybe, 1 can't" })).toBeTruthy();
+    cleanup();
+
+    // Compact with no viewer id: no edge, no word.
+    renderGrid({ variant: 'compact', events: [guestEvent] });
+    expect(tokens(screen.getByRole('button', { name: 'Azul - Guest Crew' })), 'the compact tile is dashed with no viewer id').not.toContain('border-dashed');
+    cleanup();
+
+    // No viewer id: nothing is dashed and nothing says Guest.
+    renderGrid({ variant: 'full', events: [guestEvent, memberEvent] });
+    for (const name of ['Azul - Guest Crew', 'Wingspan - Home Crew']) {
+      expect(tokens(screen.getByRole('button', { name })), `${name} is dashed with no viewer id`).not.toContain('border-dashed');
+    }
+  });
+
+  // The guest edge of one tile variant, measured. The edge classes come off the RENDERED tile, the
+  // hexes off globals.css, the tints off the preset table. Each edge is composited over the tile's
+  // own fill (a tile's background paints under its border), then measured against that fill (the
+  // inner side) and against each ground a day cell can hold (the outer side). Floor 3.0 (WCAG
+  // 1.4.11). An image tile is not measured: a photo has no fixed ratio (the marker in GuestPill.tsx).
+  // S-B1 (88.9-52), the HOVERED TILE arm: a tile under the pointer paints with its own hover
+  // classes, read off the rendered tiles (tile = the untinted one, tintedTile = a tinted one): a
+  // hover opacity fades the edge AND the fill together over the cell, and a hover fill replaces the
+  // fill under the edge. Every cell ground is measured, a superset of the cells a pointer can be in.
+  const measureGuestEdge = (tile: string[], tintedTile: string[], variant: 'compact' | 'full'): { failures: string[]; measured: number; hovered: number } => {
+  const css = readFileSync(resolvePath(__dirname, '../globals.css'), 'utf8');
+  const decls = (name: string): string[] =>
+    [...css.matchAll(new RegExp('^[ \\t]*' + name + ':[ \\t]*([^;]+);', 'gm'))].map((m) => m[1].trim());
+  const one = (name: string): string => {
+    const hits = decls(name);
+    if (hits.length !== 1 || !/^#[0-9a-f]{6}$/i.test(hits[0])) throw new Error(`${name}: expected one hex declaration, found ${JSON.stringify(hits)}`);
+    return hits[0];
+  };
+  // A themed token is declared twice, light first then dark; each is a hex or one var() hop.
+  const themed = (name: string): { light: string; dark: string } => {
+    const hits = decls(name);
+    if (hits.length !== 2) throw new Error(`${name}: expected a light and a dark declaration, found ${hits.length}`);
+    const [light, dark] = hits.map((v) => {
+      const hop = /^var\((--[a-z0-9-]+)\)$/.exec(v);
+      return hop ? one(hop[1]) : v;
+    });
+    return { light, dark };
+  };
+  const readEdge = (pattern: RegExp, what: string): { hex: string; alpha: number } => {
+    const hits = tile.map((t) => pattern.exec(t)).filter((m): m is RegExpExecArray => m !== null);
+    if (hits.length !== 1) throw new Error(`the ${variant} guest tile holds ${hits.length} ${what} edge colours, expected 1`);
+    return { hex: one(`--color-amber-${hits[0][1]}`), alpha: hits[0][2] === undefined ? 1 : Number(hits[0][2]) / 100 };
+  };
+  const edge = {
+    light: readEdge(/^border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'light'),
+    dark: readEdge(/^dark:border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'dark'),
+  };
+  for (const t of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500']) {
+    if (!tintedTile.includes(t)) throw new Error(`the tinted ${variant} guest tile lacks ${t}, so it is not the same edge`);
+  }
+  const hoverOf = (classes: string[], what: string): { opacity: number; fill: { light: string; dark: string } | null } => {
+    const opacities = classes.map((t) => /^hover:opacity-(\d{1,3})$/.exec(t)).filter((m): m is RegExpExecArray => m !== null);
+    const hoverFills = classes.map((t) => /^hover:bg-surface-([a-z-]+)$/.exec(t)).filter((m): m is RegExpExecArray => m !== null);
+    if (opacities.length > 1 || hoverFills.length > 1) throw new Error(`the ${what} ${variant} guest tile holds ${opacities.length} hover opacities and ${hoverFills.length} hover fills, expected at most 1 of each`);
+    return {
+      opacity: opacities.length === 1 ? Number(opacities[0][1]) / 100 : 1,
+      fill: hoverFills.length === 1 ? themed(`--color-bg-${hoverFills[0][1]}`) : null,
+    };
+  };
+  const hover = { untinted: hoverOf(tile, 'untinted'), tinted: hoverOf(tintedTile, 'tinted') };
+  const muted = themed('--color-bg-muted');
+  const cells = {
+    "this month's cell": themed('--color-bg-tile'),
+    "today's cell": muted,
+    'an adjacent-month cell': themed('--color-bg-page'),
+    'a hovered cell': themed('--color-bg-hover'),
+    // The full grid alone paints past days on their own ground.
+    ...(variant === 'full' ? { 'a past cell': themed('--color-bg-tile-past') } : {}),
+  };
+
+  const failures: string[] = [];
+  let measured = 0;
+  let hovered = 0;
+  for (const theme of ['light', 'dark'] as const) {
+    const fills = [
+      // An untinted COMPACT tile is filled with the muted surface; an untinted FULL tile has no
+      // fill of its own, so the cell behind it is both its inner and its outer side.
+      ...(variant === 'compact' ? [{ name: 'untinted', fill: muted[theme] as string | null }] : [{ name: 'untinted', fill: null as string | null }]),
+      ...GROUP_COLOUR_PRESETS.map((p) => ({ name: `${p.name} tint`, fill: p[theme] as string | null })),
+    ];
+    for (const { name, fill } of fills) {
+      const sides: [string, string][] = [...(fill === null ? [] : [['its own fill', fill] as [string, string]]), ...Object.entries(cells).map(([cell, v]): [string, string] => [cell, v[theme]])];
+      for (const [side, against] of sides) {
+        const painted = blend(edge[theme].hex, edge[theme].alpha, fill ?? against);
+        const value = contrastRatio(painted, against);
+        if (value === null) throw new Error(`could not measure the ${theme} edge on ${name} against ${side}`);
+        measured += 1;
+        if (value < 3.0) failures.push(`[${theme}] ${name} tile, edge painted ${painted}: ${value.toFixed(4)}:1 against ${side} (${against}), floor 3.00:1`);
+      }
+
+      // The hovered tile.
+      const h = name === 'untinted' ? hover.untinted : hover.tinted;
+      const hoverFill = h.fill === null ? fill : h.fill[theme];
+      for (const [cell, v] of Object.entries(cells)) {
+        const ground = v[theme];
+        const edgePainted = blend(blend(edge[theme].hex, edge[theme].alpha, hoverFill ?? ground), h.opacity, ground);
+        const fillPainted = hoverFill === null ? null : blend(hoverFill, h.opacity, ground);
+        const hoverSides: [string, string][] = [[cell, ground], ...(fillPainted === null ? [] : [['its own hovered fill', fillPainted] as [string, string]])];
+        for (const [side, against] of hoverSides) {
+          const value = contrastRatio(edgePainted, against);
+          if (value === null) throw new Error(`could not measure the hovered ${theme} edge on ${name} against ${side}`);
+          measured += 1;
+          hovered += 1;
+          if (value < 3.0) failures.push(`[${theme}] HOVERED ${name} tile (opacity ${h.opacity}) in ${cell}, edge painted ${edgePainted}: ${value.toFixed(4)}:1 against ${side} (${against}), floor 3.00:1`);
+        }
+      }
+    }
+  }
+    return { failures, measured, hovered };
+  };
+
+  // S-B1: one untinted and one tinted guest tile of a variant, as class tokens.
+  const guestTiles = (variant: 'compact' | 'full'): { tile: string[]; tintedTile: string[] } => {
+    const VIEWER = '00000000-0000-4000-8000-000000000028';
+    const guestNight = (id: string, game: string, colour: string | null) => ({
+      id,
+      start_date: '2031-09-20T19:00:00',
+      Game: { name: game },
+      Group: { name: 'Guest Crew', background_color: colour },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: true }],
+    });
+    renderGrid({ variant, viewerDbUserId: VIEWER, events: [guestNight('evt-guest', 'Azul', null), guestNight('evt-guest-tint', 'Root', '#722f37')] });
+    const tile = tokens(screen.getByRole('button', { name: 'Azul - Guest Crew, Guest' }));
+    const tintedTile = tokens(screen.getByRole('button', { name: 'Root - Guest Crew, Guest' }));
+    cleanup();
+    if (!tintedTile.includes('bg-[var(--group-ground-light)]')) throw new Error(`the tinted ${variant} fixture tile is not tinted, so the hovered arm reads the wrong classes`);
+    if (tile.includes('bg-[var(--group-ground-light)]')) throw new Error(`the untinted ${variant} fixture tile is tinted`);
+    return { tile, tintedTile };
+  };
+
+  it('W14 (88.9-52): the compact guest tile edge clears 3:1 against its own fill and against every day cell around it, both themes', () => {
+    // Measured by measureGuestEdge above: this month's cell, today's cell, an adjacent-month cell
+    // on the page ground, and the hovered cell; then the same again for the tile under the pointer
+    // (S-B1: at hover:opacity-90 the light edge on today's cell measured 2.9516).
+    const { tile, tintedTile } = guestTiles('compact');
+    const { failures, measured, hovered } = measureGuestEdge(tile, tintedTile, 'compact');
+    expect(failures, `the compact guest edge must clear 3:1 on every arm:\n${failures.join('\n')}`).toEqual([]);
+    // At rest: 2 themes x 9 fills x (own fill + 4 cell grounds) = 90.
+    // Hovered: 2 themes x 9 fills x 4 cell grounds x (the cell + the hovered fill) = 144.
+    expect(hovered, 'anti-vacuity: 144 hovered measurements').toBe(144);
+    expect(measured, 'anti-vacuity: 234 measurements').toBe(234);
+  });
+
+  it('W14 follow-up (88.9-52): the full guest tile edge clears 3:1 against its own fill and against every day cell around it, both themes', () => {
+    // WORDS fixer finding, 88.9-52: the full tile kept GUEST_ROW_EDGE (amber-500 at 70% in dark);
+    // by the compact tile's arithmetic a blue-tinted full tile in today's cell or a hovered cell
+    // measured 2.98 on its outer side in dark. The full grid also paints past days on their own
+    // ground, and an untinted full tile has no fill, so the cell is behind its edge.
+    const { tile, tintedTile } = guestTiles('full');
+    const { failures, measured, hovered } = measureGuestEdge(tile, tintedTile, 'full');
+    expect(failures, `the full guest edge must clear 3:1 on every arm:\n${failures.join('\n')}`).toEqual([]);
+    // At rest: 2 themes x (8 tints x (own fill + 5 cell grounds) + the untinted tile on 5 cell grounds) = 106.
+    // Hovered: 2 themes x (8 tints x 5 cell grounds x (the cell + the hovered fill) + the untinted tile on 5 cell grounds) = 170.
+    expect(hovered, 'anti-vacuity: 170 hovered measurements').toBe(170);
+    expect(measured, 'anti-vacuity: 276 measurements').toBe(276);
+  });
+
+  it('S-B1 (88.9-52): a guest tile answers the pointer with a solid edge and keeps full opacity; a member tile keeps its own hover', () => {
+    const VIEWER = '00000000-0000-4000-8000-000000000028';
+    const night = (id: string, game: string, colour: string | null, isGuest: boolean) => ({
+      id,
+      start_date: '2031-09-20T19:00:00',
+      Game: { name: game },
+      Group: { name: 'Crew', background_color: colour },
+      rsvp_summary: null,
+      EventParticipations: [{ user_id: VIEWER, is_guest: isGuest }],
+    });
+    for (const variant of ['compact', 'full'] as const) {
+      for (const colour of [null, '#722f37']) {
+        renderGrid({ variant, viewerDbUserId: VIEWER, events: [night('evt-g', 'Azul', colour, true), night('evt-m', 'Root', colour, false)] });
+        const guest = tokens(screen.getByRole('button', { name: 'Azul - Crew, Guest' }));
+        const member = tokens(screen.getByRole('button', { name: 'Root - Crew' }));
+        cleanup();
+        const where = `${variant}, ${colour === null ? 'untinted' : 'tinted'}`;
+        expect(guest, `${where}: the guest tile has no solid-edge hover`).toContain('hover:border-solid');
+        expect(guest.filter((t) => t.startsWith('hover:opacity-')), `${where}: the guest tile fades under the pointer`).toEqual([]);
+        expect(member, `${where}: a member tile took the guest hover`).not.toContain('hover:border-solid');
+        // The member hover is what it was: the fill step on an untinted compact tile, 90% elsewhere.
+        const memberHover = variant === 'compact' && colour === null ? 'hover:bg-surface-elevated' : 'hover:opacity-90';
+        expect(member, `${where}: the member tile lost ${memberHover}`).toContain(memberHover);
+      }
+    }
+  });
+
+  it('S-B3 (88.9-52): the guest edge is one family in GuestPill.tsx; the month tiles import theirs and hold no amber edge literal', () => {
+    // Read through the namespace so a missing export fails here as an assertion.
+    const family = guestEdges as unknown as { GUEST_ROW_EDGE?: string; GUEST_TILE_EDGE?: string; GUEST_TILE_HOVER?: string };
+    // No class value changed in the move: the rows keep the owner-ruled 70% in dark, the tiles are full strength.
+    expect(family.GUEST_ROW_EDGE).toBe('border border-dashed border-amber-700 dark:border-amber-500/70');
+    expect(family.GUEST_TILE_EDGE, 'GuestPill.tsx does not export the tile edge').toBe('border border-dashed border-amber-700 dark:border-amber-500');
+    expect(family.GUEST_TILE_HOVER, 'GuestPill.tsx does not export the tile hover').toBe('hover:border-solid');
+
+    const { tile, tintedTile } = guestTiles('compact');
+    const full = guestTiles('full');
+    for (const rendered of [tile, tintedTile, full.tile, full.tintedTile]) {
+      for (const t of [...(family.GUEST_TILE_EDGE ?? '').split(' '), family.GUEST_TILE_HOVER ?? '']) {
+        expect(rendered, `a guest month tile lacks ${t}`).toContain(t);
+      }
+    }
+
+    // The source holds no amber border class of its own, in code or in a string (comments are
+    // dropped line by line: every marker line in the file starts with // or sits in a block).
+    const source = readFileSync(resolvePath(__dirname, 'CalendarMonthView.js'), 'utf8');
+    const literals = source.split('\n').filter((line) => /['"\x60][^'"\x60]*border-amber-\d/.test(line) && /className|const /.test(line));
+    expect(literals, 'CalendarMonthView.js carries its own amber edge literal again').toEqual([]);
+    expect(source, 'CalendarMonthView.js does not import the tile edge from GuestPill').toMatch(/import \{ GUEST_TILE_EDGE, GUEST_TILE_HOVER \} from '\.\/GuestPill';/);
   });
 });

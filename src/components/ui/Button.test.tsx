@@ -165,6 +165,25 @@ describe('Button', () => {
     expect(btn).toHaveClass('bg-transparent');
   });
 
+  // X49 (88.9-65, owner 2026-11-13): a destructive action at ghost WEIGHT. The phone kebab paints
+  // its Delete item in the danger ink; the desktop button takes the same ink without the danger
+  // variant's fill, so the demotion a ghost carries is kept.
+  it('X49 (88.9-65): ghostDanger is ghost weight with the danger ink, and no .btn-* background class', () => {
+    render(<Button variant="ghostDanger">Delete</Button>);
+    const btn = screen.getByRole('button');
+    expect(btn).toHaveClass('btn');
+    expect(btn).toHaveClass(
+      'bg-transparent',
+      'text-content-status-error',
+      'enabled-hover:bg-surface-ghost-hover',
+      'aria-disabled:text-content-muted'
+    );
+    for (const filled of ['btn-primary', 'btn-secondary', 'btn-danger', 'btn-accent']) {
+      expect(btn).not.toHaveClass(filled);
+    }
+    expect(btn).not.toHaveClass('text-content-secondary');
+  });
+
   it('gives size="icon" a 44x44 floor', () => {
     render(
       <Button variant="ghost" size="icon" aria-label="Open menu">
@@ -236,6 +255,20 @@ describe('Button', () => {
           tok,
           `88.6-06 D-09 — \`accent\` must emit the CLASS, never the amber as utilities; found \`${tok}\``
         ).not.toMatch(/^(bg-|text-content-)/);
+      }
+    });
+
+    // 88.9-52 R6 (owner 2026-11-17): the Admin-blue confirm. Like accent it emits the CLASS only;
+    // the fills, inks and the waiting pair live in globals.css over the btn-admin tokens.
+    it('variant="admin" emits btn-admin, no other fill class and no colour utility of its own (R6)', () => {
+      render(<Button variant="admin">Make admin</Button>);
+      const btn = screen.getByRole('button', { name: 'Make admin' });
+      expect(btn).toHaveClass('btn', 'btn-admin');
+      for (const filled of ['btn-primary', 'btn-secondary', 'btn-danger', 'btn-accent']) {
+        expect(btn).not.toHaveClass(filled);
+      }
+      for (const tok of tokensOf(btn.className)) {
+        expect(tok, `R6: admin must emit the CLASS, never a colour utility; found ${tok}`).not.toMatch(/^(bg-|text-content-|border)/);
       }
     });
 
@@ -314,7 +347,10 @@ describe('Button', () => {
       expect(
         ghost,
         "88.6-06 D10 — a NATIVELY-disabled ghost washed on hover until this narrowing: the shipped `aria-disabled:hover:bg-transparent` override only ever reached the ARIA half"
-      ).toContain('enabled-hover:bg-surface-hover');
+      ).toContain('enabled-hover:bg-surface-ghost-hover');
+      // AMENDED Phase 88.9-52 (R8c, owner 2026-11-17): the wash is the ghost family's own key (light:
+      // the visible secondary fill). The narrowing this test pins, enabled-hover, is unchanged.
+      expect(ghost).not.toContain('enabled-hover:bg-surface-hover');
       // Gate A test 53's pin (src/app/tokenContrast.test.ts ("53. 88.8 HIGH-A")) scans this same
       // string: the gated state is COLOUR, never element opacity.
       expect(ghost).toContain('aria-disabled:text-content-muted');
@@ -371,7 +407,7 @@ describe('Button', () => {
       expect(link).not.toHaveAttribute('type');
     });
 
-    it('the derived key list really is the whole 5 x 3 surface', () => {
+    it('the derived key list really is the whole 7 x 4 surface', () => {
       // A derivation that silently returns [] makes every matrix assertion
       // vacuous, so the anti-vacuity check comes first and names the mechanism.
       expect(
@@ -381,15 +417,26 @@ describe('Button', () => {
       expect(ALL_SIZES).not.toHaveLength(0);
       expect([...ALL_VARIANTS].sort()).toEqual([
         'accent',
+        'admin',
         'danger',
         'ghost',
+        'ghostDanger',
         'primary',
         'secondary',
       ]);
-      expect([...ALL_SIZES].sort()).toEqual(['default', 'icon', 'sm']);
+      // AMENDED Phase 88.9-28 (N1): the size map gained iconSquare (the month-nav square, owner pick
+      // N1), so the surface is 5 x 4 = 20, chosen OVER leaving the 5 x 3 expectation, which is now
+      // false by the owner's ruling. The title moved with it (88.6-06 wrote 5 x 3).
+      expect([...ALL_SIZES].sort()).toEqual(['default', 'icon', 'iconSquare', 'sm']);
       // The stated expectation, kept beside the derivation rather than instead
-      // of it: 15 combinations after this plan.
-      expect(ALL_VARIANTS.length * ALL_SIZES.length).toBe(15);
+      // of it: 15 combinations after plan 88.6-06, 20 after 88.9-28.
+      // AMENDED Phase 88.9-65 (X49): the variant map gained ghostDanger (ghost weight, danger ink),
+      // so the surface is 6 x 4 = 24, chosen OVER leaving the 5 x 4 expectation, which the new
+      // variant makes false. The title moved with it.
+      // AMENDED Phase 88.9-52 (R6, owner 2026-11-17): the variant map gained admin (the Admin-blue
+      // confirm), so the surface is 7 x 4 = 28, chosen OVER leaving the 6 x 4 expectation, which
+      // the new variant makes false. The title moved with it.
+      expect(ALL_VARIANTS.length * ALL_SIZES.length).toBe(28);
     });
 
     it('SOURCE SCAN: no unprefixed hover token in the cva base or the variant map', () => {

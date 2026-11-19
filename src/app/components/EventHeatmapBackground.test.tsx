@@ -270,3 +270,51 @@ describe('EventHeatmapBackground — the day header is named with the full day (
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Plan 88.9-42 — round-2 look pins on this surface. jsdom loads no stylesheet, so these read the
+// rendered class strings; the token values behind them are pinned by tokenContrast.test.ts.
+// ---------------------------------------------------------------------------
+describe('EventHeatmapBackground — K8, the Google Calendar conflict box on the B3a status-warning family (plan 88.9-42)', () => {
+  // Copy census K8: the "Heads up" box was light-only raw amber with no dark twin. It wears the
+  // same opaque status-warning tokens as the home page's removed-member notice, in both themes.
+  const withOneConflict = {
+    ...heatmapData,
+    gcalConflicts: [{ user_id: 'b', username: 'Bob', date: '2026-06-29', hour: 18 }],
+  };
+
+  it('K8 (88.9): the Google Calendar conflict box and conflict lines sit on the status-warning family', () => {
+    render(<EventHeatmapBackground heatmapData={withOneConflict} loading={false} anchorDate="2026-06-29" />);
+    const box = screen.getByText(/Heads up: Bob may have Google Calendar conflicts/);
+    expect(box).toHaveClass('bg-status-warning-subtle', 'border-status-warning', 'text-content-status-warning');
+    expect(
+      Array.from(box.classList).filter((c) => c.includes('amber')),
+      'no raw amber class on the conflict box'
+    ).toEqual([]);
+  });
+});
+
+describe('EventHeatmapBackground — O08b, the legend ramp on tokens (plan 88.9-42, owner pick 2026-11-07)', () => {
+  // The five legend swatches were bg-green-100..500 raw palette in both themes. O08b: five
+  // per-theme tokens (--color-status-success-border mixed into the card at 20 / 35 / 50 / 70 /
+  // 90 percent, literal hexes in globals.css) and the legend words on text-content-secondary.
+  // The grid cells keep ReadCell's ramp — the pick changed the legend only.
+  it('O08b (88.9): the five legend swatches take the heatmap-legend tokens and the legend words are text-content-secondary', () => {
+    render(<EventHeatmapBackground heatmapData={heatmapData} loading={false} anchorDate="2026-06-29" />);
+    const less = screen.getByText('Less');
+    const more = screen.getByText('More available');
+    expect(less).toHaveClass('text-content-secondary');
+    expect(more).toHaveClass('text-content-secondary');
+
+    const strip = less.parentElement as HTMLElement;
+    expect(more.parentElement).toBe(strip);
+    const swatches = Array.from(strip.querySelectorAll<HTMLElement>('div'));
+    expect(swatches).toHaveLength(6);
+    expect(swatches[0]).toHaveClass('bg-surface-elevated');
+    swatches.slice(1).forEach((swatch, i) => {
+      expect(swatch, `legend step ${i + 1}`).toHaveClass(`bg-surface-heatmap-legend-${i + 1}`);
+    });
+    const green = swatches.map((el) => el.className).filter((c) => /\bbg-green-\d/.test(c));
+    expect(green, 'no raw green palette class on the legend').toEqual([]);
+  });
+});

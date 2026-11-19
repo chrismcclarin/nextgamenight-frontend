@@ -14,7 +14,7 @@
 //
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -75,7 +75,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import AvailabilityFormPage from './page';
-import { magicAuthAPI, availabilityFormAPI } from '@/lib/api';
+import { magicAuthAPI, availabilityFormAPI, ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -90,7 +90,7 @@ const existing = () => availabilityFormAPI.getExistingResponse as unknown as Moc
  * and the page sees exactly what `lib/api.ts` throws or resolves.
  */
 const actualApi = () => vi.importActual<typeof import('@/lib/api')>('@/lib/api');
-async function useRealValidate() {
+async function routeToRealValidate() {
   const actual = await actualApi();
   validate().mockImplementation((...args: Parameters<typeof actual.magicAuthAPI.validateToken>) =>
     actual.magicAuthAPI.validateToken(...args),
@@ -196,7 +196,7 @@ describe('availability-form/[token] — AC-19 widened, the ERROR announcement', 
           }),
       ),
     );
-    await useRealValidate();
+    await routeToRealValidate();
 
     render(<AvailabilityFormPage />);
 
@@ -242,7 +242,7 @@ describe('availability-form/[token] — AC-19, the FOCUS half', () => {
 
   it('does NOT move focus on the ERROR flip — the branch has no control the user was operating', async () => {
     vi.stubGlobal('fetch', dropped());
-    await useRealValidate();
+    await routeToRealValidate();
 
     render(<AvailabilityFormPage />);
 
@@ -265,7 +265,10 @@ describe('availability-form/[token] — the anonymous-entry fallback backstop (S
     await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
     expect(screen.queryByRole('heading', { name: /link no longer valid/i })).toBeNull();
 
-    const line = 'Something went wrong. Refresh the page to try again.';
+    // AMENDED Phase 88.9-52 (R29): Try again now sits under this line, so it is the unknown
+    // line's beside-retry form (X68, owner ruled 2026-11-14), not the bare refresh advice.
+    const line = "Something went wrong. If trying again doesn't help, refresh the page.";
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
     // TWO matches by design: the visible `<p>` and the slot-0 live region that announces it.
     const matches = screen.getAllByText(line);
     expect(
@@ -287,7 +290,7 @@ describe('availability-form/[token] — AC-2: the token-validation failure is a 
   it('calls logger.info with the frozen message and a keyed ctx, never the raw Error', async () => {
     // Rebuilt by plan 88.6-62 over a REAL 500 (Sonnet/routes/magicAuth.js's raw catch body).
     vi.stubGlobal('fetch', respond(500, '{"error":"Validation failed","action":"request_new"}'));
-    await useRealValidate();
+    await routeToRealValidate();
 
     render(<AvailabilityFormPage />);
     await screen.findByRole('heading', { name: /something went wrong/i });
@@ -364,7 +367,7 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
 
   it('a dropped connection says check your connection — not that the link is dead', async () => {
     vi.stubGlobal('fetch', dropped());
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await expectFailedRequest(NETWORK_LINE);
   });
@@ -377,21 +380,21 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
         '{"code":"rate_limited","message":"Too many attempts. Please try again later.","error":"Too many attempts. Please try again later."}',
       ),
     );
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await expectFailedRequest("You're going a little fast — give it a moment, then try again.");
   });
 
   it('the raw code-less 500 renders the internal line', async () => {
     vi.stubGlobal('fetch', respond(500, '{"error":"Validation failed","action":"request_new"}'));
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await expectFailedRequest(INTERNAL_LINE);
   });
 
   it('an unparseable 200 (a gateway HTML page) renders the internal line', async () => {
     vi.stubGlobal('fetch', respond(200, '<!DOCTYPE html><html><body>gateway</body></html>'));
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await expectFailedRequest(INTERNAL_LINE);
   });
@@ -409,7 +412,7 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
         }),
       ),
     );
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
     await screen.findByRole('heading', { level: 1, name: 'Link No Longer Valid' });
     expect(
@@ -425,9 +428,12 @@ describe('availability-form/[token] — 88.6-62: a dead link is told apart from 
   // invalid-link branch).
   it('P2: a 400 that is not token_invalid renders the failed-request heading over the validation line', async () => {
     vi.stubGlobal('fetch', respond(400, '{"code":"validation","message":"Bad input"}'));
-    await useRealValidate();
+    await routeToRealValidate();
     render(<AvailabilityFormPage />);
-    await expectFailedRequest('Something looks off with that request. Refresh the page to try again.');
+    // AMENDED Phase 88.9-52 (R29): Try again now sits under this line, so it takes the register's
+    // beside-retry form (X68, owner ruled 2026-11-14): one remedy beside a retry, not two.
+    await expectFailedRequest('Something looks off with that request.');
+    expect(screen.queryByText(/Refresh the page to try again/)).toBeNull();
   });
 });
 
@@ -532,5 +538,181 @@ describe('availability-form/[token] — 88.6.1-39: the real form speaks the grid
     expect(others).toHaveLength(1);
 
     for (const r of regions) expect(r.textContent).toBe('');
+  });
+});
+
+// Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the error card's X by cause, keyed on the
+// linkInvalid state the heading already reads. Red: the link is dead. Amber: the check could not
+// complete. No retry control is added in this pass.
+// AMENDED Phase 88.9-52 (R29, owner 2026-11-17 "Build"): the amber card now has a Try again button
+// (the restore page's preview Try again pattern). The red card still has nothing to press.
+describe('availability-form/[token] — Q69 the failure glyph by cause (88.9-52)', () => {
+  const X_PATH = 'M6 18L18 6M6 6l12 12';
+  const expectTone = (container: HTMLElement, tone: 'amber' | 'red', label: string) => {
+    const path = container.querySelector(`path[d="${X_PATH}"]`);
+    expect(path, `${label}: the failure card draws no X`).not.toBeNull();
+    const svg = path!.closest('svg')!;
+    const circle = svg.parentElement!;
+    const on = tone === 'amber' ? 'warning' : 'error';
+    const off = tone === 'amber' ? 'error' : 'warning';
+    expect(circle, `${label}: the circle is not the ${on} fill`).toHaveClass(`bg-status-${on}-subtle`);
+    expect(circle, label).not.toHaveClass(`bg-status-${off}-subtle`);
+    expect(svg, `${label}: the X is not the ${on} ink`).toHaveClass(`text-content-status-${on}`);
+    expect(svg, label).not.toHaveClass(`text-content-status-${off}`);
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+  };
+
+  it('Q69: a link the server rejected (400 token_invalid) draws the red X', async () => {
+    vi.stubGlobal(
+      'fetch',
+      respond(
+        400,
+        JSON.stringify({
+          code: 'token_invalid',
+          message: 'This link is no longer valid.',
+          error: 'This link is no longer valid.',
+          details: { action: 'request_new' },
+        }),
+      ),
+    );
+    await routeToRealValidate();
+    const { container } = render(<AvailabilityFormPage />);
+    await screen.findByRole('heading', { level: 1, name: 'Link No Longer Valid' });
+    expectTone(container, 'red', 'token_invalid');
+    // R29 (88.9-52): never on the red card. A dead link is not fixed by asking again.
+    expect(screen.queryAllByRole('button'), 'the red card offers a control').toHaveLength(0);
+  });
+
+  it('Q69 + R29: a check that could not complete draws the amber X with ONE control, Try again (network, 5xx, 429)', async () => {
+    const arms: Array<[string, ReturnType<typeof vi.fn>]> = [
+      ['network', dropped()],
+      ['5xx', respond(500, '{"error":"Validation failed","action":"request_new"}')],
+      [
+        '429',
+        respond(
+          429,
+          '{"code":"rate_limited","message":"Too many attempts. Please try again later.","error":"Too many attempts. Please try again later."}',
+        ),
+      ],
+    ];
+    for (const [label, fetchStub] of arms) {
+      vi.stubGlobal('fetch', fetchStub);
+      await routeToRealValidate();
+      const { container } = render(<AvailabilityFormPage />);
+      await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
+      expectTone(container, 'amber', label);
+      const buttons = screen.getAllByRole('button');
+      expect(buttons, `${label}: the amber card offers exactly one control`).toHaveLength(1);
+      expect(buttons[0]).toHaveAccessibleName('Try again');
+      // The restore page's button, class for class: primary, 44px floor, full width.
+      expect(buttons[0]).toHaveClass('btn', 'btn-primary', 'min-h-11', 'w-full', 'text-center');
+      // The card's last element, under the sentence.
+      expect(buttons[0].previousElementSibling?.tagName).toBe('P');
+      expect(buttons[0].nextElementSibling).toBeNull();
+      cleanup();
+    }
+  });
+});
+
+// Phase 88.9-52 (R29, owner 2026-11-17 "Build"): the amber card's Try again re-runs the link check.
+// Ported from the restore page's preview Try again: the loading line takes focus while the check
+// is in flight, the settled heading takes it after, and the page region stays empty for the dwell
+// so the same failure text is spoken again. No new words.
+describe('availability-form/[token] — R29 Try again on the amber card (88.9-52)', () => {
+  const CHECKING = 'Validating your link...';
+  const FAILED = { level: 1, name: 'Something went wrong' };
+
+  it('R29: Try again re-runs the check; focus is on the loading line in flight, then on the form heading', async () => {
+    let resolveSecond: (v: unknown) => void = () => {};
+    validate()
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    const user = userEvent.setup();
+    render(<AvailabilityFormPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    const line = await screen.findByText(CHECKING);
+    await waitFor(() => expect(document.activeElement).toBe(line));
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(pageRegion()).toHaveTextContent('');
+    expect(validate()).toHaveBeenCalledTimes(2);
+    expect(validate().mock.calls[1][0]).toBe(TOKEN);
+
+    await act(async () => {
+      resolveSecond(VALID_TOKEN_BODY);
+    });
+    await screen.findByRole('button', { name: /submit availability/i });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('heading', { level: 1, name: 'Submit Your Availability' }),
+      ),
+    );
+    expect(pageRegion()).toHaveTextContent('');
+  });
+
+  it('R29: a Try again that fails again lands focus on the failure heading and offers Try again again', async () => {
+    validate()
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0))
+      .mockRejectedValueOnce(new ApiError('HTTP error! status: 500', 'internal', 500));
+    const user = userEvent.setup();
+    render(<AvailabilityFormPage />);
+
+    await screen.findByText(NETWORK_LINE, { selector: 'p' });
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText(INTERNAL_LINE, { selector: 'p' });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', FAILED)));
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    await waitFor(() => expect(pageRegion()).toHaveTextContent(INTERNAL_LINE));
+    expect(validate()).toHaveBeenCalledTimes(2);
+  });
+
+  it('R29: a Try again that ends on a dead link lands on the red card, with nothing to press', async () => {
+    validate()
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0))
+      .mockResolvedValueOnce({ valid: false });
+    const user = userEvent.setup();
+    render(<AvailabilityFormPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Link No Longer Valid' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.getByText(ORGANIZER_GUIDANCE)).toBeInTheDocument();
+  });
+
+  it('R29 (offline): the region stays empty for at least 100 ms before the same text returns on the same node', async () => {
+    validate()
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0))
+      .mockRejectedValueOnce(new ApiError('down', 'network', 0));
+    render(<AvailabilityFormPage />);
+
+    await screen.findByRole('heading', FAILED);
+    const region = pageRegion();
+    expect(region.textContent).toBe(NETWORK_LINE);
+
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    const pressedAt = performance.now();
+    await act(async () => {
+      retry.click();
+    });
+    await screen.findByRole('heading', FAILED);
+    expect(region.textContent, 'the region must read empty right after an instant failure').toBe('');
+
+    await waitFor(() => expect(region.textContent).toBe(NETWORK_LINE));
+    expect(performance.now() - pressedAt).toBeGreaterThanOrEqual(100);
+    expect(pageRegion()).toBe(region);
+  });
+
+  it('R29 (pin): the first load moves no focus', async () => {
+    validate().mockRejectedValue(new ApiError('down', 'network', 0));
+    render(<AvailabilityFormPage />);
+    const heading = await screen.findByRole('heading', FAILED);
+    expect(document.activeElement).toBe(document.body);
+    expect(heading).not.toHaveAttribute('tabindex');
   });
 });

@@ -61,6 +61,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within, act } from '@testing-library/react';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the hold budget
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
@@ -115,6 +116,10 @@ const EVENT = {
 };
 
 const WHEN_LINE = 'Friday, Sep 4 · 7:00 PM EDT';
+// 88.9-52 W19: the time and zone sit in their own no-wrap span, so the when-line is found by its
+// whole text content (a plain text query reads one element's own text nodes only).
+const whenLineNode = (line: string) =>
+  screen.getByText((_content, el) => el?.tagName === 'SPAN' && el.classList.contains('text-xl') && el.textContent === line);
 
 const EMPTY_RSVPS = { rsvps: [], summary: { yes: 0, maybe: 0, no: 0 } };
 
@@ -147,7 +152,15 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+// 88.9-61 (X29 years): the when-line now shows the year outside the viewer's current year, so
+// WHEN_LINE (a 2026 date with no year) is only true while the clock reads 2026. The Date is
+// pinned for the WHOLE file — Date only, so timers, userEvent and waitFor stay real — instead of
+// leaving a suite that turns red on the first of January.
+const PINNED_NOW = new Date('2026-09-01T16:00:00.000Z');
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_NOW);
   getEventRsvps.mockReset();
   submitRsvp.mockReset();
   loggerError.mockClear();
@@ -155,7 +168,10 @@ beforeEach(() => {
   submitRsvp.mockResolvedValue({ id: 'rsvp-own', status: 'yes', note: null });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function renderCard(overrides: Record<string, unknown> = {}) {
   const onEventClick = vi.fn();
@@ -186,8 +202,46 @@ describe('NextGameNightCard — content and navigation (SPEC Req 3 / D-05, D-14)
     // The literal string is `Next game night`; `uppercase` is a CSS treatment, so the
     // DOM text — and therefore the accessible name — stays sentence case.
     expect(screen.getByText('Next game night')).toBeInTheDocument();
-    expect(screen.getByText(WHEN_LINE)).toBeInTheDocument();
+    expect(whenLineNode(WHEN_LINE)).toBeInTheDocument();
     expect(screen.getByText('Navy Knights')).toBeInTheDocument();
+  });
+
+  // 88.9-52 W19: with the year on the line the when-line wrapped at 375px and left the zone alone on
+  // the second line (7:00 PM / PST). The time and its zone now sit in one no-wrap span, so the line
+  // breaks before the time. jsdom lays nothing out: this pins the span, its class and the full text.
+  it('W19 (88.9-52): the time and its zone share one no-wrap span inside the when-line, and the line still reads whole', () => {
+    renderCard();
+    const time = screen.getByText('7:00 PM EDT');
+    expect(time.tagName).toBe('SPAN');
+    expect(time).toHaveClass('whitespace-nowrap');
+    const line = time.parentElement as HTMLElement;
+    expect(line).toHaveClass('block', 'text-xl', 'font-bold');
+    expect(line.textContent).toBe(WHEN_LINE);
+    // The spoken names are built from the same string, unchanged.
+    expect(rsvpGroup()).toHaveAttribute('aria-label', `RSVP for ${WHEN_LINE}`);
+  });
+
+  it("X29 (88.9, owner 2026-11-14 'Yes'): a next game night outside the current year shows its year on the when-line", () => {
+    // Clock: 20 December 2026. Night: 2027-01-09T00:00Z, which is Friday, Jan 8, 2027, 7:00 PM EST
+    // in New York (checked with Intl before it was written down).
+    vi.setSystemTime(new Date('2026-12-20T17:00:00.000Z'));
+    const nextYear = { ...EVENT, id: 'evt-next-year', start_date: '2027-01-09T00:00:00Z' };
+    renderCard({ event: nextYear });
+
+    const NEXT_YEAR_LINE = 'Friday, Jan 8, 2027 · 7:00 PM EST';
+    expect(whenLineNode(NEXT_YEAR_LINE)).toBeInTheDocument();
+    // The accessible names are built from the same when-line, so they carry the year too.
+    expect(screen.getByRole('button', { name: /^Next game night, / })).toHaveAccessibleName(
+      expect.stringContaining(NEXT_YEAR_LINE),
+    );
+    expect(rsvpGroup()).toHaveAttribute('aria-label', expect.stringContaining(NEXT_YEAR_LINE));
+    cleanup();
+
+    // A night inside the current year still shows no year.
+    vi.setSystemTime(PINNED_NOW);
+    renderCard();
+    expect(whenLineNode(WHEN_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(/2026/)).toBeNull();
   });
 
   it('carries NO host text anywhere in the rendered output (D-14)', () => {
@@ -241,7 +295,7 @@ describe('NextGameNightCard — content and navigation (SPEC Req 3 / D-05, D-14)
   it('omits the who-line rather than printing "undefined" when Group is absent', () => {
     const { container } = renderCard({ event: { ...EVENT, Group: undefined } });
 
-    expect(screen.getByText(WHEN_LINE)).toBeInTheDocument();
+    expect(whenLineNode(WHEN_LINE)).toBeInTheDocument();
     expect(container.textContent).not.toContain('undefined');
   });
 
@@ -402,6 +456,40 @@ describe('NextGameNightCard — inline RSVP (SPEC Req 4 / D-07, D-08)', () => {
 
     expect(document.activeElement).toBe(yesButton());
     expect(yesButton()).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('rule 1 (88.9): the hero RSVP button keeps its visible label beside the spinner while saving', async () => {
+    // Save-feedback rule 1 (owner, 2026-11-07: "the label NEVER changes"), applied to the hero
+    // by plan 88.9-47 (the Δ29 ruling). The heard name was already right ('<label>, saving');
+    // what this pins is the VISIBLE text: byte-identical at rest and in flight, with the house
+    // Spinner beside it — never a spinner-only button.
+    const write = deferred<unknown>();
+    submitRsvp.mockReturnValue(write.promise);
+    const user = userEvent.setup();
+    renderCard();
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    const pressed = yesButton();
+    const restingLabel = pressed.textContent;
+    await user.click(pressed);
+
+    // The visible text is everything except the sr-only suffix span.
+    const visibleText = (el: HTMLElement) =>
+      Array.from(el.childNodes)
+        .filter((n) => !(n instanceof HTMLElement && n.classList.contains('sr-only')))
+        .map((n) => n.textContent ?? '')
+        .join('');
+    expect(visibleText(pressed), 'the label stays while saving').toBe(restingLabel);
+    await waitFor(() => expect(pressed.querySelectorAll('[data-slot="spinner"]'), 'one house Spinner').toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
+    expect(pressed).toHaveAccessibleName(/^I'm in ?, saving$/);
+
+    await act(async () => {
+      write.resolve({ id: 'rsvp-own', status: 'yes', note: null });
+      await write.promise;
+    });
+    expect(visibleText(yesButton())).toBe(restingLabel);
+    expect(yesButton().querySelectorAll('[data-slot="spinner"]'), 'the hero stays mounted, so the spinner keeps its hold').toHaveLength(1); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
+    await waitFor(() => expect(yesButton().querySelector('[data-slot="spinner"]')).toBeNull(), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-56 (R-C3b reach): the 500 ms hold
   });
 
   it('surfaces a failed write in an assertive region AND reports it, leaving both buttons usable', async () => {

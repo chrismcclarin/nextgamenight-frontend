@@ -10,6 +10,7 @@ import {
   type ReleasableHold,
   type WriteHold,
 } from './support/inFlight';
+import { describeSamples, paintedTexts, recordLabel, spread, stopLabelRecorder, valuesAt } from './support/labelRecorder';
 import { expectFocusRingClearOfText } from './support/ringGeometry';
 import { scrubbedFetch } from './support/scrubbedFetch';
 
@@ -185,7 +186,7 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
-  test('phone Verify: the pressed button keeps focus and reads "Verifying..." in flight, a second Enter sends nothing, and focus lands on "Phone verified" after success', async ({ page }, testInfo) => {
+  test('phone Verify: the pressed button keeps focus and keeps its Verify label with the spinner in flight (rule 1), a second Enter sends nothing, and focus lands on "Phone verified" after success', async ({ page }, testInfo) => {
     backstop = await holdWrites(page);
     const mocks = await interceptWrites(page);
     await patchSelfRow(page, { sms_enabled: true, phone: null, phone_verified: false });
@@ -200,36 +201,39 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     await code.fill(FAKE_CODE);
 
     // Scoped to the code row: the SMS rows carry a second button named "Verify".
-    // The name matches BOTH labels of this one control, idle "Verify" and in-flight "Verifying..."
-    // (userProfile/page.js, VERIFY_CODE_IN_FLIGHT_LABEL, no aria-label), so the locator follows the
-    // same button through its label flip. An exact "Verify" locator stopped matching once the label
-    // flipped, and every in-flight assertion failed with "element(s) not found" (CI run 38878098281,
-    // both projects). The idle name is asserted before the press, so nothing the old locator
-    // implied is lost.
-    const verify = code.locator('xpath=..').getByRole('button', { name: /^Verif(y|ying\.\.\.)$/ });
+    // The name matches BOTH names of this one control, idle "Verify" and busy "Verify, verifying"
+    // (rule 1, 88.9-46 B32: the label is kept, the sr-only suffix VERIFY_CODE_BUSY_SUFFIX is heard;
+    // Chromium may insert a space before the comma), so the locator follows the same button through
+    // its busy flip. An exact "Verify" locator stopped matching once the name changed, and every
+    // in-flight assertion failed with "element(s) not found" (CI run 38878098281, both projects).
+    // The idle name is asserted before the press, so nothing the old locator implied is lost.
+    const verify = code.locator('xpath=..').getByRole('button', { name: /^Verify( ?, verifying)?$/ });
     await expect(verify).toHaveText('Verify');
     await verify.focus();
     await page.keyboard.press('Enter');
     await mocks.verify.arrived;
 
-    // While the check is held: the pressed control stays focused and focusable (D-35).
+    // While the check is held: the pressed control stays focused and focusable (D-35), keeps its
+    // label beside the one house spinner, and is named label plus suffix.
     await expect(verify).toBeFocused();
     await expect(verify).toHaveAttribute('aria-disabled', 'true');
     await expect(verify).not.toHaveAttribute('disabled');
-    await expect(verify).toHaveText('Verifying...');
+    await expect(verify).toHaveText(/^Verify/);
+    await expect(verify).toHaveAccessibleName(/^Verify ?, verifying$/);
+    await expect(verify.locator('[data-slot="spinner"]')).toHaveCount(1);
 
     if (testInfo.project.name === 'phone') {
-      // The measurement is provably at phone width, and the in-flight label fits.
+      // The measurement is provably at phone width, and the busy control (label + spinner) fits.
       expect(page.viewportSize()?.width).toBe(375);
       const fits = await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
       );
-      expect(fits, 'horizontal overflow at 375px while "Verifying..." shows').toBe(true);
+      expect(fits, 'horizontal overflow at 375px while Verify is busy (label plus spinner)').toBe(true);
     }
 
     // The latch refuses a second press.
     await page.keyboard.press('Enter');
-    await expect(verify).toHaveText('Verifying...');
+    await expect(verify).toHaveAccessibleName(/^Verify ?, verifying$/);
     expect(mocks.verify.count()).toBe(1);
 
     await mocks.verify.release({ verified: true });
@@ -240,7 +244,7 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     expect(mocks.savePosts()).toBe(1);
   });
 
-  test('Replay Tutorial: the pressed button keeps focus and reads "Starting..." in flight, and a second Enter sends no second reset', async ({ page }) => {
+  test('Replay Tutorial: the pressed button keeps focus and keeps its label with the spinner in flight (rule 1), and a second Enter sends no second reset', async ({ page }) => {
     backstop = await holdWrites(page);
     const mocks = await interceptWrites(page);
     await page.goto('/userProfile');
@@ -252,15 +256,17 @@ test.describe('Profile pressed controls (plan 88.6.1-18)', () => {
     await page.keyboard.press('Enter');
     await mocks.reset.arrived;
 
-    // The label changed, so re-locate by role on the same control's in-flight name.
-    const pressed = page.getByRole('button', { name: 'Starting...' });
+    // The name gained its suffix, so re-locate by role on the same control's busy name (rule 1,
+    // 88.9-46 B33: the label is kept beside the house spinner).
+    const pressed = page.getByRole('button', { name: /^Replay Tutorial ?, starting$/ });
     await expect(pressed).toBeFocused();
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
-    await expect(pressed).toHaveText('Starting...');
+    await expect(pressed).toHaveText(/^Replay Tutorial/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
 
     await page.keyboard.press('Enter');
-    await expect(pressed).toHaveText('Starting...');
+    await expect(pressed).toHaveAccessibleName(/^Replay Tutorial ?, starting$/);
     expect(mocks.reset.count()).toBe(1);
 
     await mocks.reset.release({ tutorial_version: 0 });
@@ -342,30 +348,47 @@ test.describe('Profile phone block focus and Remove in flight (plan 88.6.1-53)',
     const removal = await holdUntilReleased(page, 'DELETE', /\/phone$/);
     await page.goto('/userProfile');
 
-    // Its name changes while armed, so the locator follows both labels of the one control.
-    const remove = page.getByRole('button', { name: /^(Remove|Tap again to remove)$/ });
-    await expect(remove).toBeVisible({ timeout: 15_000 });
-    await expect(remove).toHaveText('Remove');
-    await focusByKeyboard(page, remove);
-    await page.keyboard.press('Enter');
-    await expect(remove).toHaveText('Tap again to remove');
-    await page.keyboard.press('Enter');
-    await removal.arrived;
+    // AMENDED Phase 88.9-68 (X36b): the phone Remove is the shared gated two-tap. It is found by
+    // its place (the last button in the Phone verified row), never by its words: its name changes
+    // while it counts down, while it is live and while it removes. The held DELETE is answered in
+    // the browser in finally, so a failure above the release never lets it reach the backend.
+    const remove = page.getByText('Phone verified', { exact: true }).locator('xpath=..').getByRole('button').last();
+    try {
+      await expect(remove).toBeVisible({ timeout: 15_000 });
+      await expect(remove).toHaveText('Remove');
+      await focusByKeyboard(page, remove);
+      await page.keyboard.press('Enter');
+      // Armed and gated: a press while it counts down sends nothing.
+      await expect(remove).toHaveAttribute('aria-pressed', 'true');
+      await expect(remove).toHaveAttribute('aria-disabled', 'true');
+      await page.keyboard.press('Enter');
+      // A-06 (88.9-52): an ABSENCE check has no positive signal to wait for, so wait a fixed 500ms
+      // (the house idiom; well inside the 3 s gate) before reading that nothing was sent.
+      await page.waitForTimeout(500);
+      expect(removal.count(), 'a press while the Remove counted down sent a removal').toBe(0);
+      // The live label (the 10 s timeout covers the 3 s gate), then the committing press.
+      await expect(remove).toHaveText('Tap again', { timeout: 10_000 });
+      await page.keyboard.press('Enter');
+      await removal.arrived;
 
-    // While the removal is held: the pressed control keeps focus and is aria-disabled (Req 4).
-    await expect(remove).toBeFocused();
-    await expect(remove).toHaveAttribute('aria-disabled', 'true');
-    await expect(remove).toHaveText('Remove');
+      // While the removal is held: the pressed control keeps focus and is aria-disabled (Req 4).
+      await expect(remove).toBeFocused();
+      await expect(remove).toHaveAttribute('aria-disabled', 'true');
+      await expect(remove).toHaveText('Remove');
 
-    // The latch refuses further presses: no re-arm, no second request.
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Enter');
-    await expect(remove).toHaveText('Remove');
-    expect(removal.count()).toBe(1);
+      // The latch refuses further presses: no re-arm, no second request.
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Enter');
+      await expect(remove).toHaveText('Remove');
+      expect(removal.count()).toBe(1);
 
-    const body = self.lastBody();
-    expect(body, 'the self row was never fetched, so the DELETE has nothing to answer with').not.toBeNull();
-    await removal.release({ ...body, phone: null, phone_verified: false, sms_enabled: true });
+      const body = self.lastBody();
+      expect(body, 'the self row was never fetched, so the DELETE has nothing to answer with').not.toBeNull();
+      await removal.release({ ...body, phone: null, phone_verified: false, sms_enabled: true });
+    } finally {
+      // A second call after the release above answers nothing new.
+      await removal.release({ ...(self.lastBody() ?? {}), phone: null, phone_verified: false, sms_enabled: true });
+    }
 
     // Requirement 5: the success removes the button; focus lands on the settled statement.
     const statement = page.getByText(BANNER, { exact: true });
@@ -441,7 +464,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // name is `Mon`.
     await page.getByRole('button', { name: 'Mon', exact: true }).click();
 
-    const save = page.getByRole('button', { name: /^(Save Schedule|Saving\.\.\.)$/ });
+    // AMENDED Phase 88.9-24 (save-feedback rule 1): the label stays; busy adds the spinner and the
+    // sr-only ", saving" to the name. Chromium computes the busy name with a space before the comma
+    // (the label is a flex item and the sr-only suffix its own out-of-flow box), hence the optional
+    // space; read aloud it is the same "Save Schedule, saving".
+    const save = page.getByRole('button', { name: /^Save Schedule( ?, saving)?$/ });
     await focusByKeyboard(page, save);
     await page.keyboard.press('Enter');
     await create.arrived;
@@ -449,7 +476,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(save).toBeFocused();
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     await expect(save).not.toHaveAttribute('disabled');
-    await expect(save).toHaveText('Saving...');
+    // The visible label is the button's first text node; the sr-only suffix follows it.
+    expect(await save.evaluate((el) => el.firstChild?.textContent ?? '')).toBe('Save Schedule');
+    await expect(save).toHaveText('Save Schedule, saving');
+    await expect(save).toHaveAccessibleName(/^Save Schedule ?, saving$/);
+    await expect(save.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, save, 'primary', 'dark');
 
     await page.keyboard.press('Enter');
@@ -481,7 +512,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(toggle).toBeVisible();
     await toggle.click();
 
-    const save = page.getByRole('button', { name: /^(Save Override|Saving\.\.\.)$/ });
+    // AMENDED Phase 88.9-24 (save-feedback rule 1): the label stays; busy adds the spinner and the
+    // sr-only ", saving" to the name. Chromium computes the busy name with a space before the comma
+    // (the label is a flex item and the sr-only suffix its own out-of-flow box), hence the optional
+    // space; read aloud it is the same "Save Override, saving".
+    const save = page.getByRole('button', { name: /^Save Override( ?, saving)?$/ });
     await focusByKeyboard(page, save);
     await page.keyboard.press('Enter');
     await create.arrived;
@@ -489,7 +524,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(save).toBeFocused();
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     await expect(save).not.toHaveAttribute('disabled');
-    await expect(save).toHaveText('Saving...');
+    // The visible label is the button's first text node; the sr-only suffix follows it.
+    expect(await save.evaluate((el) => el.firstChild?.textContent ?? '')).toBe('Save Override');
+    await expect(save).toHaveText('Save Override, saving');
+    await expect(save).toHaveAccessibleName(/^Save Override ?, saving$/);
+    await expect(save.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, save, 'primary', 'dark');
 
     await page.keyboard.press('Enter');
@@ -527,13 +566,98 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await page.goto('/userProfile');
 
     // Arm 1 (Requirement 5): a committed Delete keeps focus while held, then lands on the toggle.
-    const monday = page.getByRole('button', { name: /^(Delete Monday schedule|Tap again to confirm)$/ });
+    // AMENDED Phase 88.9-68 (X36a): while its DELETE runs the control is named with the deleting suffix.
+    const monday = page.getByRole('button', { name: /^(Delete Monday schedule(, deleting)?|Tap again to confirm)$/ });
     await expect(monday).toBeVisible({ timeout: 15_000 });
+    // X36a (88.9-68): the row's boxes at rest and with the DELETE held, read in one evaluate each.
+    const readRow = () =>
+      monday.evaluate((el) => {
+        const row = el.parentElement;
+        const words = row?.firstElementChild;
+        if (!row || !words) return null;
+        const r = row.getBoundingClientRect();
+        const w = words.getBoundingClientRect();
+        const b = el.getBoundingClientRect();
+        // The hours TEXT (not its paragraph's box): a range over the paragraph's contents gives one
+        // rect per rendered line, so a re-wrap or a clip is read from what a person sees.
+        const range = document.createRange();
+        range.selectNodeContents(words);
+        const lines = Array.from(range.getClientRects()).filter((rect) => rect.width > 0);
+        const textRight = Math.max(...lines.map((rect) => rect.right));
+        const lineTops = new Set(lines.map((rect) => Math.round(rect.top)));
+        return {
+          rowHeight: r.height,
+          rowRight: r.right,
+          wordsLeft: w.left,
+          wordsRight: w.right,
+          wordsWidth: w.width,
+          wordsHeight: w.height,
+          textRight,
+          textLines: lineTops.size,
+          buttonWidth: b.width,
+          buttonLeft: b.left,
+          buttonRight: b.right,
+        };
+      });
+    const rowAtRest = await readRow();
     await focusByKeyboard(page, monday);
     await page.keyboard.press('Enter');
+    // F9b (88.9-23): the second press is refused for 3 s after arming; wait for the live label
+    // (the 5 s expect timeout covers the gate) before the committing press.
+    await expect(monday).toHaveText('Tap again');
+    // W37 (88.9-52): arming neither grows the row nor re-wraps the hours (its first line), and the
+    // widest label still ends inside the row. Read while the live label shows.
+    // AMENDED Phase 88.9-52 (W37, CI on e2e2331): the paragraph-width equality is the PHONE arm only.
+    // W37 is what a person sees: the hours are not squeezed onto another line and the row does not
+    // grow or jump. On a phone the hours span both columns, so their box must not change at all.
+    // From sm the hours share row one with Delete (the row's DECISION marker: reads as before), so
+    // the hours' column narrows as the label widens (CI at 1280: 707 to 606 with the button 59 to
+    // 160) while the text stays on one line at the same left edge, row 70 both. There the check is
+    // the text itself: one line at rest and armed, same left edge, same row edge, and the text ends
+    // inside its own box and before the control (nothing clipped or overlapped). Chosen OVER dropping
+    // the width check everywhere (the phone arm is the ruling) and OVER reserving the armed width at
+    // rest from sm (rejected in the row's marker).
+    const rowArmed = await readRow();
+    // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-52)
+    console.log(`[88.9-52 W37 Delete] ${testInfo.project.name}: rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)}`);
+    expect(rowAtRest && rowArmed, 'W37: the schedule row could not be read').toBeTruthy();
+    if (rowAtRest && rowArmed) {
+      expect(Math.abs(rowArmed.rowHeight - rowAtRest.rowHeight), `W37: the row changed height when Delete was armed (rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(rowArmed.wordsHeight - rowAtRest.wordsHeight), `W37: the hours line re-wrapped when Delete was armed (rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(0.5);
+      const w37Read = `rest ${JSON.stringify(rowAtRest)} armed ${JSON.stringify(rowArmed)}`;
+      expect(Math.abs(rowArmed.wordsLeft - rowAtRest.wordsLeft), `W37: the hours line moved sideways when Delete was armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(rowArmed.rowRight - rowAtRest.rowRight), `W37: the row's right edge moved when Delete was armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+      expect(rowAtRest.textLines, `W37: the hours are on more than one line at rest (${w37Read})`).toBe(1);
+      expect(rowArmed.textLines, `W37: the hours are on more than one line when Delete is armed (${w37Read})`).toBe(1);
+      expect(Math.abs(rowArmed.textRight - rowAtRest.textRight), `W37: the hours text changed where it ends when Delete was armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+      expect(rowArmed.textRight, `W37: the hours text runs past its own box when Delete is armed (${w37Read})`).toBeLessThanOrEqual(rowArmed.wordsRight + 0.5);
+      if ((page.viewportSize()?.width ?? 0) < 640) {
+        // Phone (under sm): the hours own the whole first line, so their box is unchanged.
+        expect(Math.abs(rowArmed.wordsWidth - rowAtRest.wordsWidth), `W37: the hours line changed width when Delete was armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+        // R17 (88.9-52, owner pick A, 2026-11-17): the phone row is 82px (was 94), at rest and armed:
+        // border 1, top padding 12, hours 24, the 44px control line, no bottom padding, border 1.
+        expect(Math.abs(rowAtRest.rowHeight - 82), `R17: the phone schedule row is not 82px at rest (${w37Read})`).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(rowArmed.rowHeight - 82), `R17: the phone schedule row is not 82px when Delete is armed (${w37Read})`).toBeLessThanOrEqual(0.5);
+      } else {
+        // From sm: the hours and Delete share row one; the text must end before the control.
+        expect(rowArmed.textRight, `W37: the hours text runs under the armed Delete (${w37Read})`).toBeLessThanOrEqual(rowArmed.buttonLeft + 0.5);
+      }
+      expect(rowArmed.buttonRight, `W37: the armed Delete runs past its row (${JSON.stringify(rowArmed)})`).toBeLessThanOrEqual(rowArmed.rowRight + 0.5);
+    }
     await page.keyboard.press('Enter');
     await removal.arrived;
     await expect(monday).toBeFocused();
+    // X36a (88.9-68): while the DELETE is held the pressed Delete is aria-disabled and shows the
+    // house spinner inside the row. The measured boxes go to the CI log (the 375 fit numbers).
+    await expect(monday).toHaveAttribute('aria-disabled', 'true');
+    await expect(monday.locator('[data-slot="spinner"]'), 'X36a: no spinner showed while the delete was held').toBeVisible({ timeout: 5_000 });
+    const rowHeld = await readRow();
+    // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
+    console.log(`[88.9-68 X36a Delete] ${testInfo.project.name}: rest ${JSON.stringify(rowAtRest)} held ${JSON.stringify(rowHeld)}`);
+    expect(rowAtRest && rowHeld, 'X36a: the schedule row could not be read').toBeTruthy();
+    if (rowHeld) {
+      expect(rowHeld.buttonRight, `X36a: the held Delete runs past its row (${JSON.stringify(rowHeld)})`).toBeLessThanOrEqual(rowHeld.rowRight + 0.5);
+    }
     patterns.body = [patternRow('e2e-tue', 2)];
     await removal.release({});
     await expect(page.getByRole('button', { name: '+ Add Schedule' })).toBeFocused();
@@ -542,9 +666,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // Arm 2 (AC-29 / RF1, contract C8 a + d): the re-read after the next delete answers 500.
     patterns.status = 500;
     patterns.body = { error: 'boom' };
-    const tuesday = page.getByRole('button', { name: /^(Delete Tuesday schedule|Tap again to confirm)$/ });
+    const tuesday = page.getByRole('button', { name: /^(Delete Tuesday schedule(, deleting)?|Tap again to confirm)$/ });
     await focusByKeyboard(page, tuesday);
     await page.keyboard.press('Enter');
+    // F9b (88.9-23): as above, wait for the live label before the committing press.
+    await expect(tuesday).toHaveText('Tap again');
     await page.keyboard.press('Enter');
     // The Tuesday DELETE is answered at once: the shared hold was released in Arm 1, and
     // holdUntilReleased answers any later match at once after release (its `arrived` already
@@ -618,7 +744,10 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // field (`BoardGameGeek username`; wave 7 CI gate, run 39020174955: strict-mode, 2 elements).
     await expect(page.getByRole('textbox', { name: 'Username', exact: true })).toBeFocused();
 
-    const save = page.getByRole('button', { name: /^(Save|Saving\.\.\.)$/ });
+    // AMENDED Phase 88.9-24 (save-feedback rule 1): the label stays; busy adds the spinner and the
+    // sr-only ", saving" to the name (optional space before the comma: Chromium's computed name,
+    // as at Save Schedule above).
+    const save = page.getByRole('button', { name: /^Save( ?, saving)?$/ });
     await focusByKeyboard(page, save);
     await page.keyboard.press('Enter');
     await rename.arrived;
@@ -626,7 +755,11 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     await expect(save).toBeFocused();
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     await expect(save).not.toHaveAttribute('disabled');
-    await expect(save).toHaveText('Saving...');
+    // The visible label is the button's first text node; the sr-only suffix follows it.
+    expect(await save.evaluate((el) => el.firstChild?.textContent ?? '')).toBe('Save');
+    await expect(save).toHaveText('Save, saving');
+    await expect(save).toHaveAccessibleName(/^Save ?, saving$/);
+    await expect(save.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, save, 'primary', 'dark');
     // Cancel is a sibling: natively disabled while the save runs (D-35).
     await expect(save.locator('xpath=..').getByRole('button', { name: 'Cancel' })).toBeDisabled();
@@ -637,10 +770,20 @@ test.describe('Profile availability forms and username editor in flight (plan 88
     // Answered with the captured self body: the username is unchanged.
     await rename.release(self.lastBody() ?? {});
     await expect(pencil).toBeFocused();
+    // Save-feedback rule 3 (88.9-24): the Username updated caption shows on its own line under the
+    // name row (no toast). At 375 its right edge stays inside the viewport.
+    const receipt = page.getByTestId('username-receipt');
+    await expect(receipt).toHaveText('Username updated');
+    await expect(receipt).toBeVisible();
+    if (testInfo.project.name === 'phone') {
+      const box = await receipt.boundingBox();
+      expect(box, 'the Username updated caption has a box').not.toBeNull();
+      expect((box?.x ?? 0) + (box?.width ?? 0), 'Username updated caption right edge').toBeLessThanOrEqual(375);
+    }
 
     // Cancel: reopen the editor from the focused pencil, then cancel by keyboard.
     await page.keyboard.press('Enter');
-    const saveAgain = page.getByRole('button', { name: /^(Save|Saving\.\.\.)$/ });
+    const saveAgain = page.getByRole('button', { name: /^Save( ?, saving)?$/ });
     await expect(saveAgain).toBeVisible();
     const cancel = saveAgain.locator('xpath=..').getByRole('button', { name: 'Cancel' });
     await focusByKeyboard(page, cancel);
@@ -738,13 +881,13 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(region).toHaveAttribute('role', 'status');
     await expect(region).toHaveText('');
 
-    // One locator for both labels of the one control, so it follows the label flip.
-    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
-    await focusByKeyboard(page, importBtn);
-    await page.keyboard.press('Enter');
+    // One locator for both names of the one control (idle, and busy with the ', importing' suffix —
+    // rule 1, 88.9-46 B34), so it follows the busy flip.
+    const importBtn = page.getByRole('button', { name: /^Import Collection( ?, importing)?$/ });
+    // AMENDED Phase 88.9-55 (R-C8): the first press goes through the shared openImportDialog helper like the two result-timer titles, so one positive-signal path opens the dialog for all three (a tidy; the no-dialog press itself is a product race, fixed in the page).
+    await openImportDialog(page, field, importBtn, 'e2e-meeple');
 
     const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
     await recordRegionMutations(page);
     await focusByKeyboard(page, dialog.getByRole('button', { name: 'Continue' }));
     // The double-activation arm: a second Enter during the dialog's exit.
@@ -760,7 +903,9 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(importBtn).toBeFocused();
     await expect(importBtn).toHaveAttribute('aria-disabled', 'true');
     await expect(importBtn).not.toHaveAttribute('disabled');
-    await expect(importBtn).toHaveText('Importing...');
+    await expect(importBtn).toHaveText(/^Import Collection/);
+    await expect(importBtn).toHaveAccessibleName(/^Import Collection ?, importing$/);
+    await expect(importBtn.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, importBtn, 'primary', 'dark');
 
     // A press mid-import neither reopens the dialog nor sends a second import.
@@ -811,7 +956,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(field).toBeVisible({ timeout: 15_000 });
     await field.fill('e2e-meeple');
     const region = page.locator('#bgg-import-status');
-    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    const importBtn = page.getByRole('button', { name: /^Import Collection( ?, importing)?$/ });
     await openImportDialog(page, field, importBtn, 'e2e-meeple');
     await focusByKeyboard(page, page.getByRole('dialog').getByRole('button', { name: 'Continue' }));
     await page.keyboard.press('Enter');
@@ -849,7 +994,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(field).toBeVisible({ timeout: 15_000 });
     await field.fill('e2e-meeple');
     const region = page.locator('#bgg-import-status');
-    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    const importBtn = page.getByRole('button', { name: /^Import Collection( ?, importing)?$/ });
     const dialog = page.getByRole('dialog');
     await openImportDialog(page, field, importBtn, 'e2e-meeple');
     await focusByKeyboard(page, dialog.getByRole('button', { name: 'Continue' }));
@@ -894,7 +1039,7 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await field.fill('e2e-meeple');
 
     const region = page.locator('#bgg-import-status');
-    const importBtn = page.getByRole('button', { name: /^(Import Collection|Importing\.\.\.)$/ });
+    const importBtn = page.getByRole('button', { name: /^Import Collection( ?, importing)?$/ });
     await openImportDialog(page, field, importBtn, 'e2e-meeple');
 
     const dialog = page.getByRole('dialog');
@@ -939,7 +1084,8 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     const field = page.getByRole('textbox', { name: 'Search BoardGameGeek' });
     await field.fill('catan');
 
-    const search = page.getByRole('button', { name: /^(Search|Searching\.\.\.)$/ });
+    // Idle "Search" and busy "Search, searching" (rule 1, 88.9-46 B35) through one locator.
+    const search = page.getByRole('button', { name: /^Search( ?, searching)?$/ });
     await focusByKeyboard(page, search);
     await page.keyboard.press('Enter');
     await s.arrived;
@@ -947,7 +1093,9 @@ test.describe('Profile BGG import and search in flight (plan 88.6.1-60)', () => 
     await expect(search).toBeFocused();
     await expect(search).toHaveAttribute('aria-disabled', 'true');
     await expect(search).not.toHaveAttribute('disabled');
-    await expect(search).toHaveText('Searching...');
+    await expect(search).toHaveText(/^Search/);
+    await expect(search).toHaveAccessibleName(/^Search ?, searching$/);
+    await expect(search.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, search, 'primary', 'dark');
 
     // A second press is refused...
@@ -1122,7 +1270,7 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
 
     // The retry's read, held: the banner stays through it (the error is kept, C2), no loader.
     const second = await holdUntilReleased(page, 'GET', OWNED_GAMES_PATH);
-    await collection.getByRole('button', { name: /^(Try again|Retrying…)$/ }).click();
+    await collection.getByRole('button', { name: /^Try again( ?, retrying)?$/ }).click();
     await second.arrived;
     await expect(banner).toBeVisible();
     await expect(collection.getByText('Loading your collection...')).toHaveCount(0);
@@ -1146,9 +1294,14 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await expect(page.getByRole('button', { name: 'Remove E2E Meeple One' })).toBeVisible({ timeout: 15_000 });
     const refresh = await holdUntilReleased(page, 'GET', OWNED_GAMES_PATH);
 
-    const remove = page.getByRole('button', { name: /^(Remove E2E Meeple One|Remove)$/ });
+    // AMENDED Phase 88.9-68 (X36a): while its DELETE runs the x is named with the removing suffix.
+    const remove = page.getByRole('button', { name: /^(Remove E2E Meeple One(, removing)?|Tap again to remove)$/ });
     await focusByKeyboard(page, remove);
     await page.keyboard.press('Enter'); // arms
+    // F9b (88.9-23): the second press is refused for 3 s after arming (the label counts
+    // Wait (3)…(1), X69 88.9-67); wait for the live name (the 5 s expect timeout covers the gate).
+    // AMENDED Phase 88.9-52 (R4 D4): live, the worded Remove is named Tap again to remove.
+    await expect(remove).toHaveAccessibleName('Tap again to remove');
     await page.keyboard.press('Enter'); // commits
     await del.arrived;
     await expect(remove).toBeFocused();
@@ -1188,7 +1341,7 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await refresh.release({ error: 'boom' }, 500);
 
     const collection = collectionCard(page);
-    const retry = collection.getByRole('button', { name: /^(Retry|Retrying…)$/ });
+    const retry = collection.getByRole('button', { name: /^Retry( ?, retrying)?$/ });
     await expect(retry).toBeVisible({ timeout: 15_000 });
     await expect(collection.getByText(RF1)).toHaveCount(2);
     await expect(collection.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);
@@ -1227,7 +1380,69 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await expect(collection.getByRole('button', { name: 'Remove E2E Meeple One' })).toHaveCount(0);
     await expect(collection.getByRole('heading', { level: 2, name: 'My Game Collection (1)' })).toBeFocused();
   });
-  test('Add to Collection reads Adding..., refuses a second press, then lands on + Add from BGG', async ({ page }) => {
+  // Plan 88.9-67 (52-X69 widened, owner 2026-11-14). The collection x is recorded in the browser
+  // from rest to its live label: it reads x, Wait (3), Wait (2), Wait (1), then Remove, and its box
+  // keeps ONE width through all five, so arming never reflows the game title beside it (the
+  // 88.6-17 measurement). One tap only: nothing is removed, and the hold fails the test on a write.
+  // AMENDED Phase 88.9-68 (X53): at rest the x paints an icon and no text, in a small box inside a
+  // 44px button, so the ONE width is now held in two places: by the slot around the button from
+  // rest to live (which is what keeps the title still), and by the armed box through its four
+  // labels. The resting button is narrower than the armed one by design.
+  // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the x is a worded Remove button now
+  // (src/app/userProfile/page.js ("AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): REPLACED.")). It reads Remove, Wait (3), (2), (1),
+  // then Tap again, named Tap again to remove. There is no slot around it: its ONE width is held
+  // from the arm through its four armed labels (the phone Remove's form), it is right-anchored, and
+  // its right edge does not move from rest to live.
+  test('X69 (88.9): the collection Remove reads Wait (3), (2), (1) then Tap again in one armed width, and sends nothing', async ({ page }, testInfo) => {
+    // One press only (it arms): nothing is removed, and afterEach fails the test on any write.
+    backstop = await holdWrites(page, {
+      answerGet: (url) => (OWNED_GAMES_PATH.test(url.pathname) ? [ONE, TWO] : undefined),
+    });
+    await page.goto('/userProfile');
+    const collection = collectionCard(page);
+    const remove = collection.getByRole('button', { name: 'Remove E2E Meeple One', exact: true });
+    await expect(remove, 'X69: the routed collection never rendered its Remove').toBeVisible({ timeout: 15_000 });
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(375);
+    }
+    // The button's right edge, measured from its card's right edge (focusing may scroll the page).
+    const rightInset = () =>
+      collection
+        .getByRole('heading', { level: 3, name: 'E2E Meeple One', exact: true })
+        .locator('xpath=../..')
+        .getByRole('button')
+        .first()
+        .evaluate((el) => (el.parentElement as HTMLElement).getBoundingClientRect().right - el.getBoundingClientRect().right);
+    const insetAtRest = await rightInset();
+    await focusByKeyboard(page, remove);
+    await recordLabel(remove);
+    await page.keyboard.press('Enter'); // arms
+    // The live label, after the 3 s gate: Tap again, named with the full sentence.
+    await expect(collection.getByRole('button', { name: 'Tap again to remove', exact: true })).toBeVisible({ timeout: 10_000 });
+    const insetLive = await rightInset();
+    const samples = await stopLabelRecorder(page);
+
+    const ARMED_STATES = ['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again'];
+    const EVERY_STATE = ['Remove', ...ARMED_STATES];
+    const trace = describeSamples(samples);
+    // eslint-disable-next-line no-console -- the measured widths are recorded from the CI log (plan 88.9-67)
+    console.log(`[88.9-67 X69 collection Remove] ${testInfo.project.name}: ${trace}`);
+    expect(paintedTexts(samples), `X69: the control did not run Remove, Wait (3), (2), (1), Tap again (${trace})`).toEqual(EVERY_STATE);
+    expect(valuesAt(samples, 'Wait (3)', 'name')).toEqual(['Remove E2E Meeple One, wait 3 seconds']);
+    expect(valuesAt(samples, 'Wait (2)', 'name')).toEqual(['Remove E2E Meeple One, wait 2 seconds']);
+    expect(valuesAt(samples, 'Wait (1)', 'name')).toEqual(['Remove E2E Meeple One, wait 1 second']);
+    expect(valuesAt(samples, 'Tap again', 'name')).toEqual(['Tap again to remove']);
+    const jump = spread(samples, ARMED_STATES, 'width');
+    expect(jump, `X69: the armed Remove changed width by ${jump}px between its labels (${trace})`).toBeLessThanOrEqual(0.5);
+    expect(
+      Math.abs(insetLive - insetAtRest),
+      `X69: the button's right edge moved between rest (${insetAtRest}px in) and its live label (${insetLive}px in) (${trace})`,
+    ).toBeLessThanOrEqual(0.5);
+    const armedWidths = valuesAt(samples, 'Tap again', 'width');
+    expect(armedWidths.length, `X69: the live Remove was never sampled (${trace})`).toBeGreaterThan(0);
+  });
+
+  test('Add to Collection keeps its label with the spinner (rule 1), refuses a second press, then lands on + Add from BGG', async ({ page }) => {
     const THREE = { id: 'e2e-game-three', name: 'E2E Meeple Three', bgg_id: 990201, year_published: 2003, image_url: null };
     let owned: unknown[] = [ONE];
     // The owned-games read and the BGG search are answered in the browser (CI never calls
@@ -1252,14 +1467,18 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await field.press('Enter');
     await expect(page.getByText('E2E Meeple Three (2003)')).toBeVisible({ timeout: 15_000 });
 
-    const addBtn = page.getByRole('button', { name: /^(Add to Collection|Adding\.\.\.)$/ });
+    // Idle "Add to Collection" and busy "Add to Collection, adding" (rule 1, 88.9-46 B36; copy row
+    // P7's word is now the heard suffix) through one locator.
+    const addBtn = page.getByRole('button', { name: /^Add to Collection( ?, adding)?$/ });
     await focusByKeyboard(page, addBtn);
     await page.keyboard.press('Enter');
     await imp.arrived;
     await expect(addBtn).toBeFocused();
     await expect(addBtn).toHaveAttribute('aria-disabled', 'true');
     await expect(addBtn).not.toHaveAttribute('disabled');
-    await expect(addBtn).toHaveText('Adding...');
+    await expect(addBtn).toHaveText(/^Add to Collection/);
+    await expect(addBtn).toHaveAccessibleName(/^Add to Collection ?, adding$/);
+    await expect(addBtn.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expectGatedPair(page, addBtn, 'primary', 'dark');
 
     await page.keyboard.press('Enter');

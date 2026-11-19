@@ -28,6 +28,8 @@ import { expectTouchTarget } from './support/touchTarget';
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 const EVENT_PATH =
   process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${E2E_GROUP_ID}`;
+// Phase 88.9-21 (SESSION-01/03): the group page path the signed-out group-link test opens.
+const GROUP_PATH = `/groupHomePage?id=${E2E_GROUP_ID}`;
 
 test.describe('Phase 88.6.1-25 — a signed-out event link at phone width (phone project)', () => {
   test.skip(({ isMobile }) => !isMobile, 'Requirement 1 phone arm — phone project only');
@@ -56,7 +58,49 @@ test.describe('Phase 88.6.1-25 — a signed-out event link at phone width (phone
     // Back to the event in the SAME tab without signing in: the latch is still set, so the 401 now
     // renders the banner and makes no second sign-in request (AC-2; MC-6 measured).
     await page.goto(EVENT_PATH);
-    await expect(page.getByText("We couldn't load this event")).toBeVisible();
+    await expect(page.getByText("Couldn't load this event")).toBeVisible();
+    expect(loginRequests, 'no second sign-in request after the round trip').toHaveLength(1);
+  });
+
+  // Phase 88.9-21 (SESSION-01/03, UI-SPEC row SESSION-01): the same round trip for a GROUP link.
+  // Today a signed-out group page never redirects; it sits on its loading line, because its
+  // fetches wait for a signed-in user. RED until plan 88.9-40 builds the redirect and the
+  // signed-out landing. The return visit must neither redirect again nor hang on the loading line,
+  // and it must offer a visible Sign in control.
+  test('SESSION-01/03 (88.9): a signed-out group link goes to sign-in once with the group as returnTo, and coming back does not redirect again or hang', async ({
+    page,
+  }) => {
+    const loginRequests: string[] = [];
+    page.on('request', (req: Request) => {
+      if (new URL(req.url()).pathname === '/api/auth/login') loginRequests.push(req.url());
+    });
+
+    // `commit`: the client-side replace can interrupt a full load.
+    await page.goto(GROUP_PATH, { waitUntil: 'commit' });
+    await page.waitForURL(/\/u\/login|auth0\.com/, { timeout: 15_000 }).catch(() => {
+      throw new Error(`Never reached Auth0 Universal Login — browser is at: ${page.url()}`);
+    });
+
+    expect(loginRequests, 'exactly one sign-in request').toHaveLength(1);
+    const returnTo = new URL(loginRequests[0]).searchParams.get('returnTo');
+    expect(returnTo, 'the return address is the group path, built from the page location').toBe(
+      GROUP_PATH
+    );
+
+    // Back to the group in the SAME tab without signing in: no second redirect, no hang. The Sign
+    // in control is awaited FIRST, so the loading-line check reads a rendered page, not a blank one.
+    await page.goto(GROUP_PATH);
+    await expect(
+      page
+        .getByRole('link', { name: 'Sign in', exact: true })
+        .or(page.getByRole('button', { name: 'Sign in', exact: true }))
+        .first(),
+      'the return visit offers a visible Sign in control'
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText('Loading group…'),
+      'the return visit does not sit on the loading line'
+    ).toBeHidden();
     expect(loginRequests, 'no second sign-in request after the round trip').toHaveLength(1);
   });
 
@@ -104,7 +148,7 @@ test.describe('Phase 88.6.1-25 — a signed-out event link at phone width (phone
       route.fulfill({ status: 500, json: { code: 'internal', message: 'Internal error' } })
     );
     await page.goto(INTERCEPTED_EVENT_PATH);
-    await expect(page.getByText("We couldn't load this event")).toBeVisible();
+    await expect(page.getByText("Couldn't load this event")).toBeVisible();
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });

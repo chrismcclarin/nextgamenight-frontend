@@ -14,6 +14,7 @@ import * as React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
@@ -670,7 +671,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     unreadState.totalCount = invites.length;
   }
 
-  it('NA-1. invite Accept (AC-12, SPEC Edge R4 idempotency + concurrency, N2 + N8): named for its group at rest; in flight it reads Accepting..., is aria-disabled not disabled, its sibling is natively disabled, other rows are untouched, two more presses send nothing; the gate clears when the request settles', async () => {
+  it('NA-1 rule 1 (88.9): invite Accept keeps its label + spinner while busy (AC-12, Edge R4, N8): named for its group at rest; in flight it is named "Accept, accepting", is aria-disabled not disabled, its sibling is natively disabled, other rows are untouched, two more presses send nothing; the gate clears when the request settles', async () => {
     const user = userEvent.setup();
     seedInvites([INVITE_A, INVITE_B]);
     const d = deferred();
@@ -686,9 +687,11 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
 
     await user.click(acceptA);
 
-    // The SAME node, now in flight.
-    expect(acceptA).toHaveAccessibleName('Accepting...');
-    expect(acceptA).toHaveTextContent(/^Accepting\.\.\.$/);
+    // The SAME node, now in flight: the visible label stays in the name (WCAG 2.5.3), the house
+    // spinner sits beside it, the busy suffix is heard (rule 1, 88.9-45).
+    expect(acceptA).toHaveAccessibleName('Accept, accepting');
+    expect(acceptA).toHaveTextContent(/^Accept/);
+    await waitFor(() => expect(acceptA.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(acceptA).not.toHaveAttribute('aria-label');
     expect(acceptA).toHaveAttribute('aria-disabled', 'true');
     expect(acceptA).not.toHaveAttribute('disabled');
@@ -706,7 +709,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     fireEvent.click(acceptA);
     fireEvent.click(acceptA);
     expect(acceptInvite()).toHaveBeenCalledTimes(1);
-    expect(acceptA).toHaveAccessibleName('Accepting...');
+    expect(acceptA).toHaveAccessibleName('Accept, accepting');
 
     await act(async () => {
       d.resolve({ success: true });
@@ -807,7 +810,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     await user.click(acceptA);
     await user.click(acceptB);
     for (const pressed of [acceptA, acceptB]) {
-      expect(pressed).toHaveAccessibleName('Accepting...');
+      expect(pressed).toHaveAccessibleName('Accept, accepting');
       expect(pressed).toHaveAttribute('aria-disabled', 'true');
     }
 
@@ -816,7 +819,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     });
     expect(acceptA).toHaveAccessibleName('Accept invite to Alpha Crew');
     expect(acceptA).not.toHaveAttribute('aria-disabled');
-    expect(acceptB).toHaveAccessibleName('Accepting...');
+    expect(acceptB).toHaveAccessibleName('Accept, accepting');
     expect(acceptB).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => {
@@ -838,7 +841,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
       fireEvent.click(batchB);
     });
     for (const pressed of [batchA, batchB]) {
-      expect(pressed).toHaveAccessibleName('Accepting...');
+      expect(pressed).toHaveAccessibleName('Accept, accepting');
       expect(pressed).toHaveAttribute('aria-disabled', 'true');
     }
   });
@@ -885,7 +888,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     expect(await screen.findByText(sectionText)).toBeInTheDocument();
   }
 
-  it('NA-6. invite Decline (AC-12, D-33 row 15, N8): keeps its word and its name while in flight, is aria-disabled not disabled, its Accept sibling is natively disabled, two more presses send nothing', async () => {
+  it('NA-6 rule 1 (88.9): invite Decline (AC-12, D-33 row 15, N8): keeps its word + spinner while in flight and is named "Decline, declining", is aria-disabled not disabled, its Accept sibling is natively disabled, two more presses send nothing; its N8 name returns after', async () => {
     const user = userEvent.setup();
     seedInvites([INVITE_A, INVITE_B]);
     const d = deferred();
@@ -899,8 +902,9 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
 
     await user.click(declineA);
 
-    expect(declineA).toHaveTextContent(/^Decline$/);
-    expect(declineA).toHaveAccessibleName('Decline invite to Alpha Crew');
+    expect(declineA).toHaveTextContent(/^Decline/);
+    expect(declineA).toHaveAccessibleName('Decline, declining');
+    await waitFor(() => expect(declineA.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(declineA).toHaveAttribute('aria-disabled', 'true');
     expect(declineA).not.toHaveAttribute('disabled');
     const acceptA = within(rowA).getByRole('button', { name: 'Accept invite to Alpha Crew' });
@@ -915,10 +919,12 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
       d.resolve({ success: true });
     });
     expect(declineA).not.toHaveAttribute('aria-disabled');
+    expect(declineA).toHaveAccessibleName('Decline invite to Alpha Crew');
+    await waitFor(() => expect(declineA.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
     expect(acceptA).toBeEnabled();
   });
 
-  it('NA-7. friend Accept then friend Decline (AC-12, N2 + N8): each pressed control stays focusable and refuses a second request; Accept reads Accepting..., Decline keeps its word', async () => {
+  it('NA-7 rule 1 (88.9): friend Accept then friend Decline (AC-12, N8): each pressed control stays focusable and refuses a second request; each keeps its word + spinner, named "Accept, accepting" / "Decline, declining"', async () => {
     const user = userEvent.setup();
     seed([], [FR1]);
     const dA = deferred();
@@ -931,8 +937,9 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     const decline = within(row).getByRole('button', { name: 'Decline friend request from Cee' });
 
     await user.click(accept);
-    expect(accept).toHaveAccessibleName('Accepting...');
-    expect(accept).toHaveTextContent(/^Accepting\.\.\.$/);
+    expect(accept).toHaveAccessibleName('Accept, accepting');
+    expect(accept).toHaveTextContent(/^Accept/);
+    await waitFor(() => expect(accept.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(accept).not.toHaveAttribute('aria-label');
     expect(accept).toHaveAttribute('aria-disabled', 'true');
     expect(accept).not.toHaveAttribute('disabled');
@@ -948,8 +955,9 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     const dD = deferred();
     friendDecline().mockReturnValue(dD.promise);
     await user.click(decline);
-    expect(decline).toHaveTextContent(/^Decline$/);
-    expect(decline).toHaveAccessibleName('Decline friend request from Cee');
+    expect(decline).toHaveTextContent(/^Decline/);
+    expect(decline).toHaveAccessibleName('Decline, declining');
+    await waitFor(() => expect(decline.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(decline).toHaveAttribute('aria-disabled', 'true');
     expect(decline).not.toHaveAttribute('disabled');
     expect(accept).toBeDisabled();
@@ -960,6 +968,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
       dD.resolve({ alreadyDeclined: false });
     });
     expect(decline).not.toHaveAttribute('aria-disabled');
+    expect(decline).toHaveAccessibleName('Decline friend request from Cee');
   });
 
   it('NA-8. AC-14 on plan 88.6.1-66\'s remove-on-confirm shape: (a) the friend row stays while its Accept works, focus stays until the provider removes it, then lands on the next request; (b) a failure keeps the row and arms nothing', async () => {
@@ -974,7 +983,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     await user.click(acceptCee);
     // Held: the row is still listed and the pressed control paints its in-flight words.
     expect(rowFor('Cee')).toBeInTheDocument();
-    expect(acceptCee).toHaveAccessibleName('Accepting...');
+    expect(acceptCee).toHaveAccessibleName('Accept, accepting');
 
     await act(async () => {
       d.resolve({ alreadyAccepted: false });
@@ -1137,7 +1146,7 @@ describe("Phase 88.6.1-44 — the bell's row actions: pressed controls, names, f
     });
     const acceptDee = screen.getByRole('button', { name: 'Accept friend request from Dee' });
     fireEvent.click(acceptDee);
-    expect(acceptDee).toHaveAccessibleName('Accepting...');
+    expect(acceptDee).toHaveAccessibleName('Accept, accepting');
     expect(acceptDee).toHaveAttribute('aria-disabled', 'true');
     expect(acceptDee).not.toHaveAttribute('disabled');
   });
@@ -1521,5 +1530,23 @@ describe('Phase 88.9-CR d2 — the invite row reads the flat backend shape', () 
     expect(within(row).queryByText(/member/)).toBeNull();
     expect(within(row).queryByText('0')).toBeNull();
     expect(Array.from(row.querySelectorAll('p')).some((p) => p.textContent === '0')).toBe(false);
+  });
+});
+
+// Phase 88.9-37 O07a (owner ruling by chat, 2026-11-07 6:18 PM Pacific): the desktop bell
+// trigger pads 6px around its 24px bell = 36x36, the theme toggle size beside it.
+// Site: src/app/components/NotificationBell.js ("DECISION Phase 88.9-37 O07a").
+// The 36 box is arithmetic in jsdom (padding token + icon size); it was measured at 1280 on
+// page 8a with the same 6px padding (bellBox 36x36, toggleBox 36x36, both themes).
+describe('O07a (88.9) — the desktop bell trigger matches the theme toggle', () => {
+  it('O07a bell 36: the desktop icon trigger pads p-1.5 around its 24px bell (6 + 24 + 6 = 36, the theme toggle size); the ring treatment is unchanged', () => {
+    renderBell();
+    const trigger = screen.getByRole('button', { name: 'Notifications' });
+    expect(trigger).toHaveClass('p-1.5');
+    expect(trigger).not.toHaveClass('p-1');
+    const bell = trigger.querySelector('svg');
+    expect(bell).not.toBeNull();
+    expect(bell).toHaveClass('w-6', 'h-6');
+    expect(trigger).toHaveClass('focus:outline-hidden', 'focus-visible:ring-inset');
   });
 });

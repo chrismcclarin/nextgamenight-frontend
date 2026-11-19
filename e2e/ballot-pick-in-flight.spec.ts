@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 
+import { ratioAgainstGround } from './support/contrast';
 import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
 
 // Phase 88.6.1 plan 31 — the Game Vote at 375px, in a real browser.
@@ -255,5 +256,63 @@ test.describe('the Game Vote at 375px: one pick per press, focus after it, and a
     await expect(page.getByText(E15), 'the no-vote answer shows no load-failure banner').toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Game Vote' }), 'the no-vote answer shows no card').toHaveCount(0);
     await expect(page.getByText('Voting ended in a tie!'), 'the no-vote answer shows no picks').toHaveCount(0);
+  });
+
+  test("D10b (88.9): while a pick saves, a 12px Saving… caption shows at the pressed row only, and the pick is still named '{game}, saving'", async ({ page }) => {
+    const SAVING = 'Saving…';
+    const state = { decided: false };
+    await mockBallotRead(page, () => ({ status: 200, json: state.decided ? WINNER_BALLOT : TIE_BALLOT }));
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(isResolveTie, async (route: Route) => {
+      if (route.request().method() !== 'POST') {
+        await route.fallback();
+        return;
+      }
+      await released;
+      state.decided = true;
+      await route.fulfill({ status: 200, json: { winner: { game_id: CATAN_GAME_ID, game_name: CATAN } } });
+    });
+
+    try {
+      await page.goto(E2E_EVENT_DETAIL_PATH);
+      await expect(page.getByText(TIE_PROMPT), FIXTURE_MISS).toBeVisible({ timeout: 15_000 });
+      const catan = page.locator('button', { hasText: CATAN });
+      const wingspan = page.locator('button', { hasText: WINGSPAN });
+
+      await catan.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('button', { name: `${CATAN}, saving`, exact: true }), 'D10b: the pressed pick is named "{game}, saving" (the caption adds nothing to the name)').toBeVisible();
+
+      const caption = page.getByText(SAVING, { exact: true }).filter({ visible: true });
+      await expect(caption, 'D10b: exactly one visible Saving… caption while the pick saves').toHaveCount(1);
+      const c = await caption.boundingBox();
+      const pick = await catan.boundingBox();
+      const sibling = await wingspan.boundingBox();
+      expect(c, 'D10b: the caption has no layout box').not.toBeNull();
+      expect(pick, 'D10b: the pressed pick has no layout box').not.toBeNull();
+      expect(sibling, 'D10b: the sibling pick has no layout box').not.toBeNull();
+      const cy = c!.y + c!.height / 2;
+      const cx = c!.x + c!.width / 2;
+      const record = `caption x=${c!.x.toFixed(1)} y=${c!.y.toFixed(1)} w=${c!.width.toFixed(1)}; pick x=${pick!.x.toFixed(1)} y=${pick!.y.toFixed(1)} w=${pick!.width.toFixed(1)} h=${pick!.height.toFixed(1)}`;
+      expect(cy >= pick!.y && cy <= pick!.y + pick!.height, `D10b: the caption is not on the pressed pick's row (${record})`).toBe(true);
+      expect(c!.x, `D10b: the caption is not at the row end (${record})`).toBeGreaterThan(pick!.x + pick!.width / 2);
+      const onSibling =
+        cx >= sibling!.x && cx <= sibling!.x + sibling!.width && cy >= sibling!.y && cy <= sibling!.y + sibling!.height;
+      expect(onSibling, 'D10b: the caption sits on the sibling pick').toBe(false);
+      await expect(wingspan.getByText(SAVING, { exact: true }), 'D10b: the sibling pick holds a caption').toHaveCount(0);
+
+      const size = await caption.evaluate((el) => getComputedStyle(el).fontSize);
+      expect(size, 'D10b: the caption is not 12px').toBe('12px');
+      const ink = await ratioAgainstGround(caption, 'D10b caption');
+      expect(ink.ratio, `D10b caption: ${ink.ratio.toFixed(3)}:1 (ink ${ink.fg} on ${ink.ground}), floor 4.5:1`).toBeGreaterThanOrEqual(4.5);
+
+      release();
+      await expect(page.getByText(SAVING, { exact: true }).filter({ visible: true }), 'D10b: the caption stays after the save').toHaveCount(0);
+    } finally {
+      release();
+    }
   });
 });

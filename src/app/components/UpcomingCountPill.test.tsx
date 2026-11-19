@@ -19,6 +19,8 @@
  *    SPEC Req 2 keeps (UI-SPEC §12 item 6). `tokenContrast.test.ts` test 52 pins the same fork
  *    one layer down, at the token values; this one pins that the component actually asks for
  *    them.
+ *    AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): the dark arm's fill
+ *    is amber-400 now, with every dark accent role; the warm-900 ink and the fork itself stand.
  *
  * 3. THE SUPPRESSED STATE COLLAPSING INTO `0`. `count === null` means "we are not making a
  *    count claim" (identity resolving, or the events fetch pending/errored). `count === 0`
@@ -90,14 +92,14 @@ describe('UpcomingCountPill (SPEC Req 2 / UI-SPEC §6.1)', () => {
 
   it('5. the class string carries BOTH theme arms — the fork is deliberate, not a duplicate', () => {
     // UI-SPEC §12 item 6 + §6.1.3 (owner ruling 2026-08-31). Light: the `--color-btn-accent-*`
-    // pair. Dark: `--amber-500` fill with `--warm-900` ink. A pill with only one arm is a
+    // pair. Dark: `--amber-400` fill with `--warm-900` ink. A pill with only one arm is a
     // REGRESSION, not a simplification.
     const { container } = render(<UpcomingCountPill count={3} />);
     const cls = pillOf(container)?.className ?? '';
     for (const arm of [
       '[background-color:var(--color-btn-accent-bg)]',
       '[color:var(--color-btn-accent-text)]',
-      'dark:[background-color:var(--amber-500)]',
+      'dark:[background-color:var(--amber-400)]',
       'dark:[color:var(--warm-900)]',
     ]) {
       expect(

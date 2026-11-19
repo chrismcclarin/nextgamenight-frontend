@@ -15,12 +15,16 @@ import Link from 'next/link';
  */
 export default function BGGLogo() {
   return (
-    <div className="flex items-center justify-center py-2">
+    // DECISION Phase 88.9-52 (W20): in dark the mark sits on a white plate, chosen OVER inverting or
+    // recolouring the image (it is BoardGameGeek's own brand mark, not ours to repaint) and OVER
+    // leaving it on the dark page (the navy wordmark read 1.59 there; 10.63 on the plate). The plate's padding is on in both themes so the theme switch moves nothing; the
+    // wrapper gave up 4px a side to it, so the footer keeps its height. Light paints no plate.
+    <div className="flex items-center justify-center py-1">
       <Link 
         href="https://boardgamegeek.com" 
         target="_blank" 
         rel="noopener noreferrer"
-        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        className="flex items-center gap-2 rounded-sm px-2 py-1 dark:bg-white hover:opacity-80 transition-opacity"
         aria-label="Powered by BoardGameGeek"
       >
         <img 

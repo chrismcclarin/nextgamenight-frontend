@@ -3,12 +3,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import Link from 'next/link';
-import { groupsAPI } from '../../../../lib/api';
+import { groupsAPI, isCsrfRejection } from '../../../../lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
-import { StatusRegion } from '@/components/ui/StatusRegion';
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 
 // The page region's test handle. NOT EXPORTED, deliberately, for the reason the rsvp page records
 // (`rsvp/[token]/page.js`, anchor `NOT EXPORTED, deliberately`): Next's generated route types reject
@@ -22,7 +23,46 @@ const LOADING_LABEL = 'Loading your group invite...';
 // screen-reader announcement read ONE source and cannot drift apart (no new words, D-31).
 const REDIRECTING_DETAIL = 'Redirecting to your group...';
 const JOIN_ERROR_HEADLINE = 'Unable to join group';
+/* DECISION Phase 88.9-43 K11(c) (owner Q6(a), 88.9-RULINGS.md round 2, 2026-11-08 9:07 AM Pacific):
+   a PREVIEW failure (any kind) takes the load headline and a JOIN failure keeps the join headline,
+   chosen OVER the shipped single headline for both (it said "join" when nobody had tried to join).
+   The red error glyph stays: the D14a pick was rendered on it; the AMBER-vs-RED colour half was not
+   rendered for this card (hand-off to 88.9-51). ASCII apostrophe, house punctuation.
+   AMENDED Phase 88.9-69 (N36, owner: Follow recommendation): a preview failure's X is amber (5.50 / 4.95), a join failure's red, chosen OVER one red X; keyed on previewFailed.
+   The two numbers are the warning ink on the warning circle, light then dark (wcag.ts). One
+   literal class string per arm at the glyph, because a class built from pieces emits nothing.
+   AMENDED Phase 88.9-52 (Q69-1, owner 2026-11-16 "approve all"): the X colour is keyed on the
+   CAUSE, chosen OVER the N36 key above (colour keyed on the headline, so a dead link drew amber
+   and a join lost to a dropped connection drew red). Amber says trying again may work: a preview
+   failure that is not the dead-link arm, and a join that failed on the connection, a 5xx, a 429,
+   the proxy's CSRF gate or an expired session. Red says it never will: the dead link (preview
+   404, no token, empty body) and a join the server refused. Headlines, sentences and the Try
+   again rule are unchanged (the HEADLINE is still keyed on previewFailed). */
+const PREVIEW_ERROR_HEADLINE = "Couldn't load this invite";
 const INVALID_LINK_DETAIL = 'This invite link is no longer valid.';
+
+/* DECISION Phase 88.9-52 (Q69-1): a failed JOIN is a real refusal (red X) only on the codes the
+   server uses to say no: forbidden (other than the proxy's CSRF gate), not_found, gone, conflict.
+   Every other cause is amber, chosen OVER listing the temporary causes and defaulting to red: an
+   unnamed failure's own sentence says to refresh and try again, and a red X would contradict it.
+   Read from the error's code and the CSRF predicate, never from message text.
+   AMENDED Phase 88.9-52 (S-C1): account_deleted joins the refusal list. The join route and the
+   backend's auth layer both refuse a deleted account with a 410 that carries that envelope code
+   (backend:Sonnet/routes/groups.js, backend:Sonnet/middleware/auth0.js), and the envelope code
+   wins over the status mapping, so it never arrived as gone and drew the amber X beside a
+   sentence saying the account is gone. Rejected: keying on status 410, which would leave the
+   code-keyed rule above with one status-keyed arm. */
+function isJoinRefusal(err) {
+  if (isCsrfRejection(err)) return false;
+  const code = err?.code;
+  return (
+    code === 'forbidden' ||
+    code === 'not_found' ||
+    code === 'gone' ||
+    code === 'conflict' ||
+    code === 'account_deleted'
+  );
+}
 
 /** Join the non-empty parts of an announcement with one space (never a trailing space). */
 function joinParts(...parts) {
@@ -37,6 +77,29 @@ function GroupInvitePage() {
   const [status, setStatus] = useState('loading'); // loading | preview | joining | joined | already-member | error
   const [groupInfo, setGroupInfo] = useState(null);
   const [error, setError] = useState(null);
+  /* DECISION Phase 88.9-43 D14a: the preview failure KIND is kept in state ('not_found' | 'other'),
+     chosen OVER re-deriving it from the message string; the missing-token and empty-body arms count
+     as not_found because their sentence says the link is dead, so offering Try again would
+     contradict it. A join failure sets neither. Changing this is a decision, not a cleanup. */
+  const [previewFailed, setPreviewFailed] = useState(null); // 'not_found' | 'other' | null
+  // Q69-1 (88.9-52): true when a failed JOIN may pass on another try (see isJoinRefusal). Colour
+  // only: it adds no control and changes no words. Never reset, because the join is single-shot.
+  const [joinFailedTemporary, setJoinFailedTemporary] = useState(false);
+  // Bumped by handleRetry to re-run the preview effect in place (D14a).
+  const [retryKey, setRetryKey] = useState(0);
+
+  // D14a (88.9-43): the game page's Retry focus edge, ported (invite/game/[token]/page.js, anchor
+  // `const handleRetry = () => {`). The settled branch's <h1> (one renders at a time), the pending
+  // card's line (loading or joining), the one-shot arm, and the region dwell that keeps the page
+  // region EMPTY for REGION_EMPTY_DWELL_MS after a press so a repeat failure re-announces.
+  const settledHeadingRef = useRef(null);
+  const pendingLineRef = useRef(null);
+  const retryFocusArmedRef = useRef(false);
+  const [regionDwell, setRegionDwell] = useState(false);
+  const regionDwellTimerRef = useRef(null);
+  useEffect(() => () => {
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+  }, []);
 
   // BUG-02 (F-450) single-shot guard — mirrors the game-invite fix
   // (invite/game/[token]/page.js, anchor `const joiningRef = useRef(false);`). The previous implementation listed
@@ -81,6 +144,7 @@ function GroupInvitePage() {
   useEffect(() => {
     if (!token) {
       setStatus('error');
+      setPreviewFailed('not_found');
       setError('Invalid invite link');
       return;
     }
@@ -102,6 +166,7 @@ function GroupInvitePage() {
         // state. Treat a missing preview payload as a terminal error instead.
         if (!data) {
           setStatus('error');
+          setPreviewFailed('not_found');
           setError(INVALID_LINK_DETAIL);
           return;
         }
@@ -116,9 +181,18 @@ function GroupInvitePage() {
            network drop, a 429 or a 5xx told the holder of a VALID link that it was dead.
            REJECTED: a Retry control on this branch — a new visible control is a look change
            (Phase 88.9's charter), and the register line already says what to do.
-           Calling a failed request an invalid link again is a decision, not a cleanup. */
+           Calling a failed request an invalid link again is a decision, not a cleanup.
+           AMENDED Phase 88.9-43 (owner pick D14a, 88.9-PICKS-B3.json item D14, ruled by chat
+           2026-11-06): a Try again control now ships on the non-404 arm (primary, above a
+           secondary Go Home), chosen OVER the shipped Go Home alone — the register line says try
+           again and there was nothing to press. The 404 arm keeps the invalid-link sentence and
+           no Try again.
+           AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): the non-404 arm renders Try again, so
+           its line is the register line's beside-retry form (shown and announced); the join
+           catch below renders no Try again and keeps the full line. */
         setStatus('error');
-        setError(err?.status === 404 ? INVALID_LINK_DETAIL : getFetchErrorMessage(err));
+        setPreviewFailed(err?.status === 404 ? 'not_found' : 'other');
+        setError(err?.status === 404 ? INVALID_LINK_DETAIL : messageBesideRetry(getFetchErrorMessage(err)));
       }
     }
 
@@ -126,7 +200,39 @@ function GroupInvitePage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, retryKey]);
+
+  // D14a: Try again — arm the focus edge, start the region dwell, clear the failure and re-run
+  // the preview effect in place. No `joiningRef` reset: Try again never renders once a join began
+  // (a join failure sets `previewFailed` to nothing).
+  const handleRetry = () => {
+    retryFocusArmedRef.current = true;
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+    setRegionDwell(true);
+    regionDwellTimerRef.current = setTimeout(() => {
+      regionDwellTimerRef.current = null;
+      setRegionDwell(false);
+    }, REGION_EMPTY_DWELL_MS);
+    setError(null);
+    setPreviewFailed(null);
+    setStatus('loading');
+    setRetryKey((k) => k + 1);
+  };
+
+  // The focus edge for Try again, as the game page shapes it: in flight the arm STAYS on and,
+  // when focus is lost (the pressed button unmounted), the pending line takes it; on the first
+  // settled render the arm drops and, only when focus is lost, the settled heading takes it,
+  // else the shared floor.
+  useEffect(() => {
+    if (!retryFocusArmedRef.current) return;
+    if (authLoading || status === 'loading' || status === 'joining') {
+      if (isFocusLost()) focusElement(pendingLineRef.current);
+      return;
+    }
+    retryFocusArmedRef.current = false;
+    if (!isFocusLost()) return;
+    if (!focusElement(settledHeadingRef.current)) focusPageFloor();
+  }, [status, authLoading]);
 
   // Handle auth state after preview is loaded
   useEffect(() => {
@@ -190,6 +296,7 @@ function GroupInvitePage() {
       } catch (err) {
         if (unmountedRef.current) return;
         setStatus('error');
+        setJoinFailedTemporary(!isJoinRefusal(err));
         // R1 (SPEC DEF-88-25-01): the ratified register replaces the raw upstream text and the
         // hand-rolled "Failed to join group." fallback. MUTATION-path failure; the toast arm of
         // UI-SPEC §6.2 does not apply because this page IS the mutation and has no other
@@ -218,8 +325,13 @@ function GroupInvitePage() {
   // branch other than the one on screen. Loading and joining yield '' — the region must be
   // mounted and empty first, or there is no CHANGE for a screen reader to announce.
   const isLoading = authLoading || status === 'loading';
+  // Q69-1 (88.9-52): amber for a failure another try may clear, red for a refusal.
+  const failureIsTemporary = previewFailed === 'other' || (!previewFailed && joinFailedTemporary);
   let announcement = '';
-  if (isLoading) {
+  if (regionDwell) {
+    // D14a: empty for the dwell after a Try again press (see the game page's REGION DWELL).
+    announcement = '';
+  } else if (isLoading) {
     announcement = '';
   } else if (status === 'preview' && groupInfo) {
     announcement = joinParts(groupInfo.group_name, memberCountLine);
@@ -230,7 +342,7 @@ function GroupInvitePage() {
   } else if (status === 'already-member') {
     announcement = joinParts(alreadyMemberHeadline, REDIRECTING_DETAIL);
   } else if (status === 'error') {
-    announcement = joinParts(JOIN_ERROR_HEADLINE, error);
+    announcement = joinParts(previewFailed ? PREVIEW_ERROR_HEADLINE : JOIN_ERROR_HEADLINE, error);
   }
 
   let body;
@@ -239,7 +351,7 @@ function GroupInvitePage() {
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4 text-center">
           <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
-          <p className="text-content-secondary">{LOADING_LABEL}</p>
+          <p ref={pendingLineRef} className="text-content-secondary">{LOADING_LABEL}</p>
         </div>
       </div>
     );
@@ -260,7 +372,7 @@ function GroupInvitePage() {
                 </svg>
               </div>
 
-              <Heading level={1} size="display" className="text-content-primary mb-2">
+              <Heading level={1} size="display" className="text-content-primary mb-2" ref={settledHeadingRef}>
                 {groupInfo.group_name}
               </Heading>
 
@@ -296,7 +408,7 @@ function GroupInvitePage() {
           {status === 'joining' && (
             <div className="text-center">
               <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
-              <p className="text-content-primary">Joining {groupInfo?.group_name || 'group'}...</p>
+              <p ref={pendingLineRef} className="text-content-primary">Joining {groupInfo?.group_name || 'group'}...</p>
             </div>
           )}
 
@@ -310,7 +422,7 @@ function GroupInvitePage() {
               </div>
               {/* h1 @ 20 STAYS at 20 (D-04 row 2): a mutually-exclusive STATUS branch, not the
                   page title. Same level-vs-size split as `ErrorFallback`. */}
-              <Heading level={1} size="heading" className="text-content-primary mb-2">
+              <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
                 {joinedHeadline}
               </Heading>
               <p className="text-content-secondary">{REDIRECTING_DETAIL}</p>
@@ -325,7 +437,7 @@ function GroupInvitePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <Heading level={1} size="heading" className="text-content-primary mb-2">
+              <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
                 {alreadyMemberHeadline}
               </Heading>
               <p className="text-content-secondary">{REDIRECTING_DETAIL}</p>
@@ -335,16 +447,46 @@ function GroupInvitePage() {
           {/* Error state */}
           {status === 'error' && (
             <div className="text-center">
-              <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              {/* N36 (88.9-69), re-keyed by Q69-1 (88.9-52): the circle and the X by cause, amber
+                  when trying again may work, red for a dead link or a refused join. See the
+                  K11(c) marker above the headline constants. */}
+              <div
+                className={
+                  failureIsTemporary
+                    ? 'mx-auto mb-4 w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center'
+                    : 'mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center'
+                }
+              >
+                <svg
+                  className={failureIsTemporary ? 'w-8 h-8 text-content-status-warning' : 'w-8 h-8 text-content-status-error'}
+                  aria-hidden="true"
+                  focusable="false"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <Heading level={1} size="heading" className="text-content-primary mb-2">
-                {JOIN_ERROR_HEADLINE}
+              <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
+                {previewFailed ? PREVIEW_ERROR_HEADLINE : JOIN_ERROR_HEADLINE}
               </Heading>
               <p className="text-content-secondary mb-6">{error}</p>
-              <Button asChild variant="primary" size="default" className="w-full text-center">
+              {/* D14a (88.9-43): Try again on the non-404 PREVIEW failure only, primary, above a
+                  secondary Go Home (mt-3). A 404, an empty body, a missing token and a failed JOIN
+                  keep Go Home alone and primary. Literal class string per arm (Pitfall 1). */}
+              {previewFailed === 'other' && (
+                <Button variant="primary" size="default" onClick={handleRetry} className="w-full text-center">
+                  Try again
+                </Button>
+              )}
+              <Button
+                asChild
+                variant={previewFailed === 'other' ? 'secondary' : 'primary'}
+                size="default"
+                className={previewFailed === 'other' ? 'w-full text-center mt-3' : 'w-full text-center'}
+              >
                 <Link href="/">
                   Go Home
                 </Link>
@@ -373,6 +515,10 @@ function GroupInvitePage() {
      empty-state prop is NOT adopted: this region is always sr-only (ST-2 group A).
      NO FOCUS MOVE on this page: nothing the user operated is removed — the join runs on load (the
      availability-form ERROR-flip rule).
+     AMENDED Phase 88.9-43 (D14a): Try again IS a control the user operates and the error branch
+     unmounts it, so the game page's Retry focus edge is ported: the pending line in flight, the
+     settled heading after, the region dwell for a repeat failure. The first load still moves no
+     focus.
      The preview announcement leaves out the optional owner-written description (free text of any
      length); the name and the member count say what the page is.
      Changing any of this is a decision, not a cleanup. */

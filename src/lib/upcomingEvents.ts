@@ -102,6 +102,23 @@ export const hasLiveStatus = (event: UpcomingEventLike): boolean => {
 };
 
 /**
+ * The ONE tag classifier for a cancelled / completed row (88.9-39, owner picks F2c / F3b for
+ * W57): the Calendar sheet row and the event-day modal both read it, so the two surfaces cannot
+ * disagree about what a status is called (T-88.5-25: one derivation). PRESENTATION ONLY — it
+ * never decides membership (OWNER RULING 2a's id sets do that), and a live or unknown status
+ * yields `null`, which renders no tag.
+ *
+ * AMENDED Phase 88.9-61 (X26, owner 2026-11-12: yes, remove the completed tag): Completed is
+ * REMOVED, chosen OVER tagging a state the backend no longer writes for a future night — it would
+ * contradict its own date. Cancelled stays DORMANT for v2.1 (todo
+ * 2026-11-11-cancelled-night-notice-per-user; look 52-X10).
+ */
+export const statusTagLabel = (event: UpcomingEventLike): 'Cancelled' | null => {
+  if (event.status === 'cancelled') return 'Cancelled';
+  return null;
+};
+
+/**
  * The ONE test for "this event is live and still ahead of us".
  *
  * Both `selectUpcomingWithin7Days` and `selectNextUpcoming` route their live/future

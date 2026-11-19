@@ -156,6 +156,128 @@ async function expectFitsAndReachable(
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
 }
 
+// R4 L5 (88.9-52 round 4): the rendered proof for S4. The demo week grid was 446px in a 293px scene
+// at 375, so the Friday column every demo paints was cut at the card's edge and Sat and Sun were
+// out of sight; and in dark a painted cell kept its light mint edge. Both were fixed without a
+// browser, src/app/components/tutorial/simulated/TutorialGrid.js ("AMENDED Phase 88.9-52 (R4 S4, the round-3 capture, checked first)")
+// and src/app/components/tutorial/simulated/AvailabilityPromptDemo.js ("AMENDED Phase 88.9-52 (R4 S4, the round-3 capture): in dark the cell's EDGE follows too"),
+// so this is where they are measured. Called on Step 3 of 6 (the availability step) at stage 0.
+//
+// THE ONE CLOCK MOVE IN THIS SPEC. A painted cell exists only from stage 1, and the header above
+// explains why the clock is paused at stage 0. This helper runs the paused clock forward 1000 ms,
+// once, as its LAST act: that fires the step's 400 ms and 800 ms stage timers (two Friday cells
+// painted) and stops well short of the 4000 ms timer that auto-advances the step. The clock stays
+// paused afterwards, and the caller's next press of Next resets the stage, so nothing later in
+// the test sees a moved stage. A cell's colours ease over 300 ms of real time, which the page
+// clock does not own, so the fill is polled until it has changed before the edge is read.
+async function expectDemoGridWholeAt375(page: Page): Promise<void> {
+  // Scoped through the demo's own chip: the page behind the tutorial may show day names too.
+  const demo = page
+    .getByText('Adding: Preferred', { exact: true })
+    .locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " text-center ")][1]');
+  const sun = demo.getByText('Sun', { exact: true });
+  await expect(sun).toBeVisible();
+  const card = sun.locator(
+    'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " overflow-x-auto ")][1]',
+  );
+  await expect(card).toHaveCount(1);
+  // Vertical only: the scene scrolls up and down. A sideways scroll of the card would hide the
+  // very overflow this measures, so the card's scrollLeft is asserted to be 0 below.
+  await card.scrollIntoViewIfNeeded();
+
+  const geometry = await card.evaluate((el) => {
+    const parent = el.parentElement as HTMLElement;
+    const rows = Array.from((el.firstElementChild as HTMLElement).children) as HTMLElement[];
+    const names = (Array.from(rows[0].children) as HTMLElement[]).slice(1);
+    const firstRowCells = (Array.from(rows[1].children) as HTMLElement[]).slice(1);
+    const r = (n: Element) => n.getBoundingClientRect();
+    return {
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      scrollLeft: el.scrollLeft,
+      cardLeft: r(el).left,
+      cardRight: r(el).right,
+      parentLeft: r(parent).left,
+      parentRight: r(parent).right,
+      rowCount: rows.length,
+      names: names.map((n) => ({ text: (n.textContent ?? '').trim(), left: r(n).left, right: r(n).right })),
+      cells: firstRowCells.map((n) => ({ left: r(n).left, right: r(n).right, width: r(n).width })),
+    };
+  });
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+  if (!viewport) return;
+
+  // Guards: this is the 7-day, 8-slot grid, and it has a size.
+  expect(geometry.names.map((n) => n.text)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+  expect(geometry.rowCount).toBe(9);
+  expect(geometry.cells).toHaveLength(7);
+  expect(geometry.clientWidth).toBeGreaterThan(0);
+
+  expect(
+    geometry.scrollWidth,
+    `S4: the demo grid card is ${geometry.scrollWidth - geometry.clientWidth}px wider inside than its own box at ${viewport.width}px, so part of the week is cut`,
+  ).toBeLessThanOrEqual(geometry.clientWidth);
+  expect(geometry.scrollLeft, 'S4: the demo grid card is scrolled sideways').toBe(0);
+  expect(
+    geometry.cardRight,
+    `S4: the demo grid card's right edge (${geometry.cardRight}px) is past its parent's (${geometry.parentRight}px)`,
+  ).toBeLessThanOrEqual(geometry.parentRight + 0.5);
+  expect(geometry.cardLeft).toBeGreaterThanOrEqual(geometry.parentLeft - 0.5);
+  expect(geometry.cardRight).toBeLessThanOrEqual(viewport.width);
+  // Every day name and every column, Sun included, ends inside the card.
+  for (const [i, name] of geometry.names.entries()) {
+    expect(name.right, `S4: the day name ${name.text} ends outside the grid card`).toBeLessThanOrEqual(geometry.cardRight);
+    expect(name.left, `S4: the day name ${name.text} starts outside the grid card`).toBeGreaterThanOrEqual(geometry.cardLeft);
+    const cell = geometry.cells[i];
+    expect(cell.right, `S4: the ${name.text} column ends outside the grid card`).toBeLessThanOrEqual(geometry.cardRight);
+    // S4 also gave a day name its cells' side margin: the name sits over its own column.
+    expect(Math.abs(name.left - cell.left), `S4: the day name ${name.text} is not over its column`).toBeLessThanOrEqual(1);
+    expect(Math.abs(name.right - cell.right), `S4: the day name ${name.text} is not over its column`).toBeLessThanOrEqual(1);
+    // The floor the columns give way to (24px) still holds at this width.
+    expect(cell.width, `S4: the ${name.text} column is under its 24px floor`).toBeGreaterThanOrEqual(24);
+  }
+  // Sun can be reached, and reaching it needed no sideways scroll of the card (the reads above
+  // were taken before this scroll, so it cannot have hidden an overflow from them).
+  await sun.scrollIntoViewIfNeeded();
+  await expect(sun).toBeInViewport({ ratio: 0.99 });
+  expect(await card.evaluate((el) => el.scrollLeft), 'S4: showing Sun took a sideways scroll of the grid card').toBe(0);
+
+  // Dark: a painted cell's edge is the plain line an unpainted cell has. The phone project is
+  // pinned dark; asserted here so a light run reds on the guard and not on the colours.
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.clock.runFor(1000);
+  const readEdges = () =>
+    card.evaluate((el) => {
+      const rows = Array.from((el.firstElementChild as HTMLElement).children) as HTMLElement[];
+      const row = rows[3]; // the header row, then 5:00, 5:30, 6:00 PM
+      const painted = row.children[5] as HTMLElement; // the time gutter, then Mon to Fri
+      const plain = row.children[4] as HTMLElement; // Thu, never painted
+      return {
+        time: (row.children[0].textContent ?? '').trim(),
+        paintedFill: getComputedStyle(painted).backgroundColor,
+        plainFill: getComputedStyle(plain).backgroundColor,
+        paintedEdge: getComputedStyle(painted).borderTopColor,
+        plainEdge: getComputedStyle(plain).borderTopColor,
+      };
+    });
+  expect((await readEdges()).time, 'the row read for the painted cell is not the 6:00 PM row').toBe('6:00 PM');
+  // Guard: the Friday 6:00 PM cell really is painted (its fill has left the unpainted one).
+  await expect
+    .poll(async () => {
+      const e = await readEdges();
+      return e.paintedFill !== e.plainFill;
+    }, { message: 'S4: no painted cell after 1000 ms on the availability step, so the edge check below measures nothing' })
+    .toBe(true);
+  // The edge eases over 300 ms: wait for it to arrive, never a fixed pause (scoped check 3, L2).
+  await expect
+    .poll(async () => {
+      const e = await readEdges();
+      return e.paintedFill !== e.plainFill && e.paintedEdge === e.plainEdge;
+    }, { message: 'S4: in dark a painted demo cell has a different edge colour from an unpainted one' })
+    .toBe(true);
+}
+
 // The per-project skip is a describe-level callback (the availability-grid-touch.spec.ts idiom);
 // a listing still shows both titles in both projects.
 test.describe('tutorial gesture wording, phone arm (88.6.1-51, D-16)', () => {
@@ -169,6 +291,8 @@ test.describe('tutorial gesture wording, phone arm (88.6.1-51, D-16)', () => {
     await pressNextTo(page, ['Step 1 of 6', 'Step 2 of 6', 'Step 3 of 6'], tap);
     await expectFitsAndReachable(page, T2_PHONE, rows);
     await expect(page.getByText(T2_DESKTOP, { exact: true })).toHaveCount(0);
+    // R4 L5 (88.9-52): the demo week grid is whole at 375 and, in dark, a painted cell keeps the plain edge.
+    await expectDemoGridWholeAt375(page);
 
     await pressNextTo(page, ['Step 4 of 6', 'Step 5 of 6'], tap);
     await expectFitsAndReachable(page, T4_PHONE, rows);
@@ -178,7 +302,7 @@ test.describe('tutorial gesture wording, phone arm (88.6.1-51, D-16)', () => {
     await expect(page.getByText(T4_DESKTOP, { exact: true })).toHaveCount(0);
     await expect(page.getByText(R4_DESKTOP, { exact: true })).toHaveCount(0);
 
-    // House logger rule applies to src/ only; this one line makes a red diagnosable from the CI log.
+    // eslint-disable-next-line no-console -- this one line makes a red diagnosable from the CI log
     console.log('[tutorial-wording-375]', JSON.stringify(rows));
 
     expect(counters.tutorialWrites, 'no tutorial write may leave the browser').toBe(0);

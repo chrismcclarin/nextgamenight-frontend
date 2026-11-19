@@ -134,7 +134,11 @@ describe('M1 — the identity-pending window is a NAMED status, not a silent div
 
     renderWithClient(<FriendsPage />);
 
-    const status = await screen.findByRole('status', { name: /loading your friends/i });
-    expect(status).toBeInTheDocument();
+    // AMENDED Phase 88.9-66 (X35): the window is announced by the loader's polite region, which
+    // mounts empty and takes its words after the dwell (a status that mounts already holding its
+    // words is not announced), so the words are read as the region's content, not as a label.
+    const status = await screen.findByText('Loading your friends');
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
   });
 });

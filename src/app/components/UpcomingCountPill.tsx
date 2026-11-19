@@ -47,6 +47,11 @@ export interface UpcomingCountPillProps {
      dark   amber-500 fill (`--amber-500`, src/app/globals.css ("--amber-500: #f59e0b;")) + warm-900 ink (`--warm-900`, src/app/globals.css ("--warm-900: #1a1614;"))
    expressed as arbitrary-value token references with a `dark:` variant (the shipped idiom at
    src/app/components/grouplist.js ("border-t border-line pt-3 [text-shadow")). Owner ruling 2026-08-31, UI-SPEC §6.1.3 / §13 Flag 1.
+   AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): the dark fill moves to
+   amber-400 with every dark accent role, chosen OVER the 88.5 amber-500 (ink 8.37); warm-900 ink
+   reads 10.76 on it, the pill reads 6.75 on the Calendar button fill and 8.30 on the sheet card.
+   The fork stands: white on amber-400 is 1.67:1 (an AA failure), so the ink forks with the fill.
+   The amber-500 figures below are history, measured on the 88.5 fill.
 
    REJECTED (a) — RELAXING SPEC Req 2's ACCEPTANCE. The UI-SPEC draft proposed re-deriving the
    criterion to "ink-on-fill >= 4.5 only", with the four ground ratios merely recorded, on the
@@ -146,12 +151,15 @@ const UpcomingCountPill = React.forwardRef<HTMLSpanElement, UpcomingCountPillPro
            themes) are green before and after. The pins' own numbers are unchanged — ink on
            fill 5.0216 light / 8.3660 dark; fill on the Calendar button 4.4321 / 5.2506; fill
            on the sheet card 5.0216 / 6.4483 — and none was near its floor, so this is NOT a
-           case where 600->700 makes a marginal pairing merely LOOK safer than it measures. */
+           case where 600->700 makes a marginal pairing merely LOOK safer than it measures.
+           AMENDED Phase 88.9-58 (X60): the Calendar button is card-white in light; re-measured
+           5.0216 light, dark unchanged (the dark fill is still the dark secondary fill; test 51
+           reads 6.7549 there since the F4b amber-400 pill). */
         className={[
           'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5',
           'text-xs font-bold leading-none tabular-nums',
           '[background-color:var(--color-btn-accent-bg)] [color:var(--color-btn-accent-text)]',
-          'dark:[background-color:var(--amber-500)]',
+          'dark:[background-color:var(--amber-400)]',
           'dark:[color:var(--warm-900)]',
           className,
         ]

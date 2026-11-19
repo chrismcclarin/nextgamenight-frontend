@@ -7,7 +7,7 @@
 //
 // Since plan 88.6.1-26 it also covers the submit's in-flight guard and its in-flight label in both
 // modes (create and edit): one submit at a time, `aria-disabled` (never native `disabled`), and
-// copy row C7 `Creating...` / `Updating...`. The guard needs none of the scheduling half.
+// copy row C7's words, heard since 88.9-24 as the busy suffix ', creating' / ', updating'. The guard needs none of the scheduling half.
 //
 // The modal's scheduling half is stubbed out: this file is about the
 // participants list, and EventScheduler/heatmap are expensive to mount (a 28-row x 7-column
@@ -44,6 +44,9 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 // can count receipts. The EventDayModal.test.tsx idiom (hoisted spies, a factory that returns them).
 const toastSpies = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: toastSpies.success, error: toastSpies.error } }));
+// Save-feedback rules 2/4 (88.9-24, owner ruling R-F1): an in-session success on a host that shows
+// the event is spoken by the root announcer instead of a toast. Automocked; beforeEach clears it.
+vi.mock('@/components/ui/announcer');
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'America/New_York', browserTimezone: 'America/New_York' }),
@@ -90,6 +93,7 @@ import { toast } from 'sonner';
 import { ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { logger } from '@/lib/logger';
+import { announceStatus } from '@/components/ui/announcer';
 
 // createEvent is a JS component whose inferred prop types come from its defaults
 // (`editingEvent = null` infers `null`); cast to a permissive type so the edit-mode arm can pass
@@ -292,11 +296,29 @@ describe('add-participant focus (UAT row 542)', () => {
   });
 });
 
+// Phase 88.9-52, R15a (owner pick B, 2026-11-17): on a phone the participant list box is capped at
+// 24rem (384px), which shows two whole participant rows (the picked mock measured 2.13 rows of 179px;
+// the 15rem cap showed 1.33). From md up the 15rem cap is kept (rows are one 83px line there).
+// AMENDED Phase 88.9-52 (R4 D6, owner page pick G6 = C, 2026-11-18): the one-line rows start at sm
+// (640px), so the 15rem cap starts there with them.
+// jsdom lays nothing out: this pins the classes, the row count is the capture's.
+describe('R15a (88.9-52) — the participant list box shows two whole people on a phone', () => {
+  it('R15a + R4 D6 (88.9-52): the list box is capped at 24rem below sm and 15rem from sm, and still scrolls', async () => {
+    await renderModal();
+    const box = screen.getByRole('group', { name: /^Participants/ });
+    const tokens = box.className.split(/\s+/);
+    expect(tokens).toEqual(expect.arrayContaining(['max-h-96', 'sm:max-h-60', 'overflow-y-auto']));
+    expect(tokens).not.toContain('md:max-h-60');
+    expect(tokens).not.toContain('max-h-60');
+  });
+});
+
 // Plan 88.6.1-26 (D-35 rule of POSITION, copy row C7, plan 88.6.1-15's finding). Create Event's
 // submit had NO in-flight guard: one double tap created two events and sent two rounds of
 // notifications, and the button gave no sign it was working. It now refuses a second submit on
 // the first statement after `e.preventDefault()`, carries `aria-disabled` (never native
-// `disabled`, which drops a keyboard user to <body>) and reads `Creating...` / `Updating...`.
+// `disabled`, which drops a keyboard user to <body>); since 88.9-24 it keeps its label and is named
+// 'Create Event, creating' / 'Update Event, updating' while it works (save-feedback rule 1).
 describe('createEvent — the submit refuses a second press, stays focusable and says it is working (88.6.1-26, D-35, C7)', () => {
   type Mock = ReturnType<typeof vi.fn>;
 
@@ -327,7 +349,7 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
   });
 
-  it('C2: while creating, the submit is aria-disabled (not disabled) and reads Creating...; then Create Event again', async () => {
+  it('C2 rule 1 (88.9): Create Event keeps its label and shows the spinner while saving; the submit is aria-disabled (not disabled), then Create Event again with no success toast', async () => {
     const release = holdOnce(eventsAPI.createEvent);
     await renderModal();
     const form = submitButton().closest('form') as HTMLFormElement;
@@ -336,18 +358,25 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1));
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
     expect(submitButton()).not.toHaveAttribute('disabled');
-    // Copy row C7, exact bytes: three ASCII full stops.
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    // Rule 1 (88.9-24): the label stays; copy row C7's word lives on as the suffix (Q6(b)).
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
+    expect(submitButton().firstChild?.textContent).toBe('Create Event');
+    await waitFor(() => expect(submitButton().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
 
     fireEvent.submit(form);
     await new Promise((r) => setTimeout(r, 30));
     expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
 
     // The modaltoggle stub keeps the dialog mounted, so the restore after a SUCCESS is observable.
     release({});
     await waitFor(() => expect(submitButton()).not.toHaveAttribute('aria-disabled'));
     expect(submitButton()).toHaveAccessibleName('Create Event');
+    // Rule 2 (88.9-24): an in-session success on a host that shows the event fires no toast and
+    // is spoken once by the root announcer.
+    expect(toastSpies.success).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Event created');
   });
 
   // CONFIRM-ONLY (green before the fix by design): guards the release in `finally`.
@@ -367,7 +396,7 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
   });
 
-  it('C4: in EDIT mode the submit reads Updating... while it works, then Update Event again', async () => {
+  it('C4 rule 1 (88.9): in EDIT mode Update Event keeps its label and shows the spinner while saving, then Update Event again with no success toast', async () => {
     const release = holdOnce(eventsAPI.updateEvent);
     // Plan 88.6.1-68: the Edit dialog now reads the event fresh when it opens, so the arm hands
     // that read the same event it passes as `editingEvent`.
@@ -405,7 +434,9 @@ describe('createEvent — the submit refuses a second press, stays focusable and
 
     fireEvent.submit(form);
     await waitFor(() => expect(eventsAPI.updateEvent).toHaveBeenCalledTimes(1));
-    expect(submitButton()).toHaveAccessibleName('Updating...');
+    expect(submitButton()).toHaveAccessibleName('Update Event, updating');
+    expect(submitButton().firstChild?.textContent).toBe('Update Event');
+    await waitFor(() => expect(submitButton().querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
     expect(submitButton()).not.toHaveAttribute('disabled');
 
@@ -416,6 +447,20 @@ describe('createEvent — the submit refuses a second press, stays focusable and
     release({});
     await waitFor(() => expect(submitButton()).toHaveAccessibleName('Update Event'));
     expect(submitButton()).not.toHaveAttribute('aria-disabled');
+    expect(toastSpies.success).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Event updated');
+  });
+
+  // Save-feedback rule 4 (88.9-24): groupPlanning renders no events, so the person cannot see the
+  // result — the toast stays there and the root announcer is not also called.
+  it('rule 4 (88.9): a create on a host that renders no events (resultInView false) keeps the Event created toast', async () => {
+    await renderModal({ resultInView: false });
+    const form = submitButton().closest('form') as HTMLFormElement;
+    fireEvent.submit(form);
+    await waitFor(() => expect(toastSpies.success).toHaveBeenCalledTimes(1));
+    expect(toastSpies.success).toHaveBeenCalledWith('Event created');
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
   });
 });
 
@@ -503,6 +548,8 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     expect(props.onEventCreated).toHaveBeenCalledWith({ id: 'evt-1' });
     expect(toastSpies.success).toHaveBeenCalledTimes(1);
     expect(toastSpies.success).toHaveBeenCalledWith('Event created');
+    // Rule 4 (88.9-24): a late success keeps its toast, which speaks it; the announcer stays silent.
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
     await flush();
     // Then the absences: the reopened dialog is not closed, wiped or latched.
     expect(props.modaltoggle).not.toHaveBeenCalled();
@@ -521,6 +568,7 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     first.resolve({ id: 'evt-1' });
     await waitFor(() => expect(props.onEventCreated).toHaveBeenCalledTimes(1));
     expect(toastSpies.success).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
     await flush();
     // The person's own close already ran the host's close; a second call is what closes a
     // reopened dialog.
@@ -546,21 +594,26 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     submitForm();
     await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
     // Session 2's own press.
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
 
     first.resolve({ id: 'evt-1' });
     await waitFor(() => expect(props.onEventCreated).toHaveBeenCalledTimes(1));
     await flush();
     // The stale request released nothing and closed nothing.
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
     expect(props.modaltoggle).not.toHaveBeenCalled();
 
     second.resolve({ id: 'evt-2' });
     // Session 2's own success closes its own dialog.
     await waitFor(() => expect(props.modaltoggle).toHaveBeenCalledTimes(1));
-    expect(toastSpies.success).toHaveBeenCalledTimes(2);
+    // Rule 2/4 (88.9-24): the stale first create keeps its toast; session 2's in-session success
+    // fires none and is spoken once by the root announcer — each outcome spoken once.
+    expect(toastSpies.success).toHaveBeenCalledTimes(1);
+    expect(toastSpies.success).toHaveBeenCalledWith('Event created');
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Event created');
     expect(props.onEventCreated).toHaveBeenCalledTimes(2);
   });
 
@@ -579,7 +632,7 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     await renderModal({ ...props, onEventCreated: onEventCreatedB });
     submitForm();
     // B's own press shows at once (copy row C7)...
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
     // ...and inside the join window no second request is sent.
     await new Promise((r) => setTimeout(r, 50));
@@ -595,8 +648,9 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     expect(onEventCreatedB.mock.invocationCallOrder[0]).toBeLessThan(
       (props.modaltoggle as Mock).mock.invocationCallOrder[0]
     );
-    // One write, one receipt: the originator's.
+    // One write, one receipt: the originator's (its session ended, so rule 4 keeps the toast).
     expect(toastSpies.success).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
     await waitFor(() => expectLiveCreate());
   });
 
@@ -610,7 +664,7 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
     viewA.unmount();
     await renderModal(props);
     submitForm();
-    expect(submitButton()).toHaveAccessibleName('Creating...');
+    expect(submitButton()).toHaveAccessibleName('Create Event, creating');
     await new Promise((r) => setTimeout(r, 50));
     expect(eventsAPI.createEvent).toHaveBeenCalledTimes(1);
 
@@ -650,7 +704,7 @@ describe('createEvent — a request that outlives its dialog (88.6.1-81: dialog 
       submitForm();
       // A new originator: it sends, and shows its own press.
       await waitFor(() => expect(eventsAPI.createEvent).toHaveBeenCalledTimes(2));
-      expect(submitButton()).toHaveAccessibleName('Creating...');
+      expect(submitButton()).toHaveAccessibleName('Create Event, creating');
       expect(submitButton()).toHaveAttribute('aria-disabled', 'true');
 
       // Settle both before the test ends: the newer first, then the hung one.
@@ -708,6 +762,25 @@ describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edi
 
   afterEach(() => {
     vi.mocked(eventsAPI.getEvent).mockReset();
+  });
+
+  // X50 (88.9-65, owner 2026-11-13): the edit form's Score box shows what a person would type.
+  // The stored score arrives as two-decimal text; seeding it raw showed 57.00 in a number box.
+  // Saving 57 stores the same value, so nothing about storage, entry or the payload changes.
+  it('X50 (88.9-65): editing a session seeds 57.00 as 57 and 57.50 as 57.5', async () => {
+    const scored = {
+      ...v1,
+      EventParticipations: [
+        { user_id: null, username: 'Guest One', is_custom: true, score: '57.00', faction: '', is_new_player: false, placement: 1 },
+        { user_id: null, username: 'Guest Two', is_custom: true, score: '57.50', faction: '', is_new_player: false, placement: 2 },
+        { user_id: null, username: 'Guest Three', is_custom: true, score: null, faction: '', is_new_player: false, placement: null },
+      ],
+    };
+    vi.mocked(eventsAPI.getEvent).mockImplementation((async () => scored) as never);
+    render(<CreateEvent {...baseProps()} editingEvent={scored} />);
+    await screen.findByRole('button', { name: 'Update Event' });
+    const scores = screen.getAllByLabelText('Score') as HTMLInputElement[];
+    expect(scores.map((box) => box.value)).toEqual(['57', '57.5', '']);
   });
 
   it('ED0: create mode keeps its own loading line, Loading group members... (confirm-only)', async () => {
@@ -956,5 +1029,68 @@ describe('createEvent edit mode reads the event fresh (88.6.1-68: a reopened Edi
     const recorded = fixtures.schedulerProps as Record<string, unknown> | null;
     const initialDate = recorded?.initialDate as Date;
     expect(initialDate.toISOString().slice(0, 10)).toBe('2026-11-16');
+  });
+});
+
+// G5 (88.9-52 round 4): the after-build capture (r3-l) showed the Edit Event dialog with its header
+// gone and an empty band as tall as the header at the bottom, the Comments box under it. CAUSE: a
+// screen-reader-only box is position absolute, and an absolute box is laid out against its nearest
+// POSITIONED ancestor. The dialog's scrolling Body is not positioned, so every such box in the form
+// was laid out against the dialog shell: it did not scroll with the form, it sat where the form
+// would be with no scroll (far below the shell's foot), and that made the shell itself scrollable
+// although it clips. Anything that scrolls an ancestor to bring a field to the top (the capture's
+// own scrollIntoView did; a browser's find-in-page does) then slid the whole shell up by the height
+// of its header. The same boxes inside the participant list box were not scrolled by the list
+// either. The rule pinned here: walking up from every absolute box in the dialog, a positioned
+// ancestor comes BEFORE any scrolling box that is not itself positioned.
+// jsdom lays nothing out, so this reads class tokens: the rendered symptom is the capture's.
+describe('G5 (88.9-52) — no absolute box in the event dialog escapes its scrolling box', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  const POSITIONED = new Set(['relative', 'absolute', 'fixed', 'sticky']);
+  const isPositioned = (el: Element) => tokens(el).some((t) => POSITIONED.has(t));
+  const scrolls = (el: Element) => tokens(el).some((t) => /^overflow(-[xy])?-(auto|scroll)$/.test(t));
+
+  // The first ancestor that decides: a positioned one (held) or a scrolling one that is not (escaped).
+  const escapes = (dialog: HTMLElement): string[] => {
+    const out: string[] = [];
+    for (const el of Array.from(dialog.querySelectorAll('*'))) {
+      if (!tokens(el).some((t) => t === 'sr-only' || t === 'absolute')) continue;
+      for (let up = el.parentElement; up && up !== dialog; up = up.parentElement) {
+        if (isPositioned(up)) break;
+        if (scrolls(up)) {
+          out.push(`${el.tagName.toLowerCase()}.${tokens(el).join('.')} escapes ${up.tagName.toLowerCase()}.${tokens(up).join('.')}`);
+          break;
+        }
+      }
+    }
+    return out;
+  };
+
+  it('G5: every sr-only or absolute box under the dialog Body is held by a positioned ancestor inside it', async () => {
+    await renderModal();
+    const dialog = screen.getByRole('dialog');
+    // A typed-in (non-member) row carries the duplicate-name hint, which is sr-only while empty.
+    fireEvent.click(screen.getByRole('button', { name: /add participant/i }));
+    // Guard: the form does hold such boxes, inside the list box and outside it, so an empty
+    // result below is not empty by having nothing to check.
+    const box = screen.getByRole('group', { name: /^Participants/ });
+    const hidden = Array.from(dialog.querySelectorAll('.sr-only'));
+    expect(hidden.some((el) => box.contains(el)), 'no sr-only box inside the participant list').toBe(true);
+    expect(hidden.some((el) => !box.contains(el) && box.closest('form')?.contains(el)), 'no sr-only box in the form outside the list').toBe(true);
+    expect(escapes(dialog)).toEqual([]);
+    // The two boxes that hold them: the list box (it scrolls its own rows) and the dialog's Body.
+    // AMENDED 88.9-52 (R4 L3): the second holder was this form's own region wrapper. Modal.Body is
+    // positioned at the primitive now, src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18)"),
+    // so the region's own relative was dead and is gone; the Body is the holder.
+    expect(tokens(box)).toEqual(expect.arrayContaining(['relative', 'overflow-y-auto']));
+    const region = box.closest('form')?.parentElement as HTMLElement;
+    expect(tokens(region)).not.toContain('relative');
+    const body = region.parentElement as HTMLElement;
+    expect(tokens(body)).toEqual(expect.arrayContaining(['relative', 'overflow-y-auto']));
+  });
+
+  it('G5: the same holds with the visual calendar showing', async () => {
+    await renderModal({ hideVisualCalendar: false });
+    expect(escapes(screen.getByRole('dialog'))).toEqual([]);
   });
 });

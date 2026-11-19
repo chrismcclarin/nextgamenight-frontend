@@ -630,15 +630,41 @@ describe('accessible names on icon-only controls (Req 4 / UI-SPEC §7.3)', () =>
     return out;
   }
 
+  /* AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json; owner ruling D-52, 2026-10-05): ONE
+     named exception. The home card cog is named by its per-card title ALONE by owner ruling D-52
+     (src/app/components/grouplist.js ("the gear's ONLY name source is its")), which REJECTED an
+     aria-label beside the title (the name read twice) and is pinned by
+     src/app/components/keyboardOperability.test.tsx ("expect(gear).not.toHaveAttribute('aria-label')").
+     Until 88.9-31 this sweep passed it only
+     because its emoji glyph counted as body text; the SVG glyph that replaced it (F5b) is
+     decorative, so the cog now reads as icon-only. It is excepted by its exact title expression,
+     in its one file, and the exception must match exactly one control (anti-vacuity both ways:
+     a second title-only control still reds, and a cog that regains a text body or an aria-label
+     reds the count). Test 3's rule stands for every other control. The §7.3 concern (a bare
+     title is not reliably exposed on touch) is routed to the owner's post-deploy VoiceOver check;
+     widening this list is a decision, not a cleanup. */
+  const TITLE_NAMED_BY_RULING = [
+    { file: path.join('app', 'components', 'grouplist.js'), title: 'title={customizeGroupLabel(group.name)}' },
+  ];
+
   it('1. no `<button>` in the repo is icon-only-and-nameless', () => {
     const offenders: string[] = [];
+    let excepted = 0;
     for (const file of files) {
       const src = fs.readFileSync(file, 'utf8');
+      const rel = path.relative(SRC, file);
       for (const line of unnamedIconOnlyControls(src, 'button')) {
-        offenders.push(`${path.relative(SRC, file)}:${line}`);
+        const start = src.split('\n').slice(0, line - 1).join('\n').length;
+        const tag = src.slice(start, tagEnd(src, src.indexOf('<button', start)) + 1);
+        if (TITLE_NAMED_BY_RULING.some((x) => x.file === rel && tag.includes(x.title))) {
+          excepted += 1;
+          continue;
+        }
+        offenders.push(`${rel}:${line}`);
       }
     }
     expect(offenders).toEqual([]);
+    expect(excepted, 'the D-52 title-named cog exception must match exactly one control').toBe(TITLE_NAMED_BY_RULING.length);
   });
 
   it('2. nor any `DialogClose` / interactive `a` / `span` / `div`', () => {

@@ -11,7 +11,8 @@ import { AVAILABILITY_DRAG_PATH } from '../mockData';
  * Shows how a single member fills out an availability prompt. Animates a
  * click-drag across Friday 6:00 PM - 8:30 PM (matching production's
  * pointerdown→pointerenter paint mechanic). Cells turn bg-green-300 (the
- * "preferred" preference color from the real AvailabilityGrid) one at a time
+ * "preferred" preference color from the real AvailabilityGrid; in dark its
+ * mid green, since 88.9-52 N1b) one at a time
  * so the user sees the drag motion, not a flash-fill.
  *
  * Stage progression (driven by parent timer):
@@ -19,7 +20,7 @@ import { AVAILABILITY_DRAG_PATH } from '../mockData';
  *   1-N - drag advances to AVAILABILITY_DRAG_PATH[N-1]
  *   AVAILABILITY_DRAG_PATH.length+1 - all painted, "Save" button highlighted
  *
- * @param {number} stage - Current animation stage. 0 = empty.
+ * @param {{ stage: number }} props - `stage` is the current animation stage. 0 = empty.
  */
 export default function AvailabilityPromptDemo({ stage }) {
   // How many cells have been "painted" so far (0..AVAILABILITY_DRAG_PATH.length)
@@ -39,8 +40,20 @@ export default function AvailabilityPromptDemo({ stage }) {
     const isCursor = cursor && cursor[0] === row && cursor[1] === col && !allPainted;
 
     if (isPainted) {
+      // DECISION Phase 88.9-52 (N1b, owner pick Mid, 2026-11-17): a painted demo cell takes the real
+      // grid's dark Preferred fill (src/app/components/AvailabilityGrid.js ("const CELL_PREFERRED_CLASS =")),
+      // chosen OVER leaving the bare light colour, which showed bright mint in dark: a look the real
+      // grid no longer has. Light is unchanged. The heatmap demos' green count ramp is a different
+      // thing and is left alone.
+      // AMENDED Phase 88.9-52 (R4 S4, the round-3 capture): in dark the cell's EDGE follows too. It
+      // kept the light mint edge (border-green-400, #4ade80), so a painted cell still glowed at its
+      // rim, which the real grid's cells and its Preferred legend swatch
+      // (src/app/components/AvailabilityGrid.js ("bg-green-300 dark:bg-surface-avail-preferred border border-line rounded-xs")) do not.
+      // The edge is the plain line in dark, the one every unpainted demo cell has. REJECTED: no
+      // edge at all in dark (the demo grid draws an edge on every cell, so a painted one would
+      // shrink by a pixel). Light keeps its mint edge.
       return {
-        className: 'bg-green-300 border-green-400',
+        className: 'bg-green-300 dark:bg-surface-avail-preferred border-green-400 dark:border-line',
         content: '',
       };
     }
@@ -73,9 +86,16 @@ export default function AvailabilityPromptDemo({ stage }) {
       </div>
 
       {/* Toolbar row — paint mode toggle (matches real AvailabilityGrid) */}
+      {/* DECISION Phase 88.9-52 (R4 S4, the round-3 capture: in dark this chip was still the light
+          mint pill): in dark it wears the tokens the real Adding: Preferred toggle wears
+          (src/app/components/AvailabilityGrid.js ("dark:bg-surface-pill-green dark:enabled-hover:bg-surface-pill-green dark:border-status-success dark:text-content-pill-green")),
+          less the hover one: this chip is a picture of the toggle, not a control. Chosen OVER
+          leaving the light pill on the dark card, a state the product no longer has. From the
+          token values, dark: the words on the fill 5.94, the edge on the card 6.08, the edge on
+          the fill 3.16. Light is unchanged (6.49). */}
       <div className="bg-surface-card border-x border-line px-3 py-1.5 inline-block">
         <div className="flex items-center justify-end">
-          <span className="px-2 py-0.5 bg-green-100 border border-green-400 text-green-800 rounded-sm text-xs font-bold">
+          <span className="px-2 py-0.5 bg-green-100 border border-green-400 text-green-800 dark:bg-surface-pill-green dark:border-status-success dark:text-content-pill-green rounded-sm text-xs font-bold">
             Adding: Preferred
           </span>
         </div>

@@ -248,7 +248,7 @@ test.describe('Phase 88.6.1-41 — the home group list refreshes in place (phone
    *   scrolls sideways;
    * - C8 f1 / C12 (step 7): with the event's row focused, an automatic re-attempt nobody pressed
    *   (the tab-return `visibilitychange`) is answered 403 — the event is withdrawn behind
-   *   `We couldn't load your calendar` and focus lands on the sheet's `Calendar` title, never
+   *   `Couldn't load your calendar` and focus lands on the sheet's `Calendar` title, never
    *   `<body>` (the card's heading is display:none here, and the guard passes no target while the
    *   sheet is open, r2 #225).
    *
@@ -379,7 +379,7 @@ test.describe('Phase 88.6.1-41 — the home group list refreshes in place (phone
       await expect(row).toBeVisible();
       const line = dialog.getByText(RF1, { exact: true }).and(page.locator('span'));
       await expect(line).toBeVisible();
-      await expect(dialog.getByText("We couldn't load your calendar")).toHaveCount(0);
+      await expect(dialog.getByText("Couldn't load your calendar")).toHaveCount(0);
       await expect(dialog.getByText('Next game night')).toHaveCount(0);
       const retry = dialog.getByRole('button', { name: 'Retry', exact: true });
       await expect(retry).toHaveCount(1);
@@ -403,7 +403,7 @@ test.describe('Phase 88.6.1-41 — the home group list refreshes in place (phone
       await expect(row).toBeFocused();
       withdraw = true;
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-      await expect(dialog.getByText("We couldn't load your calendar")).toBeVisible({ timeout: 15_000 });
+      await expect(dialog.getByText("Couldn't load your calendar")).toBeVisible({ timeout: 15_000 });
       await expect(dialog.getByText(GAME)).toHaveCount(0);
       await expect(dialog.getByText(RF1, { exact: true }).and(page.locator('span'))).toHaveCount(0);
       await expect(dialog.getByRole('heading', { name: 'Calendar', exact: true })).toBeFocused();

@@ -297,6 +297,8 @@ const NAV_BUTTON_CLASS =
    6.26 on the warm-100 page and 7.09 on the white card. The DARK arm is amber-500 on `#513902`
    at **5.05:1**, BYTE-IDENTICAL to what shipped, because dark `--color-accent-text` is declared
    at today's `--color-accent` value on purpose.
+   AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark accent-text is amber-400
+   now, 6.50:1 on #513902 (was 5.05), still a byte-copy of dark --color-accent.
    UNCHANGED, and this is the half a reader would get wrong: the owner-picked ARM B tint is NOT
    touched, and the `DECISION Phase 88-27 D-32` paired-ternary SHAPE is not touched either — only
    the class token inside the TRUE ARM moves. `accentSweep.test.ts` test 6 and
@@ -1198,7 +1200,7 @@ export default function EventScheduler({
            - the paired ternary survives INTACT, at full measured strength, on a clean surface.
          THE ALTERNATIVE, if the owner wants column-wide at the 88.1-15 checkpoint: a 2px
          `--color-line-accent` column EDGE RULE, never a fill. That re-opens
-         `DECISION Phase 88-27 D-32 bucket B` (src/app/components/CalendarListView.js ("DECISION Phase 88-27 (D-32 bucket B)"), which ruled a NEUTRAL
+         `DECISION Phase 88-27 D-32 bucket B` (planning:.planning/phases/88-fe-wave-3-design-system-a11y/88-27-SUMMARY.md ("## Task 2 — buckets A and B"); AMENDED Phase 88.9-61: its Calendar list site, the Today delineator's rule, was deleted under X29 A, and the ruling stands at its other sites — it ruled a NEUTRAL
          rule OVER a coloured one), so it is a decision to raise, not a tweak to apply.
 
      (2) THE TWO TERNARIES ARE PAIRED AND MUTUALLY EXCLUSIVE — surface and day text switch together
@@ -1385,6 +1387,34 @@ export default function EventScheduler({
         )}
       </div>
 
+      {/* DECISION Phase 88.1-11 (UI-SPEC Copywriting, PRESCRIBED CHANGE — not a parity
+          carry): the prompt names the gesture THE DEVICE CAN ACTUALLY PERFORM. The shipped
+          string says "Click and drag" on a surface whose primary device is a phone at
+          somebody's kitchen table; Req 5 ships long-press-to-paint there, and an instruction
+          naming a mouse gesture on a touch device is a phone-forward failure, not a wording
+          nit. AMENDED Phase 88.9-41 (owner pick S1a, 88.9-PICKS-B8C.json, 2026-11-07 3:41 PM
+          Pacific): the prompt moves ABOVE the grid as a one-line 14px caption that names the
+          RANGE (phone: tap and hold a time, then drag to pick how long; desktop: click and drag
+          to pick a time range), chosen OVER the shipped boxed page-ground prompt BELOW the grid
+          (16px body in a padded box, about 58px tall at 375) that named one time and gave no
+          hint that a range exists — a real user missed the drag (register row 70). Its text
+          shows only until a slot commits; after the commit the p stays mounted as `invisible`
+          + aria-hidden — a reserved line OVER an unmount that moved the grid 36px up right
+          after the pick (owner ruling 88.9-RULINGS.md R-P5, 2026-11-08). Not taken: S1b's grab
+          handle and S2a's keyboard extend, both built with Phase 89's cell rework. Moving it
+          back below the grid, boxing it again, or unmounting it on commit, is a decision, not a
+          cleanup. The two class arms are whole literals (Tailwind v4 emits nothing for an
+          interpolated class).
+          AMENDED Phase 88.9-57 (owner ruling 52-X39, 2026-11-13): the caption stays VISIBLE and
+          spoken after a commit, chosen OVER R-P5's hidden reserved line (it read as a wide empty
+          gap) and OVER an unmount (R-P5's ~36px jump); the grid still never moves; one class
+          literal now. */}
+      <p className="text-sm text-content-secondary">
+        {isPhoneViewport
+          ? 'Tap and hold a time, then drag to pick how long'
+          : 'Click and drag to pick a time range'}
+      </p>
+
       {/* 4px between the strip and the column, per the measured budget — the root's `space-y-4`
           would spend 16px of the ~365px the two of them share. Inert at desktop, where this
           wrapper has a single child. */}
@@ -1399,8 +1429,15 @@ export default function EventScheduler({
             idPrefix={stripId}
           />
         )}
+        {/* DECISION Phase 88.9-57 (owner 52-X38): no text selection on the drag surface via a CSS
+            guard on THIS panel, chosen OVER a guard in the shared heatmap files (WeekGrid.tsx and
+            usePaintGesture.ts have one production consumer, this file) and OVER a pointerdown
+            preventDefault (it also cancels the mouse's focus move into the roving-tabindex grid;
+            on touch it is the Phase 87.8 scroll-killer). The availability grid (AvailabilityGrid.js
+            on WriteCell, guarded per cell) and the group heatmap (its own no-select wrapper) do
+            not change. Changing this is a decision, not a cleanup. */}
         <div
-          className="bg-surface-card rounded-card border border-line"
+          className="bg-surface-card rounded-card border border-line select-none"
           // The tab/tabpanel relationship is REAL, not decorative: the strip's tabs switch which
           // day this panel shows, and naming the panel from the selected tab is what stops the
           // strip being seven tabs pointing at nothing.
@@ -1474,24 +1511,6 @@ export default function EventScheduler({
             {formatSlotRange(selectedSlot.start, selectedSlot.end)}
             {' '}
             <span className="text-content-accent">({formatDuration(selectedSlot.start, selectedSlot.end)})</span>
-          </p>
-        </div>
-      )}
-
-      {!selectedSlot && (
-        <div className="p-4 bg-surface-page rounded-card border border-line">
-          {/* DECISION Phase 88.1-11 (UI-SPEC Copywriting, PRESCRIBED CHANGE — not a parity
-              carry): the prompt names the gesture THE DEVICE CAN ACTUALLY PERFORM. The shipped
-              string says "Click and drag" on a surface whose primary device is a phone at
-              somebody's kitchen table; Req 5 ships long-press-to-paint there, and an instruction
-              naming a mouse gesture on a touch device is a phone-forward failure, not a wording
-              nit. Both strings are kept — the desktop one is verbatim from the pre-rebuild
-              component deleted in FE commit `3ff46e7` (88.1-09) and is what the plan-01 pin
-              locates. */}
-          <p className="text-base text-content-secondary">
-            {isPhoneViewport
-              ? 'Tap and hold on a day to pick a time.'
-              : 'Click and drag on the calendar to select a time slot for your event.'}
           </p>
         </div>
       )}

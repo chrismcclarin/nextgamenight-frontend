@@ -223,7 +223,9 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
     // Anchor: the calendar body, NOT the identity header (the header is
     // already compliant and UI-SPEC-exempt — RESEARCH C-3). EventCalendar
     // renders its title as an <h2> inside the `card p-3 md:p-6` box
-    // (src/app/components/EventCalendar.js ("flex justify-between items-center mb-6")); groupHomePage passes title="Calendar"
+    // (src/app/components/EventCalendar.js ("const viewSwitch = showListView ?") sits in that same card
+    // branch); since 88.9-39 (CS-01) the h2 is sr-only — still in the DOM, still inside the card box,
+    // and the measured chain walks its ancestors, so the anchor holds. groupHomePage passes title="Calendar"
     // (src/app/groupHomePage/page.js ("const CALENDAR_TITLE =")).
     const anchor = page.getByRole('heading', { name: 'Calendar', exact: true });
     await expect(anchor).toBeVisible({ timeout: 15_000 });
@@ -235,7 +237,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
 
   test('Create Event modal: padding chain stays within budget', async ({ page }) => {
     // The shared drive e2e/support/createEvent.ts ("export async function openCreateEventDialog("):
-    // group home → "Add New Game Event" → "Create Event" heading → manual entry
+    // group home → the "Create Event" button → "Create Event" heading → manual entry
     // (the start_date label renders only on the manual-entry branch).
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await openCreateEventDialog(page);
@@ -586,6 +588,10 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
    spec sets playerCount >= 1; whether any spec does is unmeasured. The rejection still holds on
    the independent reason the sentence above already gives: the steppers carry `.btn-compact`,
    which opts OUT of the floor by design, so they could never prove a 44px floor.
+   AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): that independent reason changed shape. The
+   steppers no longer carry the opt-out (it is retired); they are 44x44 by their own w-11 h-11.
+   The rejection still holds: a control that sets its own height proves nothing about the floor
+   on the primitive, which is what this arm measures.
    CONSIDERED AND REJECTED — "retire the arm" (the owner's SECOND arm, offered verbatim in the
    2026-09-21 ruling alongside the steppers). Retiring it would leave D-09's all-viewport floor with
    no 1280-width proof anywhere in the tree, which is the one thing this file is for. This plan

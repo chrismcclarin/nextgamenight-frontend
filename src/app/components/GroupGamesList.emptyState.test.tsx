@@ -17,18 +17,26 @@
  * plan 88.6.1-70's refresh notice, and the full banner shows only while nothing is retained.
  */
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'America/New_York', setTimezone: vi.fn() }),
 }));
-vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
+// 88.9-52 R4 C3: the stub was a null; it now draws an empty marker that carries the class string
+// the card hands the picture, so the test below can read it. It has no text and no role.
+vi.mock('@/app/components/SafeImage', () => ({
+  default: ({ className }: { className?: string }) =>
+    React.createElement('span', { 'data-testid': 'card-picture', className }),
+}));
 
 import GroupGamesList from './GroupGamesList';
 import { ApiError } from '@/lib/api';
-import { getFetchErrorMessage, useFetchErrorState } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry, useFetchErrorState } from '@/components/ui/useFetchErrorState';
 import { RetainedContentFocusGuard, useRetainedContent } from '@/components/ui/FetchErrorBanner';
 
 // Untyped JS component: spread a typed-any bag so JSX does not demand the
@@ -124,7 +132,7 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     );
 
     expect(
-      screen.getByText("We couldn't load this group's games")
+      screen.getByText("Couldn't load this group's games")
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'No game nights logged yet' })
@@ -159,7 +167,7 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     );
 
     expect(
-      screen.getByText("We couldn't load this group's games")
+      screen.getByText("Couldn't load this group's games")
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
   });
@@ -182,7 +190,7 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     expect(
       screen.getByRole('heading', { name: 'No game nights logged yet' })
     ).toBeInTheDocument();
-    expect(screen.queryByText("We couldn't load this group's games")).toBeNull();
+    expect(screen.queryByText("Couldn't load this group's games")).toBeNull();
   });
 
   it('does not render the empty state when the group has played games', () => {
@@ -200,8 +208,97 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     expect(
       screen.queryByRole('heading', { name: 'No game nights logged yet' })
     ).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Group Games' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Play history' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
+  });
+
+  // Phase 88.9-31 (owner picks T1 and D7a, 88.9-PICKS-B7B.json / 88.9-PICKS-B3.json): the section is
+  // Play history and each game-card title sits one rung under it (Heading body 16 / 700 under
+  // heading 20 / 700). Token pins: text-xl is the heading rung, text-base the body rung.
+  it('D7a (88.9): game-card titles are 16/700 under the 20/700 Play history heading', () => {
+    render(
+      <GroupGamesList
+        {...anyProps({
+          games: [WINGSPAN],
+          groupId: 'g1',
+          userRole: 'member',
+          onAddEvent: vi.fn(),
+        })}
+      />
+    );
+    const section = screen.getByRole('heading', { level: 2, name: 'Play history' });
+    expect(section).toHaveClass('text-xl', 'font-bold');
+    const card = screen.getByRole('heading', { level: 3, name: 'Wingspan' });
+    expect(card).toHaveClass('text-base', 'font-bold');
+    expect(card).not.toHaveClass('text-xl');
+  });
+
+  // 88.9-52 R4 C3 (owner 2026-11-18: "lose the picture at the large text"). At 320 with text at
+  // 200% the card's words had 46px beside a 128px picture and every word broke mid-word. The card
+  // is a query container and the picture is not drawn while the card's inside is under 15rem.
+  // THE SUM the threshold is: the picture (w-16, 4rem) + the row gap (gap-4, 1rem) + a 10rem
+  // words column = 15rem, so wherever the picture IS drawn the words have at least 10rem. jsdom
+  // lays nothing out, so this pins the tokens and the sum; the rendered proof is the R4-A3 test
+  // in e2e/group-home-games-refresh.spec.ts.
+  it('R4 C3: the game card is a query container and its picture is not drawn under 15rem (4rem picture + 1rem gap + 10rem of words)', () => {
+    render(
+      <GroupGamesList
+        {...anyProps({
+          games: [WINGSPAN],
+          groupId: 'g1',
+          userRole: 'member',
+          onAddEvent: vi.fn(),
+        })}
+      />
+    );
+    const card = screen.getByRole('heading', { level: 3, name: 'Wingspan' }).closest('a') as HTMLElement;
+    const picture = within(card).getByTestId('card-picture');
+    const row = picture.parentElement as HTMLElement;
+    const tokens = (el: HTMLElement) => el.className.split(/\s+/);
+    // The card itself is the container: its width answers to the screen AND the text size.
+    expect(tokens(card)).toContain('@container');
+    // The picture: 4rem square, gone under the threshold. One max token and no min twin (a second
+    // threshold on this element would be a second rule to keep in step).
+    expect(tokens(picture)).toEqual(expect.arrayContaining(['w-16', 'h-16']));
+    const queries = tokens(picture).filter((t) => t.startsWith('@'));
+    expect(queries).toEqual(['@max-[15rem]:hidden']);
+    expect(tokens(row)).toEqual(expect.arrayContaining(['flex', 'gap-4']));
+    // The words column takes whatever the row has: all of it once the picture is gone.
+    expect(tokens(row.lastElementChild as HTMLElement)).toEqual(expect.arrayContaining(['flex-1', 'min-w-0']));
+    // The sum, from the tokens just read (Tailwind's spacing step is 0.25rem).
+    const PICTURE_REM = 16 * 0.25;
+    const GAP_REM = 4 * 0.25;
+    const WORDS_FLOOR_REM = 10;
+    expect(PICTURE_REM + GAP_REM + WORDS_FLOOR_REM).toBe(15);
+    // Nothing is lost for a screen reader when the picture goes: the card's name is its heading.
+    expect(within(card).getByRole('heading', { level: 3, name: 'Wingspan' })).toBeInTheDocument();
+  });
+
+  // 88.9-52 W10: at 375px with doubled text the sort row was one unbreakable line (Sort by, the
+  // select, the arrow, Filter) and pushed the group page to 643px. Every level of the row may now
+  // wrap and shrink, and the select is capped at its row. jsdom lays nothing out, so this pins the
+  // class tokens; the width itself is unmeasured here.
+  it('W10 (88.9-52): the sort row wraps at every level and the select is capped at its row', () => {
+    render(
+      <GroupGamesList
+        {...anyProps({
+          games: [WINGSPAN],
+          groupId: 'g1',
+          userRole: 'member',
+          onAddEvent: vi.fn(),
+        })}
+      />
+    );
+    const select = screen.getByRole('combobox', { name: /sort by/i });
+    const label = select.closest('label') as HTMLElement;
+    const group = label.parentElement as HTMLElement;
+    const row = group.parentElement as HTMLElement;
+    expect(row).toHaveClass('flex', 'flex-wrap', 'items-center', 'justify-between', 'gap-2');
+    expect(group).toHaveClass('flex', 'flex-wrap', 'items-center', 'gap-2', 'min-w-0');
+    expect(label).toHaveClass('flex', 'flex-wrap', 'items-center', 'gap-2', 'min-w-0');
+    // w-auto is the 88-21 toolbar decision and stays; max-w-full only bites when the row is too narrow.
+    expect(select).toHaveClass('w-auto', 'max-w-full');
+    expect(row).toContainElement(screen.getByRole('button', { name: 'Filter' }));
   });
 });
 
@@ -212,8 +309,8 @@ const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // copy row P78b (close ruling P-78, owner 2026-10-17) — the games notice's spoken sentence: the
 // section heading's text, then RF1. Since plan 88.6.1-88 the region holds this and the visible line
 // holds RF1 alone, so RF1 by exact text is found ONCE.
-const GAMES_SPOKEN = "Group Games: Couldn't refresh. Showing what loaded earlier.";
-const BANNER_TITLE = "We couldn't load this group's games";
+const GAMES_SPOKEN = "Play history: Couldn't refresh. Showing what loaded earlier.";
+const BANNER_TITLE = "Couldn't load this group's games";
 const WINGSPAN = { id: 'game-1', name: 'Wingspan', play_count: 2 };
 
 const rf1Region = () =>
@@ -228,7 +325,7 @@ const waitForRf1 = () =>
   });
 const follows = (a: Node, b: Node) =>
   Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-const groupGamesHeading = () => screen.getByRole('heading', { name: 'Group Games' });
+const groupGamesHeading = () => screen.getByRole('heading', { name: 'Play history' });
 
 // The hook's tab-return re-attempt, the refresh nobody pressed (the house idiom,
 // useFetchErrorState.test.tsx, function fireVisibility). It listens only while the error shows.
@@ -325,7 +422,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     await waitForRf1();
     expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
     expect(screen.queryByText(BANNER_TITLE)).toBeNull();
-    expect(screen.getAllByRole('heading', { name: 'Group Games' })).toHaveLength(1);
+    expect(screen.getAllByRole('heading', { name: 'Play history' })).toHaveLength(1);
     const line = rf1Line()!;
     expect(follows(line, screen.getByText('Sort by:'))).toBe(true);
     expect(follows(line, screen.getByRole('heading', { name: 'Wingspan' }))).toBe(true);
@@ -333,7 +430,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
 
   // Close ruling P-78 (owner 2026-10-17, plan 88.6.1-88): the games notice says its section first,
   // to a screen reader only; the section name is the heading's own text.
-  it('SN-3. a failed refresh over retained cards: the region says "Group Games:" first and describes the Retry; both Group Games headings still render', async () => {
+  it('SN-3. a failed refresh over retained cards: the region says "Play history:" first and describes the Retry; both Play history headings still render', async () => {
     render(
       <GroupGamesList
         {...anyProps({ games: [WINGSPAN], groupId: 'g1', userRole: 'member', onAddEvent: vi.fn(), errorState: failing(), retained: true })}
@@ -349,7 +446,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     expect(rf1Line()!.closest('.sr-only')).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry' })).toHaveAccessibleDescription(GAMES_SPOKEN);
     // The list arm's heading.
-    expect(screen.getAllByRole('heading', { name: 'Group Games' })).toHaveLength(1);
+    expect(screen.getAllByRole('heading', { name: 'Play history' })).toHaveLength(1);
     cleanup();
 
     // The first-load banner arm's heading (nothing retained: the full banner, no notice).
@@ -359,7 +456,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
       />
     );
     expect(screen.getByText(BANNER_TITLE)).toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { name: 'Group Games' })).toHaveLength(1);
+    expect(screen.getAllByRole('heading', { name: 'Play history' })).toHaveLength(1);
   });
 
   it('GG-2. a failed FIRST load (games undefined, nothing retained) shows the banner, never the empty state or RF1', () => {
@@ -408,7 +505,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     for (const error of [err401(), err403()]) {
       render(<Harness games={[WINGSPAN]} loaded error={error} />);
       expect(screen.getByText(BANNER_TITLE)).toBeInTheDocument();
-      expect(screen.getByText(getFetchErrorMessage(error))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(error)))).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       cleanup();
@@ -422,7 +519,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     }
   });
 
-  it('GG-6. a successful Retry clears the notice and lands focus on the Group Games heading', async () => {
+  it('GG-6. a successful Retry clears the notice and lands focus on the Play history heading', async () => {
     const user = userEvent.setup();
     render(<Harness games={[WINGSPAN]} loaded error={err500()} />);
     await waitForRf1();
@@ -434,7 +531,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
   });
 
-  it('GG-7. a successful Try again on the first-load banner lands focus on the Group Games heading', async () => {
+  it('GG-7. a successful Try again on the first-load banner lands focus on the Play history heading', async () => {
     const user = userEvent.setup();
     render(<Harness games={undefined} loaded={false} error={err500()} />);
     expect(screen.getByText(BANNER_TITLE)).toBeInTheDocument();
@@ -460,7 +557,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     expect(document.activeElement).not.toBe(screen.getByRole('heading', { level: 1 }));
   });
 
-  it('GG-9. an unpressed re-attempt answered 403 / 401 withdraws the cards and focus lands on Group Games, never body', async () => {
+  it('GG-9. an unpressed re-attempt answered 403 / 401 withdraws the cards and focus lands on Play history, never body', async () => {
     for (const error of [err403(), err401()]) {
       render(<Harness games={[WINGSPAN]} loaded error={err500()} />);
       await waitForRf1();
@@ -476,7 +573,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     }
   });
 
-  it('GG-10. an unpressed success while Retry holds focus lands focus on Group Games', async () => {
+  it('GG-10. an unpressed success while Retry holds focus lands focus on Play history', async () => {
     render(<Harness games={[WINGSPAN]} loaded error={err500()} />);
     await waitForRf1();
     act(() => screen.getByRole('button', { name: 'Retry' }).focus());
@@ -487,7 +584,7 @@ describe('GroupGamesList — a failed refresh keeps the games (88.6.1-56: AC-29,
     expect(screen.getByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
   });
 
-  it('GG-11. withdrawing a loaded-empty list (401, unpressed) while its Retry or CTA holds focus lands on Group Games', async () => {
+  it('GG-11. withdrawing a loaded-empty list (401, unpressed) while its Retry or CTA holds focus lands on Play history', async () => {
     for (const focusName of ['Retry', 'Log a game night']) {
       render(<Harness games={[]} loaded error={err500()} userRole="member" />);
       await waitForRf1();

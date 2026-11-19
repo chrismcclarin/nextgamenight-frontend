@@ -16,8 +16,11 @@ import {
 } from '@floating-ui/react';
 import { FriendshipContext } from './FriendshipStatusProvider';
 import { Button } from '../../components/ui/Button';
+import { Icon } from '../../components/ui/Icon';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+import { hostGroundHalo } from '../../components/ui/hostGround';
+import { cn } from '../../lib/cn';
 import { DIALOG_ROLE_SELECTOR } from '../../components/ui/focusPageFloor';
 import { logger, errCtx } from '@/lib/logger';
 
@@ -35,10 +38,14 @@ function firstRendered(candidates) {
   );
 }
 
+// The green Friend pill's look, shared by the popover pill and the phone indicator (R19, 88.9-52).
+const FRIEND_PILL_CLASSES =
+  'text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold';
+
 /**
  * ClickableMemberName - Wraps a member name with a hover-to-open tooltip
  * for sending friend requests on desktop. Phase 68-02 MOB-06 adds an
- * always-visible inline "+ Add friend" / "⏳ Pending" / "✓ Friend"
+ * always-visible inline "+ Add friend" / "⏳ Pending" / "Friend" pill
  * indicator on mobile (<768px) so touch users have a primary affordance
  * that does not depend on hover or popover gymnastics.
  *
@@ -50,7 +57,7 @@ function firstRendered(candidates) {
  *              first friendship load has not settled (plan 88.6.1-66's loading arm), or a
  *              friendship load failed. The plain name is right for all three.
  * - accepted → name with desktop hover-tooltip showing green "Friend" pill
- *              + mobile-only "✓ Friend" inline indicator (preserved for touch parity)
+ *              + mobile-only green "Friend" pill inline (R19, 88.9-52; ticked "✓ Friend" text before that)
  * - none / pending_sent / pending_received → name with desktop hover-tooltip
  *              popover + existing touch-tap-toggle fallback for hybrid
  *              touch laptops at desktop widths + mobile inline indicator
@@ -72,6 +79,8 @@ function firstRendered(candidates) {
  * @param {React.ReactNode} [props.children] - Optional custom render (defaults to username span)
  * @param {boolean} [props.showInlineIndicator=true] - Opt OUT of the inline md:hidden indicator
  *   sibling (see the DECISION Phase 88.5 marker below). Default `true` = today's behaviour.
+ * @param {import('../../components/ui/hostGround').HostGround} [props.hostGround='card'] - The ground
+ *   the HOST paints under this name; selects the focus halo of the name and the + button.
  */
 /* DECISION Phase 88.5 (D-15): `showInlineIndicator` is an OPT-OUT defaulting to `true`,
    chosen so that the member CHIPS introduced by this phase can suppress the inline
@@ -97,8 +106,19 @@ function firstRendered(candidates) {
    STATUS IS STILL CONVEYED, so WCAG 1.4.1 (use of colour) holds without the inline text: the
    chip carries friend/pending in its RING (solid green / dashed amber) AND in its accessible
    name, and the two-tap popover — never gated by this prop — remains the add-friend path.
-   Turning this into an opt-in, or defaulting it to `false`, is a decision, not a cleanup. */
-export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true }) {
+   Turning this into an opt-in, or defaulting it to `false`, is a decision, not a cleanup.
+
+   AMENDED Phase 88.9-52 (R19, owner 2026-11-17: pick A, and by chat: friend should come first): on a
+   phone the accepted indicator is now the green Friend pill (the popover pill's classes, md:hidden,
+   right after the name so it comes BEFORE any RSVP or role pill the host draws), chosen OVER the
+   ticked `✓ Friend` text this marker and rejected arm (a) describe, which was kept for touch parity
+   when phones had no pill; the pill is not a tap target either, so nothing is lost. The word is
+   plain text in the pill and no host draws a second Friend at the same width, so a screen reader
+   hears Friend once. Supersedes the Phase 76 SOCL-06 split (ticked text on phones, a pill after the
+   RSVP pill on desktop). The opt-out, its default and the chip rows are untouched: a chip still
+   draws no inline Friend. Going back to the ticked text, or moving Friend after the RSVP pill on
+   either width, is a decision, not a cleanup. */
+export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true, hostGround = 'card' }) {
   const { getStatus, sendRequest } = useContext(FriendshipContext);
   const [isOpen, setIsOpen] = useState(false);
   const [sent, setSent] = useState(false);
@@ -172,8 +192,14 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // `[D]` routed in `.planning/deferred/phase-88.6.md`; it needs a design answer, not a sweep.
     // Plan 88.6-34 swept this file's type, weight and `.btn` layers and left this config
     // byte-unchanged on purpose. Changing the placement or the offset is 88.9's decision.
-    placement: 'bottom-start',
-    middleware: [offset(6), flip(), shift({ padding: 8 })],
+    // AMENDED Phase 88.9-30 (owner pick F6a, 88.9-PICKS-B5.json, 2026-11-07): the popover opens ABOVE
+    // the name (top-start, offset 8 per UI-SPEC CR2-17; the pick page rendered 6), chosen OVER the
+    // shipped below-the-name placement at offset 6, which covered the next member's row so a fast
+    // second tap sent an unintended friend request. flip() and shift() stay: with no room above
+    // (viewport top, inside a dialog) it flips below. A tap-through guard is NOT added — the register
+    // makes it optional and SPEC P4 forbids new capability under the look label.
+    placement: 'top-start',
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   });
 
@@ -433,8 +459,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // Mobile inline indicators vary per status (handled in renderMobileIndicator).
 
   // The green "Friend" pill, in ONE place: the accepted return and the success region both use it.
+  // R19 (88.9-52): the phone indicator below wears the same FRIEND_PILL_CLASSES.
   const renderFriendPill = () => (
-    <span className="text-xs uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
+    <span className={FRIEND_PILL_CLASSES}>
       Friend
     </span>
   );
@@ -457,11 +484,13 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // tall each, against a 375px viewport. No overflow, and `shift({ padding: 8 })` keeps it in
     // view regardless. The 600 -> 700 step contributes only ~0.2px of that; the growth is the size
     // fold. Container box model reconstructed from the class values, not from compiled CSS.
+    // AMENDED Phase 88.9-47 (owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): both pills move to tracking-wider, 0.05em, chosen OVER the shipped 0.025em step; that adds 0.3px per letter (about +0.9px for You, +1.8px for Friend) to the widths measured above, and shift({ padding: 8 }) still keeps the popover in view.
+    // AMENDED Phase 88.9-63 (X16 + X17a): both pills drop capitals and letter-spacing (12px, 700 kept), so the popover is narrower than measured above (not re-measured); fills are the emerald and blue pill pairs.
     //
     // Self → blue "You" pill. Informational only, no action.
     if (status === 'self') {
       return (
-        <span className="text-xs uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
+        <span className="text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">
           You
         </span>
       );
@@ -588,6 +617,33 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // send-error branch can render it again for a retry; the decision markers that govern its hit
   // extension, tint and focus handling stay at the `status === 'none'` branch below, where they
   // have always been.
+  // AMENDED Phase 88.9-52 (W36): the plus takes the pressed-toggle fill colour (the toggle-on
+  // key: the primary fill in light, purple-400 in dark), chosen OVER the primary fill colour in
+  // both themes (purple-600 on the muted circle read 1.99 in dark, under the 3:1 a glyph needs)
+  // and OVER the link ink (forbidden on the muted ground, src/test-utils/inkRules.ts ("export const FORBIDDEN_INK_ON_MUTED")).
+  // On the circle: light 3.76, unchanged; dark 4.02.
+  // DECISION Phase 88.9-52 (R4 C5, owner 2026-11-18, from the See-all picture: "the + needs to be
+  // centered in the gray circle it is in front of. Right now it looks off"): the plus is a DRAWN
+  // icon (the shared Icon, lucide Plus), chosen OVER the text character it was.
+  // WHY THE CHARACTER SAT OFF CENTRE: inline-flex with items-center and justify-center centres
+  // the button's content BOX, and for text that box is the line (text-sm: a 20px line in the
+  // 24px circle, 2px above and below). Inside its line a character sits where the font puts it:
+  // a plus is drawn about the font's maths axis, a little above the baseline, which is not the
+  // middle of the line (the font's ascent above the baseline is far larger than its descent
+  // below), so the glyph rode low, by an amount that changes with the font, the fallback font
+  // and the text size. No class can read that offset.
+  // WHY THE ICON IS CENTRED: its box is a square and its two arms cross at the box's own centre
+  // (M5 12h14 and M12 5v14 in a 24 box), so centring the box centres the plus, on both axes, in
+  // any font and at any text size. 0.75rem (w-3 h-3) in the 1.5rem circle leaves 0.375rem on all
+  // four sides, whole pixels at ordinary and at doubled text. Stroke 3 of 24 is 1.5px at 12px,
+  // the weight the bold character had; the arms measure about 8.5px with their round ends, as
+  // the character did.
+  // REJECTED: nudging the character with a line-height or a translate (it fixes one font at one
+  // size and is wrong again with the fallback font or enlarged text); a wider circle (the 24px
+  // circle is a recorded size, and it would not centre anything).
+  // The accessible name is unchanged (the button's label); the icon is decorative and adds
+  // nothing spoken. text-sm and font-bold went with the character: they styled nothing else.
+  // The ink is unchanged (the W36 note above): the icon strokes in the button's colour.
   const renderAddButton = () => (
     <button
       type="button"
@@ -596,10 +652,13 @@ export default function ClickableMemberName({ userId, username, children, showIn
       onFocus={armIndicatorRecovery}
       aria-disabled={sendingFrom === 'inline' ? 'true' : undefined}
       disabled={sendingFrom === 'popover'}
-      className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+      className={cn(
+        "md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-toggle-on cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card",
+        hostGroundHalo(hostGround),
+      )}
       aria-label={`Add ${username} as a friend`}
     >
-      +
+      <Icon name="Plus" strokeWidth={3} className="w-3 h-3 shrink-0" />
     </button>
   );
 
@@ -608,8 +667,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // Self has no mobile inline indicator — informational only, surfaced
     // via desktop hover popover.
     if (status === 'self') return null;
-    // Accepted preserves the existing md:hidden ✓ Friend mobile indicator
-    // (desktop now also shows a "Friend" pill via the hover popover).
+    // Accepted: the md:hidden green Friend pill (R19, 88.9-52: the AMENDED paragraph of DECISION
+    // Phase 88.5 (D-15) above; the ticked text before that). Desktop shows the same pill in the
+    // hover popover. Measured on the See-all row mock at 375: 48.7 x 20px, word on fill 5.78 light /
+    // 5.89 dark. inline-flex + align-middle centre it on the name's line; ml-1 is the shipped gap.
     if (status === 'accepted') {
       // DECISION Phase 88.6.1-37 (Req 5, deviation Rule 1): the Friend span and the Pending span
       // below carry DISTINCT keys, chosen OVER leaving them unkeyed. Both are a span in the same
@@ -622,9 +683,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
           key="friend-indicator"
           ref={friendIndicatorRef}
           onFocus={armStatusRecovery}
-          className="md:hidden ml-1 text-xs text-content-status-success"
+          data-friend-indicator=""
+          className={cn('md:hidden ml-1 inline-flex items-center align-middle', FRIEND_PILL_CLASSES)}
         >
-          ✓ Friend
+          Friend
         </span>
       );
     }
@@ -897,8 +959,15 @@ export default function ClickableMemberName({ userId, username, children, showIn
           role: 'button',
           tabIndex: 0,
           'aria-expanded': isOpen,
-          className:
+          // DECISION Phase 88.9-30 (R012 / R013, owner picks B3a + B1a): the name's and the + button's
+          // halo is the HOST's ground passed as hostGround, merged after the shipped card key by cn
+          // last-wins, chosen OVER a fixed card halo (the raw amber pending box read 1.04 light / 1.61
+          // dark against it) and OVER dropping the card key from the literal (cascadeOrder test 12
+          // judges each ring chunk and would red).
+          className: cn(
             'cursor-pointer hover:underline rounded-xs focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+            hostGroundHalo(hostGround),
+          ),
           onClick: (e) => {
             e.stopPropagation();
             // Hybrid touch laptop fallback — preserved verbatim. At ≥768px
@@ -947,6 +1016,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
         // popover is kept within the dialog's box (the content clips with overflow-hidden, and
         // flip / shift keep it inside) instead of overlaying the page around the dialog;
         // placement and offset are unchanged, so the NOT SWEPT (Phase 88.9) note still holds.
+        // AMENDED Phase 88.9-30 (owner pick F6a, 88.9-PICKS-B5.json, 2026-11-07): placement and offset
+        // are now top-start / 8 (marker above useFloating); the dialog-clipping behaviour described
+        // here is unchanged.
         // The floating element keeps data-member-popover, so the Modal's Escape guard still
         // hands that Escape to the popover. Portalling back to the body inside a dialog is a
         // decision, not a cleanup.

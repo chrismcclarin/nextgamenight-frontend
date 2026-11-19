@@ -25,7 +25,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
+import { announceStatus } from './announcer';
 import { BottomSheet } from './BottomSheet';
+import { RootAnnouncer } from './RootAnnouncer';
+import { REGION_EMPTY_DWELL_MS } from './StatusRegion';
 
 afterEach(cleanup);
 
@@ -334,6 +337,102 @@ describe('BottomSheet focus floor on close (N6, 88.6.1-20)', () => {
       await waitFor(() => expect(document.activeElement).toBe(elsewhere));
     } finally {
       elsewhere.remove();
+    }
+  });
+});
+
+// Phase 88.9-29 D6c (UI-SPEC R2-26 build contract): an optional typed titleSize prop.
+// The default stays on the DialogTitle rung (20/700, leading-tight); 'display' is the
+// Heading primitive's display rung (30/700, leading-tight), passed only by the Calendar sheet.
+describe('BottomSheet titleSize (D6c, 88.9-29)', () => {
+  function titleTokens(): string[] {
+    const sheet = screen.getByRole('dialog', { name: TITLE });
+    const heading = sheet.querySelector('h2');
+    expect(heading, 'the sheet renders its DialogTitle as an h2').not.toBeNull();
+    return (heading?.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  }
+
+  it('titleSize renders 30/700, default 20/700', async () => {
+    const user = userEvent.setup();
+    const first = render(<SheetHarness />);
+    await openSheet(user);
+    const base = titleTokens();
+    for (const token of ['text-xl', 'font-bold', 'leading-tight']) {
+      expect(base, `default title carries ${token}`).toContain(token);
+    }
+    first.unmount();
+
+    const props = { titleSize: 'display' } as Partial<React.ComponentProps<typeof BottomSheet>>;
+    render(<SheetHarness {...props} />);
+    await openSheet(user);
+    const display = titleTokens();
+    for (const token of ['text-3xl', 'font-bold', 'leading-tight']) {
+      expect(display, `display title carries ${token}`).toContain(token);
+    }
+    expect(display, 'display title drops the 20px size').not.toContain('text-xl');
+  });
+});
+
+// 88.9-52 (A-47): the sheet is the house's other aria-modal dialog, so it carries the same
+// in-dialog announcer region as Modal (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
+// No caller announces while a sheet is open today; this pins the routing for the first one.
+describe('BottomSheet announcer region (88.9-52, A-47)', () => {
+  afterEach(() => {
+    act(() => {
+      vi.runAllTimers();
+    });
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it('an open sheet carries one empty polite region, last in the sheet, and takes the words instead of the root', () => {
+    vi.useFakeTimers();
+    render(
+      <>
+        <RootAnnouncer />
+        <BottomSheet open onClose={() => {}} title={TITLE}>
+          <p>Friday game night</p>
+        </BottomSheet>
+      </>
+    );
+    const sheet = screen.getByRole('dialog', { name: TITLE });
+    const regions = sheet.querySelectorAll('[data-announcer="dialog"]');
+    expect(regions).toHaveLength(1);
+    const region = regions[0] as HTMLElement;
+    expect(sheet.lastElementChild).toBe(region);
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+    expect(region).toBeEmptyDOMElement();
+    expect(region).not.toHaveAttribute('tabindex');
+
+    act(() => announceStatus('Event updated'));
+    act(() => {
+      vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    });
+    expect(region).toHaveTextContent(/^Event updated$/);
+    expect(document.querySelector('[data-announcer="root"]')).toBeEmptyDOMElement();
+  });
+});
+
+// R4 L3b (88.9-52 round 4): the sheet's form of the Modal rule,
+// src/app/components/Modal.test.tsx ("88.9-52 (R4 L3): Modal.Body holds the absolute boxes a consumer puts in it").
+// A screen-reader-only box is position absolute and is laid out against its nearest POSITIONED
+// ancestor. The sheet body scrolls; while it was not positioned, such a box in it was laid out
+// against the sheet itself, did not travel with the scrolled content, and could give the
+// clipping sheet something to scroll to (a blank band at its foot). jsdom lays nothing out, so
+// this reads class tokens.
+describe('88.9-52 (R4 L3b): the sheet body holds the absolute boxes a consumer puts in it', () => {
+  it('the scrolling body is positioned, with and without a consumer bodyClassName', () => {
+    for (const bodyClassName of [undefined, 'flex min-h-0 flex-col overflow-hidden']) {
+      render(
+        <BottomSheet open onClose={() => {}} title={TITLE} bodyClassName={bodyClassName}>
+          <span className="sr-only" data-testid="in-body">, saving</span>
+        </BottomSheet>
+      );
+      const body = screen.getByTestId('in-body').parentElement as HTMLElement;
+      expect((body.getAttribute('class') ?? '').split(/\s+/)).toContain('relative');
+      cleanup();
     }
   });
 });

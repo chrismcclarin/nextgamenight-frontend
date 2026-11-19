@@ -56,7 +56,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import GroupList from './grouplist';
 import { ApiError } from '@/lib/api';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 
 // GroupList is untyped JS; a typed-any props bag keeps JSX from demanding unrelated props (the
 // grouplist.identity.test.tsx shape).
@@ -69,7 +72,7 @@ const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // so its polite region and the Retry's description say "Groups: " first and the visible line
 // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
 const SPOKEN = "Groups: Couldn't refresh. Showing what loaded earlier.";
-const LOAD_TITLE = "We couldn't load your groups";
+const LOAD_TITLE = "Couldn't load your groups";
 
 const ALPHA = { id: 'g-alpha', name: 'Alpha Crew', Users: [], Events: [] };
 const BETA = { id: 'g-beta', name: 'Beta Crew', Users: [], Events: [] };
@@ -152,7 +155,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     expect(follows(line, card), 'the line precedes the card').toBe(true);
   });
 
-  it('RF-2. Retry holds Retrying… until its GET settles, then lands focus on "Your Groups" (C8 c, C2, C4, Req 5)', async () => {
+  it('RF-2. Retry stays busy (rule 1) until its GET settles, then lands focus on "Your Groups" (C8 c, C2, C4, Req 5)', async () => {
     const { card } = await loadCardsThenFail(ERR_500);
     await waitForRf1();
     const region = rf1Region() as Element;
@@ -165,7 +168,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     await waitFor(() => expect(h.getUserGroups).toHaveBeenCalledTimes(3));
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(retry).not.toHaveAttribute('disabled');
-    expect(retry).toHaveTextContent('Retrying…');
+    expect(retry).toHaveAccessibleName('Retry, retrying');
     expect(document.activeElement).toBe(retry);
     expect(rf1Line(), 'the visible RF1 line stays while the GET is held').toBeDefined();
     expect(cardOf(titleBlock('Alpha Crew'))).toBe(card);
@@ -265,7 +268,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     h.getUserGroups.mockRejectedValueOnce(err);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    expect((await screen.findAllByText(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(messageBesideRetry(getFetchErrorMessage(err)))).length).toBeGreaterThan(0);
     await waitFor(() => expect(document.activeElement).toBe(yourGroups()));
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
     expect(screen.queryByRole('button', { name: 'Alpha Crew' })).toBeNull();
@@ -290,7 +293,7 @@ describe('GroupList refresh notice (88.6.1-77: AC-29, RF1, D-50, 88.6.1-70 contr
     h.getUserGroups.mockRejectedValueOnce(err);
     // No press and no rerender: the tab-return re-attempt is the only refresh.
     act(() => fireVisibility('visible'));
-    expect((await screen.findAllByText(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(messageBesideRetry(getFetchErrorMessage(err)))).length).toBeGreaterThan(0);
     await waitFor(() => expect(document.activeElement).toBe(yourGroups()));
     expect(cardTitle.isConnected).toBe(false);
     expect(document.activeElement).not.toBe(document.body);

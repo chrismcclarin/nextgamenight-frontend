@@ -8,6 +8,9 @@ import ClickableMemberName from './ClickableMemberName';
 import { statusConfig } from './rsvpStatusConfig';
 import { Textarea } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
+import { Icon } from '../../components/ui/Icon';
+import { hostGroundHalo } from '../../components/ui/hostGround';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Heading } from '../../components/ui/Heading';
 import { formatDateTime } from '../../lib/datetime';
@@ -21,6 +24,10 @@ import { logger, errCtx } from '@/lib/logger';
    works against a FIXED string, and a second spelling of it is the duplication this phase
    exists to remove. Authoring a different string here is copy authorship, not a cleanup. */
 const NOTE_SAVED_MESSAGE = 'Note saved';
+// Copy row R2-43 E2f2 (UI-SPEC round-2 copy table, owner pick 2026-11-06), the visible line AND its
+// live region, declared once; straight apostrophe (D-32 R8). The RSVP status failure keeps its own
+// sentence (copy row: RSVP note only).
+const NOTE_FAILURE_MESSAGE = "Couldn't save. Try again.";
 
 // Copy row E11 (88.6.1-COPY-TABLE.html, a Heard row; owner-ratified), declared once here (D-30).
 // The straight apostrophe is deliberate (D-32 R8): the table's typographic one is normalised.
@@ -37,8 +44,10 @@ const NOTE_LIMIT_STATUS_TESTID = 'rsvp-note-limit-status';
  *   ({ id: <Users.id UUID>, ... }). Own-RSVP resolution keys on `self.id` vs the
  *   nested `rsvp.User.id` UUID (Phase 87.3-04, D-04) — never the flat `user_id`
  *   (a sub through the PR-C window). Undefined while identity is still resolving.
+ * @param {import('../../components/ui/hostGround').HostGround} [hostGround='card'] - the ground
+ *   the HOST paints under Save note; selects its focus halo.
  */
-export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) {
+export default function RsvpSection({ eventId, self, eventDate, onRsvpChange, hostGround = 'card' }) {
   const [rsvps, setRsvps] = useState([]);
   const [summary, setSummary] = useState({ yes: 0, maybe: 0, no: 0 });
   const [userRsvp, setUserRsvp] = useState(null);
@@ -308,12 +317,16 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
       setNoteSaved(NOTE_SAVED_MESSAGE);
     } catch (err) {
       logger.info('Error saving note:', errCtx(err));
-      setError('Could not save your note. Please try again.');
+      setError(NOTE_FAILURE_MESSAGE);
     } finally {
       saveNoteLatch.current = false;
       setSavingNote(false);
     }
   };
+
+  // E2a / E2f2: the counter-row slot and the assertive region's sr-only arm read this one flag, so
+  // the visible line and the heard region cannot disagree about which failure is showing.
+  const noteFailed = error === NOTE_FAILURE_MESSAGE;
 
   const grouped = {
     yes: rsvps.filter(r => r.status === 'yes'),
@@ -443,26 +456,26 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                     ${otherInFlight ? 'opacity-50 cursor-not-allowed' : ''}
                   `}
                 >
-                  {isLoading ? (
-                    <>
-                      <span
-                        // The shipped spinner, swapped in PLACE so the button element — and
-                        // therefore DOM focus — survives the submit.
-                        className="inline-block animate-spin h-4 w-4 border-2 border-line-strong border-t-transparent rounded-full"
-                        aria-hidden="true"
-                      />
-                      {/* The button deliberately KEEPS focus in flight (`aria-disabled` above), so
-                          it must keep an accessible NAME too — otherwise the control the user just
-                          activated announces as nothing for the whole round trip (WCAG 4.1.2;
-                          `NextGameNightCard.tsx:537-541`, its in-flight `sr-only` name). The busy context is ADDITIONAL to the
-                          preserved status word, never a replacement for it: an `aria-label` on the
-                          SPINNER is the natural wrong turn here and would leave the focused button
-                          announcing as "loading" instead of "Going, saving". */}
-                      <span className="sr-only">{config.buttonText}, saving</span>
-                    </>
-                  ) : (
-                    config.buttonText
-                  )}
+                  {/* DECISION Phase 88.9-56 (rule 1 + R-C3b reach, 2026-11-10): the in-flight RSVP button keeps its
+                      visible status word beside the delayed spinner, chosen OVER the shipped spinner-only state (the
+                      pre-47 hero shape) — with a 200 ms appear delay a spinner-only button would be EMPTY for that
+                      window, and rule 1 (the label never changes while busy; Δ29, universal) already forbade the swap;
+                      the heard name is unchanged; the trio stays mounted after the save, so its spinner finishes its
+                      hold. */}
+                  {config.buttonText}
+                  {/* AMENDED Phase 88.9-56 (R-C3b reach): the shipped spinner was swapped in PLACE of the status
+                      word; the word now stays and the spinner sits beside it, so the button element — and
+                      therefore DOM focus — still survives the submit. */}
+                  <DelayedSpinner busy={isLoading} className="ml-2 align-middle" />
+                  {/* The button deliberately KEEPS focus in flight (`aria-disabled` above), so
+                      it must keep an accessible NAME too — otherwise the control the user just
+                      activated announces as nothing for the whole round trip (WCAG 4.1.2; the hero's
+                      in-flight sr-only name, src/app/components/NextGameNightCard.tsx ("focused control announces as nothing for the whole round trip")).
+                      The busy context is ADDITIONAL to the preserved status word, never a replacement for it: an
+                      `aria-label` on the SPINNER is the natural wrong turn here and would leave the focused button
+                      announcing as "loading" instead of "Going, saving". The word is visible now, so this
+                      span carries only the suffix. */}
+                  {isLoading ? <span className="sr-only">, saving</span> : null}
                 </button>
               );
             })}
@@ -536,6 +549,27 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               <span id={noteCounterId} className="text-xs text-content-muted">
                 {note.length}/500
               </span>
+              {/* DECISION Phase 88.9-35 (E2a + E2f2, owner picks, 88.9-PICKS-B4.json, 2026-11-06): the
+                  note outcome is a visible NON-live span on the counter row between the count and
+                  Save note — success a 16px check + Note saved in success ink, failure Couldn't
+                  save. Try again. in error ink, ONE slot, ml-2 mr-auto — chosen OVER E2f1 (the
+                  ratified sentence on its own line under the row; the content below dropped 36px)
+                  and OVER E2f3 (a blank line reserved under the row on every phone, always). Save
+                  note moves 0px. The live regions below still speak it (DECISION Phase 88.6.1-38
+                  (D-22, W029)). 14px matches the size the outcome line shipped at (StatusRegion's
+                  text-sm); min-w-0 lets an over-long line wrap inside the slot rather than push
+                  Save note or clip. Changing this is a decision, not a cleanup. */}
+              {noteFailed && (
+                <span className="ml-2 mr-auto min-w-0 text-sm text-content-status-error">
+                  {NOTE_FAILURE_MESSAGE}
+                </span>
+              )}
+              {!noteFailed && noteSaved && (
+                <span className="ml-2 mr-auto inline-flex min-w-0 items-center gap-1 text-sm text-content-status-success">
+                  <Icon name="Check" size={16} className="shrink-0" />
+                  <span>{NOTE_SAVED_MESSAGE}</span>
+                </span>
+              )}
               {/* DECISION Phase 88.6-29 (W44, extended to the SECOND gated control on this
                   surface): the Save-note button takes the SAME split as the status trio —
                   `aria-disabled` plus the synchronous `saveNoteLatch`, NEVER the native
@@ -562,17 +596,18 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                 variant="primary"
                 aria-disabled={savingNote || undefined}
                 onClick={handleSaveNote}
+                className={hostGroundHalo(hostGround)}
               >
                 Save note
-                {savingNote && (
-                  <>
-                    <span
-                      className="ml-2 inline-block animate-spin h-4 w-4 border-2 border-line-strong border-t-transparent rounded-full align-middle"
-                      aria-hidden="true"
-                    />
-                    <span className="sr-only">, saving</span>
-                  </>
-                )}
+                {/* DECISION Phase 88.9-35 (Δ6, house Spinner): Save note keeps its own sr-only
+                    , saving span beside the house Spinner, chosen OVER Button's busy prop —
+                    busy's suffix is the pending Q6(b) wording and its spinner drops the 8px
+                    ml-2 this control has shipped; moving Save note onto busy is a look change,
+                    a decision, not a cleanup.
+                    AMENDED Phase 88.9-56 (R-C3b reach): its spinner is the delayed, held element mounted
+                    outside the savingNote guard (still not Button's busy); the guard keeps the suffix. */}
+                <DelayedSpinner busy={savingNote} className="ml-2 align-middle" />
+                {savingNote && <span className="sr-only">, saving</span>}
               </Button>
             </div>
           </div>
@@ -609,6 +644,17 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           Do not wrap these regions again or give either a margin utility. Neither may become the
           stack's LAST child: an out-of-flow last child would hand the visible child before it a
           16px bottom margin. The count banner, the list or the empty-state line always follows.
+          AMENDED Phase 88.9-35 (owner picks E2a + E2f2, 88.9-PICKS-B4.json, 2026-11-06): the note
+          outcome's visible half moved to the counter row; the polite region is now always sr-only
+          and the assertive region is sr-only while it holds the note failure, chosen OVER the
+          visible in-stack line (the failure 'pushed the Save note button down'). Both stay direct
+          children with no margin utility and never the last child; the status-tap and load
+          failures still show here, visible. On iOS VoiceOver each sr-only region is its own swipe
+          stop (measured 2026-10-20: a standalone sr-only span is a separate stop with a phantom
+          1px box), so a swipe can read the outcome twice, once on the counter row and once on the
+          region. This is accepted pending the owner's after-the-deploy iPhone row A08 (88.9-51).
+          If A08 fails, the fix keeps the visible span and makes it the only stop. Never aria-hide
+          the visible span.
 
           DECISION Phase 88.6-29 (W44, the SUCCESS half): the note-save success announces through
           a SIBLING always-mounted POLITE region carrying the ratified string "Note saved"
@@ -627,6 +673,10 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           INK: `text-content-secondary`, the same choice plan 28 made and for the same reason — a
           success GREEN would be a new colour on this surface with no V-row behind it. SIZE: none
           authored; `StatusRegion` is `cn('text-sm', className)`.
+          AMENDED Phase 88.9-35 (owner pick E2a, 88.9-PICKS-B4.json, 2026-11-06): the visible half is
+          the counter-row line in success ink (5.46 / 7.42 on the page, 7.13 / 6.08 on the card),
+          chosen OVER this region's secondary-ink visible line; this region is now heard-only — the
+          2026-09-14 visible-when-set arm is reversed for THIS region only, by owner pick.
 
           THE CLEAR-AT-START IN BOTH HANDLERS IS PART OF THIS, not an incidental detail: the
           string is FIXED, and a fixed string re-set into an unchanged region is a React bail-out
@@ -636,13 +686,12 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
         <StatusRegion
           politeness="assertive"
           srOnlyWhenEmpty
-          className="text-content-status-error"
+          className={noteFailed ? 'sr-only' : 'text-content-status-error'}
           message={error}
         />
         <StatusRegion
           politeness="polite"
-          srOnlyWhenEmpty
-          className="text-content-secondary"
+          className="sr-only"
           message={noteSaved}
         />
 
@@ -656,6 +705,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
             making the visible counter a live region: it would speak on every keystroke. REJECTED
             (c) reusing the polite outcome region above: it is visible when set while E11 is
             heard-only, and a limit message there would erase "Note saved" or be erased by it.
+            AMENDED Phase 88.9-35: the outcome region is heard-only now too (E2a); (c) still stands
+            on its second reason.
             REJECTED (d) an `aria-describedby` target for E11: a description is read when the user
             enters the field, not when it changes. That same property is why the counter's
             existing description is KEPT beside E11 — it tells a note that LOADS at the cap on
@@ -718,7 +769,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                       500/600 -> 400 or 700" and nothing wider. Plan 28 made the identical call at
                       `NextGameNightCard.tsx:389` and plan 22 at the site cited above; a third
                       spelling of it here would be the drift. Re-spacing the eyebrow family is a
-                      look decision and belongs to a plan that opens a V-row for it. */}
+                      look decision and belongs to a plan that opens a V-row for it.
+
+                      AMENDED Phase 88.9-47 (owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): the family now converges ON this site's tracking-wider (0.05em), chosen OVER the former majority 0.025em (0.3px, under a device pixel); this site's class is unchanged. */}
                   <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${config.textColor}`}>
                     {config.sectionTitle} ({group.length})
                   </p>
@@ -741,7 +794,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                               affordance, and the userId handed to the (soon
                               UUID-keyed) friendship provider is a UUID. */}
                           {rsvp.User?.id ? (
-                            <ClickableMemberName userId={rsvp.User.id} username={rsvp.User.username || 'Unknown'} />
+                            <ClickableMemberName userId={rsvp.User.id} username={rsvp.User.username || 'Unknown'} hostGround={hostGround} />
                           ) : (
                             'Unknown'
                           )}

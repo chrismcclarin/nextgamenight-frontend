@@ -100,6 +100,16 @@ jobs:
       - name: Typecheck e2e specs (DEF-88-30-02 — tsconfig.json excludes e2e/)
         run: npx tsc --noEmit -p tsconfig.e2e.json
 
+      # DECISION Phase 88.9-57 (52-X1): a SEPARATE step that runs eslint over e2e/, chosen OVER adding
+      # e2e to next lint's directories — next build (the Vercel deploy) would then lint the specs
+      # too and a spec-only lint error would fail a production deploy. Measured at FE 9b3d6bc: the
+      # package lint script is next lint, next.config.js has no eslint key, and next lint exits 0
+      # with zero e2e lines while eslint over e2e/ reported three no-console errors. The same hole
+      # DEF-88-30-02 closed for the typecheck: the ordinary step cannot fail on a Playwright spec.
+      # Pinned by name in src/lib/ci-grep-gate.fixture.test.ts.
+      - name: Lint e2e specs (52-X1 — next lint skips e2e/)
+        run: npx eslint e2e
+
       - name: Unit tests
         run: npx vitest run
 
@@ -330,7 +340,18 @@ jobs:
   e2e:
     name: e2e
     needs: quality # D-02: e2e only runs after the fast quality gate is green
-    runs-on: ubuntu-latest
+    # DECISION Phase 88.9-57 (CI unblock, executor deviation, 2026-11-14): this job is PINNED to
+    # ubuntu-24.04, chosen OVER the rolling ubuntu-latest label the other two jobs keep. Measured:
+    # the last green run (43009916247, 2026-11-11) ran every job on the ubuntu-24.04 image; on
+    # 2026-11-14 the label resolved to ubuntu-26.04 (runs 43682633116 and 43682636703), where the
+    # browser install step exits 1 ("Playwright does not support chromium on ubuntu26.04-x64",
+    # Playwright 1.60.0), so no spec ran at all. ALSO REJECTED here: upgrading Playwright to a
+    # release that knows the new image (a dependency change, not this plan's to make) and a host
+    # platform override (installs another release's system packages on an image nobody tested).
+    # quality and drift-gate-registry need no browser and pass on the new image, so they are not
+    # pinned. Remove this pin only after a Playwright upgrade proves the browser install on the
+    # image the rolling label then names. Changing this is a decision, not a cleanup.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30 # a healthy run is ~10 min; a hung step burned an hour once (run 27309008729)
 
     services:

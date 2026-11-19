@@ -13,8 +13,8 @@ import { TUTORIAL_DAYS, TUTORIAL_TIME_SLOTS } from '../mockData';
  * so the same grid serves availability painting, heatmap density, and the
  * schedule drag-select with no extra abstractions.
  *
- * @param {(row: number, col: number) => React.ReactNode} renderCell
- *   Called for each cell. Return the className string and any inner content.
+ * @param {{ renderCell: (row: number, col: number) => { className: string, content: import('react').ReactNode } }} props
+ *   `renderCell` is called for each cell and returns the className string and any inner content.
  *   Signature: renderCell(rowIdx, colIdx) -> { className, content }
  */
 /* DECISION Phase 88.6-35 (D-01 / UI-SPEC §4.2): the day header, the time-gutter label and the
@@ -35,18 +35,39 @@ import { TUTORIAL_DAYS, TUTORIAL_TIME_SLOTS } from '../mockData';
    column and the cell digit is ink inside its own density FILL, which is §4.5's pill/chip-ink
    reason. The production surface this grid imitates already renders its equivalents at
    `text-xs font-bold` (src/app/components/EventHeatmapBackground.js ("text-xs font-bold text-content-muted block leading-tight"), src/app/components/EventHeatmapBackground.js ("text-xs text-content-heatmap-count font-bold")), so 700 is also what keeps the
-   simulation recognisable as the real thing — which is this component's whole stated purpose. */
+   simulation recognisable as the real thing — which is this component's whole stated purpose.
+
+   AMENDED Phase 88.9-52 (R4 S4, the round-3 capture, checked first): "No fixed box overflowed"
+   above was true of the boxes it measured and of the document, and missed the grid itself. At
+   full size the grid is 446px (a 56px gutter, seven 48px columns with 2px margins, the card's
+   padding and border) and the tutorial scene at 375 is 293px, so the Friday column, the one
+   every demo paints, was cut in half at the card's edge and Sat and Sun were out of sight. A
+   DEFECT, not a cropped illustration: nothing records a crop, and the cut column is the subject
+   of three steps. It is older than round 3 (the fixed columns date from the grid's first build).
+   NOW: the seven columns may give way, from 48px down to a 24px floor (the width that still
+   holds a day name), the gutter keeps its width, and the card may not be wider than the scene
+   (max-w-full). At 375 the columns are about 26px and the whole week shows; from about 530px of
+   screen the grid is its full 446px, as before. Under 360px of screen even 24px columns do not
+   fit, and there the card scrolls sideways inside itself, in place of the scene. The inner
+   wrapper lost its forced full width, which is what stopped any of this.
+   ALSO: a day name now has the 2px side margin its cells have. It had none, so each name sat 4px
+   further left of its column than the last (Fri was 18px off) and, once columns give way, names
+   and cells would have shrunk by different amounts. This moves the day names at every width.
+   REJECTED: scaling the whole grid down (12px text would drop under the caption floor); fewer
+   days on a phone (the demos paint Friday and point at the weekend); leaving the sideways
+   scroll (the painted column starts cut). Putting shrink-0 back on the columns, or a forced
+   width on the wrapper, cuts the grid again. */
 export default function TutorialGrid({ renderCell }) {
   return (
-    <div className="bg-surface-card rounded-card border border-line shadow-theme-md p-3 inline-block">
-      <div className="min-w-max">
+    <div className="bg-surface-card rounded-card border border-line shadow-theme-md p-3 inline-block max-w-full overflow-x-auto">
+      <div>
         {/* Day headers — match production AvailabilityGrid layout */}
         <div className="flex">
           <div className="w-14 shrink-0" />
           {TUTORIAL_DAYS.map((day) => (
             <div
               key={day}
-              className="w-12 shrink-0 text-center text-xs font-bold text-content-secondary pb-1"
+              className="w-12 min-w-6 mx-0.5 text-center text-xs font-bold text-content-secondary pb-1"
             >
               {day}
             </div>
@@ -79,7 +100,7 @@ export default function TutorialGrid({ renderCell }) {
                 <div
                   key={`${rowIdx}-${colIdx}`}
                   className={cn(
-                    'w-12 h-7 shrink-0 flex items-center justify-center text-xs font-bold rounded-xs m-0.5 border border-line transition-all duration-300',
+                    'w-12 min-w-6 h-7 flex items-center justify-center text-xs font-bold rounded-xs m-0.5 border border-line transition-all duration-300',
                     className
                   )}
                 >

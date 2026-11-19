@@ -97,7 +97,7 @@ const SUBTITLE_MEDIUM_LIGHT_BG = '#4b5563';
 const SUBTITLE_DARK_BG = 'rgba(255, 255, 255, 0.95)';
 
 // --- Calendar tile text color constants (computed poles) ---
-const TILE_TEXT_LIGHT_BG = '#1e40af'; // Blue text on light calendar tiles
+// The light-ground tile pole is the shared dark pole since 88.9-60 X24 (see getEventTileTextColor).
 const TILE_TEXT_DARK_BG = '#ffffff';
 /*
  * DECISION Phase 88.3 (R2-6): this pole is `#374151`, chosen OVER the `#6b7280`
@@ -129,6 +129,11 @@ const CONTRAST_LIGHT = '#ffffff';
  * allowlisted file, which is what makes Req 2's grep gate meaningful: a hex
  * value appearing in a component file is then always a defect, never a copy of
  * a legitimate pole.
+ *
+ * AMENDED Phase 88.9-60 (X23a): SUBTEXT_ON_LIGHT lost its last production consumer, the
+ * picture-row subtitle that sat on the 0.85 white wash (both left with X23a). It stays exported
+ * and measured (groupColourPresets.test.ts test 8 still holds it to 4.5 on every light band)
+ * until its removal is ruled; do not read the export as proof that a row still paints it.
  */
 export const TEXT_ON_LIGHT = CONTRAST_DARK;
 export const TEXT_ON_DARK = CONTRAST_LIGHT;
@@ -660,11 +665,24 @@ export function resolveGroupGround(stored) {
  * it would then bold every descendant, which the per-element treatments it
  * replaces never did). Callers apply `font-semibold` at the text element.
  *
- * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, fontWeight?: string}} dark
+ * The paint-order pair (Phase 88.9-27, pick O02d1): `--t-paint` / `--t-paint-l` are added ONLY
+ * when one of the two treatments carries `paintOrder`, which only a photo arm does (the image arm
+ * of `getTextStyle` / `getSubtitleStyle`, i.e. a copy of `PHOTO_TEXT_STYLE`). Every no-image host
+ * therefore gets the six shipped keys and renders a byte-identical inline style; a consumer reads
+ * the pair as `[paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)]`, so
+ * an absent pair falls back to `normal`.
+ *
+ * The tracking pair (Phase 88.9-60, X7, owner T11): `--t-track` / `--t-track-l` follow the same
+ * idiom, added ONLY when one of the two treatments carries `letterSpacing` (a photo arm), and read
+ * as `[letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]`.
+ * `fontWeight` still stays out, for the container reason above.
+ *
+ * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string, letterSpacing?: string}} dark
  *        the treatment computed against the STORED hex (what dark mode paints)
- * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, fontWeight?: string}} light
+ * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string, letterSpacing?: string}} light
  *        the treatment computed against the RENDERED tint (what light mode paints)
- * @returns {Record<string, string>} the six `--t-*` properties, plus fontWeight
+ * @returns {Record<string, string>} the six `--t-*` properties, plus the `--t-paint` and
+ *          `--t-track` pairs on a photo arm
  */
 export function themedTextStyleVars(dark, light) {
   return {
@@ -674,6 +692,14 @@ export function themedTextStyleVars(dark, light) {
     '--t-shadow-l': light.textShadow || 'none',
     '--t-stroke': dark.WebkitTextStroke || 'none',
     '--t-stroke-l': light.WebkitTextStroke || 'none',
+    ...((dark.paintOrder || light.paintOrder) && {
+      '--t-paint': dark.paintOrder || 'normal',
+      '--t-paint-l': light.paintOrder || 'normal',
+    }),
+    ...((dark.letterSpacing || light.letterSpacing) && {
+      '--t-track': dark.letterSpacing || 'normal',
+      '--t-track-l': light.letterSpacing || 'normal',
+    }),
   };
 }
 
@@ -765,6 +791,13 @@ export function groupInkVars(ground, options) {
    * VALIDATED image flag (the `safeBgImageStyle` result, wave-12 owner ruling
    * at src/app/components/grouplist.js ("Wave-12 review follow-up (owner-ruled fix, 2026-08-21)")), never the raw string, so an invalid or relative
    * URL (FSEC-03) does not trigger the white-text treatment.
+   *
+   * AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json, 2026-11-07): the image branch it
+   * defers to is now white + 1.5px black outline painted first, no shadow, chosen OVER white +
+   * heavy blurred shadow + 0.5px stroke; returning no ink on an image is unchanged.
+   *
+   * AMENDED Phase 88.9-60 (X6, owner F1): callers pass false here for a picture that failed to
+   * load, so that group gets its ink back, exactly as a group with no picture does.
    */
   if (hasBackgroundImage) return {};
 
@@ -843,6 +876,39 @@ const SHADOW_LIGHT_SUBTLE = '1px 1px 2px rgba(255, 255, 255, 0.8), -1px -1px 2px
 const SHADOW_LIGHT_MEDIUM = '1px 1px 3px rgba(255, 255, 255, 0.9)';
 const SHADOW_DARK_HEAVY = '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8), 1px -1px 2px rgba(0, 0, 0, 0.8), -1px 1px 2px rgba(0, 0, 0, 0.8)';
 const STROKE_DARK = '0.5px rgba(0, 0, 0, 0.9)';
+/*
+ * DECISION Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json, 2026-11-07; Q2 default,
+ * 88.9-RULINGS.md round 2): a photo or failed-image ground gets ONE treatment, white ink with a
+ * 1.5px solid black outline painted BEFORE the fill so it sits outside the glyph, no shadow,
+ * chosen OVER the shipped white + four-part 0.8 black blurred shadow + 0.5px 0.9 stroke (1.35:1
+ * white on the blue tint behind a failed image, register #207) and OVER the outline on every
+ * coloured ground (the research reading, Q2 'all cards' - not ruled). WCAG 1.4.3 Note 5: a narrow
+ * border is read as the letter, so on any fill one of the two colours clears 15:1 (black 15.56 on
+ * #c4e1ff, white 15.03 on #00274d). No-image arms are W50 F10 as shipped (R2-02, owner keep
+ * 2026-11-07). Changing this is a decision, not a cleanup.
+ *
+ * AMENDED Phase 88.9-60 (X6, owner F1, 2026-11-11): a picture that FAILS to load is treated as no
+ * picture (plain arm, preset inks, no outline), chosen OVER the one-treatment rule above, which
+ * existed only because no failed load could be detected; the failed ground is the tint, whose inks
+ * clear 4.5. Changing this back is a decision, not a cleanup.
+ *
+ * AMENDED Phase 88.9-60 (X7, owner T11, 2026-11-11): over a photo every word, title and subtitle,
+ * is white, 700, a 2px black outline painted first and 0.03em, from PHOTO_TEXT_STYLE, chosen OVER
+ * O02d1's 1.5px at 600 and OVER T9 (small text only). Sites spread the set, never restate it.
+ */
+const STROKE_OUTLINE = '2px #000000';
+const PAINT_STROKE_FIRST = 'stroke fill';
+const PHOTO_TEXT_WEIGHT = '700';
+const PHOTO_TEXT_TRACKING = '0.03em';
+/** The ONE set every word over a loaded (or still loading) photo wears. Frozen: callers copy it. */
+export const PHOTO_TEXT_STYLE = Object.freeze({
+  color: TITLE_LIGHT,
+  textShadow: SHADOW_NONE,
+  WebkitTextStroke: STROKE_OUTLINE,
+  paintOrder: PAINT_STROKE_FIRST,
+  fontWeight: PHOTO_TEXT_WEIGHT,
+  letterSpacing: PHOTO_TEXT_TRACKING,
+});
 
 /**
  * Calculate perceived brightness of a hex color.
@@ -900,20 +966,25 @@ export function isDarkBackground(hexColor) {
 
 /**
  * Calendar-tile text color variant.
- * Returns blue for light backgrounds (design choice for calendar event tiles),
- * white for dark backgrounds.
- * Intentionally different from getContrastColor.
+ * Returns the plain dark pole for light backgrounds, white for dark backgrounds.
+ *
+ * AMENDED Phase 88.9-60 (X24, owner 2026-11-12: drop the blue): a light tile takes the plain dark
+ * pole, chosen OVER a tile-only blue that read as a different colour on the one coloured group
+ * with future nights; 10.84–10.94 on the 8 light bands (blue 6.44–6.50). A different tile ink is a
+ * decision, not a cleanup. (History: this function was "intentionally different from
+ * getContrastColor" by that blue; the two now agree on a coloured ground and differ only in the
+ * no-colour arm below.)
  *
  * With no group colour the tile has no background of its own and sits on the
  * themed month cell, so the content token is returned instead of a pole (D-28).
  *
  * @param {string|null|undefined} hexColor - Background hex color
- * @returns {string} A content token (no colour), tile blue, or white
+ * @returns {string} A content token (no colour), the dark pole, or white
  */
 export function getEventTileTextColor(hexColor) {
   if (isUnsetBackgroundColor(hexColor)) return UNSET_BG_TILE_TEXT;
   const brightness = getBrightness(hexColor);
-  return brightness > 128 ? TILE_TEXT_LIGHT_BG : TILE_TEXT_DARK_BG;
+  return brightness > 128 ? TEXT_ON_LIGHT : TILE_TEXT_DARK_BG;
 }
 
 /**
@@ -926,17 +997,14 @@ export function getEventTileTextColor(hexColor) {
  *
  * @param {boolean} hasBackgroundImage - Whether the element has a background image
  * @param {string|null|undefined} backgroundColor - Background hex color
- * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, fontWeight?: string }}
+ * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string, letterSpacing?: string }}
  */
 export function getTextStyle(hasBackgroundImage, backgroundColor) {
-  // Background image: always white text with dark outline for readability
+  // Background image (a photo that has not failed to load; since 88.9-60 X6 a picture that fails
+  // to load reaches this function as no image): a copy of the one photo set, white, 700, a 2px
+  // black outline painted first, 0.03em, no shadow (see the markers above STROKE_OUTLINE).
   if (hasBackgroundImage) {
-    return {
-      color: TITLE_LIGHT,
-      textShadow: SHADOW_DARK_HEAVY,
-      WebkitTextStroke: STROKE_DARK,
-      fontWeight: '600',
-    };
+    return { ...PHOTO_TEXT_STYLE };
   }
 
   // No group colour: the element sits on the app's themed surface, so the
@@ -986,16 +1054,13 @@ export function getTextStyle(hasBackgroundImage, backgroundColor) {
  *
  * @param {boolean} hasBackgroundImage - Whether the element has a background image
  * @param {string|null|undefined} backgroundColor - Background hex color
- * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string }}
+ * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, paintOrder?: string, fontWeight?: string, letterSpacing?: string }}
  */
 export function getSubtitleStyle(hasBackgroundImage, backgroundColor) {
-  // Background image: off-white text with dark outline
+  // Background image: the same photo set as the title, weight and tracking included (88.9-60 X7,
+  // owner T11: small text and title alike; "white title + stats", UI-SPEC round-2 (d) O-02).
   if (hasBackgroundImage) {
-    return {
-      color: SUBTITLE_DARK_BG,
-      textShadow: SHADOW_DARK_HEAVY,
-      WebkitTextStroke: STROKE_DARK,
-    };
+    return { ...PHOTO_TEXT_STYLE };
   }
 
   // No group colour: the secondary/muted line is HALF the D-28 defect — it

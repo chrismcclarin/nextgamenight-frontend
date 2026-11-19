@@ -19,6 +19,8 @@
  *     `assertive` (urgent) → `role="alert"` + `aria-live="assertive"`.
  *   - Opt-in `srOnlyWhenEmpty` (D-22): visually hidden only while there is nothing
  *     to say; see the DECISION marker on the prop.
+ *   - Opt-in `settleOnMount` (88.9-65, X35): a region whose host mounts it already
+ *     holding words stays empty for the dwell first; see the DECISION marker on the prop.
  *
  * Presentational + color-neutral: consumers (e.g. Banner) own the visual tone.
  */
@@ -62,6 +64,24 @@ export interface StatusRegionProps
    * the two states.
    */
   srOnlyWhenEmpty?: boolean;
+  // DECISION Phase 88.9-65 (X35, once-over R13, veto open): opt-in first-words dwell for a region
+  // whose host mounts it busy, chosen OVER a timer per site, OVER default-on (every region's first
+  // words would wait), OVER the root announcer (saves only; hidden under an open dialog).
+  // FetchErrorBanner keeps its own (it re-dwells on every Retry).
+  // AMENDED Phase 88.9-52 (A-47): "hidden under an open dialog" was unmeasured when written (the
+  // aria-hidden package exempts every aria-live node). MEASURED 2026-11-16, owner's iPhone with
+  // VoiceOver, production: the root region is NOT spoken while a house dialog (aria-modal) is open.
+  // Fixed in the same batch, and the announcer still carries save outcomes only: its words now go
+  // to a region inside the open dialog (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
+  /**
+   * Opt-in (default `false`). A polite region that MOUNTS already holding its words is not
+   * announced: screen readers announce a change to a live region, not its arrival. With this
+   * prop the region renders nothing until `REGION_EMPTY_DWELL_MS` after mount, then passes
+   * `message ?? children` as usual, so the first words land as a change. The prop is read once,
+   * at mount; the timer is cleared on unmount. The node, its `role` and its live attributes
+   * are the same before and after the dwell, and the prop never reaches the DOM.
+   */
+  settleOnMount?: boolean;
 }
 
 /**
@@ -84,6 +104,7 @@ const StatusRegion = React.forwardRef<HTMLDivElement, StatusRegionProps>(
       message,
       politeness = 'polite',
       srOnlyWhenEmpty = false,
+      settleOnMount = false,
       className,
       children,
       ...props
@@ -91,7 +112,15 @@ const StatusRegion = React.forwardRef<HTMLDivElement, StatusRegionProps>(
     ref
   ) => {
     const assertive = politeness === 'assertive';
-    const content = message ?? children;
+    // settleOnMount (88.9-65, X35): empty until the dwell after MOUNT has passed. The initial
+    // state reads the prop once, so a region without it is settled from its first commit.
+    const [settled, setSettled] = React.useState(!settleOnMount);
+    React.useEffect(() => {
+      if (settled) return undefined;
+      const timer = setTimeout(() => setSettled(true), REGION_EMPTY_DWELL_MS);
+      return () => clearTimeout(timer);
+    }, [settled]);
+    const content = settled ? (message ?? children) : null;
 
     return (
       <div

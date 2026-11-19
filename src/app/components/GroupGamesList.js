@@ -12,7 +12,8 @@ import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/Fetch
 import { StatusRegion } from '../../components/ui/StatusRegion';
 
 // The section's heading, and the refresh notice's spoken section name (copy row P78b, close ruling P-78).
-const GROUP_GAMES_TITLE = 'Group Games';
+// DECISION Phase 88.9-31 (owner pick T1, 88.9-PICKS-B7B.json): Play history over the shipped section name; the section is play-session history (DECISION Phase 88-18 (E-25) agrees). The constant NAME is kept on purpose so its four uses and copy row P78b's code anchor stay byte-identical; renaming it is a decision, not a cleanup.
+const GROUP_GAMES_TITLE = 'Play history';
 
 const SORT_ASCENDING_LABEL = 'Sort order: ascending';
 const SORT_DESCENDING_LABEL = 'Sort order: descending';
@@ -33,15 +34,49 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
         // mechanism. `ring-offset-2` over `ring-inset`: this is a card in a vertical
         // list with `space-y` between rows, so an outset ring has room and reads as a
         // card outline rather than an inner line at 375px.
+        // DECISION Phase 88.9-58 (X14): this whole-card control keeps its own hover wash; the card utility has none (owner 2026-11-11).
+        // DECISION Phase 88.9-52 (R4 C3, owner 2026-11-18: "lose the picture at the large text"):
+        // the card is a query container, and its picture is not drawn while the card's inside
+        // is under 15rem; the words then take the full width. Round 4 found the words column
+        // 46px wide beside a 128px picture at 320 with text at 200%, so every word broke
+        // mid-word (the owner: large text exists because small text blurs together for some
+        // people; cutting it up to keep a layout defeats the setting).
+        // THE SUM: picture 4rem (w-16) + gap 1rem (gap-4) + a words column of at least 10rem
+        // = 15rem. A container width is the card's inside (its padding and border are outside
+        // the number), and rem is the root text size, so the one threshold answers to the
+        // screen and the text size together. Worked cases, card = screen less 2rem of page
+        // padding, inside = card less 1.5rem of padding and 2px of border:
+        //   320 at ordinary text: inside 262px = 16.4rem, picture drawn, words 182px (11.4rem)
+        //   375 at ordinary text: inside 317px = 19.8rem, picture drawn, words 237px
+        //   320 at 200%: inside 206px = 6.4rem, no picture, words 206px (they had 46px)
+        //   375 at 200%: inside 261px = 8.2rem, no picture, words 261px (they had 101px)
+        // At ordinary text the picture only goes on a phone under about 298px. From md the page
+        // padding is 3rem, the card padding 3rem and the grid has two columns, three from lg
+        // (1rem gaps). The tightest ordinary-text case is three columns at exactly 1024:
+        // (1024 - 48 - 32) / 3 = 314.7px a card, inside 264.7px = 16.5rem, picture drawn; two
+        // columns at 768 give 302px = 18.9rem. So at ordinary text nothing changes anywhere.
+        // CHOSEN OVER a viewport breakpoint (it cannot see the text size, and this card sits in
+        // columns of different widths), OVER shrinking the picture (at 6.4rem of card even a
+        // 2rem picture leaves 3.4rem of words), OVER stacking the picture above the words (the
+        // owner ruled: lose it), and OVER a script that measures. The house pattern is the one
+        // in src/app/components/CalendarMonthView.js ("const NARROW_CELL = '@max-[14rem]:relative';").
+        // NOTHING IS LOST FOR A SCREEN READER: the picture's alt is the game's name, and the
+        // same name is the card's heading right beside it, so with the picture drawn the link
+        // reads the name twice and without it once. The alt is left as it is (making the
+        // picture silent is a change to what is spoken, which nobody has ruled on).
+        // The page-level wrap box (src/app/groupHomePage/page.js ("DECISION Phase 88.9-52 (R4-A3, round-3 capture)"))
+        // STAYS: it is what lets a single word wider than the whole card (a long theme) break
+        // instead of pushing the page sideways, with or without a picture.
+        // Changing 15rem, or the picture's size or the gap without it, is a decision, not a cleanup.
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-            className="block card p-3 md:p-6 hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+            className="@container block card p-3 md:p-6 hover:bg-surface-hover hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
         >
             <div className="flex items-start gap-4">
                 <SafeImage
                     src={game.image_url}
                     alt={game.name}
-                    className="w-16 h-16 object-cover rounded-sm"
+                    className="w-16 h-16 object-cover rounded-sm @max-[15rem]:hidden"
                 />
                 <div className="flex-1 min-w-0">
                     {/* A1 (the tracer's ruling, plan 88.6-15, applied here): an
@@ -52,7 +87,8 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                         string that identifies the card — clipping it hides the content the
                         card exists to show. The grid row grows instead, which is the cost the
                         default accepts. Re-adding `truncate` is a decision, not a cleanup. */}
-                    <Heading level={3} size="heading" className="text-content-primary mb-1">
+                    {/* DECISION Phase 88.9-31 D7a (owner pick D7a, 88.9-PICKS-B3.json, 2026-11-05): card titles take the body rung (16/700) under the 20/700 section heading, chosen OVER the shared heading rung (20/700 on both, no rank). */}
+                    <Heading level={3} size="body" className="text-content-primary mb-1">
                         {game.name}
                     </Heading>
                     <div className="text-sm text-content-secondary space-y-1">
@@ -62,9 +98,15 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                         <p>
                             Last played: {formatDate(game.last_played, timezone)}
                         </p>
+                        {/* DECISION Phase 88.9-56 (owner ruling R-C5, 2026-11-10; the DEC-2 / R-P2 ink of plan 88.9-44): the rating
+                            ink is yellow-800 in light and yellow-500 in dark — written here in prose, never as the class pair, so
+                            the miniPicks count of the class literal stays exact (6.85 light / 7.22 dark on the card, 88.9-RULINGS.md
+                            Q7 ADDENDUM), chosen OVER the shipped raw yellow (2.94 light at rest on the same ground, plan 44's
+                            measurement) and OVER waiting for a consistency phase (Phase 91 is a backend phase). The rating here is a
+                            number, read as it is, so it takes no label. Changing the pair is a decision, not a cleanup. */}
                         {game.avg_rating && (
                             <p>
-                                Rating: <span className="text-yellow-600">{formatRating(game.avg_rating)}</span>
+                                Rating: <span className="text-yellow-800 dark:text-yellow-500">{formatRating(game.avg_rating)}</span>
                                 {game.review_count > 0 && (
                                     <span className="text-content-muted"> ({game.review_count} {game.review_count === 1 ? 'review' : 'reviews'})</span>
                                 )}
@@ -337,9 +379,10 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
         return (
             <div className="mt-8">
                 <Heading ref={gamesFocusRef} level={2} size="heading" className="text-content-primary mb-4">{GROUP_GAMES_TITLE}</Heading>
+                {/* DECISION Phase 88.9-49 (BANNER-01, F04): thing keeps the shipped noun this group's games, chosen OVER renaming it after the section's Play history heading (R2-47 renamed the heading only; no copy row rules the banner noun). Owner glance at 88.9-51; renaming it is a copy decision, not a cleanup. */}
                 <FetchErrorBanner
                     state={errorState}
-                    title="We couldn't load this group's games"
+                    thing="this group's games"
                     reportContext="Group games list (group home page)"
                     focusTarget={gamesFocusRef}
                 />
@@ -412,9 +455,10 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
             {refreshNotice}
 
             {/* Sorting Controls */}
-            <div className="mb-6 flex items-center justify-between bg-surface-page p-3 md:p-4 rounded-card">
-                <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-2">
+            {/* DECISION Phase 88.9-52 (W10): the row, its left group and the label all wrap and may shrink (flex-wrap, min-w-0), and the select is capped at its row (max-w-full), chosen OVER the one unbreakable line this was: at 375px with doubled text that line was wider than the screen and the whole group page scrolled sideways (measured 643px). At ordinary text size everything fits on one line and nothing here bites; the 88-21 w-auto below stands. gap-2 is the space between wrapped lines and between the left group and Filter. Taking the wraps off is a decision, not a cleanup. */}
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-2 bg-surface-page p-3 md:p-4 rounded-card">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <label className="flex min-w-0 flex-wrap items-center gap-2">
                         <span className="text-sm text-content-secondary whitespace-nowrap">Sort by:</span>
                         {/* DECISION Phase 88-21 (Req 1): `w-auto` overrides the primitive's
                             `block w-full`. This select sits INLINE beside its "Sort by:" span on
@@ -427,7 +471,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                             name="group-games-sort"
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="w-auto"
+                            className="w-auto max-w-full"
                         >
                             <option value="name">Name</option>
                             <option value="theme">Theme</option>
@@ -572,7 +616,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                                     700 because 600 is a prohibition outside the `Button` label (§4.2). It
                                     stays a `<div>`: an eyebrow is not a heading, and making it one would
                                     put a level into an outline that deliberately has none here. */}
-                                <div className={`text-xs font-bold text-content-secondary uppercase tracking-wide border-b border-line pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
+                                <div className={`text-xs font-bold text-content-secondary uppercase tracking-wider border-b border-line pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
                                     {group.theme}
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -14,6 +14,7 @@ import {
   themedTextStyleVars,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
@@ -26,6 +27,7 @@ import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRe
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { Icon } from '../../components/ui/Icon';
 import { logger, errCtx } from '../../lib/logger';
 
 /* DECISION Phase 88.6.1-54 (D-19, D-52, copy rows H1/H2, D-33 row 13): each group card's
@@ -80,7 +82,18 @@ const GROUPS_SECTION_NAME = 'Groups';
 const LOAD_OK = Object.freeze({ isError: false });
 const LOAD_FAILED = Object.freeze({ isError: true });
 
-const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
+const GroupList = ({
+  onGroupSelect,
+  onCreateGroup,
+  user,
+  onGroupSettingsUpdated,
+  refreshTrigger,
+  // Plan 88.9-42 (O22d / SESSION-02): optional. `onGroupsUnauthorized` reports a BOOLEAN — "the
+  // groups load ended with code unauthorized" — up to the home page, which owns the ONE
+  // page-level session banner; `sessionBannerShown` comes back down while that banner shows.
+  onGroupsUnauthorized,
+  sessionBannerShown = false,
+}) => {
   const router = useRouter();
   const { user: authUser } = Auth();
   const { timezone } = useTimezone();
@@ -90,6 +103,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // flips value at PR-C). selfUuid resolves ASYNC, so role derivation runs in its own effect
   // gated on resolution (D-04 async-resolution constraint).
   const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
+  // X6 (88.9-60): the shared picture-load probe, called once here; each card asks it below.
+  const bgImageFailed = useBgImageFailed();
   // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
   const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
   const [groups, setGroups] = useState([]);
@@ -319,6 +334,17 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   const groupsRetained = useRetainedContent(groupsLoadedFor === selfUuid, groupsErrorState);
   // The full groups banner holds the list's place only while nothing is retained (contract C6).
   const groupsBannerShown = groupsErrorState.showError && !groupsRetained;
+  /* DECISION Phase 88.9-42 O22d: GroupList reports a BOOLEAN, chosen OVER passing its error-state
+     object (useFetchErrorState returns a new literal each render,
+     src/components/ui/useFetchErrorState.ts ("return { showError, message, code, retry, retryFailed };")
+     — storing it in parent state is one deps edit from a render loop, and the snapshot goes
+     stale). The cleanup lowers the parent's flag on unmount. */
+  const groupsUnauthorized = groupsErrorState.showError && groupsErrorState.code === 'unauthorized';
+  useEffect(() => {
+    if (!onGroupsUnauthorized) return undefined;
+    onGroupsUnauthorized(groupsUnauthorized);
+    return () => onGroupsUnauthorized(false);
+  }, [groupsUnauthorized, onGroupsUnauthorized]);
 
   const handleGroupClick = (group, e) => {
     // Navigate to group page instead of opening modal
@@ -343,11 +369,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // lives in selfIdentityErrorSource.ts, so this condition reads the error state alone.
   if (selfIdentityErrorState.showError) {
     return (
-      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-          <Heading level={2} size="heading" className="text-content-primary">Your Groups</Heading>
+      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
+        {/* 88.9-52 (W2 / W18): the same wrapping header row as the main return below; see its marker. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4 pb-3 border-b border-line">
+          <Heading level={2} size="heading" className="text-content-primary shrink-0 max-w-full">Your Groups</Heading>
           {onCreateGroup && (
-            /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
+            /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. ——— AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18), everything above KEPT AS HISTORY: the `.btn-compact` opt-out this marker names is RETIRED (src/app/globals.css ("the stepper opt-out is RETIRED")). Its only two wearers, the BrowseMoreModal player-count steppers, are 44x44 squares now, chosen OVER keeping them at 32x32 (REJECTED: two small targets 4px apart; this marker family only ever weighed a 32x44 lozenge, never a 44 square). NOTHING about THIS control changes: the phone floor on `.btn` stands, the all-viewport floor on the `.btn` class stays rejected as recorded (its "would distort compact sites" reason no longer has a subject, and re-asking it is a decision nobody has made), and this control keeps the height it had. */
             <Button
               variant="primary"
               className="whitespace-nowrap focus-visible:ring-offset-surface-page"
@@ -359,16 +386,20 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             </Button>
           )}
         </div>
-        <div className="py-8 px-4">
-          <FetchErrorBanner state={selfIdentityErrorState} compact />
-        </div>
+        {/* Plan 88.9-42 (SESSION-02): while the home page's session banner shows, this shell keeps
+            its header row and the compact notice yields — one sentence for a dead session. */}
+        {!sessionBannerShown && (
+          <div className="py-8 px-4">
+            <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
+          </div>
+        )}
       </div>
     );
   }
 
   if (!hasLoaded) {
     return (
-      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
+      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="text-center py-8 px-4 text-content-muted">Loading groups...</div>
       </div>
     );
@@ -388,11 +419,26 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     // flatten is applied to the loading/error-state renders of this wrapper so the
     // surface does not jump 16px when it transitions states. That is a decision,
     // not a cleanup.
-    <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-        <Heading ref={groupsHeadingRef} level={2} size="heading" className="text-content-primary">Your Groups</Heading>
+    //
+    // DECISION Phase 88.9-59 (X5b, owner 2026-11-11: A, lets make the groups wider): this root and
+    // the two early-return roots fill the home column, chosen OVER the 400px desktop cap (60px
+    // dead). Column width: src/app/userHome/UserHomePage.js ("DECISION Phase 88.9-42 F4b"). A cap
+    // back here is a decision, not a cleanup.
+    <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
+      {/* DECISION Phase 88.9-52 (W2 / W18, after-build look page, no objection from the owner
+          2026-11-16): the header row wraps. When the heading and the Create button do not fit on one
+          line with a 12px gap, the button drops under the heading, chosen OVER the one-line row,
+          where the heading shrank instead: at 200% text it broke two letters per line (Yo / ur / Gr
+          / ou / ps; the Heading base is wrap-anywhere and a flex item may shrink to one letter), and
+          at 768 it sat 2px from the button. shrink-0 keeps the heading at its words' width;
+          max-w-full lets wrap-anywhere still act if one line is wider than the whole column.
+          ARITHMETIC from the 2026-11-16 captures, not a rendered read: heading 119px + gap 12 +
+          button 168 = 299; the column is 428 at 1280 and 343 at 375 (one line, as before) and 291 at
+          768 (the button drops). Changing this is a decision, not a cleanup. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4 pb-3 border-b border-line">
+        <Heading ref={groupsHeadingRef} level={2} size="heading" className="text-content-primary shrink-0 max-w-full">Your Groups</Heading>
         {onCreateGroup && (
-          /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
+          /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. ——— AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18), everything above KEPT AS HISTORY: the `.btn-compact` opt-out this marker names is RETIRED (src/app/globals.css ("the stepper opt-out is RETIRED")). Its only two wearers, the BrowseMoreModal player-count steppers, are 44x44 squares now, chosen OVER keeping them at 32x32 (REJECTED: two small targets 4px apart; this marker family only ever weighed a 32x44 lozenge, never a 44 square). NOTHING about THIS control changes: the phone floor on `.btn` stands, the all-viewport floor on the `.btn` class stays rejected as recorded (its "would distort compact sites" reason no longer has a subject, and re-asking it is a decision nobody has made), and this control keeps the height it had. */
           <Button
             variant="primary"
             className="whitespace-nowrap focus-visible:ring-offset-surface-page"
@@ -455,18 +501,23 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
           Changing this is a decision, not a cleanup. */}
       <RefreshFailedNotice state={groupsErrorState} retained={groupsRetained} focusTarget={groupsHeadingRef} className="mb-4" sectionName={GROUPS_SECTION_NAME} />
 
-      <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
+      {/* 88.9-52 (W22): max-md:pt-0.5 leaves the 2px a hovered card lifts by (hover:-translate-y-0.5);
+          below md this scroll area has no padding and cut the first card's lifted top edge. */}
+      <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 max-md:pt-0.5 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
         {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary
             that put the full banner in place of retained cards (see DECISION Phase 88.6.1-41
             (D-37, Req 9) above). The banner holds the list's place only while nothing loaded. */}
-        {groupsBannerShown && (
+        {/* DECISION Phase 88.9-42 O22d / SESSION-02: while the home page's session banner shows, this
+            list renders neither its banner nor its empty state, chosen OVER hiding the banner alone
+            (the EmptyState would then claim no groups after a failure — the DECISION Phase 88-18 bug). */}
+        {groupsBannerShown && !sessionBannerShown && (
           <FetchErrorBanner
             state={groupsErrorState}
-            title="We couldn't load your groups"
+            thing="your groups"
             reportContext="Your groups list (home page)"
           />
         )}
-        {!groupsBannerShown && groups.length === 0 && (
+        {!groupsBannerShown && !sessionBannerShown && groups.length === 0 && (
           /* DECISION Phase 88-18 (Req 6): this EmptyState's CTA is rendered IN ADDITION to the
              identical header button above, not instead of it — the opposite call to
              OpenPollsList/PromptScheduleManager, which suppress theirs. The difference is where
@@ -582,9 +633,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                allowlist rejects paints no image, so that card IS a plain coloured card and must
                get its colour-card ink; keying off the raw string renders the 0.7 dim and white
                text over nothing — a solid near-black card, which is the walkthrough's
-               /bgg-logo.png mystery. Copy the two lines below, not the intent. */
+               /bgg-logo.png mystery. Copy the two lines below, not the intent.
+               AMENDED Phase 88.9-60 (X6, owner F1): also false when the picture fails to load (src/lib/hooks/useBgImageFailed.ts); derivation unchanged.
+               The second copied line now carries the probe term: the flag reads this card paints
+               a picture that has not failed to load. */
             const bgImageStyle = safeBgImageStyle(bgImage);
-            const hasBgImage = !!bgImageStyle;
+            const hasBgImage = !!bgImageStyle && !bgImageFailed(bgImageStyle);
             // The text treatment forks in the CSS cascade, exactly like the
             // ground above: the DARK half is computed against the stored hex,
             // the LIGHT half against the rendered tint. No `useTheme` — see the
@@ -686,6 +740,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  Pinned by `groupColourRendering.test.ts` test 32, EXACTLY once and on the tag that
                  carries `shadow-theme-sm`. Deleting this attribute reds that pin and Gate C.
                  Owner ruling 2026-09-21, decision (1): default stands. */
+              /* DECISION Phase 88.9-31 B2a (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04; census R047 B078
+                 R048): a tinted card declares --group-halo on its host and its three controls take the
+                 group-halo ring-offset key, chosen OVER the card halo on a tint (band against the tint,
+                 UI-SPEC R2-63) — the same one-variable idiom as the group page header. Each control spells
+                 one FULL literal per arm (the 88.9 halo fleet rule), never one arm's halo interpolated for
+                 both. Dropping the host pair empties the key to its card fallback, a decision, not a cleanup. */
               <div
                 key={group.id}
                 ref={(node) => {
@@ -693,7 +753,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   else cardNodesRef.current.delete(group.id);
                 }}
                 data-testid="group-card"
-                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
+                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
                 style={{
                   ...(tinted && {
@@ -714,51 +774,46 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                    * REJECTED: `!!bgImage`, the raw URL — a URL the allowlist rejects
                    * paints no image, so that card IS a plain coloured card and must
                    * get its ink. A decision, not a cleanup.
+                   *
+                   * AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json,
+                   * 2026-11-07): on the image arm the card title and the stats row
+                   * fall back to the --t-* channel's O02d1 values (white, 1.5px
+                   * black outline painted first via --t-paint, no shadow), chosen
+                   * OVER the heavy blurred shadow + 0.5px stroke; the ink stays off
+                   * on an image.
+                   * AMENDED Phase 88.9-60 (X7): the image arm is T11 (2px, 700, 0.03em).
                    */
                   ...groupInkVars(cardGround, {
                     surface: 'card',
                     hasBackgroundImage: hasBgImage,
                   }),
                   ...cardTextVars,
-                  ...bgImageStyle,
+                  ...(hasBgImage ? bgImageStyle : null),
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                 }}
               >
-                {hasBgImage && (
-                  // Phase 73-02 gave this overlay a semantic surface tint at 85%
-                  // so the bg image dims and the title stays readable; that
-                  // slash-opacity was inert on v3's var()-backed tokens and
-                  // 87.7 D-18 stripped it rather than let v4 start rendering it
-                  // (census: 87.7-OPACITY-CENSUS.md). The div was kept so the
-                  // fix would be a class edit, not a structure change.
-                  //
-                  // DECISION Phase 88-27 (D-32 bucket D): the dim is now
-                  // `--color-bg-overlay`, one of the three UI-SPEC §10.3
-                  // exemplars. Chosen OVER restoring what 73-02 actually wrote —
-                  // 85% of the CARD colour, which is near-WHITE in light mode.
-                  // A group title over a background image is ALWAYS white text
-                  // with a dark shadow, in both themes, unconditionally
-                  // (colorUtils.js getTextStyle, the `hasBackgroundImage`
-                  // branch). So a card-coloured wash in light mode would have
-                  // put white text on a near-white ground — the overlay would
-                  // have caused the illegibility it exists to prevent.
-                  // `--color-bg-overlay` darkens in both themes, which is what
-                  // white text needs. Re-deriving this from the card surface is
-                  // a decision that breaks light mode, not a fidelity fix.
-                  //
-                  // The `{bgImage && …}` gate is deliberate and unchanged: this
-                  // never renders for colour-only cards, whose title takes a
-                  // contrast-computed pole instead and needs no dim.
-                  <div className="absolute inset-0 z-0 rounded-card bg-[var(--color-bg-overlay)]" />
-                )}
+                {/* DECISION Phase 88.9-27 (owner ruling O21b, chat 2026-11-07 6:18 PM Pacific; pick O02d1,
+                    88.9-PICKS-B9.json): no photo dim on the home card, chosen OVER the overlay-token wash that
+                    DECISION Phase 88-27 (D-32 bucket D) put here - the title and Last Game row carry O02d1's own
+                    outline (2px since 88.9-60 X7), so the photo is shown undimmed. The bg-overlay token itself stays (the tutorial
+                    scrim uses it). Re-adding a dim is a decision, not a cleanup. */}
                 <div className="relative z-1">
                   {/* 87.8-13 walkthrough F-8: single row at ALL widths — the old
                       max-[480px] column-stack dropped the players pill to its own
                       right-justified line under a left-aligned card (owner call).
-                      Long names still coexist with the pill: min-w-0 + wrap. */}
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      Long names still coexist with the pill: min-w-0 + wrap.
+                      AMENDED Phase 88.9-52 (W2, after-build look page): the single row stands at
+                      100% text at every measured width; the row may now WRAP, and the title block
+                      has a 6rem basis, so at enlarged text the pill drops under the title, chosen
+                      OVER the title breaking two letters per line beside it (W / ee / ke / nd at
+                      200% on a 1280 window). The dropped pill sits at the LEFT, under the title
+                      (the row's gap replaces the pill's ml-2), not right-justified as in the
+                      stack F-8 removed. ARITHMETIC, not a rendered read: 6rem + 8px gap + the
+                      73px pill = 177px at 100%, under the narrowest measured card (201px at 768);
+                      at 200% it is 354px against a 234px card. */}
+                  <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2 min-w-0 flex-[1_1_6rem]">
                       {profilePic && (
                         <div className="w-10 h-10 rounded-full bg-surface-muted flex items-center justify-center text-2xl shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
@@ -802,7 +857,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                             handleGroupClick(group, e);
                           }
                         }}
-                        className="flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                        className={
+                          tinted
+                            ? 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                            : 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                        }
                       >
                         {/* DECISION Phase 88.6-21 (W42, D-04): this heading sits INSIDE the
                             `role="button"` block above, and that costs a real property rather than
@@ -828,7 +887,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         <Heading
                           level={3}
                           size="heading"
-                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                         >
                           {group.name}
                         </Heading>
@@ -852,7 +911,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         (plan 88.6-19). The SIZE stays at 12: §4.2 names badge labels as a Caption
                         role, so this is not a sub-12px fold site. A decision, not a cleanup. */}
                     <span
-                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-bold ml-2 shrink-0"
+                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-bold shrink-0"
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
                     </span>
@@ -1021,7 +1080,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       - IF YOU ARE HERE TO "RESTORE" `text-content-primary` ON THE
                         TINTED ARM: that is a decision requiring an owner ruling, not
                         a cleanup. See the DECISION marker directly below. */}
-                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-bold' : ''}`}>
+                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)] ${cardTextBold ? 'font-bold' : ''}`}>
                   {/* DECISION Phase 88.3.1 (SPEC Req 8, site 1 of 3 — UI-SPEC 3.5). This block
                       REPLACES the 88.3-cr M1 LIMIT block (2026-08-28), which is closed, not lost:
                       that LIMIT said these two rows take the THEME token on the tinted arm rather
@@ -1063,8 +1122,19 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       `var(--t-color-l)` / `var(--t-color)` is the card's own `getTextStyle` output,
                       computed against the rendered ground, and it is emitted on this card's root in
                       every one of those cases. Verified 2026-08-29 that tailwindcss@4.3.3 in this
-                      tree compiles the nested-fallback arbitrary value and its `dark:` variant. */}
-                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${tinted ? '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--group-ink,var(--t-color))]' : 'text-content-secondary'}`}>
+                      tree compiles the nested-fallback arbitrary value and its `dark:` variant.
+
+                      AMENDED Phase 88.9-27 (owner by chat 2026-11-08, RULINGS Q2 add-on): in DARK
+                      mode the secondary row and date take the title's --t-* pole treatment, chosen
+                      OVER the preset inkDark / mutedDark so a coloured card carries ONE treatment in
+                      dark as it already reads in light; LIGHT keeps the preset inks (W50 F10 keep).
+                      Reverting the dark arm to the preset inks is a decision, not a cleanup. On the
+                      IMAGE arm (owner ruling 88.9-RULINGS.md R-P4, 2026-11-08) the secondary row and
+                      date take the title's O02d1 outline treatment in both themes, coloured or not,
+                      chosen OVER content tokens / preset inks under no dim (white on a white photo
+                      measured 1.00:1); this is a third arm, not a convergence - the uncoloured
+                      no-image arm keeps its content tokens. */}
+                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]' : tinted ? '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-secondary'}`}>
                     {/* DECISION Phase 88.3.1: the `Last Game:` LABEL moves WITH the row on the
                         tinted arm — it drops its class and inherits the row's ink — chosen so a
                         coloured card reads in ONE ink instead of two.
@@ -1077,9 +1147,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         REJECTED (b): dropping the class outright. That would also re-tone the
                         UNCOLOURED card, where the shipped look is deliberately a primary label on a
                         secondary row and nobody has complained about it — an unasked visual change
-                        on a surface outside this phase. Hence the ternary rather than a deletion. */}
-                    <span><strong className={tinted ? undefined : 'text-content-primary'}>Last Game:</strong> {lastGame?.name || 'None'}</span>
-                    <span className={`text-xs ${tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--group-ink-muted,var(--t-color))]' : 'text-content-muted'}`}>
+                        on a surface outside this phase. Hence the ternary rather than a deletion.
+                        AMENDED Phase 88.9-27 (owner ruling 88.9-RULINGS.md R-P4, 2026-11-08): the
+                        label also drops its class on a photo card and inherits the row's O02d1
+                        outline treatment, chosen OVER the primary label under a black outline;
+                        REJECTED (b) still holds for the uncoloured no-image card. */}
+                    <span><strong className={hasBgImage || tinted ? undefined : 'text-content-primary'}>Last Game:</strong> {lastGame?.name || 'None'}</span>
+                    <span className={`text-xs ${hasBgImage ? '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] [paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]' : tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--t-color)] dark:[text-shadow:var(--t-shadow)] dark:[-webkit-text-stroke:var(--t-stroke)]' : 'text-content-muted'}`}>
                       {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
                     </span>
                   </div>
@@ -1096,10 +1170,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         mount passed the flag) and plan 88.6.1-27 deleted it; the
                         invite-link reset lives in Manage Members. */}
                     {userRole && userRole !== 'pending' && (
-                      /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
+                      /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. ——— AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18), everything above KEPT AS HISTORY: the `.btn-compact` opt-out this marker names is RETIRED (src/app/globals.css ("the stepper opt-out is RETIRED")). Its only two wearers, the BrowseMoreModal player-count steppers, are 44x44 squares now, chosen OVER keeping them at 32x32 (REJECTED: two small targets 4px apart; this marker family only ever weighed a 32x44 lozenge, never a 44 square). NOTHING about THIS control changes: the phone floor on `.btn` stands, the all-viewport floor on the `.btn` class stays rejected as recorded (its "would distort compact sites" reason no longer has a subject, and re-asking it is a decision nobody has made), and this control keeps the height it had. */
                       <Button
                         variant="primary"
-                        className="flex-1 shadow-theme-md enabled-hover:shadow-theme-lg"
+                        className={
+                          tinted
+                            ? 'flex-1 shadow-theme-md enabled-hover:shadow-theme-lg focus-visible:ring-offset-surface-group-halo'
+                            : 'flex-1 shadow-theme-md enabled-hover:shadow-theme-lg'
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onGroupSelect) {
@@ -1276,16 +1354,70 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                          `customizeGroupLabel` or its argument, or moving the name back to an
                          `aria-label`, reds both scans, and that is intended.
 
-                         Any of this is a decision, not a cleanup. */
+                         Any of this is a decision, not a cleanup.
+
+                         AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json): the glyph is the
+                         lucide Settings SVG, aria-hidden as required above, chosen OVER the emoji (it
+                         renders per-platform and is not stroke-controllable); the title stays the name.
+
+                         AMENDED Phase 88.9-58 (X60 Sb + De3): fill now #e3dad1 (1.3802 on the card); edge
+                         warm-400 (1.6734 on the fill, 2.3096 on the card).
+                         The edge class is the secondary button's own (the line-btn-secondary border
+                         utility), no longer the shared control edge named in the paragraphs above:
+                         this control wears the secondary fill, so it takes the secondary edge. Dark is
+                         unchanged (that token is transparent there, like the shared one).
+                         ON A COLOURED CARD, measured 2026-11-15 with `src/lib/wcag.ts` against the
+                         eight preset light grounds the card paints today: the new fill reads
+                         **1.0191-1.0287** (warm-100 read 1.1842-1.1954), UNDER the 1.05 fill floor
+                         this marker names, on all eight. The fill is about as light as the tint and
+                         differs from it in hue only. The edge carries the boundary there: warm-400
+                         reads **1.7053-1.7214** on the tints (the shared warm-300 edge read
+                         1.1780-1.1891). The reserved white-wash substitution above was NOT taken here,
+                         on purpose: plan 88.9-59 (owner fix X8) repaints this gear's fill in both arms
+                         before this branch merges, and swapping the fill twice in two plans would be a
+                         look change with no ruling. If 88.9-59 does not land, this figure is an open
+                         look finding for the owner, not a settled state.
+
+                         DECISION Phase 88.9-59 (X8, owner pick G2): own token pair, white icon, the fill as
+                         its edge; AMENDS the 88.3-18 private-token rejection (an owner ruling now stands
+                         behind the gear's own token) and, for this ruling only, the 88.6-40 pin rule (the
+                         class pins moved with the pick, in the same plan). Chosen OVER the secondary recipe
+                         (a cream control beside Invite) and OVER G3. Ring and halos unchanged (computed
+                         numbers: ring 7.7948 on the white card and 5.7553-5.8098 on the eight light halos;
+                         8.2958 on the dark card and 6.7656-9.2279 on the eight dark halos). Glyph, hidden
+                         wrapper, title stay (F5b, D-52). The group-page gear is not ruled and stays
+                         neutral. Going back is a decision, not a cleanup.
+                         THE 88.9-58 SENTENCE ABOVE IS CLOSED: 88.9-59 landed. The repainted fill, measured
+                         2026-11-15 with `src/lib/wcag.ts` on every ground the card paints: **7.7948** on
+                         the white card and **5.7553-5.8098** on the eight preset light grounds; in dark
+                         **1.7767** on the card and **1.4490 (green) - 1.9763 (rose)** on the eight preset
+                         dark grounds. All eighteen clear the 1.05 fill floor this marker names, so the
+                         reserved white-wash substitution stays untaken and is no longer owed. The edge is
+                         the fill itself: the border is transparent, kept only so the box stays 46 x 44, and
+                         the fill paints under it. Hover: 1.4467 against rest in light (darker), 1.2981 in
+                         dark (lighter). These grounds are measured here, not pinned (the 88.3-18 NOT A GATE
+                         A ROW note above stands); the icon, hover and ring floors are pinned in
+                         src/app/tokenContrast.test.ts ("anti-vacuity: (5 pairs + 8 preset halos) x 2 themes").
+                         AMENDED Phase 88.9-52 (W4): in DARK the edge is painted in Invite's blue
+                         (purple-600, the primary fill key), chosen OVER the fill as its own edge
+                         there (a hovered dark card lightens to within 1.45 of the G2 fill and the box
+                         nearly vanished) and OVER the strong line (2.79 on the hovered card; the
+                         REJECTED list above keeps it out). The edge reads 2.45 on the card, 1.99 on
+                         the hovered card and 2.00-2.72 on the eight preset grounds. The G2 fill pair
+                         does not move; light keeps the transparent edge. */
                       <button
-                        className="min-h-11 min-w-11 px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                        className={
+                          tinted
+                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);
                         }}
                         title={customizeGroupLabel(group.name)}
                       >
-                        <span aria-hidden="true">⚙️</span>
+                        <Icon name="Settings" size={20} />
                       </button>
                     )}
                   </div>

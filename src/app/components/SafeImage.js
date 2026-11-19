@@ -57,6 +57,8 @@ function getColorFromText(text) {
  * @param {string} [props.fallbackIcon='🎲'] - Emoji or text for the fallback
  * @param {string} [props.fallbackIconClassName='text-2xl'] - Classes for the
  *   fallback glyph span only (its size). Boxes under 32px pass a smaller class.
+ * @param {boolean} [props.hideOnFailure=false] - Render NOTHING instead of the
+ *   fallback box when the image cannot show (missing or rejected src, load error).
  * @param {string} [props.className] - Applied to both img and fallback div
  * @param {string} [props.imgClassName] - Additional classes for img only
  * @param {object} rest - Passed through to img (style, onClick, etc.)
@@ -74,6 +76,17 @@ export default function SafeImage({
   // (src/app/components/CalendarMonthView.js ("fallbackIconClassName=")).
   // Changing the default is a decision, not a cleanup.
   fallbackIconClassName = 'text-2xl',
+  // DECISION Phase 88.9-52 (R23, owner pick B, 2026-11-17, 88.9-RULINGS.md picture page final
+  // picks): a call site may ask for NOTHING when its picture cannot show, chosen OVER the die box
+  // on that site (A, as built) and OVER a die box on every row without a picture (C). One site
+  // passes it, the Calendar list row
+  // (src/app/components/CalendarListView.js ("hideOnFailure")): there a failed game
+  // picture now looks like a game with no picture. Off by default, so every other call site
+  // keeps its die box, and the box keeps centring its die (flex, the PIX-4 finding). It covers
+  // every arm of the guard below (missing src, rejected scheme, load error), chosen OVER the
+  // load error alone: all three are "this picture cannot show". Changing the default is a
+  // decision, not a cleanup.
+  hideOnFailure = false,
   className = '',
   imgClassName = '',
   ...rest
@@ -105,6 +118,7 @@ export default function SafeImage({
   // weaken the scheme check — an absolute url ignores the base, so
   // `javascript:` still fails the allow-list.
   if (hasError || !isAllowedImageUrl(src, { allowRelative: true })) {
+    if (hideOnFailure) return null;
     const bgColor = getColorFromText(alt);
     return (
       <div

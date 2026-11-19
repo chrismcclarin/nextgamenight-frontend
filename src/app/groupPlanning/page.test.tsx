@@ -22,6 +22,8 @@
 // fresh QueryClient once (every existing render and its rerender run unchanged). The PI tests
 // change h.PARAMS on purpose to model Next's patched history, which re-renders without a remount
 // (planning read: node_modules:next/dist/client/components/app-router.js ("Patch pushState to ensure external changes")).
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import * as React from 'react';
 import { act, cleanup, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -42,7 +44,8 @@ const h = vi.hoisted(() => {
     G1,
     G2,
     DEFAULT_QUERY,
-    AUTH: { user: USER as unknown, isLoading: false },
+    // 88.9-40 (SESSION-01): `error` is what useUser reports when /api/auth/me itself fails.
+    AUTH: { user: USER as unknown, isLoading: false } as { user: unknown; isLoading: boolean; error?: unknown },
     SELF: { uuid: SELF_UUID as string | null },
     PARAMS: new URLSearchParams(`group_id=${G1}`),
     // Mirrors PARAMS into the jsdom location through the PROTOTYPE method, so a test's history
@@ -154,6 +157,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import GroupPlanningPage from './page';
 import { ApiError, eventsAPI, groupsAPI, promptAPI } from '@/lib/api';
 import { promptKeys } from '@/lib/queryKeys/promptKeys';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -587,16 +591,29 @@ describe('groupPlanning page — one load per visit (88.6.1-16, W060)', () => {
   it('L4: a failed group fetch is a logger breadcrumb with errCtx, and the group banner still shows', async () => {
     (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('group failed', 'internal', 500));
     render(<GroupPlanningPage />);
-    await screen.findByText("We couldn't load this group");
+    await screen.findByText("Couldn't load your group's plans");
     expect(h.logInfo).toHaveBeenCalledWith('Error fetching group:', { name: 'ApiError', message: 'group failed' });
   });
 });
 
+// 88.9-52 A-45: a loading or redirect frame is HEARD. Its words are spoken by a visually hidden
+// polite region (StatusRegion with settleOnMount: mounted empty, filled after the house dwell),
+// with one real ellipsis character where the visible line has three dots.
+async function expectSpokenByHiddenRegion(words: string) {
+  await waitFor(() => {
+    const region = screen.queryAllByRole('status').find((n) => n.textContent === words);
+    expect(region, 'no polite region said "' + words + '"').toBeDefined();
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+  });
+}
+
 describe('groupPlanning page — loading line and breadcrumb (88.6.1-16, G5 / R7-M7)', () => {
-  it("G5: while Auth0 resolves the session the page reads Getting your group's plans... (byte-equal to the route fallback)", () => {
+  it("G5: while Auth0 resolves the session the page reads Getting your group's plans... (byte-equal to the route fallback)", async () => {
     h.AUTH = { user: undefined, isLoading: true };
     render(<GroupPlanningPage />);
     expect(screen.getByText("Getting your group's plans...")).toBeInTheDocument();
+    await expectSpokenByHiddenRegion("Getting your group's plans…");
     expect(screen.queryByText('Loading...')).toBeNull();
   });
 
@@ -857,7 +874,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(replaced).toHaveLength(1);
     expect(queryOf(replaced[0]).get('group_id')).toBe(G1);
     expect(queryOf(replaced[0]).has('poll')).toBe(false);
-    expect(screen.queryByText("We couldn't load the poll responses")).toBeNull();
+    expect(screen.queryByText("Couldn't load the poll responses")).toBeNull();
     expect(h.logInfo).toHaveBeenCalledWith('Selected poll did not load; showing the active poll:', expect.anything());
 
     reRender(rerender);
@@ -941,6 +958,33 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === 'Showing Sunday Wingspan')).toBeInTheDocument();
   });
 
+  // 88.9-52 R4 D2 (the second cut on this page, routed under the owner's ruling of 2026-11-18: text
+  // is not cut to keep a layout tidy). A Switch poll chip cut its label to one line with an
+  // ellipsis, and the label is the only place an unselected poll is named in that row. jsdom lays
+  // nothing out, so this holds the classes; the rendered widths are in
+  // e2e/check-ins-select-poll.spec.ts ("R4 D2 (88.9-52)").
+  // The marker is at src/app/groupPlanning/page.js ("AMENDED Phase 88.9-52 (R4 D2, the second cut on this page").
+  it('R4 D2 (88.9-52): a Switch poll chip shows its whole label, wrapped by whole words, in a chip capped at the row', async () => {
+    const auto = poll(P1, { created_by_settings_id: 'set-1', Creator: null, schedule_name: 'Weekend Warriors' });
+    (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [auto, manual(P2, 'Ben')] });
+    (promptAPI.getActivePrompt as Mock).mockResolvedValue({ prompt: auto });
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    const chips = await screen.findByRole('group', { name: 'Switch poll' });
+    expect(chips).toHaveClass('flex', 'flex-wrap');
+    const buttons = within(chips).getAllByRole('button');
+    expect(buttons).toHaveLength(2);
+    for (const chip of buttons) {
+      // Capped at the row, and its floor is NOT zeroed: the chip keeps its longest word.
+      expect(chip).toHaveClass('max-w-full');
+      expect(chip.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden|shrink-0)(\s|$)/);
+      const label = chip.firstElementChild as HTMLElement;
+      expect(label.className).not.toMatch(/(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere)(\s|$)/);
+      expect(label).toHaveClass('block', 'wrap-break-word');
+    }
+    expect(within(chips).getByRole('button', { name: 'Weekend Warriors' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   // AMENDED quick-261026-pi6-fix F9: a chip names a poll the open-polls cache holds, so its swap
   // is served from that cache and can no longer fail on the network; this test first pinned the
   // banner and the focus fallback after a failed chip swap, and now pins that the swap holds while
@@ -958,7 +1002,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     await user.click(ben);
     reRender(rerender);
     await settledOn(P2);
-    expect(screen.queryByText("We couldn't load the poll responses")).toBeNull();
+    expect(screen.queryByText("Couldn't load the poll responses")).toBeNull();
     expect(promptAPI.getPromptById).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(ben);
   });
@@ -1010,7 +1054,7 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${P2}`);
     (promptAPI.getPromptById as Mock).mockRejectedValueOnce(new ApiError('failed', 'internal', 500));
     render(<GroupPlanningPage />);
-    expect(await screen.findByText("We couldn't load the poll responses")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load the poll responses")).toBeInTheDocument();
     expect(replaced).toHaveLength(0);
     expect(h.PARAMS.get('poll')).toBe(P2);
     expect(h.logError).toHaveBeenCalledTimes(1);
@@ -1296,5 +1340,166 @@ describe('groupPlanning page: review fix batch (quick-261026-pi6-fix)', () => {
     expect(promptAPI.getActivePrompt).not.toHaveBeenCalled();
     expect(promptAPI.getPromptById).not.toHaveBeenCalled();
     expect(promptAPI.getOpenPrompts).not.toHaveBeenCalled();
+  });
+});
+
+// Phase 88.9-40 (SESSION-01, owner ruling 2026-11-07, SPEC A8): this page's hand-rolled guard
+// (location.href, returnTo without the hash, no latch) is replaced by the shared useSignInRedirect
+// (src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling"))). A
+// signed-out visitor is replaced to sign-in once, Back-safe and hash-keeping; a return with the
+// latch set is the group banner with Sign in; a useUser() error is the Reload fallback.
+describe('groupPlanning sign-in guard (88.9-40: SESSION-01)', () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+
+  // A location stub with a spied href SETTER, so an assignment to location.href (the shipped
+  // idiom) is observable as a call rather than a jsdom navigation.
+  function stubLocation({ search, hash = '' }: { search: string; hash?: string }) {
+    const replace = vi.fn();
+    const hrefSet = vi.fn();
+    const loc: Record<string, unknown> = {
+      origin: 'http://localhost',
+      protocol: 'http:',
+      host: 'localhost',
+      hostname: 'localhost',
+      port: '',
+      pathname: '/groupPlanning',
+      search,
+      hash,
+      replace,
+      assign: vi.fn(),
+    };
+    Object.defineProperty(loc, 'href', {
+      get: () => `http://localhost/groupPlanning${search}${hash}`,
+      set: hrefSet,
+      enumerable: true,
+    });
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: loc });
+    return { replace, hrefSet };
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    window.sessionStorage.clear();
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+  });
+
+  it('SESSION-01 (88.9): signed out, the planning page replaces itself with sign-in once (returnTo keeps the hash) and never assigns location.href; back with the latch set it shows the group banner with Sign in', async () => {
+    const search = `?group_id=${h.G1}`;
+    const target = '/api/auth/login?returnTo=' + encodeURIComponent(`/groupPlanning${search}#polls`);
+    const { replace, hrefSet } = stubLocation({ search, hash: '#polls' });
+    h.AUTH = { user: undefined, isLoading: false };
+    render(<GroupPlanningPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(target);
+    expect(hrefSet).not.toHaveBeenCalled();
+    expect(screen.getByText('Redirecting to login...')).toBeInTheDocument();
+    await expectSpokenByHiddenRegion('Redirecting to login…');
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    cleanup();
+
+    // Back in the same tab without signing in: the latch is set, so the banner, with Sign in.
+    render(<GroupPlanningPage />);
+    expect(await screen.findByText("Couldn't load your group's plans")).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', target);
+    expect(screen.queryByText('Redirecting to login...')).toBeNull();
+    // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Plan Game Session' })).toHaveClass('sr-only');
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(hrefSet).not.toHaveBeenCalled();
+    expect(groupsAPI.getGroup as Mock).not.toHaveBeenCalled();
+  });
+
+  // 88.9-52 S-C6: the R3 source read at the foot of this file counts substrings, so a comment
+  // could satisfy it. This one reads the RENDERED names: the screen-reader-only heading on the
+  // signed-out banner screen must be the static part of the visible title and the whole of the
+  // breadcrumb's current-page crumb. It lives in this describe for its location stub.
+  it('S-C6 (88.9-52): rendered, the signed-out screen-reader-only heading reads the static part of the visible title and the breadcrumb crumb', async () => {
+    await renderSettled();
+    const visibleTitle = screen.getByRole('heading', { level: 1 }).textContent;
+    const crumb = document.querySelector('[aria-current="page"]')?.textContent;
+    cleanup();
+
+    stubLocation({ search: `?group_id=${h.G1}` });
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.AUTH = { user: undefined, isLoading: false };
+    render(<GroupPlanningPage />);
+    await screen.findByRole('link', { name: 'Sign in' });
+    const hidden = screen.getByRole('heading', { level: 1 });
+    expect(hidden).toHaveClass('sr-only');
+    expect(hidden.textContent).toBeTruthy();
+    expect(visibleTitle).toBe(`${hidden.textContent} - Weekend Warriors`);
+    expect(crumb).toBe(hidden.textContent);
+  });
+
+  // 88.9-52 A-37: the marker's 401 arm (a signed-in visitor whose group read answers 401, SPEC A8)
+  // had no test; every redirect assertion above is the signed-out arm.
+  it('A-37 (88.9-52): signed in, a 401 on the group read replaces the page with sign-in once (returnTo = path + search) and sets the latch', async () => {
+    const search = `?group_id=${h.G1}`;
+    const target = '/api/auth/login?returnTo=' + encodeURIComponent(`/groupPlanning${search}`);
+    const { replace, hrefSet } = stubLocation({ search });
+    (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('expired', 'unauthorized', 401));
+    render(<GroupPlanningPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith(target);
+    expect(hrefSet).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    // Still one: nothing re-fires the redirect once the page has settled.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('A-37 (88.9-52): signed in with the latch already set, a 401 on the group read shows the group banner with Sign in and never redirects again', async () => {
+    const search = `?group_id=${h.G1}`;
+    const target = '/api/auth/login?returnTo=' + encodeURIComponent(`/groupPlanning${search}`);
+    const { replace, hrefSet } = stubLocation({ search });
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    (groupsAPI.getGroup as Mock).mockRejectedValue(new ApiError('expired', 'unauthorized', 401));
+    render(<GroupPlanningPage />);
+    expect(await screen.findByText("Couldn't load your group's plans")).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', target);
+    expect(screen.queryByText('Redirecting to login...')).toBeNull();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(replace).not.toHaveBeenCalled();
+    expect(hrefSet).not.toHaveBeenCalled();
+  });
+
+  it('SESSION-01 (88.9): a useUser error on the planning page shows Reload, never a redirect or a blank page', async () => {
+    const { replace, hrefSet } = stubLocation({ search: `?group_id=${h.G1}` });
+    h.AUTH = {
+      user: undefined,
+      error: Object.assign(new Error('me failed'), { status: 0 }),
+      isLoading: false,
+    };
+    render(<GroupPlanningPage />);
+    expect(await screen.findByRole('button', { name: 'Reload page' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: "Couldn't load your group's plans" })).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    expect(hrefSet).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
+  });
+});
+
+// 88.9-52 R3 (owner: "we have to remember to update the[m] if we modify the title"): the heading
+// only screen readers get and the page's own visible name are ONE constant, so one cannot be
+// changed without the other. Read off the page source: a hand-typed copy at either site fails here.
+describe('planning page name, one source (88.9-52 R3)', () => {
+  it('R3 (88.9-52): the screen-reader-only page heading and the visible page name come from one constant', () => {
+    const src = readFileSync(resolvePath(__dirname, 'page.js'), 'utf8');
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
+    expect(count(src, "const PLAN_PAGE_TITLE = 'Plan Game Session';"), 'the one declaration').toBe(1);
+    expect(count(src, 'srHeading="'), 'a hand-typed hidden heading').toBe(0);
+    expect(count(src, 'srHeading={PLAN_PAGE_TITLE}'), 'the signed-out frame').toBe(1);
+    expect(count(src, '{group ? `${PLAN_PAGE_TITLE} - ${group.name}` : PLAN_PAGE_TITLE}'), 'the visible level-1 title, with and without the group name').toBe(1);
+    expect(count(src, '>{PLAN_PAGE_TITLE}</span>'), 'the breadcrumb current-page crumb').toBe(1);
+    expect(count(src, "'Plan Game Session'"), 'the words are typed once, in the declaration').toBe(1);
+    expect(count(src, '>Plan Game Session<'), 'a hand-typed crumb or title').toBe(0);
   });
 });

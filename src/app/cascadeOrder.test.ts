@@ -484,37 +484,33 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
     const floorAt = floor!.index as number;
 
     const smAt = css.indexOf('.btn-sm {');
-    const compactAt = css.indexOf('.btn-compact {');
     expect(smAt, '`.btn-sm {` must exist in comment-stripped globals.css.').toBeGreaterThan(-1);
-    expect(compactAt, '`.btn-compact {` must exist in comment-stripped globals.css.').toBeGreaterThan(-1);
 
     expect(
       smAt,
       '`.btn-sm` must be authored AFTER the `@media (width < 48rem)` phone-floor block.',
     ).toBeGreaterThan(floorAt);
-    expect(
-      compactAt,
-      '`.btn-compact` must be authored AFTER the `@media (width < 48rem)` phone-floor block — ' +
-        'that is how it wins the tie and keeps its `min-height: 0` opt-out (D-36).',
-    ).toBeGreaterThan(floorAt);
 
-    // The ruled direction. There is ONE order; it is not conditional.
+    // AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): the second direction this test pinned
+    // (.btn-sm BEFORE .btn-compact, owner ruling 2026-09-09 AC-9, written after CI found the
+    // stepper deformation at e2e/touch-targets.spec.ts ("the steppers are square BY DESIGN"),
+    // dispatch run 33137056149) has no second rule left to order against: the .btn-compact
+    // opt-out is RETIRED with its only two wearers, the BrowseMoreModal steppers, now 44x44
+    // squares. What is pinned instead is that the rule stays gone: a .btn-compact rule that
+    // came back would silently take the phone floor off whatever wore it.
     expect(
-      compactAt,
-      'OWNER RULING 2026-09-09 (AC-9): `.btn-sm` sits BEFORE `.btn-compact`. Both are (0,1,0), so ' +
-        'on an element carrying both, LATER source order wins — an after-positioned `.btn-sm` puts ' +
-        'back the 8px horizontal padding that `DECISION Phase 88.3-17` removed after CI found the ' +
-        'BrowseMoreModal stepper deformation (e2e/touch-targets.spec.ts ("the steppers are square BY DESIGN"), the squareness ' +
-        'assertion, re-derived 2026-09-15 — the shipped 88.3-17 marker still cites the stale ' +
-        '`:428`; dispatch run ' +
-        '33137056149). Flipping this pin is a decision, not a cleanup.',
-    ).toBeGreaterThan(smAt);
+      css.indexOf('.btn-compact'),
+      'A `.btn-compact` rule is back in comment-stripped globals.css. The opt-out from the phone ' +
+        'floor was retired by 88.9-52 R4 C2 (owner 2026-11-18): the two steppers that wore it are ' +
+        '44x44 squares now. Re-adding a sub-44 opt-out is a decision, not a cleanup.',
+    ).toBe(-1);
   });
 
-  it('8. neither `.btn-sm` nor `.btn-compact` is inside an `@layer` — they must beat utilities', () => {
+  it('8. `.btn-sm` and `.btn-fuse-bottom` sit outside every `@layer` — they must beat utilities (`.btn-compact` retired, 88.9-52 R4 C2)', () => {
     const css = strip(readGlobals());
-    for (const sel of ['.btn-sm {', '.btn-compact {']) {
+    for (const sel of ['.btn-sm {']) {
       const at = css.indexOf(sel);
+      expect(at, `\`${sel}\` must exist in comment-stripped globals.css.`).toBeGreaterThan(-1);
       const layer = layerAt(css, at);
       expect(
         layer,
@@ -524,6 +520,29 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
           'exact cascade defect 87.8 DEC-2/DEC-3 hit twice on this same pair.',
       ).toBeNull();
     }
+
+    // 88.9-36 G2a: the phone-only attached-disclosure modifier must stay unlayered, after
+    // .btn-sm (AMENDED 88.9-52 R4 C2: this read .btn-compact, retired; .btn-sm is the last
+    // (0,1,0) .btn-family rule before it), inside the 40rem media block, or the unlayered .btn border-radius wins and the
+    // open Show Filters & Sort toggle keeps its rounded bottom corners with no build error. The
+    // index is asserted first: an absent selector would make the layer check pass vacuously.
+    const fuseAt = css.indexOf('.btn-fuse-bottom {');
+    expect(fuseAt, '`.btn-fuse-bottom {` must exist in comment-stripped globals.css.').toBeGreaterThan(-1);
+    expect(
+      fuseAt,
+      '`.btn-fuse-bottom` must be authored AFTER `.btn-sm` (and so after `.btn`): both are ' +
+        '(0,1,0), so it wins the border-radius tie only on source order.',
+    ).toBeGreaterThan(css.indexOf('.btn-sm {'));
+    expect(layerAt(css, fuseAt), '`.btn-fuse-bottom` must stay UNLAYERED.').toBeNull();
+    expect(depthAt(css, fuseAt), '`.btn-fuse-bottom` must sit directly inside ONE block (its media query).').toBe(1);
+    const mediaAt = css.lastIndexOf('@media', fuseAt);
+    expect(
+      css.slice(mediaAt, fuseAt).startsWith('@media (width < 40rem)'),
+      'the block holding `.btn-fuse-bottom` must be `@media (width < 40rem)` (Tailwind sm, phone only).',
+    ).toBe(true);
+    const body = css.slice(fuseAt, css.indexOf('}', fuseAt));
+    expect(body).toMatch(/border-bottom-left-radius:\s*0;/);
+    expect(body).toMatch(/border-bottom-right-radius:\s*0;/);
   });
 
   it('9. ANTI-VACUITY FLOOR: the unlayered `.btn` block still carries its own geometry', () => {
@@ -734,5 +753,48 @@ describe('Phase 88.9 — the halo contract (owner option (a))', () => {
       `Only ${population} chunks draw the house offset ring (floor ${HALO_POPULATION_FLOOR}). A ` +
         'drop means the population read stopped seeing rings, which passes every limb vacuously.',
     ).toBeGreaterThanOrEqual(HALO_POPULATION_FLOOR);
+  });
+});
+
+// DECISION Phase 88.9-58 (X20, owner at N09, 2026-11-11: yes hide it): the page floor is the one
+// main element, focused only by script when the control that held focus has left the page
+// (src/components/ui/focusPageFloor.ts ("a look question for Phase 88.9, not this module's")). It is never a Tab stop,
+// so the browser outline it drew after keyboard use framed the whole page and pointed at nothing a
+// key can operate. The outline is hidden ON THE ELEMENT, with the house focus:outline-hidden,
+// chosen OVER a rule in globals.css: a global reset would be the first focus selector in that file
+// (the ARM A pin above holds it at zero) and would reach heading floors, which keep their ring.
+// outline-hidden over outline none, because the hidden form keeps an outline in forced-colors.
+// If main ever becomes a Tab stop, this pin and the utility must go together.
+describe('Phase 88.9 — the page floor shows no browser outline (X20)', () => {
+  it('13. X20 (88.9): the page floor main hides the browser outline with the house focus:outline-hidden, is never a Tab stop, and globals.css still declares no focus-visible selector', () => {
+    const mains: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const text = strip(fs.readFileSync(file, 'utf8'));
+      for (const m of text.matchAll(/<main\b[^>]*>/g)) mains.push(`${path.relative(SRC, file)} ${m[0]}`);
+    }
+    expect(mains.length, `the page floor is the ONE main element in src; found:\n${mains.join('\n')}`).toBe(1);
+    const [only] = mains;
+    expect(only.startsWith('app/layout.js '), `the one main element must be the root layout's; found ${only}`).toBe(true);
+
+    const className = /className="([^"]*)"/.exec(only);
+    expect(className, 'the main element must carry a literal className').not.toBeNull();
+    const tokens = (className as RegExpExecArray)[1].split(/\s+/).filter(Boolean);
+    expect(
+      tokens,
+      'X20 (88.9) — main must hide the browser outline with the house focus:outline-hidden. It takes focus only by script ' +
+        '(the page floor) and is never a Tab stop, so the outline framed the whole page (owner 2026-11-11: yes hide it).',
+    ).toContain('focus:outline-hidden');
+    expect(tokens, 'X20 (88.9) — outline-hidden, never outline-none: the hidden form keeps an outline in forced-colors').not.toContain('focus:outline-none');
+    expect(tokens, 'main keeps its layout class').toContain('flex-1');
+    expect(
+      /tabindex/i.test(only),
+      'X20 (88.9) — main must never author a tabindex: as a Tab stop it would need a visible focus indicator (WCAG 2.4.7), and this pin would be hiding it.',
+    ).toBe(false);
+
+    const globals = strip(readGlobals());
+    expect(
+      countOf(globals, ':focus-visible'),
+      'ARM A re-asserted: globals.css declares no focus-visible selector. The page-floor outline is hidden on the element, never by a global rule.',
+    ).toBe(0);
   });
 });

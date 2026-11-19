@@ -3,8 +3,8 @@
 /**
  * Button — the one button primitive (PRIM-01 / D-01 elevation, D-02 variants).
  *
- * Five variants (`primary` / `secondary` / `danger` / `ghost` / `accent`) and
- * three sizes (`default` / `icon` / `sm`), on the repo's `cva` + `cn()` +
+ * Seven variants (`primary` / `secondary` / `danger` / `ghost` / `ghostDanger` / `accent` / `admin`) and
+ * four sizes (`default` / `icon` / `iconSquare` / `sm`), on the repo's `cva` + `cn()` +
  * `forwardRef` + `displayName` idiom established by {@link Banner}. Names are
  * deliberately aligned with `Modal.tsx`'s `ModalActionVariant` so the later
  * adoption plans are a mechanical swap, not a rename.
@@ -41,12 +41,17 @@
  * - **No raw palette classes** — semantic tokens only inside `src/components/ui/`.
  * - **No barrel export.** There is no `src/components/ui/index.ts` and this
  *   phase does not add one; import from `@/components/ui/Button`.
+ *
+ * What it does add:
+ * - **Busy (rule 1)** — `busy` / `busySuffix`; see the 88.9-24 marker on the render.
  */
 import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '@/lib/cn';
+
+import { DelayedSpinner } from './DelayedSpinner';
 
 /* DECISION Phase 88-02 (D-01/D-02): Button COMPOSES the legacy `.btn` class rather than
    re-emitting its properties as Tailwind utilities. Chosen OVER a pure-utility base
@@ -170,8 +175,12 @@ const buttonVariants = cva(
        `min-h-0` is therefore DESKTOP-ONLY — and plan 12's AC-2 desktop arm
        flags it as a violation, so it is not a quiet escape hatch either.
        `.btn-compact` is not a path: it is unlayered at ALL widths, it also
-       zeroes horizontal padding (src/app/globals.css (".btn-compact {")), and it is scoped by
+       zeroes horizontal padding, and it is scoped by
        construction to those same two shipped sites.
+       AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): `.btn-compact` is retired
+       and the two steppers named above are 44x44 squares; the note is at
+       src/app/globals.css ("the stepper opt-out is RETIRED"). The floor on this
+       base is unchanged.
 
        ANY SUB-44 `Button` IS A PHASE 88.9 DECISION, not a cleanup — see the
        `DECISION Phase 88.6-06 (C.1 / D-09)` marker in the size map below. */
@@ -194,6 +203,9 @@ const buttonVariants = cva(
         // `--color-btn-accent-text` is `#ffffff` in both (under the same two markers) — white on
         // amber-700 = 5.0216:1.
         accent: 'btn-accent',
+        // DECISION Phase 88.9-52 (R6, owner pick "D + D2", 2026-11-17, "Red is the wrong color"): the Admin-blue confirm is its own variant emitting the CLASS, chosen OVER colour utilities at the call site (dead or half-dead on a .btn, and a second expression of the pair) and OVER the danger variant the Make admin confirm wore.
+        // The fills, inks, hover, pressed and waiting pairs are in src/app/globals.css ("a confirm that hands out a role, and deletes nothing"). One consumer today.
+        admin: 'btn-admin',
         // No legacy class exists for ghost, and `.btn` sets no background,
         // so utilities are the correct tool here.
         // Hover gating, added 2026-09-05 (code review #37) as
@@ -217,8 +229,20 @@ const buttonVariants = cva(
         // `.btn[aria-disabled]` marker). Its ground is the card; Gate A test 53
         // pins `--color-text-muted` on `--color-bg-card` in both themes and scans
         // this string.
+        // AMENDED Phase 88.9-52 (R8c, owner pick "Fill", 2026-11-17): the hover fill is the ghost family's
+        // own key, enabled-hover:bg-surface-ghost-hover (light: the visible secondary fill, 1.3802 off the
+        // card; dark: the shared wash, unchanged), chosen OVER the shared wash this string carried until
+        // now, which read: bg-transparent text-content-secondary enabled-hover:bg-surface-hover aria-disabled:text-content-muted
+        // (1.0601 off the light card). The enabled-hover gating and the gated ink are untouched. ghostDanger
+        // moves with it, so a Delete beside an Edit hovers the same. Where the notes above say the
+        // surface-hover wash, read this key.
         ghost:
-          'bg-transparent text-content-secondary enabled-hover:bg-surface-hover aria-disabled:text-content-muted',
+          'bg-transparent text-content-secondary enabled-hover:bg-surface-ghost-hover aria-disabled:text-content-muted',
+        // DECISION Phase 88.9-65 (X49, owner 2026-11-13: Yes, That is fine.): ghost weight with the danger ink, composed like ghost, chosen OVER a per-site colour class (every future destructive ghost would copy it) and OVER the danger variant (its fill reverses F-6c).
+        // Measured with src/lib/wcag.ts, ink on the card / on the hover wash: light 8.3101 / 7.8393, dark 7.2966 / 5.9413 (Gate A's X49 test reads this string). The gated ink is ghost's.
+        // AMENDED Phase 88.9-52 (R8c, owner 2026-11-17): the hover is the ghost fill key; on it the danger ink reads 6.0210 in light (was 7.8393 on the old wash), dark unchanged 5.9413. Chosen OVER leaving ghostDanger on the old wash (a Delete would hover differently from the Edit beside it).
+        ghostDanger:
+          'bg-transparent text-content-status-error enabled-hover:bg-surface-ghost-hover aria-disabled:text-content-muted',
       },
       /* DECISION Phase 88.6-06 (C.1 / D-09): three choices are recorded here,
          each with the alternative it was chosen over.
@@ -237,6 +261,16 @@ const buttonVariants = cva(
          (The retired class is described rather than quoted: plan 06's
          acceptance gate greps this whole FILE for that literal, comments
          included, so writing it here would red a correct tree.)
+         AMENDED Phase 88.9-28 (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07): Phase 88.9
+         takes the square — a NEW size key iconSquare emits the unlayered btn-icon-square class
+         (padding 0, authored in globals.css after .btn) beside min-h-11 min-w-11, used by the
+         month-nav chevrons only, chosen OVER zeroing icon itself: the four shipped size icon
+         sites (FeedbackButton, FeedbackForm, PendingMemberBanner, BottomSheet close) keep their
+         52x44 lozenge, because the owner's N1 picture showed the calendar chevrons, not those
+         controls.
+         AMENDED Phase 88.9-52 (R5, owner 2026-11-17): the floating feedback button takes
+         iconSquare too (a fixed 56px box needs the zero padding), so the chevrons are no longer
+         its only users and FeedbackButton's floating button leaves the size icon list above.
 
          (2) `min-h-11` LIVES ON THE cva BASE — chosen OVER widening the
          `@media (width < 48rem)` rule on the `.btn` class. D-36's reasoning is
@@ -257,6 +291,8 @@ const buttonVariants = cva(
         // D-02's "legitimate 44x44 home" for bare icon buttons, delivered once
         // here instead of invented per call site.
         icon: 'min-h-11 min-w-11',
+        // 88.9-28 N1: the month-nav square (44x44, padding 0 from the unlayered .btn-icon-square rule).
+        iconSquare: 'btn-icon-square min-h-11 min-w-11',
         // 88.6 D-09, the compact row-action rung. `btn-sm` ONLY: the compact
         // horizontal padding comes from the unlayered `.btn-sm` rule
         // (src/app/globals.css (".btn-sm {")), and every padding or font-size utility that
@@ -274,15 +310,57 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {
   /** Render the single child element instead of a `<button>` (Radix Slot). */
   asChild?: boolean;
+  /**
+   * In flight (save-feedback rule 1): sets `aria-disabled`, keeps the label and adds the
+   * house Spinner plus an sr-only suffix. Never swallows the press — the site's own latch
+   * is the refusal. Ignored for rendering under `asChild` (only `aria-disabled` is set).
+   * The Spinner is delayed and held (R-C3b, 88.9-54): it appears after 200 ms of busy and
+   * stays 500 ms from its appearance; the refusal and the suffix are immediate. Passing
+   * `busy` (true or false) mounts the delayed element; leaving it undefined mounts nothing.
+   */
+  busy?: boolean;
+  /**
+   * The sr-only words appended to the accessible name while `busy`. Defaults to the
+   * Q6(b) suffix (", saving"); a site passes its own verb (", creating", ", sending" ...).
+   */
+  busySuffix?: string;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    { variant, size, asChild = false, className, type = 'button', ...props },
+    {
+      variant,
+      size,
+      asChild = false,
+      className,
+      type = 'button',
+      busy: busyProp,
+      busySuffix = ', saving',
+      children,
+      ...props
+    },
     ref
   ) => {
+    const busy = busyProp ?? false;
+    // Only a caller that passes busy (true OR false) mounts the delayed Spinner element, so
+    // the resting majority of Buttons pays no hook subscription; a false after a true keeps
+    // the element mounted, which is what lets the hold outlive the busy.
+    const tracksBusy = busyProp !== undefined;
     const Comp = asChild ? Slot : 'button';
 
+    /* DECISION Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1):
+       busy is ONE prop carrying the whole in-flight affordance — aria-disabled (whose dim is the gated
+       colour pair at src/app/globals.css ("DECISION Phase 88.8 (plan 13, DR-C)")), the house Spinner
+       beside the UNCHANGED label, and an sr-only suffix (", saving" by default; a site passes its own
+       verb through busySuffix, owner ruling Q6(b) 2026-11-08) so the name reads "<label>, saving" or
+       "<label>, <its verb>". Chosen OVER the per-site label swap (it replaced the whole accessible name
+       with a bare progress word and narrowed the button 128 to 92px) and OVER an opacity dim (2.0974:1
+       on a composited label, 88.8 HIGH-A). It does NOT swallow the press: each site's own refusal latch
+       stays the refusal (src/app/components/ScheduleForm.js ("The refusal is the latch, not the")),
+       chosen over a central click guard that would preventDefault a submit and double up with the
+       latches. Not applied under asChild (Slot takes one child). Changing any of this is a decision,
+       not a cleanup.
+       AMENDED Phase 88.9-54 (owner ruling R-C3b, 88.9-RULINGS.md, 2026-11-10): the Spinner now renders through DelayedSpinner (useDelayedSpinner: 200 ms appear delay, 500 ms minimum hold — the numbers and their measured basis live on that hook's marker), mounted only when a caller passes busy (41 of 207 Button mounts at 35d5348), so a resting Button pays nothing; aria-disabled and the sr-only suffix stay immediate so the refusal and the heard name never wait. The Spinner is MOUNTED on show, chosen OVER a reserved invisible slot (a sub-200 ms write would twitch the control's width by the spinner's 16 px plus the btn gap, the very jump rule 1 ends). ConfirmDialog's confirm and Modal.Action inherit this through Button; asChild is still untouched (no Spinner there). Every raw-host Spinner site outside Button takes the same element in plan 88.9-56. */
     return (
       <Comp
         ref={ref}
@@ -290,7 +368,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...(asChild ? {} : { type })}
         className={cn(buttonVariants({ variant, size }), className)}
         {...props}
-      />
+        {...(busy ? { 'aria-disabled': true } : {})}
+      >
+        {asChild ? (
+          children
+        ) : (
+          <>
+            {children}
+            {tracksBusy ? <DelayedSpinner busy={busy} /> : null}
+            {busy ? <span className="sr-only">{busySuffix}</span> : null}
+          </>
+        )}
+      </Comp>
     );
   }
 );

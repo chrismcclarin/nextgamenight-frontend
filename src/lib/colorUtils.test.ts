@@ -15,6 +15,9 @@ import {
   resolveGroupGround,
   groupInkVars,
   storedGroupColour,
+  themedTextStyleVars,
+  PHOTO_TEXT_STYLE,
+  TEXT_ON_LIGHT,
   SUBTEXT_MUTED_ON_DARK,
   SUBTEXT_MUTED_ON_LIGHT,
 } from './colorUtils';
@@ -72,9 +75,59 @@ describe('getTextStyle — no group colour (D-28)', () => {
   });
 
   it('still uses the outlined white treatment behind a background image', () => {
-    const style = getTextStyle(true, null);
-    expect(style.color).toBe('#ffffff');
-    expect(style.WebkitTextStroke).toBeTruthy();
+    // AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json, 2026-11-07; Q2 default, 88.9-RULINGS.md
+    // round 2): the image arm is white + a 1.5px solid black outline painted BEFORE the fill, no shadow,
+    // in place of white + heavy blurred shadow + 0.5px stroke. A photo and a failed image (#207) both
+    // take it; the W50 F10 no-image arms are pinned byte-unchanged below.
+    //
+    // AMENDED Phase 88.9-60 (X7, owner T11, 2026-11-11): over a photo every word, title AND
+    // subtitle, wears one set: white, a 2px black outline painted first, 700, 0.03em, no shadow.
+    // (Since X6 of the same plan a picture that fails to load reaches these functions as no image.)
+    const T11_SET = {
+      color: '#ffffff',
+      textShadow: 'none',
+      WebkitTextStroke: '2px #000000',
+      paintOrder: 'stroke fill',
+      fontWeight: '700',
+      letterSpacing: '0.03em',
+    };
+    expect(getTextStyle(true, null)).toEqual(T11_SET);
+    expect(getTextStyle(true, '#00274d')).toEqual(T11_SET);
+    expect(getSubtitleStyle(true, '#c4e1ff')).toEqual(T11_SET);
+    expect(getSubtitleStyle(true, null)).toEqual(T11_SET);
+    // One exported set, and each arm hands out its own copy of it.
+    expect(PHOTO_TEXT_STYLE).toEqual(T11_SET);
+    expect(Object.isFrozen(PHOTO_TEXT_STYLE)).toBe(true);
+    expect(getTextStyle(true, null)).not.toBe(PHOTO_TEXT_STYLE);
+    expect(getSubtitleStyle(true, null)).not.toBe(getTextStyle(true, null));
+
+    // The paint-order pair and the tracking pair reach the cascade only on a photo arm.
+    const img = getTextStyle(true, '#00274d');
+    const imgVars = themedTextStyleVars(img, img);
+    expect(imgVars['--t-paint']).toBe('stroke fill');
+    expect(imgVars['--t-paint-l']).toBe('stroke fill');
+    expect(imgVars['--t-track']).toBe('0.03em');
+    expect(imgVars['--t-track-l']).toBe('0.03em');
+    const subVars = themedTextStyleVars(getSubtitleStyle(true, '#00274d'), getSubtitleStyle(true, '#c4e1ff'));
+    expect(subVars['--t-track']).toBe('0.03em');
+    expect(subVars['--t-track-l']).toBe('0.03em');
+    // fontWeight still stays out of the channel (it is spread onto containers).
+    expect(Object.keys(imgVars).some((k) => k.includes('weight'))).toBe(false);
+
+    // The W50 keep half: a no-image dark ground still gets the shipped 0.5px stroke and no
+    // paint-order, and two no-image styles hand the cascade exactly the six shipped keys.
+    const plainDark = getTextStyle(false, '#00274d');
+    expect(plainDark.WebkitTextStroke).toBe('0.5px rgba(0, 0, 0, 0.9)');
+    expect(plainDark).not.toHaveProperty('paintOrder');
+    expect(plainDark).not.toHaveProperty('letterSpacing');
+    expect(Object.keys(themedTextStyleVars(plainDark, getTextStyle(false, '#c4e1ff'))).sort()).toEqual([
+      '--t-color',
+      '--t-color-l',
+      '--t-shadow',
+      '--t-shadow-l',
+      '--t-stroke',
+      '--t-stroke-l',
+    ]);
   });
 });
 
@@ -91,9 +144,30 @@ describe('getEventTileTextColor — no group colour', () => {
     expect(getEventTileTextColor(value)).toBe('var(--color-content-primary)');
   });
 
-  it('still returns tile blue on a light colour and white on a dark one', () => {
-    expect(getEventTileTextColor('#e5e7eb')).toBe('#1e40af');
+  // AMENDED Phase 88.9-60 (X24, owner 2026-11-12: drop the blue): a light tile used to take a
+  // tile-only blue; it takes the plain dark pole every other light ground takes.
+  it('still returns the dark pole on a light colour and white on a dark one', () => {
+    expect(getEventTileTextColor('#e5e7eb')).toBe(TEXT_ON_LIGHT);
     expect(getEventTileTextColor('#1e1e2e')).toBe('#ffffff');
+  });
+
+  it('X24 (88.9): a coloured light tile takes the plain dark ink, and it clears 4.5:1 on every preset light band', () => {
+    expect(TEXT_ON_LIGHT).toBe('#1f2937');
+    // Measured FIRST, on the pole itself, so the numbers are on record whatever the function returns.
+    const measured: string[] = [];
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      const ratio = contrastRatio(TEXT_ON_LIGHT, preset.light);
+      expect(ratio, `${preset.name}: the dark pole on ${preset.light} could not be measured`).not.toBeNull();
+      measured.push(`${preset.name} ${(ratio as number).toFixed(4)}`);
+      expect(ratio as number, `${preset.name}: the dark pole on the light band ${preset.light} is only ${(ratio as number).toFixed(4)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(measured, 'a preset was dropped from the measurement').toHaveLength(8);
+    // eslint-disable-next-line no-console -- the eight measured ratios are recorded from the run log
+    console.log(`X24 dark tile ink ${TEXT_ON_LIGHT} on the 8 preset light bands: ${measured.join(', ')}`);
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      expect(getEventTileTextColor(preset.light), `${preset.name}: a light tile does not take the plain dark ink`).toBe(TEXT_ON_LIGHT);
+      expect(getEventTileTextColor(preset.dark), `${preset.name}: a dark tile does not take white`).toBe('#ffffff');
+    }
   });
 });
 
@@ -667,7 +741,7 @@ describe('groupInkVars — Phase 88.3.1 D-04 / UI-SPEC 3.4', () => {
     const ground = resolveGroupGround('blue');
     expect(groupInkVars(ground, TILE)).toEqual({
       '--group-ink': '#ffffff',
-      '--group-ink-l': '#1e40af',
+      '--group-ink-l': TEXT_ON_LIGHT,
       '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
       '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
     });
@@ -678,7 +752,7 @@ describe('groupInkVars — Phase 88.3.1 D-04 / UI-SPEC 3.4', () => {
   it.each(GROUP_COLOUR_PRESETS)('$name — the TILE arm is the plain pole on both bands', (preset) => {
     expect(groupInkVars(resolveGroupGround(preset.name), TILE)).toEqual({
       '--group-ink': '#ffffff',
-      '--group-ink-l': '#1e40af',
+      '--group-ink-l': TEXT_ON_LIGHT,
       '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
       '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
     });
@@ -704,7 +778,7 @@ describe('groupInkVars — Phase 88.3.1 D-04 / UI-SPEC 3.4', () => {
     // The tile arm never reads the ink fields, so their absence changes nothing.
     expect(groupInkVars(resolveGroupGround('#1e1e2e'), TILE)).toEqual({
       '--group-ink': '#ffffff',
-      '--group-ink-l': '#1e40af',
+      '--group-ink-l': TEXT_ON_LIGHT,
       '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
       '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
     });

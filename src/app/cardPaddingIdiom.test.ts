@@ -74,6 +74,51 @@ interface CardSite {
   padding: string[];
   /** True when the className was written as a template literal. */
   templateLiteral: boolean;
+  /** Every statically-applied class token, in source order (X14, 88.9-58). */
+  tokens: string[];
+  /** The JSX tag that carries the className, e.g. div, section, button, Link. */
+  tag: string;
+  /** True when the element is pressable: a button, an anchor, a Link, or a tag with onClick. */
+  control: boolean;
+}
+
+/** Tags that are pressable by themselves. */
+const CONTROL_TAGS = new Set(['button', 'a', 'Link']);
+
+/**
+ * The opening tag that owns the className at `index`: its name and its full text.
+ * Walks back to the nearest `<Name` and forward to the first `>` at brace depth 0 that is not
+ * the tail of an arrow (`=>`), so an `onClick={() => …}` on the tag is read as part of it.
+ */
+function openingTagAt(text: string, index: number): { tag: string; source: string } {
+  const OPEN = /<([A-Za-z][\w.]*)/g;
+  let m: RegExpExecArray | null;
+  // The nearest `<Name` before the className may be an already-closed sibling or a `<` inside an
+  // expression; walk candidates backwards until one whose opening tag spans the className.
+  const candidates: number[] = [];
+  while ((m = OPEN.exec(text)) !== null) {
+    if (m.index >= index) break;
+    candidates.push(m.index);
+  }
+  for (let c = candidates.length - 1; c >= 0 && c >= candidates.length - 40; c -= 1) {
+    const from = candidates[c];
+    let depth = 0;
+    let end = -1;
+    for (let i = from + 1; i < text.length; i += 1) {
+      const ch = text[i];
+      if (ch === '{') depth += 1;
+      else if (ch === '}') depth -= 1;
+      else if (ch === '>' && depth === 0 && text[i - 1] !== '=') {
+        end = i;
+        break;
+      }
+    }
+    if (end > index) {
+      const name = /^<([A-Za-z][\w.]*)/.exec(text.slice(from)) as RegExpExecArray;
+      return { tag: name[1], source: text.slice(from, end + 1) };
+    }
+  }
+  return { tag: '', source: '' };
 }
 
 // DECISION Phase 88-31 (DEF-88-29-01): `sourceFiles` is IMPORTED from
@@ -115,7 +160,11 @@ function collectCardSites(): CardSite[] {
       // Exact token match — this is what stops `bg-surface-card` / `rounded-card`
       // from being counted, which is the plan grep's first blindness.
       if (!tokens.includes('card')) continue;
+      const owner = openingTagAt(text, match.index);
       sites.push({
+        tokens,
+        tag: owner.tag,
+        control: CONTROL_TAGS.has(owner.tag) || /\bonClick=/.test(owner.source),
         file: path.relative(SRC, file),
         line: text.slice(0, match.index).split('\n').length,
         padding: tokens.filter((t) => PADDING_TOKEN.test(t)),
@@ -162,6 +211,36 @@ describe('Req 2 (DES-02): the `.card` padding idiom, repo-wide', () => {
       `every top-level card renders \`${RATIFIED_IDIOM}\` (12px phone / 24px desktop) per the ` +
         'owner ruling of 2026-08-05 (88-24 Task 1, option-a). `p-4 md:p-6` is 4px over the ' +
         'phone rung and bare `p-6` is double it.',
+    ).toEqual([]);
+  });
+
+  // DECISION Phase 88.9-58 (X14, owner at N13, 2026-11-11: yes, remove the hover from non-clickable
+  // cards): a card reacts to the mouse only when pressing it does something. The card utility
+  // itself has no hover rule (src/app/tokenContrast.test.ts ("carries NO hover rule")), so the wash
+  // lives at the call site of a whole-card control and nowhere else. Chosen OVER a wash on every
+  // card: a static box that lights up promises a press that does nothing. The two controls are
+  // named, not counted, so a third whole-card control is a decision that edits this list.
+  it('X14 (88.9): a static card carries no hover utility; each whole-card link or button carries hover:bg-surface-hover', () => {
+    const unread = sites.filter((s) => s.tag === '').map((s) => `${s.file}:${s.line}`);
+    expect(unread, 'the scanner could not find the tag that owns these card classNames, so it cannot tell a control from a static card').toEqual([]);
+
+    const controls = sites.filter((s) => s.control);
+    expect(
+      controls.map((s) => s.file).sort(),
+      'the whole-card controls are exactly the suggestion card (a button) and the play-history card (a Link)',
+    ).toEqual(['app/components/GameSuggestionCard.js', 'app/components/GroupGamesList.js']);
+    const dry = controls.filter((s) => !s.tokens.includes('hover:bg-surface-hover')).map((s) => `${s.file}:${s.line} <${s.tag}>`);
+    expect(dry, 'these whole-card controls have no hover wash of their own; the card utility no longer supplies one').toEqual([]);
+
+    const statics = sites.filter((s) => !s.control);
+    // 31 at the time of writing (33 call sites, 2 controls). A floor, as in the first test.
+    expect(statics.length).toBeGreaterThanOrEqual(30);
+    const reacting = statics
+      .filter((s) => s.tokens.some((t) => t.split(':').includes('hover')))
+      .map((s) => `${s.file}:${s.line} <${s.tag}> -> "${s.tokens.filter((t) => t.split(':').includes('hover')).join(' ')}"`);
+    expect(
+      reacting,
+      'these static cards carry a hover utility, so they react to the mouse while pressing them does nothing (owner 2026-11-11)',
     ).toEqual([]);
   });
 });

@@ -1,7 +1,9 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 
 import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
+import { scrubbedFetch } from './support/scrubbedFetch';
 import { expectTouchTarget } from './support/touchTarget';
+import { expectHeldInside, expectNeighbourWhole, expectWholeWords, readWordLines, setNarrowLargeText, TWO_WORD_NAME } from './support/wordLines';
 
 // quick-261026-pi6 (owner R1-R5, 2026-10-26): selecting a poll on the group planning page, in a
 // real browser at 375 x 667 (the phone project only).
@@ -325,7 +327,7 @@ test('S5: a shared link opens its poll; an unknown poll id falls back to the act
   await expect(cardBody(page, 'E2E Ana')).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).searchParams.has('poll')).toBe(false);
   expect(new URL(page.url()).searchParams.get('group_id')).toBe(E2E_GROUP_ID);
-  await expect(page.getByText("We couldn't load the poll responses")).toHaveCount(0);
+  await expect(page.getByText("Couldn't load the poll responses")).toHaveCount(0);
 
   // F16: a malformed poll id is dropped before the person taps, so back after a tap returns to
   // the active poll's entry, with no poll parameter (the drop is a replace, never a new entry).
@@ -346,4 +348,113 @@ test('S5: a shared link opens its poll; an unknown poll id falls back to the act
   await cardBody(page, LONG_STARTER).tap();
   await expect(showingLine(page)).toHaveText(`Showing ${LONG_STARTER}'s check-in`);
   await expectNoHorizontalOverflow(page);
+});
+
+// 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room; his worry: a
+// long name broken up too much to read, We/eke/nd W/arr/iors). A check-in card cut its title (the
+// poll's game name) to one line beside the kebab; it now wraps by whole words and the kebab drops
+// under it (src/app/components/OpenPollsList.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the title wraps")).
+// Both synthetic polls are given one game, and the real group read is passed through with that
+// game added to its list, so both cards are titled with the two-word name (nothing is written).
+// At 375 with ordinary text the kebab still shares the title's line. At 320 wide with the root text
+// at 200% each word of the title is on one line (or, for a word wider than the whole card, broken
+// only after the title has the card's full width), the kebab is whole, at least 44px and inside
+// the card. The same test reads the Switch poll chips, the page's second cut
+// (src/app/groupPlanning/page.js ("AMENDED Phase 88.9-52 (R4 D2, the second cut on this page")):
+// both polls share the game's name, so each chip's label is that name plus the label rule's own
+// suffix, and every word of it must be whole inside a chip that is whole inside the row, at least
+// 44px. The page's own sideways scroll at this size is recorded in the log: the rest of the
+// planning page at 320 / 200% is not this test's subject.
+const D2_GAME_ID = '26102600-0000-4000-8000-0000000000d2';
+
+test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card and a Switch poll chip keep each word of a two-word name whole; the kebab drops under the card body', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'the 320px large-text proof is phone-only');
+  await mockPolls(page);
+  // Registered after mockPolls, so these two answer first.
+  await page.route('**/api/groups/*/prompts/open', async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    routeState.openGets += 1;
+    await route.fulfill({
+      status: 200,
+      json: { prompts: [{ ...POLLS[POLL_A_ID], game_id: D2_GAME_ID }, { ...POLLS[POLL_B_ID], game_id: D2_GAME_ID }] },
+    });
+  });
+  await page.route(
+    (url) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}`),
+    async (route: Route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      const response = await scrubbedFetch(route);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        await route.fulfill({ response });
+        return;
+      }
+      if (body && typeof body === 'object' && !Array.isArray(body)) {
+        const group = body as { games?: unknown };
+        const games = Array.isArray(group.games) ? group.games : [];
+        group.games = [...games, { id: D2_GAME_ID, name: TWO_WORD_NAME }];
+      }
+      await route.fulfill({ response, json: body });
+    },
+  );
+  await openPlanning(page);
+
+  const rows = [cardRow(page, 'E2E Ana'), cardRow(page, 'E2E Ben')];
+  const titleOf = (row: Locator) => row.locator('span.font-bold', { hasText: TWO_WORD_NAME });
+  const kebabOf = (row: Locator) => row.getByRole('button', { name: 'Check-in actions', exact: true });
+  for (const row of rows) {
+    await expect(titleOf(row), 'R4 D2: a card is not titled with the answered game name (the group read did not take the added game)').toHaveCount(1, { timeout: 15_000 });
+  }
+
+  // Ordinary text at 375: the kebab is beside the body, as before.
+  for (const [i, row] of rows.entries()) {
+    const beside = await row.evaluate((el) => {
+      const body = el.firstElementChild as HTMLElement;
+      const cell = el.lastElementChild as HTMLElement;
+      const b = body.getBoundingClientRect();
+      const c = cell.getBoundingClientRect();
+      return { bodyRight: b.right, bodyBottom: b.bottom, cellLeft: c.left, cellTop: c.top };
+    });
+    expect(
+      beside.cellTop < beside.bodyBottom - 1 && beside.cellLeft >= beside.bodyRight - 1,
+      `R4 D2 card ${i}: at ordinary text the kebab no longer sits beside the card body (${JSON.stringify(beside)})`,
+    ).toBe(true);
+    expectWholeWords(await readWordLines(titleOf(row), row), ['Weekend', 'Warriors'], `R4 D2 card ${i} at ordinary text`, { pageSideways: false });
+  }
+
+  await setNarrowLargeText(page, 'R4 D2 check-in card');
+  for (const [i, row] of rows.entries()) {
+    // The card is named as the row: a word may break only once the title has the card's whole width.
+    const read = await readWordLines(titleOf(row), row);
+    // eslint-disable-next-line no-console -- the measured card is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 check-in card ${i}] 320 / 200%: ${JSON.stringify(read)}`);
+    expectWholeWords(read, ['Weekend', 'Warriors'], `R4 D2 card ${i} at 320 / 200%`, { pageSideways: false });
+    await expectHeldInside(row, `R4 D2 card ${i}`);
+    await expectNeighbourWhole(kebabOf(row), `R4 D2 card ${i}: the kebab`, { button: true });
+  }
+
+  // The Switch poll chips: each label holds the answered name, uncut, and each chip is whole.
+  const chipRow = switchPoll(page);
+  const chips = chipRow.getByRole('button');
+  await expect(chips, 'R4 D2: the Switch poll row does not hold the two chips').toHaveCount(2);
+  for (let i = 0; i < 2; i += 1) {
+    const chip = chips.nth(i);
+    const label = chip.locator(':scope > span');
+    // The chip row is named: a word may break only once the label has the row's whole width.
+    const read = await readWordLines(label, chipRow);
+    // eslint-disable-next-line no-console -- the measured chip is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 switch-poll chip ${i}] 320 / 200%: ${JSON.stringify(read)}`);
+    expect(read.text, `R4 D2 chip ${i}: the label does not hold the answered name (${JSON.stringify(read)})`).toContain(TWO_WORD_NAME);
+    expectWholeWords(read, null, `R4 D2 chip ${i} at 320 / 200%`, { pageSideways: false });
+    await expectNeighbourWhole(chip, `R4 D2 chip ${i}`, { button: true });
+  }
+  await expectHeldInside(chipRow, 'R4 D2 Switch poll row');
 });

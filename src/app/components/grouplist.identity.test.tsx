@@ -9,7 +9,7 @@
 // Follows the established `<name>.identity.test.tsx` convention
 // (groupHomePage.identity.test.tsx shows the useSelfIdentity mocking approach).
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -34,23 +34,27 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 // Keep the error-surface primitives light + deterministic: showError follows the
 // mocked query.isError, and the banner renders a marker only when showError.
 vi.mock('@/components/ui/useFetchErrorState', () => ({
-  useFetchErrorState: (q: { isError?: boolean }) => ({
+  // 88.9-52 (A-19): the code follows the error object when it carries one (an ApiError), so a 401
+  // reads as unauthorized; every older case passes no code and still reads unknown.
+  useFetchErrorState: (q: { isError?: boolean; error?: unknown }) => ({
     showError: Boolean(q?.isError),
     message: '',
-    code: 'unknown',
+    code: (q?.error as { code?: string } | null | undefined)?.code ?? 'unknown',
     retry: vi.fn(),
   }),
 }));
 // 88-18: GroupList now mounts TWO of these — the D-08 identity degrade AND the
 // groups-fetch failure (which used to be flattened into `setGroups([])` and shown
 // as "No groups yet"). The stub renders the `title` so the two are tellable apart;
-// the testid is kept for the pre-existing WR-03 assertions.
+// the testid is kept for the pre-existing WR-03 assertions. BANNER-01 (88.9-49): the groups
+// banner now passes `thing`, so the stub composes Couldn't load {thing} exactly as the real
+// banner does (a passed title still wins).
 // 88.6.1-70 contract C9: keep the real module so useRetainedContent and isAccessOrGoneError stay real; the notice itself is proven in grouplist.refresh.test.tsx against the real module.
 vi.mock('@/components/ui/FetchErrorBanner', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/ui/FetchErrorBanner')>()),
-  FetchErrorBanner: ({ state, title }: { state: { showError: boolean }; title?: string }) =>
+  FetchErrorBanner: ({ state, title, thing }: { state: { showError: boolean }; title?: string; thing?: string }) =>
     state.showError ? (
-      <div data-testid="identity-degrade-banner">{title ?? 'degraded'}</div>
+      <div data-testid="identity-degrade-banner">{title ?? (thing ? `Couldn't load ${thing}` : 'degraded')}</div>
     ) : null,
   RefreshFailedNotice: () => null,
 }));
@@ -81,7 +85,9 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import GroupList from './grouplist';
-import { groupsAPI } from '@/lib/api';
+import { groupsAPI, ApiError } from '@/lib/api';
+import { installFakeImage, paintMarkup } from '@/test-utils/pictureProbe';
+import { bgImageProbeForTests } from '@/lib/hooks/useBgImageFailed';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -180,7 +186,7 @@ describe('GroupList empty vs failed groups fetch (Req 6 / T-88-18-01)', () => {
     render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
 
     expect(
-      await screen.findByText("We couldn't load your groups")
+      await screen.findByText("Couldn't load your groups")
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'No groups yet' })).toBeNull();
     expect(screen.queryByText('No groups yet!')).toBeNull();
@@ -221,7 +227,7 @@ const BETA = crew('g-beta', 'Beta Crew');
 const GAMMA = crew('g-gamma', 'Gamma Crew');
 const ZETA = crew('g-zeta', 'Zeta Crew');
 
-const BANNER_TEXT = "We couldn't load your groups";
+const BANNER_TEXT = "Couldn't load your groups";
 
 describe('D-37 — the home list refreshes in place (Req 9)', () => {
   const getUserGroups = () => groupsAPI.getUserGroups as Mock;
@@ -388,5 +394,257 @@ describe('D-37 — the home list refreshes in place (Req 9)', () => {
     await waitFor(() => expect(titleBlock('Zeta Crew')).toBeInTheDocument());
 
     expect(screen.queryByRole('button', { name: 'Alpha Crew' })).toBeNull();
+  });
+});
+
+// Owner ruling 88.9-RULINGS.md R-P4 (2026-11-08, MED-66 option A): with the photo dim gone (O21b),
+// every un-outlined word on a photo card needs a guaranteed treatment. On the image arm (coloured or
+// not, both themes) the Last Game row, its date and its label take the title's O02d1 outline
+// utilities; a plain card keeps the content tokens. The utilities resolve to the outline because the
+// card root carries the image arm's --t-* values (src/lib/colorUtils.js ("const STROKE_OUTLINE =")).
+// 88.9-52 (A-19, code review): the O22d hand-shake with the home page had no test. GroupList
+// reports a groups 401 upward as a boolean and lowers it on unmount; while the page's session
+// banner shows (sessionBannerShown) it draws neither its own banner, nor No groups yet, nor the
+// compact identity notice. The home page's own suite stubs GroupList, so only this file can see
+// these four lines. Absences are read synchronously after a positive signal (CF-26).
+describe('O22d (88.9-42), pinned by 88.9-52 A-19: the groups 401 report and the yield to the page session banner', () => {
+  const unauthorized = () => new ApiError('Unauthorized', 'unauthorized', 401);
+
+  it('A-19a. a groups 401 reports true upward, a non-401 failure reports false, and unmount lowers the flag', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockRejectedValue(unauthorized());
+    const report = vi.fn();
+    const view = render(<GroupList {...listProps} onGroupsUnauthorized={report} />);
+    await screen.findByText(BANNER_TEXT);
+    expect(report).toHaveBeenLastCalledWith(true);
+    report.mockClear();
+    view.unmount();
+    expect(report.mock.calls, 'unmount did not lower the page flag').toEqual([[false]]);
+
+    (groupsAPI.getUserGroups as Mock).mockRejectedValue(new Error('boom'));
+    const other = vi.fn();
+    render(<GroupList {...listProps} onGroupsUnauthorized={other} />);
+    await screen.findByText(BANNER_TEXT);
+    expect(other.mock.calls.every(([flag]) => flag === false), 'a non-401 failure raised the session flag').toBe(true);
+    expect(other).toHaveBeenCalled();
+  });
+
+  it('A-19b. while the session banner shows, the groups banner yields and No groups yet is not claimed', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockRejectedValue(unauthorized());
+    const failed = render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+    await screen.findByText(BANNER_TEXT);
+    failed.rerender(<GroupList {...listProps} onCreateGroup={vi.fn()} sessionBannerShown />);
+    expect(screen.getByRole('heading', { name: 'Your Groups' })).toBeInTheDocument();
+    expect(screen.queryByText(BANNER_TEXT), 'the groups banner doubles the page session banner').toBeNull();
+    expect(screen.queryByRole('heading', { name: 'No groups yet' }), 'a failed list claims no groups').toBeNull();
+    failed.unmount();
+
+    // A list that LOADED empty, then the page raises its session banner for another request's 401.
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([]);
+    const empty = render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'No groups yet' });
+    empty.rerender(<GroupList {...listProps} onCreateGroup={vi.fn()} sessionBannerShown />);
+    expect(screen.getByRole('heading', { name: 'Your Groups' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'No groups yet' }), 'No groups yet shows beside the session banner').toBeNull();
+  });
+
+  it('A-19c. while the session banner shows, the identity shell keeps its header and the compact notice yields', async () => {
+    h.selfUuid = undefined;
+    h.isError = true;
+    const view = render(<GroupList {...listProps} />);
+    expect(await screen.findByTestId('identity-degrade-banner')).toBeInTheDocument();
+    view.rerender(<GroupList {...listProps} sessionBannerShown />);
+    expect(screen.getByRole('heading', { name: 'Your Groups' })).toBeInTheDocument();
+    expect(screen.queryByTestId('identity-degrade-banner'), 'the compact notice doubles the page session banner').toBeNull();
+  });
+});
+
+// 88.9-52 (W2, W18, W22; after-build look page): at 200% text the Your Groups heading broke two
+// letters per line beside the Create button, and so did a card's title beside its players pill; at
+// 768 the heading sat 2px from the button; on a narrow window a hovered card's lifted top edge was
+// cut by the scroll area. Class pins: jsdom lays nothing out, so the wrap itself is read in the
+// after-build pictures.
+describe('W2 / W18 / W22 (88.9-52): the Your Groups header and the card title row give way by wrapping, not by breaking words', () => {
+  const tokens = (el: Element) => el.className.split(/\s+/).filter(Boolean);
+
+  it('W2 / W18. the header row wraps with a gap and the heading never shrinks below its words, in the main list and in the identity shell', async () => {
+    const check = (where: string) => {
+      const heading = screen.getByRole('heading', { name: 'Your Groups' });
+      const row = heading.parentElement as HTMLElement;
+      for (const t of ['flex', 'flex-wrap', 'items-center', 'justify-between', 'gap-x-3', 'gap-y-2']) {
+        expect(tokens(row), `${where}: the header row lacks ${t}`).toContain(t);
+      }
+      for (const t of ['shrink-0', 'max-w-full']) {
+        expect(tokens(heading), `${where}: the heading lacks ${t}`).toContain(t);
+      }
+      expect(tokens(screen.getByRole('button', { name: 'Create new group' })), `${where}: the Create button can wrap its label`).toContain('whitespace-nowrap');
+    };
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([ALPHA]);
+    const main = render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Alpha Crew' });
+    check('main list');
+    main.unmount();
+
+    h.selfUuid = undefined;
+    h.isError = true;
+    render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+    await screen.findByTestId('identity-degrade-banner');
+    check('identity shell');
+  });
+
+  it('W2. the card title row wraps: the title block keeps a 6rem basis and the players pill drops under it when there is no room', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([ALPHA]);
+    render(<GroupList {...listProps} />);
+    const title = await screen.findByRole('button', { name: 'Alpha Crew' });
+    const block = title.parentElement as HTMLElement;
+    const row = block.parentElement as HTMLElement;
+    for (const t of ['flex', 'flex-wrap', 'justify-between', 'items-center', 'gap-2']) {
+      expect(tokens(row), `the title row lacks ${t}`).toContain(t);
+    }
+    expect(tokens(block), 'the title block has no 6rem basis').toContain('flex-[1_1_6rem]');
+    expect(tokens(block), 'the title block keeps the zero basis').not.toContain('flex-1');
+    const pill = within(row).getByText('0 players');
+    expect(tokens(pill), 'the pill can shrink').toContain('shrink-0');
+    expect(tokens(pill), 'the pill keeps a margin that would indent it on its own line').not.toContain('ml-2');
+  });
+
+  it('W22. the scroll area leaves 2px above the first card on a narrow window, so the hover lift is not cut', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([ALPHA]);
+    render(<GroupList {...listProps} />);
+    const card = (await screen.findAllByTestId('group-card'))[0];
+    expect(tokens(card), 'the card no longer lifts 2px on hover; re-measure the pad').toContain('hover:-translate-y-0.5');
+    const scroller = card.closest('.overflow-y-auto') as HTMLElement;
+    expect(scroller, 'no scroll area above the card').not.toBeNull();
+    expect(tokens(scroller), 'the scroll area has no top pad below md').toContain('max-md:pt-0.5');
+  });
+});
+
+describe("R-P4 (88.9-27): a photo card's secondary row takes the title's outline treatment", () => {
+  const R_P4 =
+    '[color:var(--t-color-l)] [text-shadow:var(--t-shadow-l)] [-webkit-text-stroke:var(--t-stroke-l)] ' +
+    '[paint-order:var(--t-paint-l,normal)] dark:[color:var(--t-color)] dark:[-webkit-text-stroke:var(--t-stroke)] ' +
+    'dark:[text-shadow:var(--t-shadow)] dark:[paint-order:var(--t-paint,normal)]';
+  const PHOTO = 'https://example.test/photo.png';
+  const getUserGroups = () => groupsAPI.getUserGroups as Mock;
+
+  beforeEach(() => {
+    getUserGroups().mockReset();
+    h.selfUuid = SELF_UUID;
+  });
+
+  const partsOf = (name: string) => {
+    const card = screen.getByRole('button', { name }).closest('[data-testid="group-card"]') as HTMLElement | null;
+    expect(card, `${name}: no group card found`).not.toBeNull();
+    const label = within(card!).getByText('Last Game:', { exact: true });
+    const row = label.closest('div') as HTMLElement;
+    const date = row.lastElementChild as HTMLElement;
+    return { card: card!, label, row, date };
+  };
+
+  it('R-P4. on a photo card the Last Game row, date and label take the O02d1 outline utilities in both themes; a plain card keeps the content tokens', async () => {
+    getUserGroups().mockResolvedValueOnce([
+      { ...crew('g-photo', 'Photo Crew'), background_image_url: PHOTO },
+      { ...crew('g-tint', 'Tint Crew'), color_preset: 'blue', background_image_url: PHOTO },
+      crew('g-plain', 'Plain Crew'),
+    ]);
+    render(<GroupList {...listProps} />);
+    await screen.findByRole('button', { name: 'Plain Crew' });
+
+    // Anti-vacuity: the coloured photo card really is on the tinted arm, so "the image wins over a
+    // stored colour" is exercised, not assumed.
+    expect(partsOf('Tint Crew').card.className, 'Tint Crew did not resolve a tinted ground').toContain(
+      'bg-[var(--group-ground-light)]',
+    );
+
+    for (const name of ['Photo Crew', 'Tint Crew']) {
+      const { card, label, row, date } = partsOf(name);
+      for (const [part, el] of [['row', row], ['date', date]] as const) {
+        expect(el.className, `${name}: the ${part} lost the O02d1 outline utilities`).toContain(R_P4);
+        for (const old of ['text-content-secondary', 'text-content-muted', 'var(--group-ink']) {
+          expect(el.className, `${name}: the ${part} still carries ${old}`).not.toContain(old);
+        }
+      }
+      expect(label.hasAttribute('class'), `${name}: the label kept a class and will not inherit the outline`).toBe(false);
+      expect(card.outerHTML, `${name}: the card root does not carry the O02d1 paint-order value`).toContain(
+        '--t-paint-l: stroke fill',
+      );
+      // AMENDED Phase 88.9-60 (X7, owner T11): the photo set spaces its letters, so the row and the
+      // date read the tracking pair and the card root hands them its value.
+      for (const [part, el] of [['row', row], ['date', date]] as const) {
+        for (const track of ['[letter-spacing:var(--t-track-l,normal)]', 'dark:[letter-spacing:var(--t-track,normal)]']) {
+          expect(el.className, `${name}: the ${part} lost the ${track} utility`).toContain(track);
+        }
+      }
+      expect(card.outerHTML, `${name}: the card root does not carry the photo set's letter-spacing`).toContain(
+        '--t-track-l: 0.03em',
+      );
+    }
+
+    const plain = partsOf('Plain Crew');
+    expect(plain.row.className).toContain('text-content-secondary');
+    expect(plain.date.className).toContain('text-content-muted');
+    expect(plain.label.className).toContain('text-content-primary');
+    for (const el of [plain.row, plain.date, plain.label]) {
+      expect(el.className, 'Plain Crew picked up the photo-arm outline utilities').not.toContain(R_P4);
+    }
+  });
+});
+
+// X6 (88.9-60, owner F1): a picture whose URL is valid but whose load fails. The card first paints
+// its photo arm (the picture is pending); once the probe records the failure the card must be the
+// card this group shows with no picture at all: its tint, its preset ink, no outline. The fake
+// image constructor errors any URL holding the word fail
+// (src/test-utils/pictureProbe.ts ("export function installFakeImage(")).
+describe('X6 (88.9-60): a home card whose picture fails to load', () => {
+  const FAILING = 'https://example.test/fail-photo.png';
+  const NAME = 'Dead Photo Crew';
+  const getUserGroups = () => groupsAPI.getUserGroups as Mock;
+
+  beforeEach(() => {
+    getUserGroups().mockReset();
+    h.selfUuid = SELF_UUID;
+    bgImageProbeForTests.reset();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    bgImageProbeForTests.reset();
+  });
+
+  const mountCard = async (image: string | null) => {
+    getUserGroups().mockResolvedValueOnce([{ ...crew('g-x6', NAME), color_preset: 'blue', background_image_url: image }]);
+    const view = render(<GroupList {...listProps} />);
+    await screen.findByRole('button', { name: NAME });
+    return view;
+  };
+  const cardHtml = () => {
+    const card = screen.getByRole('button', { name: NAME }).closest('[data-testid="group-card"]') as HTMLElement | null;
+    expect(card, 'no group card found').not.toBeNull();
+    return paintMarkup(card!.outerHTML);
+  };
+
+  it('X6 (88.9): a home card whose picture fails to load takes the no-picture arm', async () => {
+    const images = installFakeImage();
+
+    const reference = await mountCard(null);
+    const none = cardHtml();
+    reference.unmount();
+
+    await mountCard(FAILING);
+    // Pending: the photo arm, from the first paint.
+    expect(images.srcs(), 'the card picture was never probed').toEqual([FAILING]);
+    const pending = cardHtml();
+    expect(pending, 'the pending picture is not set as the card background').toContain('background-image');
+    expect(pending, 'the pending picture did not take the photo text treatment').toContain('--t-paint-l: stroke fill');
+
+    act(() => images.settleAll());
+    const failed = cardHtml();
+    expect(failed, 'a picture that failed to load is still set as the card background').not.toContain('background-image');
+    // The inline DECLARATION form: the title's class names the property in every arm.
+    expect(failed, 'a picture that failed to load kept the photo text treatment').not.toContain('--t-paint-l: ');
+    expect(failed, 'a card whose picture failed to load is not the card this group shows with no picture').toBe(none);
   });
 });

@@ -385,6 +385,26 @@
      measurement's label would turn a true statement about what was measured then into a false one.
      Only pointers that direct a reader AT a live declaration or a live call site were amended. */
   --color-surface-muted: var(--color-bg-muted);
+  --color-surface-tile: var(--color-bg-tile);
+  --color-surface-tile-past: var(--color-bg-tile-past);
+  /* DECISION Phase 88.9-22 C2a / B2a: --color-surface-overlay points at the one scrim token, chosen
+     OVER the literal bg-[var(--color-bg-overlay)] (CR2-14; the build contract names
+     bg-surface-overlay). --color-surface-group-halo reads the host-set --group-halo and falls back
+     to --color-bg-card, chosen OVER no fallback (an unset variable invalidates the ring shadow and
+     the focus ring vanishes) and OVER a dark:-prefixed halo on Button (shared halo constraint 2:
+     the dark-on-Button cascade is unsettled). Hosts set --group-halo; controls take
+     ring-offset-surface-group-halo. */
+  --color-surface-overlay: var(--color-bg-overlay);
+  --color-surface-group-halo: var(--group-halo, var(--color-bg-card));
+  --color-chip-1: var(--color-member-chip-1);
+  --color-chip-2: var(--color-member-chip-2);
+  --color-chip-3: var(--color-member-chip-3);
+  --color-chip-4: var(--color-member-chip-4);
+  --color-chip-5: var(--color-member-chip-5);
+  --color-chip-6: var(--color-member-chip-6);
+  --color-chip-7: var(--color-member-chip-7);
+  --color-chip-8: var(--color-member-chip-8);
+  --color-chip-rim: var(--color-member-chip-rim);
   --color-surface-elevated: var(--color-bg-elevated);
   --color-surface-input: var(--color-bg-input);
   /* Phase 88.3 (D-02 / D-03, UI-SPEC §9.4): the two new surfaces, bridged in the house shape —
@@ -396,6 +416,14 @@
   --color-surface-hover: var(--color-bg-hover);
   --color-surface-sunken: var(--color-bg-sunken);
   --color-surface-nav: var(--color-bg-nav);
+  /* DECISION Phase 88.9-33 (O01a + B4a): --color-bg-hero is the landing hero's ground — the card
+     surface in light (owner pick O01a, 88.9-PICKS-B8A.json, 2026-11-07), the nav surface in dark —
+     and surface-hero is ONE key for both the hero fill and Get Started's focus halo, chosen OVER a
+     dark-prefixed halo twin on the Button (UI-SPEC shared halo constraint 2: the dark-on-Button
+     cascade is unsettled; cascadeOrder test 12 rule d) and over reusing the surface-group-halo host
+     variable (a key named for group colour on a page with no group). Either arm is a W55 look
+     decision, not a cleanup. */
+  --color-surface-hero: var(--color-bg-hero);
   --color-surface-nav-hover: var(--color-bg-nav-hover);
   --color-surface-header: var(--color-bg-header);
   --color-surface-header-hover: var(--color-bg-header-hover);
@@ -416,6 +444,12 @@
   --color-content-link: var(--color-text-link);
   --color-content-link-hover: var(--color-text-link-hover);
   --color-content-heatmap-count: var(--color-text-heatmap-count);
+  /* Plan 88.9-42 (O08b): the five heatmap legend swatch surfaces; values at the runtime tokens. */
+  --color-surface-heatmap-legend-1: var(--color-heatmap-legend-1);
+  --color-surface-heatmap-legend-2: var(--color-heatmap-legend-2);
+  --color-surface-heatmap-legend-3: var(--color-heatmap-legend-3);
+  --color-surface-heatmap-legend-4: var(--color-heatmap-legend-4);
+  --color-surface-heatmap-legend-5: var(--color-heatmap-legend-5);
   /* Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §9.4): the amber-as-TEXT keys. Named `--color-content-*`
      and NOT `--color-accent-text` on purpose — see the DECISION marker at the runtime declarations
      in `:root` below. Because the key name differs from the runtime property name, neither needs a
@@ -433,6 +467,14 @@
   --color-content-status-success: var(--color-status-success-text);
   --color-content-status-error: var(--color-status-error-text);
   --color-content-status-warning: var(--color-status-warning-text);
+  /* DECISION Phase 88.9-52 (W28): a status word that sits on its own status HOVER fill takes a
+     hover ink, chosen OVER moving the dark status text tokens themselves (36 and 47 call-site
+     lines read them; that is the OI-3 recolour, still deferred) and OVER a dimmer dark hover fill
+     (the success word reads 4.66 at rest, so a passing hover fill would be under 1.04 from rest,
+     no step at all). One consumer: the schedule Pause / Resume button. Light equals the resting
+     ink. Dropping these as duplicates puts dark Pause back at 4.14 and Resume at 3.94. */
+  --color-content-status-success-hover: var(--color-status-success-text-hover);
+  --color-content-status-warning-hover: var(--color-status-warning-text-hover);
 
   /* accent    -- 3 collision keys, aliased */
   --color-accent: var(--accent);
@@ -473,6 +515,18 @@
      down and neither needs an alias. Full DECISION marker above the `.btn-secondary` rule. */
   --color-line-control: var(--color-border-control);
   --color-line-control-hover: var(--color-border-control-hover);
+  /* DECISION Phase 88.9-52 (W30, owner ruling A): the edge of a card-ground control that is
+     gated but still active, one step fainter than the card line in each theme (light warm-300,
+     1.60 on the card where the line reads 2.31; dark purple-800, 1.23 where the line reads 1.78).
+     Its own token, chosen OVER a /50 opacity modifier on the line (D-32/D-33 forbid it; the tint
+     sweep reds) and OVER the secondary gated edge (transparent in dark, so no edge at all there).
+     One consumer: the availability grid's Clear All. */
+  --color-line-gated: var(--color-border-gated);
+  /* Phase 88.9-58 (X60 De3): the secondary button's OWN edge, bridged so a border utility exists
+     for the two raw twins that wear the secondary fill without the button class (the landing
+     Google light arm, the home-card gear). The key name differs from the runtime property, so it
+     joins no self-reference family. DECISION marker at the runtime property in the light block. */
+  --color-line-btn-secondary: var(--color-btn-secondary-border);
 
   /* btn       -- 4 collision keys, aliased */
   --color-btn-primary: var(--color-btn-primary-bg);
@@ -481,6 +535,25 @@
   --color-btn-secondary: var(--color-btn-secondary-bg);
   --color-btn-secondary-hover: var(--secondary-hover);
   --color-btn-secondary-text: var(--secondary-foreground);
+  /* 88.9-52 R6 (owner 2026-11-17): the Admin-blue confirm's fill and ink, bridged like the pill
+     pair beside it in name (surface- / content-), so neither key self-references its runtime
+     property. The rules read the runtime properties; the DECISION marker is at the btn-admin
+     rule. */
+  /* 88.9-52 R8c (owner pick "Fill", 2026-11-17): the hovered fill of a ghost Button, its own key
+     (the runtime property is btn-ghost-hover, so no self-reference). Marker at the runtime
+     property in the light block. */
+  --color-surface-ghost-hover: var(--color-btn-ghost-hover);
+  --color-surface-btn-admin: var(--color-btn-admin-bg);
+  --color-content-btn-admin: var(--color-btn-admin-text);
+  /* 88.9-59 X8 (owner pick G2): the home-card gear's fill and hover. The key names differ from the
+     runtime properties (gear-bg, gear-hover), so neither self-references (the 87.7 rule above). */
+  --color-btn-gear: var(--color-gear-bg);
+  --color-btn-gear-hover: var(--color-gear-hover);
+  /* 88.9-39 MED-78 (R-P3b): the pressed segment of the Month | List switch. The key names differ
+     from the runtime properties (toggle-pressed-*), so none self-references (the 87.7 rule above). */
+  --color-toggle-on: var(--color-toggle-pressed-bg);
+  --color-toggle-on-text: var(--color-toggle-pressed-text);
+  --color-toggle-on-hover: var(--color-toggle-pressed-hover);
 
   /* status */
   /* Phase 88.3 (OI-4): these three now read the per-theme `--color-status-{x}-border` runtime
@@ -501,6 +574,30 @@
   --color-status-error-subtle-hover: var(--status-error-subtle-hover);
   --color-status-warning-subtle: var(--status-warning-subtle);
   --color-status-warning-subtle-hover: var(--status-warning-subtle-hover);
+  /* 88.9-63 X17a: the pill family (person, role and RSVP pills), one fill key and one ink key
+     per hue: bg-surface-pill-<hue> and text-content-pill-<hue>. The key names differ from the
+     runtime properties (pill-<hue>-bg, pill-<hue>-text), so none self-references (the 87.7 rule
+     above). The X17a marker is at the light declarations of those properties. */
+  --color-surface-pill-green: var(--color-pill-green-bg);
+  --color-content-pill-green: var(--color-pill-green-text);
+  --color-surface-pill-neutral: var(--color-pill-neutral-bg);
+  --color-content-pill-neutral: var(--color-pill-neutral-text);
+  --color-surface-pill-violet: var(--color-pill-violet-bg);
+  --color-content-pill-violet: var(--color-pill-violet-text);
+  --color-surface-pill-blue: var(--color-pill-blue-bg);
+  --color-content-pill-blue: var(--color-pill-blue-text);
+  --color-surface-pill-amber: var(--color-pill-amber-bg);
+  --color-content-pill-amber: var(--color-pill-amber-text);
+  --color-surface-pill-emerald: var(--color-pill-emerald-bg);
+  --color-content-pill-emerald: var(--color-pill-emerald-text);
+  /* 88.9-52 N1b (owner pick "Mid", 2026-11-17): the painted availability cells, bridged so the
+     check-in grid's cells and legend name one fill per state. Marker at the runtime properties in
+     the light block. */
+  --color-surface-avail-preferred: var(--color-avail-preferred-bg);
+  --color-surface-avail-if-need-be: var(--color-avail-if-need-be-bg);
+  /* 88.9-52 N1c: the If Need Be stripe colour. The avail-if-need-be-stripe utility reads the
+     runtime property directly; the key is bridged with the two fills it sits on. */
+  --color-surface-avail-if-need-be-stripe: var(--color-avail-if-need-be-stripe);
   /* Bell count badge (bg-badge-count) — see the DECISION Phase 88.9-01 (M3b) marker in the light block. */
   --color-badge-count: var(--color-badge-count-bg);
 
@@ -966,8 +1063,32 @@
      `--color-bg-card-hover` until 88.6-02 (D-15); value byte-unchanged). */
   --color-bg-hover: var(--warm-50);
   --color-bg-sunken: var(--warm-50);
+  /* DECISION Phase 88.9-22 C3 (owner pick C3, 88.9-PICKS-B7A.json, CS-04): soft day tiles — the
+     tile is 55% and the past tile 28% of --color-bg-muted over --color-bg-card, written as literal
+     hexes per theme (dark pair in .dark), chosen OVER the collapsed 1px / 2px outline grid and the
+     hairline grid (CS-04 arms b and d) and OVER an inline color-mix(), which the Gate A resolver
+     cannot evaluate. A tile is a fill, not a control boundary: no 3:1 floor (1.24 light / 1.12 dark
+     against the card). Changing one hex without re-deriving it from the muted and card values is a
+     decision, not a cleanup. */
+  --color-bg-tile: #ebe6e0;
+  --color-bg-tile-past: #f5f2ef;
   --color-bg-elevated: #ffffff;
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  /* DECISION Phase 88.9-22 D1b / D3c (owner picks D1b votes-b3 v12 and D3c votes-b3a v2,
+     2026-11-05): eight theme-identical *-700 chip fills with white ink (5.02 minimum, green-700) and
+     a dark separation rim, purple-800 light / purple-950 dark, chosen OVER the shipped bg-white/85
+     tinted arm (dark initials 1.07) and OVER the page-3 D3a tap. The runtime names carry member-
+     because an @theme inline key pointing at its own name is a literal self-reference that emits
+     nothing. The rim is a separation edge with no floor. */
+  --color-member-chip-1: #b91c1c;
+  --color-member-chip-2: #c2410c;
+  --color-member-chip-3: #b45309;
+  --color-member-chip-4: #15803d;
+  --color-member-chip-5: #0f766e;
+  --color-member-chip-6: #0369a1;
+  --color-member-chip-7: #6d28d9;
+  --color-member-chip-8: #be185d;
+  --color-member-chip-rim: var(--purple-800);
   --color-bg-input: #ffffff;
   /* DECISION Phase 88-04 (D-15 / UI-SPEC §9.1): the EmptyState glyph circle gets its OWN accent
      tint token rather than reusing `--color-status-warning-subtle` (#f9ebda light / #423e36 dark,
@@ -975,7 +1096,8 @@
      into — because the warning tint is a STATUS colour: reusing it would say "something is wrong"
      on a surface whose whole message is "nothing here yet" (§9.2 forbids conflating empty with
      error). The values are UI-SPEC §9.1's: light amber-100, dark a warm amber-over-purple-900
-     literal with no palette step to point at. */
+     literal with no palette step to point at.
+     [AMENDED Phase 88.9-58 (X21b): light is now #fde68a; the rejection stands.] */
   --color-bg-accent-subtle: var(--amber-100);
   /* DECISION Phase 88.3-14 (owner ruling 3, 2026-08-27): the invite / empty-state circle PAIR gets
      its OWN token pair, one palette step darker each — ground `amber-200`, glyph `amber-900`
@@ -1030,6 +1152,8 @@
      warm-100 page, 7.09 on the white card). The DARK arm is amber-500 on `#513902` at **5.05:1** —
      byte-identical to what shipped, because dark `--color-accent-text` is declared at today's
      `--color-accent` value on purpose.
+     AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark accent-text is
+     amber-400 now, 6.50:1 on #513902 (was 5.05), still a byte-copy of dark --color-accent.
      UNCHANGED, and this is the half a reader would get wrong: the owner-picked ARM B tint below is
      NOT touched, and the `DECISION 88-27 D-32` paired-ternary SHAPE is not touched either — only
      the class token inside the true arm moves (plan 08).
@@ -1042,6 +1166,7 @@
 
   /* Brand / Navigation */
   --color-bg-nav: var(--purple-900);
+  --color-bg-hero: var(--color-bg-card);
   --color-bg-nav-hover: var(--purple-800);
 
   /* Text */
@@ -1131,6 +1256,12 @@
      fills, which do not change with the theme, so its ink must not either. Re-pointing this at the
      text-primary token is a decision, not a cleanup. */
   --color-text-heatmap-count: var(--warm-900);
+  /* DECISION Phase 88.9-42 O08b (owner pick, chat 2026-11-07 6:18 PM Pacific): the legend ramp is --color-status-success-border mixed into the card at 20 / 35 / 50 / 70 / 90 percent, stored as literal hexes per theme (tokenContrast cannot resolve color-mix), chosen OVER the raw green-100..500 palette with no dark fork and OVER the dark-only fork O08a. Light: #166534 into #ffffff. */
+  --color-heatmap-legend-1: #d0e0d6;
+  --color-heatmap-legend-2: #adc9b8;
+  --color-heatmap-legend-3: #8bb29a;
+  --color-heatmap-legend-4: #5c9371;
+  --color-heatmap-legend-5: #2d7448;
 
   /* Accent (interactive elements) */
   /* DECISION Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §5.6.2, §9.2): `--color-accent-text` is RENAMED
@@ -1489,6 +1620,18 @@
   --color-btn-primary-bg: var(--purple-600);
   --color-btn-primary-hover: var(--purple-700);
   --color-btn-primary-text: #ffffff;
+  /* DECISION Phase 88.9-59 (X8, owner pick G2, 2026-11-11): the home gear's own fill, Invite Member's
+     blue one step darker (purple-700 both themes), chosen OVER the secondary recipe (a cream control
+     beside Invite) and OVER G3. Hover darkens in light, lightens in dark, as Invite's does. White icon
+     7.79. One consumer: the home-card gear in src/app/components/grouplist.js ("DECISION Phase 88.9-59 (X8").
+     Pinned by src/app/tokenContrast.test.ts ("anti-vacuity: (5 pairs + 8 preset halos) x 2 themes"). */
+  --color-gear-bg: var(--purple-700);
+  --color-gear-hover: var(--purple-800);
+  /* 88.9-39 MED-78 (R-P3b): the pressed Month | List segment, light = the btn-primary values by
+     reference (no light pixel moves). The dark arm is its own; marker in `.dark`. */
+  --color-toggle-pressed-bg: var(--color-btn-primary-bg);
+  --color-toggle-pressed-text: var(--color-btn-primary-text);
+  --color-toggle-pressed-hover: var(--color-btn-primary-hover);
   /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c), 2026-08-28): the accent
      BUTTON vocabulary, minted so the Create-Event amber has a name instead of only a literal.
      Owner: "The Share game qr button still looks odd. Lets make it amber, like the create event
@@ -1560,10 +1703,66 @@
      `--color-btn-secondary-hover` DELIBERATELY DID NOT MOVE (warm-300). Moving it down to warm-200
      would make a HOVERED secondary button byte-equal to the page — the ruling-2 defect, relocated
      to the hover state. Held: hover fill vs resting fill **1.4081** / ΔL* 12.7446; hover ring
-     (warm-400) vs hover fill **1.4476**. Holding it is the measured answer, not an omission. */
-  --color-btn-secondary-bg: var(--warm-100);
-  --color-btn-secondary-hover: var(--warm-300);
+     (warm-400) vs hover fill **1.4476**. Holding it is the measured answer, not an omission.
+
+     ——— AMENDED Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14), above KEPT AS HISTORY ———
+
+     AMENDED Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14): fill #e3dad1, hover #cdc1b4,
+     rejected above on the 0.05-margin rule and ruled by the owner with that consequence shown
+     (fill vs page 1.0572). Card 1.3802 (was 1.1330), label 10.8910, hover vs rest 1.2805. Test 34
+     holds; the member-badge duplication is dissolved.
+     The owner on the shipped warm-100 fill: "I would prefer it doesn't match the background". On a
+     white card the old fill read 1.1330, which is what he saw as matching. The margin rule that
+     rejected this hex has no failure a person sees behind it (a 0.007 margin over a design band
+     floor, pinned by test 34, which reds if either side is nudged), so it gives way to the pick.
+     MEASURED 2026-11-15 with `src/lib/wcag.ts`: fill vs the page 1.0572, vs the white card 1.3802,
+     vs bg-muted 1.0902 (test 33's third ground, floor 1.05), vs the light warning fill 1.1082, vs
+     the light error box 1.0889; label on the fill 10.8910, on the hover fill 8.5056; hover vs rest
+     1.2805, vs the card 1.7672, vs the page 1.3536; the pressed Month | List segment against the
+     unpressed one 4.1021 (test 67).
+     The fill no longer equals the member badge (still warm-100): test 44's first pair now asserts
+     the split. The hover is the picked hex, no longer the warm-300 step held above; a hovered
+     button still differs from the page (1.3536).
+     ON THE PAGE GROUND this fill reads 1.0572, close to the page colour, which is why a secondary
+     button that sits on the page takes the page-fill token below, not this fill. */
+  --color-btn-secondary-bg: #e3dad1;
+  --color-btn-secondary-hover: #cdc1b4;
   --color-btn-secondary-text: var(--warm-800);
+  /* DECISION Phase 88.9-52 (R8c, owner pick "Fill", 2026-11-17): a hovered ghost Button fills
+     with the secondary button's resting fill in LIGHT, by reference (#e3dad1: 1.3802 off the
+     white card; ghost ink on it 7.5898, the ghostDanger ink 6.0210). Chosen OVER the shared
+     hover wash it wore (warm-50, 1.0601 off the card: on the owner's picture "very hard to
+     see") and OVER moving the shared wash itself (every row, card and menu hover in the app
+     reads it). Dark is unchanged: it names the shared wash there (purple-800, 1.2281 off the
+     card, inks 7.0680 and 5.9413). A ghost with its own call-site hover still wins over this
+     (tailwind-merge drops the variant's). Gate A row R8c. Changing this is a decision. */
+  --color-btn-ghost-hover: var(--color-btn-secondary-bg);
+  /* DECISION Phase 88.9-58 (X60 De3, owner pick page 11, 2026-11-14: I would like the line to be
+     bolder/heavier than the options presented to me): the secondary button's OWN edge is warm-400,
+     1px — fill 1.6734, card 2.3096, page 1.7690 — chosen OVER the lighter steps on the pick page
+     and OVER moving the shared control edge (group-header ring over groupColourPresets test 16's
+     1.57; EventDayModal's lighter step). Gate A caps for this edge amended by that ruling (35:
+     1.70; 36 card: 2.40); still under 3:1, so the border-strong rejection stands. Dark:
+     transparent.
+     Also measured 2026-11-15: on bg-muted 1.5350, on the light warning fill 1.8545, on the light
+     error box 1.8222. The hover edge is still the shared hover step (also warm-400), so on hover
+     only the fill moves; hover edge on the hover fill 1.3069 (test 38). Bridged in the theme block
+     as the line-btn-secondary key, for the two raw twins that wear the secondary fill (the landing
+     Google light arm and the home-card gear). */
+  --color-btn-secondary-border: var(--warm-400);
+  /* DECISION Phase 88.9-58 (X60, owner 2026-11-14: Make the calendar button White like the
+     dialog's and the cards; applied by the orchestrator to every page-ground secondary): a
+     secondary on the page ground fills with the card colour in light, chosen OVER Sb there (1.0572
+     on the page; white reads 1.3056). The 88.3-14 rejection of a fill that flips by ground is
+     narrowed to the census-named sites, each pinned. Dark equals the dark secondary fill.
+     HOW A SITE TAKES IT: the secondary rule is unlayered, so a background utility at the call
+     site loses to it. The site re-points the two properties the rules read, rest and gated, at
+     this token with two arbitrary-property classes (the gated one too: the light gated fill is
+     computed at the root, so a gated button would otherwise turn tan). Census at 88.9-58: ONE
+     site, the phone Calendar button on Home. Measured: label on white 15.0315, gated ink on white
+     6.5790, the De3 edge on white 2.3096 and on the page 1.7690, hover vs white 1.7672, the count
+     pill on white 5.0216 (test 51). */
+  --color-btn-secondary-page-bg: var(--color-bg-card);
   /* DECISION Phase 88.8 code review round 2 HIGH-A (owner ruling 2026-09-05): the GATED
      state of an `aria-disabled` `.btn` is expressed in COLOUR, on these tokens — chosen OVER
      the element `opacity: .5` dim that round 1 shipped, which composited the LABEL as well as
@@ -1607,18 +1806,48 @@
      pair forks per theme ON PURPOSE: a theme-equal light-amber fill would be the loudest thing
      on a dark card, louder than the resting button; the count pill already forks at its own
      state (tests 51-52). Measured 2026-10-16 with `src/lib/wcag.ts`. Consumers: plan
-     88.6.1-47's two Share Game QR buttons. */
+     88.6.1-47's two Share Game QR buttons.
+     AMENDED Phase 88.9-58 (X60 Sb): the light gated fill follows the rest (ink recedes, fill
+     stays); gated ink 4.7668. AMENDED Phase 88.9-58 (X60 gated edge, owner Q9 A, pick page Picks
+     12, 2026-11-14): the light gated edge is warm-300 #d6cbc0, one step lighter than the De3 rest
+     edge (warm-400 rest, warm-300 gated), keeping this marker's shape; chosen OVER no edge while
+     gated and OVER keeping warm-200 (1.06 against the new gated fill and lighter than it, 1.00
+     against the page). Measured: on the gated fill 1.16, on the card 1.60, on the page 1.22. A
+     design record, not a WCAG floor.
+     This amends the "ring stepping warm-300 -> warm-200" sentence above, kept as history: the
+     gated fill now points at the resting fill token, so the two cannot drift, and the secondary
+     gated ink on it is 4.7668 (was 5.8069 on warm-100; test 53 holds 4.5). Re-measured 2026-11-15
+     with `src/lib/wcag.ts`: gated edge on the gated fill 1.1559, on the card 1.5954, on the page
+     1.2220. The inactive-component exemption is not the reason no 1.4.11 claim is made for this
+     edge: DR-C keeps these controls active, as stated above. The rest edge (1.67) is a design
+     band in the same way. Every gated secondary at this commit sits on a card: the two email
+     panel buttons, Reset invite link, the two notification Declines and the friends request
+     Decline. The scheduler grid's Clear All (a ghost Button that reads these gated tokens by
+     class) moves with them: src/app/components/AvailabilityGrid.js ("LOOK NOTE AMENDED Phase 88.9-41 (owner pick O09a").
+     AMENDED Phase 88.9-52 (W30): Clear All now reads only the gated INK from this family; its
+     gated fill is gone (owner ruling A), so it sits on the card with the ink at 6.58 / 6.00. */
   --color-btn-primary-gated-bg: var(--purple-200);
   --color-btn-primary-gated-text: var(--purple-700);
-  --color-btn-secondary-gated-bg: var(--warm-100);
+  --color-btn-secondary-gated-bg: var(--color-btn-secondary-bg);
   --color-btn-secondary-gated-text: var(--warm-600);
-  --color-btn-secondary-gated-border: var(--warm-200);
+  --color-btn-secondary-gated-border: var(--warm-300);
   --color-btn-danger-gated-bg: #fecaca;
   --color-btn-danger-gated-text: #7f1d1d;
   --color-btn-danger-hover: #b91c1c;
   --color-btn-danger-active: #991b1b;
   --color-btn-accent-gated-bg: var(--amber-200);
   --color-btn-accent-gated-text: var(--amber-900);
+  /* 88.9-52 R6 (owner pick "D + D2", 2026-11-17): the Admin-blue confirm, light arm. The live
+     fill is the Admin pill's own ink colour under white words (8.7224, and 8.7224 off the white
+     dialog); hover and pressed step darker, the danger family's shape (10.3580, 14.6948). The
+     waiting pair IS the Admin pill pair, by reference (6.1395; fill 1.4207 off the dialog).
+     DECISION marker at the btn-admin rule. */
+  --color-btn-admin-bg: #1e40af;
+  --color-btn-admin-text: #ffffff;
+  --color-btn-admin-hover: #1e3a8a;
+  --color-btn-admin-active: #172554;
+  --color-btn-admin-gated-bg: var(--color-pill-blue-bg);
+  --color-btn-admin-gated-text: var(--color-pill-blue-text);
   /* Phase 88.3-14 (owner ruling 2): the secondary-control RING and its hover step. Bridged as
      `ring-line-control` / `border-line-control` in `@theme inline` above. Dark is `transparent`
      (declared in `.dark`, not omitted, so the 1px is unconditional and the theme toggle shifts
@@ -1645,9 +1874,18 @@
      alternative reds something shipped. A future editor nudging warm-300 by a unit reds Gate A —
      that is the intended behaviour, and this sentence is the warning. It is also on the owner's
      final re-check list: if the secondary button's edge looks like it is disappearing on the page,
-     that is a real finding, not a nitpick. */
+     that is a real finding, not a nitpick.
+     AMENDED Phase 88.9-58 (X60 De3): this hold STANDS for the shared control edge, which is still
+     warm-300 and still bound by test 36's 1.20-2.00 rows. The secondary button no longer reads
+     this token at rest: it has its own edge token (warm-400, owner ruling De3, marker beside the
+     secondary fill above), with its own amended caps. The "ring vs fill" figures above describe
+     a pairing the button rule no longer paints. Four class-string uses still read the shared
+     edge (the past-event row, both group-page gear arms, the Manage Members ring), and the
+     secondary rule's hover step still reads the shared hover token. */
   --color-border-control: var(--warm-300);
   --color-border-control-hover: var(--warm-400);
+  /* W30 (88.9-52), marker at the @theme inline key. */
+  --color-border-gated: var(--warm-300);
 
   /* Success / Error / Warning (functional -- not palette-themed) */
   --color-success: #16a34a;
@@ -1698,6 +1936,10 @@
   --color-status-success-text: #166534;
   --color-status-error-text: #991b1b;
   --color-status-warning-text: #854d0e;
+  /* W28 (88.9-52), marker at the @theme inline keys: in light the hover ink IS the resting ink
+     (4.75 and 5.44 on the light hover fills already). */
+  --color-status-success-text-hover: var(--color-status-success-text);
+  --color-status-warning-text-hover: var(--color-status-warning-text);
 
   /* DECISION Phase 88.3 (OI-4 / UI-SPEC §5.7.4): status BORDERS get their own per-theme tokens,
      and the `@theme inline` keys `--color-status-{success,error,warning}` are re-pointed at THEM
@@ -1745,6 +1987,8 @@
             channel — t=0.15 resting, t=0.24 hover — against the CARD ground (`#ffffff` light,
             `#232d3e` dark), NOT the page. Painting one straight onto the page ground is a
             contrast change, not a reskin; re-derive against the page if you ever need that.
+            AMENDED Phase 88.9-19 (owner pick E7a): the dark ERROR pair is an owner-picked
+            exception to rule (i) — see the dark status-tint block.
        (ii) THERE IS DELIBERATELY NO FIFTH `info` FAMILY (D-33). Informational surfaces reuse
             Banner's shipped treatment — `border-line` on the container, `text-content-secondary`
             on the glyph. Minting an info colour is a decision, not a completion of the set.
@@ -1786,8 +2030,53 @@
   --color-status-success-subtle-hover: #c7e9d4;
   --color-status-error-subtle: #fadede;
   --color-status-error-subtle-hover: #f7cbcb;
-  --color-status-warning-subtle: #f9ebda;
-  --color-status-warning-subtle-hover: #f6dec3;
+  /* DECISION Phase 88.9-58 (X21b, owner pick page 10a, 2026-11-14): light warning fill amber-200,
+     chosen OVER the shipped pale peach (read as page-coloured) and OVER X21a amber-100; ink and
+     border unchanged (5.50; light ring 6.26). Hover amber-300, owner pick Eh1 (page 11,
+     2026-11-14; ink 4.75, 1.16 from rest), chosen OVER the peach hover (1.04, a hue jump).
+     Light only. */
+  --color-status-warning-subtle: #fde68a;
+  --color-status-warning-subtle-hover: #fcd34d;
+
+  /* DECISION Phase 88.9-63 (X17a, owner pick page 10a, 2026-11-14): one pill family per hue
+     (hue-500 mixed 30% into the card in light, 35% in dark), chosen OVER the shipped mix (Owner
+     light-only, No reply melting into the dark card) and OVER X17b's outlined pills. Literals:
+     the root purple steps are slate. Emerald (Friend) is the same recipe, not on the pick page.
+     The game page's Maybe pill reuses the amber pair (owner Q1 A1, 2026-11-14): no Maybe token,
+     and page 10a's Maybe ink #854d0e is not used (5.45 vs 5.64, not visible) — chosen OVER Maybe
+     on the warning pair (dark 1.30 off the card, under 1.50); Maybe and Guest share one amber,
+     and the selected Maybe RSVP button stays on the warning family, both accepted by the owner.
+     Measured, word on its fill / fill against the card (floors 4.5 and 1.25 light, 1.50 dark):
+     light green 5.53 / 1.29, neutral 7.35 / 1.43, violet 5.97 / 1.46, blue 6.14 / 1.42,
+     amber 5.64 / 1.26, emerald 5.78 / 1.33; the dark values are beside their declarations. */
+  --color-pill-green-bg: #bdeecf;
+  --color-pill-green-text: #166534;
+  --color-pill-neutral-bg: #ddd7d2;
+  --color-pill-neutral-text: #4a3d32;
+  --color-pill-violet-bg: #e5ccfd;
+  --color-pill-violet-text: #6b21a8;
+  --color-pill-blue-bg: #c4dafc;
+  --color-pill-blue-text: #1e40af;
+  --color-pill-amber-bg: #fce2b6;
+  --color-pill-amber-text: #92400e;
+  --color-pill-emerald-bg: #b7ead9;
+  --color-pill-emerald-text: #065f46;
+  /* DECISION Phase 88.9-52 (N1b, owner pick "Mid", 2026-11-17): the check-in grid's painted cells
+     get a DARK fill of their own, a mid green for Preferred and an ochre for If Need Be (declared
+     in the dark block). Chosen OVER the light theme's mint and yellow carried into dark (8.03 and
+     8.55 against an empty cell: on the owner's picture the loudest thing on the dark card) and
+     OVER the deeper pill fills (option "tint": 1.57 and 1.60 against an empty cell, with the grid
+     lines nearly gone at 1.08). LIGHT IS UNCHANGED: the two values here are the palette steps
+     the light class already paints (green-300, yellow-300), declared so the token resolves in
+     both themes; Gate A row N1b holds them equal to those steps. Consumers: the cells and the
+     legend swatches in src/app/components/AvailabilityGrid.js, through a dark: class beside the
+     light one. */
+  --color-avail-preferred-bg: #86efac;
+  --color-avail-if-need-be-bg: #fde047;
+  /* 88.9-52 N1c (owner pick "Stripe", 2026-11-17): the stripe on If Need Be, a darker step of the
+     cell's own yellow, rgb(207,184,58): 1.5070 on the fill. DECISION marker at the
+     avail-if-need-be-stripe utility. */
+  --color-avail-if-need-be-stripe: #cfb83a;
 
   /* Header (warm neutral, NOT purple) */
   --color-bg-header: var(--warm-800);
@@ -1854,8 +2143,13 @@
      indistinguishable from the page and the three-surface ladder collapses back to two. Rounding
      this onto a neighbouring palette step is a decision, not a cleanup. */
   --color-bg-sunken: #1c2432;
+  /* Phase 88.9-22 C3: the dark tile pair — see the DECISION marker at the light declaration. */
+  --color-bg-tile: #2a3548;
+  --color-bg-tile-past: #263143;
   --color-bg-elevated: var(--purple-800);
   --color-bg-overlay: rgba(0, 0, 0, 0.7);
+  /* Phase 88.9-22 D3c: only the rim forks; the eight fills are theme-identical and inherit. */
+  --color-member-chip-rim: var(--purple-950);
   --color-bg-input: var(--purple-800);
   /* Phase 88-04 (D-15 / UI-SPEC §9.1) — OPAQUE literal, matching 88-01's D-32/D-33 treatment of
      the status tints: an `rgba()` amber over the card would shift with whatever sits behind it.
@@ -1875,6 +2169,7 @@
   --color-bg-today-tint: #513902;
 
   --color-bg-nav: var(--purple-950);
+  --color-bg-hero: var(--color-bg-nav);
   --color-bg-nav-hover: var(--purple-900);
 
   --color-text-primary: var(--warm-50);
@@ -1886,27 +2181,47 @@
   /* Phase 88.9-08 (M1b): byte-equal to the light declaration, deliberately; the DECISION marker and
      its measured ratios sit at the light --color-text-heatmap-count above. */
   --color-text-heatmap-count: var(--warm-900);
+  /* DECISION Phase 88.9-42 O08b (owner pick, chat 2026-11-07 6:18 PM Pacific): the legend ramp is --color-status-success-border mixed into the card at 20 / 35 / 50 / 70 / 90 percent, stored as literal hexes per theme (tokenContrast cannot resolve color-mix), chosen OVER the raw green-100..500 palette with no dark fork and OVER the dark-only fork O08a. Dark: #22c55e into #232d3e (the purple-900 card). */
+  --color-heatmap-legend-1: #234b44;
+  --color-heatmap-legend-2: #236249;
+  --color-heatmap-legend-3: #23794e;
+  --color-heatmap-legend-4: #229754;
+  --color-heatmap-legend-5: #22b65b;
 
-  --color-accent: var(--amber-500);
-  --color-accent-hover: var(--amber-400);
+  /* DECISION Phase 88.9-22 F4b (owner pick F4b, 88.9-PICKS-B8A.json, page 8a, O-11): every dark
+     accent role — accent, accent-text, accent-text-strong, border-accent and the count pill — sits
+     on amber-400, chosen OVER the shipped amber-500 (both passed; a taste call). The dark hovers
+     step to amber-300, 1.16:1 from resting, chosen OVER leaving them on amber-400, which would
+     equal the resting accent and delete the hover cue; it is the same step the dark link already
+     ships, this file ("--color-text-link-hover: var(--amber-300);"). The dark focus ring is
+     amber-400 too and reads 1.00 against an accent fill: every house ring keeps its offset halo,
+     src/app/cascadeOrder.test.ts ("every house offset ring in src declares a surface halo"); never
+     drop the offset on an accent control. The light theme does not move. */
+  --color-accent: var(--amber-400);
+  --color-accent-hover: var(--amber-300);
   /* Phase 88.3 (Req 4): the dark half of the accent rename + mint. The full rationale, the two
      rejected names and every measured ratio live at the light declarations above. These two values
      are today's `--color-accent` / `--color-accent-hover` VERBATIM, deliberately — that is what
      keeps "dark does not move" true across plan 08's sweep. amber-800 is not an option here: it
-     measures 1.95:1 on the dark card. */
+     measures 1.95:1 on the dark card.
+     AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark now moves — the
+     resting pair is amber-400 / amber-300, chosen OVER the "dark does not move" verbatim copy of
+     amber-500 / amber-400. */
   --color-on-accent: var(--purple-950);
-  --color-accent-text: var(--amber-500);
-  --color-accent-text-hover: var(--amber-400);
+  --color-accent-text: var(--amber-400);
+  --color-accent-text-hover: var(--amber-300);
   /* Phase 88.3-14 (owner ruling 3): copied VERBATIM from `--color-accent-text` two lines above —
-     NOT from `-hover` — so the dark glyph is byte-identical to today's. Gate A asserts it. */
-  --color-accent-text-strong: var(--amber-500);
+     NOT from `-hover` — so the dark glyph is byte-identical to today's. Gate A asserts it.
+     AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): still a verbatim copy of
+     the dark accent-text, so both moved to amber-400 together; test 41's byte-equality still holds. */
+  --color-accent-text-strong: var(--amber-400);
 
   --color-border: var(--purple-700);
   /* DECISION Phase 88-01 (D-34): darkened one step for the 1.4.11 hairline floor — see the full
      marker (and the two rejected alternatives) at the light declaration above. `--color-border`
      directly above stays put on purpose. */
   --color-border-strong: var(--purple-500);
-  --color-border-accent: var(--amber-500);
+  --color-border-accent: var(--amber-400);
 
   /* Dark mode: minimal shadows, replaced by borders/glow */
   /* AMENDED Phase 88.6-05 (N1): the DARK half of the same change — the bare `none` keyword becomes
@@ -1972,6 +2287,20 @@
      Collapsing this back onto purple-500 is a decision, not a cleanup — it re-opens an AA failure. */
   --color-btn-primary-hover: var(--purple-550);
   --color-btn-primary-text: #ffffff;
+  /* 88.9-59 X8 (owner pick G2): the home gear, dark arm. The fill is byte-equal to the light block ON
+     PURPOSE (Invite's dark blue with a fifth of black lands on the same step); only the hover differs,
+     one step lighter, the way the dark Invite hover moves. Marker in the light block. */
+  --color-gear-bg: var(--purple-700);
+  --color-gear-hover: var(--purple-650);
+  /* DECISION Phase 88.9-39 MED-78 (88.9-RULINGS.md R-P3b, 2026-11-08): the pressed Month | List
+     segment has its own dark arm — purple-400 fill, warm-900 ink, purple-300 hover: 4.02:1 against
+     the unpressed purple-800 segment, 4.93:1 against the purple-900 card, ink 6.40:1 — chosen OVER
+     reusing the dark primary-button fill (purple-600: 1.99:1 against the unpressed segment, 2.45:1
+     against the card, under WCAG 1.4.11's 3:1 for the only pressed cue). Light points at the
+     btn-primary values and does not move. Changing this is a decision, not a cleanup. */
+  --color-toggle-pressed-bg: var(--purple-400);
+  --color-toggle-pressed-text: var(--warm-900);
+  --color-toggle-pressed-hover: var(--purple-300);
   /* Phase 88.3-18: BYTE-IDENTICAL to the light arm, deliberately. The Create-Event button this
      matches carries one inline amber in both themes, so the accent CTA is theme-invariant by
      design; Gate A asserts the cross-theme equality so a future "dark needs its own amber" edit
@@ -1983,6 +2312,15 @@
   --color-btn-secondary-bg: var(--purple-800);
   --color-btn-secondary-hover: var(--purple-700);
   --color-btn-secondary-text: var(--warm-200);
+  /* 88.9-52 R8c: dark ghost hover is unchanged, the shared hover wash (light marker). */
+  --color-btn-ghost-hover: var(--color-bg-hover);
+  /* Phase 88.9-58 (X60): both new secondary tokens are INERT in dark. The button's own edge is
+     transparent (declared, not omitted, so the 1px never shifts, like the shared control edge
+     below), and the page-fill token is purple-800, the dark secondary fill, so a page-ground
+     secondary looks exactly as before in dark. Gate A pins both (the X60 test and test 39).
+     Light markers carry the rulings. */
+  --color-btn-secondary-border: transparent;
+  --color-btn-secondary-page-bg: var(--purple-800);
   /* Phase 88.8 round 2 HIGH-A: the dark gated arms. Primary gated is purple-200 on purple-700
      (**5.4938**) — purple-700 rather than purple-800 ON PURPOSE: purple-800 is the dark
      `.btn-secondary` resting fill, and a gated Verify (primary) sits beside a promoted Resend
@@ -2010,6 +2348,15 @@
   --color-btn-danger-active: #7f1d1d;
   --color-btn-accent-gated-bg: var(--amber-900);
   --color-btn-accent-gated-text: var(--amber-200);
+  /* 88.9-52 R6 (owner pick D2, 2026-11-17): the Admin-blue confirm, dark arm. A mid blue under
+     dark words (7.2010; 5.4471 off the dark dialog), the one new colour pair the pick names.
+     Hover and pressed step LIGHTER here, because the words are dark: a darker step would walk
+     them toward the floor (10.1526, 12.8845). Waiting is the dark Admin pill pair (7.1408; fill
+     1.5896 off the dialog). */
+  --color-btn-admin-bg: #60a5fa;
+  --color-btn-admin-text: #10151d;
+  --color-btn-admin-hover: #93c5fd;
+  --color-btn-admin-active: #bfdbfe;
   /* Phase 88.3-14 (owner ruling 2): ruling 2 is LIGHT-ONLY. Dark `.btn-secondary` is `purple-800`
      on a `purple-900` page and already carries a tonal edge, so both control-edge tokens resolve to
      `transparent` here. DECLARED rather than omitted on purpose: that keeps the 1px border
@@ -2017,6 +2364,8 @@
      byte-UNCHANGED and Gate A pins it. Full rationale above the `.btn-secondary` rule. */
   --color-border-control: transparent;
   --color-border-control-hover: transparent;
+  /* W30 (88.9-52), marker at the @theme inline key: painted in dark, unlike the two above. */
+  --color-border-gated: var(--purple-800);
 
   --color-success: #22c55e;
   --color-error: #b91c1c;
@@ -2035,11 +2384,20 @@
      AMENDED Phase 88.9-01: the dark error BORDER stays #ef4444 while the dark error hue is now
      #b91c1c, so the border is no longer the hue verbatim; it still does not move (tokenContrast
      test 24 pins its literal).
+     AMENDED Phase 88.9-19 (owner pick E7a, 88.9-PICKS-B4.json, 2026-11-06): on the red-950
+     resting ground #450a0a red-300 reads 8.51 (the 6.41 above is the retired wine ground).
+     AMENDED Phase 88.9-19 (owner pick O23b, 88.9-PICKS-B8B.json, 2026-11-07): on the hover
+     ground #5c1d1d red-300 reads 6.71 (the 5.76 above is the retired wine hover).
      Folding the byte-identical pairs back into the hues above, or "upgrading" dark error's border
      to red-300 for symmetry with its text, is a decision, not a cleanup. */
   --color-status-success-text: #22c55e;
   --color-status-error-text: #fca5a5;
   --color-status-warning-text: #f59e0b;
+  /* W28 (88.9-52), marker at the @theme inline keys: the two candidates the OI-3 record already
+     measured. green-400 #4ade80 reads 5.16 on the success hover fill #235146 (resting ink 3.94);
+     amber-400 reads 5.33 on the warning hover fill #554832 (resting ink 4.14). */
+  --color-status-success-text-hover: #4ade80;
+  --color-status-warning-text-hover: var(--amber-400);
   --color-status-success-border: #22c55e;
   --color-status-error-border: #ef4444;
   --color-status-warning-border: #f59e0b;
@@ -2048,13 +2406,51 @@
      `round((1-t)*card + t*hue)` per channel against the dark card `#232d3e`, t=0.15 resting /
      t=0.24 hover. See the full marker at the light declarations above for the two rejected
      mechanisms and the card-surface rule. Nudging one of these by eye desynchronises it from that
-     formula and from its hover step — a decision, not a cleanup. */
+     formula and from its hover step — a decision, not a cleanup.
+     AMENDED Phase 88.9-19 (owner picks E7a + O23b, 88.9-PICKS-B4.json / 88.9-PICKS-B8B.json,
+     2026-11-06 / 2026-11-07): the ERROR pair below is exempt from this formula (see its DECISION
+     marker), chosen OVER the derived wine pair (ink 6.41 resting); success and warning still
+     follow it. */
   --color-status-success-subtle: #234443;
   --color-status-success-subtle-hover: #235146;
-  --color-status-error-subtle: #42303f;
-  --color-status-error-subtle-hover: #54333f;
+  /* DECISION Phase 88.9-19 E7a (owner pick E7a, 88.9-PICKS-B4.json, 2026-11-06): the dark error
+     box ground is red-950 #450a0a, chosen OVER the shipped wine #42303f (ink 6.41, the pair the
+     owner called "rather pink", UAT3-J1) and OVER E7b #5c1d1d as the ground. Ink #fca5a5 and
+     border #ef4444 do not move: ink 8.51 on it, border 3.68 on the card, fill 1.17 on the card.
+     This pair no longer follows the tint formula above — on purpose; re-deriving it from the
+     formula reverses an owner pick, a decision, not a cleanup. Hover twin O23b
+     (88.9-PICKS-B8B.json, 2026-11-07): #5c1d1d, chosen OVER the shipped wine hover #54333f
+     (ink 5.76); ink 6.71 on it. */
+  --color-status-error-subtle: #450a0a;
+  --color-status-error-subtle-hover: #5c1d1d;
   --color-status-warning-subtle: #423e36;
   --color-status-warning-subtle-hover: #554832;
+
+  /* The dark half of the 88.9-63 pill family (X17a; the marker is at the light declarations):
+     hue-500 mixed 35% into the dark card. Word on its fill / fill against the card: green
+     5.95 / 1.92, neutral 6.96 / 1.52, violet 7.77 / 1.51, blue 7.14 / 1.59, amber 5.65 / 1.97,
+     emerald 5.89 / 1.83. Every fill is opaque on purpose: the Guest pill sits on unwashed
+     photo rows (88.9-60 X23a), where an alpha fill would let the photo through its words. */
+  --color-pill-green-bg: #236249;
+  --color-pill-green-text: #bbf7d0;
+  --color-pill-neutral-bg: #48484d;
+  --color-pill-neutral-text: #e8e0d8;
+  --color-pill-violet-bg: #523b7f;
+  --color-pill-violet-text: #f3e8ff;
+  --color-pill-blue-bg: #2b4b7e;
+  --color-pill-blue-text: #dbeafe;
+  --color-pill-amber-bg: #6d552c;
+  --color-pill-amber-text: #fde68a;
+  --color-pill-emerald-bg: #1c5e55;
+  --color-pill-emerald-text: #a7f3d0;
+  /* 88.9-52 N1b (owner pick "Mid"): dark painted availability cells. Preferred rgb(40,135,88):
+     2.5220 against an empty cell (purple-800), 3.0973 against the card, the grid line 1.7433 on
+     it. If Need Be rgb(156,113,42): 2.5823, 3.1714 and 1.7850. The two fills are 1.0239 apart in
+     luminance; the stripe (N1c) is the cue that does not need colour. Light marker has the rule. */
+  --color-avail-preferred-bg: #288758;
+  --color-avail-if-need-be-bg: #9c712a;
+  /* 88.9-52 N1c: the dark stripe, a darker step of the ochre, rgb(128,93,34): 1.3714 on the fill. */
+  --color-avail-if-need-be-stripe: #805d22;
 
   /* Header (warm neutral) */
   --color-bg-header: var(--warm-900);
@@ -2209,7 +2605,7 @@
      here rather than folded into the JS list.
      DELIBERATELY EXCLUDED: code that reads a RAW palette token outside the `--color-*` namespace
      this alternative would rename — Header.js (twice) and LandingPage.js `[--ring:var(--amber-400)]`,
-     UpcomingCountPill.tsx `dark:[background-color:var(--amber-500)]` and `dark:[color:var(--warm-900)]`
+     UpcomingCountPill.tsx `dark:[background-color:var(--amber-400)]` and `dark:[color:var(--warm-900)]`
      (by `grep -rnE "var\(--(amber|purple|warm)-[0-9]+" src`, every hit opened; the rest are comment
      prose). Nothing reads `var(--amber-600)` any more: plan 88.6-21 moved the group page's CTA onto
      the accent Button, and that file names the shade only in comment prose. Line numbers in this
@@ -2294,14 +2690,14 @@ body {
    the diff was phone-only was WRONG), review against this:
    (i)   `p-4` sites that ALSO author `md:p-6` change at phone only;
    (ii)  the five BARE-`p-4` sites (src/app/components/BringSummary.js ("card p-3 md:p-6"), src/app/components/UpcomingEventsCard.js ("card p-3 md:p-6 mb-4"),
-         src/app/components/GroupGamesList.js ("block card p-3 md:p-6"), src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 flex gap-4"), src/app/friends/page.js ("mb-4 p-3 md:p-6 card")) would
+         src/app/components/GroupGamesList.js ("block card p-3 md:p-6"), src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 hover:bg-surface-hover flex gap-4"), src/app/friends/page.js ("mb-4 p-3 md:p-6 card")) would
          have silently dropped desktop padding 24px -> 16px — Task 1b of plan 87.8-01
          adds `md:p-6` to each so desktop is preserved;
    (iii) the 13 sites authoring `p-6` are a no-op;
    (iv)  previously-inert `hover:shadow-theme-*` comes alive on DESKTOP ONLY, because
          Tailwind v4 wraps `hover:` in `@media (hover: hover)` which is false on the
          phone lane — src/app/components/LandingPage.js ("Track Sessions"), src/app/components/LandingPage.js ("Gather Your Crew"), src/app/components/LandingPage.js ("Rate &amp; Remember"), src/app/components/GroupGamesList.js ("block card p-3 md:p-6"),
-         src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 flex gap-4");
+         src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 hover:bg-surface-hover flex gap-4");
    (v)   the `transition-*` utilities at those same sites stop losing to `.card`'s own
          `transition` now that `.card` is layered — a second un-inert flip; do not
          mistake it for a regression.
@@ -2346,7 +2742,8 @@ body {
      Rejected: migrating the 28-29 `.card` call sites to `<Card>` — that is Phase 88.6's
      `.btn`-to-`Button`-shaped work and must not be pulled forward into a token phase.
      Rejected: doing nothing — the option that fails the Req 12 UAT question.
-     Putting this back to `-md` re-splits the two idioms; it is a decision, not a cleanup. */
+     Putting this back to `-md` re-splits the two idioms; it is a decision, not a cleanup.
+     AMENDED Phase 88.9-58 (X14): static cards no longer react; census 33 call sites in 13 files. */
   box-shadow: var(--shadow-sm);
   /* DECISION Phase 88-24: this 24px is the FALLBACK, not the shipped value. All 28
      `.card` call sites author `p-3 md:p-6` (12px phone / 24px desktop) and every one
@@ -2355,8 +2752,8 @@ body {
   padding: 1.5rem;
   transition: var(--theme-transition);
 
-  &:hover {
-    /* DECISION Phase 88.3 (D-02 / UI-SPEC §8.4): this is THE 43RD HOVER SITE, and the only one
+  /* HISTORY, kept as written; the hover block it sat in is gone (see the amendment at its end).
+       DECISION Phase 88.3 (D-02 / UI-SPEC §8.4): this is THE 43RD HOVER SITE, and the only one
        that lives in CSS rather than in a `className`. The plan-06 sweep that moves 42
        `hover:bg-surface-card-hover` sites to `hover:bg-surface-hover` greps JSX — it will never
        find this line, so it is changed here, by hand, in the same wave the token is minted.
@@ -2369,9 +2766,12 @@ body {
        its number moves. `--color-bg-card-hover` is now the minted `--warm-250`, so a hovered
        `.card` pointed back at it would jump ΔL* **15.63** from the white card (was 10.4), against
        the ΔL* 2.35 that `--color-bg-hover` (warm-50) actually gives. Heavier wash, same
-       conclusion. */
-    background-color: var(--color-bg-hover);
-  }
+       conclusion.
+       AMENDED Phase 88.9-58 (X14, owner at N13, 2026-11-11: yes, remove the hover from
+       non-clickable cards): the wash is REMOVED, chosen OVER a wash on every card — a box that
+       reacts but does nothing when pressed is a false affordance, and in dark the wash equals the
+       secondary fill (52-X48, 52-X13). Whole-card controls carry their own hover:bg-surface-hover.
+       A hover back here is a decision, not a cleanup. */
 }
 
 .btn {
@@ -2385,6 +2785,43 @@ body {
   padding: 0.5rem 1rem;
   transition: var(--theme-transition);
   cursor: pointer;
+}
+
+/* DECISION Phase 88.9-22 O20c (owner direction 8b, confirmed page 9, 88.9-PICKS-B8B.json): the
+   Sonner rich error toast reads the status-error family. UNLAYERED on purpose: Sonner injects its
+   sheet at runtime, unlayered, so any rule inside a cascade layer loses to it whatever its
+   specificity; the selector is 0,3,0 against Sonner's 0,2,0 theme rule. Chosen OVER
+   toastOptions.classNames (every toast type would need it and the class must still out-rank
+   Sonner's attribute rule). The tokens fork on the .dark class, so the error toast follows the APP
+   theme although theme="system" follows the OS. Moving this into a layer or lowering the selector
+   is a decision, not a cleanup. */
+:root [data-sonner-toaster][data-sonner-theme] {
+  --error-bg: var(--color-status-error-subtle);
+  --error-border: var(--color-status-error-border);
+  --error-text: var(--color-status-error-text);
+}
+
+/* DECISION Phase 88.9-52 (N1c, owner pick "Stripe", 2026-11-17): an If Need Be cell, and its
+   legend swatch, carry a fine diagonal stripe over the fill in BOTH themes: a 2px line every 6px
+   at 45 degrees, in a darker step of the cell's own hue (light rgb(207,184,58) on the yellow,
+   1.5070; dark rgb(128,93,34) on the ochre, 1.3714). Preferred has no stripe.
+   WHY: the two states were told apart by hue alone. Their fills are 1.0651 apart in light and
+   1.0239 in dark, so in a greyscale copy they are one grey; with the stripe the owner's greyscale
+   picture reads at a glance (WCAG 1.4.1, Use of Color).
+   Chosen OVER a dot in the cell centre and OVER a corner triangle (both pictured: the dot is
+   small, the corner has to be looked for), and OVER changing a fill's lightness (the N1b pick
+   fixed both dark fills). A layered utility, so it is emitted only where the class is written
+   and any call-site background utility could still override it; the stripe is a background
+   IMAGE, so it sits over the background COLOUR the fill classes set and neither replaces the
+   other. Built on the check-in grid only (src/app/components/AvailabilityGrid.js); the other
+   places these two states are drawn are listed in the 88.9-52 fix report. Gate A row N1c.
+   Removing the stripe, or moving it to Preferred, is a decision, not a cleanup. */
+@utility avail-if-need-be-stripe {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--color-avail-if-need-be-stripe) 0 2px,
+    transparent 2px 6px
+  );
 }
 
 /* DECISION Phase 88.6-05 (W19): `.btn`'s `border: none` RESET — and ONLY that one declaration —
@@ -2543,6 +2980,13 @@ body {
   color: var(--color-btn-accent-gated-text);
 }
 
+/* 88.9-52 R6: the waiting Admin-blue confirm wears the Admin pill pair (marker at the btn-admin
+   rule below). Colour, never opacity, like every gated arm above. */
+.btn-admin[aria-disabled='true'] {
+  background-color: var(--color-btn-admin-gated-bg);
+  color: var(--color-btn-admin-gated-text);
+}
+
 /* DECISION Phase 87.8 (D-12): pressed state is an INSTANT OPACITY DIM, chosen OVER a
    background-colour swap and OVER a scale/translate press.
    - Background swap loses, MEASURED: `--theme-transition` (declared above — background-color,
@@ -2567,6 +3011,9 @@ body {
    controls — so DESKTOP is still deliberately floorless at ~37px until the Button migration sets
    each height with intent. The full derivation lives at the media block's own marker below; the
    old sentence is amended rather than deleted so a reader who remembers it can find where it went.
+   AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): the opt-out half of that answer is gone. The
+   two steppers are 44x44 squares now and `.btn-compact` no longer exists; the phone floor is
+   unchanged. The full note is at the place the rule used to stand, below.
    AMENDED BY PHASE 88.8 (plan 13, DR-C) — the SELECTOR was narrowed, the RULE was
    not. It now reads `.btn:active:not(:disabled):not([aria-disabled="true"])`, so a
    control gated with `aria-disabled` no longer brightens to 0.75 on press while
@@ -2845,11 +3292,23 @@ body {
 
    Everything else above stands unchanged: the mechanism, the `--color-border-strong` rejection, the
    flips-by-parent-surface rejection, the inset-shadow and border-utility rejections, the no-shadow
-   ruling, the 88.6 re-layering boundary, and the LIGHT-ONLY scope. */
+   ruling, the 88.6 re-layering boundary, and the LIGHT-ONLY scope.
+
+   AMENDED Phase 88.9-58 (X60 Sb + De3): the border reads the button's own edge; the shared
+   control edge stays warm-300 and its hold stands.
+   What changed, with the rulings quoted at the tokens in the light block: the fill is the
+   owner-picked #e3dad1 (1.3802 on a white card, was 1.1330; 1.0572 on the page), the hover fill
+   #cdc1b4, and the rest edge is the button's own token, warm-400 (1.6734 on the fill, 2.3096 on
+   the card, 1.7690 on the page). The hover edge still reads the shared hover step. Two
+   rejections above are NARROWED, not reopened: the border-strong rejection stands (warm-500
+   reads 2.9793 on the new fill, over the amended 1.70 cap, and the De3 edge is still under 3:1);
+   the flips-by-parent-surface rejection now has one named exception, a secondary on the PAGE
+   ground, which fills with the card colour through the page-fill token at its call site (one
+   site, pinned). Dark is unchanged throughout. */
 .btn-secondary {
   background-color: var(--color-btn-secondary-bg);
   color: var(--color-btn-secondary-text);
-  border: 1px solid var(--color-border-control);
+  border: 1px solid var(--color-btn-secondary-border);
 }
 
 .btn-secondary:hover:not(:disabled):not([aria-disabled='true']) {
@@ -2868,6 +3327,38 @@ body {
 
 .btn-danger:active:not(:disabled):not([aria-disabled='true']) {
   background-color: var(--color-btn-danger-active);
+  opacity: 1;
+  transition-duration: 0s;
+}
+
+/* DECISION Phase 88.9-52 (R6, owner pick "D + D2", 2026-11-17, in his words "Red is the wrong
+   color"): a confirm that hands out a role, and deletes nothing, is a flat Admin blue with its
+   own class. Live: light #1e40af under white words, dark #60a5fa under #10151d. Waiting (the
+   Wait (3) countdown): the Admin pill pair. No edge and no shadow of its own.
+   Chosen OVER the danger red it wore (the same red as a Delete), OVER the Admin pill pair as the
+   LIVE button (the earlier W25 ruling: soft, 1.42 off the dialog, close to a gated look), OVER
+   that pair with a 1px edge (option A), OVER the house primary (option C: the same look as Plan
+   Game Session), and in dark OVER the pale pill fill as the live button (option D1).
+   Hover and pressed are a stepped fill at full opacity, the danger family's shape, chosen OVER
+   the shared .75 press dim: the dim composites the words with the fill and lands at 4.67 in both
+   themes on the rest fill, with nothing left over the hover fill. Light steps darker, dark steps
+   lighter (dark words). These two steps were derived here, not pictured for the owner.
+   Measured with src/lib/wcag.ts, light / dark: live fill on the dialog 8.7224 / 5.4471; words
+   live 8.7224 / 7.2010, hovered 10.3580 / 10.1526, pressed 14.6948 / 12.8845, waiting 6.1395 /
+   7.1408; waiting fill on the dialog 1.4207 / 1.5896; focus ring on its 2px gap 7.7948 / 8.2958.
+   Gate A row R6 pins all of it. One consumer: the Make admin confirm in Manage Members.
+   Pointing another confirm at this class, or this confirm back at danger, is a decision. */
+.btn-admin {
+  background-color: var(--color-btn-admin-bg);
+  color: var(--color-btn-admin-text);
+}
+
+.btn-admin:hover:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--color-btn-admin-hover);
+}
+
+.btn-admin:active:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--color-btn-admin-active);
   opacity: 1;
   transition-duration: 0s;
 }
@@ -2901,7 +3392,15 @@ body {
        the tie on source order. Moving it above, or putting either rule inside `@layer`, re-breaks
        the opt-out with no build error.
    Changing the breakpoint, layering either rule, reordering them, or promoting the floor to all
-   viewports is a decision, not a cleanup. */
+   viewports is a decision, not a cleanup.
+   AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18), text above KEPT AS
+   HISTORY: the second of the "both rules" is gone. The two BrowseMoreModal steppers are 44x44
+   squares (`w-11 h-11`), so no control opts out of this floor any more and `.btn-compact` was
+   removed (the note where it stood, below, has what was chosen and what was rejected). THIS rule
+   is untouched: still unlayered, still phone-only. The REJECTED all-viewport floor stays rejected
+   on the record as written; its stated reason (it would deform the 32px steppers) no longer has a
+   subject, and whether desktop `.btn` should now take the floor is a separate question nobody
+   has ruled on, not something this amendment decides. */
 @media (width < 48rem) {
   .btn {
     min-height: 2.75rem;
@@ -2946,53 +3445,101 @@ body {
    The POSITION is load-bearing and silent when broken — this repo has hit that twice already
    (87.8 DEC-2/DEC-3). `src/app/cascadeOrder.test.ts` pins both directions of the order on
    comment-stripped source, and pins that neither rule sits inside an `@layer`. Reordering this, or
-   layering it, is a decision, not a cleanup. */
+   layering it, is a decision, not a cleanup.
+   AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): `.btn-compact` is retired (see the note
+   below), so the collision this position was chosen to prevent cannot happen and there is no
+   second rule to order against. `.btn-sm` stays exactly here: still unlayered, still after the
+   phone floor, and now the rule `.btn-fuse-bottom` is pinned to come after. The suite pins that
+   `.btn-compact` stays gone instead of pinning the order. */
 .btn-sm {
   padding-left: 0.5rem;
   padding-right: 0.5rem;
 }
 
-.btn-compact {
-  min-height: 0;
-  /* DECISION Phase 88.3-17: zero the HORIZONTAL padding, chosen OVER dropping
-     plan 88.3-14's `.btn-secondary` border on compact controls and OVER
-     loosening the gate that caught this.
+/* The `.btn-compact` rule stood here until Phase 88.9-52 (R4 C2). It read, in full:
+     min-height: 0;  padding-left: 0;  padding-right: 0;
+   under the marker that follows, which is kept word for word as the record of why (only its
+   e2e cite was re-pointed at the renamed probe).
 
-     FOUND BY CI, NOT BY REVIEW — e2e/touch-targets.spec.ts (D-36),
-     dispatch run 33137056149, 2026-08-28: `.btn.btn-compact probe measured
-     34x32 — the steppers are square BY DESIGN`. It is a regression plan
-     88.3-14 introduced two waves earlier and nothing local could see, because
-     it is pure geometry in a real browser.
+   DECISION Phase 88.3-17: zero the HORIZONTAL padding, chosen OVER dropping
+   plan 88.3-14's `.btn-secondary` border on compact controls and OVER
+   loosening the gate that caught this.
 
-     THE ARITHMETIC, so nobody has to re-derive it. `.btn` is
-     `padding: 0.5rem 1rem`, i.e. 16px + 16px = 32px horizontally. Plan 88.3-14
-     gave `.btn-secondary` `border: 1px solid var(--color-border-control)`
-     (owner ruling 2 — secondary controls had no edge at all in light). Both
-     shipped call sites are `btn btn-compact btn-secondary w-8 h-8`
-     (src/app/components/BrowseMoreModal.js ("these two stay RAW")), and `w-8` is 32px. With
-     `box-sizing: border-box` the used width cannot go below
-     padding + border = 16 + 16 + 1 + 1 = **34px**, so `w-8` was silently
-     clamped and the stepper went 32x32 -> 34x32. The VERTICAL padding
-     (8 + 8 + 2 = 18px) stays under `h-8`'s 32px, which is why only the width
-     moved and why a height-only assertion would have passed.
+   FOUND BY CI, NOT BY REVIEW — e2e/touch-targets.spec.ts (D-36),
+   dispatch run 33137056149, 2026-08-28: `.btn.btn-compact probe measured
+   34x32 — the steppers are square BY DESIGN`. It is a regression plan
+   88.3-14 introduced two waves earlier and nothing local could see, because
+   it is pure geometry in a real browser.
 
-     Zeroing horizontal padding is a no-op on these two controls by
-     construction: the box is fixed at 32x32 by `w-8 h-8`, the content is a
-     single glyph, and `.btn` centres it with `justify-content: center`. It
-     restores the exact pre-phase geometry rather than introducing a new one.
+   THE ARITHMETIC, so nobody has to re-derive it. `.btn` is
+   `padding: 0.5rem 1rem`, i.e. 16px + 16px = 32px horizontally. Plan 88.3-14
+   gave `.btn-secondary` `border: 1px solid var(--color-border-control)`
+   (owner ruling 2 — secondary controls had no edge at all in light). Both
+   shipped call sites are `btn btn-compact btn-secondary w-8 h-8`
+   (src/app/components/BrowseMoreModal.js ("these two stay RAW")), and `w-8` is 32px. With
+   `box-sizing: border-box` the used width cannot go below
+   padding + border = 16 + 16 + 1 + 1 = **34px**, so `w-8` was silently
+   clamped and the stepper went 32x32 -> 34x32. The VERTICAL padding
+   (8 + 8 + 2 = 18px) stays under `h-8`'s 32px, which is why only the width
+   moved and why a height-only assertion would have passed.
 
-     REJECTED — exempt `.btn-compact` from the `.btn-secondary` border: it takes
-     the edge back off two secondary controls on a phone surface, which is the
-     thing owner ruling 2 exists to fix, on a surface nobody has looked at.
-     REJECTED — relax the `<= 1` squareness assertion to `<= 2`: a gate weakened
-     to admit the shape it caught is worse than the shape. That assertion exists
-     precisely because a height-only check would have missed a deformation.
+   Zeroing horizontal padding is a no-op on these two controls by
+   construction: the box is fixed at 32x32 by `w-8 h-8`, the content is a
+   single glyph, and `.btn` centres it with `justify-content: center`. It
+   restores the exact pre-phase geometry rather than introducing a new one.
 
-     This rule stays UNLAYERED and stays authored AFTER the media block above —
-     both are load-bearing (see the D-36 marker). Re-adding horizontal padding
-     here re-deforms both steppers and reds e2e/touch-targets.spec.ts ("Math.abs(probes.compact.width - probes.compact.height)"). */
-  padding-left: 0;
-  padding-right: 0;
+   REJECTED — exempt `.btn-compact` from the `.btn-secondary` border: it takes
+   the edge back off two secondary controls on a phone surface, which is the
+   thing owner ruling 2 exists to fix, on a surface nobody has looked at.
+   REJECTED — relax the `<= 1` squareness assertion to `<= 2`: a gate weakened
+   to admit the shape it caught is worse than the shape. That assertion exists
+   precisely because a height-only check would have missed a deformation.
+
+   This rule stays UNLAYERED and stays authored AFTER the media block above —
+   both are load-bearing (see the D-36 marker). Re-adding horizontal padding
+   here re-deforms both steppers and reds e2e/touch-targets.spec.ts ("Math.abs(probes.stepper.width - probes.stepper.height)").
+
+   AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18: "follow
+   recommendations and fix"): the stepper opt-out is RETIRED, rule and class both. Its only two
+   wearers, the player-count steppers (src/app/components/BrowseMoreModal.js ("these two stay RAW")),
+   are now 44x44 squares, `btn btn-secondary w-11 h-11`, and nothing else in src/ wore the class.
+   CHOSEN OVER keeping the 32x32 pair behind the opt-out (REJECTED: two small targets 4px apart;
+   the D-36 / D-10 reasoning was a shape argument that only ever weighed a 32x44 lozenge, never a
+   44 square) and OVER leaving the rule in place unused (REJECTED: a dormant class that silently
+   takes the phone floor off whatever wears it is a trap, not a spare part).
+   WHY NO REPLACEMENT RULE IS NEEDED. The 88.3-17 arithmetic above was about a box NARROWER than
+   its own padding: 16 + 16 + 1 + 1 = 34px could not fit in `w-8` (32px). `w-11` is 2.75rem =
+   44px against that same 34px, so the side padding stays and nothing clamps; `h-11` equals the
+   phone floor (2.75rem) and `.btn` declares no height at any width, so the utility pair holds a
+   square everywhere. All of it is rem, so the square survives enlarged text.
+   Pinned by src/app/cascadeOrder.test.ts ("Re-adding a sub-44 opt-out is a decision, not a cleanup.")
+   and rendered by e2e/touch-targets.spec.ts ("Math.abs(probes.stepper.width - probes.stepper.height)").
+   Bringing back a sub-44 opt-out is a decision, not a cleanup. */
+
+/* DECISION Phase 88.9-28 N1: a square 44x44 icon button is an unlayered padding-0 class placed
+   after .btn, chosen OVER a padding utility (every @layer utilities rule loses to the unlayered
+   .btn) and OVER an inline style on the call site (the primitive owns its sizes) — moving it above
+   .btn silently restores the 16px side padding. Emitted only by the Button size key iconSquare
+   (src/components/ui/Button.tsx ("iconSquare: 'btn-icon-square")), the month-nav chevrons
+   (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07).
+   AMENDED Phase 88.9-52 (R5, owner 2026-11-17): the floating feedback button takes the same size
+   key, for a fixed 56px box with no side padding. */
+.btn-icon-square {
+  padding: 0;
+}
+
+/* DECISION Phase 88.9-36 G2a (owner pick G2a, 88.9-PICKS-B6.json item G2, 2026-11-07 3:07 AM Pacific):
+   the attached disclosure's square bottom corners, as an unlayered modifier after `.btn` chosen OVER
+   a rounded-b utility at the call site (dead: `.btn` declares border-radius unlayered) and OVER an
+   important-flagged utility (none in src; it defeats cn() last-wins). Phone only (below 40rem,
+   Tailwind's sm), where the toggle spans the card — see
+   src/app/gameDetail/page.js ("DECISION Phase 88.9-36 G2a"). Layering it, or moving it above
+   `.btn`, re-breaks it with no build error. src/app/cascadeOrder.test.ts pins it (test 8). */
+@media (width < 40rem) {
+  .btn-fuse-bottom {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
 }
 
 /* DECISION Phase 87.8 DEC-3 — AMENDED BY PHASE 88-31: THE `.modal-overlay` RULES ARE GONE, AND
@@ -3197,6 +3744,11 @@ body {
   /* 88.9-CR m5: the M4a danger press step lands within the tap under reduced motion too; 0s is
      less motion, not more. this file ("AMENDED Phase 88.9-01 (M4a; owner pick M4a") */
   .btn-danger:active:not(:disabled):not([aria-disabled='true']) {
+    transition-duration: 0s !important;
+  }
+
+  /* 88.9-52 R6: the Admin-blue press step is held at 0s the same way (a step, not a motion). */
+  .btn-admin:active:not(:disabled):not([aria-disabled='true']) {
     transition-duration: 0s !important;
   }
 }

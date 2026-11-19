@@ -14,6 +14,7 @@ import {
 import { GROUP_COLOUR_PRESETS, PRESET_IDS } from '@/lib/groupColourPresets';
 import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
+import { announceStatus } from '@/components/ui/announcer';
 // Relative (not `@/`) so this `.js` component resolves under vitest, matching
 // the sibling ManageMembers.js adopter.
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -417,10 +418,14 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         return;
       }
 
-      // Req 12 receipt (UI-SPEC §6.2). ORDER IS LOAD-BEARING, same reason as
-      // D-13's create-event redirect: fire the toast BEFORE onClose() unmounts
-      // this surface. Sonner outlives the unmount; the reverse order eats it.
-      toast.success('Settings saved');
+      /* DECISION Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 2;
+         owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): a successful settings save fires NO success
+         toast — the modal closes and onUpdate refreshes the group page — the outcome is still spoken
+         once by the root announcer (src/components/ui/announcer.ts) — chosen OVER the Req 12 receipt
+         (88-UI-SPEC §6.2) this line carried. The store outlives the unmount, so the old toast-first
+         ORDER is no longer load-bearing; the call keeps the toast's place anyway. Errors still toast
+         (rule 5). Restoring it is a decision, not a cleanup. */
+      announceStatus('Settings saved');
       if (onUpdate) onUpdate();
       if (onClose) onClose();
     } catch (error) {
@@ -661,11 +666,17 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
      Weakening the typed gate, re-stacking a second prompt behind it, or adding a
      refusal gate re-litigates 88.2-SPEC.md § Boundaries. That is a decision, not
      a cleanup. */
+  // DECISION Phase 88.9-56 (owner ruling R-C3a, 88.9-RULINGS.md, 2026-11-10, 'hear'): every confirm dialog's pending
+  // confirm carries the house spinner and a heard verb derived from its own confirmLabel (Q6(b)), chosen OVER the
+  // default-off that left this gate silent while its write ran (ConfirmDialog's busy is pending AND a suffix; plan
+  // 88.9-45 converted only the two gates whose swap words were ratified copy rows). The visible verb never changes;
+  // the verb is heard only; the spinner leaves with the dialog on success (the close is the completion feedback).
   const deleteGate = useConfirmAction({
     tier: 'typed',
     title: `Delete ${group.name}?`,
     body: deleteDialogBody,
     confirmLabel: 'Delete',
+    busySuffix: ', deleting',
     expectedPhrase: group.name,
     onConfirm: performDeleteGroup,
   });
@@ -1028,6 +1039,8 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                    `--color-focus-ring` is amber-400 and `--color-accent` is
                    amber-500 (1.29:1 apart): an accent selection ring would read
                    as "permanently focused" all over again, one shade off.
+                   AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): after F4b the dark ring and accent are both
+                   amber-400, 1.00:1 apart, so the rejection stands and is stronger.
                    ALSO REJECTED — a check glyph, which would be the strongest
                    separation available. Owner ruling R2-2 above rejected exactly
                    that, and this finding is not a reason to re-open it: the
@@ -1523,15 +1536,20 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                       >
                         Cancel
                       </Button>
+                      {/* DECISION Phase 88.9-45 (rule 1): Confirm Leave and the Delete Group opener keep their
+                          labels with the house spinner while busy (named "Confirm Leave, leaving" /
+                          "Delete Group, deleting"), chosen OVER the retired Leaving / Deleting swap words. */}
                       <Button
                         type="button"
                         variant="danger"
                         size="default"
                         aria-disabled={leaving || undefined}
+                        busy={leaving}
+                        busySuffix=", leaving"
                         aria-describedby={leaveErrorId}
                         onClick={handleLeaveGroup}
                       >
-                        {leaving ? 'Leaving…' : 'Confirm Leave'}
+                        Confirm Leave
                       </Button>
                     </div>
                   </div>
@@ -1543,7 +1561,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
         {/* Delete Group Section - Owner Only */}
         {userRole === 'owner' && (
-          <div className="mb-6 pt-6 border-t border-red-200">
+          <div className="mb-6 pt-6 border-t border-status-error">
             {/* DECISION Phase 88.6-20 (§4.4 + P6): `text-red-600` -> `text-content-status-error`,
                 the destructive INK token. It is not a token-hygiene tidy — it is a WCAG 1.4.3 fix.
 
@@ -1564,10 +1582,11 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 because they were a look call with no measured failure behind them; this one has
                 one, so the same determination reaches the opposite action.
 
-                NOT CHANGED HERE: `border-red-200` on the divider above. Same palette-step class,
-                but a 1px decorative divider is outside 1.4.11 and its treatment is a look call
-                with no floor to breach — routed to `.planning/deferred/phase-88.6.md` rather
-                than swept in silently on the back of this fix. */}
+                AMENDED Phase 88.9-34 (owner pick O14a, 88.9-PICKS-B8B.json, 2026-11-07): the
+                divider above now takes border-status-error (--color-status-error-border), chosen
+                OVER the raw red palette step it shipped with (a light-only value that did not
+                follow the theme); it is decorative, outside 1.4.11, and the owner ruled the look
+                as part of O20c (every passive error surface on the status-error family). */}
             <Heading level={3} size="heading" className="text-content-status-error mb-3">Danger Zone</Heading>
 
             {/* Phase 88.2 / SPEC-REQ-5: three short beats — blast radius,
@@ -1639,8 +1658,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
               className="w-full sm:w-auto"
               onClick={() => deleteGate.trigger()}
               aria-disabled={deleteGate.pending || undefined}
+              busy={deleteGate.pending}
+              busySuffix=", deleting"
             >
-              {deleteGate.pending ? 'Deleting...' : 'Delete Group'}
+              Delete Group
             </Button>
           </div>
         )}
@@ -1650,9 +1671,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <Modal.Action variant="secondary" onClick={onClose}>
             Cancel
           </Modal.Action>
-          {/* aria-disabled while saving, never native: see DECISION Phase 88.6.1-43 (W016 rows 10-11, 18-19 / D-35, D-39). */}
-          <Modal.Action variant="primary" onClick={handleSave} aria-disabled={saving || undefined}>
-            {saving ? 'Saving...' : 'Save Changes'}
+          {/* aria-disabled while saving, never native: see DECISION Phase 88.6.1-43 (W016 rows 10-11, 18-19 / D-35, D-39).
+              AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (name "<label>, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word and narrowed the button). The aria-disabled gate and this site's refusal latch are unchanged. */}
+          <Modal.Action variant="primary" onClick={handleSave} aria-disabled={saving || undefined} busy={saving}>
+            Save Changes
           </Modal.Action>
         </Modal.Footer>
       </Modal>

@@ -9,6 +9,8 @@ import {
 } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRetainedContent } from '../../components/ui/FetchErrorBanner';
 import { Heading } from '../../components/ui/Heading';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
+import { Icon } from '../../components/ui/Icon';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger } from '@/lib/logger';
@@ -22,6 +24,76 @@ const RESPONSES_LOADING_LABEL = 'Loading responses...';
 // The ellipsis is the single character U+2026.
 const REFRESHING_RESPONSES_COPY = 'Refreshing responses…';
 const RESPONSES_REFRESHED_COPY = 'Responses refreshed.';
+
+// One turn of the Refresh glyph when its animation-duration cannot be read (Tailwind's spin is 1 s).
+const REFRESH_TURN_FALLBACK_MS = 1000;
+
+// One turn of the glyph in ms, read from its computed animation-duration (seconds or ms; under
+// reduced motion the stylesheet makes it 1.5 s). Unreadable or zero (jsdom computes none) is 1 s.
+function readRefreshTurnMs(glyph) {
+  if (!glyph || typeof window === 'undefined') return REFRESH_TURN_FALLBACK_MS;
+  const first = (window.getComputedStyle(glyph).animationDuration || '').split(',')[0].trim();
+  const value = parseFloat(first);
+  if (!Number.isFinite(value) || value <= 0) return REFRESH_TURN_FALLBACK_MS;
+  return first.endsWith('ms') ? value : value * 1000;
+}
+
+/* DECISION Phase 88.9-57 (owner ruling 52-X44, 2026-11-13 3:44 PM Pacific): clockwise lucide
+   RefreshCw that spins on every press at once, at least one whole turn, keeps turning while the
+   refresh runs, stops on a whole turn; chosen OVER the shared delayed, held spinner (R-C3b: a fast
+   in-place refresh gave no sign) and OVER swapping to the house ring while busy (the RetrySlot pattern at
+   src/components/ui/FetchErrorBanner.tsx ("{shown ? <Spinner /> : <Icon name=");
+   owner: this refreshes one component, Try again the page). A deliberate R-C3b exception; reduced
+   motion keeps its 1.5 s turn even on a fast refresh where nothing is busy, so the spin exemption at
+   src/app/globals.css ("animation-duration: 1.5s !important;")
+   (kept for functional spinners) now also covers this press cue, chosen OVER stopping the spin
+   under reduced motion (the 52-X44 ruling entry's build note, the orchestrator's words and not the
+   owner's, records reduced motion unchanged; the owner was told on 2026-11-14 that it stays unless
+   he says otherwise and has not asked for a change; the spin is the only visible sign the press
+   landed; WCAG 2.3.3 is AAA). Changing this is a decision, not a cleanup.
+   How it holds: the class is on the glyph from the press (refreshing) until the stop timer fires
+   (spinning), so it never drops in between and the turn is never restarted. The start time is kept
+   for the whole spin; when the refresh lands the stop is set for the end of the turn in progress
+   (turn - elapsed % turn, so a refresh that lands at once still gets one whole turn and one that
+   lands on a turn boundary gets one more). A press during that last turn cancels the stop and keeps
+   the same start. The timer is cleared on unmount. */
+function RefreshSpinIcon({ refreshing }) {
+  const [spinning, setSpinning] = useState(false);
+  const glyphRef = useRef(null);
+  // Date.now() at the start of the spin in progress; null while the glyph is still.
+  const startedAtRef = useRef(null);
+  const stopTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (refreshing) {
+      if (stopTimerRef.current !== null) {
+        clearTimeout(stopTimerRef.current);
+        stopTimerRef.current = null;
+      }
+      if (startedAtRef.current === null) startedAtRef.current = Date.now();
+      setSpinning(true);
+      return;
+    }
+    // Not refreshing and never started: the mount pass, nothing to stop.
+    if (startedAtRef.current === null) return;
+    const turn = readRefreshTurnMs(glyphRef.current);
+    const elapsed = Math.max(0, Date.now() - startedAtRef.current);
+    stopTimerRef.current = setTimeout(() => {
+      stopTimerRef.current = null;
+      startedAtRef.current = null;
+      setSpinning(false);
+    }, turn - (elapsed % turn));
+  }, [refreshing]);
+
+  useEffect(
+    () => () => {
+      if (stopTimerRef.current !== null) clearTimeout(stopTimerRef.current);
+    },
+    []
+  );
+
+  return <Icon ref={glyphRef} name="RefreshCw" size={16} className={refreshing || spinning ? 'animate-spin' : undefined} />;
+}
 
 /**
  * ResponseDashboard - Shows who has/hasn't responded to an availability prompt
@@ -56,6 +128,10 @@ export default function ResponseDashboard({
   const [error, setError] = useState(null);
   // Review #237 (Phase 88.6.1-73): true while a PRESSED 'Refresh' is out; drives the word-free
   // busy cue (the icon's spin and the list's aria-busy). Only the press sets it.
+  // AMENDED Phase 88.9-56 (R-C3b reach): the word-free busy cue is now the delayed-spinner hook inside
+  // RefreshSpinIcon keying the icon class (the spin appears after 200 ms and keeps 500 ms); the list's
+  // aria-busy and the polite status stay keyed on refreshing, immediate.
+  // AMENDED Phase 88.9-57 (52-X44): the cue is RefreshSpinIcon's own press-spin, no longer the delayed hook.
   const [refreshing, setRefreshing] = useState(false);
   // CR-3 / A-42: the spoken line of a PRESSED Refresh (the marker at the region in the render).
   const [refreshStatus, setRefreshStatus] = useState('');
@@ -484,7 +560,8 @@ export default function ResponseDashboard({
      The banner's own default ("Something went wrong") is generic chrome on a surface whose
      whole subject is WHO HAS REPLIED, so the named string tells the reader which fetch failed
      without painting anything upstream. Changing this string is a §6.3 amendment, not an
-     executor's call — that half of the original rule is unchanged. */
+     executor's call — that half of the original rule is unchanged.
+     AMENDED Phase 88.9-48 (owner ruling BANNER-01 "short", 2026-11-07): this is that §6.3 amendment — the banner composes Couldn't load the respondents from thing, chosen OVER the ratified "We couldn't load the respondents." (its leading We and the one trailing period among the 29 full mounts, COPY-CENSUS K1). The named object stays; only the shape converged. */
   /* DECISION Phase 88.6.1-73 (AC-29 / RF1, owner ruling 2026-10-05) [D-47, D-51, Req 9]:
      CHOSEN: a failed refresh keeps the roster and plan 88.6.1-70's `RefreshFailedNotice`
      qualifies it (88.6.1-70 contract C1-C10); the full banner and the skeleton are FIRST-LOAD-
@@ -514,7 +591,7 @@ export default function ResponseDashboard({
           <div className="bg-surface-card rounded-card border border-line p-4">
             <FetchErrorBanner
               state={errorState}
-              title="We couldn't load the respondents."
+              thing="the respondents"
               reportContext="Availability poll — respondents fetch"
               focusTarget={responsesHeadingRef}
             />
@@ -648,7 +725,7 @@ export default function ResponseDashboard({
         onClick={handleRefresh}
         className="mt-1 -mb-3 min-h-11 text-sm text-content-muted hover:text-content-secondary active:opacity-75 inline-flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
       >
-        <RefreshIcon className={refreshing ? 'w-4 h-4 animate-spin' : 'w-4 h-4'} />
+        <RefreshSpinIcon refreshing={refreshing} />
         Refresh
       </button>
       {/* DECISION Phase 88.6.1 code review CR-3 / A-42 (owner ratified 2026-10-19, WCAG 4.1.3):
@@ -690,7 +767,8 @@ export default function ResponseDashboard({
    test pins (`e2e/response-dashboard-remind.spec.ts`, test 3). Changing the margin, the padding
    or the gap is a decision, not a cleanup.
    The in-flight wash is the aria-disabled opacity variant at the same 0.5 as before (house
-   raw-button precedent at src/app/components/KebabMenu.js ("the items behind it were not")). */
+   raw-button precedent at src/app/components/KebabMenu.js ("the items behind it were not")).
+   AMENDED Phase 88.9-23 (O-17): the in-flight look is muted ink, not an opacity wash, with the kebab items. */
 
 /** The Remind button's id, derived from its row's status id in ONE place (Req 5 guard). */
 function remindButtonIdFor(statusId) {
@@ -728,9 +806,12 @@ function RemindButton({ userId, lastRemindedAt, isReminding, statusId, onRemind 
       id={remindButtonIdFor(statusId)}
       onClick={() => onRemind(userId)}
       aria-disabled={isReminding || undefined}
-      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:text-content-muted shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
     >
-      {isReminding ? 'Sending...' : 'Remind'}
+      {/* DECISION Phase 88.9-45 (rule 1, raw button): the Spinner primitive plus an sr-only ", sending" span are composed here by hand, chosen OVER converting this link-styled row control to Button (the unlayered .btn rules would repaint it) and OVER the Sending swap word. AMENDED Phase 88.9-56 (R-C3b reach): the spinner is the delayed, held element beside the label, outside the busy guard; a sent reminder replaces this button with its Reminded line (the hold ends with the host), a failed one keeps the button, so the spinner finishes its hold. */}
+      Remind
+      <DelayedSpinner busy={isReminding} className="ml-2" />
+      {isReminding && <span className="sr-only">, sending</span>}
     </button>
   );
 }
@@ -758,11 +839,5 @@ function ClockIcon({ className }) {
 // — `FetchErrorBanner` composes `Banner tone="warning"`, whose tone Icon supplies the leading
 // glyph. Keeping a dead local SVG beside a primitive that already draws one is the duplication
 // the adoption exists to remove.
-
-function RefreshIcon({ className }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
-  );
-}
+// The hand-drawn refresh glyph was deleted by plan 88.9-57 (52-X44): its arrows ran counter-clockwise
+// against a clockwise spin; RefreshSpinIcon above draws the house Icon instead.

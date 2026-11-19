@@ -251,13 +251,14 @@ const PAIRED_ELSEWHERE: Record<string, string> = {
   // would red on a file that no longer exists. That coupling is deliberate and is exactly
   // what test 2 is for — a deletion cannot leave a widening exemption behind.
   'app/components/ManageMembers.js':
-    'role pill: all four roleStyles entries name a colour, and the `||` guarantees a fallback',
-  'app/friends/page.js':
-    'armed-remove ternary: both branches name a colour (status-error / transparent)',
+    'role pill: all three roleStyles entries name a colour, and the `||` guarantees a fallback',
+  // REMOVED BY 88.9-52 (W38): app/friends/page.js was exempt here for its armed-remove ternary
+  // (status-error / transparent). The friend Remove has no border in any state now, so the file
+  // holds no bare border and test 2 (allow-list staleness) requires the exemption to go with it.
   'app/gameDetail/page.js':
     'two-tap remove ternary: both branches name a colour (status-error / line)',
   'app/userProfile/page.js':
-    'theme buttons and the day-of-week toggles: every branch names a colour (amber-500 / line, btn-primary / line)',
+    'theme buttons and the day-of-week toggles: every branch names a colour (line-accent / line, btn-primary / line)',
 
   // ── uncoloured WIDTH-utility sites, added by 88-31 with the DEF-88-27-02 widening ──
   // All eight were read one at a time before being listed. Two shapes: a ternary written
@@ -282,9 +283,10 @@ const PAIRED_ELSEWHERE: Record<string, string> = {
   // to go in the same commit or test 2 (allow-list staleness) would red on a file that no longer
   // exists. Removed because the site is gone, not tidied. Seven of this block's eight
   // width-utility entries remain.
-  'app/rsvp/[token]/page.js':
-    'success card `border-t-4`: the colour comes from `STATUS_CONFIG[...] || STATUS_CONFIG.yes`, ' +
-    'all three entries name one and the `||` guarantees a member',
+  // REMOVED by plan 88.9-69 (X59b, owner pick Ta, pick page 10b, 2026-11-14): the RSVP success
+  // card's four-pixel top line, whose colour came from the status config. The owner picked the
+  // card with no line, so the site is gone and its exemption leaves in the same change, or
+  // test 2 (allow-list staleness) would red. Removed because the site is gone, not tidied.
 };
 
 describe('D-35 border explicitness (Req 16)', () => {

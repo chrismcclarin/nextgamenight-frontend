@@ -19,20 +19,20 @@ import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { setPaintGestureActive } from './heatmap/paintGestureActiveStore';
 import { Modal } from './Modal';
 import { toast } from 'sonner';
+import { announceStatus } from '@/components/ui/announcer';
 import { Input, Textarea } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { Button } from '../../components/ui/Button';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { logger, errCtx } from '@/lib/logger';
 import { isUuid } from '../../lib/isUuid';
+import { formatScore } from '../../lib/formatScore';
 
 const REQUIRED_SR_LABEL = '(required)';
 // The two required section titles' visible words. One source for the visible text AND the
 // heading's accessible name (WCAG 2.5.3 label-in-name) — quick-261020-tz3, VO-P2-4.
 const DATE_TIME_SECTION_TITLE = 'Date & Time';
 const PARTICIPANTS_SECTION_TITLE = 'Participants';
-const CREATING_EVENT_LABEL = 'Creating...';
-const UPDATING_EVENT_LABEL = 'Updating...';
 // Copy row E4 (ratified, D-30), reused for the Edit dialog's loading line — owner ruling 2026-10-05; see DECISION Phase 88.6.1-68 (edit reads the event fresh).
 const LOADING_GAME_NIGHT_LABEL = 'Loading game night...';
 /* DECISION Phase 88.6.1-81 (one payload in flight): a module-level map from a write's key (the
@@ -133,7 +133,7 @@ function registerEventWrite(eventId) {
     if (writes.size === 0) eventWritesInFlight.delete(eventId);
   };
 }
-function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId: rawPromptId = null }) {
+function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId: rawPromptId = null }) {
   // DECISION quick-261026-pi6 (coordinator ruling 1, 2026-10-26): a promptId that is not a UUID is
   // treated as absent (no poll-heatmap request; the group heatmap path runs), chosen OVER passing
   // it through to the backend's 400 or 404 and OVER a visible error, because a malformed email link
@@ -413,7 +413,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           return {
             user_id: '',
             username: ep.username || '',
-            score: ep.score,
+            // 88.9-65 X50: the edit box shows 57, not 57.00; saving 57 stores the same value.
+            score: formatScore(ep.score),
             faction: ep.faction || '',
             is_new_player: ep.is_new_player || false,
             placement: ep.placement,
@@ -429,7 +430,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           return {
             user_id: ep.user_id,
             username: ep.username || matchingGroupMember?.username || '',
-            score: ep.score,
+            // 88.9-65 X50: the edit box shows 57, not 57.00; saving 57 stores the same value.
+            score: formatScore(ep.score),
             faction: ep.faction || '',
             is_new_player: ep.is_new_player || false,
             placement: ep.placement,
@@ -1122,11 +1124,29 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
            `ballotError` notice could never show: it is set and then cleared by the reset below in
            the same run, and the dialog closes. REJECTED: keeping the dialog open on a ballot
            failure (the event itself DID update, so the close and the host's refresh stay). */
+        /* DECISION Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rules 2
+           and 4; owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): a create or update that succeeds in its
+           own dialog session on a host that shows the event fires NO success toast — the dialog closes
+           and the host shows it — the outcome is still spoken once by the root announcer
+           (src/components/ui/announcer.ts) — chosen OVER the Req 12 receipt (88-UI-SPEC §6.2) this line
+           carried (the DECISION Phase 88-16 receipt-position reasoning above now governs only the toast
+           arm and the announce, which keep the same place: before the close). The toast STAYS (rule 4: an
+           outcome the person cannot see happen) where resultInView is false (groupPlanning renders no
+           events) and for a write that settles after its dialog session ended (the person closed the
+           dialog first; DECISION Phase 88.6.1-81), chosen OVER the register's literal DROP row and OVER
+           inferring it from a missing onEventCreated (that absence is the 88.6.1-68 close-owner
+           contract); on those two arms the toast speaks the outcome and the announcer is NOT called, so
+           each outcome is spoken exactly once — in view by the hidden announcer, out of view by the
+           visible toast; an Undo toast is the only exception (v2.1 todo
+           2026-11-07-undo-toast-review-for-save-and-close-actions). Errors still toast (rule 5).
+           Restoring it is a decision, not a cleanup. */
         if (!joinedWrite) {
           if (ballotSaveFailed) {
             toast.error('Event updated but ballot options could not be saved.');
-          } else {
+          } else if (!resultInView || !sessionIsCurrent()) {
             toast.success(editingEvent ? 'Event updated' : 'Event created');
+          } else {
+            announceStatus(editingEvent ? 'Event updated' : 'Event created');
           }
         }
         if (sessionIsCurrent()) {
@@ -1348,6 +1368,31 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         {!bodyGateOpen && (
           <p className="text-content-primary">{editingEvent ? LOADING_GAME_NIGHT_LABEL : 'Loading group members...'}</p>
         )}
+        {/* DECISION Phase 88.9-52 (G5, round 4, 2026-11-18): this region is POSITIONED (relative), and
+            so is the participant list box below. A screen-reader-only box is position absolute, and
+            an absolute box is laid out against its nearest positioned ancestor. Modal.Body scrolls
+            but is not positioned, so the form's sr-only boxes (the removal announcer under the list,
+            the scheduler's, a typed-in row's empty hint) were laid out against the dialog SHELL:
+            they did not scroll with the form, they sat where the unscrolled form put them, far
+            below the shell's foot, and that made the shell scrollable although it clips. Anything
+            that scrolls an ancestor to bring a field to the top then slid the whole shell up by
+            its header: the header gone, and a blank band of the header's height at the foot with
+            the Comments box under it (the after-build capture r3-l, whose own scrollIntoView did
+            it; a browser's find-in-page does the same). Not caused by R15a or R15b: the boxes and
+            the unpositioned Body are older than round 3.
+            Chosen OVER positioning Modal.Body or clipping the shell without scrolling (the right
+            fix for every dialog, in a file this package does not own: reported), and OVER giving
+            each sr-only box its own positioned wrapper (one per box, and the next box added would
+            escape again). The list box needs its own because it scrolls its own rows.
+            Pinned by src/app/components/createEvent.participants.test.tsx ("G5: every sr-only or absolute box under the dialog Body is held by a positioned ancestor inside it").
+            Removing either relative is a decision, not a cleanup.
+            AMENDED Phase 88.9-52 (R4 L3, round 4, 2026-11-18): the fleet fix landed, so this
+            region's own relative is GONE and the holder of the form's sr-only boxes is Modal.Body
+            itself, src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18)").
+            Chosen OVER keeping both (a second positioned box that does nothing, which the next
+            reader would have to work out is dead). The participant list box below KEEPS its
+            relative: it scrolls its own rows, so the boxes inside it need a holder inside it,
+            and removing that one is still a decision, not a cleanup. */}
         <div aria-busy={!bodyGateOpen || undefined}>
         {!bodyGateOpen ? null : (
           <>
@@ -1773,10 +1818,22 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 {PARTICIPANTS_SECTION_TITLE} <span aria-hidden="true" className="text-content-accent">*</span>
               </span>
             </span>
+            {/* DECISION Phase 88.9-52 (R15a, owner pick B, 2026-11-17): below md the list box is capped at
+                24rem (384px), which shows TWO whole participant rows (two 183px rows, the 8px between
+                them and the box's own 8px above fill its 382px inside exactly; the picked mock measured
+                2.13 rows of 179px), chosen OVER the 15rem cap (1.33 rows: one person and a sliver) and
+                OVER no cap (mock A: Add Participant and Winner slide off the screen). From md the 15rem
+                cap is KEPT: a row is one 83px line there, so it already shows two and a half. A custom
+                row is 2px taller on a phone (its name is a 44px Input), so two custom rows lose the last
+                4px of the second row's bottom padding, never a control. Lowering the phone cap is a
+                decision, not a cleanup.
+                AMENDED Phase 88.9-52 (R4 D6, owner page pick G6 = C, 2026-11-18): the one-line rows
+                start at sm (640px) now, so the 15rem cap starts there with them (at 700 the mock
+                measured 83px rows in a 240px box, about 2.9 rows); below sm the 24rem cap is kept. */}
             <div
               role="group"
               aria-labelledby="participants-section-label"
-              className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
+              className="relative space-y-2 max-h-96 sm:max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
             >
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
@@ -1881,7 +1938,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <Button variant="secondary" onClick={modaltoggle}>
               Cancel
             </Button>
-            {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css`, the `.btn` floor inside `@media (width < 48rem)`, with its reasoning in the comment directly above it), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
+            {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css`, the `.btn` floor inside `@media (width < 48rem)`, with its reasoning in the comment directly above it), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. ——— AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18), everything above KEPT AS HISTORY: the `.btn-compact` opt-out this marker names is RETIRED (src/app/globals.css ("the stepper opt-out is RETIRED")). Its only two wearers, the BrowseMoreModal player-count steppers, are 44x44 squares now, chosen OVER keeping them at 32x32 (REJECTED: two small targets 4px apart; this marker family only ever weighed a 32x44 lozenge, never a 44 square). NOTHING about THIS control changes: the phone floor on `.btn` stands, the all-viewport floor on the `.btn` class stays rejected as recorded (its "would distort compact sites" reason no longer has a subject, and re-asking it is a decision nobody has made), and this control keeps the height it had. */}
             {/* DECISION Phase 88.6.1-26 (D-35, rule of POSITION): this submit is the PRESSED control,
                 so its in-flight gate is `aria-disabled` plus a first-line REF latch in `onSubmit`
                 (`eventSubmitInFlightRef`, read right after `e.preventDefault()`, released in the
@@ -1899,11 +1956,17 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 look is the shipped primary pair; no new token. VISIBLE DELTA, disclosed: while in
                 flight the text is shorter, so the button narrows slightly inside this right-aligned
                 row; its 44px floor is unchanged. Removing the latch, the attribute or the label
-                swap is a decision, not a cleanup. */}
-            <Button type="submit" data-testid="create-event-submit" aria-disabled={eventSubmitting || undefined}>
-              {eventSubmitting
-                ? (editingEvent ? UPDATING_EVENT_LABEL : CREATING_EVENT_LABEL)
-                : (editingEvent ? 'Update Event' : 'Create Event')}
+                swap is a decision, not a cleanup.
+                AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1):
+                the label now STAYS (Create Event / Update Event) and busy adds the house Spinner and the
+                sr-only ", creating" / ", updating" — copy row C7's ratified words, now the suffix (owner
+                ruling Q6(b), 2026-11-08: each busy button keeps its own verb) — chosen OVER the visible
+                word swap (the C7 literals are retired at src/app/copyTable886_1.test.ts ("id: 'C7c'")).
+                Both reasons above for the swap are answered: the spinner shows the press registered and
+                the name says so. The VISIBLE DELTA above is reversed — the button now WIDENS by the
+                spinner while in flight. Restoring the swap is a decision, not a cleanup. */}
+            <Button type="submit" data-testid="create-event-submit" aria-disabled={eventSubmitting || undefined} busy={eventSubmitting} busySuffix={editingEvent ? ', updating' : ', creating'}>
+              {editingEvent ? 'Update Event' : 'Create Event'}
             </Button>
           </div>
         </form>

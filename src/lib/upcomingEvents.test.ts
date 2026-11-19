@@ -26,6 +26,7 @@ import {
   isStillRunning,
   selectNextUpcoming,
   selectUpcomingWithin7Days,
+  statusTagLabel,
 } from './upcomingEvents';
 
 /** A fixed "now": 2026-08-22T12:00:00Z. Its +7d boundary is 2026-08-29T12:00:00Z. */
@@ -177,6 +178,22 @@ describe('hasLiveStatus — the status-only predicate (OWNER RULING 2a)', () => 
     // hasLiveStatus is the status half only. The NaN exclusion lives in isLiveUpcoming;
     // keeping the split explicit is what lets 88.5-08 ask the status question on its own.
     expect(hasLiveStatus(ev('bad-date', 'not a date', 'scheduled'))).toBe(true);
+  });
+});
+
+describe('statusTagLabel — the one tag classifier (88.9-39 F2c)', () => {
+  // X26 (owner 2026-11-12: yes, remove the completed tag). A completed night that is still
+  // future-dated is a state the backend no longer writes; tagging it Completed contradicts its
+  // own date. Cancelled is the only label left, and it stays dormant for v2.1.
+  it('X26 (88.9): statusTagLabel names a cancelled night only — completed, scheduled, in_progress, missing and unknown statuses read null', () => {
+    const at = '2026-08-24T19:00:00.000Z';
+    expect(statusTagLabel(ev('a', at, 'cancelled'))).toBe('Cancelled');
+    expect(statusTagLabel(ev('a', at, 'completed')), 'completed carries no tag').toBeNull();
+    expect(statusTagLabel(ev('a', at, 'scheduled'))).toBeNull();
+    expect(statusTagLabel(ev('a', at, 'in_progress'))).toBeNull();
+    expect(statusTagLabel(ev('a', at))).toBeNull();
+    expect(statusTagLabel(ev('a', at, null))).toBeNull();
+    expect(statusTagLabel(ev('a', at, 'postponed'))).toBeNull();
   });
 });
 

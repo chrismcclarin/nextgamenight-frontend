@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import {
     FetchErrorBanner,
@@ -18,6 +19,7 @@ import { ACCEPT_FRIEND_FAILED_COPY, DECLINE_FRIEND_FAILED_COPY } from '../compon
 // The friend batch's terminal-409 rule and the invite panel's two shipped lines (one source).
 import {
     isAlreadyInvitedOrMember,
+    isPermanentInviteRefusal,
     ALL_ALREADY_INVITED_MESSAGE,
     invitedWithAlreadyMessage,
     allFailedBatchLine,
@@ -31,15 +33,21 @@ import { queryCacheOnError } from '../../lib/queryClient';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
+import { ReservedLabel } from '../../components/ui/ReservedLabel';
 import { Heading } from '../../components/ui/Heading';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '../../lib/logger';
 
 // Copy row FR1 (owner ruling 2026-10-05, D-47; D-32 R8 straight apostrophe): the Requests tab's
-// full-banner title when the provider's load failed and nothing is retained.
-const FRIEND_REQUESTS_LOAD_FAILED_TITLE = "Couldn't load your friend requests";
+// full-banner title when the provider's load failed and nothing is retained. AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): the constant holds the thing; the composed title is unchanged, chosen OVER typing the whole title.
+const FRIEND_REQUESTS_LOAD_FAILED_THING = 'your friend requests';
+// DECISION Phase 88.9-52 (R3, owner 2026-11-16: we have to remember to update the hidden headings if we modify the title): the page's name is ONE constant, read by the screen-reader-only heading on the banner-only screens (the frame's srHeading; marker at src/components/ui/CentredPageFrame.tsx ("DECISION Phase 88.9-52 (A-04 / A-38)")) and by the three visible level-1 titles, chosen OVER the same word typed at each site, which drifts silently. Renaming the page is one edit here.
+const FRIENDS_PAGE_TITLE = 'Friends';
 
 // Copy row F7 (owner ruling 2026-10-05, D-47): the found result, heard and not seen; `name` is
 // what the result row shows.
@@ -77,7 +85,7 @@ function neighbourControl(row, isRowInFlight) {
 }
 
 function FriendsPage() {
-    const { user, isLoading: authLoading } = useUser();
+    const { user, error: authError, isLoading: authLoading } = useUser();
 
     // D-09 (Pitfall 5 / D-07 window rule): the friends page GATES on identity.
     // Incoming-vs-outgoing request classification, the admin-group derive, and
@@ -172,8 +180,10 @@ function FriendsPage() {
 
        Invite to Group is such a control. Its VALIDITY half (no group, no friend selected, the
        group's members still loading) moves to `aria-disabled` as well, because the batch's own
-       settle empties the selection, and a native gate would then blur the very button the user
-       pressed. Disclosed visible delta: at rest with nothing selected (and while a group's
+       settle empties the ids whose outcome is final (AMENDED Phase 88.9-56, R-C1 twin), and a
+       native gate would then blur the very button the user pressed. AMENDED Phase 88.9-56 (R-C3b reach):
+       its in-flight glyph is Button's busy now (the delayed, held house spinner, heard as Invite to Group,
+       sending), replacing the hand-rolled spinning div and its sr-only words. Disclosed visible delta: at rest with nothing selected (and while a group's
        members load) it shows the gated colour pair instead of the 50% wash; pressing it then
        sends nothing.
 
@@ -417,6 +427,37 @@ function FriendsPage() {
         isError: Boolean(sentError),
         error: sentError,
         refetch: retrySent,
+    });
+    // DECISION Phase 88.9-40 (SESSION-01): a signed-out visitor goes straight to sign-in and back here,
+    // chosen OVER the prompt as the first screen (one more tap, and its bare login link returned the
+    // person to the home page, not here); the prompt remains for a return with the latch set, its Log
+    // In link now carrying returnTo. A 401 on identity or the friends / sent lists redirects once too
+    // (SPEC A8). A useUser() error shows Reload, not the log-in prompt. See
+    // src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling").
+    // AMENDED Phase 88.9-66 (X70b): the declined return is the shared banner with Sign in (returnTo kept).
+    // AMENDED Phase 88.9-52 (A-31): the session is proven only once identity, the friends list and the
+    // sent list have each SETTLED (answered or failed) with no 401 among them and at least one answered,
+    // chosen OVER the friends list's success alone (it cleared the latch while the sent or identity read
+    // was still out, so that read's 401 redirected again on every return) and OVER all three SUCCEEDING
+    // (a sent list that failed with a 500 would hold the latch set, and the next real expiry would show
+    // a banner where it should go to sign-in). Each read fetches its own token, so one can 401 alone.
+    const signInUnauthorized = [selfIdentityErrorState, friendsErrorState, sentErrorState].some(
+        (s) => s.showError && s.code === 'unauthorized'
+    );
+    const identitySettled = Boolean(selfUuid) || selfIdentityErrorState.showError;
+    const friendsSettled = friendsLoaded || Boolean(friendsLoadError);
+    const sentSettled = sentLoaded || Boolean(sentError);
+    const signIn = useSignInRedirect({
+        authLoading,
+        signedOut: !user,
+        authError,
+        unauthorized: signInUnauthorized,
+        sessionProven:
+            identitySettled &&
+            friendsSettled &&
+            sentSettled &&
+            !signInUnauthorized &&
+            (Boolean(selfUuid) || friendsLoaded || sentLoaded),
     });
 
     // The Requests tab over the shared provider (88.6.1-70 contract C5): the refetch is plan
@@ -776,30 +817,45 @@ function FriendsPage() {
         let failCount = 0;
         let alreadyCount = 0;
         let firstFailure = null;
+        // R-C1 (88.9-56): the ids whose outcome is FINAL, removed from the selection after the batch.
+        const finalIds = new Set();
 
         try {
             for (const friendUserId of selectedFriends) {
                 // Skip anyone already in the group; otherwise invite by user_id.
                 // The friend's email is resolved server-side (83-06 PII default-deny).
-                if (groupMembers.includes(friendUserId)) continue;
+                // A friend already in at the press leaves the selection with no request (final).
+                if (groupMembers.includes(friendUserId)) {
+                    finalIds.add(friendUserId);
+                    continue;
+                }
                 try {
                     await invitesAPI.sendFriendInvite(selectedGroupId, friendUserId);
                     successCount++;
+                    finalIds.add(friendUserId);
                 } catch (err) {
                     // 88.6.1-72 (owner ruling 2026-10-05): a terminal 409 is already invited,
                     // never a failure; the panel's rule, from the shared module.
                     if (isAlreadyInvitedOrMember(err)) {
                         alreadyCount++;
+                        finalIds.add(friendUserId);
                     } else {
                         failCount++;
                         if (!firstFailure) firstFailure = err;
                         logger.info('Error sending friend invite:', errCtx(err));
+                        // A permanent refusal is final; a transient failure stays ticked for the retry.
+                        if (isPermanentInviteRefusal(err)) finalIds.add(friendUserId);
                     }
                 }
             }
 
             setBulkInviteResult({ successCount, failCount, alreadyCount, groupName, firstFailure });
-            setSelectedFriends(new Set());
+            // DECISION Phase 88.9-56 (R-C1): final-outcome clear over clearing the whole selection and over a sent-only clear — the twin of the invite panel's B08 amendment.
+            setSelectedFriends((prev) => {
+                const next = new Set(prev);
+                for (const id of finalIds) next.delete(id);
+                return next;
+            });
         } finally {
             bulkInviteInFlightRef.current = false;
             setBulkInviteLoading(false);
@@ -856,39 +912,34 @@ function FriendsPage() {
         return { type: 'send', label: 'Send Request' };
     };
 
-    // Loading / not logged in
-    if (authLoading) {
+    // Loading / not logged in. 88.9-40: the same hold is the redirect frame (signIn.holding), so no
+    // prompt or banner paints for a frame before the browser navigates.
+    if (authLoading || signIn.holding) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div role="status" aria-label="Signing you in" className="flex items-center gap-2 text-content-secondary">
+                {/* DECISION Phase 88.9-66 (X35, once-over R13): busy lines speak from always-mounted sr-only settleOnMount regions, the visible rows at 0 ms (the two-node shape of DECISION Phase 88.6-37 (W38), as 65's loader), chosen OVER labelled rows mounted with their words (not announced) and OVER the visible row as the region (its words would wait the dwell); words are the former aria-labels, OVER the visible ones (VoiceOver reads three dots aloud). */}
+                <StatusRegion settleOnMount className="sr-only" message="Signing you in" />
+                <div className="flex items-center gap-2 text-content-secondary">
                     <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
-                    <span className="sr-only">Signing you in...</span>
                 </div>
             </div>
         );
     }
 
+    // 88.9-40 (SESSION-01): useUser() itself failed (offline, or /api/auth/me answered 5xx) — Reload,
+    // never the prompt and never a redirect. The title is this page's banner title; the body is
+    // userProfile's 88-19 sentence (no new copy).
+    if (signIn.sessionError) {
+        return <ErrorFallback title="Couldn't load your friends" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />;
+    }
+
+    // Reached only on the DECLINED arm (back from sign-in with the latch set, or storage failed).
+    // DECISION Phase 88.9-66 (X70b, owner 2026-11-14: yes): the shared centred banner, chosen OVER the older prompt 88.9-40 kept with no recorded reason; 88.6-19's rule holds through the banner's own Sign in anchor.
     if (!user) {
         return (
-            <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div className="text-center">
-                    <Heading level={1} size="display" className="text-content-primary mb-4">Friends</Heading>
-                    <p className="text-content-secondary mb-6">Please log in to view your friends.</p>
-                    {/* DECISION Phase 88.6-19 (UI-SPEC §3.2 asChild row): the element stays an
-                        `<a>` and is NEVER rewritten to `<Link>`. Auth0's login handler needs a
-                        hard navigation; a client-router push to it is a behaviour change, not a
-                        cleanup, and the repo carries zero `<Link href="/api/auth…">`. Any
-                        surviving utility goes on `<Button className>` and not on the child,
-                        because Radix `Slot` concatenates the child's className WITHOUT
-                        tailwind-merge, so a utility left there cannot win a conflict. Here
-                        nothing survives: `px-6 py-2` and `inline-block` are all dead under
-                        unlayered `.btn` (its padding and `display: inline-flex`, both in the block marked at
-                        src/app/globals.css ("UNLAYERED with every other declaration it has today"); re-pointed 88.6.1-40). */}
-                    <Button asChild variant="primary" size="default" className="focus-visible:ring-offset-surface-page">
-                        <a href="/api/auth/login">Log In</a>
-                    </Button>
-                </div>
-            </div>
+            <CentredPageFrame srHeading={FRIENDS_PAGE_TITLE}>
+                <FetchErrorBanner state={signIn.signedOutErrorState} thing="your friends" reportContext="Friends page — signed out" />
+            </CentredPageFrame>
         );
     }
 
@@ -901,10 +952,10 @@ function FriendsPage() {
         return (
             <div className="min-h-screen bg-surface-page">
                 <div className="max-w-3xl mx-auto px-4 py-8">
-                    <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
+                    <Heading level={1} size="display" className="text-content-primary mb-6">{FRIENDS_PAGE_TITLE}</Heading>
                     <FetchErrorBanner
                         state={selfIdentityErrorState}
-                        title="Couldn't load your friends"
+                        thing="your friends"
                         reportContext="friends page — self-identity resolution"
                     />
                 </div>
@@ -934,10 +985,10 @@ function FriendsPage() {
         return (
             <div className="min-h-screen bg-surface-page">
                 <div className="max-w-3xl mx-auto px-4 py-8">
-                    <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
+                    <Heading level={1} size="display" className="text-content-primary mb-6">{FRIENDS_PAGE_TITLE}</Heading>
                     <FetchErrorBanner
                         state={friendsErrorState.showError ? friendsErrorState : sentErrorState}
-                        title="Couldn't load your friends"
+                        thing="your friends"
                         reportContext="friends page — page data failed while identity was still resolving"
                     />
                 </div>
@@ -948,9 +999,10 @@ function FriendsPage() {
     if (!selfUuid) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary">
+                {/* X35: see the DECISION Phase 88.9-66 marker on the sign-in hold above. */}
+                <StatusRegion settleOnMount className="sr-only" message="Loading your friends" />
+                <div className="flex items-center gap-2 text-content-secondary">
                     <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
-                    <span className="sr-only">Loading your friends...</span>
                 </div>
             </div>
         );
@@ -984,7 +1036,19 @@ function FriendsPage() {
     }
 
     // The F7 region's subject: the name the result row shows, while a result is shown.
-    const searchFoundName = searchResult && !searching ? searchResult.username || searchResult.email || '' : '';
+    // DECISION Phase 88.9-52 (Q66): the found row, the request rows and the sent rows read the other
+    // person's username ONLY, chosen OVER the email fallback and second line they carried: the backend
+    // never sends that field (backend:Sonnet/routes/friendships.js, the search's literal id-and-username
+    // projection and the PUBLIC_USER_ATTRS includes on Requester and Addressee; username is NOT NULL),
+    // so those branches drew nothing, and a branch that would print another person's address must not
+    // wait for a payload to widen. Re-adding one is a privacy decision, not a cleanup.
+    const searchFoundName = searchResult && !searching ? searchResult.username || '' : '';
+
+    // X35 (88.9-66): each tab's loading line is on screen exactly while this is true; the visible
+    // row and the tab's polite region both read it, so they cannot disagree.
+    const friendsListLoading = !(!friendsRetained && friendsErrorState.showError) && !friendsLoaded;
+    const requestsListLoading = friendshipCtxLoading;
+    const sentListLoading = !(!sentRetained && sentErrorState.showError) && !sentLoaded;
 
     const tabs = [
         { key: 'friends', label: 'Friends', count: friends.length },
@@ -995,7 +1059,7 @@ function FriendsPage() {
     return (
         <div className="min-h-screen bg-surface-page">
             <div className="max-w-3xl mx-auto px-4 py-8">
-                <Heading level={1} size="display" className="text-content-primary mb-6">Friends</Heading>
+                <Heading level={1} size="display" className="text-content-primary mb-6">{FRIENDS_PAGE_TITLE}</Heading>
 
                 {/* The remove-friend gate's live region. Mounted HERE — once, outside the
                     tab conditional and outside the row map — because a live region that
@@ -1009,7 +1073,17 @@ function FriendsPage() {
                 {/* Search Section */}
                 <div className="card p-3 md:p-6 mb-6">
                     <Heading ref={addFriendHeadingRef} level={2} size="heading" className="text-content-primary mb-3">Add Friend</Heading>
-                    <form onSubmit={handleSearch} className="flex gap-3">
+                    {/* DECISION Phase 88.9-52 (R4 B1b, the round-4 re-shoot: at 375 with text at 200% the
+                        field was squeezed to about 80px beside the Search button and showed three
+                        letters of what was typed): the row may wrap, and the field asks for 8rem
+                        before it shares a line (grow basis-32 in place of flex-1), so when 8rem,
+                        the gap and the button no longer fit, the button drops under a full-width
+                        field. CHOSEN OVER stacking from a screen width (a breakpoint knows the
+                        screen, not the text size, and the squeeze comes from the text size) and
+                        OVER a larger basis (10rem and up would drop the button at 320 with
+                        ordinary text while its spinner shows: 160 + 12 + about 104 against 262).
+                        At ordinary text nothing moves: 128 + 12 + about 104 fits 262. */}
+                    <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
                         {/* 88-33 Task 8 (fork 5): id/name + explicit name — the section
                             heading ("Add Friend") names the card, not the field. */}
                         <Input
@@ -1020,23 +1094,36 @@ function FriendsPage() {
                             value={searchEmail}
                             onChange={(e) => setSearchEmail(e.target.value)}
                             placeholder="Enter friend's email address"
-                            className="flex-1"
+                            className="grow basis-32"
                             required
                         />
+                        {/* DECISION Phase 88.9-46 (rule 1 B21-B25): every in-flight friends button keeps its
+                            resting label with the house spinner and a heard suffix that re-uses its shipped
+                            in-flight word (Search, searching / Send Request, sending / Remove <name>, removing /
+                            Accept, accepting / Decline, declining), chosen OVER the shipped label swaps (five
+                            sites, 88.6.1 era — a swap replaced the whole accessible name and changed the
+                            control's width under the finger) and OVER minting new suffix words (Q6(b)). Owner
+                            pick O16a extended by the Q3 ruling (88.9-RULINGS.md, 2026-11-08); B25's word
+                            confirmed at R-W4. Each site's own latch stays the refusal. The search status line
+                            below the form is a status caption, not a button, and keeps its text. */}
                         <Button
                             type="submit"
                             variant="primary"
                             size="default"
                             disabled={!searching && !searchEmail.trim()}
                             aria-disabled={searching ? 'true' : undefined}
+                            busy={searching}
+                            busySuffix=", searching"
                         >
-                            {searching ? 'Searching...' : 'Search'}
+                            Search
                         </Button>
                     </form>
 
                     {/* Search Result */}
+                    <StatusRegion settleOnMount className="sr-only" message={searching ? 'Searching for that email address' : ''} />
+                    {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. AMENDED Phase 88.9-66 (X35): role and heard words moved to the region above; this row keeps its timing as plain text. */}
                     {searching && (
-                        <div role="status" aria-label="Searching for that email address" className="mt-4 flex items-center gap-2 text-content-secondary">
+                        <div className="mt-4 flex items-center gap-2 text-content-secondary">
                             <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-btn-primary" />
                             <span>Searching...</span>
                         </div>
@@ -1072,17 +1159,34 @@ function FriendsPage() {
                         message={searchFoundName ? foundAnnouncement(searchFoundName) : ''}
                     />
 
+                    {/* DECISION Phase 88.9-66 (X13-1, owner at the round-2 glance): a long address wraps (wrap-anywhere, the house rule for unbroken user text) and the action column never shrinks, chosen OVER truncating it (an ellipsis hides the address the person is checking); the same on the request, sent and friend rows. Matches FriendInvitePanel's found-person row. AMENDED Phase 88.9-52 (Q66): the long text these rows can hold is the NAME (the backend sends no address for another person, so the address line is gone); the wrap rule is unchanged.
+                        AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot: with text at 200% the
+                        request card was wider than a 375 or 320 screen, 438 and 437px, its name
+                        one letter per line and Decline off the right edge): the four rows may
+                        now WRAP (flex-wrap), so the action drops under the name when the two no
+                        longer fit on one line, and it keeps to the right (ml-auto). The name
+                        breaks between words, and inside a word only when that one word is wider
+                        than the whole row: wrap-break-word in place of wrap-anywhere, and the
+                        text column's floor is its longest word (min-width auto) capped at the
+                        row (max-w-full) in place of min-w-0. This SUPERSEDES two parts of X13-1
+                        above: wrap-anywhere (it let the column shrink to one letter) and the
+                        action column that never shrinks (alone on a line it is now capped at
+                        the row, Accept and Decline may sit one above the other, and a button's
+                        own words may wrap as the last resort). REJECTED: a fixed rem floor for
+                        the name (any value that helps at 200% also drops the buttons at 320
+                        with ordinary text); flex-basis auto on the name (a two-word name that
+                        fits on two lines beside the buttons would push them down at ordinary
+                        text). A 50-character unbroken name still breaks inside the row; held by
+                        e2e/friends-long-address.spec.ts ("a friend request from a long name keeps Accept and Decline inside a 375 screen").
+                        At ordinary text with an ordinary name nothing moves. */}
                     {searchResult && !searching && (
-                        <div className="mt-4 p-4 border border-line rounded-lg flex items-center justify-between">
-                            <div>
-                                <p className="font-bold text-content-primary">
-                                    {searchResult.username || searchResult.email}
+                        <div data-found-row="" className="mt-4 p-4 border border-line rounded-lg flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex-1 max-w-full">
+                                <p className="font-bold text-content-primary wrap-break-word">
+                                    {searchResult.username}
                                 </p>
-                                {searchResult.username && searchResult.email && (
-                                    <p className="text-sm text-content-muted">{searchResult.email}</p>
-                                )}
                             </div>
-                            <div>
+                            <div className="ml-auto max-w-full">
                                 {(() => {
                                     const action = getSearchResultAction(searchResult);
                                     if (!action) return null;
@@ -1122,8 +1226,10 @@ function FriendsPage() {
                                                     size="default"
                                                     onClick={(e) => handleSendRequest(searchResult.id, e)}
                                                     aria-disabled={sendingRequest ? 'true' : undefined}
+                                                    busy={sendingRequest}
+                                                    busySuffix=", sending"
                                                 >
-                                                    {sendingRequest ? 'Sending...' : 'Send Request'}
+                                                    Send Request
                                                 </Button>
                                             );
                                         default:
@@ -1137,8 +1243,22 @@ function FriendsPage() {
 
                 {/* Tabs */}
                 <div className="border-b border-line mb-6">
-                    <div className="flex gap-8">
-                        {tabs.map(({ key, label, count }) => (
+                    {/* DECISION Phase 88.9-52 (R4 S3, the round-3 capture: at 200% text the three
+                        tabs were 549px in a 311px strip, the PAGE scrolled sideways, 581px on a
+                        375px screen, and Sent was off screen): this row scrolls inside itself.
+                        CHOSEN because it is the house rule for a tab strip
+                        (src/components/ui/Tabs.tsx ("the strip SCROLLS at 375px, it does not wrap")): a wrapped strip turns a one-line
+                        control into a block that reflows the page under the thumb. The group
+                        page's own tab row has two short tabs and neither wraps nor scrolls, so it
+                        decides nothing here. REJECTED: letting the tabs shrink (R11's marker
+                        below: the count pill drops under its word); wrapping the row. The strip
+                        line stays on the parent, outside the scroll box, and the tabs fill the
+                        row's height, so there is nothing to scroll up or down. A pressed tab is
+                        brought fully into view (the click handler below); a tab reached by
+                        keyboard is scrolled to by the browser. At ordinary text the three tabs
+                        fit and nothing scrolls. */}
+                    <div className="flex overflow-x-auto">
+                        {tabs.map(({ key, label, count }, index) => (
                             /* DECISION Phase 88.6-19, two calls at this one control.
 
                                (1) D-16 RE-INK: the count pill's ACTIVE arm carried
@@ -1172,9 +1292,84 @@ function FriendsPage() {
                                AMENDED Phase 88.9-10 (owner picks A7a + O3a, 2026-10-31): the strip
                                geometry routed here is ruled — every tab is at least 44 x 44
                                (min-h-11 and min-w-11, unprefixed); the outset ring stays and
-                               its halo takes the page ground (owner option (a)). */
+                               its halo takes the page ground (owner option (a)).
+                               AMENDED Phase 88.9-52 (PIX-8, picture pass: the active label read as a
+                               dim slate blue on the dark page): the ACTIVE label takes the primary
+                               text ink (text-content-primary: 13.76 on the light page, 15.95 on the
+                               dark page), the Tabs primitive's active ink and this strip's own hover
+                               ink, chosen OVER text-btn-primary, the primary button FILL used as ink:
+                               4.34 light and 2.99 dark on the page, both under the 4.5 text floor.
+                               REJECTED: the link ink (4.60 light, 10.13 dark: a tab is not a link, and
+                               in dark it is the amber accent). The underline keeps border-btn-primary
+                               (4.34 light, 2.99 dark against the page; its dark number is a hair under
+                               the 3.0 edge floor and is reported to the owner, not changed here). The
+                               active tab is still told apart by more than colour: the 2px underline
+                               and aria-current. Held by src/app/tokenContrast.test.ts ("PIX-8 (88.9-52): the Friends tab labels on the page").
+                               AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred; his words: make it like
+                               a padding, the same distance below the word as above): the ring is INSIDE the
+                               tab (ring-inset, 2px, the group-home tabs' form) and the label is padded clear
+                               of it: 12px at each side (px-3) and 3px under it (pb-[3px]) in place of the
+                               12px bottom-only padding. The 3px is a measured value, not a guess: the count
+                               pill sits 1.5px under the middle of its line, so 3px of bottom padding puts the
+                               word and its pill in the middle of the 44px tab. The ring now ends on the
+                               strip line (on the active tab, on top of its 2px underline) and no longer
+                               crosses it. This SUPERSEDES the outset ring above (88.6.1-40) and its page
+                               halo (88.9-10 owner option (a)): with no offset there is no halo to colour.
+                               REJECTED: the outset ring as built (the word sat high in the box, 10px above
+                               and 19px below, and the box crossed the strip line by 4px); the inset ring
+                               with no padding (painted under the first and last glyphs, the reason 88.6.1-40
+                               gave); pb-0.5 or pb-1, the nearest steps on the scale (the label would sit
+                               half a pixel off the middle). The 44 x 44 floor (A7a), the underline and
+                               aria-current stand.
+                               The gaps between the tabs are their own elements (w-8, may shrink) and the
+                               tabs never shrink or wrap, chosen OVER the row's former fixed gap-8: with the
+                               padding the three tabs and two 32px gaps come to about 338px of the 343px a
+                               375px phone gives the strip, so one more digit in a count, or a 320px screen,
+                               would otherwise squeeze a tab and wrap its count pill under its word. Putting
+                               gap-8 back, or dropping shrink-0, brings that wrap back.
+                               AMENDED Phase 88.9-52 (R4 S3, the round-3 capture measured R11 as built):
+                               the 3px bottom padding did not centre the label. From the word-and-pill
+                               box to the tab's edges it measured 11.5 above and 12.5 below on Requests,
+                               10.5 and 13.5 on Friends (the active tab: its 2px underline lifted the
+                               label a pixel, so the word also jumped when a tab was chosen), 11.5 and
+                               14.5 on Sent (no pill: the pill hangs 1px under the word's line, so no
+                               one padding suits a tab with a pill and a tab without). Now each tab is
+                               a centring flex box (inline-flex items-center justify-center) with no
+                               padding up or down: the word's line and the pill are both 20px tall at
+                               ordinary text and share one centre line, the middle of the tab. The
+                               active tab alone has the 2px underline, and alone has 2px of top padding
+                               (pt-[2px]) to balance it, so its label sits where the other labels sit.
+                               Computed: 12 above and 12 below with a pill, 13 and 13 without, in every
+                               tab, at any text size. Left and right stay 12 and 12 (px-3). This
+                               SUPERSEDES pb-[3px] above. REJECTED: a transparent 2px border on every
+                               tab in place of the top padding (the ring is drawn inside the border,
+                               so every focused tab would show 10 above the label and 8 below);
+                               another fixed padding (see Sent). On the focused ACTIVE tab the ring
+                               stops at the underline, so inside the ring it is 10 above and 8 below,
+                               with the underline directly under the ring: reported, not hidden.
+                               AMENDED Phase 88.9-52 (R4 D7, owner page pick S3 = Merge, 2026-11-18): on the
+                               focused ACTIVE tab the underline is now drawn OVER the ring's bottom edge,
+                               so inside the ring the label has 10 above and 10 below (it was 10 / 8).
+                               HOW, on the active tab only and only under focus-visible: the 2px bottom
+                               border goes (border-b-0), 2px of bottom padding takes its place (so the
+                               label does not move by a pixel when focus arrives), and the underline is
+                               painted as an inset band, 2px at the bottom edge, in the border's own
+                               colour (--color-btn-primary), through the inset-shadow slot. That slot
+                               is listed before the ring in the composed box-shadow, so the band is
+                               painted on top of the ring's bottom edge; the ring is a full 2px box
+                               again and reads as a ring on its top, left and right sides, in its own
+                               colour (its contrast against the strip is unchanged: nothing about the
+                               ring's colour or the ground moved). Without focus the tab is exactly as
+                               it was (a real border). CHOSEN OVER the ring stopping at the underline
+                               (as built: 10 / 8, the label visibly low in the box), OVER the ring
+                               drawn over the underline (the selected cue would vanish while focused)
+                               and OVER an underline on every tab. The band must stay in the
+                               inset-shadow slot: moved to the plain shadow slot it is painted UNDER
+                               the ring and the selected cue disappears on focus.
+                               e2e/friends-page.spec.ts ("R4 D7: while focused the underline is a band") is the rendered proof. */
+                            <Fragment key={key}>
+                            {index > 0 && <span aria-hidden="true" className="w-8 shrink min-w-0" />}
                             <button
-                                key={key}
                                 ref={tabRefs[key]}
                                 onClick={() => {
                                     // A tab change clears both action lines: DECISION Phase 88.6.1-72 (N5 / N6; D-33 row 22; D-42).
@@ -1183,11 +1378,19 @@ function FriendsPage() {
                                         setRemoveError(null);
                                     }
                                     setActiveTab(key);
+                                    // 88.9-52 R4 S3: a pressed tab that is partly outside the strip's
+                                    // scroll box is brought fully into view. Nearest both ways, so a
+                                    // tab already in view moves nothing. Guarded as at
+                                    // src/app/components/ParticipantRow.js ("if (typeof node.scrollIntoView === 'function') {").
+                                    const pressed = tabRefs[key].current;
+                                    if (pressed && typeof pressed.scrollIntoView === 'function') {
+                                        pressed.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                                    }
                                 }}
                                 aria-current={activeTab === key ? 'true' : undefined}
-                                className={`pb-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11 min-w-11 ${
+                                className={`inline-flex items-center justify-center shrink-0 whitespace-nowrap px-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring min-h-11 min-w-11 ${
                                     activeTab === key
-                                        ? 'border-b-2 border-btn-primary text-btn-primary'
+                                        ? 'border-b-2 border-btn-primary pt-[2px] text-content-primary focus-visible:border-b-0 focus-visible:pb-[2px] focus-visible:inset-shadow-[0_-2px_0_0_var(--color-btn-primary)]'
                                         : 'text-content-secondary hover:text-content-primary'
                                 }`}
                             >
@@ -1200,12 +1403,15 @@ function FriendsPage() {
                                        edit. The tab's own active state is unchanged and is
                                        carried by `text-btn-primary` + the bottom border + the
                                        `aria-current` above — the pill was a redundant second
-                                       cue, and it is the cue that was below AA. */
+                                       cue, and it is the cue that was below AA.
+                                       AMENDED Phase 88.9-52 (PIX-8): the active label's ink is the
+                                       primary text ink now; the bottom border and aria-current stand. */
                                     <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-surface-muted text-content-secondary">
                                         {count}
                                     </span>
                                 )}
                             </button>
+                            </Fragment>
                         ))}
                     </div>
                 </div>
@@ -1234,7 +1440,7 @@ function FriendsPage() {
                             the friends list beside it is intact, so this must not blank it. */}
                         {groupsErrorState.showError && (
                             <div className="mb-4">
-                                <FetchErrorBanner state={groupsErrorState} compact />
+                                <FetchErrorBanner state={groupsErrorState} compact hostGround="page" />
                             </div>
                         )}
                         {/* DECISION Phase 88-14 (Req 6 / Req 14, UI-SPEC §9.2): empty and failed-to-load
@@ -1257,15 +1463,16 @@ function FriendsPage() {
                             banner above retained rows (two treatments on one page; the owner's
                             retained-content ruling gives a refresh failure the small notice) and a row count
                             as the retained flag (contract C3). */}
+                        <StatusRegion settleOnMount className="sr-only" message={friendsListLoading ? 'Loading your friends' : ''} />
                         {!friendsRetained && friendsErrorState.showError ? (
                             <FetchErrorBanner
                                 state={friendsErrorState}
-                                title="Couldn't load your friends"
+                                thing="your friends"
                                 reportContext="friends page — friends list fetch"
                                 focusTarget={friendsTabRef}
                             />
-                        ) : !friendsLoaded ? (
-                            <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                        ) : friendsListLoading ? (
+                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading friends...</span>
                             </div>
@@ -1323,13 +1530,9 @@ function FriendsPage() {
                                                         onClick={handleBulkInvite}
                                                         aria-disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading || groupMembersLoading ? 'true' : undefined}
                                                         aria-busy={bulkInviteLoading || undefined}
+                                                        busy={bulkInviteLoading}
+                                                        busySuffix=", sending"
                                                     >
-                                                        {bulkInviteLoading && (
-                                                            <>
-                                                                <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                                                                <span className="sr-only">Sending invites...</span>
-                                                            </>
-                                                        )}
                                                         Invite to Group
                                                     </Button>
                                                     {selectedFriends.size > 0 && (
@@ -1338,8 +1541,10 @@ function FriendsPage() {
                                                         </span>
                                                     )}
                                                 </div>
+                                                <StatusRegion settleOnMount className="sr-only" message={groupMembersLoading ? 'Loading group members' : ''} />
+                                                {/* DECISION Phase 88.9-56 (R-C3b reach): this row IS the busy indicator — it mounts with its words and role=status the instant the flag turns true and unmounts the instant it turns false — so its glyph stays at 0 ms, chosen OVER a DelayedSpinner inside the guarded row (200 ms of words beside a hole) and OVER holding the row mounted past busy (a stale status on screen); the delay belongs to CONTROLS that stay mounted, not to a row that is itself the signal. AMENDED Phase 88.9-66 (X35): role and heard words moved to the region above; this row keeps its timing as plain text. */}
                                                 {groupMembersLoading && (
-                                                    <div role="status" aria-label="Loading group members" className="mt-2 flex items-center gap-2 text-xs text-content-muted">
+                                                    <div className="mt-2 flex items-center gap-2 text-xs text-content-muted">
                                                         <div aria-hidden="true" className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
                                                         <span>Loading group members...</span>
                                                     </div>
@@ -1411,13 +1616,15 @@ function FriendsPage() {
                                                 const isInGroup = selectedGroupId && groupMembers.includes(friendUserId);
                                                 const checkboxDisabled = !selectedGroupId || isInGroup;
 
+                                                // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
                                                 return (
                                                     <div
                                                         key={friendship.id}
                                                         data-friend-row={friendship.id}
-                                                        className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
+                                                        className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
                                                     >
-                                                        <div className="flex items-center gap-3 flex-1">
+                                                        {/* 88.9-52 R4 B1 (marker above the found-person row): the column's floor is the checkbox plus the longest word, capped at the row. */}
+                                                        <div className="flex items-center gap-3 flex-1 max-w-full">
                                                             <input
                                                                 id={`bulk-invite-${friendship.id}`}
                                                                 name={`bulk-invite-${friendship.id}`}
@@ -1428,13 +1635,13 @@ function FriendsPage() {
                                                                 checked={isInGroup || selectedFriends.has(friendUserId)}
                                                                 disabled={checkboxDisabled}
                                                                 onChange={() => toggleFriendSelection(friendUserId)}
-                                                                className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page ${
+                                                                className={`h-4 w-4 shrink-0 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
                                                                     checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                                 }`}
                                                             />
-                                                            <div className="flex-1">
-                                                                <div className="flex items-center gap-2">
-                                                                    <p className="font-bold text-content-primary">
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex flex-wrap items-center gap-x-2 min-w-0">
+                                                                    <p className="font-bold text-content-primary min-w-0 wrap-break-word">
                                                                         {friend.username}
                                                                     </p>
                                                                     {isInGroup && (
@@ -1459,10 +1666,16 @@ function FriendsPage() {
                                                                         `Remove ${friendName}`
                                                                     )}
                                                                     // Label-in-Name (WCAG 2.5.3) during the commit: the
-                                                                    // visible label is "Removing...", so the accessible name
-                                                                    // must contain it. The hook only owns resting-vs-armed.
-                                                                    {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
-                                                                    aria-disabled={removing ? 'true' : undefined}
+                                                                    // visible label stays Remove (rule 1, 88.9-46 B23) and
+                                                                    // the name adds the removing suffix — the aria-label
+                                                                    // overrides content, so it carries the person AND the
+                                                                    // suffix. The hook only owns resting-vs-armed.
+                                                                    {...(removing ? { 'aria-label': `Remove ${friendName}, removing` } : {})}
+                                                                    // F9b (88.9-23): a conditional spread, the house form
+                                                                    // (src/components/ui/useConfirmAction.ts ("'aria-pressed': true as const")),
+                                                                    // so the hook's gated aria-disabled is not overwritten by an
+                                                                    // explicit undefined while the request is idle.
+                                                                    {...(removing ? { 'aria-disabled': 'true' } : {})}
                                                                     // DECISION Phase 88-27 (D-32 bucket D): the hover affordance
                                                                     // 87.7 stripped from here was a TEXT alpha (error text at
                                                                     // 80% on hover). It comes back as a subtle SURFACE, chosen
@@ -1471,18 +1684,44 @@ function FriendsPage() {
                                                                     // state at all, which would have been a silent downgrade
                                                                     // dressed up as a decision. A background cannot collide with
                                                                     // the armed state below it, which speaks in border and
-                                                                    // weight. Same treatment on the two delete-pattern gates in
+                                                                    // weight (AMENDED Phase 88.9-52, W38: in weight only now). Same treatment on the two delete-pattern gates in
                                                                     // userProfile and on ParticipantRow's Remove, which reaches
                                                                     // it by the ordinary bucket-C rule.
-                                                                    className={`min-h-11 px-3 rounded-btn border text-sm transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
-                                                                        armed
-                                                                            ? 'border-status-error font-semibold'
-                                                                            : 'border-transparent'
+                                                                    // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline
+                                                                    // two-tap controls take ONE look at rest, armed and busy; the
+                                                                    // schedule Delete and the phone Remove on Profile are the model):
+                                                                    // this host now carries the schedule Delete's class string plus
+                                                                    // shrink-0, with NO border in any state, so the armed state speaks
+                                                                    // in weight alone. REJECTED: the outlined box it drew when armed
+                                                                    // (the only one of the three with a box).
+                                                                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                                        armed ? 'font-semibold' : ''
                                                                     }`}
                                                                 >
-                                                                    {removing
-                                                                        ? 'Removing...'
-                                                                        : removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                                    {/* DECISION Phase 88.9-52 (W38): the busy spinner sits BEFORE the word
+                                                                        (mr-2), chosen OVER after it (ml-2, the raw-host idiom): this
+                                                                        control is anchored to the row's right edge, so a spinner after
+                                                                        the word pushed Remove 24px left of the other rows' Remove while
+                                                                        the write ran; before it, the control grows to the left and the
+                                                                        word stays put. REJECTED too: a spinner slot reserved at rest
+                                                                        (every row's Remove would sit 24px in from the edge for good).
+                                                                        The delayed, held element is unchanged (AMENDED Phase 88.9-56,
+                                                                        R-C3b reach: the row leaves with the friend on success, so the
+                                                                        hold ends with the host); the suffix rides the aria-label above.
+                                                                        Moving it back after the word is a decision, not a cleanup. */}
+                                                                    <DelayedSpinner busy={removing} className="mr-2" />
+                                                                    {/* X69 width (88.9-67): from the arm the label holds the widest of
+                                                                        Wait (3), (2), (1) and Tap again (R13, 88.9-52: the short visible words), so the row does not
+                                                                        move when the wait ends; at rest nothing is reserved.
+                                                                        AMENDED Phase 88.9-52 (PIX-2, W38 one look, picture pass): the label is
+                                                                        anchored to the RIGHT end of that reserve (justify-items-end), the schedule
+                                                                        Delete's form on Profile (W37), chosen OVER the default cell, where the
+                                                                        button's centred text set Wait (3) in the middle of the 151px reserve (left
+                                                                        edge 240 at 375) while the schedule Delete's ended at the edge (330). Both
+                                                                        are right-anchored controls, so the short label now ends where Remove ended. */}
+                                                                    <ReservedLabel className="justify-items-end" reserve={removeFriendGate.reserveFor(friendship.id)}>
+                                                                        {removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                                    </ReservedLabel>
                                                                 </button>
                                                             );
                                                         })()}
@@ -1548,15 +1787,16 @@ function FriendsPage() {
                                 receivedRequests.some((r) => r.id === requestActionError.id)) && (
                                 <p role="alert" className="text-content-status-error text-sm mb-4">{requestActionError.message}</p>
                             )}
-                        {friendshipCtxLoading ? (
-                            <div role="status" aria-label="Loading your friend requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                        <StatusRegion settleOnMount className="sr-only" message={requestsListLoading ? 'Loading your friend requests' : ''} />
+                        {requestsListLoading ? (
+                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading requests...</span>
                             </div>
                         ) : requestsFullBannerShown ? (
                             <FetchErrorBanner
                                 state={requestsErrorState}
-                                title={FRIEND_REQUESTS_LOAD_FAILED_TITLE}
+                                thing={FRIEND_REQUESTS_LOAD_FAILED_THING}
                                 reportContext="friends page — friend requests fetch"
                                 focusTarget={requestsTabRef}
                             />
@@ -1583,40 +1823,41 @@ function FriendsPage() {
                                             const requester = request.Requester;
                                             if (!requester) return null;
 
+                                            // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
                                             return (
                                                 <div
                                                     key={request.id}
                                                     data-request-row={request.id}
-                                                    className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
+                                                    className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
                                                 >
-                                                    <div className="flex-1">
-                                                        <p className="font-bold text-content-primary">
-                                                            {requester.username || requester.email}
+                                                    <div className="flex-1 max-w-full">
+                                                        <p className="font-bold text-content-primary wrap-break-word">
+                                                            {requester.username}
                                                         </p>
-                                                        {requester.email && requester.email !== requester.username && (
-                                                            <p className="text-sm text-content-muted mt-0.5">{requester.email}</p>
-                                                        )}
                                                     </div>
-                                                    <div className="flex items-center gap-2">
+                                                    {/* 88.9-52 R4 B1 (marker above the found-person row): on a line of its own this pair is capped at the row and may stack. */}
+                                                    <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
                                                         <Button
                                                             variant="primary"
                                                             size="default"
-                                                            className="focus-visible:ring-offset-surface-page"
                                                             onClick={(e) => handleAccept(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'accept' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'decline' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
+                                                            busy={actionLoading[request.id] === 'accept'}
+                                                            busySuffix=", accepting"
                                                         >
-                                                            {actionLoading[request.id] === 'accept' ? 'Accepting...' : 'Accept'}
+                                                            Accept
                                                         </Button>
                                                         <Button
                                                             variant="secondary"
                                                             size="default"
-                                                            className="focus-visible:ring-offset-surface-page"
                                                             onClick={(e) => handleDecline(request.id, e)}
                                                             aria-disabled={actionLoading[request.id] === 'decline' ? 'true' : undefined}
                                                             disabled={actionLoading[request.id] === 'accept' || (!actionLoading[request.id] && isRequestActionPending(request.id))}
+                                                            busy={actionLoading[request.id] === 'decline'}
+                                                            busySuffix=", declining"
                                                         >
-                                                            {actionLoading[request.id] === 'decline' ? 'Declining...' : 'Decline'}
+                                                            Decline
                                                         </Button>
                                                     </div>
                                                 </div>
@@ -1663,15 +1904,16 @@ function FriendsPage() {
                             banner above retained rows (two treatments on one page; the owner's
                             retained-content ruling gives a refresh failure the small notice) and a row count
                             as the retained flag (contract C3). */}
+                        <StatusRegion settleOnMount className="sr-only" message={sentListLoading ? 'Loading your sent requests' : ''} />
                         {!sentRetained && sentErrorState.showError ? (
                             <FetchErrorBanner
                                 state={sentErrorState}
-                                title="Couldn't load your sent requests"
+                                thing="your sent requests"
                                 reportContext="friends page — sent requests fetch"
                                 focusTarget={sentTabRef}
                             />
-                        ) : !sentLoaded ? (
-                            <div role="status" aria-label="Loading your sent requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                        ) : sentListLoading ? (
+                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading sent requests...</span>
                             </div>
@@ -1695,20 +1937,19 @@ function FriendsPage() {
                                             const addressee = request.Addressee;
                                             if (!addressee) return null;
 
+                                            // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
                                             return (
                                                 <div
                                                     key={request.id}
-                                                    className="flex items-center justify-between p-4 border border-line rounded-card"
+                                                    data-sent-row={request.id}
+                                                    className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
                                                 >
-                                                    <div className="flex-1">
-                                                        <p className="font-bold text-content-primary">
-                                                            {addressee.username || addressee.email}
+                                                    <div className="flex-1 max-w-full">
+                                                        <p className="font-bold text-content-primary wrap-break-word">
+                                                            {addressee.username}
                                                         </p>
-                                                        {addressee.email && addressee.email !== addressee.username && (
-                                                            <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
-                                                        )}
                                                     </div>
-                                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
+                                                    <span className="ml-auto shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                                         Pending
                                                     </span>
                                                 </div>

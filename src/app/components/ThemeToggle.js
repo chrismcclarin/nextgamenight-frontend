@@ -8,17 +8,22 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
 
   useEffect(() => setMounted(true), [])
 
-  if (!mounted) return <div className="w-8 h-8" />
+  // DECISION Phase 88.9-37 O07a (pre-mount box): the placeholder is 36x36, the size of the
+  // mounted icon button, chosen OVER the shipped 32x32 placeholder, which swapped for a 36x36
+  // button after hydration and shifted the desktop nav 4px on every load (arithmetic from the
+  // class strings, not measured). The row variant mounts inside the closed phone menu, so its
+  // placeholder size is not visible. Changing it is a decision, not a cleanup.
+  if (!mounted) return <div className="w-9 h-9" />
 
   const isDark = resolvedTheme === 'dark'
   const ariaLabel = `Switch to ${isDark ? 'light' : 'dark'} mode`
 
   const icon = isDark ? (
-    <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
     </svg>
   ) : (
-    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
     </svg>
   )
@@ -70,6 +75,29 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   // `btnCensus.test.tsx`'s palette roster, which is exact in both directions — deleting that
   // entry without changing this element reds, and changing this element without deleting it reds
   // too. Making this a `<Button>` is a decision, not a cleanup.
+  //
+  // AMENDED Phase 88.9-37 (owner pick O07a, chat 2026-11-07 6:18 PM Pacific): the bell sibling
+  // now pads 6px = 36x36, equal to this toggle (see
+  // src/app/components/NotificationBell.js ("DECISION Phase 88.9-37 O07a")); the 36-vs-32
+  // residual is CLOSED, O07a chosen OVER O07b (both 44). The stays-bare decision above stands
+  // and is stronger: migrating this control alone would now open a 0px match into a ~16px
+  // mismatch. The hover-overlay colour finding above is not ruled by O07a (sizes only) and is
+  // handed to plan 88.9-51.
+  //
+  // AMENDED Phase 88.9-57 (owner pick N03 B, chat 2026-11-11 10:41 PM Pacific: "icon white →
+  // amber-400, NO wash"): the translucent white hover overlay is GONE and this toggle now hovers
+  // like the bell beside it (white ink at rest, amber-400 ink on hover, nothing painted behind
+  // it), chosen OVER A (keep the never-picked wash) and OVER C (a wash on bell and toggle both).
+  // So the hover-overlay colour finding above is CLOSED: there is no overlay left to tokenise.
+  // The stays-bare decision and the 36x36 box stand. The dark sun now rests WHITE on both the
+  // desktop toggle and the phone menu row (owner 2026-11-14, question A: "A white"), chosen OVER
+  // the amber sun it wore since it shipped. It is ONE shared glyph with no colour class of its
+  // own, so each variant paints it in its own ink (this button's white and amber hover, the
+  // row's white); forking the glyph per variant is a decision, not a cleanup. amber-400 on the
+  // header ground reads 9.00 light / 10.76 dark, arithmetic from the globals.css hexes; CI reads
+  // the rendered value in e2e/header-main-nav.spec.ts ("async function toggleHoversLikeTheBell(").
+  // The btnCensus palette entry for this file is DELETED in the same commit: 0 raw-palette
+  // button sites remain here.
   return (
     <button
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
@@ -78,7 +106,7 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
       // warm-800 header. It now carries the same treatment as the row variant, and inherits
       // the amber-400 `--ring` override scoped to the header subtree at `Header.js`'s
       // container. See the DECISION marker at `NotificationBell.js`'s row label.
-      className={`p-2 rounded-lg transition-colors hover:bg-white/10 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${className}`}
+      className={`p-2 rounded-lg transition-colors text-white hover:text-amber-400 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${className}`}
       aria-label={ariaLabel}
       title={ariaLabel}
     >

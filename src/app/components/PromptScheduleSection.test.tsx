@@ -38,6 +38,7 @@
 import * as React from 'react';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@/app/components/StartPollModal', () => ({ default: () => null }));
@@ -85,7 +86,10 @@ function renderSection(extra: Record<string, unknown> = {}) {
 const header = () => screen.getByRole('button', { name: /check-ins/i });
 
 beforeEach(() => vi.clearAllMocks());
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('PromptScheduleSection collapsed panel (AC-7)', () => {
   it('1. COLLAPSED: no descendant control is reachable — the header is the only one', async () => {
@@ -180,11 +184,18 @@ const ROW_B = checkIn('pb', 'Ben');
 
 // Open row A's kebab and two-tap "End check-in", scoped to the list its trigger names through
 // aria-controls (the house idiom, prompts.invalidation.test.tsx `GAP13: closing a poll`).
+// F9b (88.9-23): the item is gated for CONFIRM_DELAY_MS after the first tap; the drive runs on a
+// fake clock that still advances with real time (installed before arming; the file-level
+// afterEach restores real timers) and steps past the gate.
 function endCheckIn(trigger: HTMLElement) {
+  if (!vi.isFakeTimers()) vi.useFakeTimers({ shouldAdvanceTime: true });
   fireEvent.click(trigger);
   const list = document.getElementById(trigger.getAttribute('aria-controls') as string);
   expect(list, 'the kebab names its open list through aria-controls').not.toBeNull();
   fireEvent.click(within(list as HTMLElement).getByRole('button', { name: 'End check-in' }));
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
   fireEvent.click(within(list as HTMLElement).getByRole('button', { name: 'Tap again to end' }));
 }
 

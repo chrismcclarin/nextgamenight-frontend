@@ -230,7 +230,7 @@ export default function OpenPollsList({
           deliberately keeps BOTH, because its button lives in a persistent panel header rather
           than directly above the list body. Restoring the unconditional render is a decision. */}
       {canCreate && !showEmptyState && (
-        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — the global floor was considered and REJECTED because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2, e.g. BrowseMoreModal's 32x32 squares); 44px chosen OVER Material's 48dp, surfaced and consciously declined (D-14). The global `.btn` sizing question (all 210 sites) stays with Phase 88 (DEF-1) — this is a decision, not an oversight. No `min-w-11`: this wide text button already exceeds 44px rendered width (151px measured).  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (src/components/ui/Button.tsx ("LIVES ON THE cva BASE")), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
+        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — the global floor was considered and REJECTED because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2, e.g. BrowseMoreModal's 32x32 squares); 44px chosen OVER Material's 48dp, surfaced and consciously declined (D-14). The global `.btn` sizing question (all 210 sites) stays with Phase 88 (DEF-1) — this is a decision, not an oversight. No `min-w-11`: this wide text button already exceeds 44px rendered width (151px measured).  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (src/components/ui/Button.tsx ("LIVES ON THE cva BASE")), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. ——— AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18), everything above KEPT AS HISTORY: the `.btn-compact` opt-out this marker names is RETIRED (src/app/globals.css ("the stepper opt-out is RETIRED")). Its only two wearers, the BrowseMoreModal player-count steppers, are 44x44 squares now, chosen OVER keeping them at 32x32 (REJECTED: two small targets 4px apart; this marker family only ever weighed a 32x44 lozenge, never a 44 square). NOTHING about THIS control changes: the phone floor on `.btn` stands, the all-viewport floor on the `.btn` class stays rejected as recorded (its "would distort compact sites" reason no longer has a subject, and re-asking it is a decision nobody has made), and this control keeps the height it had. */
         <Button
           variant="primary"
           className="mb-4 md:focus-visible:ring-offset-surface-page"
@@ -273,7 +273,7 @@ export default function OpenPollsList({
       ) : pollsErrorState.showError && !pollsRetained ? (
         <FetchErrorBanner
           state={pollsErrorState}
-          title="We couldn't load the check-ins"
+          thing="the check-ins"
           reportContext="Open availability check-ins list (group page)"
         />
       ) : (
@@ -455,17 +455,29 @@ export function pollChipLabels(prompts, group) {
    OVER a tinted background (both rejected at the mockup); both cells pad one pixel less when
    selected so the border does not grow the card; the tag is aria-hidden because aria-pressed
    already says selected. Changing this is a decision, not a cleanup. */
-const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex items-start';
-const CARD_ROW_SELECTED_CLASS = 'bg-surface-card border-2 border-content-link rounded-card flex items-start';
+/* AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the card row may WRAP and its body keeps its
+   longest word, the Friends-row form (src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot")).
+   The body is flex-1 with the automatic minimum (its longest word plus its padding), capped at the
+   row by max-w-full, in place of min-w-0; the kebab cell keeps to the right (ml-auto) and drops
+   UNDER the body when that minimum, plus the cell, no longer fits the card. The sum that made it
+   necessary, at 320 wide with text at 200%: the card is 206px (320 - 64 page - 48 section - 2),
+   the kebab cell is 112 (an 88px trigger, 2.75rem, plus 24), which left the title 46px beside it;
+   Weekend at 32px bold is about 155px. With the kebab under the body the title has 156px.
+   REJECTED: keeping min-w-0 and only removing the cut (the title falls to two or three letters
+   per line, the owner's We/eke/nd W/arr/iors); a fixed rem floor on the body (it would drop the
+   kebab at ordinary text for a short title); shrinking the kebab (44px is its floor). At ordinary
+   text the cell needs 56px and a word of 16px bold rarely passes 150, so nothing moves. */
+const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex flex-wrap items-start';
+const CARD_ROW_SELECTED_CLASS = 'bg-surface-card border-2 border-content-link rounded-card flex flex-wrap items-start';
 const CARD_BODY_BUTTON_CLASS =
-  'min-w-0 flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-3';
+  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-3';
 const CARD_BODY_BUTTON_SELECTED_CLASS =
-  'min-w-0 flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-[11px]';
-const CARD_BODY_STATIC_CLASS = 'min-w-0 flex-1 p-3';
-const CARD_KEBAB_CELL_CLASS = 'shrink-0 py-3 pr-3';
-const CARD_KEBAB_CELL_SELECTED_CLASS = 'shrink-0 py-[11px] pr-[11px]';
+  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-[11px]';
+const CARD_BODY_STATIC_CLASS = 'max-w-full flex-1 p-3';
+const CARD_KEBAB_CELL_CLASS = 'ml-auto shrink-0 py-3 pr-3';
+const CARD_KEBAB_CELL_SELECTED_CLASS = 'ml-auto shrink-0 py-[11px] pr-[11px]';
 const VIEWING_TAG = 'Viewing';
-const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wide text-content-link mb-0.5';
+const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wider text-content-link mb-0.5';
 
 /**
  * OpenPollCard — single prompt row in the unified list.
@@ -531,8 +543,15 @@ function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSel
           is a prohibition outside the `Button` label (§4.2). It is a `<p>` and not an `<hN>`,
           so the A1 heading-`truncate` ruling does not reach it and `truncate` stays.
           AMENDED quick-261026-pi6: it is now a block span, not a paragraph, because the card body
-          is a button (phrasing content only); it is still not a heading, so `truncate` stays. */}
-      <span className="block font-bold text-content-primary truncate">{title}</span>
+          is a button (phrasing content only); it is still not a heading, so `truncate` stays.
+          AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the title wraps in full, by whole words,
+          with no line limit; truncate is REMOVED. The owner ruled that the no-cut rule reaches
+          this line too, heading or not: text is not cut to keep a layout tidy, because enlarged
+          text is the setting a cut defeats. wrap-break-word breaks inside a word only when that
+          one word is wider than the whole card, and the room the title keeps comes from the
+          row (the marker at CARD_ROW_CLASS). REJECTED: a line clamp (still a cut) and
+          wrap-anywhere (it lets the title shrink to one letter per line). */}
+      <span className="block font-bold text-content-primary wrap-break-word">{title}</span>
       <span className="block text-xs text-content-muted mt-0.5 wrap-anywhere">{sourceLabel}</span>
       {deadlineDisplay && (
         <span className="block text-xs text-content-secondary mt-1">
@@ -589,6 +608,7 @@ function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSel
 
       {prompt.can_close === true && (
         <div className={selected ? CARD_KEBAB_CELL_SELECTED_CLASS : CARD_KEBAB_CELL_CLASS}>
+          {/* DECISION Phase 88.9-50 R033: the check-in kebab keeps the default card halo at every width — its nearest painting ancestor is this card's li, not the groupPlanning section — chosen OVER this file's md page arm (the two Start a check-in Buttons sit in the section, outside any li). Changing this is a decision, not a cleanup. */}
           <KebabMenu
             ariaLabel="Check-in actions"
             items={[
@@ -596,7 +616,7 @@ function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSel
                 label: 'End check-in',
                 danger: true,
                 twoTap: true,
-                confirmLabel: 'Tap again to end',
+                armedName: 'Tap again to end',
                 ariaDisabled: closing,
                 onClick: () => onClose(prompt.id),
               },

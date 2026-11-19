@@ -168,6 +168,41 @@ export function formatWithTzAbbr(
   return formatInTimeZone(d, tz, formatStr);
 }
 
+/**
+ * The year rule for a date heading: hand back `pattern` as it is when `date` falls in the
+ * viewer's current calendar year (read in `timezone`), else the same pattern with the year
+ * appended (`, yyyy`). It returns a date-fns PATTERN, not a formatted string, so each caller
+ * keeps its own shape (long month on the Calendar list's day headers, short month on the Next
+ * game night card) and formats with `formatWithTzAbbr` as before.
+ *
+ * DECISION Phase 88.9-61 (X29 years; owner 2026-11-14 'Yes' for the Next game night card): ONE
+ * rule for every date heading, chosen OVER a per-surface copy; a second year check is a
+ * decision, not a cleanup.
+ *
+ * A malformed IANA zone falls back to UTC for the comparison rather than throwing, the same
+ * fallback its callers already apply when they format.
+ *
+ * @param pattern - date-fns-tz format tokens with no year in them (e.g. 'EEEE, MMMM d').
+ * @param date - the instant the heading names.
+ * @param timezone - the viewer's IANA zone; null or empty reads UTC.
+ * @param now - the viewer's current instant (defaults to the real clock).
+ */
+export function withYearOutsideCurrent(
+  pattern: string,
+  date: Date,
+  timezone: string | null,
+  now: Date = new Date()
+): string {
+  const yearOf = (instant: Date): string => {
+    try {
+      return formatWithTzAbbr(instant, timezone, 'yyyy');
+    } catch {
+      return formatWithTzAbbr(instant, null, 'yyyy');
+    }
+  };
+  return yearOf(date) === yearOf(now) ? pattern : `${pattern}, yyyy`;
+}
+
 // ============================================================================
 // Casual date/time/duration formatters (ported verbatim from dateUtils.js)
 //
@@ -181,10 +216,68 @@ export function formatWithTzAbbr(
 // input gracefully.
 // ============================================================================
 
+/* DECISION Phase 88.9-52 (R4-A2, round-3 capture): a DATE-ONLY value (the strict YYYY-MM-DD string a
+   DATEONLY column or an override's pattern_data.date carries) is a CALENDAR DAY, not an instant, and
+   it is read through parseDateOnly, chosen OVER new Date(value): the engine reads that shape as UTC
+   midnight, so west of UTC the day printed one early (an override stored 2026-11-27 showed Nov 26 on
+   Profile in Pacific) and a To-date filter dropped its own last day. REJECTED: formatting such a
+   value in the viewer's zone (a day has no zone to convert from; it would move again for a viewer
+   east or west of the browser) and fixing each call site by hand (three on Profile, two on the game
+   page: the next one would repeat it). Handing a date-only string back to new Date is a decision,
+   not a cleanup. */
+const DATE_ONLY_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Read a strict "YYYY-MM-DD" string as that calendar day at LOCAL midnight.
+ * Returns null for anything else: another shape, a non-string, or a day that does not exist
+ * (2026-02-31), so a caller can fall back to its instant path.
+ */
+export function parseDateOnly(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const m = DATE_ONLY_SHAPE.exec(value);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const d = new Date(year, month - 1, day);
+  // The (y, m, d) constructor maps years 0-99 to 1900-1999; set the year outright.
+  d.setFullYear(year);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  return d;
+}
+
+/**
+ * The instant a date-only day STARTS (00:00:00.000) in `timezone`, the viewer's IANA zone; with no
+ * zone, in the runtime's local zone. Null when `value` is not a real YYYY-MM-DD.
+ */
+export function dateOnlyDayStart(value: unknown, timezone: string | null | undefined): Date | null {
+  const local = parseDateOnly(value);
+  if (!local) return null;
+  if (!timezone || !String(timezone).trim()) return local;
+  return wallClockToUtc(`${value as string}T00:00:00`, timezone);
+}
+
+/**
+ * The last instant of a date-only day (23:59:59.999) in `timezone`; with no zone, in the runtime's
+ * local zone. Null when `value` is not a real YYYY-MM-DD.
+ */
+export function dateOnlyDayEnd(value: unknown, timezone: string | null | undefined): Date | null {
+  const local = parseDateOnly(value);
+  if (!local) return null;
+  if (!timezone || !String(timezone).trim()) {
+    local.setHours(23, 59, 59, 999);
+    return local;
+  }
+  const lastSecond = wallClockToUtc(`${value as string}T23:59:59`, timezone);
+  return lastSecond ? new Date(lastSecond.getTime() + 999) : null;
+}
+
 /**
  * Format a date in casual style.
  * Current year: "Mar 20". Different year: "Mar 20, 2026".
  * When timezone is provided, appends abbreviation (e.g., "Mar 20 EDT").
+ * A date-only string ("2026-03-20") prints its own calendar day in every zone, with no
+ * abbreviation: `timezone` is ignored for it (the DECISION Phase 88.9-52 (R4-A2) marker above).
  * Returns 'Never' for null/undefined input.
  */
 export function formatDate(
@@ -194,6 +287,13 @@ export function formatDate(
   if (!date) return 'Never';
 
   try {
+    const day = parseDateOnly(date);
+    if (day) {
+      const dayOptions: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+      if (day.getFullYear() !== new Date().getFullYear()) dayOptions.year = 'numeric';
+      return day.toLocaleDateString('en-US', dayOptions);
+    }
+
     const d = new Date(date);
     if (isNaN(d.getTime())) return 'Invalid date';
 

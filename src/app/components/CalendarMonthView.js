@@ -8,14 +8,20 @@ import {
   resolveGroupGround,
   storedGroupColour,
   themedTextStyleVars,
+  PHOTO_TEXT_STYLE,
   SUBTEXT_MUTED_ON_DARK,
   SUBTEXT_MUTED_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
+import { isGuestEvent } from '../../lib/eventClassification';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { Icon } from '../../components/ui/Icon';
+import { GUEST_TILE_EDGE, GUEST_TILE_HOVER } from './GuestPill';
 import SafeImage from './SafeImage';
-import RsvpCount from './RsvpCount';
+
+// 88.9-52 (S-B3): the month tiles' guest edge and guest hover are imported from GuestPill.tsx, where the whole guest-edge family and its markers now live (they were literals here: the W14 follow-up, W14 follow-up 2 and S-B1 markers moved with them, word for word).
 
 const isPast = (date) => {
   if (!date) return false;
@@ -35,7 +41,86 @@ const isFuture = (date) => {
   return checkDate > today;
 };
 
-const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/* DECISION Phase 88.9-52 (R22 + R26, owner pick C, 2026-11-17, 88.9-RULINGS.md picture page final
+   picks): when the COMPACT day grid is under 14rem wide (the Q62 / X28 threshold: about 200% text
+   on a phone; never at normal text, where 14rem is 224px and a 375 phone's grid is 319px) each day
+   shows ONE bold count of its nights in place of its tiles and the +N label, chosen OVER the tiles
+   as built (A: slivers with half a letter each, and +10 +99 +2 printed as one run) and OVER a
+   coloured dot per game (B). The day numbers are held at a size that stays inside their own cell.
+   Above the threshold nothing changes, and the full grid takes none of it.
+   HOW, and what was rejected:
+   - The count is CSS content read from data-count on the day's events box (the mock's own form),
+     chosen OVER a second element holding the number: in a test page (no CSS) such an element
+     prints a bare 3 beside the day number 3, and every lookup by that text finds two. The count
+     is the day number's ink, bold, on the same cell grounds. It is lifted (relative z-10) for the
+     reason the +N label is (S-B2: a later cell's ground paints over an overflow).
+   - A day with SEVERAL nights hides its tiles and its +N label; its day target is the stop, name
+     unchanged (N games. Open this day.).
+   - A day with ONE night has no day target (W39 above: its tile is the stop). Hiding that tile
+     would leave the day with no button and no spoken name, for exactly the large-text reader this
+     threshold serves. So the tile STAYS, as a clear overlay on the count: same name, same
+     handlers, its ground and edge switched off and its name text hidden. REJECTED: a second
+     button for the count (two buttons with one name in the tree), and turning the day target on
+     for one-night days (W39 rejects two stops for one action, and the grid width is not known to
+     the script).
+   - The overlay's two switches carry Tailwind's important mark, on purpose: the tile's ground
+     arms include dark: and hover: forms that Tailwind emits AFTER a container query, so a plain
+     @max-[14rem]:bg-transparent loses to them (compiled and read on tailwindcss 4, 2026-11-18).
+     REJECTED: stacking a plain override (the winner is emission order).
+   - SIZES (arithmetic on capture g's widths, not a rendered read; a cell is (grid - 6 gaps of
+     0.25rem) / 7 and text starts 0.25rem + 1px inside it; a plain digit about 0.625em, a bold one
+     about 0.63em). Day number: the largest size, never over its scaled 0.75rem and never under
+     12px, at which two digits end inside the cell. At 375 / 200% (grid 263px) that is 16.4px
+     where it was 24px and ended 7px past its cell (capture g: 20 21 and 29 30 1 ran together);
+     on a 320 phone at 200% it is the 12px floor. From 9.5rem up to the threshold the formula
+     gives the full 0.75rem, so nothing jumps where the query flips. Count: one digit is the
+     mock's 0.75rem; two and three digits take the largest size that ends 4px before the next
+     day's count (two digits stay 0.75rem at 375 / 200%; three, a day with 100 nights, 18.4px).
+     Four digits are not sized. The owner's own rule from the same sitting (R21): cap it as
+     large as fits.
+   LOST, recorded: under the threshold a guest night has no visible cue on the grid (the dashed
+   tile is gone, as the picked picture showed); a one-night guest day still SPEAKS Guest from its
+   tile's name, and the day sheet shows the Guest pill. A screen reader may read the bare count as
+   text after the day's name; not measured. Pinned by
+   src/app/components/CalendarMonthView.test.tsx ("R22 + R26 (88.9-52): under 14rem the compact grid shows one bold count").
+   AMENDED Phase 88.9-52 (G1, round 4, 2026-11-18; the after-build capture r3-l rendered this):
+   - THE OVERLAY COVERS THE DAY'S CELL. As built the events box was the positioning box, so the
+     one-night overlay was the count's own box: 12.7 x 48px at 375 / 200% and 8 x 48px at 320.
+     Now the CELL is the positioning box in a narrow grid (NARROW_CELL) and the events box is
+     not positioned at all, chosen OVER growing the events box to the cell (it would move the
+     count) and OVER a min size on the overlay (a cell is 22.9px wide on a 320 phone; nothing
+     larger than the cell can be honest). The count lets a tap through (pointer-events-none), so
+     the whole cell, digit included, is the one named button.
+   - A COUNT ENDS INSIDE ITS OWN CELL. The SIZES line above aimed two and three digits at the
+     NEXT day's count, on a 0.63em digit; rendered, 12 and 101 ended 2.3 to 7.7px past their
+     cell and one digit 0.8px past it on a 320 phone. Measured ink at 24px bold (r3-l): 1 is
+     9.7px, 2 is 14.3px, 3 is 14.7px, and 0 is 0.70em, the widest read, so the arithmetic now
+     takes 0.71em a digit. The count's line is pulled out to the cell's inner edges (the +N
+     label's pull) and its start is a clamp: the day number's start (0.25rem in) wherever the
+     count fits from there, further left where it does not, never past the cell's edge. Two and
+     three digits take the largest size, never over 0.75rem and never under 12px, whose widest
+     form fits that line: at 375 / 200% 19.5px and 13.0px, on a 320 phone 14.0px and the 12px
+     floor. Chosen OVER shrinking alone (two digits would be 13.9px beside a 24px single digit)
+     and OVER centring every count (the picked picture has it under the day number).
+     NOT HELD, and why: three digits (100 or more nights on one day) on a 320 phone at 200%.
+     The cell is 22.9px; three of the widest digits need 25.6px at the 12px floor, so the
+     widest forms end up to 3.7px past the cell. 101 itself (18.1px) fits.
+     Arithmetic on the capture's measured widths, not a rendered read.
+   Changing any of this is a decision, not a cleanup. */
+const NARROW_COUNT = 'before:hidden @max-[14rem]:before:block before:content-[attr(data-count)] before:relative before:z-10 before:-mx-1 before:pointer-events-none before:font-bold before:text-content-primary before:whitespace-nowrap';
+// One arm per digit count: 1, 2, 3 or more. Whole literals (Tailwind emits nothing for a built class name).
+// Each arm: the size, then the start (the padding clamp: 0.71em a digit, 1px kept clear at the end).
+const NARROW_COUNT_SIZE = [
+  'before:text-xs before:pl-[clamp(0px,calc(100%_+_0.5rem_-_0.71em_-_1px),0.25rem)]',
+  'before:text-[length:clamp(12px,calc((100cqw_-_1.5rem_-_21px)_/_9.94),0.75rem)] before:leading-4 before:pl-[clamp(0px,calc(100%_+_0.5rem_-_1.42em_-_1px),0.25rem)]',
+  'before:text-[length:clamp(12px,calc((100cqw_-_1.5rem_-_21px)_/_14.91),0.75rem)] before:leading-4 before:pl-[clamp(0px,calc(100%_+_0.5rem_-_2.13em_-_1px),0.25rem)]',
+];
+// G1: the compact cell is the one-night overlay's positioning box, in a narrow grid only.
+const NARROW_CELL = '@max-[14rem]:relative';
+const NARROW_SOLO_TILE = '@max-[14rem]:absolute @max-[14rem]:inset-0 @max-[14rem]:bg-transparent! @max-[14rem]:border-0!';
+const NARROW_DAY_NUMBER = '@max-[14rem]:text-[length:clamp(12px,calc((100cqw_-_3.25rem_-_21px)_/_8.4),0.75rem)]';
 
 /*
  * The tile's text TREATMENT (shadow + stroke) for a given rendered ground.
@@ -103,6 +188,17 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * REJECTED: keeping the deferral to 88.6 — the repair is one literal, and the
  * hoist is precisely what changed its blast radius. Gate B test 7 now asserts
  * that no identifier is ever assigned to `WebkitTextStroke` in these files.
+ * AMENDED Phase 88.9-28 (owner pick F7a, 88.9-PICKS-B5.json, 2026-11-06): the LIGHT
+ * arm of an image tile drops the shadow and the stroke (title 6.46 light, page 5),
+ * chosen OVER the shipped dark ink + 0.5px black stroke + 2px/4px black shadow that
+ * read as an ink stain; the dark arm is byte-identical. The arm is a third ARGUMENT
+ * ('dark' | 'light') from the two call sites, so this helper stays module-level and
+ * argument-driven and the image flag still comes only from safeBgImageStyle.
+ * AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): an image tile wears the photo set
+ * in BOTH arms with no wash, chosen OVER F7a's dark ink on a 70% wash (it hid the photo, muddy in
+ * dark) and OVER X23b's 1px outline; fill vs outline 21:1. The compact fork stands. The set is a
+ * SPREAD of the one exported constant (colorUtils), never restated here, and since both arms are
+ * the same the third argument F7a added is gone again.
  *
  * The flag is passed as `false` for the COMPACT variant at the call site
  * (`tileHasBgImage`), because that tile deliberately paints no background image —
@@ -125,10 +221,8 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  */
 const tileTextTreatment = (tileGround, hasBgImage) => {
   if (hasBgImage) {
-    return {
-      textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
-      WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
-    };
+    // X23a (88.9-60): a picture tile wears the one photo text set, the same in both themes.
+    return { ...PHOTO_TEXT_STYLE };
   }
   // No group colour: the tile is on the themed month
   // cell, and a text shadow tuned for a coloured ground
@@ -147,14 +241,16 @@ const tileTextTreatment = (tileGround, hasBgImage) => {
  * Monthly grid renderer.
  *
  * Phase 64-02 (CAL-01 / CAL-04 / CAL-05):
- *   - `days` is now {date: Date, isCurrentMonth: boolean}[] (42 cells).
+ *   - `days` is now {date: Date, isCurrentMonth: boolean}[] — whole weeks, 28, 35 or 42 cells (CS-05, 88.9-25).
  *   - Adjacent-month cells sit on the page ground with their day number muted; nothing in the cell is dimmed (AMENDED Phase 88.9-07, owner picks A4b + O4b; tile dim dropped at the plan review, 2.39 / 2.88 through .6)
  *     but their events use the same tile styling as current-month cells.
  *   - Whole-cell click invokes `onDayClick(date, dayEvents)` — the parent
  *     dispatcher (EventCalendar) decides between empty-day handler,
  *     event-detail navigation, or EventDayModal. Inner event-tile
  *     clicks still call `onEventClick(event)` and stopPropagation.
- *   - `+N more` is a non-button label; the cell click handles the modal.
+ *   - `+N more` is a non-button label; the cell click handles the modal (88.9-52 Q62: the compact grid prints `+N`).
+ *   - `viewerDbUserId` (88.9-28 D5a): the caller's own Users.id UUID, used only to derive the
+ *     guest cue on both tiles (isGuestEvent; the compact tile since 88.9-52 W14); never rendered or logged.
  */
 export default function CalendarMonthView({
   days,
@@ -168,7 +264,13 @@ export default function CalendarMonthView({
   showEmptyDayHint = false,
   monthNames,
   tzLegend,
+  viewerDbUserId = /** @type {string | null | undefined} */ (null),
+  // 88.9-39 N1 (R2-45): the Month | List switch EventCalendar passes in; seated beside the Today pill.
+  // The JSDoc cast types the prop (a bare null default narrows it to null for TS consumers, 88.9-28 precedent).
+  viewSwitch = /** @type {import('react').ReactNode} */ (null),
 }) {
+  // X6 (88.9-60): the shared picture-load probe, called once here; each tile asks it in its flag.
+  const bgImageFailed = useBgImageFailed();
   return (
     <>
       {/* Month Navigation.
@@ -194,36 +296,62 @@ export default function CalendarMonthView({
           `focusAndMotionTreatment.test.ts` only ever forbade VISIBLE bare
           `focus:` treatments — it never required a ring on every focusable.
           Task 2(B) of this plan adds that positive scan across the five
-          group-page render-tree files. Removing a ring here reds it. */}
-      <div className="flex justify-between items-center mb-4">
+          group-page render-tree files. Removing a ring here reds it.
+          AMENDED Phase 88.9-28 (owner pick N1): the ring stays on all three controls; Go to Today is now the Today pill.
+          AMENDED Phase 88.9-62 (X22, rings): the three controls no longer share one row — the chevrons sit on the month title's line and Today sits below the caption (owner pick C); every ring string above is unchanged. */}
+      <div className="@container mb-4">
         {/* Phase 88.6-27: both `.btn btn-primary` nav controls take the primitive, and their
             per-site focus-ring strings retire with the migration — the ring lives ONCE in the
             primitive's cva base (A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
             is byte-unchanged and still true of what the user sees; only WHERE the ring is
             expressed moved. The "Go to Today" text link between them is NOT a `.btn` and KEEPS
-            its own string — it is not a member of the family that marker's ARM A covers. */}
-        <Button variant="primary" onClick={() => onNavigateMonth(-1)}>
-          &larr; Previous
-        </Button>
-        <div className="text-center">
-          <Heading level={3} size="heading" className="text-content-primary">
+            its own string — it is not a member of the family that marker's ARM A covers.
+            AMENDED Phase 88.9-28 (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07): the two nav
+            controls are now secondary iconSquare Buttons (chevrons, names Previous month / Next
+            month), chosen OVER the two primary text Buttons; the text link is now the Today pill
+            and still keeps its own ring string. The chevron icon is decorative (Icon's default
+            aria-hidden): the accessible name is the button's own aria-label, a labelled focusable
+            leaf, which is what VoiceOver on iPhone reads. The title keeps Heading's base
+            wrap-anywhere and no nowrap, so it is one line whenever it fits and can still wrap at
+            enlarged text (WCAG 1.4.4).
+            AMENDED Phase 88.9-62 (X22, owner pick C at N13, 2026-11-12, 88.9-RULINGS.md N13 month grid):
+            the chevrons sit on the month title's line at the row's edges, with the time-zone caption and
+            the Today + Month | List row below, chosen OVER A (the shipped layout: chevrons centred on the
+            whole three-line block, level with the caption) and OVER B (chevrons in line with the buttons).
+            Tab and reading order follow the picture: Previous month, Next month, Today, the switch.
+            DECISION Phase 88.9-62 (X28, container query): the nav block is a size container and, under
+            14rem of width (about 200% text on a 375 phone), the title takes its own line below the arrows,
+            chosen OVER squeezing it between them, where a month name breaks mid-word (WCAG 1.4.4 asks for
+            no loss of content; its Understanding text lets the layout change with the scale). 14rem = two
+            2.75rem chevrons + two 0.5rem gaps + the widest month word (September, 6.9rem) + slack; rem in
+            a container query follows the root font size. Changing the threshold or the layout is a
+            decision, not a cleanup. */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Button variant="secondary" size="iconSquare" aria-label="Previous month" onClick={() => onNavigateMonth(-1)}>
+            <Icon name="ChevronLeft" size={20} />
+          </Button>
+          <Heading level={3} size="heading" className="text-content-primary min-w-0 flex-1 text-center @max-[14rem]:order-last @max-[14rem]:basis-full">
             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
           </Heading>
-          {tzLegend && (
-            <p className="text-xs text-content-muted mt-0.5">
-              Times shown in {tzLegend}
-            </p>
-          )}
+          <Button variant="secondary" size="iconSquare" aria-label="Next month" onClick={() => onNavigateMonth(1)}>
+            <Icon name="ChevronRight" size={20} />
+          </Button>
+        </div>
+        {tzLegend && (
+          <p className="text-xs text-content-muted mt-0.5 text-center">
+            Times shown in {tzLegend}
+          </p>
+        )}
+        {/* 88.9-39 N1, moved by 88.9-62 (X22): Today and the Month | List switch share one centred wrapping row below the caption. */}
+        <div className="flex flex-wrap items-center justify-center gap-2">
           <button
             onClick={onGoToday}
-            className="text-sm text-content-link hover:text-content-link-hover mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11"
+            className="mt-1 inline-flex items-center justify-center min-h-11 px-4 rounded-full border border-line bg-surface-card text-sm font-bold text-content-primary hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
           >
-            Go to Today
+            Today
           </button>
+          {viewSwitch}
         </div>
-        <Button variant="primary" onClick={() => onNavigateMonth(1)}>
-          Next &rarr;
-        </Button>
       </div>
 
       {/* Calendar Grid */}
@@ -238,16 +366,60 @@ export default function CalendarMonthView({
           case D-03 addresses. Nothing in this plan's text asks for a size reduction here
           either. Folding this row to 12 is therefore a DECISION for /gsd-ui-review or Phase
           88.9, not a cleanup — and it is disclosed as an open question in
-          `88.6-27-SUMMARY.md` rather than taken silently. */}
-      <div className="grid grid-cols-7 gap-1 mb-4">
+          `88.6-27-SUMMARY.md` rather than taken silently.
+          AMENDED Phase 88.9-28 (owner pick C8a, votes-b2 v11, 2026-11-06): folded to 12/700 — ruled,
+          chosen OVER the held 14/700; the compact grid at 375 moves with it (one element).
+          AMENDED Phase 88.9-62 (X28, weekday letters): 12/700 stands; under 14rem of width (about 200%
+          text at 375) each label shows its first letter only, and at every size each cell speaks its
+          full day name.
+          DECISION Phase 88.9-62 (X28, weekday letters): one letter per day at enlarged text, because
+          Wed needs 1.70rem and a column there is under 1rem, chosen OVER labels that overlap (52-X28),
+          OVER a grid wider than the card (sideways scroll) and OVER two-letter forms (Mo and We still
+          overflow). At 100% the row is unchanged (Sun to Sat). Spoken name (owner ruling M29, Q4 A
+          full, 2026-11-14): aria-label = the full day name and tabIndex -1 on the cell, both visible
+          spans aria-hidden, the labelled focusable leaf of
+          src/app/components/EventHeatmapBackground.js ("AMENDED quick-261020-tz3 (VO-P2-6"),
+          chosen OVER bare letters (the owner's iPhone heard a one-letter header as cap S, Saturday and
+          Sunday alike, Tuesday and Thursday alike, VO-P2-6) and OVER rebuilding the month as an ARIA
+          table (a rebuild; the grid pattern is rejected for this view,
+          this file ("The ARIA grid pattern (")); sr-only text stays rejected (VO-P2-4).
+          Trade-offs, named: (1) the cell has no role, and ARIA 1.2 prohibits naming a generic:
+          axe-core 4.12.1 reports aria-prohibited-attr on exactly this form (probed 2026-11-14), the
+          form src/app/components/createEvent.js ("fails this dialog's axe") rejected;
+          the month grid's only axe run,
+          src/app/components/keyboardOperability.test.tsx ("it('DC-11b. axe agrees"),
+          runs nested-interactive and aria-allowed-role only, so no gate catches it. A role was
+          weighed: columnheader needs a row inside a grid or table (aria-required-parent), heading
+          would add seven rotor headings, img passes axe but announces each day as an image and has no
+          device measurement; desktop screen readers may not speak a name on a generic. (2) The iPhone
+          result here is inferred (the chart header's owner re-check plus WebKit's Generic branch,
+          research APPENDIX-AT AT-1), not measured on this element: an owner iPhone VoiceOver re-check
+          after deploy is owed (88.9-53). Changing any of this is a decision, not a cleanup.
+          AMENDED Phase 88.9-52 (A-11, code review): each header cell now carries role img, chosen OVER
+          the role-less labelled generic above. The review's finding: a desktop screen reader reading
+          the page (NVDA, JAWS) may speak nothing for a named generic, so the weekday row went silent
+          there, and origin/main spoke it as plain text. With a role the name is allowed, so
+          trade-off (1)'s axe aria-prohibited-attr report goes away. Everything else stands: the full
+          day name in aria-label, tabIndex -1 (still the labelled focusable leaf of M29), both visible
+          spans aria-hidden, no sr-only text. Known cost, as weighed above: a screen reader may say
+          image after each day name; rejected again: columnheader (needs a row in a grid or table)
+          and heading (seven rotor headings). The day target's name also starts with the weekday now
+          (Friday, September 19, 2 games. Open this day.), chosen OVER the month-and-date-only name:
+          it is the one place a keyboard or screen-reader user lands on a date. That covers active
+          day targets only; a one-game day speaks through its tile and a plain date has no label.
+          Not measured on any screen reader; the iPhone re-check owed above (88.9-53) now covers the
+          img form. */}
+      <div className="@container grid grid-cols-7 gap-1 mb-4">
         {dayNames.map(day => (
-          <div key={day} className="text-center font-bold text-content-secondary py-2 text-sm">
-            {day}
+          <div key={day} role="img" aria-label={day} tabIndex={-1} className="text-center font-bold text-content-secondary py-2 text-xs">
+            <span aria-hidden="true" className="@max-[14rem]:hidden">{day.slice(0, 3)}</span>
+            <span aria-hidden="true" className="hidden @max-[14rem]:inline">{day[0]}</span>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      {/* 88.9-52 (Q62): the day grid is a size container so the more label below can read its width. */}
+      <div className="@container grid grid-cols-7 gap-1">
         {days.map((cell, index) => {
           // CAL-01: cells are {date, isCurrentMonth} — adjacent-month cells
           // have isCurrentMonth=false, never null.
@@ -277,12 +449,16 @@ export default function CalendarMonthView({
              branching its `aria-label` on `dayEvents.length` the way `handleDayClick` branches.
              That fixes the wrong NAME but leaves two stops for one action.
 
+             AMENDED Phase 88.9-52 (R22 + R26): that tile is why a one-night day keeps its tile as
+             a button when a narrow compact grid swaps tiles for a count (NARROW_COUNT at the top of
+             this file); this gate is unchanged.
+
              The narrowing costs nothing — every 1-event day is already fully keyboard-operable
              through its tile — and it holds for every consumer: `<CalendarMonthView` has exactly
              one render site in `src/` (`EventCalendar.js`). This is a decision, not a cleanup. */
           const dayTargetActive = cellClickable && dayEvents.length !== 1;
           const dayNumberLabel = dayTargetActive
-            ? `${monthNames?.[date.getMonth()] ?? ''} ${date.getDate()}`.trim() +
+            ? `${dayNames[date.getDay()]}, ${monthNames?.[date.getMonth()] ?? ''} ${date.getDate()}`.trim() +
               (dayEvents.length > 0
                 ? `, ${dayEvents.length} games. Open this day.`
                 : '. Add an event on this day.')
@@ -321,20 +497,30 @@ export default function CalendarMonthView({
                  not that pattern; FLATTENING the chain would be. This is a decision, not a
                  cleanup.
 
-                 AMENDED Phase 88.9-07: the adjacent-month page ground is a ternary ARM after the
-                 today and full-variant past arms, honouring this fence; no painting token is
+                 AMENDED Phase 88.9-07, re-amended Phase 88.9-28 (C3): the adjacent-month page
+                 ground is a ternary ARM straight after the today arm, with the full-variant past
+                 case as a sub-arm inside it, honouring this fence; no painting token is
                  stacked beside the chain.
 
-                 AMENDED Phase 88.9-07 (#204): cursor-pointer joins group as a non-painting token allowed outside the arms, and only for the today and full-variant past cases (clickable cells whose arm carries no pointer); bg-*, border-*, hover:* and transition-colors stay in their arms, fenced as above. */
+                 AMENDED Phase 88.9-07 (#204): cursor-pointer joins group as a non-painting token allowed outside the arms, and only for the today and full-variant past cases (clickable cells whose arm carries no pointer); bg-*, border-*, hover:* and transition-colors stay in their arms, fenced as above.
+
+                 AMENDED Phase 88.9-28: the arms stay mutually exclusive; the static run carries no
+                 border token; each arm carries its own 1px width AND its own colour
+                 (border-transparent, or the today frame's border-line-accent), chosen OVER a static
+                 width with arm colours (a colourless width chunk; borderExplicitness test 1) and OVER
+                 a PAIRED_ELSEWHERE exemption (a file-wide hole). The width in every arm keeps every
+                 cell's box identical, so today's amber frame causes no 1px shift. */
               /* DECISION Phase 88.9-07 (owner picks A4b + O4b, 88.9-PICKS-A.json / 88.9-PICKS-O.json,
                  2026-10-31): adjacent-month cells take the page ground plus the muted day number
                  (5.04 light / 7.32 dark) as the not-this-month cue, chosen OVER the whole-cell
                  opacity-60 (2.69 / 3.13, under 4.5) and OVER A4a / A4c; one arm on every variant
-                 (O4b: the full-grid per-variant arm was offered and declined). The arm sits after
-                 the full-variant past arm, chosen OVER placing it straight after the today arm: a
-                 past adjacent cell on the full grid keeps the past treatment (page ground, no hover
-                 ground) exactly like a same-month past cell, where the earlier slot would have given
-                 leading-overflow past days with events a hover ground no same-month past cell has.
+                 (O4b: the full-grid per-variant arm was offered and declined). The arm sits straight
+                 after the today arm and carries a full-variant past sub-arm (AMENDED Phase 88.9-28,
+                 owner pick C3: it sat after the full-variant past arm until C3 gave that arm the
+                 tile-past ground, which would have tiled past adjacent cells): a past adjacent cell on
+                 the full grid keeps the no-hover past behaviour on the page ground, chosen OVER a flat
+                 adjacency arm with no past fork, which would give leading-overflow past days with
+                 events a hover ground no same-month past cell has.
                  The dim is removed from the whole cell, tiles included, chosen OVER dimming only the
                  events container — through a .6 ancestor the untinted compact tile text reads 2.39
                  light / 2.88 dark (wcag.ts, 2026-10-31) and light clears 4.5 only at >= 0.98
@@ -346,17 +532,25 @@ export default function CalendarMonthView({
                  cell dim gone, the hover/focus + reveal on adjacent cells is 0.40, the same as
                  current-month cells (it was 0.24 through the old cell dim, 0.40 x 0.60); disclosed
                  to the owner through the plan 88.9-16 UAT. Changing this is a decision, not a
-                 cleanup. */
+                 cleanup.
+                 AMENDED Phase 88.9-28 (owner pick C3, 88.9-PICKS-B7A.json, 2026-11-07): this month's
+                 cells are soft tiles (bg-surface-tile, past bg-surface-tile-past) with radius 6px and
+                 no outline; adjacent cells — leading and trailing — stay untiled on the page ground
+                 (the A4b reading), chosen OVER the shipped 1px line outline on a card-white cell. */
               /* #204 (register, routed to the plan that next touches this file, 88.9-07): the today and full-variant past arms precede the clickable arm, so a clickable today or past cell never got the pointer; added here, no look change. */
-              className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+              className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} rounded-md p-1 ${variant === 'compact' ? `flex flex-col ${NARROW_CELL}` : ''} ${
                 cellClickable && (isCurrentDay || (variant === 'full' && isPastDate)) ? 'cursor-pointer ' : ''
               }${
-                !date ? 'bg-surface-page' :
-                isCurrentDay ? 'bg-surface-muted border-line-accent' :
-                variant === 'full' && isPastDate ? 'bg-surface-page' :
-                isAdjacent ? (cellClickable ? 'bg-surface-page hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' : 'bg-surface-page') :
-                cellClickable ? 'bg-surface-card hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' :
-                'bg-surface-card'
+                !date ? 'bg-surface-page border border-transparent' :
+                isCurrentDay ? 'bg-surface-muted border border-line-accent' :
+                isAdjacent ? (
+                  variant === 'full' && isPastDate ? 'bg-surface-page border border-transparent' :
+                  cellClickable ? 'bg-surface-page border border-transparent hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' :
+                  'bg-surface-page border border-transparent'
+                ) :
+                variant === 'full' && isPastDate ? 'bg-surface-tile-past border border-transparent' :
+                cellClickable ? 'bg-surface-tile border border-transparent hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' :
+                'bg-surface-tile border border-transparent'
               }`}
             >
               {date && (
@@ -366,7 +560,7 @@ export default function CalendarMonthView({
                      four ways for exactly the hierarchy the weight was carrying — accent for
                      today, muted for an adjacent-month or past date, primary otherwise — and
                      today's cell additionally has its own ground and accent border. Promoting to
-                     700 instead would bold all 42 day numbers in the grid and flatten that fork
+                     700 instead would bold every day number in the grid and flatten that fork
                      rather than support it. */}
                   {/* DECISION Phase 88.6-40 (W39, SPEC R5 / AC-5): THE DAY'S KEYBOARD TARGET IS
                       THIS ELEMENT, not the cell that wraps it.
@@ -450,8 +644,8 @@ export default function CalendarMonthView({
                        NEITHER HALF IS GATED ON `isCurrentMonth`, and that is FORBIDDEN rather
                        than merely unchosen. `isCurrentDay` is computed from the date ALONE, the
                        cell's ground ternary awards the today treatment BEFORE the adjacent branch
-                       is reached (isAdjacent selects the page-ground arm, which comes AFTER the today and full-variant past arms — 88.9 A4b), and `getDaysInMonth`
-                       returns 42 cells including adjacent-month days — so a grid whose OVERFLOW
+                       is reached (isAdjacent selects the page-ground arm, which comes straight AFTER the today arm and holds the full-variant past case inside it — 88.9 A4b, reordered by 88.9-28 C3), and `getDaysInMonth`
+                       returns whole weeks (28, 35 or 42 cells; AMENDED Phase 88.9-25 CS-05 — the count only, the per-grid invariant below is unchanged) including any adjacent-month days — so a grid whose OVERFLOW
                        contains today ALREADY renders that overflow cell tinted as today. The
                        invariant is therefore per rendered GRID, not per month: exactly ONE
                        `aria-current="date"` per grid, INSIDE the tinted cell. The tint must not
@@ -464,7 +658,7 @@ export default function CalendarMonthView({
                        `aria-label` above either — the state now sits on the focused node and a
                        name segment would double-announce. This is a decision, not a cleanup. */
                     aria-current={isCurrentDay ? 'date' : undefined}
-                    className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} mb-1 ${
+                    className={`${variant === 'compact' ? `text-xs ${NARROW_DAY_NUMBER}` : 'text-sm'} mb-1 ${
                       dayTargetActive
                         ? 'rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset '
                         : ''
@@ -478,7 +672,11 @@ export default function CalendarMonthView({
                     {date.getDate()}
                   </div>
                   {dayEvents.length > 0 ? (
-                    <div className={variant === 'compact' ? 'space-y-0.5' : 'space-y-1'}>
+                    /* 88.9-52 (R22 + R26): the compact events box carries the day's night count for a narrow grid; see NARROW_COUNT at the top of this file. */
+                    <div
+                      data-count={variant === 'compact' ? dayEvents.length : undefined}
+                      className={variant === 'compact' ? `space-y-0.5 ${NARROW_COUNT} ${NARROW_COUNT_SIZE[Math.min(String(dayEvents.length).length, 3) - 1]}` : 'space-y-1'}
+                    >
                       {dayEvents.slice(0, 2).map(event => {
                         // HOISTED by plan 88.3-16 so BOTH tile variants read ONE
                         // set of values. Duplicating the ground gate per variant
@@ -585,9 +783,11 @@ export default function CalendarMonthView({
                          * the pixels do not move". The pixels moving IS the fix; a
                          * treatment computed for an image the renderer refused to
                          * apply is the defect. A decision, not a cleanup.
+                         *
+                         * AMENDED Phase 88.9-60 (X6, owner F1): also false when the picture fails to load (src/lib/hooks/useBgImageFailed.ts); derivation unchanged.
                          */
                         const bgImageStyle = safeBgImageStyle(groupBgImage);
-                        const hasValidBgImage = !!bgImageStyle;
+                        const hasValidBgImage = !!bgImageStyle && !bgImageFailed(bgImageStyle);
                         // CR-01 (88.3-cr): the COMPACT tile renders no image, so
                         // it must not take the image-tuned text treatment either.
                         // AMENDED Phase 88.6-41 (W49): the fork now carries the
@@ -727,22 +927,35 @@ export default function CalendarMonthView({
                          * why the old shape shipped; losing it loses the audit trail
                          * that shows this reversal was made knowingly.
                          */
+                        /*
+                         * DECISION Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): on a
+                         * PICTURE tile the ground-derived colour below is withheld, past or not,
+                         * so the photo set's white stands, chosen OVER letting the past-date or
+                         * tile pole override it (a muted or dark ink under a 2px black outline
+                         * fails the fill-vs-outline rule and reads as a different treatment from
+                         * the card and header). The past cue stays on the cell and its day number.
+                         * Every other tile computes its colour exactly as before.
+                         */
                         const tileTextVars = themedTextStyleVars(
                           {
                             ...tileTextTreatment(ground, tileHasBgImage),
-                            color: isPastDate
-                              ? (tinted
-                                  ? (isDarkBackground(ground) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
-                                  : 'var(--color-content-muted)')
-                              : getEventTileTextColor(ground),
+                            ...(!tileHasBgImage && {
+                              color: isPastDate
+                                ? (tinted
+                                    ? (isDarkBackground(ground) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
+                                    : 'var(--color-content-muted)')
+                                : getEventTileTextColor(ground),
+                            }),
                           },
                           {
                             ...tileTextTreatment(tinted, tileHasBgImage),
-                            color: isPastDate
-                              ? (tinted
-                                  ? (isDarkBackground(tinted) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
-                                  : 'var(--color-content-muted)')
-                              : getEventTileTextColor(tinted),
+                            ...(!tileHasBgImage && {
+                              color: isPastDate
+                                ? (tinted
+                                    ? (isDarkBackground(tinted) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
+                                    : 'var(--color-content-muted)')
+                                : getEventTileTextColor(tinted),
+                            }),
                           },
                         );
                         const tileLabel = `${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Group'}`;
@@ -754,16 +967,19 @@ export default function CalendarMonthView({
                           // The accessible name must carry the RSVP counts. On a
                           // `role="button"` element `aria-label` REPLACES the name
                           // computed from the subtree, so the full tile's
-                          // `aria-label={tileLabel}` copied verbatim would SILENCE
-                          // the `<RsvpCount variant="compact">` child below ("3Y 1M
-                          // 2N") for every screen-reader user — on the group page,
-                          // the surface the owner tests on a phone. Built tile-
-                          // locally from the same `rs` the tile already renders, so
-                          // the shared `RsvpCount` (and its CalendarListView.js call
-                          // site) stays byte-identical.
+                          // `aria-label={tileLabel}` copied verbatim would have
+                          // SILENCED the compact RsvpCount chip that used to render
+                          // below ("3Y 1M 2N") for every screen-reader user — on the
+                          // group page, the surface the owner tests on a phone. Built
+                          // tile-locally from the same `rs`. Since 88.9-28 E1a the
+                          // chip is gone and this label is the ONLY place the count
+                          // lives on the compact tile: it stays heard, never seen.
                           const rsvpLabel = hasRsvps && isFutureEvent
                             ? `, ${rs.yes || 0} going, ${rs.maybe || 0} maybe, ${rs.no || 0} can't`
                             : '';
+                          // 88.9-52 W14: ONE guest read feeds the edge arm and the name, as on the full tile below.
+                          const compactGuest = isGuestEvent(event, viewerDbUserId);
+                          const compactName = compactGuest ? `${tileLabel}, Guest` : tileLabel;
                           return (
                             /* DECISION Phase 88.3-16 (owner ruling 5, Req 12 tests 8c(iii) and 11a):
                                the COMPACT tile — the variant the GROUP page actually mounts
@@ -864,12 +1080,50 @@ export default function CalendarMonthView({
                                is exactly the WCAG 2.2 "Equivalent" precondition the day-number
                                target's own marker leans on.
 
+                               AMENDED Phase 88.9-28 (owner pick E1a, 88.9-PICKS-B4.json, 2026-11-06):
+                               the compact tile no longer renders the RSVP count chip (it never
+                               fitted the 375 cell); the count stays in the tile's accessible name,
+                               chosen OVER also dropping the spoken count, which the owner was not
+                               shown. The title is now this wrapper's only child; the colour fork
+                               stays on the wrapper.
+
+                               AMENDED Phase 88.9-52 (W14, owner 2026-11-16, 88.9-RULINGS.md after-build look
+                               page: the tile is too small to read anything; "If the dashed line is visible, it
+                               might work. So lets try to add that."): a guest night's compact tile takes the full
+                               tile's dashed edge, the one literal in
+                               src/app/components/GuestPill.tsx ("export const GUEST_ROW_EDGE"), and the same
+                               word in its name (', Guest', before the RSVP counts), chosen OVER the 88.9-28 D5a
+                               reading (full tile only, the phone cue is the sheet row). It is a TRY: the owner
+                               judges the 375 picture. Only the guest tile carries a border, chosen OVER a
+                               transparent 1px border on every compact tile: that would take 2px from every
+                               tile's 28px text box at 375 to keep a 1px text shift off the guest tile.
+                               Edge against the tile's own fill, wcag.ts formula on the token values: light
+                               3.34 (untinted) to 3.74; dark 3.23 (green) to 4.18. Not rendered.
+                               AMENDED Phase 88.9-52 (W14 follow-up): the compact tile's dark edge is amber-500 at
+                               full strength, its own literal, since S-B3 in GuestPill.tsx, OVER the
+                               full tile's 70%; the dark numbers in the lines above are superseded by the marker there.
+                               AMENDED Phase 88.9-52 (S-B1): the tinted arm's 90% fade moved OUT of the ground
+                               ternary into the last expression of this className, so a guest tile can take the
+                               solid-edge hover instead (src/app/components/GuestPill.tsx ("export const GUEST_TILE_HOVER"), the numbers are
+                               there). The paragraph above about hover being forked inside the ternary still
+                               holds for the part that mattered: the untinted FILL hover stays inside it, and a
+                               tinted member tile still fades to 90% exactly as before.
+
+                               AMENDED Phase 88.9-52 (R22 + R26, owner 2026-11-17, pick C): under 14rem of grid
+                               width this tile gives way to the day's count. On a day with several nights it is
+                               hidden; on a one-night day it stays as a clear overlay on the count with this
+                               same name and these same handlers, chosen OVER hiding it (that day has no other
+                               button). The choice and the rejected forms are at NARROW_COUNT at the top of
+                               this file. The W14 dashed guest edge therefore shows above the threshold only.
+                               AMENDED Phase 88.9-52 (G1, round 4): the overlay sizes to the day's CELL (the
+                               cell is the positioning box in a narrow grid), not to the count's box.
+
                                Any of this is a decision, not a cleanup. */
                             <div
                               key={event.id}
                               role="button"
                               tabIndex={0}
-                              aria-label={tileLabel + rsvpLabel}
+                              aria-label={compactName + rsvpLabel}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
@@ -901,7 +1155,7 @@ export default function CalendarMonthView({
                                  MEASURED BEFORE: ~20px (ARITHMETIC, not a rendered read — 16px
                                  `text-xs` line box + 2px `p-0.5` top and bottom). This is a
                                  decision, not a cleanup. */
-                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
+                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}${compactGuest ? ` ${GUEST_TILE_EDGE} ${GUEST_TILE_HOVER}` : tinted ? ' hover:opacity-90' : ''} ${dayEvents.length === 1 ? NARROW_SOLO_TILE : '@max-[14rem]:hidden'}`}
                               style={{
                                 ...(tinted && {
                                   '--group-ground': ground,
@@ -923,7 +1177,7 @@ export default function CalendarMonthView({
                                  * MEASURED ON THE SHIPPED BANDS (2026-08-29, this tree's
                                  * `lib/wcag.ts`), not inherited — the figures in this phase's
                                  * own documents have been wrong twice:
-                                 *   `getEventTileTextColor` non-past  6.44-6.50:1 light
+                                 *   `getEventTileTextColor` non-past  6.44-6.50:1 light (10.84-10.94 since 88.9-60 X24: the dark pole)
                                  *                                     11.29-15.40:1 dark
                                  *   past-date muted poles             7.61-7.68:1 light
                                  *                                     6.33-8.10:1 dark
@@ -979,54 +1233,15 @@ export default function CalendarMonthView({
                                 onEventClick(event);
                               }}
                             >
-                              <div className="truncate">{event.Game?.name || 'Game Night'}</div>
-                              {hasRsvps && isFutureEvent && (
-                                <RsvpCount
-                                  rsvpSummary={rs}
-                                  variant="compact"
-                                  inheritColor={!!tinted}
-                                  /* D-01: `text-[10px]` folds UP to the 12px floor. An arbitrary
-                                     value is off the rung set by definition, and 10px is below
-                                     the app's floor. `text-xs` is the Caption rung and a
-                                     per-cell RSVP counter is on §4.2's closed role list.
-
-                                     V-7 MEASURED, and it found something — reported here rather
-                                     than fixed, because the finding is PRE-EXISTING and its
-                                     element is plan 40's. Chromium, 375x812, two identical
-                                     settled reads over a stylesheet compiled from the live
-                                     `globals.css`, markup dumped from a real jsdom render of
-                                     this component in its COMPACT variant:
-
-                                       realistic `3Y 1M 2N`: content 50px BEFORE the fold and
-                                       58px after, in a 28px box.
-                                       worst case `12Y 12M 12N`: 67px -> 78px, same 28px box.
-
-                                     So this row has NEVER fitted its cell at phone width — the
-                                     three spans are a `flex gap-1` with no wrap, no truncation
-                                     and no `overflow-hidden` on either the tile or the day cell,
-                                     so they bleed to the right over the neighbouring cell. The
-                                     fold WIDENS an existing bleed by ~8px; it does not create
-                                     one, and reverting to 10px would not close it.
-
-                                     NO VERTICAL REFLOW: the tile grows 34.5px -> 37px inside an
-                                     80px `min-h` cell, and the grid measures 500px tall before
-                                     AND after. That is the reflow half of V-7, and it passes.
-
-                                     NOT FIXED HERE, and not left as a comment beside itself:
-                                     every candidate remedy (truncating the counts, clipping the
-                                     tile, dropping to two counts) is a LOOK change on the day
-                                     cell with no ruling behind it, and the day cell is plan 40's
-                                     element (W39/W41). Routed with the full table to
-                                     `.planning/deferred/phase-88.6.md` and recorded in
-                                     `.planning/WINDOWS.md`. */
-                                  className="text-xs leading-tight mt-0.5"
-                                />
-                              )}
+                              <div className={dayEvents.length === 1 ? 'truncate @max-[14rem]:hidden' : 'truncate'}>{event.Game?.name || 'Game Night'}</div>
                             </div>
                           );
                         }
 
                         // Full variant (user-home)
+                        // 88.9-28 D5a: ONE guest read feeds both the border arm and the
+                        // accessible name below, never two calls.
+                        const guest = isGuestEvent(event, viewerDbUserId);
                         return (
                           /* DECISION Phase 88.3 (R3-C, owner ruling 2026-08-25):
                              this tile is keyboard-operable, matching the shipped
@@ -1045,7 +1260,7 @@ export default function CalendarMonthView({
                             }}
                             role="button"
                             tabIndex={0}
-                            aria-label={tileLabel}
+                            aria-label={guest ? `${tileLabel}, Guest` : tileLabel}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
@@ -1058,7 +1273,31 @@ export default function CalendarMonthView({
                                the game-name span below, which declares its own weight, and the
                                emoji fallback, where weight is meaningless. `text-xs` STAYS —
                                dense-grid cell, Caption 12 (§4.2). */
-                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''}`}
+                            /* DECISION Phase 88.9-28 D5a/O18a (owner pick D5a, votes-b3b v4; O18a re-picked by Q1,
+                               88.9-RULINGS.md round 2): a 1px dashed amber-700 #b45309 edge in light (4.0478 on the
+                               C3 tile #ebe6e0) and amber-500 #f59e0b at 70% in dark, chosen OVER the picked amber-600
+                               (2.5680 on the C3 tile, under the 3:1 non-text floor — the edge is the ONLY visual guest
+                               cue on the grid) and OVER a 2px amber-600 edge; full tile only, the phone cue is the
+                               sheet row; the guest state is also in the tile's accessible name (', Guest' — the shipped
+                               Guest pill's word, chosen OVER minting a phrase; owner-confirmed 2026-11-08, R-W2).
+                               DECISION Phase 88.9-28 D5a/O18a (border mechanism): the tile's border moved from the
+                               inline style into one class arm, chosen OVER leaving it inline and adding classes (the
+                               inline key wins and the edge never paints) and OVER omitting the inline key only for
+                               guests (one property, two mechanisms); the rgba values are kept byte-equal, not
+                               re-tokenised — that would be a look change. Literal class strings only: Tailwind v4
+                               emits nothing for an interpolated class.
+                               AMENDED Phase 88.9-63 (X27): the list rows share this edge; the literal lives once in
+                               GuestPill.tsx; values and measurements above unchanged.
+                               AMENDED Phase 88.9-52 (W14 follow-up 2, a floor): in DARK this tile's edge is amber-500
+                               at FULL strength, OVER the ruled 70%: a blue-tinted tile in today's cell or a hovered
+                               cell measured 2.9844 on its outer side, under the 3:1 floor this marker holds the edge
+                               to. The tile reads the month tiles' own literal at the top of this file (its marker
+                               has the numbers); the list rows keep the 70% export. Light is unchanged.
+                               AMENDED Phase 88.9-52 (S-B3): that literal and its marker moved to GuestPill.tsx,
+                               beside the rows' export (src/app/components/GuestPill.tsx ("export const GUEST_TILE_EDGE")).
+                               AMENDED Phase 88.9-52 (S-B1): a guest tile's hover is the solid edge, not the 90%
+                               fade (src/app/components/GuestPill.tsx ("export const GUEST_TILE_HOVER")); a member tile keeps the fade. */
+                            className={`text-xs p-1 rounded-sm truncate ${guest ? GUEST_TILE_HOVER : 'hover:opacity-90'} transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''} ${guest ? GUEST_TILE_EDGE : isPastDate ? 'border border-[rgba(0,0,0,0.1)]' : 'border border-[rgba(0,0,0,0.2)]'}`}
                             style={{
                               ...(tinted && {
                                 '--group-ground': ground,
@@ -1126,12 +1365,11 @@ export default function CalendarMonthView({
                                 hasBackgroundImage: hasValidBgImage,
                               }),
                               ...tileTextVars,
-                              ...bgImageStyle,
+                              ...(hasValidBgImage ? bgImageStyle : null),
                               backgroundSize: 'cover',
                               backgroundPosition: 'center',
                               position: 'relative',
                               zIndex: 1,
-                              border: `1px solid ${isPastDate ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)'}`,
                             }}
                             title={tileLabel}
                           >
@@ -1140,19 +1378,12 @@ export default function CalendarMonthView({
                                 no image, so washing that tile at 70% white dulled a
                                 plain coloured tile for nothing — and paired with the
                                 converged text treatment above it is the white-on-white
-                                case. The two convert together, never separately. */}
-                            {hasValidBgImage && (
-                              <div style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                                borderRadius: '0.25rem',
-                                zIndex: 0,
-                              }} />
-                            )}
+                                case. The two convert together, never separately.
+                                AMENDED Phase 88.9-60 (X23a): the 70% white wash that sat here
+                                is GONE, together with the dark-ink treatment it rescued — the
+                                pair changed as one, as the line above requires. A picture tile
+                                shows its photo unwashed under the photo text set. Re-adding a
+                                wash is a decision, not a cleanup. */}
                             <div className="flex items-center gap-1 relative z-10 flex-1 min-w-0">
                               {groupProfilePic && (
                                 <span className="shrink-0 text-xs leading-none">
@@ -1180,7 +1411,7 @@ export default function CalendarMonthView({
                               <span
                                 /* §4.5 HIERARCHY -> 700: the full tile's game name, the twin of
                                    the compact tile's above. One control, one weight. */
-                                className="truncate font-bold [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                                className="truncate font-bold [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                               >
                                 {event.Game?.name || 'Game Night'}
                               </span>
@@ -1203,11 +1434,61 @@ export default function CalendarMonthView({
                              The 500 weight goes with it, §4.5's EMPHASIS outcome: 400 plus the
                              colour token that is now correct, rather than weight standing in for
                              an ink that could not be read. `text-xs` STAYS — dense-grid cell,
-                             Caption 12 (§4.2). */
-                          className="text-xs text-content-secondary pointer-events-none select-none"
+                             Caption 12 (§4.2).
+                             DECISION Phase 88.9-52 (Q62, owner ruling A, 2026-11-16, 88.9-RULINGS.md after-build
+                             look page): the compact grid prints the count alone (+1), chosen OVER +1 more cut off
+                             at the column edge (B) and OVER letting it wrap (C, the shipped look: two lines at 375,
+                             and at 200% text a 60px word in a 31px column, 15px past the card on Saturdays).
+                             One line always (whitespace-nowrap). Under 14rem of grid width (about 200% text at 375)
+                             the compact label also starts at the cell edge (-mx-1): a column there is narrower than
+                             the count, and the pull keeps +99 clear of the next day's number. ARITHMETIC, not a
+                             rendered read (glyph widths scaled from the 2026-11-16 capture): +1 / +9 / +10 / +99 are
+                             about 11 / 15 / 20 / 22px at 100% in a 32px cell box, and 23 / 29 / 39 / 44px at 200% in
+                             a 30.7px column, where +99 ends 14.5px past its cell, 2.5px short of the next day's
+                             number and inside the card's 24px padding on a Saturday; without the pull it would
+                             overlap that number by 5.5px.
+                             AMENDED Phase 88.9-52 (S-B2, scoped check): the sentence above measured the wrong
+                             neighbour. The next day's number sits in the TOP row of its cell and this label
+                             in a lower row, so the two never meet; what the overflow meets is the next CELL.
+                             Same widths, at 200% (8px gap, 1px border, 8px padding): +10 ends 9.4px past its
+                             cell, 1.4px into the next cell; +99 ends 14.5px past, 6.5px into the next cell
+                             (and still 7.6px / 2.5px short of where that cell's number column starts). A
+                             plain label paints UNDER the next cell's opaque ground (grid items paint in
+                             source order), so those 1.4px / 6.5px of the last digit were covered. The compact
+                             label is now relative z-10, the form the full tile's contents use, chosen OVER
+                             leaving the digit clipped; it stays pointer-events-none, so the lift takes no tap
+                             from the next cell. Saturdays have no next cell. NOT FIXED, recorded: when the
+                             next day ALSO has three or more games its own label starts 1px inside its cell,
+                             so +99 overprints the first 5.5px of it (+10: 0.4px); that needs a day with 12
+                             or more games beside a day with 3 or more, at 200% text. Paint order cannot be
+                             pinned in jsdom; only the classes are (Q62 test). Not rendered.
+                             The full grid keeps the word and drops it only under 32rem of grid width (W18: at 768 the
+                             Home month column is as narrow as a phone's and +1 more wrapped), chosen OVER +N everywhere
+                             (the ruling names the small calendar only).
+                             Spoken name: the ruling's words, N more event(s), from a labelled leaf in the weekday
+                             header's form (role img, aria-label, tabIndex -1, printed text aria-hidden), chosen OVER
+                             leaving the bare text, which reads as plus 1. Before this the label had no spoken name
+                             of its own. Not measured on a device. Changing any of this is a decision, not a cleanup.
+                             AMENDED Phase 88.9-52 (R22 + R26, owner 2026-11-17, pick C): under 14rem of grid width
+                             the compact label is HIDDEN; the day's one count stands in for the tiles and for it
+                             (NARROW_COUNT at the top of this file), chosen OVER the label as built, where
+                             capture g measured +10 running 2.3px over +99 and +99 4.5px over +2 at 200% text
+                             (worse than the S-B2 arithmetic above; the NOT FIXED case there is closed by this).
+                             So the -mx-1 pull and the S-B2 lift no longer show anywhere under the threshold;
+                             both classes stay, the lift by instruction, and above 14rem the label, its
+                             one line and its spoken name are exactly as Q62 ruled. */
+                          role="img"
+                          aria-label={`${dayEvents.length - 2} more ${dayEvents.length - 2 === 1 ? 'event' : 'events'}`}
+                          tabIndex={-1}
+                          className={variant === 'compact'
+                            ? 'relative z-10 text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap @max-[14rem]:-mx-1 @max-[14rem]:hidden'
+                            : 'text-xs text-content-secondary pointer-events-none select-none whitespace-nowrap'}
                           title={`Tap the day to see all ${dayEvents.length} games`}
                         >
-                          +{dayEvents.length - 2} more
+                          <span aria-hidden="true">
+                            +{dayEvents.length - 2}
+                            {variant === 'compact' ? null : <span className="@max-[32rem]:hidden"> more</span>}
+                          </span>
                         </div>
                       )}
                     </div>

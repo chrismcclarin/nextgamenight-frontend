@@ -197,8 +197,9 @@ const BTN_EXEMPT: ExemptionRoster = {
   // `app/userProfile/page.js` CLOSED by plan 88.6-17 task 2 (wave 7, 2026-09-16): all 13 `.btn`
   // elements are `<Button>` with their dead classes deleted. Entry DELETED rather than zeroed —
   // the roster is exact in both directions, so a zeroed entry would red as a fossil permission.
-  // NOTE this file still carries an entry in PALETTE_BUTTON_EXEMPT below, at 2 and FLOORED: the
-  // two rules see different populations and closing one does not close the other.
+  // NOTE this file still carries an entry in PALETTE_BUTTON_EXEMPT below, at 2 and FLOORED — AMENDED
+  // Phase 88.9-32: that entry is deleted too (E4a). The two rules see different populations and closing
+  // one does not close the other.
   // DELETED by plan 88.6-20 task 3 (wave 7, 2026-09-16): `app/components/GroupSettings.js`
   // carried `sites: 8` (the two custom-URL "Use" buttons, "Open Manage Members to transfer",
   // "Leave Group", the leave-confirm Cancel/Confirm pair, "Transfer ownership instead" and
@@ -235,9 +236,14 @@ const BTN_EXEMPT: ExemptionRoster = {
   // flipped from AC-2 to D-10. Both lines also gained the house focus ring in its
   // `focus-visible:ring-inset` form in that same commit (AC-10, owner ruling 2026-09-09 option
   // 1, under plan 05's ARM A) — a focus string is not a `.btn` site and does not move this count.
+  // AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18): both read
+  // `btn btn-secondary w-11 h-11 ...` now. They are 44x44 squares and the btn-compact opt-out
+  // is retired, so the SIZE half of the reason below is superseded (32x32 REJECTED: two small
+  // targets 4px apart). The count stays 2 and the entry stays permanent, on the half that still
+  // holds: becoming a `<Button>` would add the elevation pair, a look nobody has ruled on.
   'app/components/BrowseMoreModal.js': {
     sites: 2,
-    why: 'PERMANENT, not a debt: the two 32x32 player-count steppers are not primary actions, 32px clears WCAG 2.2 2.5.8 24px floor, and a `compact` rung on Button was REJECTED because it would convert a closed two-site exemption into an open sub-44 API affordance and silently add `shadow-theme-sm hover:shadow-theme-md` to two 32px squares (D-10). The other five sites migrated under plan 88.6-32 (wave 7, 2026-09-16)',
+    why: 'PERMANENT, not a debt: the two player-count steppers stay raw `.btn` squares. Since 88.9-52 R4 C2 (owner 2026-11-18) they are 44x44 (`w-11 h-11`), no longer the 32x32 pair D-10 exempted, and wear no opt-out class. A `compact` rung on Button was REJECTED because it would convert a closed two-site exemption into an open sub-44 API affordance, and a plain `<Button>` would silently add `shadow-theme-sm hover:shadow-theme-md` to two small squares (D-10). The other five sites migrated under plan 88.6-32 (wave 7, 2026-09-16)',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-10' },
   },
   // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 2 (wave 7, 2026-09-16): all SEVEN
@@ -345,7 +351,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // in `controlSizeFloor.test.tsx`'s D13_FLOOR_ROSTER with that owner named.
   // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 task 2 (wave 7, 2026-09-16): all three
   // header CTAs are on the primitive — Manage Members `<Button variant="ghost">`, Plan Game
-  // Session `<Button asChild variant="primary">`, Add New Game Event `<Button variant="accent">`
+  // Session `<Button asChild variant="primary">`, Create Event `<Button variant="accent">`
   // with its inline amber `style` deleted. Entry DELETED rather than zeroed; the roster is exact
   // in both directions.
   //
@@ -383,6 +389,10 @@ const BTN_EXEMPT: ExemptionRoster = {
   // respelled `shadow-theme-lg` with an `enabled-hover:` pin in the same commit (see
   // `shadowTier.test.ts`). The `row` variant's trigger is NOT a census site and is untouched — it
   // never wore `.btn`. Entry DELETED rather than zeroed; the roster is exact in both directions.
+  // AMENDED Phase 88.9-52 (R5, owner 2026-11-17, pick Always): the FAB's size key is `iconSquare`
+  // (zero padding), its size is `w-[56px] h-[56px]` with px floors (fixed, no doubling at 200%
+  // text), and its position is `bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))]
+  // right-[24px]`; the `size="icon"`, `w-14 h-14` and `bottom-6 right-6` named above are superseded.
   // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
   // carried `sites: 2` and the count was EXACT — the modal footer's Cancel (`btn btn-secondary`)
   // and Submit (`btn btn-primary`). Both are `<Button size="default">` now; Submit carries an
@@ -510,7 +520,7 @@ const BTN_EXEMPT: ExemptionRoster = {
   // directions.
   //
   // THIS WAS THE LAST OPEN ENTRY. `BTN_EXEMPT` is now at its PERMANENT floor — the two 32x32
-  // BrowseMoreModal player-count steppers (D-10) and nothing else — which is the condition the
+  // (44x44 since 88.9-52 R4 C2) BrowseMoreModal player-count steppers (D-10) and nothing else — which is the condition the
   // anti-vacuity FLIP below was written for.
   // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/EventCalendar.js`
   // carried `sites: 1` — the List/Month view toggle (`btn btn-secondary text-sm` plus the
@@ -750,28 +760,10 @@ const PALETTE_COUNTS = countByFile(PALETTE_BUTTONS);
 // with no population is a gate that cannot red.
 // ---------------------------------------------------------------------------------------
 const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
-  // SHRUNK 5 -> 2 by plan 88.6-17 (wave 7, 2026-09-16), and 2 is where it FLOORS — this entry is
-  // not on a path to zero and must not be read as pending work.
-  //
-  // The three `bg-indigo-600` phone-block buttons are gone: the Save & Verify control and its
-  // in-flight render merged into ONE `<Button variant="primary">` across both `phoneState` arms
-  // (R3 #13), and Verify is a second `variant="primary"`. The Resend link became
-  // `variant="ghost"`, which never counted here anyway — it carried `text-indigo-600`, a raw
-  // palette INK, and `PALETTE_FILL` matches FILLS only. That is why the pre-sweep measurement was
-  // FIVE and not the six D-11's control census names: the two populations differ by one.
-  //
-  // The two survivors are the theme toggles (`bg-amber-50` / `bg-purple-900`). They are now
-  // `<Button variant="ghost">`, which this rule still scans by design, and they KEEP their raw
-  // fills because P6 forbids changing a shipped visual state. Both resolve to literal TAILWIND
-  // DEFAULT steps re-declared in the repo's `@theme` palette block (`--color-amber-50: #fffbeb`,
-  // `--color-purple-900: #581c87`), NOT to the repo's own `--purple-900` (#232d3e), which
-  // `@theme` never exposes as a utility — so they are palette steps under both readings of the
-  // name ambiguity this rule's docblock describes.
-  'app/userProfile/page.js': {
-    sites: 2,
-    why: 'the two theme toggles, migrated to `Button variant="ghost"` by plan 88.6-17 with their fills kept verbatim under P6. Converging `bg-amber-50` / `bg-purple-900` onto semantic tokens is a LOOK change and is out of 88.6 contract; the site marker records the fill determination and the migrate-or-exclude outcome. Not pending work — this entry floors at 2.',
-    owner: { kind: 'decision', marker: 'DECISION Phase 88.6-17' },
-  },
+  // DELETED by plan 88.9-32 (owner pick E4a, 2026-11-06): `app/userProfile/page.js` carried `sites: 2`
+  // (the two theme toggles' raw amber / purple pressed fills, floored under 88.6's P6). Both pressed arms
+  // now read the token constant THEME_TOGGLE_PRESSED, so the file has 0 raw-palette button sites and the
+  // entry is deleted, not zeroed (the roster is exact in both directions).
   // RE-DERIVED AND SETTLED by plan 88.6-25 task 3 (wave 7, 2026-09-16). This entry is no longer
   // pending work: D-11 asked whether the site is grid chrome or a control, and the answer is
   // CONTROL — it is the `<button>` opener of the paint-mode toggle, `onClick={togglePaintMode}`,
@@ -801,48 +793,7 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
       'rgb(220,252,231) with the pin and becomes rgb(250,248,245) without it.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6-25' },
   },
-  // One site, the icon variant's bare button in
-  // src/app/components/ThemeToggle.js ("p-2 rounded-lg transition-colors hover:bg-white/10")
-  // (this scanner counts it on its OPENING-TAG line, a few lines above that className).
-  // SETTLED by plan 88.6-34 task 1 (wave 7, 2026-09-16) — the
-  // LAST of D-11's seven raw-palette dispositions, and the one that RESOLVES BARE rather than
-  // closing. The entry survives at 1 and is REWRITTEN as a reasoned exemption rather than
-  // deleted, because the site is not a debt awaiting a fix: it is a decision.
-  'app/components/ThemeToggle.js': {
-    sites: 1,
-    why:
-      'D-11 -> plan 88.6-34, re-derived and RESOLVED BARE (Path 3, D25). TWO reasons, and the ' +
-      'second is the one that decided it. (1) CHROME, NOT A PRIMARY ACTION: `hover:bg-white/10` ' +
-      'is a 10%-white HOVER overlay on an icon-only header toggle, not a resting fill on a CTA, ' +
-      'so the `btn-*` family is the wrong vocabulary for it. (2) GEOMETRY — the CONSEQUENCE ' +
-      'constraint: shipped it is `p-2` around a `w-5 h-5` icon (src/app/components/ThemeToggle.js ("p-2 rounded-lg transition-colors hover:bg-white/10"), src/app/components/ThemeToggle.js ("w-5 h-5 text-amber-400") / src/app/components/ThemeToggle.js ("w-5 h-5 text-white")) = 36x36, ' +
-      "while a `<Button>` renders against `.btn`'s unlayered `padding: .5rem 1rem` " +
-      '(src/app/globals.css ("UNLAYERED with every other declaration it has today")) plus the cva base\'s `min-h-11` and ' +
-      '`icon: min-h-11 min-w-11` = ~52x44. Its desktop-nav sibling, the bell button in ' +
-      'src/app/components/NotificationBell.js ("relative text-white hover:text-amber-400 transition-colors p-1") ' +
-      '(`p-1` around the `w-6 h-6` bell) is 32x32, wears no `btn`, and is migrated by NO plan — so migrating this ' +
-      'control alone would widen a 4px sibling difference into ~20px and CREATE a header ' +
-      'inconsistency rather than close one. All four box numbers are ARITHMETIC, NOT MEASURED: ' +
-      'the icon variant is emitted inside the `hidden md:flex` list in ' +
-      'src/app/Header.js ("hidden md:flex gap-x-6 items-center text-white text-sm"), so it is ' +
-      '`display:none` at 375px and the repo\'s only geometry harness is phone-only by design ' +
-      '(e2e/touch-targets.spec.ts ("and runs only at phone width")). Same shape and same outcome as the corner close in ' +
-      '`QRCodeModal.js` under `DECISION Phase 88.6-33 (D48)`. ' +
-      'COLOUR FINDING (PATH 2 — no shipped token reproduces it, so none is named): composited ' +
-      "with the same arithmetic `tokenContrast.test.ts`'s `resolveOver` applies, `bg-white/10` " +
-      'over `--color-bg-header` gives #423b36 in light (ground warm-800 #2d2520) and #312d2c in ' +
-      'dark (ground warm-900 #1a1614), against `--color-bg-header-hover` of #4a3d32 / #2d2520 — ' +
-      'EQUAL IN NEITHER THEME, and the deltas run in OPPOSITE DIRECTIONS (the shipped hover is ' +
-      'lighter than the composite in light and darker in dark), so no single flat step can be ' +
-      'picked to close both. A white overlay also DESATURATES the warm ground (composite channel ' +
-      'spread 12 vs warm-700\'s 24), so a flat token would be a different KIND of colour, not a ' +
-      'different step. Minting one is a LOOK decision and is Phase 88.9\'s; P6 forbids it here. ' +
-      'NOT PENDING WORK — this entry floors at 1 and its removal condition is a Phase 88.9 ruling ' +
-      'on the header icon-chrome pair, not a sweep. The 36-vs-32 residual is routed at ' +
-      '`.planning/deferred/phase-88.6.md` (`[look/consistency — OWNER DECISION REQUESTED]`). ' +
-      'Migrating this control is a decision, not a cleanup.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-11' },
-  },
+  // DELETED by plan 88.9-57 (52-X15, owner pick N03 B): ThemeToggle.js has 0 raw-palette button sites; the stays-bare decision lives at its DECISION Phase 88.6-34 marker.
   // THE EIGHTH SITE, and the one entry here whose `why` records a SURVIVING fill rather than a
   // fix. The Manage Members header CTA in
   // src/app/groupHomePage/page.js ("bg-white/80 ring-1 ring-line-control") carries

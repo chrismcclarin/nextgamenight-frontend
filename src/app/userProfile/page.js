@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useId, memo } from 'react';
 import { flushSync } from 'react-dom';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } from '../../lib/api';
+import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI, ApiError } from '../../lib/api';
 // Phase 87.3-07 (D-02): the profile's self row resolves via the shared
 // ['users','self'] query (useSelfIdentity) instead of an ad-hoc getUser
 // self-fetch. Because that cache is staleTime Infinity, every self-row mutation
@@ -43,10 +43,18 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Modal } from '../components/Modal';
 import { Combobox } from '../../components/ui/Combobox';
-import { StatusRegion } from '../../components/ui/StatusRegion';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '../../components/ui/StatusRegion';
+import { useInlineReceipt } from '../../components/ui/useInlineReceipt';
+import { announceStatus } from '@/components/ui/announcer';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { Button } from '../../components/ui/Button';
+import { ReservedLabel } from '../../components/ui/ReservedLabel';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
+import { Icon } from '../../components/ui/Icon';
+import { usePhoneViewport } from '../../lib/hooks/usePhoneViewport';
 import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { focusElement, focusPageFloor } from '../../components/ui/focusPageFloor';
@@ -56,9 +64,9 @@ import { focusElement, focusPageFloor } from '../../components/ui/focusPageFloor
 // shared name+message builder (88.6-13); the raw Error is never passed as `ctx`.
 import { logger, errCtx } from '../../lib/logger';
 
-// 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): the Disconnect Google Calendar
-// confirm's text while the disconnect is in flight (ConfirmDialog's pendingLabel).
-const DISCONNECT_CALENDAR_PENDING_LABEL = 'Disconnecting…';
+// Rule 1 (88.9-45, owner pick O16a): the Disconnect Google Calendar confirm keeps its label + the house
+// spinner while the disconnect runs; this is its busySuffix (CR-5 / A-75 history: a swap word, 2026-10-19).
+const DISCONNECT_CALENDAR_BUSY_SUFFIX = ', disconnecting';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -136,12 +144,15 @@ const DEFAULT_PREFERENCES = {
     event_updated: { email: true, sms: false },
     event_cancelled: { email: true, sms: false },
 };
-// Copy row P1 (88.6.1 D-30, ratified 2026-10-04): the pressed Verify's in-flight label.
-const VERIFY_CODE_IN_FLIGHT_LABEL = 'Verifying...';
-// Copy row P8 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; straight apostrophe): the collection's failed-first-load title.
-const COLLECTION_LOAD_FAILED_TITLE = "Couldn't load your collection";
-// Copy row P7 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; three ASCII full stops): the pressed Add to Collection's in-flight label.
-const ADDING_TO_COLLECTION_LABEL = 'Adding...';
+// Copy row P1 (88.6.1 D-30, ratified 2026-10-04; AMENDED Phase 88.9-46 rule 1 B32: the word is heard as the busy suffix, the label stays Verify): the pressed Verify's busy-name suffix.
+const VERIFY_CODE_BUSY_SUFFIX = ', verifying';
+// Copy row P8 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; straight apostrophe): the collection's failed-first-load title; AMENDED Phase 88.9-49 (BANNER-01): now the thing, the title composes.
+const COLLECTION_LOAD_FAILED_THING = 'your collection';
+// Copy row P7 (88.6.1 D-30 / D-47, owner-ratified 2026-10-05; AMENDED Phase 88.9-46 rule 1 B36: the word is heard as the busy suffix, lower-cased with no trailing dots, the label stays Add to Collection): the pressed Add to Collection's busy-name suffix.
+const ADDING_TO_COLLECTION_BUSY_SUFFIX = ', adding';
+// E4a (88.9-32, owner pick 2026-11-06): the ONE pressed arm both theme toggles read. A full literal so
+// Tailwind v4 emits every class. See the DECISION Phase 88.6-17 (D-11, outcome (a)) marker at the toggles.
+const THEME_TOGGLE_PRESSED = 'border-line-accent bg-surface-muted enabled-hover:bg-surface-muted text-content-accent';
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -162,6 +173,20 @@ function Profile(){
     // early-return, so the flags never clear and both zones spin forever. Derive the shared
     // error state here (kept RAW on purpose: DECISION Phase 88.6.1-79, identity kept row) and render the compact degrade banner in those two zones.
     const selfIdentityErrorState = useFetchErrorState(selfQuery);
+    // DECISION Phase 88.9-40 (SESSION-01): a signed-out visitor goes to sign-in and back here, chosen
+    // OVER the shipped blank page (the user && render drew nothing); a return with the latch set gets
+    // the profile banner with Sign in; a 401 on the self read redirects once (SPEC A8). The useUser
+    // error branch below (the Phase 88-19 DECISION on it) is unchanged and still reached: the hook's authError
+    // option keeps a useUser error out of holding (hook test 6; page test 'SESSION-01 (88.9): a useUser
+    // error with no user shows the 88-19 fallback, never a redirect'). Only a read made on THIS visit
+    // proves the session (isFetchedAfterMount), so a cached row can never clear the latch.
+    const signIn = useSignInRedirect({
+        authLoading: isLoading,
+        signedOut: !user,
+        authError: error,
+        unauthorized: selfIdentityErrorState.showError && selfIdentityErrorState.code === 'unauthorized',
+        sessionProven: selfQuery.isSuccess && selfQuery.isFetchedAfterMount,
+    });
     const [ownedGames, setOwnedGames] = useState([]);
     const [loadingGames, setLoadingGames] = useState(true);
     const [bggSearchQuery, setBggSearchQuery] = useState('');
@@ -184,6 +209,8 @@ function Profile(){
     const [editingUsername, setEditingUsername] = useState(false);
     const [username, setUsername] = useState('');
     const [savingUsername, setSavingUsername] = useState(false);
+    // Save-feedback rule 3 (88.9-24): the Username updated caption under the name row.
+    const { receipt: usernameReceipt, showReceipt, clearReceipt } = useInlineReceipt();
     
     // Availability settings state
     const [availabilityTab, setAvailabilityTab] = useState('recurring'); // 'recurring' or 'specific'
@@ -275,12 +302,13 @@ function Profile(){
     const verifyInFlightRef = useRef(false);
     // W016 / D-35 (88.6.1-18): Replay Tutorial's synchronous latch — see its marker at the button.
     const replayInFlightRef = useRef(false);
-    // Req 4 (88.6.1-53): Remove's synchronous latch, the same pair as the three senders above —
-    // see `DECISION Phase 88.6.1-53 (Req 4)` at the Remove button.
-    const removeInFlightRef = useRef(false);
+    // Req 4 (88.6.1-53): the phone Remove's refusal is no longer a latch of its own. Since
+    // 88.9-68 (X36b) it is useConfirmAction's pending latch — see the AMENDED line on
+    // `DECISION Phase 88.6.1-53 (Req 4)` at the Remove button.
     /* R2 #29, second defect: the cooldown ticker used to be a LOCAL `const timer`, cleared only
        by its own tick — nothing cancelled it on unmount. Held in a ref and cleared in the
-       existing unmount effect below, alongside removeArmedTimerRef. */
+       existing unmount effect below (the phone Remove's arm timer that used to sit beside it is
+       the shared hook's now, cleared by the hook's own unmount cleanup). */
     const resendTimerRef = useRef(null);
     // Req 5 (88.6.1-18): a successful check unmounts the focused Verify. The target is the
     // settled "Phone verified" text, the fallback the profile card's <h1> — see the marker in
@@ -318,6 +346,26 @@ function Profile(){
     const patternsFailedWithNothingCached = patternsError.showError && !patternsRetained;
     // No-row half (88.6.1-61); selfIdentityErrorState stays RAW: plan 88.6.1-79 reads it over a kept row.
     const selfFailedWithNothingCached = selfIdentityFailedWithNoRow(selfQuery, self?.id);
+    // R-C2 (88.9-56): the no-row identity 401 on a declined return, latched through the episode's
+    // in-flight refetch (see the DECISION marker at its render branch below).
+    const rc2Active =
+        (selfFailedWithNothingCached && selfIdentityErrorState.code === 'unauthorized') ||
+        (signIn.decision === 'declined' && !self && selfQuery.isFetching);
+    const sessionDeadBannerState = useFetchErrorState({ isError: rc2Active, error: SESSION_DEAD_ERROR, refetch: resolveNothing });
+    const sessionDeadRef = useRef(null);
+    const sessionDeadFocusedRef = useRef(false);
+    useEffect(() => {
+        if (!rc2Active) {
+            sessionDeadFocusedRef.current = false;
+            return;
+        }
+        if (sessionDeadFocusedRef.current) return;
+        const active = document.activeElement;
+        if (active === document.body || !active || !active.isConnected) {
+            sessionDeadRef.current?.focus({ preventScroll: true });
+            sessionDeadFocusedRef.current = true;
+        }
+    }, [rc2Active]);
     /* DECISION Phase 88.6.1-79 (AC-29 / D-51, identity kept row): CHOSEN — Profile is the one host
        that DISPLAYS the identity row as content (the header's name and address line), so a failed
        identity refresh over a held row is retained data: ONE RF1 notice at the top of the header
@@ -395,6 +443,27 @@ function Profile(){
     // Review 221 (88.6.1-60): the screen-reader-only result count. See `DECISION Phase 88.6.1-60 (review 221,
     // owner 2026-10-13)` in `searchBGG`.
     const [bggFoundAnnouncement, setBggFoundAnnouncement] = useState('');
+    // X58 (88.9-68): the visible no-results line under the search row. See the AMENDED Phase 88.9-68
+    // lines on the review-221 marker in `searchBGG`. `bggNoResults` is true while the last search
+    // landed with nothing; the two refs hold when a search start last emptied the line and the timer
+    // that fills it no sooner than REGION_EMPTY_DWELL_MS after that (AT-4: WebKit re-announces an
+    // identical sentence only after the region has stayed empty that long).
+    const [bggNoResults, setBggNoResults] = useState(false);
+    const bggNoResultsClearedAtRef = useRef(0);
+    const bggNoResultsTimerRef = useRef(null);
+    const clearBggNoResults = useCallback(() => {
+        if (bggNoResultsTimerRef.current !== null) {
+            clearTimeout(bggNoResultsTimerRef.current);
+            bggNoResultsTimerRef.current = null;
+        }
+        setBggNoResults(false);
+    }, []);
+    useEffect(() => () => {
+        if (bggNoResultsTimerRef.current !== null) clearTimeout(bggNoResultsTimerRef.current);
+    }, []);
+    // Q2 (88.9-68): the Game added line under + Add from BGG. The same hook, words-and-timer rule as
+    // the Saved caption (a third instance, no second implementation); the DECISION is at the line.
+    const { receipt: addGameReceipt, showReceipt: showAddGameReceipt, clearReceipt: clearAddGameReceipt } = useInlineReceipt();
     // Req 11 / Req 5 (88.6.1-60): the import's 5-second result timer, and what its callback reads to
     // decide whether to empty the username and where focus goes first. `addFromBggToggleRef` and
     // `collectionHeadingRef` are SHARED: plan 88.6.1-67 lands Remove and Add on the same two
@@ -421,6 +490,38 @@ function Profile(){
     const importPromptOpenRef = useRef(false);
     // D-44 (88.6.1-60): the search panel's id, named by its toggle's aria-controls while it exists.
     const bggSearchPanelId = useId();
+    // X52d (88.9-68): the collection bar. The marker above the collection grid carries the decision;
+    // this is its state. Closed every visit (no storage). `collectionBarPressRef` records a PRESS of
+    // the bar ('open' / 'close'), so focus and scroll follow a press and never a render.
+    const isPhone = usePhoneViewport();
+    const collectionGridId = useId();
+    const [collectionExpanded, setCollectionExpanded] = useState(false);
+    const collectionBarRef = useRef(null);
+    const firstRevealedTitleRef = useRef(null);
+    const collectionBarPressRef = useRef(null);
+    const collectionVisibleCount = isPhone ? 3 : 6;
+    const collectionPeekCount = isPhone ? 1 : 3;
+    const collectionOverflows = ownedGames.length > collectionVisibleCount;
+    const collectionOpen = collectionExpanded && collectionOverflows;
+    // Owner ruling Q2 y (2026-11-14): the list never opens by itself. Once the count falls to the
+    // visible count or below the bar is gone, and the open state goes with it, so a later add that
+    // brings the bar back finds it closed.
+    useEffect(() => {
+        if (!collectionOverflows) setCollectionExpanded(false);
+    }, [collectionOverflows]);
+    // After a press of the bar has committed. Opening: focus goes to the first revealed game's title
+    // (the revealed cards sit BEFORE the bar in the DOM, so focus left on the bar would skip them).
+    // Closing: focus stays on the bar (one node in both states), and the list above it just got
+    // shorter, so the bar is brought back on screen when the collapse moved it off.
+    useEffect(() => {
+        const press = collectionBarPressRef.current;
+        collectionBarPressRef.current = null;
+        if (press === 'open' && collectionOpen) {
+            focusElement(firstRevealedTitleRef.current);
+        } else if (press === 'close' && !collectionOpen) {
+            collectionBarRef.current?.scrollIntoView?.({ block: 'nearest' });
+        }
+    }, [collectionOpen]);
     // The import dialog's open state, readable from the timer. One effect rather than a write beside
     // each of the four open-state setter calls (four sites to keep in step; one effect cannot drift),
     // and not a document query for an open dialog (any dialog would match, not just this one).
@@ -428,15 +529,18 @@ function Profile(){
         importPromptOpenRef.current = bggImportPromptOpen;
     }, [bggImportPromptOpen]);
 
-    // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
-    // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
-    const [removeArmed, setRemoveArmed] = useState(false);
-    // True while a removal is in flight (Req 4, 88.6.1-53): drives Remove's `aria-disabled`.
+    // Two-tap remove confirmation (D-PHONE-01): since 88.9-68 (X36b) the arm is the shared gated
+    // two-tap (`removePhoneGate` below), not a flag and a timer of this page's own.
+    // True while a removal is in flight (Req 4, 88.6.1-53): drives Remove's `aria-disabled`, its
+    // busy name and its spinner.
     const [removingPhone, setRemovingPhone] = useState(false);
-    const removeArmedTimerRef = useRef(null);
+    // X36a (88.9-68): which collection game / which availability row has its DELETE in flight.
+    // One at a time each: the gate's pending latch refuses a second commit until the first settles.
+    const [removingGameId, setRemovingGameId] = useState(null);
+    const [deletingPatternId, setDeletingPatternId] = useState(null);
 
     // Phone-removal banner state (REVISION):
-    // - phoneJustRemoved: session-scoped flag set by handleRemovePhone success path so
+    // - phoneJustRemoved: session-scoped flag set by performRemovePhone success path so
     //   the amber banner only fires after a removal in this session — NOT for users
     //   who never had a phone (the unrevised `!userData.phone` gate fired equally for
     //   both, with tone-mismatched copy).
@@ -613,11 +717,39 @@ function Profile(){
         });
     }, [allTimezones, tzSearch]);
 
-    const handleTimezoneSelect = useCallback((tz) => {
-        setTimezone(tz);
+    // X33b (88.9-68): the Saved caption beside the picker (the DECISION is at its region). The page's
+    // `tzSaveSeqRef` decides ONE thing: whether "Saved" shows, so that of two overlapping picks only
+    // the later one's result is shown. Ordering the saves and reverting a failed one are the
+    // provider's (src/app/components/TimezoneProvider.js ("const saveChainRef = useRef(Promise.resolve());")).
+    const { receipt: timezoneReceipt, showReceipt: showTimezoneReceipt, clearReceipt: clearTimezoneReceipt } = useInlineReceipt();
+    const tzSaveSeqRef = useRef(0);
+    // T1 (88.9-52, owner pick Field): the failed-save line under the picker (the DECISION is at
+    // its node). `timezoneCardRef` is the Timezone card: while it is mounted there is a field to
+    // put the line beside; once it is gone (the person left the page, or a signed-out frame took
+    // the page's place) the failure is the top toast, so it is never lost.
+    const [timezoneSaveError, setTimezoneSaveError] = useState('');
+    const timezoneCardRef = useRef(null);
+    const handleTimezoneSelect = useCallback(async (tz) => {
+        clearTimezoneReceipt();
+        // T1: the next pick clears the failed-save line at the press.
+        setTimezoneSaveError('');
+        const seq = ++tzSaveSeqRef.current;
+        // The list closes at the pick, before the save lands (as it always did).
         setTzPickerOpen(false);
         setTzSearch('');
-    }, [setTimezone]);
+        const ok = await setTimezone(tz, {
+            onSaveFailed: (message) => {
+                if (!timezoneCardRef.current) {
+                    toast.error(message);
+                    return;
+                }
+                // A stale result changes nothing here either.
+                if (seq === tzSaveSeqRef.current) setTimezoneSaveError(message);
+            },
+        });
+        // A stale result, success or failure, changes nothing.
+        if (ok && seq === tzSaveSeqRef.current) showTimezoneReceipt('Saved');
+    }, [setTimezone, clearTimezoneReceipt, showTimezoneReceipt]);
 
     /* DECISION Phase 88-10 (F-359): the option list is built ONLY while the picker is
        open, chosen OVER the obvious `useMemo` keyed on the search text alone. Building
@@ -714,9 +846,11 @@ function Profile(){
     // merely re-focuses an ALREADY-open field does not wipe what was typed.
     const openTimezonePicker = useCallback(() => {
         if (tzPickerOpen) return;
+        // X33b (88.9-68): reopening the picker clears the Saved caption (the next press clears a receipt).
+        clearTimezoneReceipt();
         setTzSearch('');
         setTzPickerOpen(true);
-    }, [tzPickerOpen]);
+    }, [tzPickerOpen, clearTimezoneReceipt]);
 
     // Closing (Esc, outside press, selection) drops the search text so the field falls
     // back to displaying the current selection rather than a stale query.
@@ -1008,10 +1142,6 @@ function Profile(){
                 importHoldObserverRef.current.disconnect();
                 importHoldObserverRef.current = null;
             }
-            if (removeArmedTimerRef.current) {
-                clearTimeout(removeArmedTimerRef.current);
-                removeArmedTimerRef.current = null;
-            }
             if (resendTimerRef.current) {
                 clearInterval(resendTimerRef.current);
                 resendTimerRef.current = null;
@@ -1019,38 +1149,17 @@ function Profile(){
         };
     }, []);
 
-    // Two-tap remove handler (D-PHONE-01): first tap arms a 3s revert timer + flips
-    // label to "Tap again to remove" (red). Second tap within 3s commits the removal
-    // via the cascade endpoint (Plan 70-01). Optimistically clears local state from
-    // the cascaded response and sets phoneJustRemoved so the amber banner fires.
-    const handleRemovePhone = async (event) => {
-        // Req 4 (88.6.1-53): the in-flight refusal, synchronous and FIRST — before the identity
-        // guards and the arm branch, so a tap mid-removal neither re-arms nor commits. The same
-        // pair as the senders' latches (see the `saveInFlightRef` marker, DECISION Phase 88.6-17).
-        if (removeInFlightRef.current) return;
-        // The pressed Remove, captured before any await (React clears `currentTarget` once the
-        // handler returns): it seeds the focus arm at success (Safari, plan 04's contract).
-        const pressed = event?.currentTarget ?? null;
-        if (!user?.sub) return;
-        if (!selfUuid) {
-            setPhoneError('Still loading your account — please try again in a moment.');
-            return;
-        }
-        if (!removeArmed) {
-            // First tap — arm.
-            if (removeArmedTimerRef.current) clearTimeout(removeArmedTimerRef.current);
-            setRemoveArmed(true);
-            removeArmedTimerRef.current = setTimeout(() => {
-                setRemoveArmed(false);
-                removeArmedTimerRef.current = null;
-            }, 3000);
-            return;
-        }
-        // Second tap — clear timer and commit.
-        clearTimeout(removeArmedTimerRef.current);
-        removeArmedTimerRef.current = null;
-        setRemoveArmed(false);
-        removeInFlightRef.current = true;
+    // The commit half of the phone Remove (D-PHONE-01): the cascade endpoint (Plan 70-01).
+    // Optimistically clears local state from the cascaded response and sets phoneJustRemoved so
+    // the amber banner fires. It runs only from `removePhoneGate` below, after two LIVE taps.
+    // Req 4 (88.6.1-53): the in-flight refusal is the gate's pending latch (useConfirmAction's
+    // `trigger` returns first while a commit runs), so a tap mid-removal neither re-arms nor commits.
+    const performRemovePhone = async (opts) => {
+        // The pressed Remove, handed over by the two-tap gate (`ctx.from`): it seeds the focus arm
+        // at success (Safari does not focus a tapped button, plan 04's contract).
+        const pressed = opts?.from ?? null;
+        // The identity guards ran on the tap (handleRemovePhone below); this is the backstop.
+        if (!user?.sub || !selfUuid) return;
         setRemovingPhone(true);
         try {
             const updatedUser = await usersAPI.removePhone(selfUuid);
@@ -1084,10 +1193,38 @@ function Profile(){
             );
             // NOTE: do NOT set phoneJustRemoved on failure — banner only fires on success.
         } finally {
-            // Released in `finally` so a FAILED removal does not strand the control.
-            removeInFlightRef.current = false;
+            // Cleared in `finally` so a FAILED removal does not strand the control (the gate's
+            // pending latch is released by the hook when this settles).
             setRemovingPhone(false);
         }
+    };
+
+    // X36b (88.9-68): the phone Remove is the shared gated two-tap, like every other remove. Its
+    // marker is the AMENDED line on `DECISION Phase 88.6.1-53 (Req 4)` at the button.
+    const removePhoneGate = useConfirmAction({
+        tier: 'two-tap',
+        // Dialog-tier copy, accepted and ignored by two-tap (superset config); dormant.
+        title: 'Remove your phone number?',
+        confirmLabel: 'Remove',
+        // The shipped live words of this control, kept as its SPOKEN name (the hook's default reads
+        // as an instruction). AMENDED Phase 88.9-52 (R13, owner 2026-11-17, pick Everywhere): the
+        // words it SHOWS are the house Tap again, chosen OVER showing this sentence (X36b); the
+        // ruling is at src/components/ui/useConfirmAction.ts ("DECISION Phase 88.9-52 (R13, owner").
+        armedName: 'Tap again to remove',
+        onConfirm: (_targetId, ctx) => performRemovePhone(ctx),
+    });
+    // No id (one target) and no resting name: the visible label IS the name at rest; live, the hook
+    // names it with the sentence above (R13). The
+    // target label makes the live-edge line name what is removed.
+    const removePhoneTriggerProps = removePhoneGate.triggerProps(undefined, 'your phone number');
+    // The identity guards stay on the tap, before the gate sees it.
+    const handleRemovePhone = (event) => {
+        if (!user?.sub) return;
+        if (!selfUuid) {
+            setPhoneError('Still loading your account — please try again in a moment.');
+            return;
+        }
+        removePhoneTriggerProps.onClick(event);
     };
 
     // Verify-CTA handler: smooth-scroll to + focus the phone input. Does NOT
@@ -1357,7 +1494,9 @@ function Profile(){
             // verified phone vanish from the cached self for the session.
             patchSelfCache(queryClient, { username: updatedUser.username });
             setEditingUsername(false);
-            toast.success('Username updated');
+            // Save-feedback rule 3 (88.9-24): an inline caption in the always-mounted region under the
+            // name row, spoken by that region alone (never also by the root announcer).
+            showReceipt('Username updated');
             settle();
         } catch (error) {
             logger.info('Error updating username:', errCtx(error));
@@ -1455,7 +1594,20 @@ function Profile(){
         try {
             await googleCalendarAPI.disconnect(selfUuid);
             setGoogleCalendarConnected(false);
-            toast.success('Google Calendar disconnected');
+            /* DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes; owner pick O16a,
+               88.9-PICKS-B9.json, 2026-11-07; owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): these six
+               profile outcomes fire NO success toast — each result is in view (the Calendar card's button
+               flips, the collection list gains or loses the row with focus on + Add from BGG, the new rows
+               show in the list below, the pattern row leaves the list) — the outcome is still spoken once by
+               the root announcer (src/components/ui/announcer.ts). Chosen OVER the Req 12 toasts
+               (88-UI-SPEC §6.2) these lines carried: rule 4 keeps a toast only for an outcome the person
+               cannot see. The call keeps the toast's place, before any close or settle. Every error toast
+               stays (rule 5). Username updated is the seventh profile receipt and goes inline instead (rule
+               3). Restoring a toast here is a decision, not a cleanup.
+               AMENDED Phase 88.9-68 (owner ruling Q2, 2026-11-14): Game added also shows a plain visible
+               line under + Add from BGG, not a live region, because with X52d the added row can land
+               behind the closed bar; still no toast, still spoken once by the root announcer. */
+            announceStatus('Google Calendar disconnected');
         } catch (error) {
             logger.info('Error disconnecting Google Calendar:', errCtx(error));
             toast.error(
@@ -1477,7 +1629,7 @@ function Profile(){
         title: 'Disconnect Google Calendar?',
         body: 'Future events stop syncing. Events already on your calendar stay.',
         confirmLabel: 'Disconnect',
-        pendingLabel: DISCONNECT_CALENDAR_PENDING_LABEL,
+        busySuffix: DISCONNECT_CALENDAR_BUSY_SUFFIX,
         onConfirm: performDisconnectGoogleCalendar,
     });
 
@@ -1551,6 +1703,9 @@ function Profile(){
         setBggSearching(true);
         // Emptied as the search starts, so the same count twice is a DOM change and is spoken twice.
         setBggFoundAnnouncement('');
+        // X58: the no-results line empties with it, and the moment is kept for the dwell below.
+        clearBggNoResults();
+        bggNoResultsClearedAtRef.current = Date.now();
         try {
             const results = await gamesAPI.searchBGG(bggSearchQuery);
             setBggSearchResults(results || []);
@@ -1569,7 +1724,13 @@ function Profile(){
                writes nothing (its toast speaks). REJECTED: a visible results line (a look change,
                not ruled); speaking zero through the region too (two announcements of one outcome);
                reusing a region that fails the test above; naming the games (a long list read aloud,
-               and the list is on screen). Written only here, never from a render or an effect. */
+               and the list is on screen). Written only here, never from a render or an effect.
+               AMENDED Phase 88.9-68 (52-X58, owner R2, 2026-11-13: Line under the box.): zero results show
+               the sentence in a visible polite line under the search box, chosen OVER the toast (on a
+               phone it showed far above the box); this region stays empty on zero, so one announcement.
+               The line takes its sentence no sooner than REGION_EMPTY_DWELL_MS after the search start
+               emptied it, through one timer cleared by the next search and on unmount, so a fast
+               identical repeat is announced again on WebKit (AT-4). */
             const found = (results || []).length;
             if (found === 1) {
                 setBggFoundAnnouncement(BGG_FOUND_ONE_LABEL);
@@ -1578,7 +1739,11 @@ function Profile(){
             }
             // 88.6.1 code review A-68: the computed count — `results` may be null (guarded above).
             if (found === 0) {
-                toast('No games found. Try a different search term.');
+                const wait = Math.max(0, bggNoResultsClearedAtRef.current + REGION_EMPTY_DWELL_MS - Date.now());
+                bggNoResultsTimerRef.current = setTimeout(() => {
+                    bggNoResultsTimerRef.current = null;
+                    setBggNoResults(true);
+                }, wait);
             }
         } catch (error) {
             logger.info('Error searching BGG:', errCtx(error));
@@ -1664,6 +1829,7 @@ function Profile(){
             setShowBggSearch(false);
             // 88.6.1 code review A-76: the result count leaves with the panel it counted.
             setBggFoundAnnouncement('');
+            clearBggNoResults();
             setBggSearchQuery('');
             setBggSearchResults([]);
             addGameInFlightRef.current = false;
@@ -1671,7 +1837,17 @@ function Profile(){
             await fetchOwnedGames();
             // Req 12: this mutation closes the search panel it was started from, so
             // without a receipt the only feedback is a panel vanishing.
-            toast.success('Game added');
+            // AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json; save-feedback rule 2, register
+            // 51.4 names Game added among the 11): the receipt is dropped — the game appears in the
+            // collection list and focus lands on + Add from BGG, which answers the panel-vanishing concern
+            // above; chosen OVER keeping this Req 12 toast. Spoken once by the root announcer: see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            // AMENDED Phase 88.9-68 (owner ruling Q2, 2026-11-14): with X52d the new game can sort behind
+            // the closed bar, so the 'appears in the collection list' premise no longer holds; a visible
+            // inline 'Game added' line under + Add from BGG, chosen OVER opening the bar automatically,
+            // OVER the pop-up toast and OVER pinning the card out of name order.
+            announceStatus('Game added');
+            showAddGameReceipt('Game added');
             settle();
         } catch (error) {
             logger.info('Error adding game to collection:', errCtx(error));
@@ -1734,11 +1910,15 @@ function Profile(){
             setOwnedGames((games) => games.filter((game) => game.id !== game_id));
             return settle;
         };
+        // X36a (88.9-68): set before the DELETE's await, cleared in finally.
+        setRemovingGameId(game_id);
         try {
             await userGamesAPI.removeOwnedGame(selfUuid, game_id);
             const settle = dropRemovedGame();
             await fetchOwnedGames();
-            toast.success('Game removed');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Game removed');
             settle();
         } catch (error) {
             logger.info('Error removing game from collection:', errCtx(error));
@@ -1756,6 +1936,8 @@ function Profile(){
                     fallback: "We couldn't remove that game. Please try again.",
                 })
             );
+        } finally {
+            setRemovingGameId((current) => (current === game_id ? null : current));
         }
     };
 
@@ -1777,10 +1959,31 @@ function Profile(){
            unsure what the armed state would do. Applies where the resting label is a
            bare ×; controls whose resting label is already 'Remove' keep the default
            armed copy (gameDetail see-all). Reverting to the default here re-opens walk
-           row 381; that is a decision, not a consistency cleanup. */
-        armedLabel: 'Remove',
+           row 381; that is a decision, not a consistency cleanup.
+           AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): REPLACED. The resting control is no
+           longer a bare x: it is a worded Remove button, and it arms to the house Tap again
+           like every other R13 row, so the armedLabel this marker defended is gone and the
+           hook's default applies. The owner's reason, in his words: "the x works better for
+           quick removal of things, but the fact that we aren't allowing quick removal, I'm not
+           sure if the x is warranted here." CHOSEN OVER keeping the glyph that arms into Remove
+           (this ruling of 2026-08-17). Walk row 381's worry (what will the armed state do?) is
+           answered by the resting word itself. The spoken name once live is the sentence the
+           phone Remove and the member Remove already use. The look, and how the button keeps
+           clear of the title, are written at the card: the R4 D4 marker on the title line of
+           CollectionCard, below in this file. */
+        armedName: 'Tap again to remove',
         onConfirm: (gameId, ctx) => removeGameFromCollection(gameId, ctx),
     });
+    // PIX-1 / A-49 (88.9-52): ONE press handler for every collection card, the same function on every render, so
+    // a memoised card is not re-rendered by it. It calls the gate's own onClick (the newest one, through the ref),
+    // so the A-74 hand-over of the pressed control stays the hook's.
+    const removeTriggerPropsRef = useRef(removeGameGate.triggerProps);
+    useEffect(() => {
+        removeTriggerPropsRef.current = removeGameGate.triggerProps;
+    });
+    const pressRemoveGame = useCallback((game, event) => {
+        removeTriggerPropsRef.current(game.id, game.name, `Remove ${game.name}`).onClick(event);
+    }, []);
 
     // The old hand-rolled patterns fetcher (silent-retry + window-refocus
     // listener) is GONE (PRIM-03): the useQuery above owns fetching + silent-
@@ -1853,7 +2056,9 @@ function Profile(){
             // §6.2's form is `{Object} {past-tense verb}`, <=4 words — so the count
             // the old string carried is deliberately dropped rather than shortened
             // into it. The created rows are visible in the list directly below.
-            toast.success('Schedules created');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Schedules created');
             settle();
         } catch (error) {
             logger.info('Error creating schedule:', errCtx(error));
@@ -1930,7 +2135,9 @@ function Profile(){
                 endTime: '17:00',
                 isAvailable: true,
             });
-            toast.success('Override created');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Override created');
             settle();
         } catch (error) {
             logger.info('Error creating specific override:', errCtx(error));
@@ -1965,10 +2172,14 @@ function Profile(){
             preferred: () => (rowType === 'specific_override' ? addOverrideToggleRef.current : addScheduleToggleRef.current),
             from: opts?.from ?? null,
         });
+        // X36a (88.9-68): set at the start, cleared in finally.
+        setDeletingPatternId(patternId);
         try {
             await availabilityAPI.deleteAvailability(patternId);
             await patternsQuery.refetch();
-            toast.success('Pattern deleted');
+            // Save-feedback rule 2 (88.9-24): no toast, spoken once by the root announcer — see the
+            // DECISION Phase 88.9-24 (save-feedback rule 2, profile outcomes) marker at the Calendar disconnect.
+            announceStatus('Pattern deleted');
         } catch (error) {
             logger.info('Error deleting pattern:', errCtx(error));
             toast.error(
@@ -1977,6 +2188,7 @@ function Profile(){
                 })
             );
         } finally {
+            setDeletingPatternId((current) => (current === patternId ? null : current));
             settle();
         }
     };
@@ -2202,7 +2414,9 @@ function Profile(){
     // §6.3: loading copy NAMES the thing. Worded identically to this route's own
     // `loading.tsx` fallback so the boundary and the component do not greet the
     // same person with two different sentences on one navigation.
-    if (isLoading) return <div className="flex items-center justify-center min-h-screen">Loading your profile...</div>;
+    // 88.9-40: the same line is the redirect frame (signIn.holding), so no blank page or banner paints
+    // for a frame before the browser navigates.
+    if (isLoading || signIn.holding) return <div className="flex items-center justify-center min-h-screen">Loading your profile...</div>;
 
     /* DECISION Phase 88-19 (Req 7 / T-88-19-02): the session-error branch renders
        the shared `ErrorFallback` — chosen OVER hand-writing a designed sentence
@@ -2237,18 +2451,63 @@ function Profile(){
         );
     }
 
+    // 88.9-40 (SESSION-01): the DECLINED signed-out return (back from sign-in with the latch set, or
+    // storage failed) — the profile banner with Sign in, in place of the blank page `user &&` drew.
+    // The title literal is the one this file already uses; plans 88.9-48 / 49 convert it to `thing=`.
+    if (!user) {
+        return (
+            <CentredPageFrame srHeading={PROFILE_PAGE_NAME}>
+                <FetchErrorBanner state={signIn.signedOutErrorState} thing="your profile" reportContext="Profile page — signed out" />
+            </CentredPageFrame>
+        );
+    }
+
+    /* DECISION Phase 88.9-56 (owner ruling R-C2 + 'profile', 88.9-RULINGS.md, 2026-11-10; closes plan 88.9-40
+       Deviations 8): a return with a LIVE cookie whose identity read still 401s and no row held renders ONE
+       page-level banner, Couldn't load your profile, with Sign in (FetchErrorBanner's unauthorized branch, plan
+       88.9-26 — the shape plan 88.9-42 gave the home page), chosen OVER the body with its in-zone Retry notices (a
+       401 cannot be retried; the notices offered no way back in) and OVER a second redirect (the latch is set:
+       SESSION-01's once-only rule). The banner reads a LATCHED state of its own (SESSION_DEAD_ERROR +
+       resolveNothing through useFetchErrorState, keyed on rc2Active), chosen OVER the raw identity state, whose
+       visibilitychange refetch drops its error flag for the fetch's duration and would swap the banner for the
+       body and back; rc2Active also holds through the declined episode's in-flight refetch. The banner REPLACES
+       the body — the same shape as the signed-out declined return directly above — chosen OVER the home page's
+       banner-above-the-columns, because on the profile every zone reads the identity row and nothing beneath
+       could render honestly. Its reportContext is its own value: the operator's report names the
+       session-expired shape, not the signed-out one. Focus: on the branch's first commit, if the active element
+       is body or disconnected, the wrapper (tabIndex -1; its first text is the banner title) takes focus once
+       per episode, chosen OVER leaving focus on body (the branch is reached on first load before any
+       interaction, where R-C4's main landing — the home page's guard — does not apply). Changing this is a
+       decision, not a cleanup.
+       AMENDED Phase 88.9-66 (X70a): both page-replacing banners sit centred in CentredPageFrame, OVER the top of the page column; focus lands on the frame's inner box. */
+    if (rc2Active) {
+        return (
+            <CentredPageFrame ref={sessionDeadRef} tabIndex={-1} srHeading={PROFILE_PAGE_NAME}>
+                <FetchErrorBanner state={sessionDeadBannerState} thing="your profile" reportContext="Profile page — session expired" />
+            </CentredPageFrame>
+        );
+    }
+
     return (
         user && (
             <div className="p-3 md:p-6 max-w-4xl mx-auto">
+                {/* DECISION Phase 88.9-32 NAV-01 (R2-82, owner ruling 2026-11-07 1:08 PM): the profile body KEEPS
+                    its own max-w-4xl mx-auto cap, chosen OVER the 7xl chrome cap the ruling gave the home and
+                    group bodies (and gameDetail, 6xl to 7xl). NAV-01 fixed bodies that stretched PAST the 1280px
+                    header and footer; this settings column is centred inside them and never reaches their edge,
+                    and widening it to 1280 was never put to the owner. The owner confirms this at the 1280 / 1440
+                    glance (plan 88.9-51); widening it is a decision, not a cleanup.
+                    AMENDED Phase 88.9-59 (X5a): header, footer and Home now cap at 1600; this column stays
+                    max-w-4xl (N10). */}
                 {/* SMS-disabled banner — gated on phoneJustRemoved (session flag
-                    set by handleRemovePhone success) so it does NOT fire for users
+                    set by performRemovePhone success) so it does NOT fire for users
                     who never had a phone. Also gated on sms_enabled per the
                     admin-entitlement model: non-entitled users never see SMS UI,
                     including this banner. Banner clears automatically when user
-                    re-adds a phone. Tokens mirror Phase 62-02 TimezoneNudgeBanner. */}
+                    re-adds a phone. Tokens: the B3a status-warning family (owner pick B3a, plan 88.9-32). */}
                 {userData?.sms_enabled && phoneJustRemoved && !userData?.phone && !smsDisabledBannerDismissed && (
-                    <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 flex items-start gap-3">
-                        <p ref={smsDisabledBannerTextRef} className="flex-1 text-sm text-amber-900 dark:text-amber-100">
+                    <div className="mb-4 p-3 rounded-lg bg-status-warning-subtle border border-status-warning flex items-start gap-3">
+                        <p ref={smsDisabledBannerTextRef} className="flex-1 text-sm text-content-status-warning">
                             SMS disabled — add a phone number to re-enable.
                         </p>
                         {/* DECISION Phase 88.6-17 (A10 / T-88.6-43 + R3 finding 144): this dismiss stays a
@@ -2296,8 +2555,19 @@ function Profile(){
                                against it, so page; ring vs halo 7.52 light / 10.13 dark (census, halo-approximate; the band
                                belongs to plan 88.9-16). Only the class string
                                gained the two halo tokens; the A10 and 88.6.1-53 markers above stand as written.
-                               Swapping the dark halo for the banner fill is a decision, not a cleanup. */
-                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-offset-surface-page"
+                               Swapping the dark halo for the banner fill is a decision, not a cleanup.
+                               AMENDED Phase 88.9-32 (owner pick B3a, 88.9-PICKS-B1.json, 2026-11-04): the box is the OPAQUE
+                               status-warning family (the status-warning-subtle fill in each theme, values in UI-SPEC R2-69 and not
+                               spelled here so this file's untagged-raw-hex pin stays honest, warning border and ink) and the halo is
+                               that same declared key with no dark variant, chosen OVER option (a)'s amber-50 light halo and
+                               page-ground dark halo, which approximated a 20%-alpha box (band 1.09 dark). Measured: ring vs
+                               halo 6.65 / 6.37, band 1.00 in both themes (UI-SPEC R2-69). The ink moved with the box (build
+                               contract); the A10 marker's byte-unchanged sentence described plan 88.6-17's own edit and still
+                               holds for the glyph size and the 44 floor. Putting a dark variant back on this halo is a
+                               decision, not a cleanup.
+                               AMENDED Phase 88.9-58 (X21b): light box now amber-200 (the X21b pick); ring vs halo
+                               re-measured 6.26 light / 6.37 dark, band 1.00. */
+                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-status-warning hover:text-content-primary text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
                             aria-label="Dismiss"
                         >
                             ×
@@ -2330,8 +2600,12 @@ function Profile(){
                         edit — chosen OVER the colour token alone. Its `font-semibold` was the only
                         thing distinguishing it from the sibling link; once that becomes 400, colour
                         is the sole remaining VISUAL cue, so the state is exposed programmatically
-                        as well. Dropping `aria-current` later is a decision, not a cleanup. */}
-                    <span aria-current="page" className="text-content-primary font-normal">Profile</span>
+                        as well. Dropping `aria-current` later is a decision, not a cleanup.
+                        AMENDED Phase 88.9-32 (owner pick C4a, 88.9-PICKS-B2.json, 2026-11-05): the current-page
+                        span reads 700 (font-bold), chosen OVER the shipped 400 — all five breadcrumb current
+                        crumbs now read 700 (UI-SPEC R2-19). aria-current stays, so the state is still exposed
+                        programmatically as well as by weight. */}
+                    <span aria-current="page" className="text-content-primary font-bold">{PROFILE_PAGE_NAME}</span>
                 </nav>
 
                 {/* Profile Header */}
@@ -2354,7 +2628,8 @@ function Profile(){
                                     no `name` still renders the page's one h1 (Heading drops empty children). */}
                                 {user?.name || user?.email?.split('@')[0] || 'User'}
                             </Heading>
-                            <FetchErrorBanner state={selfIdentityErrorState} />
+                            {/* DECISION Phase 88.9-49 (BANNER-01, F26): the identity-withdrawn banner names what failed (Couldn't load your profile), chosen OVER the component default Something went wrong (the one full mount that typed no title); the sibling session ErrorFallback keeps its own We couldn't load your profile (not a banner). */}
+                            <FetchErrorBanner state={selfIdentityErrorState} thing="your profile" />
                         </div>
                     ) : profileLoaded ? (
                         <div className="flex items-center gap-3 md:gap-4">
@@ -2404,21 +2679,23 @@ function Profile(){
                                             that opened the editor, mounted in the same commit), else the profile
                                             <h1>.
                                             REJECTED: (a) native `disabled` for the in-flight half (it drops focus in
-                                            a real browser); (b) focusing the <h1> on a save (the success toast
+                                            a real browser); (b) focusing the <h1> on a save (the inline Username updated receipt, an always-mounted polite status region since 88.9-24,
                                             already announces the outcome, and one target for Save and Cancel keeps
                                             the editor's exit predictable); (c) per-host inline focus code (D-04).
                                             Disclosed visible delta: while saving, Save shows the gated primary pair
                                             instead of the half-strength wash. Dropping either half of the pair is a
-                                            decision, not a cleanup. */}
+                                            decision, not a cleanup.
+                                            AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (name "Save, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word and narrowed the button). The aria-disabled gate and the saveUsernameInFlightRef latch are unchanged. */}
                                         <div className="flex gap-2">
                                             <Button
                                                 variant="primary"
                                                 onClick={handleSaveUsername}
                                                 disabled={!username.trim()}
                                                 aria-disabled={savingUsername ? 'true' : undefined}
+                                                busy={savingUsername}
                                                 className="whitespace-nowrap"
                                             >
-                                                {savingUsername ? 'Saving...' : 'Save'}
+                                                Save
                                             </Button>
                                             <Button
                                                 variant="secondary"
@@ -2496,7 +2773,10 @@ function Profile(){
                                             a decision, not a cleanup. */}
                                         <button
                                             ref={editUsernamePencilRef}
-                                            onClick={() => setEditingUsername(true)}
+                                            onClick={() => {
+                                                clearReceipt();
+                                                setEditingUsername(true);
+                                            }}
                                             className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                                             title="Edit username"
                                         >
@@ -2504,6 +2784,18 @@ function Profile(){
                                         </button>
                                     </div>
                                 )}
+                                {/* Save-feedback rule 3 (88.9-24): the Username updated caption. A SIBLING after the
+                                    whole editor ternary, never inside either branch: the pencil's branch mounts in
+                                    the same commit as the receipt, and a polite region that mounts holding text is
+                                    not announced (src/components/ui/StatusRegion.tsx ("EMPTY-FIRST")). Mounted empty
+                                    and sr-only until the save lands; its own line under the name row at 375. */}
+                                <StatusRegion
+                                    data-testid="username-receipt"
+                                    politeness="polite"
+                                    srOnlyWhenEmpty
+                                    message={usernameReceipt}
+                                    className="text-xs text-content-status-success"
+                                />
                                 {/* THE ADDRESS THIS APP USES, not the Auth0 SESSION claim
                                     (Phase 88.8 plan 13, SPEC R12). Until this phase this line
                                     rendered `user.email` — the session claim — which after an
@@ -2682,8 +2974,9 @@ function Profile(){
                                                     message={phoneValidation.error}
                                                 />
                                             </div>
-                                            {/* The in-flight cue is the LABEL SWAP plus the muted input
-                                                ground, stated rather than inherited: the retired
+                                            {/* The in-flight cue is rule 1's kept label with the house
+                                                spinner (Phase 88.9-46 B31, Button busy) plus the muted
+                                                input ground, stated rather than inherited: the retired
                                                 `'saving'` branch carried an unconditional
                                                 `opacity-50 cursor-not-allowed`, and `.btn:disabled`'s
                                                 own opacity wash keys on the NATIVE attribute this
@@ -2692,14 +2985,28 @@ function Profile(){
                                                 deliberately not used as the replacement. The
                                                 not-allowed cursor still arrives, from
                                                 `.btn[aria-disabled='true']` in globals.css. */}
+                                            {/* DECISION Phase 88.9-46 (rule 1 B31-B36): the six in-flight profile
+                                                buttons (Save & Verify, Verify, Replay Tutorial, Import Collection,
+                                                Search, Add to Collection) keep their resting label with the house
+                                                spinner and a heard suffix that re-uses each site's shipped — for
+                                                P1 / P7 owner-ratified — in-flight word (", sending code" /
+                                                ", verifying" / ", starting" / ", importing" / ", searching" /
+                                                ", adding"), chosen OVER the shipped six label swaps (a swap
+                                                replaced the whole accessible name and changed the control's
+                                                width under the finger) and OVER minting new suffix words (Q6(b)).
+                                                Owner pick O16a extended by the Q3 ruling (88.9-RULINGS.md,
+                                                2026-11-08). Each site's own latch stays the refusal; the native
+                                                validity gates (rule of KIND) are unchanged. */}
                                             <Button
                                                 variant="primary"
                                                 onClick={handleSaveAndVerify}
                                                 disabled={!phoneValidation.valid}
                                                 aria-disabled={phoneState === 'saving' ? 'true' : undefined}
                                                 className="whitespace-nowrap"
+                                                busy={phoneState === 'saving'}
+                                                busySuffix=", sending code"
                                             >
-                                                {phoneState === 'saving' ? 'Sending code...' : 'Save & Verify'}
+                                                Save & Verify
                                             </Button>
                                         </div>
                                     )}
@@ -2734,7 +3041,9 @@ function Profile(){
                                                     rule of POSITION (`DECISION Phase 88.6-22`,
                                                     src/app/components/FriendInvitePanel.js ("the rule of KIND + the rule of POSITION")): this is the control the user
                                                     just pressed, so it keeps focus and a second press is
-                                                    refused. Its label while checking is copy row P1.
+                                                    refused. Its label while checking stays Verify; copy row
+                                                    P1's word is heard as the busy suffix (AMENDED Phase
+                                                    88.9-46 rule 1 B32, owner pick O16a + Q3).
                                                     REJECTED: (a) native `disabled` while checking — it
                                                     drops focus to <body> in a real browser; (b) folding
                                                     the precondition into `aria-disabled` — Save & Verify
@@ -2743,8 +3052,9 @@ function Profile(){
                                                     from that field (no form, no key handler on it), so it
                                                     is not the activated control.
                                                     Disclosed visible delta: while checking, Verify now
-                                                    shows the P1 label on the gated primary colour pair;
-                                                    before, nothing changed on screen. No call-site
+                                                    shows the house spinner beside its kept label on the
+                                                    gated primary colour pair (rule 1, 88.9-46); before,
+                                                    nothing changed on screen. No call-site
                                                     opacity or cursor class: both come from the
                                                     `aria-disabled` rules in globals.css. Dropping either
                                                     half of the pair is a decision, not a cleanup. */}
@@ -2754,8 +3064,10 @@ function Profile(){
                                                     disabled={verificationCode.length !== 6}
                                                     aria-disabled={checkingCode ? 'true' : undefined}
                                                     className="whitespace-nowrap"
+                                                    busy={checkingCode}
+                                                    busySuffix={VERIFY_CODE_BUSY_SUFFIX}
                                                 >
-                                                    {checkingCode ? VERIFY_CODE_IN_FLIGHT_LABEL : 'Verify'}
+                                                    Verify
                                                 </Button>
                                                 {/* DECISION Phase 88.6-17 (D-8): the cooldown gate is
                                                     `aria-disabled`, with the native `disabled` attribute
@@ -2804,16 +3116,25 @@ function Profile(){
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </span>
-                                            <span ref={phoneVerifiedRef} className="text-sm text-content-status-success">Phone verified</span>
+                                            {/* DECISION Phase 88.9-52 (W39): on a phone the status words take the rest of the first
+                                                line (the row's width less 40px for the 20px tick and its gap), so the two
+                                                controls always start the second line together, chosen OVER the free wrap,
+                                                where Change number fitted beside the words and Remove dropped alone under
+                                                it. Change number starts at the row's left edge there (its left margin is
+                                                from sm only). From sm the row is one line, as before. REJECTED: a wrapper
+                                                around the tick and the words (the row's children stay flat; tests and the
+                                                focus hand-off find the row from the words). */}
+                                            <span ref={phoneVerifiedRef} className="basis-[calc(100%-2.5rem)] text-sm text-content-status-success sm:basis-auto">Phone verified</span>
                                             {/* A10: floored in place — see the Remove marker below. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline sm:ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
                                             >
                                                 Change number
                                             </button>
-                                            {/* Two-tap remove link (D-PHONE-01): first tap arms 3s revert timer
-                                                + flips label red; second tap commits via usersAPI.removePhone.
+                                            {/* Two-tap remove link (D-PHONE-01): the first tap arms it (it counts
+                                                down, then reads its live label in 600); a second live tap commits
+                                                via usersAPI.removePhone.
 
                                                 DECISION Phase 88.6-17 (A10 / T-88.6-43, with T-88.6-41):
                                                 this control is floored to 44px IN PLACE as a raw
@@ -2834,7 +3155,8 @@ function Profile(){
                                                 `Button` elements. The floor here is therefore held by
                                                 this marker and by the rendered 375px measurement recorded
                                                 in `88.6-17-SUMMARY.md`, not by a class-list pin. Removing
-                                                `min-h-11` is a decision, not a cleanup. */}
+                                                `min-h-11` is a decision, not a cleanup.
+                                                AMENDED Phase 88.9-68 (X36b): still raw for the same reason; the arm comes from the shared hook. */}
                                             {/* DECISION Phase 88.6.1-53 (Req 4): while a removal is in flight
                                                 Remove carries `aria-disabled` and `handleRemovePhone`'s first
                                                 line refuses every tap (`removeInFlightRef`, released in
@@ -2853,17 +3175,46 @@ function Profile(){
                                                 on a phone it raises the keyboard after a destructive action
                                                 and says nothing about what happened; (c) minting a heading or
                                                 text (D-05, D-31). Dropping either half of the pair is a
-                                                decision, not a cleanup. */}
+                                                decision, not a cleanup.
+                                                AMENDED Phase 88.9-68 (X36b, once-over R3, veto open): the arm is the shared two-tap (gated, then live), chosen OVER its own instant 3000 ms timer, which the 8 Nov list left out; the refusal now lives in useConfirmAction's pending latch; aria-disabled stays; rule 1's delayed spinner joins with , removing.
+                                                How it is spread: the hook's props first, then this page's guarded onClick, then the
+                                                in-flight pair as a CONDITIONAL spread (the Friends form) — a plain attribute that is
+                                                undefined at rest would overwrite the hook's own aria-disabled while it counts down.
+                                                AMENDED Phase 88.9-52 (W38): the spinner STAYS trailing here, chosen OVER the leading
+                                                spinner the schedule Delete, the Friends Remove and the collection x now carry. Those
+                                                are right-anchored, where a leading spinner lets the word hold its place; this one is
+                                                left-anchored (W39: its label starts at one left edge in every state), so a leading
+                                                spinner would push the word about 24px right when it appears and a trailing one moves
+                                                nothing.
+                                                AMENDED Phase 88.9-52 (W38 completion, owner: every inline two-tap control takes ONE
+                                                look): at rest and armed this control now wears the schedule Delete's look. Changed:
+                                                the underline is gone, the hover is the error-subtle fill (the hover it had set the
+                                                ink it already wore, so it did nothing), the word stays on one line
+                                                (whitespace-nowrap), and the ring loses its card-ground offset as Delete's has none
+                                                (the ring still paints whole: it reads 3:1 or better against the card ground and
+                                                against the hover fill in both themes, and with no offset it stays inside the 4px
+                                                between this control and Change number). REJECTED: keeping the underline, the link
+                                                dress Change number wears, because then this one remove would read as a link while
+                                                the schedule Delete, the override Delete and the Friends Remove read as bare red
+                                                words; the four removes read alike. Kept as its own: its place (-mx-2 ml-3), the
+                                                left-anchored label reserve (W39) and the trailing spinner above. The ink is the
+                                                same token as before, so its contrast on the card is unchanged. */}
                                             <button
+                                                {...removePhoneTriggerProps}
                                                 onClick={handleRemovePhone}
-                                                aria-disabled={removingPhone ? 'true' : undefined}
-                                                className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
-                                                    removeArmed
-                                                        ? 'text-content-status-error font-semibold'
-                                                        : 'text-content-status-error hover:text-content-status-error'
+                                                {...(removingPhone ? { 'aria-disabled': 'true', 'aria-label': 'Remove, removing' } : {})}
+                                                className={`-mx-2 ml-3 inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring${
+                                                    removePhoneGate.isArmed() ? ' font-semibold' : ''
                                                 }`}
                                             >
-                                                {removeArmed ? 'Tap again to remove' : 'Remove'}
+                                                {/* X69 width (88.9-67): held from the arm, nothing at rest.
+                                                    W39 (88.9-52): left-anchored in the reserve, so Wait (3) starts where Remove
+                                                    started and Tap again starts there too (a button centres its
+                                                    text, which set Wait (3) to the right of both). */}
+                                                <ReservedLabel className="justify-items-start" reserve={removePhoneGate.reserveFor()}>
+                                                    {removePhoneGate.labelFor(undefined, 'Remove')}
+                                                </ReservedLabel>
+                                                <DelayedSpinner busy={removingPhone} className="ml-2 align-middle" />
                                             </button>
                                         </div>
                                     )}
@@ -3045,21 +3396,50 @@ function Profile(){
                         below spells a utility in words. Converging these fills onto semantic tokens
                         is a look change and is out of this phase's contract.
 
+                        AMENDED Phase 88.9-32 (owner pick E4a, 88.9-PICKS-B4.json, 2026-11-06): this phase is that
+                        contract. The pressed arm of BOTH toggles is ONE token string (THEME_TOGGLE_PRESSED: the
+                        accent line border, the muted fill held through hover, the accent ink), chosen OVER the
+                        shipped raw pair — amber-500 on amber-50 in light (border 2.15 and fill 1.04 against the
+                        card, under 3:1) and amber-500 on purple-900 with white ink in dark. Measured: border vs
+                        card 3.19 light / 8.30 dark, ink on the muted fill 4.71 / 6.75 (tokenContrast 64, plan
+                        88.9-22). The raw-palette roster entry in btnCensus.test.tsx is deleted in the same commit;
+                        the label-size delta above stands. The weight cue lost in 88.6-17 is replaced by a check
+                        glyph (U+2713, aria-hidden, in the button's own ink) before the pressed button's label,
+                        with both buttons on one shared min width so the pair does not shift (owner ruling
+                        88.9-RULINGS.md R-P3a, 2026-11-08): pressed vs unpressed measure fill 1.50, border 1.38,
+                        ink 1.48 in light, colour alone without it (WCAG 1.4.1), so the sentence above that border
+                        and fill still carry selection no longer holds on its own. Chosen OVER a thicker inset edge
+                        on the pressed arm (option b, a 1px-vs-2px step that may not read at phone size) and OVER
+                        font-bold (option a, dead under the unlayered .btn font-weight). Removing the glyph or the
+                        shared width is a decision, not a cleanup. DECISION Phase 88-10 (aria-pressed) is unchanged.
+                        AMENDED Phase 88.9-68 (X57, owner at N48: the overall text is centered, so adding the checkmark makes the text move a little): the glyph's space is reserved in both states (invisible, not absent), chosen OVER mounting it only when pressed; the shared min width stands.
+
                         `enabled-hover:bg-*` pins the SELECTED arm's fill through hover: ghost's base
-                        carries `enabled-hover:bg-surface-hover`, which would otherwise wash the amber
-                        (and the purple) on hover — a fill change P6 forbids. */}
+                        carries `enabled-hover:bg-surface-ghost-hover`, which would otherwise wash the
+                        pressed fill on hover — a fill change P6 forbids.
+                        AMENDED Phase 88.9-52 (R8c, owner 2026-11-17, pick Fill): the UNPRESSED arm of both
+                        toggles hovers on the ghost family's own key, enabled-hover:bg-surface-ghost-hover
+                        (light: the visible secondary fill, 1.3802 off the card, the arm's ink 7.59
+                        on it; dark: the shared wash, unchanged), chosen OVER the enabled-hover:bg-surface-hover
+                        it restated (1.0601 off the light card). The arm sets its own card fill, so it must
+                        restate the hover after it, and the restated class wins over the variant's: leaving
+                        the old key here kept the old hover on these two buttons alone. The pressed arm is
+                        untouched (THEME_TOGGLE_PRESSED holds its muted fill through hover). In light a
+                        hovered unpressed toggle is 1.0902 from the pressed fill; the
+                        accent border, the accent ink and the check glyph still tell the two apart. */}
                     {themeMounted ? (
                         <div className="flex gap-3">
                             <Button
                                 variant="ghost"
                                 onClick={() => setTheme('light')}
                                 aria-pressed={resolvedTheme === 'light'}
-                                className={`border transition-colors ${
+                                className={`border min-w-32 transition-colors ${
                                     resolvedTheme === 'light'
-                                        ? 'border-amber-500 bg-amber-50 enabled-hover:bg-amber-50 text-content-primary'
-                                        : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
+                                        ? THEME_TOGGLE_PRESSED
+                                        : 'border-line bg-surface-card enabled-hover:bg-surface-ghost-hover text-content-secondary'
                                 }`}
                             >
+                                <span aria-hidden="true" className={resolvedTheme === 'light' ? undefined : 'invisible'}>{'\u2713'}</span>
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                                 </svg>
@@ -3069,12 +3449,13 @@ function Profile(){
                                 variant="ghost"
                                 onClick={() => setTheme('dark')}
                                 aria-pressed={resolvedTheme === 'dark'}
-                                className={`border transition-colors ${
+                                className={`border min-w-32 transition-colors ${
                                     resolvedTheme === 'dark'
-                                        ? 'border-amber-500 bg-purple-900 enabled-hover:bg-purple-900 text-white'
-                                        : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
+                                        ? THEME_TOGGLE_PRESSED
+                                        : 'border-line bg-surface-card enabled-hover:bg-surface-ghost-hover text-content-secondary'
                                 }`}
                             >
+                                <span aria-hidden="true" className={resolvedTheme === 'dark' ? undefined : 'invisible'}>{'\u2713'}</span>
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                                 </svg>
@@ -3090,7 +3471,7 @@ function Profile(){
                 </div>
 
                 {/* Timezone Setting */}
-                <div className="card p-3 md:p-6 mb-6">
+                <div ref={timezoneCardRef} className="card p-3 md:p-6 mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-1">Timezone</Heading>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
                     {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
@@ -3112,7 +3493,10 @@ function Profile(){
                         value={tzPickerOpen ? tzSearch : currentTimezoneLabel()}
                         onValueChange={(next) => {
                             setTzSearch(next);
-                            if (!tzPickerOpen) setTzPickerOpen(true);
+                            if (!tzPickerOpen) {
+                                clearTimezoneReceipt();
+                                setTzPickerOpen(true);
+                            }
                         }}
                         open={tzPickerOpen}
                         onOpenChange={handleTimezonePickerOpenChange}
@@ -3122,6 +3506,46 @@ function Profile(){
                         listLabel="Timezones"
                         emptyLabel="No timezones match your search"
                     />
+                    {/* DECISION Phase 88.9-68 (52-X33 b, owner at N15: we don't have anything to say that the
+                        change is saved on that spot of the profile): the auto-saving picker shows the
+                        save-feedback rule 3 caption (UI-SPEC O-16), chosen OVER silence; a small Saved beside
+                        the picker, announced once, ruled by the owner 2026-11-14 (Yes, small saved besides
+                        picker); 4000 ms, polite, mounted empty. It shows only after the save has LANDED
+                        (setTimezone resolved true) and only for the latest pick; a failed save shows the
+                        provider's error toast and the saved zone back in the field instead (owner ruling Q8 b).
+                        AMENDED Phase 88.9-52 (T1, owner 2026-11-17): a failed save no longer shows the toast
+                        here; it shows the line below this region (the T1 marker there). */}
+                    <StatusRegion
+                        data-testid="timezone-receipt"
+                        politeness="polite"
+                        srOnlyWhenEmpty
+                        message={timezoneReceipt}
+                        className="mt-2 text-xs text-content-status-success"
+                    />
+                    {/* DECISION Phase 88.9-52 (T1, owner 2026-11-17, pick Field: I thought we were making a
+                        toast next to the Timezones, not a notice at the top of the page): a failed timezone
+                        save shows its line HERE, where Saved shows, in this page's inline error style, chosen
+                        OVER the provider's top toast (owner ruling T1 A, 2026-11-16, ruled the sentence only;
+                        the place is this ruling). The page hands setTimezone an onSaveFailed and the provider
+                        raises no toast for it (src/app/components/TimezoneProvider.js ("const reportFailure = (message) => {")).
+                        The words are the provider's: the timezone sentence, or the register's own line for
+                        signed out, offline and going too fast.
+                        Spoken as the phone flow's failed submission is on this page (DECISION Phase 88-25):
+                        a conditionally mounted alert, inserted with its text, chosen OVER putting the words
+                        in the polite Saved region above (a failure would wait its turn behind other speech,
+                        and that region clears itself after 4000 ms; this line must stay) and OVER a standing
+                        empty assertive region. Each failure mounts it afresh, so the same sentence twice is
+                        spoken twice.
+                        It stays until the NEXT PICK (cleared at the press) and is never beside Saved;
+                        reopening the picker or typing in it does not clear it, chosen OVER clearing on
+                        reopen as Saved does: it is the only thing saying why the field went back to the
+                        saved zone. A result from an earlier pick is ignored. With no Timezone card on screen
+                        when the answer comes, the failure is the top toast. */}
+                    {timezoneSaveError && (
+                        <p data-testid="timezone-save-error" role="alert" className="text-content-status-error text-xs mt-1">
+                            {timezoneSaveError}
+                        </p>
+                    )}
                 </div>
 
                 {/* Notification Preferences Section — absent while identity has no row, on purpose:
@@ -3270,7 +3694,8 @@ function Profile(){
                                 {/* Reminder timing dropdown */}
                                 {type.key === 'reminder' && (
                                     <div className="mt-2 ml-0 sm:ml-4 flex items-center gap-2">
-                                        <span className="text-xs text-content-muted">Remind me:</span>
+                                        {/* DECISION Phase 88.9-68 (X55, owner at N37: Probably reduce button and text size?): the label rises to Label 14 in primary ink, chosen OVER shrinking the select (16px so iOS does not zoom, DECISION Phase 88-03; 44px on phones; no compact select exists) and OVER Body 16 (UI-SPEC's type roles put field labels at Label 14, R2-14). Owner look owed. */}
+                                        <span className="text-sm text-content-primary">Remind me:</span>
                                         {/* The adjacent "Remind me:" span is NOT associated with
                                             this control, so the select shipped with no accessible
                                             name (axe select-name, WCAG 4.1.2 A) — the same
@@ -3381,7 +3806,14 @@ function Profile(){
                     {/* Schedules Tab */}
                     <TabsContent value="recurring">
                         <div>
-                            <div className="flex justify-between items-center mb-4">
+                            {/* DECISION Phase 88.9-52 (W43): on a phone the header STACKS (title and sentence, then the
+                                button on its own line at its own width) and the button never wraps, the collection
+                                header's shape (this file ("flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3")),
+                                chosen OVER whitespace-nowrap alone in the old row (about 187px would be left for a
+                                title that needs about 170 to 185, so the title and sentence wrap against the button
+                                instead) and OVER the shipped row (+ Add Schedule broke onto two lines inside its
+                                button at 375). From sm the row is as it was. The Specific Dates header is the same. */}
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                                 <div>
                                     <Heading ref={schedulesHeadingRef} level={3} size="body" className="text-content-primary">Availability Schedules</Heading>
                                     <p className="text-sm text-content-secondary mt-1">Set your recurring availability schedule</p>
@@ -3392,6 +3824,7 @@ function Profile(){
                                     onClick={() => setShowRecurringForm(!showRecurringForm)}
                                     aria-expanded={showRecurringForm}
                                     {...(showRecurringForm ? { 'aria-controls': recurringFormPanelId } : {})}
+                                    className="self-start whitespace-nowrap sm:self-auto"
                                 >
                                     {showRecurringForm ? 'Cancel' : '+ Add Schedule'}
                                 </Button>
@@ -3591,18 +4024,20 @@ function Profile(){
                                             the form's close then loses it again; (b) two latches — they would split
                                             a state the page deliberately keeps as one; (c) focusing the new rows — a
                                             multi-day save creates several, so "the new row" is not one element, and
-                                            the success toast already announces the outcome; (d) minting a heading or
+                                            the root announcer (src/components/ui/announcer.ts) already speaks the outcome since 88.9-24; (d) minting a heading or
                                             any text (D-05, D-31).
                                             Disclosed visible delta: while a save runs the button shows the gated
                                             primary pair instead of the half-strength wash. Dropping either half of
-                                            the pair is a decision, not a cleanup. */}
+                                            the pair is a decision, not a cleanup.
+                                            AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (names "Save Schedule, saving" and "Save Override, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word). The aria-disabled gate and the savePatternInFlightRef latch are unchanged. */}
                                         <Button
                                             variant="primary"
                                             onClick={handleCreateRecurringPattern}
                                             aria-disabled={savingPattern ? 'true' : undefined}
+                                            busy={savingPattern}
                                             className="w-full focus-visible:ring-offset-surface-page"
                                         >
-                                            {savingPattern ? 'Saving...' : 'Save Schedule'}
+                                            Save Schedule
                                         </Button>
                                     </div>
                                 </div>
@@ -3643,7 +4078,7 @@ function Profile(){
                             ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
                                     state={patternsError}
-                                    title="Couldn't load your schedules"
+                                    thing="your schedules"
                                     reportSubject="Couldn't load availability patterns on /userProfile"
                                     reportContext="userProfile — availability schedules tab"
                                     focusTarget={schedulesHeadingRef}
@@ -3655,17 +4090,39 @@ function Profile(){
                                     {availabilityPatterns
                                         .filter(p => p.type === 'recurring_pattern')
                                         .map(pattern => (
-                                            <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-content-primary">
-                                                        {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
-                                                    </p>
-                                                    <p className="text-sm text-content-secondary">
-                                                        {formatDate(pattern.start_date)} - {formatDate(pattern.end_date)}
-                                                    </p>
-                                                </div>
+                                            /* DECISION Phase 88.9-52 (W37): the row is a two-column grid. On a phone the hours
+                                               take the whole first line and the dates share the second with Delete, chosen
+                                               OVER the shipped one-line flex row, where the armed label (about 151px, was 61)
+                                               squeezed the hours onto two lines and the row grew 70 to 94px, and where a long
+                                               day (Wednesday) already wrapped at rest. Every phone row is now one height at
+                                               rest, counting down, live and busy: 24px of hours, the 44px control line, the
+                                               padding and border (94px). REJECTED: reserving the armed width at rest (the hours
+                                               would always wrap); pulling the 44px control up over the hours with negative
+                                               margins to keep 70px (its focus ring would cross the hours for a keyboard user
+                                               at phone width or 400% zoom). From sm the row reads as before: hours over dates
+                                               on the left, Delete centred on the right. The override rows below are the same.
+                                               The three cells are direct children of the row; a wrapper around the two lines
+                                               would take them out of the grid.
+                                               AMENDED Phase 88.9-52 (R17, owner 2026-11-17, pick A): a phone row is 82px, not the
+                                               94px above: the padding UNDER the 44px control line is gone below sm (pb-0; border
+                                               1, top 12, hours 24, control line 44, border 1), chosen OVER the all-round p-3. The
+                                               20px words sit mid-way in the 44px line, so 12px still shows under them, the same
+                                               as above the hours. One height at rest, counting down, live and busy, as before.
+                                               REJECTED: keeping 94px (the owner saw both); taking the 12px off the top or
+                                               splitting it (the hours would sit closer to the edge than the dates line). From sm
+                                               the bottom padding is back (sm:pb-3) and the 70px one-line row is unchanged. On a
+                                               phone the Delete focus ring now lies over the row's bottom edge line (2px ring, 1px
+                                               line): seen whole, in the 8px gap between rows. */
+                                            <div key={pattern.id} className="px-3 pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+                                                <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
+                                                    {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
+                                                </p>
+                                                <p className="text-sm text-content-secondary sm:col-start-1 sm:row-start-2">
+                                                    {formatDate(pattern.start_date)} - {formatDate(pattern.end_date)}
+                                                </p>
                                                 {(() => {
                                                     const patternLabel = `${getDayName(pattern.pattern_data.dayOfWeek)} schedule`;
+                                                    const deleting = deletingPatternId === pattern.id;
                                                     return (
                                                         <button
                                                             {...deletePatternGate.triggerProps(
@@ -3673,14 +4130,26 @@ function Profile(){
                                                                 patternLabel,
                                                                 `Delete ${patternLabel}`
                                                             )}
+                                                            // DECISION Phase 88.9-68 (X36a, once-over R3, veto open): a committing two-tap remove shows its flight like the Friends Remove — aria-disabled, the delayed held spinner, , removing / , deleting in the name — chosen OVER no in-flight sign; the F9b two-tap is unchanged.
+                                                            // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): the busy spinner LEADS the word (mr-2), so the right-anchored word holds its place, chosen OVER the trailing spinner (ml-2), which shifted the word about 24px left (16px glyph and 8px gap). The same form as the Friends Remove. Rest, armed (font-semibold only) and busy keep one class string.
+                                                            // A conditional spread AFTER the hook's props (the Friends form), so the hook's
+                                                            // own aria-disabled is never overwritten by an undefined while it counts down.
+                                                            {...(deleting ? { 'aria-disabled': 'true', 'aria-label': `Delete ${patternLabel}, deleting` } : {})}
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
-                                                            {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                            {/* W38 (88.9-52): the spinner LEADS the word (see the AMENDED line on the X36a marker above). */}
+                                                            <DelayedSpinner busy={deleting} className="mr-2" />
+                                                            {/* X69 width (88.9-67): held from the arm, nothing at rest.
+                                                                W37 (88.9-52): right-anchored in the reserve, so Wait (3) ends where Delete ended
+                                                                (a button centres its text, which set the short label mid-reserve). */}
+                                                            <ReservedLabel className="justify-items-end" reserve={deletePatternGate.reserveFor(pattern.id)}>
+                                                                {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                            </ReservedLabel>
                                                         </button>
                                                     );
                                                 })()}
@@ -3699,7 +4168,8 @@ function Profile(){
                     {/* Specific Dates Tab */}
                     <TabsContent value="specific">
                         <div>
-                            <div className="flex justify-between items-center mb-4">
+                            {/* W43 (88.9-52): stacked on a phone, as on the Schedules header above (its DECISION marker). */}
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                                 <div>
                                     <Heading ref={overridesHeadingRef} level={3} size="body" className="text-content-primary">Specific Date Overrides</Heading>
                                     <p className="text-sm text-content-secondary mt-1">Override your schedules for specific dates</p>
@@ -3710,6 +4180,7 @@ function Profile(){
                                     onClick={() => setShowSpecificForm(!showSpecificForm)}
                                     aria-expanded={showSpecificForm}
                                     {...(showSpecificForm ? { 'aria-controls': specificFormPanelId } : {})}
+                                    className="self-start whitespace-nowrap sm:self-auto"
                                 >
                                     {showSpecificForm ? 'Cancel' : '+ Add Override'}
                                 </Button>
@@ -3783,9 +4254,10 @@ function Profile(){
                                             variant="primary"
                                             onClick={handleCreateSpecificOverride}
                                             aria-disabled={savingPattern ? 'true' : undefined}
+                                            busy={savingPattern}
                                             className="w-full focus-visible:ring-offset-surface-page"
                                         >
-                                            {savingPattern ? 'Saving...' : 'Save Override'}
+                                            Save Override
                                         </Button>
                                     </div>
                                 </div>
@@ -3801,7 +4273,7 @@ function Profile(){
                             ) : patternsFailedWithNothingCached ? (
                                 <FetchErrorBanner
                                     state={patternsError}
-                                    title="Couldn't load your overrides"
+                                    thing="your overrides"
                                     reportSubject="Couldn't load availability patterns on /userProfile"
                                     reportContext="userProfile — specific overrides tab"
                                     focusTarget={overridesHeadingRef}
@@ -3813,17 +4285,18 @@ function Profile(){
                                     {availabilityPatterns
                                         .filter(p => p.type === 'specific_override')
                                         .map(pattern => (
-                                            <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-content-primary">
-                                                        {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
-                                                    </p>
-                                                    <p className="text-sm text-content-secondary">
-                                                        {pattern.is_available ? 'Available' : 'Busy'}
-                                                    </p>
-                                                </div>
+                                            // W37 (88.9-52): the two-line phone grid of the schedule rows (their DECISION marker).
+                                            // R17 (88.9-52): 82px on a phone, no padding under the control line (the AMENDED line there).
+                                            <div key={pattern.id} className="px-3 pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+                                                <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
+                                                    {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
+                                                </p>
+                                                <p className="text-sm text-content-secondary sm:col-start-1 sm:row-start-2">
+                                                    {pattern.is_available ? 'Available' : 'Busy'}
+                                                </p>
                                                 {(() => {
                                                     const patternLabel = `${formatDate(pattern.pattern_data.date)} override`;
+                                                    const deleting = deletingPatternId === pattern.id;
                                                     return (
                                                         <button
                                                             {...deletePatternGate.triggerProps(
@@ -3831,14 +4304,24 @@ function Profile(){
                                                                 patternLabel,
                                                                 `Delete ${patternLabel}`
                                                             )}
+                                                            // X36a (88.9-68): the in-flight pair, as on the schedule Delete — see the
+                                                            // X36a marker of plan 88.9-68 there, and its AMENDED 88.9-52 (W38) line: the spinner leads.
+                                                            {...(deleting ? { 'aria-disabled': 'true', 'aria-label': `Delete ${patternLabel}, deleting` } : {})}
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
-                                                            {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                            {/* W38 (88.9-52): the spinner LEADS the word (see the AMENDED line on the X36a marker above). */}
+                                                            <DelayedSpinner busy={deleting} className="mr-2" />
+                                                            {/* X69 width (88.9-67): held from the arm, nothing at rest.
+                                                                W37 (88.9-52): right-anchored in the reserve, so Wait (3) ends where Delete ended
+                                                                (a button centres its text, which set the short label mid-reserve). */}
+                                                            <ReservedLabel className="justify-items-end" reserve={deletePatternGate.reserveFor(pattern.id)}>
+                                                                {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                            </ReservedLabel>
                                                         </button>
                                                     );
                                                 })()}
@@ -3883,21 +4366,24 @@ function Profile(){
                         Disclosed visible delta: while resetting, Replay shows the DR-C gated primary
                         colour pair instead of the 50% native-disabled wash, and keeps that pair
                         while the tour is open (under the tour's scrim) — the same disclosure
-                        src/app/components/FriendInvitePanel.js ("VISIBLE DELTA, disclosed rather than discovered") makes. The in-flight label is existing text, not
-                        new copy (D-31 not triggered). Restoring the native attribute or dropping
-                        the latch is a decision, not a cleanup. */}
+                        src/app/components/FriendInvitePanel.js ("VISIBLE DELTA, disclosed rather than discovered") makes. The in-flight cue is the kept label
+                        with the house spinner (rule 1, 88.9-46 B33; the heard suffix re-uses the
+                        retired word, so D-31 is not triggered). Restoring the native attribute or
+                        dropping the latch is a decision, not a cleanup. */}
                     <Button
                         variant="primary"
                         onClick={handleReplayTutorial}
                         aria-disabled={replayingTutorial || showTutorial ? 'true' : undefined}
+                        busy={replayingTutorial}
+                        busySuffix=", starting"
                     >
-                        {replayingTutorial ? 'Starting...' : 'Replay Tutorial'}
+                        Replay Tutorial
                     </Button>
                 </div>
 
                 {/* Owned Games Section */}
                 <div className="card p-3 md:p-6">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                         {/* 88-33 Task 7 step 2 (UAT row 272): the count renders only after the
                             owned-games fetch resolves — "(0)" mid-fetch is an empty-vs-loading
                             conflation on the count itself; an em-dash holds the slot meanwhile.
@@ -3912,8 +4398,12 @@ function Profile(){
                                 ref={addFromBggToggleRef}
                                 variant="primary"
                                 onClick={() => {
+                                    // Q2 (88.9-68): the next press of this button clears the Game added line.
+                                    clearAddGameReceipt();
                                     // 88.6.1 code review A-76: Hide Search empties the result count too.
                                     if (showBggSearch) setBggFoundAnnouncement('');
+                                    // X58 (88.9-68): and the no-results line, so a reopened box starts empty.
+                                    clearBggNoResults();
                                     setShowBggSearch(!showBggSearch);
                                 }}
                                 aria-expanded={showBggSearch}
@@ -3924,6 +4414,17 @@ function Profile(){
                             </Button>
                         </div>
                     </div>
+                    {/* DECISION Phase 88.9-68 (owner ruling Q2): visible text only, NOT a live region, chosen
+                        OVER a polite StatusRegion like Saved (the root announcer already speaks Game added;
+                        two speakers say it twice) and OVER aria-hidden (W38: hidden from browse mode); the
+                        min-h-4 row replaces the header's mb-4 so the words never move the page. Under the
+                        button: left at 375 (the header row stacks), right-aligned from sm. Shown beside the
+                        announcer call in the add path, cleared after the receipt hook's 4000 ms and at the
+                        next press of + Add from BGG. The bar is never opened for the new game.
+                        AMENDED Phase 88.9-52 (W41): the row gains mt-1 and mb-3 (4px under the button, 12px above
+                        the import box; the words touched the button and the box started right under them).
+                        The header-to-box gap is 32px, was 16; still always reserved, so nothing moves. */}
+                    <p data-testid="add-game-receipt" className="mt-1 mb-3 min-h-4 text-xs text-content-status-success sm:text-right">{addGameReceipt}</p>
 
                     {/* BGG Collection Import */}
                     <div className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
@@ -3971,16 +4472,27 @@ function Profile(){
                                 The username FIELD stays natively disabled while importing: a sibling (D-35),
                                 not the pressed control. Disclosed visible delta: while importing, the button
                                 shows the gated primary pair instead of the 50% wash. Dropping either half of
-                                the pair is a decision, not a cleanup. */}
+                                the pair is a decision, not a cleanup.
+                                AMENDED Phase 88.9-55 (R-C8, owner pick A, 2026-11-10): while the identity read is PENDING the
+                                opener is natively disabled beside the blank-username half (availability is validity's kind),
+                                chosen OVER an aria-disabled identity gate (it would keep a dead control focusable) and OVER
+                                opening the dialog before identity lands (option B) — on a fresh load an enabled opener's press
+                                silently toasted and opened nothing, the mechanism behind three CI flakes; the brief load window
+                                (the button is out of the tab order while identity loads, typically well under a second) is
+                                ACCEPTED because the alternative is a control that looks live and does nothing; the FAILED
+                                identity arm keeps the toast branch (an errored read must not disable the control forever; the
+                                no-row banners own that screen); the e2e helper's toBeEnabled wait is now a true positive signal. */}
                             <Button
                                 ref={importButtonRef}
                                 variant="primary"
                                 onClick={handleImportCollectionClick}
-                                disabled={!bggUsername.trim()}
+                                disabled={!bggUsername.trim() || (!selfUuid && selfQuery.isPending)}
                                 aria-disabled={importingCollection ? 'true' : undefined}
                                 className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+                                busy={importingCollection}
+                                busySuffix=", importing"
                             >
-                                {importingCollection ? 'Importing...' : 'Import Collection'}
+                                Import Collection
                             </Button>
                         </div>
                         {/* DECISION Phase 88.6.1-60 (Req 8 / D-22, BGG import outcome): the outcome box IS a
@@ -4038,14 +4550,22 @@ function Profile(){
 
                     {/* BGG Search */}
                     {showBggSearch && (
-                        <div id={bggSearchPanelId} className="mb-6 p-3 md:p-4 border border-line rounded-sm bg-surface-page">
-                            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                        <div id={bggSearchPanelId} className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
+                            {/* DECISION Phase 88.9-68 (X58, owner R2: It has no title … bottom heavy): the search
+                                panel takes a title, the import box's radius and no trailing gap; title Search
+                                BoardGameGeek ruled by the owner 2026-11-14 (yes). The title is the field's own
+                                shipped name. The search row carries no bottom margin; the no-results line and
+                                the results list each bring their own top margin, so an empty box has the same
+                                space above its title as below its search row. */}
+                            <Heading level={3} size="body" className="mb-2 text-content-primary">Search BoardGameGeek</Heading>
+                            <div className="flex flex-col sm:flex-row gap-2">
                                 <Input
                                     id="bgg-search"
                                     name="bgg-search"
                                     aria-label="Search BoardGameGeek"
                                     value={bggSearchQuery}
-                                    onChange={(e) => setBggSearchQuery(e.target.value)}
+                                    // A-48 (88.9-52): typing a new term takes the no-results line away; it was about the term before.
+                                    onChange={(e) => { setBggSearchQuery(e.target.value); clearBggNoResults(); }}
                                     onKeyPress={(e) => e.key === 'Enter' && searchBGG()}
                                     placeholder="Search BoardGameGeek..."
                                     className="flex-1"
@@ -4061,7 +4581,8 @@ function Profile(){
                                     browser); (b) disabling the field while searching (typing is legitimate;
                                     only a second request is not); (c) a latest-request-wins counter (a second
                                     mechanism on a control the house rule already latches, and the button
-                                    already says Searching...). Disclosed visible delta: while searching, the
+                                    is already busy — label kept, house spinner beside it, rule 1 88.9-46
+                                    B35). Disclosed visible delta: while searching, the
                                     gated primary pair instead of the 50% wash. Dropping either half of the
                                     pair is a decision, not a cleanup. */}
                                 <Button
@@ -4070,13 +4591,26 @@ function Profile(){
                                     disabled={!bggSearchQuery.trim()}
                                     aria-disabled={bggSearching ? 'true' : undefined}
                                     className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+                                    busy={bggSearching}
+                                    busySuffix=", searching"
                                 >
-                                    {bggSearching ? 'Searching...' : 'Search'}
+                                    Search
                                 </Button>
                             </div>
-                            
+                            {/* X58 (88.9-68): the no-results line. Mounted empty with the panel (a polite region
+                                that mounts holding text is not announced), sr-only while empty so its margin
+                                costs nothing, D2's muted + sm when it speaks. See the AMENDED Phase 88.9-68
+                                lines on the review-221 marker in `searchBGG`. */}
+                            <StatusRegion
+                                data-testid="bgg-no-results"
+                                politeness="polite"
+                                srOnlyWhenEmpty
+                                message={bggNoResults ? 'No games found. Try a different search term.' : ''}
+                                className="mt-3 text-sm text-content-muted"
+                            />
+
                             {bggSearchResults.length > 0 && (
-                                <div className="max-h-60 overflow-y-auto space-y-2">
+                                <div className="mt-3 max-h-60 overflow-y-auto space-y-2">
                                     {bggSearchResults.map((result) => {
                                         const isAlreadyOwned = ownedGames.some(g => g.bgg_id === result.bgg_id);
                                         const isAddingThis = addingBggId === result.bgg_id;
@@ -4097,10 +4631,11 @@ function Profile(){
                                                     on a control nobody pressed).
                                                     WHY: there was no in-flight guard at all; a double tap sent
                                                     two imports and two adds and toasted twice.
-                                                    LABEL: `Adding...` while in flight (copy row P7,
-                                                    owner-ratified 2026-10-05); the name follows the visible
-                                                    label. Swept: no unit test or e2e spec looked this button up
-                                                    by name before this plan.
+                                                    LABEL: kept while in flight; copy row P7's word (owner-ratified
+                                                    2026-10-05) is heard as the ", adding" suffix beside the house
+                                                    spinner (AMENDED Phase 88.9-46 rule 1 B36), so the name is the
+                                                    label plus the suffix. Swept: no unit test or e2e spec looked
+                                                    this button up by name before this plan.
                                                     REJECTED: (a) native `disabled` on the pressed button (it
                                                     drops focus in a real browser); (b) a per-game latch letting
                                                     two different adds race (the panel closes on the first
@@ -4116,8 +4651,10 @@ function Profile(){
                                                     disabled={isAlreadyOwned || (addingBggId !== null && !isAddingThis)}
                                                     aria-disabled={isAddingThis ? 'true' : undefined}
                                                     className="whitespace-nowrap shrink-0"
+                                                    busy={isAddingThis}
+                                                    busySuffix={ADDING_TO_COLLECTION_BUSY_SUFFIX}
                                                 >
-                                                    {isAlreadyOwned ? 'Already Owned' : isAddingThis ? ADDING_TO_COLLECTION_LABEL : 'Add to Collection'}
+                                                    {isAlreadyOwned ? 'Already Owned' : 'Add to Collection'}
                                                 </Button>
                                             </div>
                                         );
@@ -4201,7 +4738,7 @@ function Profile(){
                            guard acts on an unpressed withdrawal, not on a Remove.
                            Changing this order is a decision, not a cleanup. */
                         ownedGamesError ? (
-                            <FetchErrorBanner state={collectionErrorState} title={COLLECTION_LOAD_FAILED_TITLE} reportContext="userProfile — game collection fetch" focusTarget={collectionHeadingRef} />
+                            <FetchErrorBanner state={collectionErrorState} thing={COLLECTION_LOAD_FAILED_THING} reportContext="userProfile — game collection fetch" focusTarget={collectionHeadingRef} />
                         ) : (
                             <p className="text-content-secondary">Loading your collection...</p>
                         )
@@ -4209,82 +4746,105 @@ function Profile(){
                         <>
                         <RefreshFailedNotice state={collectionErrorState} retained={collectionRetained} focusTarget={collectionHeadingRef} className="mb-4" />
                         {ownedGames.length > 0 ? (
-                        <div aria-busy={loadingGames || undefined} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {ownedGames.map((game) => (
-                                // D49-b (owner ruling 2026-09-09, option i): `hover:shadow-md` here was
-                                // Tailwind's INLINED built-in scale, not the theme tier, so it snaps to
-                                // `hover:shadow-theme-md`. Plain `hover:` and not plan 05's
-                                // `enabled-hover:` — this is a card `div`, not a `.btn`. The snap
-                                // changes hue (warm tint in light, purple hairline plus glow in dark);
-                                // that is disclosed, not accidental.
-                                <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-theme-md transition-shadow">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="flex-1">
-                                            <Heading level={3} size="body" className="text-content-primary">{game.name}</Heading>
-                                            {game.year_published && (
-                                                <p className="text-sm text-content-secondary">({game.year_published})</p>
-                                            )}
-                                        </div>
-                                        {/* Two-tap gate. The accessible name names the ACTION
-                                            and the OBJECT (F-369) — a bare glyph is not a
-                                            name, and the `title` it used to carry does not
-                                            count (§7.3). Armed state swaps the visible label
-                                            AND the name together (Label-in-Name, WCAG 2.5.3),
-                                            both from the hook.
-
-                                            88-33 Task 5 (fork 7): resting prominence (a real
-                                            affordance box, min-w-11) + armed 'Remove' label on
-                                            the error-subtle treatment. The invisible sizer span
-                                            reserves the ARMED label's width at rest so arming
-                                            never reflows the title next to it (walk row 573's
-                                            squeeze class). */}
-                                        <button
-                                            {...removeGameGate.triggerProps(
-                                                game.id,
-                                                game.name,
-                                                `Remove ${game.name}`
-                                            )}
-                                            className={`inline-grid min-h-11 min-w-11 place-items-center whitespace-nowrap rounded-btn border px-2 text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                                                removeGameGate.isArmed(game.id)
-                                                    ? 'bg-status-error-subtle border-status-error font-semibold'
-                                                    : 'border-status-error hover:bg-status-error-subtle'
-                                            }`}
-                                        >
-                                            {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
-                                                `font-semibold` STAYS, and it is deliberately NOT one of
-                                                the 600s the weight sweep converted. It is not emphasis —
-                                                it is a MEASUREMENT. The span reserves the width of the
-                                                ARMED label at rest, so it has to be set in the same
-                                                weight the armed label renders at (the 600 on the line
-                                                above). Drop it to 400 and the reservation under-measures,
-                                                arming reflows the game title beside it, and walk row
-                                                573's squeeze class comes back — silently, because no gate
-                                                measures text advance width.
-
-                                                `typeScaleTouchedSurfaces`'s ARMED_STATE_600_ROSTER cannot
-                                                carry this one: its predicate reads the surrounding source
-                                                for `isArmed`, and 160 characters back from here lands
-                                                inside the className template rather than on the
-                                                `removeGameGate.isArmed(...)` call four lines up. It is
-                                                therefore carried in WEIGHT_ROSTER instead, which is why
-                                                that entry floors at FIVE and not at the armed roster's
-                                                four. Converting it is a decision, not a cleanup. */}
-                                            <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
-                                                Remove
-                                            </span>
-                                            <span className="col-start-1 row-start-1">
-                                                {removeGameGate.labelFor(game.id, '×')}
-                                            </span>
-                                        </button>
-                                    </div>
-                                    <SafeImage
-                                        src={game.image_url}
-                                        alt={game.name}
-                                        className="w-full h-32 object-cover rounded-sm mb-2"
+                        <>
+                        {/* DECISION Phase 88.9-68 (X52d, owner pick page 10c, 2026-11-14: lets try x56c and x52d):
+                            closed every visit, 3 cards on a phone and 6 from md, a peek under a fade, a 48px bar
+                            flush to the card's bottom edge, chosen OVER the full list (owner: otherwise people will
+                            have to scroll a ton to get past it), the plain bar X52c and the button X52b. Peek inert;
+                            nothing remembered; raw button; 400 over the mock's 500. Opening moves focus to the first
+                            revealed game's title OVER leaving it on the bar (the revealed cards sit before the bar,
+                            so Tab from the bar would skip them). Making the peek reachable is a decision, not a
+                            cleanup.
+                            How it is built: beyond the visible count the list mounts the visible cards and the peek
+                            row only (1 card on a phone, 3 from md, the third from lg only); the rest mount on expand.
+                            A peek card is clipped to 72px, inert (React 18.2 string form, as the mobile menu in
+                            Header.js), hidden from assistive tech as the fallback where inert is not supported, takes
+                            no pointer, and its Remove leaves the tab order. The bar is a raw button OVER the Button
+                            primitive: a full-bleed bar takes none of its radius, padding or weight. Six cards from
+                            md is two rows of three at lg and three rows of two at md.
+                            AMENDED Phase 88.9-52 (W45): in DARK the bar takes the sunken fill, chosen OVER the
+                            muted fill there: X56c's raised cards and the muted bar are both purple-800 in dark, so
+                            the bar read 1.00 against the cards above it. Sunken reads 1.38 against the cards and
+                            1.13 against the section card, words 14.70. Light keeps the muted bar (1.50).
+                            AMENDED Phase 88.9-52 (W45 reverted, CI): the sunken dark fill is WITHDRAWN and the
+                            bar is the muted fill in both themes again. Sunken read 1.1251 against the section
+                            card, under the 1.20 floor the owner ruled with X52d, and the ruled floor wins OVER
+                            the W45 fix until the owner rules again. Dark now: bar 1.2281 from the section card,
+                            1.0000 from the game cards (W45's complaint, OPEN with the owner: a bar lighter than
+                            the cards, or the bar left equal to them), rule 1.4467, words 10.64. Giving the bar a
+                            dark fill of its own is the owner's ruling to make, not a cleanup.
+                            AMENDED Phase 88.9-52 (W45, owner 2026-11-17, pick B): the owner ruled. In DARK the bar
+                            is the LIGHTER strip: fill purple-700 (dark:bg-btn-secondary-hover, the step a
+                            pressable secondary surface already lifts to in dark) under a purple-500 top
+                            rule (dark:border-line-strong), chosen OVER the bar left equal to the game cards (the
+                            muted fill, 1.0000 from them) and OVER the darker bar (mock A, purple-950: it read as a
+                            gap, the page showing through). This supersedes the two W45 lines above for dark; the
+                            X52d floors hold. Dark now: bar 1.7767 from the section card, 1.4467 from the game
+                            cards, rule 1.9263 on the bar, words 7.3532, focus ring 4.6693 on the bar. Light is
+                            unchanged (muted bar, line rule). The dark classes sit on the wrapper beside the light
+                            ones, in both arms; naming a dark fill without the dark rule leaves the rule the SAME
+                            colour as the bar (the line colour in dark is purple-700). */}
+                        <div id={collectionGridId} aria-busy={loadingGames || undefined} className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {(collectionOverflows && !collectionOpen
+                                ? ownedGames.slice(0, collectionVisibleCount + collectionPeekCount)
+                                : ownedGames
+                            ).map((game, index) => {
+                                const isPeek = collectionOverflows && !collectionOpen && index >= collectionVisibleCount;
+                                // The third peek card exists for the three-column row only.
+                                const isThirdPeek = isPeek && index === collectionVisibleCount + 2;
+                                // The card that opening reveals first: its title takes the focus.
+                                const isFirstRevealed = collectionOverflows && index === collectionVisibleCount;
+                                const removeTrigger = removeGameGate.triggerProps(game.id, game.name, `Remove ${game.name}`);
+                                // PIX-1 / A-49 (88.9-52): every value handed down is the same from tick to tick for a card
+                                // at rest, so the memoised card skips the countdown's renders (marker at CollectionCard below).
+                                return (
+                                    <CollectionCard
+                                        key={game.id}
+                                        game={game}
+                                        isPeek={isPeek}
+                                        isThirdPeek={isThirdPeek}
+                                        isFirstRevealed={isFirstRevealed}
+                                        titleRef={firstRevealedTitleRef}
+                                        armed={removeGameGate.isArmed(game.id)}
+                                        label={removeGameGate.labelFor(game.id, 'Remove')}
+                                        labelReserve={removeGameGate.reserveFor(game.id)}
+                                        ariaLabel={removeTrigger['aria-label']}
+                                        ariaPressed={removeTrigger['aria-pressed']}
+                                        ariaDisabled={removeTrigger['aria-disabled']}
+                                        removing={removingGameId === game.id}
+                                        onRemovePress={pressRemoveGame}
                                     />
-                                </div>
-                            ))}
+                                );
+                            })}
+                            {collectionOverflows && !collectionOpen && (
+                                <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-[72px] bg-linear-to-b from-transparent to-surface-card" />
+                            )}
                         </div>
+                        {collectionOverflows && (
+                            <div
+                                className={
+                                    collectionOpen
+                                        ? '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-4 rounded-b-card overflow-hidden border-t border-line dark:border-line-strong bg-surface-muted dark:bg-btn-secondary-hover'
+                                        : '-mx-3 -mb-3 md:-mx-6 md:-mb-6 mt-0 rounded-b-card overflow-hidden border-t border-line dark:border-line-strong bg-surface-muted dark:bg-btn-secondary-hover'
+                                }
+                            >
+                                <button
+                                    type="button"
+                                    ref={collectionBarRef}
+                                    onClick={() => {
+                                        collectionBarPressRef.current = collectionOpen ? 'close' : 'open';
+                                        setCollectionExpanded(!collectionOpen);
+                                    }}
+                                    aria-expanded={collectionOpen}
+                                    aria-controls={collectionGridId}
+                                    className="flex w-full min-h-12 items-center justify-center gap-2 text-sm text-content-primary rounded-b-card scroll-mt-20 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                                >
+                                    {collectionOpen ? 'Show fewer' : `Show all ${ownedGames.length} games`}
+                                    <Icon name={collectionOpen ? 'ChevronUp' : 'ChevronDown'} size={16} />
+                                </button>
+                            </div>
+                        )}
+                        </>
                     ) : (
                         // D2 mini-formula (ruled 2026-08-15): muted + sm, no "!".
                         <p className="text-content-muted text-sm">You don't have any games in your collection yet. Search BoardGameGeek to add games.</p>
@@ -4300,11 +4860,11 @@ function Profile(){
                     <DangerZoneDeleteAccount />
                 </div>
 
-                {/* The three tiered gates, mounted ONCE at page level rather than per
+                {/* The four tiered gates (the phone Remove's joined in 88.9-68, X36b), mounted ONCE at page level rather than per
                     row: the hook holds the target id, so one dialog serves every row.
                     Each `statusNode` is likewise mounted unconditionally and always —
                     a live region that is conditionally mounted announces nothing. The
-                    two two-tap gates render a null dialog by design (88-05), and they
+                    three two-tap gates render a null dialog by design (88-05), and they
                     are mounted anyway so retiering stays the one-word edit. */}
                 <ConfirmDialog {...disconnectCalendarGate.dialogProps} />
                 {disconnectCalendarGate.statusNode}
@@ -4312,6 +4872,8 @@ function Profile(){
                 {removeGameGate.statusNode}
                 <ConfirmDialog {...deletePatternGate.dialogProps} />
                 {deletePatternGate.statusNode}
+                <ConfirmDialog {...removePhoneGate.dialogProps} />
+                {removePhoneGate.statusNode}
 
                 {/* Slow-operation warning, NOT a destructive gate (D-10) — see the
                     marker on `handleImportCollectionClick`. Dismissable, and its
@@ -4342,4 +4904,193 @@ function Profile(){
     );
 }
 
+// R-C2 (88.9-56): the latched session-dead source for the profile's no-row 401 banner — an ApiError
+// (the banner derives its code through instanceof) and a refetch that does nothing (a 401 is not
+// retried here; the banner's action is Sign in) — the same pair the home page builds for its groups report.
+const SESSION_DEAD_ERROR = new ApiError('Unauthorized', 'unauthorized', 401);
+const resolveNothing = () => Promise.resolve(undefined);
+
+// DECISION Phase 88.9-52 (R3, owner 2026-11-16: we have to remember to update the hidden headings if we modify the title): the page's name is ONE constant, read by the screen-reader-only heading on the banner-only screens (the frame's srHeading; marker at src/components/ui/CentredPageFrame.tsx ("DECISION Phase 88.9-52 (A-04 / A-38)")) and by the breadcrumb current-page crumb (the visible level-1 title is the person's own name, so the crumb is the page's static visible name), chosen OVER the same word typed at each site, which drifts silently. Renaming the page is one edit here. Declared down here beside the other late constants, OVER the top of the file: a line-keyed row in src/app/errorEnvelopeReads.test.ts ("declaration: 'const [phoneValidation, setPhoneValidation] = useState(',") counts the lines above the phone state.
+const PROFILE_PAGE_NAME = 'Profile';
+
 export default Profile;
+
+/* DECISION Phase 88.9-52 (PIX-1 / A-49, owner condition met: the picture pass measured a 467 ms frame gap with 120 games while one Remove counted down):
+   one collection card is a MEMOISED component and takes only values that stay the same for a card at rest (the game, its
+   place flags, the resting name, the reserve list (two until 88.9-52 R4 D4 retired the slot around the x), one press handler that never changes), chosen OVER the cards
+   rendered inline in the page's map, where every countdown tick re-rendered every mounted card (30 of 30, four times per
+   arm). The page still renders on each tick, because the gate's countdown lives in the host:
+   src/components/ui/useConfirmAction.ts ("AMENDED Phase 88.9-23 (F9b): the dialog-tier countdown lives in ConfirmDialog").
+   The cards no longer follow it. Only the armed card's values change per tick, so only it renders. REJECTED: moving the countdown out of the hook (changes all five
+   triggerProps sites, the accept recorded there) and a custom memo comparator (hides a real prop change). Passing this
+   component the gate object, an inline function or a fresh object brings every card back on every tick, silently for a
+   reader and red in src/app/userProfile/page.test.tsx ("A-49 (88.9-52): a countdown tick re-renders the armed collection card only").
+   The markup, classes and markers below moved here from the map word for word. */
+const CollectionCard = memo(function CollectionCard({
+    game,
+    isPeek,
+    isThirdPeek,
+    isFirstRevealed,
+    titleRef,
+    armed,
+    label,
+    labelReserve,
+    ariaLabel,
+    ariaPressed,
+    ariaDisabled,
+    removing,
+    onRemovePress,
+}) {
+    return (
+    // D49-b (owner ruling 2026-09-09, option i): the inlined built-in md hover shadow was
+    // snapped to the theme tier in 88.6, D49-b (a plain hover variant, not plan 05's
+    // enabled-hover one, because this is a card div and not a .btn; the snap changed hue).
+    // AMENDED Phase 88.9-32 (owner pick E3a, 88.9-PICKS-B4.json, 2026-11-06): the card carries
+    // NO hover shadow and no shadow transition, chosen OVER the theme-tier md hover lift D49-b
+    // shipped — the card is not a control (no click target of its own), so a hover lift
+    // promised an action that does not exist. Re-adding a hover shadow here is a decision,
+    // not a cleanup.
+    // DECISION Phase 88.9-68 (X56c, same pick): dark cards take the raised fill, border
+    // unchanged, chosen OVER a stronger border (X56a 2.45, X56b 3.42); fill vs card ground
+    // 1.2281. Light is unchanged (no fill).
+    <div
+        className={
+            isThirdPeek
+                ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none max-lg:hidden'
+                : isPeek
+                    ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none'
+                    : 'border border-line rounded-lg p-4 dark:bg-surface-elevated'
+        }
+        inert={isPeek ? '' : undefined}
+        aria-hidden={isPeek ? 'true' : undefined}
+    >
+        {/* DECISION Phase 88.9-52 (R4 D4, owner 2026-11-18): the collection remove is a worded Remove button
+            in the look of this page's other list removes (the schedule Delete, the phone Remove: a
+            bare red word in a 44px-tall box, error-subtle on hover, 600 while armed, no border in
+            any state), arming through Wait (3), (2), (1) to Tap again. CHOSEN OVER the bare x in a
+            32px bordered box that armed into Remove (fork 7, 88-33 Task 5, then X53 and PIX-2): the
+            owner's words are at the gate's config above. Everything the x needed and the word does
+            not is gone with it: the icon, the box, the slot that reserved the armed width around
+            the button at rest, the right-anchor padding. Their markers are kept below, each closed
+            with an AMENDED line.
+            ROOM (the D2 form): this line may wrap. The title column asks for 8rem before it shares
+            the line (flex 1 1 8rem), so the title is never squeezed under 8rem by the button; when
+            the two no longer fit (large text on a narrow card: at 200% the title's 256px and the
+            button's roughly 150px do not fit a phone card) the button drops under the title, kept
+            to the right (ml-auto). At ordinary text 128 + 8 + 67 (78 while armed) fits any card
+            from 214px inside, so nothing drops at 375 or 320. The title still wraps in full and
+            breaks inside a word only when that word cannot fit its line (the Heading's own rule).
+            The busy spinner LEADS the word (W38: a right-anchored control grows to the left). The
+            width is held from the arm, nothing at rest (X69, the phone Remove's form), so the
+            button grows once, to the left, when it is armed. */}
+        <div className="flex flex-wrap justify-between items-start gap-x-2 mb-2">
+            <div className="flex-[1_1_8rem] min-w-0">
+                <Heading
+                    ref={isFirstRevealed ? titleRef : undefined}
+                    tabIndex={isFirstRevealed ? -1 : undefined}
+                    level={3}
+                    size="body"
+                    className={
+                        isFirstRevealed
+                            ? 'text-content-primary scroll-mt-20 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring'
+                            : 'text-content-primary'
+                    }
+                >
+                    {game.name}
+                </Heading>
+                {game.year_published && (
+                    <p className="text-sm text-content-secondary">({game.year_published})</p>
+                )}
+            </div>
+            {/* Two-tap gate. The accessible name names the ACTION
+                and the OBJECT (F-369) — a bare glyph is not a
+                name, and the `title` it used to carry does not
+                count (§7.3). Armed state swaps the visible label
+                AND the name together (Label-in-Name, WCAG 2.5.3),
+                both from the hook.
+
+                88-33 Task 5 (fork 7): resting prominence (a real
+                affordance box, min-w-11) + armed 'Remove' label on
+                the error-subtle treatment. The invisible sizer span
+                reserves the ARMED label's width at rest so arming
+                never reflows the title next to it (walk row 573's
+                squeeze class).
+                AMENDED Phase 88.9-68 (X53): still a real bordered box (fork 7), now 32px with the dialog's 20px X; the 44px hit area is the button.
+                How it is built: the slot is the reserve's one-cell grid
+                AROUND the button, holding the armed box's width from
+                rest (label at the armed weight and size, plus the box's
+                padding and border), with the button at its right edge.
+                The button is the 44px hit area and carries no border or
+                fill; the one visible box inside it is 32px at rest (a
+                minimum width, so the busy spinner fits inside the
+                border; its side padding is 4px so that minimum governs:
+                the 20px icon, 8px of padding and the 1px border come to
+                30, where 6px a side measured 34 wide in CI) and grows to
+                its label when armed, where a second
+                reserve inside the box keeps it one width through
+                Wait (3), (2), (1) and Remove (X69, 88.9-67).
+                AMENDED Phase 88.9-52 (PIX-2): the side padding is 5px now (20 + 10 + 2 = 32,
+                the minimum exactly) and the resting button anchors the box 6px inside its
+                right edge; see the PIX-2 line on the X36a marker below.
+                AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): SUPERSEDED. There is no x, no box
+                and no slot now; the control is a worded Remove button (the marker on this line's
+                wrapper above). The accessible name still names the action and the object. */}
+            {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
+                    `font-semibold` STAYS, and it is deliberately NOT one of
+                    the 600s the weight sweep converted. It is not emphasis —
+                    it is a MEASUREMENT. The span reserves the width of the
+                    ARMED label at rest, so it has to be set in the same
+                    weight the armed label renders at (the 600 on the line
+                    above). Drop it to 400 and the reservation under-measures,
+                    arming reflows the game title beside it, and walk row
+                    573's squeeze class comes back — silently, because no gate
+                    measures text advance width.
+
+                    `typeScaleTouchedSurfaces`'s ARMED_STATE_600_ROSTER cannot
+                    carry this one: its predicate reads the surrounding source
+                    for `isArmed`, and 160 characters back from here lands
+                    inside the className template rather than on the
+                    `removeGameGate.isArmed(...)` call four lines up. It is
+                    therefore carried in WEIGHT_ROSTER instead, which is why
+                    that entry floors at FIVE and not at the armed roster's
+                    four. Converting it is a decision, not a cleanup.
+                    AMENDED Phase 88.9-67 (X69 width): the measurement lives in ReservedLabel's reserve (Wait (3), (2), (1), Remove), still 600 through reserveClassName.
+                    AMENDED Phase 88.9-23 (F9b): the sizer reserves the countdown label, the widest armed state.
+                    AMENDED Phase 88.9-67 (X69): the sizer reserves Remove, wider than Wait (n), until Task 2's shared reserve.
+                    AMENDED Phase 88.9-67 (X69 width): the x reserves through ReservedLabel.
+                    AMENDED Phase 88.9-68 (X53, owner at N37, 2026-11-13: a very large box and a very small x … Make it similar to the dialog boxes x): the sizer reserves the armed width on the slot around the button, not inside the visible box, chosen OVER the reservation inside the box (the large resting box); weight 600 and the measurement stand.
+                    AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the sizer around the button is GONE with the x. The reserve is now inside the button and exists only from the arm (the phone Remove's form), where the button itself is 600, so the reserve is measured at the armed weight without a class of its own. */}
+                <button
+                    type="button"
+                    onClick={(event) => onRemovePress(game, event)}
+                    aria-label={ariaLabel}
+                    aria-pressed={ariaPressed}
+                    aria-disabled={ariaDisabled}
+                    {...(isPeek ? { tabIndex: -1 } : {})}
+                    // DECISION Phase 88.9-68 (X36a, once-over R3, veto open): a committing two-tap remove shows its flight like the Friends Remove — aria-disabled, the delayed held spinner, , removing / , deleting in the name — chosen OVER no in-flight sign; the F9b two-tap is unchanged.
+                    // A conditional spread AFTER the hook's props (the Friends form). The gate is
+                    // disarmed while the DELETE runs, so the spinner joins the RESTING box.
+                    // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): (1) armed keeps the RESTING bordered box and adds only the 600 weight, as the schedule Delete adds only its weight, chosen OVER the error-subtle FILL the armed box gained (fork 7, 88-33 Task 5: the pink pill of W38); the border stays in every state because an icon button needs its box (X53). Armed word on the card ground: 8.31 light, 5.94 on the dark raised fill (floor 4.5). (2) the busy spinner LEADS the X, so the right-anchored X holds its place while the box grows left, chosen OVER the trailing spinner (the X moved about 18px left).
+                    // AMENDED Phase 88.9-52 (PIX-2, W38 one look, picture pass): claim (2) was not true as built. Rendered at 375 the X moved 7px RIGHT while busy (left edge 302 to 309): the 32px box was CENTRED in the 44px button at rest (6px each side), and once the spinner made the box 50px, wider than the button, it sat flush with the button's right edge (6px), with the 2px of centring slack round the X gone as well (1px). Now, at rest and while busy, the button anchors the box 6px inside its right edge (justify-end, pr-1.5: 44 - 6 - 32 leaves the same 6px on the left at rest) and the box pads 5px a side (px-1.25: 20 + 10 + 2 = 32, no slack), so the X's right edge is 12px inside the button's right edge in both states and the box grows left only (52px box, 58px button, inside the slot's reserve). Chosen OVER a spinner slot reserved at rest (a 52px box for good, X53 rejected the large resting box) and OVER an absolutely placed spinner (it would sit outside the border, and an icon button's busy sign belongs in its box). The ARMED button keeps the centred, unpadded string: its box is the slot's whole reserve, and 6px of padding would widen the slot on arming and push the title (walk row 573). Arithmetic at the default text size only, not rendered: with enlarged text the box's rem minimum is larger than the 20px icon needs, the slack returns and the X can still shift while busy.
+                    // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the box and the x the two lines above describe are gone; the button is the schedule Delete's class string plus ml-auto and shrink-0 (the Friends Remove's form), 600 while armed, and the spinner still leads.
+                    {...(removing ? { 'aria-disabled': 'true', 'aria-label': `Remove ${game.name}, removing` } : {})}
+                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring${
+                        armed ? ' font-semibold' : ''
+                    }`}
+                >
+                    {/* W38 (88.9-52): the spinner leads, and it is mounted beside the label, never inside
+                        an armed-only branch, so arming never unmounts it mid-hold (R-C3b reach). */}
+                    <DelayedSpinner busy={removing} className="mr-2" />
+                    <ReservedLabel className="justify-items-end" reserve={labelReserve}>
+                        {label}
+                    </ReservedLabel>
+                </button>
+        </div>
+        <SafeImage
+            src={game.image_url}
+            alt={game.name}
+            className="w-full h-32 object-cover rounded-sm mb-2"
+        />
+    </div>
+    );
+});

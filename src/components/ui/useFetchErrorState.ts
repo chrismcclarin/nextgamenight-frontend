@@ -135,6 +135,10 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   // (CONTEXT D-01). REJECTED: a sign-in link or button on the banner (D-33 row 24, not this
   // phase; plan 88.6.1-58 writes its pointer). REJECTED: per-surface overrides (this register
   // line is the one carrier). Reverting to reload advice is a decision, not a cleanup.
+  // AMENDED Phase 88.9-26 (owner pick F8a then O22d, 88.9-PICKS-B5.json / 88.9-PICKS-B9.json,
+  // 2026-11-07): the banner now carries a Sign in link in place of Try again for this code
+  // (FetchErrorBanner's unauthorized branch), reversing the REJECTED sign-in control above, chosen
+  // OVER the shipped banner with no control; the sentence itself is unchanged.
   unauthorized: 'Your session may have expired. Sign in again to continue.',
   forbidden: "You don't have access to this. Refresh the page to try again.",
   not_found: "We couldn't find what you were looking for.",
@@ -200,6 +204,33 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   unknown: 'Something went wrong. Refresh the page to try again.',
 };
 
+// DECISION Phase 88.9-66 (X68, owner RULED 2026-11-14): beside a retry the line gives one remedy; the caller that renders the retry decides (FetchErrorBanner's marker).
+/**
+ * The three register lines above that tell the person to refresh the page, as they read BESIDE a
+ * Try again or Retry control (the owner's words, by chat 2026-11-14). The register itself is not
+ * edited: a screen with no retry still needs the refresh advice, and the register cannot know
+ * which screen it is feeding.
+ */
+const MESSAGE_BESIDE_RETRY: Partial<Record<FetchErrorCode, string>> = {
+  forbidden: "You don't have access to this.",
+  validation: 'Something looks off with that request.',
+  unknown: "Something went wrong. If trying again doesn't help, refresh the page.",
+};
+
+/**
+ * The line to show beside a Try again or Retry control. When `message` is exactly the register
+ * line of one of the three codes above, its beside-retry form is returned; anything else is
+ * returned unchanged, so a caller's own `fallback` or `byCode` line is never rewritten. The proxy's
+ * CSRF 403 resolves its message through the unknown line (D-24, below), so it takes the unknown
+ * form here too. Call it only where the retry control is actually rendered.
+ */
+export function messageBesideRetry(message: string): string {
+  for (const code of Object.keys(MESSAGE_BESIDE_RETRY) as FetchErrorCode[]) {
+    if (message === MESSAGE_BY_CODE[code]) return MESSAGE_BESIDE_RETRY[code] ?? message;
+  }
+  return message;
+}
+
 /** Read the code from the ApiError seam ONLY — never re-parse the body. */
 function deriveCode(error: unknown): FetchErrorCode {
   if (error instanceof ApiError) return error.code;
@@ -255,6 +286,9 @@ export interface FetchErrorMessageOptions {
    WHY THIS LIVES BESIDE THE HOOK: the hook and the toasts must not drift into two registers for
    the same failure. `useFetchErrorState` now derives its own `message` through this function, so
    MESSAGE_BY_CODE has exactly one reader.
+   AMENDED Phase 88.9-66 (X68): one comparison-only reader joins it, `messageBesideRetry`. It never
+   derives copy from an error; it recognises a register line a caller already holds and swaps it
+   for that line's beside-retry form.
 
    `byCode` exists so a surface that genuinely needs a sharper outcome (e.g. a 400 on a username
    change is "that name is taken", not the generic validation line) can say so in DESIGNED copy

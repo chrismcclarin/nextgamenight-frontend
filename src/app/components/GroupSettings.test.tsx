@@ -28,6 +28,9 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 // it is the ONLY record from which a wiped colour can be restored by hand — so the
 // channel and the fields are pinned, not just the toast.
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
+// Save-feedback rule 2 (88.9-24, owner ruling R-F1): the dropped Settings saved toast is spoken
+// once by the root announcer instead. Automocked; the root beforeEach clears its calls.
+vi.mock('@/components/ui/announcer');
 
 // Read-only schedule panel does its own fetching and is irrelevant here.
 vi.mock('@/app/components/PromptScheduleReadOnly', () => ({ default: () => null }));
@@ -54,6 +57,7 @@ import { groupsAPI, ApiError } from '@/lib/api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { announceStatus } from '@/components/ui/announcer';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -137,18 +141,20 @@ describe('Phase 88-13 — the settings surface is on the shared Modal, and savin
     expect(document.querySelector('.modal-overlay')).toBeNull();
   });
 
-  it('fires the Settings saved receipt, in that exact register (Req 12 / §6.2)', async () => {
+  it('save-feedback rule 2 (88.9): a successful save fires NO success toast, then onUpdate and onClose', async () => {
     (groupsAPI.updateGroupSettings as Mock).mockResolvedValue({});
     const onClose = vi.fn();
     renderSettings({ onClose });
 
     fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
-    await waitFor(() => expect(toast.success as Mock).toHaveBeenCalledWith('Settings saved'));
-    // No exclamation, no "successfully" — and it must be fired BEFORE the
-    // unmount, or Sonner never shows it.
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    const successOrder = (toast.success as Mock).mock.invocationCallOrder[0];
-    expect(successOrder).toBeLessThan(onClose.mock.invocationCallOrder[0]);
+    // The modal closes and the group page refreshes: the result is in view, so no toast.
+    expect(toast.success as Mock).not.toHaveBeenCalled();
+    // Still spoken once, by the root announcer, in the same register (no exclamation).
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Settings saved');
+    const spokenOrder = vi.mocked(announceStatus).mock.invocationCallOrder[0];
+    expect(spokenOrder).toBeLessThan(onClose.mock.invocationCallOrder[0]);
   });
 
   it('does not claim success when the save fails', async () => {
@@ -553,9 +559,12 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
 
-    await waitFor(() => expect(toast.success as Mock).toHaveBeenCalledWith('Settings saved'));
-    expect(toast.error as Mock).not.toHaveBeenCalled();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(toast.error as Mock).not.toHaveBeenCalled();
+    // Save-feedback rule 2 (88.9-24): no success toast; the root announcer speaks it once.
+    expect(toast.success as Mock).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Settings saved');
     // …and it really did take the non-preset arm, or the case proves nothing.
     expect((groupsAPI.updateGroupSettings as Mock).mock.calls[0][1].color_preset).toBeNull();
   });
@@ -1074,7 +1083,7 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     (groupsAPI.leaveGroup as Mock).mockReset();
   });
 
-  it('PC1 (row 18): Save Changes stays focusable while saving, and two presses send one request', async () => {
+  it('PC1 (row 18) rule 1 (88.9): Save Changes keeps its label and shows the spinner while saving; it stays focusable, and two presses send one request', async () => {
     const request = held<Record<string, unknown>>();
     (groupsAPI.updateGroupSettings as Mock).mockReturnValue(request.promise);
     const onClose = vi.fn();
@@ -1085,7 +1094,9 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     fireEvent.click(save);
     fireEvent.click(save);
 
-    expect(await screen.findByRole('button', { name: 'Saving...' })).toBe(save);
+    expect(await screen.findByRole('button', { name: 'Save Changes, saving' })).toBe(save);
+    expect(save.firstChild?.textContent).toBe('Save Changes');
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(save).toHaveAttribute('aria-disabled', 'true');
     expect(save).not.toHaveAttribute('disabled');
     expect(save).toHaveClass('btn-primary');
@@ -1130,7 +1141,7 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     await waitFor(() => expect(groupsAPI.updateGroupSettings as Mock).toHaveBeenCalledTimes(2));
   });
 
-  it('PC4 (rows 10-11): Confirm Leave stays focusable while leaving; its Cancel sibling stays natively disabled', async () => {
+  it('PC4 rule 1 (88.9): Confirm Leave keeps its label + spinner and stays focusable while leaving; its Cancel sibling stays natively disabled (rows 10-11)', async () => {
     const request = held<void>();
     (groupsAPI.leaveGroup as Mock)
       .mockReturnValueOnce(request.promise)
@@ -1144,7 +1155,9 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     fireEvent.click(confirm);
     fireEvent.click(confirm);
 
-    expect(await screen.findByRole('button', { name: 'Leaving…' })).toBe(confirm);
+    expect(await screen.findByRole('button', { name: 'Confirm Leave, leaving' })).toBe(confirm);
+    expect(confirm).toHaveTextContent('Confirm Leave');
+    await waitFor(() => expect(confirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(confirm).toHaveAttribute('aria-disabled', 'true');
     expect(confirm).not.toHaveAttribute('disabled');
     expect(confirm).toHaveClass('btn-danger');
@@ -1196,7 +1209,7 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
 
     fireEvent.click(confirm);
     // positive signal first (CF-26): the second request is in flight
-    await screen.findByRole('button', { name: 'Leaving…' });
+    await screen.findByRole('button', { name: 'Confirm Leave, leaving' });
     expect(document.getElementById(confirm.getAttribute('aria-describedby') as string)).toBe(region);
     expect(region.textContent).toBe('');
     expect(region).toHaveClass('sr-only');
@@ -1207,7 +1220,7 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     expect(region).not.toHaveClass('sr-only');
   });
 
-  it('PC6 (row 19): the Delete Group opener is aria-disabled while the delete is pending, and opens no second dialog', async () => {
+  it('PC6 rule 1 (88.9): the Delete Group opener keeps its label + spinner and is aria-disabled while the delete is pending, and opens no second dialog (row 19)', async () => {
     const request = held<unknown>();
     (groupsAPI.deleteGroup as Mock).mockReturnValue(request.promise);
     renderSettings();
@@ -1220,7 +1233,9 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     // the background is hidden from the role tree while the dialog is open
-    expect(await screen.findByRole('button', { name: 'Deleting...', hidden: true })).toBe(opener);
+    expect(await screen.findByRole('button', { name: 'Delete Group, deleting', hidden: true })).toBe(opener);
+    expect(opener).toHaveTextContent('Delete Group');
+    await waitFor(() => expect(opener.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(opener).toHaveAttribute('aria-disabled', 'true');
     expect(opener).not.toHaveAttribute('disabled');
 
@@ -1244,12 +1259,13 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     const dialog = await screen.findByRole('dialog', { name: DELETE_DIALOG });
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
-    await screen.findByRole('button', { name: 'Deleting...', hidden: true });
+    await screen.findByRole('button', { name: 'Delete Group, deleting', hidden: true });
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: DELETE_DIALOG })).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(opener));
-    expect(opener).toHaveTextContent('Deleting...');
+    expect(opener).toHaveTextContent('Delete Group');
+    expect(opener).toHaveAccessibleName('Delete Group, deleting');
     expect(opener).toHaveAttribute('aria-disabled', 'true');
     expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
   });
@@ -1272,7 +1288,7 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     const dialog = await screen.findByRole('dialog', { name: DELETE_DIALOG });
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
-    await screen.findByRole('button', { name: 'Deleting...', hidden: true });
+    await screen.findByRole('button', { name: 'Delete Group, deleting', hidden: true });
 
     pressInStackedDialog(within(dialog).getByRole('button', { name: 'Cancel' }));
     // positive signal first (CF-26): the confirm closed and focus reached the opener
@@ -1280,11 +1296,43 @@ describe('Phase 88.6.1-43 — pressed controls stay focusable (W016 rows 10-11, 
     await waitFor(() => expect(document.activeElement).toBe(opener));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Customize Group' })).toBeInTheDocument();
-    expect(opener).toHaveTextContent('Deleting...');
+    expect(opener).toHaveTextContent('Delete Group');
+    expect(opener).toHaveAccessibleName('Delete Group, deleting');
     expect(opener).toHaveAttribute('aria-disabled', 'true');
 
     fireEvent.click(opener);
     expect(screen.queryByRole('dialog', { name: DELETE_DIALOG })).toBeNull();
     expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
+  });
+
+  // R-C3a (88.9-56, owner ruling 2026-11-10, 'hear'): the typed Delete confirm keeps its verb
+  // beside the house spinner while the delete runs, heard as 'Delete, deleting'.
+  it("R-C3a (88.9): the typed Delete confirm keeps its verb with the spinner, is named 'Delete, deleting', and the phrase input stays read-only", async () => {
+    const visibleText = (el: HTMLElement): string | null => {
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.sr-only').forEach((node) => node.remove());
+      return clone.textContent;
+    };
+    const request = held<unknown>();
+    (groupsAPI.deleteGroup as Mock).mockReturnValue(request.promise);
+    renderSettings();
+    await waitFor(() => expect(dangerZone().textContent).toContain('37'));
+    const dialog = await openDeleteGate();
+    const input = within(dialog).getByRole('textbox');
+    fireEvent.change(input, { target: { value: GROUP_NAME } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    const pending = within(dialog).getByRole('button', { name: 'Delete, deleting' });
+    expect(pending).toHaveTextContent('Delete');
+    expect(visibleText(pending)).toBe('Delete');
+    await waitFor(() => expect(pending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(pending).toHaveAttribute('aria-disabled', 'true');
+    expect(pending).not.toHaveAttribute('disabled');
+    expect(input).toHaveAttribute('readonly');
+    fireEvent.click(pending);
+    expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
+
+    request.resolve({});
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: DELETE_DIALOG })).toBeNull());
   });
 });

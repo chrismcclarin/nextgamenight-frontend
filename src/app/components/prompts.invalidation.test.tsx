@@ -28,7 +28,8 @@
  */
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
+import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { promptSettingsAPI, promptAPI } from '@/lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
@@ -91,7 +92,10 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('prompts trio integration (GAP13/GAP14)', () => {
   it('GAP14: mounted trio fires each endpoint exactly once (F-852 settings, F-826 open)', async () => {
@@ -136,12 +140,18 @@ describe('prompts trio integration (GAP13/GAP14)', () => {
     // list the trigger names through `aria-controls` while open. Scoping through
     // that attribute keeps the query inside the OPEN list and proves the
     // relationship is live — no assertion or coverage changed, only the selector.
+    // F9b (88.9-23): the item is gated for CONFIRM_DELAY_MS after the first tap; a fake clock
+    // that still advances with real time lets the drive step past it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const kebab = screen.getByRole('button', { name: 'Check-in actions' });
     fireEvent.click(kebab);
     const kebabList = document.getElementById(kebab.getAttribute('aria-controls') as string);
     expect(kebabList, 'the kebab names its open list through aria-controls').not.toBeNull();
     const endItem = within(kebabList as HTMLElement).getByRole('button', { name: 'End check-in' });
     fireEvent.click(endItem);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     fireEvent.click(
       within(kebabList as HTMLElement).getByRole('button', { name: 'Tap again to end' }),
     );

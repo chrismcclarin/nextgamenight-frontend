@@ -9,6 +9,7 @@ import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './suppo
 // A local copy would be the duplication this project's tenet forbids; `support/contrast.ts` is not
 // a spec file, so importing it adds no collected suite.
 import { focusByKeyboard } from './support/contrast';
+import { routeFakeGameSuccess } from './support/fakeGame';
 // 88.6.1 code review WR-03: the shared write hold for the R4 toggle arms (see the note above them).
 import { expectNoApiWrites, holdWrites } from './support/inFlight';
 import { expectTouchTarget } from './support/touchTarget';
@@ -69,6 +70,8 @@ import { expectTouchTarget } from './support/touchTarget';
  * wrong by a factor that mattered (it described the hamburger). Both are now measured at
  * 375px here. 88-30 also adds the D-36 `.btn` phone-floor pair: the floor is live on a
  * shipped bare-`.btn` call site, and the `.btn-compact` opt-out still wins the cascade.
+ * AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): the opt-out is retired. The D-36 test now
+ * measures the stepper class string as a 44x44 square instead.
  */
 
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
@@ -268,6 +271,15 @@ const calendarSheet = (page: Page) => page.getByRole('dialog', { name: 'Calendar
  *  thing there is to match on. */
 const collapsedChipStack = (page: Page) =>
   page.getByRole('button', { name: /^members: .*show all members\.$/i });
+
+/** A collapsed stack that holds AT LEAST TWO members, picked by its name and never by its place
+ *  in the list. collapsedName() joins the shown names with a comma and adds " and N more" past
+ *  its limit, so a name with either in it lists two or more members; a group of the viewer plus
+ *  one other person (the seed's Photo Club) has neither. The home list's order is not fixed, so
+ *  the first card can be that two-person group (CI run 43785600614 expanded Photo Club and found
+ *  one chip where the isolation probe needs two). */
+const multiMemberChipStack = (page: Page) =>
+  page.getByRole('button', { name: /^members: (?:[^.]*, |.* and \d+ more\. show all members\.$)/i }).and(collapsedChipStack(page));
 
 /** The control that collapses an EXPANDED chip stack back. Only a stack that is currently
  *  expanded renders one, so this doubles as the "is it expanded" signal. */
@@ -506,11 +518,18 @@ async function probeExpandedChipRow(row: Locator): Promise<ChipRowProbe> {
     // ABOVE it; scan every item and let probePair's own overlap guards reject the
     // non-adjacent ones. The vertical probes have the same teeth: `gap-3` sets the row
     // gap to 12px, so 6+6 extension zones meet exactly on the y axis too.
+    // AMENDED Phase 88.9-55 (R-C8): the FIRST overlapping item in DOM order can sit two or more rows up once the stack wraps to three rows, so its gap spans a whole chip row (run 42560011616: 100px = 44 + 12 + 44); the fallback now keeps the layout-adjacent candidate, the one with the smallest non-negative gap.
     if (showLessPair === null && showLessIndex >= 0) {
-      for (let i = 0; i < items.length && showLessPair === null; i += 1) {
+      let layoutAdjacentAbove = null;
+      for (let i = 0; i < items.length; i += 1) {
         if (i === showLessIndex) continue;
-        showLessPair = probePair(items[i], items[showLessIndex]);
+        const candidate = probePair(items[i], items[showLessIndex]);
+        if (candidate === null || candidate.gap < 0) continue;
+        if (layoutAdjacentAbove === null || candidate.gap < layoutAdjacentAbove.gap) {
+          layoutAdjacentAbove = candidate;
+        }
       }
+      showLessPair = layoutAdjacentAbove;
     }
 
     const diagnostics = items
@@ -659,9 +678,11 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
     // Census row 7: the Create Event modal's submit. Reached the same way the green
     // create-event journey reaches it: e2e/support/createEvent.ts ("export async function openCreateEventDialog(").
-    await page.getByRole('button', { name: /add new game event/i }).click();
+    await page.getByRole('button', { name: 'Create Event', exact: true }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
-    const submit = page.getByRole('button', { name: /^(create|update) event$/i });
+    // AMENDED Phase 88.9-64 (X32A): scoped to the dialog. The header button that opens it now carries
+    // the same words as this submit, so the lookup names which of the two it means.
+    const submit = page.getByRole('dialog').getByRole('button', { name: /^(create|update) event$/i });
     await guardResolved(submit, 'the Create Event submit CTA (createEvent.js census row 7)');
 
     // The dialog is VISIBLE at this point but not yet settled — `toBeVisible()` above resolves
@@ -763,15 +784,17 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
   /* Phase 88-30 (DEF-88-28-02): the two controls plan 88-28 RESIZED are the two whose
      new size was never measured. Both are located by their shipped accessible names —
-     "Toggle menu" (Header.js) and "Group actions" (the `ariaLabel` groupHomePage passes
-     to KebabMenu) — so the selector policy above holds and a rename fails loudly rather
-     than silently measuring nothing.
+     "Toggle menu" (Header.js) and, since 88.9-31, the group page gear named exactly
+     "Group settings" plus the Manage Members member-row kebab named "Member actions for "
+     followed by the member's name (the shared KebabMenu) — so the selector policy above
+     holds and a rename fails loudly rather than silently measuring nothing.
+     Re-pointed Phase 88.9-31: the group page no longer mounts a KebabMenu (F5b).
 
      The hamburger is `md:hidden`, so this assertion is only meaningful in the phone
      project; the file-level skip already guarantees that. The kebab renders at every
      breakpoint (its own marker says so) but its floor is a phone-tenet requirement, so it
      is asserted here rather than in `journeys`. */
-  test('R4: hamburger and KebabMenu trigger measure >= 44x44 at 375px (88-28 geometry, measured not derived)', async ({ page }) => {
+  test('R4: hamburger, the group page Group settings gear, the KebabMenu trigger and a KebabMenu item row measure >= 44x44 at 375px (88-28 geometry, measured not derived)', async ({ page }) => {
     await page.goto('/');
     await assertDarkTheme(page);
 
@@ -782,14 +805,25 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await guardResolved(hamburger, 'the Header hamburger (md:hidden — phone only)');
     await assertMin44(hamburger, 'Header hamburger');
 
-    // The kebab is gated on `userRole && userRole !== 'pending'`; the fixture user owns
-    // the seeded group, so it MUST render — a missing kebab is a fixture/locator failure,
-    // never a silent skip.
+    // The gear is gated on owner or admin; the fixture user owns the seeded group, so it
+    // MUST render — a missing gear is a fixture/locator failure, never a silent skip.
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertDarkTheme(page);
-    const kebab = page.getByRole('button', { name: 'Group actions' });
-    await guardResolved(kebab, 'the groupHomePage KebabMenu trigger (owner/member only)');
-    await assertMin44(kebab, 'KebabMenu trigger');
+    const gear = page.getByRole('button', { name: 'Group settings', exact: true });
+    await guardResolved(gear, 'the groupHomePage Group settings gear (owner/admin only)');
+    await assertMin44(gear, 'Group settings gear');
+
+    // A KebabMenu the app still mounts: the Manage Members member-row kebab (phone only, it
+    // sits inside md:hidden). The seeded group has three other members, so the owner sees at
+    // least one row trigger; a missing one is a seed fact for the BE seed task, never a skip.
+    await page.getByRole('button', { name: 'Manage Members' }).click();
+    const kebab = page.getByRole('button', { name: /^Member actions for / }).first();
+    await guardResolved(kebab, 'the first Manage Members member-row KebabMenu trigger');
+    // 88.9-52 A-10: the trigger's own floor (min-h-11 min-w-11) is measured again. The 88.9-31
+    // re-point kept only the item row, so no e2e measured any KebabMenu trigger. Settled first:
+    // the trigger sits in a dialog that is still animating in (see settleOpenAnimation).
+    await settleOpenAnimation(page, kebab, 'the Manage Members member-row KebabMenu trigger');
+    await assertMin44(kebab, 'KebabMenu trigger (Manage Members member row)');
 
     // 88-CODE-REVIEW MED#13: the ITEMS behind the trigger — the destructive row
     // actions D-40 routed through this menu — carried the census's ~36px FAIL
@@ -816,6 +850,338 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await assertMin44(firstItem, 'KebabMenu item row');
   });
 
+  // 88.9-52 R21 (owner 2026-11-17, pick Fit or logo), RENDERED. With text at 200% the header site
+  // name is held at the largest size that keeps it on one line between the logo and the menu
+  // button, never under its ordinary 18px; where 18px cannot fit, the logo stands alone and the
+  // home link keeps its name. The rule is a container-query class on the name
+  // (src/app/Header.js ("AMENDED Phase 88.9-52 (R21, owner 2026-11-17, pick Fit or logo;")); jsdom lays nothing out, so
+  // src/app/Header.test.tsx ("R21 arithmetic: 18px at ordinary text") can only work the sum. This reads the boxes.
+  // 200% is the root font size doubled by a style tag, the injection the capture used
+  // (e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")); it is not browser zoom. Read-only: no write, no route.
+  test('R21 (88.9-52): with text at 200% the header site name stays on one line beside the menu button at 375px, and gives way to the logo at 320px', async ({ page }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+    expect(page.viewportSize()?.width, 'R21: the phone project is not 375px wide, so the numbers below are not the measured case').toBe(375);
+
+    const brand = page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: /Next Game Night/ });
+    const hamburger = page.getByRole('button', { name: 'Toggle menu' });
+    await guardResolved(brand, 'the header brand link');
+    await guardResolved(hamburger, 'the Header hamburger (md:hidden — phone only)');
+
+    // Every box in ONE page read.
+    const readHeader = () =>
+      page.evaluate(() => {
+        const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
+        const link = nav.querySelector('a[href="/"]') as HTMLElement;
+        const name = Array.from(link.querySelectorAll('span')).find(
+          (el) => (el.textContent ?? '').trim() === 'Next Game Night',
+        ) as HTMLElement;
+        const logo = link.querySelector('svg') as SVGElement;
+        const menu = nav.querySelector('button[aria-label="Toggle menu"]') as HTMLElement;
+        const strip = nav.parentElement as HTMLElement;
+        const cs = getComputedStyle(name);
+        const n = name.getBoundingClientRect();
+        const l = logo.getBoundingClientRect();
+        const m = menu.getBoundingClientRect();
+        return {
+          rootFontPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
+          fontPx: parseFloat(cs.fontSize),
+          linePx: parseFloat(cs.lineHeight),
+          name: { left: n.left, right: n.right, width: n.width, height: n.height, bottom: n.bottom },
+          logo: { right: l.right, width: l.width },
+          menu: { left: m.left, width: m.width },
+          stripBottom: strip.getBoundingClientRect().bottom,
+        };
+      });
+
+    // Ordinary text: nothing changed. 18px, one line.
+    const plain = await readHeader();
+    expect(plain.rootFontPx, 'R21: the root font size is not 16px before the 200% step').toBe(16);
+    expect(plain.fontPx, `R21: at ordinary text the site name is ${plain.fontPx}px, not its 18px`).toBeCloseTo(18, 1);
+    expect(plain.name.width, 'R21: at ordinary text the site name has no width — it is hidden, or the locator is wrong').toBeGreaterThan(100);
+    expect(plain.name.height, `R21: at ordinary text the site name is ${plain.name.height}px tall on a ${plain.linePx}px line — more than one line`).toBeLessThanOrEqual(plain.linePx + 1);
+
+    // Text at 200%, 375 wide: the largest one-line size (the capture measured 20px), clear of the button.
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R21: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe('32px');
+    await expect
+      .poll(async () => (await readHeader()).menu.width, { message: 'R21: the menu button did not grow to 88px at 200% text' })
+      .toBeCloseTo(88, 0);
+    const big = await readHeader();
+    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px — under its ordinary 18px`).toBeGreaterThanOrEqual(18);
+    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px; the largest size that fits is about 20px`).toBeGreaterThanOrEqual(19.5);
+    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px; about 20px is all that fits`).toBeLessThan(21);
+    expect(big.name.height, `R21: at 200% text the site name is ${big.name.height}px tall on a ${big.linePx}px line — it wrapped`).toBeLessThanOrEqual(big.linePx + 1);
+    expect(
+      big.menu.left - big.name.right,
+      `R21: at 200% text the site name ends ${big.menu.left - big.name.right}px before the menu button (name right ${big.name.right}, button left ${big.menu.left}) — under the 8px clearance`,
+    ).toBeGreaterThanOrEqual(7.5);
+    expect(big.logo.width, `R21: at 200% text the logo is ${big.logo.width}px wide — squeezed under its 34px`).toBeCloseTo(34, 0);
+    expect(big.name.bottom, 'R21: at 200% text the site name runs below the header strip').toBeLessThanOrEqual(big.stripBottom + 0.5);
+
+    // Text at 200%, 320 wide: 18px cannot fit, so the logo stands alone and the link keeps its name.
+    await page.setViewportSize({ width: 320, height: 667 });
+    await expect
+      .poll(async () => (await readHeader()).name.width, { message: 'R21: at 200% text and 320px the site name is still drawn — it should give way to the logo' })
+      .toBeLessThanOrEqual(1.5);
+    const narrow = await readHeader();
+    expect(narrow.logo.width, `R21: at 200% text and 320px the logo is ${narrow.logo.width}px wide — squeezed under its 34px`).toBeCloseTo(34, 0);
+    expect(
+      narrow.menu.left - narrow.logo.right,
+      'R21: at 200% text and 320px the logo touches the menu button',
+    ).toBeGreaterThanOrEqual(8);
+    await expect(brand, 'R21: with the name hidden from sight the home link lost its name').toHaveCount(1);
+
+    // R21 (88.9-52 R4 S2), RENDERED: from md up. The round-3 capture found, at 768px with text at
+    // 200%, the desktop header's 40px name run straight into Home and the list run off the right
+    // edge. From md the desktop list is drawn only while the strip is at least 40rem wide
+    // (src/app/Header.js ("DECISION Phase 88.9-52 (R4 S2, the round-3 capture: at 768px with doubled text the")); under that it is the
+    // phone header, so every link is in the menu. Three states are read: 768 at 200% (the phone
+    // header), 1400 at 200% (43.75rem: the desktop list, with room), 768 at 100% (unchanged).
+    // AMENDED Phase 88.9-52 (R4 B4): the switch moved from 42rem to 40.25rem
+    // (src/app/Header.js ("AMENDED Phase 88.9-52 (R4 B4, round 4, 2026-11-18): the width is 40.25rem, not 42rem.")), so two more
+    // widths are read at 200%, one each side of it (1320 and 1264), and four
+    // text sizes between 100% and 200% are read at 768, the narrowest screen that can draw the
+    // list: whichever header is drawn there, it is whole. The open menu's last three rows are
+    // also read at rest: the re-shoot saw a lighter Send feedback row, which was the row's hover
+    // fill under the capture's pointer, not a fill of its own.
+    // AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): the switch is 40rem, so at 200% text it is
+    // a 1280px screen exactly (src/app/Header.js ("AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): the width is 40rem, not 40.25rem.")).
+    // The reads stay at 1320 (40px over) and 1264 (16px under): no read sits on the boundary,
+    // where a pixel of scrollbar or rounding would decide the result. The unit pin holds the
+    // exact value (src/app/Header.test.tsx ("const SWITCH_REM = 40;")).
+    // EXTENDED by 88.9-52 R4 C4 (owner 2026-11-18): from md, while the header is in this
+    // phone-menu form the floating feedback button is not drawn (the menu's Send feedback row is
+    // the entry), and it is drawn again with the desktop list
+    // (src/app/components/FeedbackButton.js ("HOW IT LEARNS THE HEADER'S STATE, with no script.")).
+    // Every read below carries fabDrawn, and at every step it must equal listDrawn: 768 at 200%
+    // with the menu closed and open (not drawn), 1400 and 1320 at 200% (drawn), 1264 at 200%
+    // (not drawn), the four text sizes at 768, and 768 at ordinary text (drawn). The floating
+    // button is the one named Send feedback that is outside the nav.
+    const readWide = () =>
+      page.evaluate(() => {
+        const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
+        const strip = nav.parentElement as HTMLElement;
+        const backdrop = strip.previousElementSibling as HTMLElement;
+        const link = nav.querySelector('a[href="/"]') as HTMLElement;
+        const name = Array.from(link.querySelectorAll('span')).find(
+          (el) => (el.textContent ?? '').trim() === 'Next Game Night',
+        ) as HTMLElement;
+        const menu = nav.querySelector('button[aria-label="Toggle menu"]') as HTMLElement;
+        const list = Array.from(nav.querySelectorAll('ul')).find((ul) => ul.className.split(/\s+/).includes('md:flex')) as HTMLElement;
+        const items = Array.from(list.children) as HTMLElement[];
+        const cs = getComputedStyle(name);
+        const n = name.getBoundingClientRect();
+        const m = menu.getBoundingClientRect();
+        const first = items[0].getBoundingClientRect();
+        const last = items[items.length - 1].getBoundingClientRect();
+        const fab = Array.from(document.querySelectorAll('button[aria-label="Send feedback"]')).find((el) => !el.closest('nav')) as
+          | HTMLElement
+          | undefined;
+        return {
+          fabFound: Boolean(fab),
+          fabDrawn: Boolean(fab && fab.getClientRects().length > 0),
+          rootFontPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
+          window: document.documentElement.clientWidth,
+          listDrawn: getComputedStyle(list).display !== 'none',
+          menuDrawn: getComputedStyle(menu).display !== 'none',
+          menuOpen: menu.getAttribute('aria-expanded'),
+          fontPx: parseFloat(cs.fontSize),
+          linePx: parseFloat(cs.lineHeight),
+          name: { right: n.right, width: n.width, height: n.height, bottom: n.bottom },
+          menuLeft: m.left,
+          listLeft: first.left,
+          listRight: last.right,
+          listItems: items.length,
+          stripBottom: strip.getBoundingClientRect().bottom,
+          stripOverflow: strip.scrollWidth - strip.clientWidth,
+          backdropOpacity: getComputedStyle(backdrop).opacity,
+          backdropDrawn: getComputedStyle(backdrop).display !== 'none',
+        };
+      });
+    const navLinks = page.getByRole('navigation', { name: 'Main', exact: true });
+    // R4 C4: the floating button follows the desktop list, never the menu button.
+    const expectFabFollowsList = (r: Awaited<ReturnType<typeof readWide>>, where: string) => {
+      expect(r.fabFound, `R21 C4: ${where} the floating feedback button is not in the page at all, so its display proves nothing`).toBe(true);
+      expect(
+        r.fabDrawn,
+        `R21 C4: ${where} the desktop list drawn is ${r.listDrawn} and the floating feedback button drawn is ${r.fabDrawn}: the button is drawn exactly when the list is`,
+      ).toBe(r.listDrawn);
+    };
+
+    // 768 wide, text at 200%: 24rem, under the switch. The phone header.
+    await page.setViewportSize({ width: 768, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 S2: the window did not become 768px wide' })
+      .toBe(768);
+    const mid = await readWide();
+    expect(mid.rootFontPx, 'R21 S2: text is not at 200% for the 768px step').toBe(32);
+    expect(mid.listDrawn, 'R21 S2: at 768px and 200% text the desktop list is still drawn — it does not fit there').toBe(false);
+    expect(mid.menuDrawn, 'R21 S2: at 768px and 200% text the menu button is not drawn, so the links are out of reach').toBe(true);
+    expect(mid.fabDrawn, 'R21 C4: at 768px and 200% text, menu closed, the floating feedback button is still drawn beside the phone menu').toBe(false);
+    expectFabFollowsList(mid, 'at 768px and 200% text, menu closed,');
+    expect(mid.name.width, 'R21 S2: at 768px and 200% text the site name is not drawn').toBeGreaterThan(100);
+    expect(mid.fontPx, `R21 S2: at 768px and 200% text the site name is ${mid.fontPx}px — the fit rule gives the doubled 36px there, not the 40px md size`).toBeCloseTo(36, 0);
+    expect(mid.name.height, `R21 S2: at 768px and 200% text the site name is ${mid.name.height}px tall on a ${mid.linePx}px line — it wrapped`).toBeLessThanOrEqual(mid.linePx + 1);
+    expect(
+      mid.menuLeft - mid.name.right,
+      `R21 S2: at 768px and 200% text the site name ends ${mid.menuLeft - mid.name.right}px before the menu button`,
+    ).toBeGreaterThanOrEqual(7.5);
+    expect(mid.name.bottom, 'R21 S2: at 768px and 200% text the site name runs below the header strip').toBeLessThanOrEqual(mid.stripBottom + 0.5);
+    expect(mid.stripOverflow, `R21 S2: at 768px and 200% text the header is ${mid.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
+
+    // Every link is reachable there: the menu opens, with its dim layer, and holds all four.
+    await hamburger.click();
+    await expect(hamburger, 'R21 S2: the menu did not open at 768px and 200% text').toHaveAttribute('aria-expanded', 'true');
+    for (const name of ['Home', 'Friends', 'Profile', 'Logout']) {
+      const link = navLinks.getByRole('link', { name, exact: true });
+      await expect(link, `R21 S2: the ${name} link is not shown in the open menu at 768px and 200% text`).toBeVisible();
+      const box = await link.boundingBox();
+      expect(box, `R21 S2: the ${name} link has no box`).not.toBeNull();
+      expect((box?.x ?? 0) + (box?.width ?? 0), `R21 S2: the ${name} link runs off the right edge at 768px`).toBeLessThanOrEqual(768);
+      expect(box?.x ?? -1, `R21 S2: the ${name} link starts off the left edge at 768px`).toBeGreaterThanOrEqual(0);
+    }
+    await expect
+      .poll(async () => (await readWide()).backdropOpacity, { message: 'R21 S2: the dim layer behind the open menu is not shown from md' })
+      .toBe('1');
+    expect((await readWide()).backdropDrawn, 'R21 S2: the dim layer behind the open menu is not drawn from md').toBe(true);
+    // R4 C4: with the menu open the floating button is still not drawn, and the menu's own row is on screen.
+    expect((await readWide()).fabDrawn, 'R21 C4: at 768px and 200% text, menu open, the floating feedback button is drawn over the open menu').toBe(false);
+    await expect(
+      navLinks.getByRole('button', { name: 'Send feedback' }),
+      'R21 C4: the open menu has no visible Send feedback row, so at this size there is no way to send feedback',
+    ).toBeVisible();
+    // R4 B4: at rest (the pointer parked in the corner, nothing focused in the panel) the Theme row
+    // and the Send feedback row paint the same fill, which is none of their own.
+    await page.mouse.move(0, 0);
+    const rowFills = await page.evaluate(() => {
+      const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
+      const panel = nav.querySelector(':scope > div:last-child') as HTMLElement;
+      const rows = Array.from(panel.querySelectorAll(':scope > div > button')) as HTMLElement[];
+      return rows.map((b) => ({ name: b.getAttribute('aria-label') ?? (b.textContent ?? '').trim(), fill: getComputedStyle(b).backgroundColor, hovered: b.matches(':hover') }));
+    });
+    const feedbackRow = rowFills.find((r) => r.name === 'Send feedback');
+    expect(feedbackRow, `R21 B4: the open menu has no Send feedback row (${rowFills.map((r) => r.name).join(', ')})`).toBeTruthy();
+    expect(rowFills.length, 'R21 B4: the open menu holds fewer than two full-width rows under its links').toBeGreaterThanOrEqual(2);
+    for (const r of rowFills) {
+      expect(r.hovered, `R21 B4: the ${r.name} row is under the pointer, so its fill is its hover fill`).toBe(false);
+      expect(r.fill, `R21 B4: at rest the ${r.name} row paints ${r.fill}, the Send feedback row ${feedbackRow?.fill}`).toBe(feedbackRow?.fill);
+    }
+    expect(feedbackRow?.fill, 'R21 B4: at rest the Send feedback row paints a fill of its own').toBe('rgba(0, 0, 0, 0)');
+
+    // 1400 wide, text still at 200%: 43.75rem, over the switch. The desktop list comes back with
+    // room after the name, nothing runs off the edge, and the menu left open closes itself.
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).listDrawn, { message: 'R21 S2: at 1400px and 200% text the desktop list is not drawn' })
+      .toBe(true);
+    await expect
+      .poll(async () => (await readWide()).menuOpen, { message: 'R21 S2: the menu left open stayed open after the desktop list came back' })
+      .toBe('false');
+    await expect
+      .poll(async () => (await readWide()).backdropOpacity, { message: 'R21 S2: the dim layer stayed over the page after the desktop list came back' })
+      .toBe('0');
+    const wide = await readWide();
+    expect(wide.menuDrawn, 'R21 S2: at 1400px and 200% text the menu button is still drawn beside the desktop list').toBe(false);
+    expect(wide.fabDrawn, 'R21 C4: at 1400px and 200% text the desktop list is back but the floating feedback button is not').toBe(true);
+    expectFabFollowsList(wide, 'at 1400px and 200% text');
+    expect(wide.fontPx, `R21 S2: at 1400px and 200% text the site name is ${wide.fontPx}px, not its doubled md size (40px)`).toBeCloseTo(40, 0);
+    expect(wide.listItems, 'R21 S2: the desktop list is not the signed-in list (Home, Friends, Profile, Logout, the theme switch)').toBe(5);
+    expect(
+      wide.listLeft - wide.name.right,
+      `R21 S2: at 1400px and 200% text the site name ends ${wide.listLeft - wide.name.right}px before Home — under one list gap (48px)`,
+    ).toBeGreaterThanOrEqual(48);
+    expect(wide.listRight, `R21 S2: at 1400px and 200% text the desktop list ends at ${wide.listRight}px, off the 1400px screen`).toBeLessThanOrEqual(1400);
+    expect(wide.stripOverflow, `R21 S2: at 1400px and 200% text the header is ${wide.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
+
+    // R4 B4 / D5: either side of the 40rem switch at 200% text (1280px). 1320 is 41.25rem: the
+    // desktop list, 142px after the name by the measured line (screen width less 1178). 1264 is
+    // 39.5rem: the phone header, 16px under the switch. 42rem would have kept the phone header at 1320.
+    await page.setViewportSize({ width: 1320, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 B4: the window did not become 1320px wide' })
+      .toBe(1320);
+    const justOver = await readWide();
+    expect(justOver.listDrawn, 'R21 B4: at 1320px and 200% text (41.25rem) the desktop list is not drawn').toBe(true);
+    expect(justOver.menuDrawn, 'R21 B4: at 1320px and 200% text the menu button is drawn beside the desktop list').toBe(false);
+    expectFabFollowsList(justOver, 'at 1320px and 200% text');
+    expect(
+      justOver.listLeft - justOver.name.right,
+      `R21 B4: at 1320px and 200% text the site name ends ${justOver.listLeft - justOver.name.right}px before Home, under 48px`,
+    ).toBeGreaterThanOrEqual(48);
+    expect(justOver.listRight, `R21 B4: at 1320px and 200% text the desktop list ends at ${justOver.listRight}px, off the screen`).toBeLessThanOrEqual(1320);
+    expect(justOver.stripOverflow, `R21 B4: at 1320px and 200% text the header is ${justOver.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
+    await page.setViewportSize({ width: 1264, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 B4: the window did not become 1264px wide' })
+      .toBe(1264);
+    const justUnder = await readWide();
+    expect(justUnder.listDrawn, 'R21 B4: at 1264px and 200% text (39.5rem) the desktop list is drawn — 16px short of the switch').toBe(false);
+    expect(justUnder.menuDrawn, 'R21 B4: at 1264px and 200% text the menu button is not drawn').toBe(true);
+    expectFabFollowsList(justUnder, 'at 1264px and 200% text');
+
+    // R4 B4: text sizes between 100% and 200% on a 768px screen, the narrowest that can draw the
+    // desktop list. 110% and 118% leave the strip over the switch (43.6rem and 40.7rem): the list,
+    // with at least 48px after the name (about 105px and 59px by the sum). 125% and 150% put it
+    // under (38.4rem and 32rem): the phone header. Whichever is drawn, nothing runs off the screen.
+    await page.setViewportSize({ width: 768, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 B4: the window did not go back to 768px wide' })
+      .toBe(768);
+    for (const [percent, wantList] of [
+      [110, true],
+      [118, true],
+      [125, false],
+      [150, false],
+    ] as const) {
+      await page.addStyleTag({ content: `html{font-size:${percent}% !important}` });
+      await expect
+        .poll(async () => (await readWide()).rootFontPx, { message: `R21 B4: the root font size did not become ${percent}%` })
+        .toBeCloseTo((16 * percent) / 100, 1);
+      const at = await readWide();
+      const where = `at 768px and ${percent}% text`;
+      expect(at.listDrawn, `R21 B4: ${where} the desktop list drawn is ${at.listDrawn}`).toBe(wantList);
+      expect(at.menuDrawn, `R21 B4: ${where} the menu button and the desktop list are both drawn, or neither`).toBe(!wantList);
+      expectFabFollowsList(at, where);
+      if (at.listDrawn) {
+        expect(
+          at.listLeft - at.name.right,
+          `R21 B4: ${where} the site name ends ${at.listLeft - at.name.right}px before Home, under 48px`,
+        ).toBeGreaterThanOrEqual(48);
+        expect(at.listRight, `R21 B4: ${where} the desktop list ends at ${at.listRight}px, off the screen`).toBeLessThanOrEqual(768);
+      } else {
+        expect(at.menuLeft - at.name.right, `R21 B4: ${where} the site name ends ${at.menuLeft - at.name.right}px before the menu button`).toBeGreaterThanOrEqual(7.5);
+      }
+      expect(at.stripOverflow, `R21 B4: ${where} the header is ${at.stripOverflow}px wider than the screen`).toBeLessThanOrEqual(1);
+    }
+
+    // 768 wide at ordinary text: nothing changed. The desktop list, the 20px name, no menu button.
+    await page.addStyleTag({ content: 'html{font-size:100% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R21 S2: the root font size did not go back to 16px',
+      })
+      .toBe('16px');
+    await page.setViewportSize({ width: 768, height: 900 });
+    await expect
+      .poll(async () => (await readWide()).window, { message: 'R21 S2: the window did not go back to 768px wide' })
+      .toBe(768);
+    const plainMd = await readWide();
+    expect(plainMd.listDrawn, 'R21 S2: at 768px and ordinary text the desktop list is not drawn — the md header changed').toBe(true);
+    expect(plainMd.menuDrawn, 'R21 S2: at 768px and ordinary text the menu button is drawn — the md header changed').toBe(false);
+    expect(plainMd.fabDrawn, 'R21 C4: at 768px and ordinary text the floating feedback button is not drawn — the md page changed').toBe(true);
+    expectFabFollowsList(plainMd, 'at 768px and ordinary text');
+    expect(plainMd.fontPx, `R21 S2: at 768px and ordinary text the site name is ${plainMd.fontPx}px, not its 20px`).toBeCloseTo(20, 1);
+    expect(
+      plainMd.listLeft - plainMd.name.right,
+      `R21 S2: at 768px and ordinary text the site name ends ${plainMd.listLeft - plainMd.name.right}px before Home`,
+    ).toBeGreaterThanOrEqual(24);
+    expect(plainMd.listRight, 'R21 S2: at 768px and ordinary text the desktop list runs off the screen').toBeLessThanOrEqual(768);
+  });
   /* DECISION Phase 88-30 (D-36 / DEF-1): the `.btn-compact` half of this test measures
      PLANTED probe elements, chosen OVER driving the two shipped `w-8 h-8` steppers in
      `BrowseMoreModal.js` — which is the obvious move and the thing a future reader will
@@ -849,14 +1215,27 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
 
      What the probe DOES claim, and it is the half nothing else can see: that in the EMITTED
      stylesheet at 375px, `.btn-compact` still beats the unlayered `.btn { min-height: 2.75rem }`
-     phone floor. That is a pure cascade fact about authoring order (src/app/globals.css ("or promoting the floor to all") authored before src/app/globals.css (".btn-compact {")),
+     phone floor. That is a pure cascade fact about authoring order (src/app/globals.css ("or promoting the floor to all") authored before the .btn-compact rule, which stood where src/app/globals.css ("the stepper opt-out is RETIRED") is now),
      which jsdom cannot evaluate and which src/app/decisionMarkers.test.ts ("5. the phone floor and its opt-out really are shipped, so the markers are not lying") can only pin at
      SOURCE level. The two are complementary: that suite proves the call sites wear the class
      and the rule exists; this proves the browser resolves them the way the marker claims.
 
      The bare-`.btn` probe alongside it is the anti-vacuity guard: if the media query stopped
      applying (a breakpoint edit, a layering "cleanup"), the compact probe would pass at 32px
-     for the WRONG reason. Both probes must disagree, or the test is meaningless. */
+     for the WRONG reason. Both probes must disagree, or the test is meaningless.
+
+     AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18), everything
+     above KEPT AS HISTORY: the opt-out half is superseded. The two steppers are 44x44 squares
+     and the .btn-compact rule is retired, so there is no cascade fight left to measure. The
+     planted stepper probe now wears the class string the steppers ship with today and must
+     measure 44 by 44: the height from h-11 (and the phone floor, which agrees with it), the
+     width from w-11 with the .btn side padding still in place (34px of padding and border
+     inside a 44px box, the sum 88.3-17 found failing at 32). A second probe wears the RETIRED
+     class on the old 32px string and must be floored to 44 tall like any other .btn: that is
+     the rendered proof the opt-out is gone, where the unit pin can only read source. The real
+     steppers are measured in e2e/browse-games-modal.spec.ts ("R4 C2 (88.9-52): the player-count steppers are 44 by 44 squares"),
+     which reaches them through a routed suggestions response. The test title is unchanged
+     (it is the handle other records use); read "still opts out" as history. */
   test('D-36: the .btn phone floor is live on a shipped call site, and .btn-compact still opts out', async ({ page }) => {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertDarkTheme(page);
@@ -888,7 +1267,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      * If a real bare-`.btn` call site still exists after every sweep, prefer the planted probe
      * anyway — an arm whose subject can be migrated away is an arm with an expiry date. (The two
      * `BrowseMoreModal` steppers are not a candidate: they carry `.btn-compact`, which opts OUT
-     * of the floor by design.)
+     * of the floor by design.) AMENDED 88.9-52 R4 C2: they no longer do; they carry w-11 h-11,
+     * which would hold 44 with or without the media rule, so they still prove nothing about it.
      */
     const probes = await page.evaluate(() => {
       const make = (className: string) => {
@@ -899,9 +1279,13 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         document.body.appendChild(el);
         return el;
       };
-      // Same class list the shipped steppers wear (BrowseMoreModal.js), plus a bare
-      // control for the floor. `w-8`/`h-8` are emitted because those steppers use them.
-      const compact = make('btn btn-compact btn-secondary w-8 h-8');
+      // Same class list the shipped steppers wear (BrowseMoreModal.js) since 88.9-52 R4 C2,
+      // plus a bare control for the floor. `w-11`/`h-11` are emitted because those steppers
+      // (and many other src/ files) use them.
+      const stepper = make('btn btn-secondary w-11 h-11');
+      // The RETIRED string. `w-8`/`h-8` are still emitted (other src/ files wear them); the
+      // btn-compact token matches no rule any more.
+      const retired = make('btn btn-compact btn-secondary w-8 h-8');
       const bare = make('btn btn-secondary');
       // The re-pointed real-call-site arm: "Manage Members"'s own shipped class string
       // as of 2026-09-15 (since migrated to a Button, src/app/groupHomePage/page.js ("onClick={() => setMemberModal(true)}")). Every class here but md:text-base (desktop-only, inert at 375px) is emitted because some src/ file
@@ -917,28 +1301,39 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         const r = el.getBoundingClientRect();
         return { width: r.width, height: r.height, minHeight: getComputedStyle(el).minHeight };
       };
-      const result = { compact: read(compact), bare: read(bare), shipped: read(shipped) };
-      compact.remove();
+      const result = { stepper: read(stepper), retired: read(retired), bare: read(bare), shipped: read(shipped) };
+      stepper.remove();
+      retired.remove();
       bare.remove();
       shipped.remove();
       return result;
     });
 
-    // (a) The floor is live at 375px — if this fails, the compact result below means nothing.
+    // (a) The floor is live at 375px — if this fails, the retired-class result below means nothing.
     expect(
       probes.bare.height,
-      `bare .btn probe measured ${probes.bare.height}px (min-height: ${probes.bare.minHeight}) — the D-36 phone floor is NOT applying at 375px, which makes the .btn-compact assertion below vacuous. Look at globals.css's @media (width < 48rem) block and its authoring order, not at BrowseMoreModal`,
+      `bare .btn probe measured ${probes.bare.height}px (min-height: ${probes.bare.minHeight}) — the D-36 phone floor is NOT applying at 375px. Look at globals.css's @media (width < 48rem) block and its authoring order, not at BrowseMoreModal`,
     ).toBeGreaterThanOrEqual(44);
 
-    // (b) The opt-out wins: the stepper stays SQUARE, not stretched into a 32x44 lozenge.
+    // (b) AMENDED 88.9-52 R4 C2: the stepper string is a 44x44 SQUARE, in both axes.
     expect(
-      probes.compact.height,
-      `.btn.btn-compact probe measured ${probes.compact.height}px tall (min-height: ${probes.compact.minHeight}) — expected 32px. The opt-out lost the cascade: 87.8 AF-2 rejected an all-viewport floor precisely because it deforms these w-8 h-8 steppers into 32x44. Check that .btn-compact is still UNLAYERED and still authored AFTER the media block`,
-    ).toBeCloseTo(32, 1);
+      probes.stepper.height,
+      `the stepper-string probe (btn btn-secondary w-11 h-11) measured ${probes.stepper.height}px tall (min-height: ${probes.stepper.minHeight}) — expected 44px`,
+    ).toBeCloseTo(44, 1);
     expect(
-      Math.abs(probes.compact.width - probes.compact.height),
-      `.btn.btn-compact probe measured ${probes.compact.width}x${probes.compact.height} — the steppers are square BY DESIGN and a height-only assertion would not have caught a 32x44 deformation`,
+      probes.stepper.width,
+      `the stepper-string probe measured ${probes.stepper.width}px wide — expected 44px. The .btn side padding and border are 34px, so nothing should clamp a 44px box`,
+    ).toBeCloseTo(44, 1);
+    expect(
+      Math.abs(probes.stepper.width - probes.stepper.height),
+      `the stepper-string probe measured ${probes.stepper.width}x${probes.stepper.height} — the steppers are square BY DESIGN and a height-only assertion would not have caught a lozenge`,
     ).toBeLessThanOrEqual(1);
+    // (b2) The opt-out is gone: the retired class no longer lowers the floor. With its rule in
+    // place this probe measured 32px tall; without it the phone floor holds it at 44.
+    expect(
+      probes.retired.height,
+      `a probe wearing the retired btn-compact class measured ${probes.retired.height}px tall (min-height: ${probes.retired.minHeight}) — a rule for that class is back and takes the phone floor off whatever wears it (88.9-52 R4 C2 retired it)`,
+    ).toBeGreaterThanOrEqual(44);
 
     // (c) The RE-POINTED real-call-site arm (AMENDED Phase 88.6-12, see the block above): the
     // same shape "Manage Members" ships with — `.btn` plus a pile of utilities, no `min-h-*` —
@@ -965,7 +1360,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
           render because a row only overflows at its widest state and a short-label probe would
           pass on a row that breaks in production. *[CORRECTED 2026-09-28, plan 88.6-58 / review
           H1: after plan 88.6-18 the widest states are the settled invite `<span>` ("Already a
-          member") and the ARMED two-tap Remove ("Tap again to confirm") — a `Remove {name}`
+          member") and the ARMED two-tap Remove ("Tap again to confirm"; since R13, 88.9-52, the words it shows are "Tap again", its widest painted states being that and Wait (3)) — a `Remove {name}`
           label never renders. The replica is now derived from the shipped `<Button>` classes
           and pinned in lockstep by src/components/ui/Button.e2eReplica.test.ts; current
           cites: the row, the settled span and the Remove className, each anchored in item 1 above.]*
@@ -1026,7 +1421,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       //   - REMOVE: the two-tap Remove in its ARMED state — `cn(buttonVariants({ variant:
       //     'ghost', size: 'sm' }), 'border shrink-0 ' + <the isConfirming classes>)`, those classes being src/app/gameDetail/page.js ("bg-status-error-subtle border-status-error text-content-status-error font-semibold")
       //     TRANSCRIBED as a literal (e2e cannot import `src/`), with `useConfirmAction`'s
-      //     `DEFAULT_ARMED_LABEL` 'Tap again to confirm' (src/components/ui/useConfirmAction.ts ("export const DEFAULT_ARMED_LABEL"); gameDetail
+      //     `DEFAULT_ARMED_LABEL` 'Tap again' (R13, 88.9-52: the visible words; src/components/ui/useConfirmAction.ts ("export const DEFAULT_ARMED_LABEL"); gameDetail
       //     passes no `armedLabel`, src/app/gameDetail/page.js ("const removeParticipantGate = useConfirmAction({")). The old comment here said `labelFor`
       //     renders `Remove {username}` — it never did: the resting label is 'Remove' (src/app/gameDetail/page.js ("removeParticipantGate.labelFor(p.user_id, 'Remove')")),
       //     and the target's name lives only in the accessible name.
@@ -1045,8 +1440,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       );
       const remove = make(
         'button',
-        'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11 enabled-hover:bg-surface-hover aria-disabled:text-content-muted btn-sm border shrink-0 bg-status-error-subtle border-status-error text-content-status-error font-semibold',
-        'Tap again to confirm',
+        'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11 enabled-hover:bg-surface-ghost-hover aria-disabled:text-content-muted btn-sm border shrink-0 bg-status-error-subtle border-status-error text-content-status-error font-semibold',
+        'Tap again',
       );
 
       host.appendChild(row);
@@ -1187,7 +1582,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       // arithmetic rather than preference: `.btn` is `font-size: .875rem` / `font-weight: 600`
       // with `padding: .5rem 1rem` (globals.css `.btn` rule), so a 375px column leaves 343px of
       // text width, and the longest labels in the shipped census ("Switch to Manual Entry",
-      // "Add New Game Event") sit well inside that — a real label could not exercise the wrap
+      // "Plan Game Session") sit well inside that — a real label could not exercise the wrap
       // this row asserts. The synthetic one is 66 characters.
       // IT IS NOT ASSUMED TO WRAP: the assertion below is that the long probe is TALLER than
       // its short sibling, which is precisely a runtime verification that it exceeded one line.
@@ -1312,7 +1707,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      `jsdom measures NOTHING` guard in src/app/components/KebabMenu.test.tsx, which reds if jsdom
      ever grows layout. The SOURCE halves stay in that file and are the companions a red here
      should be read against:
-       - E6 overflow: the popover is `absolute right-0 min-w-[160px]` and carries no fixed width;
+       - E6 overflow: the popover is `absolute right-0`, content-sized (`w-max`) with the 160px
+         floor and a viewport cap, and carries no fixed width (AMENDED Phase 88.9-67, X67: the
+         replica's list class below follows the component's in lockstep);
        - E6 long-text: the item carries no clipping utility in EITHER state and `min-h-11` is a
          floor, not a fixed height.
 
@@ -1348,23 +1745,41 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       anchor.setAttribute('style', 'position: relative; margin-left: auto; width: 44px;');
       host.appendChild(anchor);
 
-      const LIST_CLASS =
-        'absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-theme-lg py-1';
-      const ITEM_CLASS =
-        'w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
+      // AMENDED Phase 88.9-52 (R20, owner 2026-11-17): the band's shape follows the item count,
+      // transcribed in lockstep from the component: ONE item drops the list's vertical padding and
+      // clips to its corners (the item keeps px-3); SEVERAL items keep py-1, each row is px-1 and
+      // each item px-2 rounded-sm. buildList below picks by its own label count, as the component does.
+      // AMENDED Phase 88.9-52 (R4 L2, after G3 and G4): three constants re-transcribed in lockstep from
+      // src/app/components/KebabMenu.js ("soloItem ? 'py-0 overflow-hidden' : 'py-1 space-y-0.5'"): the list
+      // carries scroll-m-2 (G4), several rows sit 2px apart (space-y-0.5, G3) and a resting item hovers on
+      // the gated ghost wash (G3). The replica had kept the pre-G3 strings, so it measured a menu 4px
+      // shorter than the shipped three-item one.
+      const LIST_BASE =
+        'absolute right-0 top-full mt-1 z-20 scroll-m-2 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg';
+      const LIST_SOLO = 'py-0 overflow-hidden';
+      const LIST_SEVERAL = 'py-1 space-y-0.5';
+      const ROW_SEVERAL = 'px-1';
+      const ITEM_HEAD = 'w-full min-h-11 text-left';
+      const ITEM_SOLO = 'px-3';
+      const ITEM_SEVERAL = 'px-2 rounded-sm';
+      // AMENDED Phase 88.9-23 (O-17): the gated item's look is muted ink, transcribed in lockstep.
+      const ITEM_TAIL =
+        'py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
       const ARMED_EXTRA = 'text-content-status-error bg-status-error-subtle font-semibold';
-      const RESTING_EXTRA = 'text-content-primary hover:bg-surface-hover';
+      const RESTING_EXTRA = 'text-content-primary enabled-hover:bg-surface-ghost-hover';
 
       const buildList = (labels: Array<{ text: string; armed?: boolean }>) => {
+        const solo = labels.length === 1;
         const ul = document.createElement('ul');
-        ul.className = LIST_CLASS;
+        ul.className = `${LIST_BASE} ${solo ? LIST_SOLO : LIST_SEVERAL}`;
         ul.setAttribute('role', 'list');
         const buttons: HTMLElement[] = [];
         for (const { text, armed } of labels) {
           const li = document.createElement('li');
+          if (!solo) li.className = ROW_SEVERAL;
           const b = document.createElement('button');
           b.type = 'button';
-          b.className = `${ITEM_CLASS} ${armed ? ARMED_EXTRA : RESTING_EXTRA}`;
+          b.className = `${ITEM_HEAD} ${solo ? ITEM_SOLO : ITEM_SEVERAL} ${ITEM_TAIL} ${armed ? ARMED_EXTRA : RESTING_EXTRA}`;
           b.textContent = text;
           li.appendChild(b);
           ul.appendChild(li);
@@ -1536,6 +1951,51 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       geometry.effectiveHeight,
       `add-friend effective height ${geometry.effectiveHeight}px < 32px — expected 24 + 4 + 4 = 32 (own ${geometry.ownHeight}px + 4px -inset-y each side; 32 not 44 is the OWNER-ACCEPTED asymmetric floor of 2026-08-02 — the 4px space-y-1 row gap forbids a symmetric extension); insets: ${JSON.stringify(geometry.insets)}`,
     ).toBeGreaterThanOrEqual(32);
+
+    // 88.9-52 R4 C5 (owner 2026-11-18: "the + needs to be centered in the gray circle it is in
+    // front of"), RENDERED. The plus was a text character and rode low in its line; it is a drawn
+    // icon now (src/app/components/ClickableMemberName.js ("DECISION Phase 88.9-52 (R4 C5, owner 2026-11-18, from the See-all picture")),
+    // a square whose arms cross at its own centre (the unit test pins the two arms). So the
+    // centre of the icon's box is the centre of the plus, and it must sit within half a pixel of
+    // the circle's centre on both axes, at ordinary text and with text at 200% (the root font
+    // size doubled by a style tag, e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")). Read-only.
+    const readCentring = () =>
+      addFriend.first().evaluate((button) => {
+        const glyph = button.querySelector('svg');
+        if (!glyph) return null;
+        const b = button.getBoundingClientRect();
+        const g = glyph.getBoundingClientRect();
+        return {
+          dx: g.left + g.width / 2 - (b.left + b.width / 2),
+          dy: g.top + g.height / 2 - (b.top + b.height / 2),
+          glyphWidth: g.width,
+          glyphHeight: g.height,
+          circleWidth: b.width,
+          circleHeight: b.height,
+          text: (button.textContent ?? '').trim(),
+        };
+      });
+    const expectCentred = (c: Awaited<ReturnType<typeof readCentring>>, at: string, circle: number, glyph: number) => {
+      expect(c, `R4 C5 (${at}): the add-friend control holds no drawn icon`).not.toBeNull();
+      expect(c!.text, `R4 C5 (${at}): the add-friend control still holds a text character`).toBe('');
+      expect(Math.abs(c!.circleWidth - circle), `R4 C5 (${at}): the circle is ${c!.circleWidth}px wide, expected ${circle}`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.circleHeight - circle), `R4 C5 (${at}): the circle is ${c!.circleHeight}px tall, expected ${circle}`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.glyphWidth - glyph), `R4 C5 (${at}): the plus is ${c!.glyphWidth}px wide, expected ${glyph}`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.glyphHeight - glyph), `R4 C5 (${at}): the plus is ${c!.glyphHeight}px tall, expected ${glyph}`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.dx), `R4 C5 (${at}): the plus sits ${c!.dx}px right of the circle's centre`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(c!.dy), `R4 C5 (${at}): the plus sits ${c!.dy}px below the circle's centre`).toBeLessThanOrEqual(0.5);
+    };
+    expectCentred(await readCentring(), 'ordinary text', 24, 12);
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R4 C5: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe('32px');
+    await expect
+      .poll(async () => (await readCentring())?.circleWidth ?? 0, { message: 'R4 C5: the circle did not grow to 48px at 200% text' })
+      .toBeGreaterThan(47);
+    expectCentred(await readCentring(), 'text at 200%', 48, 24);
   });
 
   test('D-13: tap isolation on both axes — the extension never steals the username\'s or the adjacent row\'s taps', async ({ page }) => {
@@ -2073,8 +2533,13 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await page.goto('/');
     await assertDarkTheme(page);
 
-    const stack = collapsedChipStack(page);
-    await guardResolved(stack, 'the collapsed member-chip stack (the route to the expanded row)');
+    // A stack with two or more members, by name: the isolation probe below needs two chips, and
+    // the first card on the list can be a two-person group with one.
+    const stack = multiMemberChipStack(page);
+    await guardResolved(
+      stack,
+      'a collapsed member-chip stack naming at least two members (the route to the expanded row) — the seeded account needs one group with at least TWO non-self members; a miss here is a FIXTURE failure',
+    );
     await stack.first().click();
 
     await guardResolved(
@@ -2357,12 +2822,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
   });
 
   test('R4 (88.6.1-48, AC-19 / D-44): the group games Filter is a disclosure and measures >= 44x44 at 375px', async ({ page }) => {
-    // The Overview tab is the default and mounts the Group Games list.
+    // The Overview tab is the default and mounts the Play history list.
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
     const filter = page.getByRole('button', { name: /^Filter( \(\d+\))?$/ });
-    await guardResolved(filter, 'the Group Games "Filter" toggle');
-    await assertMin44(filter, '"Filter" (Group Games, 375px)');
+    await guardResolved(filter, 'the Play history "Filter" toggle');
+    await assertMin44(filter, '"Filter" (Play history, 375px)');
     await expect(filter).toHaveAttribute('aria-expanded', 'false');
     await expect(filter).not.toHaveAttribute('aria-controls');
 
@@ -2389,8 +2854,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
     const sort = page.getByRole('button', { name: /^Sort order: (ascending|descending)$/ });
-    await guardResolved(sort, 'the Group Games sort-direction toggle');
-    await assertMin44(sort, 'the sort arrow (Group Games, 375px)');
+    await guardResolved(sort, 'the Play history sort-direction toggle');
+    await assertMin44(sort, 'the sort arrow (Play history, 375px)');
     await expect(sort).toHaveAccessibleName('Sort order: ascending');
     await expect(sort).toHaveAttribute('title', 'Ascending (click to reverse)');
 
@@ -2407,6 +2872,88 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     ).toBe(true);
     // A sort press would have sent a write to the API (held in the browser, never sent).
     expectNoApiWrites(hold);
+  });
+
+  test('R4 (88.9 B5a): every footer control in both footers measures >= 44px tall at 375px', async ({ page, browser, baseURL }) => {
+    // Signed in: AuthFooter (src/app/components/Footer.js ("function AuthFooter() {")).
+    await page.goto('/');
+    const footer = page.getByRole('contentinfo');
+    const signedIn = [
+      { label: 'About (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'About', exact: true }) },
+      { label: 'Privacy (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'Privacy', exact: true }) },
+      { label: 'Terms (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'Terms', exact: true }) },
+      { label: 'Report bug (AuthFooter, 375px)', control: footer.getByRole('button', { name: /^Report bug/ }) },
+    ];
+    for (const { label, control } of signedIn) {
+      await expect(control, `${label}: no such control in the footer — a zero-count locator measures nothing`).toBeVisible({ timeout: 15_000 });
+      await expectTouchTarget(control, label, { axes: 'height' });
+    }
+
+    // Signed out: PublicFooter (src/app/components/Footer.js ("function PublicFooter() {")), on the
+    // e2e/feedback-stacking.spec.ts ("const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });") idiom.
+    const context = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+      baseURL,
+      viewport: { width: 375, height: 667 },
+      isMobile: true,
+      hasTouch: true,
+      colorScheme: 'dark',
+    });
+    try {
+      const anon = await context.newPage();
+      await anon.goto('/');
+      const publicFooter = anon.getByRole('contentinfo');
+      for (const name of ['About', 'Privacy', 'Terms']) {
+        const control = publicFooter.getByRole('link', { name, exact: true });
+        const label = `${name} (PublicFooter, signed out, 375px)`;
+        await expect(control, `${label}: no such link in the footer — a zero-count locator measures nothing`).toBeVisible({ timeout: 15_000 });
+        await expectTouchTarget(control, label, { axes: 'height' });
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  // DECISION Phase 88.9-21 O15b: a route-served custom game, chosen over a seeded game — the seed has none in CI and the review is never submitted.
+  test('R4 (88.9 O15b): each review star is 48 x 48 and each half-star radio 24 x 48 at 375px', async ({ page }) => {
+    // The shared fake custom game of e2e/support/fakeGame.ts ("export async function routeFakeGameSuccess("), under this test's own id.
+    const gameId = '0e2e0000-0000-4000-8000-000000000921';
+    await routeFakeGameSuccess(page, { id: gameId });
+
+    try {
+      await page.goto(`/gameDetail?game_id=${gameId}&group_id=${E2E_GROUP_ID}`);
+      const add = page.getByRole('button', { name: 'Add Review', exact: true });
+      await expect(add, 'O15b: Add Review never rendered — the custom game or the member roster did not load').toBeVisible({ timeout: 15_000 });
+      await add.click();
+      const rating = page.getByRole('radiogroup', { name: 'Game rating' });
+      await expect(rating, 'O15b: the review dialog has no Game rating radiogroup').toBeVisible();
+      const radios = rating.getByRole('radio');
+      await expect(radios).toHaveCount(10);
+      // AMENDED Phase 88.9-55 (R-C8): the boxes were read inside the review dialog's zoom-in-95 open animation (22.88 / 24 = 0.953 on run 42879553917, 23.65 / 24 = 0.985 on run 42838530373, both axes of both boxes, a transform not a layout size); the file's shared settle runs first and the 0.5px tolerance stays.
+      await settleOpenAnimation(page, radios.first(), 'O15b stars');
+
+      const tol = 0.5;
+      for (let i = 0; i < 10; i += 1) {
+        const radio = radios.nth(i);
+        const box = await radio.boundingBox();
+        const starBox = await radio.locator('xpath=..').boundingBox();
+        expect(box, `O15b: half-star radio ${i + 1} has no layout box`).not.toBeNull();
+        expect(starBox, `O15b: star ${Math.floor(i / 2) + 1} has no layout box`).not.toBeNull();
+        const r = box!;
+        const s = starBox!;
+        const record = `radio ${r.width}x${r.height}px, star ${s.width}x${s.height}px`;
+        expect(Math.abs(r.width - 24), `O15b: half-star radio ${i + 1} is not 24px wide (${record})`).toBeLessThanOrEqual(tol);
+        expect(Math.abs(r.height - 48), `O15b: half-star radio ${i + 1} is not 48px tall (${record})`).toBeLessThanOrEqual(tol);
+        expect(Math.abs(s.width - 48), `O15b: star ${Math.floor(i / 2) + 1} is not 48px wide (${record})`).toBeLessThanOrEqual(tol);
+        expect(Math.abs(s.height - 48), `O15b: star ${Math.floor(i / 2) + 1} is not 48px tall (${record})`).toBeLessThanOrEqual(tol);
+      }
+
+      // Closed without submitting (Esc closes the shared Modal).
+      await page.keyboard.press('Escape');
+      await expect(rating).toBeHidden();
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
   });
 });
 
@@ -2844,5 +3391,181 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
       `D10 item 6 / UI-SPEC §3.4 rule 2: the pinned probe hovered to the base's \`md\` tier (\`${mdValue}\`) instead of its own \`lg\` pin — the inverted-elevation defect itself`,
     ).not.toBe(mdValue);
     await page.mouse.move(1, 1);
+  });
+});
+
+// 88.9-52 R5 (owner 2026-11-17, pick Always), RENDERED. The floating feedback button is a fixed
+// 56px (it does not double with text) and is raised everywhere so that at the end of the page it
+// sits just above the footer's copyright line, with no padding added to the page
+// (src/app/components/FeedbackButton.js ("AMENDED Phase 88.9-52 (R5, owner 2026-11-17, pick Always)")). The capture's mock
+// measured 57px off the bottom at ordinary text and 104px at 200%, 8px above the line in both; the
+// build computes 56px and 104px. The button is not rendered below md, so this is desktop only.
+test.describe('Phase 88.9-52 R5 — the floating feedback button, fixed size and raised (journeys/desktop project)', () => {
+  test.skip(({ isMobile }) => isMobile, 'R5: the floating feedback button is not rendered below md — desktop project only');
+
+  test('R5 (88.9-52): the floating feedback button is 56px at 100% and at 200% text, and at the end of the page sits just above the footer copyright line', async ({
+    page,
+    isMobile,
+  }) => {
+    expect(isMobile, 'R5: running in a MOBILE project — the button is not rendered there and nothing below would be measured').toBe(false);
+
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    // The floating button is the icon-only one (e2e/feedback-stacking.spec.ts (".filter({ hasNotText: 'Send feedback' });")).
+    const fab = page.getByRole('button', { name: 'Send feedback' }).filter({ hasNotText: 'Send feedback' });
+    await guardResolved(fab, 'the floating feedback button (desktop only)');
+    const copyright = page.getByRole('contentinfo').locator('span').filter({ hasText: /^\s*©\s*\d{4}\s+Next Game Night\s*$/ });
+    await guardResolved(copyright, 'the footer copyright line');
+
+    const readAtPageEnd = async (label: string) => {
+      let read = { atEnd: false, fab: { top: 0, bottom: 0, right: 0, width: 0, height: 0 }, copyrightTop: 0, viewportHeight: 0, viewportWidth: 0 };
+      await expect(async () => {
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        read = await page.evaluate(() => {
+          const button = Array.from(document.querySelectorAll('button[aria-label="Send feedback"]')).find(
+            (el) => (el.textContent ?? '').trim() === '',
+          ) as HTMLElement;
+          const line = Array.from(document.querySelectorAll('footer span')).find((el) =>
+            /^\s*©\s*\d{4}\s+Next Game Night\s*$/.test(el.textContent ?? ''),
+          ) as HTMLElement;
+          const b = button.getBoundingClientRect();
+          const doc = document.documentElement;
+          return {
+            atEnd: Math.abs(window.innerHeight + window.scrollY - doc.scrollHeight) <= 1,
+            fab: { top: b.top, bottom: b.bottom, right: b.right, width: b.width, height: b.height },
+            copyrightTop: line.getBoundingClientRect().top,
+            viewportHeight: doc.clientHeight,
+            viewportWidth: doc.clientWidth,
+          };
+        });
+        expect(read.atEnd, `R5 (${label}): the page is not scrolled to its end, so the footer is not where the button is compared`).toBe(true);
+      }).toPass({ timeout: 15_000 });
+      return read;
+    };
+
+    const check = (label: string, read: Awaited<ReturnType<typeof readAtPageEnd>>, offBottom: number) => {
+      expect(read.fab.width, `R5 (${label}): the button is ${read.fab.width}px wide, not 56px`).toBeCloseTo(56, 0);
+      expect(read.fab.height, `R5 (${label}): the button is ${read.fab.height}px tall, not 56px`).toBeCloseTo(56, 0);
+      expect(
+        read.viewportWidth - read.fab.right,
+        `R5 (${label}): the button is ${read.viewportWidth - read.fab.right}px from the right edge, not 24px`,
+      ).toBeCloseTo(24, 0);
+      expect(
+        read.viewportHeight - read.fab.bottom,
+        `R5 (${label}): the button is ${read.viewportHeight - read.fab.bottom}px off the bottom, not ${offBottom}px`,
+      ).toBeCloseTo(offBottom, 0);
+      const gap = read.copyrightTop - read.fab.bottom;
+      expect(gap, `R5 (${label}): the button's bottom edge is ${gap}px above the copyright line's top (want about 8px) — it overlaps the line or floats well above it`).toBeGreaterThanOrEqual(4);
+      expect(gap, `R5 (${label}): the button's bottom edge is ${gap}px above the copyright line's top (want about 8px)`).toBeLessThanOrEqual(14);
+    };
+
+    check('100% text', await readAtPageEnd('100% text'), 56);
+
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'R5: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe('32px');
+    // AMENDED Phase 88.9-52 (R4 C4, owner 2026-11-18): with text at 200% the header is in its
+    // phone-menu form on any screen under the switch (1288px then; 1280px since R4 D5), and while it is the floating
+    // button is not drawn (src/app/components/FeedbackButton.js ("HOW IT LEARNS THE HEADER'S STATE, with no script.")).
+    // This project's 1280px window was 8px short of that, so the 200% reads moved to windows that
+    // draw the button (1400 here; 1300, 1400 and 1600 for the footer arm below, where the arm read
+    // 768, 900 and 1100), and those three narrower widths now prove the opposite: no floating
+    // button, the copyright still on one line.
+    // AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): the switch is 40rem, which at 200% text is
+    // 1280px: this project's own window now sits exactly ON it, where a pixel of scrollbar would
+    // decide the result. So the not-drawn read is taken at 1264 (16px under) before the 1400 one;
+    // the footer arm's 1300 is 20px over and stays.
+    const fabDrawn = () =>
+      page.evaluate(() => {
+        const button = Array.from(document.querySelectorAll('button[aria-label="Send feedback"]')).find(
+          (el) => (el.textContent ?? '').trim() === '',
+        ) as HTMLElement | undefined;
+        return { found: Boolean(button), drawn: Boolean(button && button.getClientRects().length > 0) };
+      });
+    expect((await fabDrawn()).found, 'R5 C4: the floating feedback button is not in the page at all').toBe(true);
+    await page.setViewportSize({ width: 1264, height: 900 });
+    await expect
+      .poll(async () => (await fabDrawn()).drawn, { message: 'R5 C4: at 1264px and 200% text (39.5rem, under the 40rem switch) the floating feedback button is still drawn' })
+      .toBe(false);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await expect
+      .poll(async () => (await fabDrawn()).drawn, { message: 'R5 C4: at 1400px and 200% text (43.75rem) the floating feedback button is not drawn' })
+      .toBe(true);
+    check('200% text, 1400 wide', await readAtPageEnd('200% text, 1400 wide'), 104);
+
+    for (const width of [768, 900, 1100]) {
+      await page.setViewportSize({ width, height: 900 });
+      const label = `200% text, ${width} wide`;
+      await expect
+        .poll(async () => (await fabDrawn()).drawn, { message: `R5 C4 (${label}): the floating feedback button is drawn although the header is in its menu form` })
+        .toBe(false);
+      const line = await page.evaluate(() => {
+        const el = Array.from(document.querySelectorAll('footer span')).find((span) =>
+          /^\s*©\s*\d{4}\s+Next Game Night\s*$/.test(span.textContent ?? ''),
+        ) as HTMLElement;
+        return { window: document.documentElement.clientWidth, height: el.getBoundingClientRect().height, linePx: parseFloat(getComputedStyle(el).lineHeight) };
+      });
+      expect(line.window, `R5 C4 (${label}): the window is not ${width}px wide`).toBe(width);
+      expect(line.height, `R5 C4 (${label}): the copyright is ${line.height}px tall on a ${line.linePx}px line — it broke onto a second line`).toBeLessThanOrEqual(line.linePx + 1);
+    }
+
+    // R5 (88.9-52 R4 S1, 768 wide and up at 200% text): the round-3 capture found the copyright
+    // broken onto two lines at 768px with the button sitting on it (button 740 to 796px, copyright
+    // 726 to 801px). From md the footer keeps the button's corner clear
+    // (src/app/components/Footer.js ("DECISION Phase 88.9-52 (R4 S1, the round-3 capture")): the copyright stays one line,
+    // and nothing readable in the footer is under the button's box at the page end. The button
+    // itself has not moved: still 56px, 24px in, 104px up. 768 is the narrowest width that draws it.
+    // AMENDED Phase 88.9-52 (R4 C4, then D5): at 200% text the narrowest width that draws it is now 1280px,
+    // so this arm reads 1300, 1400 and 1600; the footer's corner reserve itself is unchanged.
+    for (const width of [1300, 1400, 1600]) {
+      await page.setViewportSize({ width, height: 900 });
+      const label = `200% text, ${width} wide`;
+      const read = await readAtPageEnd(label);
+      expect(read.viewportWidth, `R5 (${label}): the window is not ${width}px wide`).toBe(width);
+      expect(read.fab.width, `R5 (${label}): the button is ${read.fab.width}px wide, not 56px`).toBeCloseTo(56, 0);
+      expect(read.fab.height, `R5 (${label}): the button is ${read.fab.height}px tall, not 56px`).toBeCloseTo(56, 0);
+      expect(read.viewportWidth - read.fab.right, `R5 (${label}): the button is not 24px from the right edge`).toBeCloseTo(24, 0);
+      expect(read.viewportHeight - read.fab.bottom, `R5 (${label}): the button is not 104px off the bottom`).toBeCloseTo(104, 0);
+      const footer = await page.evaluate(() => {
+        const button = Array.from(document.querySelectorAll('button[aria-label="Send feedback"]')).find(
+          (el) => (el.textContent ?? '').trim() === '',
+        ) as HTMLElement;
+        const b = button.getBoundingClientRect();
+        const line = Array.from(document.querySelectorAll('footer span')).find((el) =>
+          /^\s*©\s*\d{4}\s+Next Game Night\s*$/.test(el.textContent ?? ''),
+        ) as HTMLElement;
+        const l = line.getBoundingClientRect();
+        // Everything a person reads or taps in the footer: the links, Report bug, the BGG mark, the copyright.
+        const things = [line, ...Array.from(document.querySelectorAll('footer a, footer button, footer img'))] as HTMLElement[];
+        const under = things
+          .map((el) => ({ el, r: el.getBoundingClientRect() }))
+          .filter(({ r }) => r.width > 0 && r.height > 0 && r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top)
+          .map(({ el, r }) => `${el.tagName.toLowerCase()} "${(el.textContent ?? '').trim().slice(0, 30)}" ${Math.round(r.left)}-${Math.round(r.right)} x ${Math.round(r.top)}-${Math.round(r.bottom)}`);
+        return {
+          under,
+          copyrightHeight: l.height,
+          copyrightLine: parseFloat(getComputedStyle(line).lineHeight),
+          copyrightRight: l.right,
+          copyrightTop: l.top,
+          fabBottom: b.bottom,
+          footerControls: things.length,
+        };
+      });
+      expect(footer.footerControls, `R5 (${label}): the footer's links were not found, so nothing was compared`).toBeGreaterThanOrEqual(5);
+      expect(footer.under, `R5 (${label}): the feedback button covers footer content: ${footer.under.join('; ')}`).toEqual([]);
+      expect(
+        footer.copyrightHeight,
+        `R5 (${label}): the copyright is ${footer.copyrightHeight}px tall on a ${footer.copyrightLine}px line — it broke onto a second line`,
+      ).toBeLessThanOrEqual(footer.copyrightLine + 1);
+      expect(
+        footer.copyrightTop - footer.fabBottom,
+        `R5 (${label}): the copyright line starts ${footer.copyrightTop - footer.fabBottom}px under the button's bottom edge — they overlap`,
+      ).toBeGreaterThanOrEqual(4);
+      expect(footer.copyrightRight, `R5 (${label}): the copyright runs past the right edge of the window`).toBeLessThanOrEqual(width);
+    }
   });
 });

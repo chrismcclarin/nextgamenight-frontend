@@ -4,9 +4,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import AvailabilityForm from '@/app/components/AvailabilityForm';
 import { magicAuthAPI, availabilityFormAPI } from '@/lib/api';
+import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
-import { StatusRegion } from '@/components/ui/StatusRegion';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
+import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 import { logger, errCtx } from '@/lib/logger';
 
 /**
@@ -36,6 +38,9 @@ const SUBMITTED_HEADLINE = 'Availability Submitted!';
 const LINK_INVALID_HEADLINE = 'Link No Longer Valid';
 const FAILURE_HEADLINE = 'Something went wrong';
 
+/** The LOADING line. After a Try again it is also the in-flight focus target (R29, 88.9-52). */
+const VALIDATING_LINE = 'Validating your link...';
+
 /** The `data-testid` the page-level live region is addressed by. See the AC-19 marker below. */
 const PAGE_STATUS_TESTID = 'availability-page-status';
 
@@ -59,6 +64,36 @@ export default function AvailabilityFormPage() {
   // `validateToken` resolves) — the only ERROR states where "Link No Longer Valid" and the
   // organizer's "request a new link" guidance are true. A thrown failure leaves it false.
   const [linkInvalid, setLinkInvalid] = useState(false);
+  /* DECISION Phase 88.9-52 (R29, owner 2026-11-17 "Build"): the AMBER card gets a Try again that
+     re-runs the link check, PORTED from the restore page's preview Try again
+     (src/app/restore/group/[token]/page.tsx ("function retryPreview()")): the same button, the
+     same words, the same focus rule and the same region hold. Chosen OVER the card with nothing
+     to press (Q69 shipped it; S-C5 left it open with the owner), where the only way to ask again
+     was to reload the page.
+     - attempt: bumped by the press; the check effect below re-runs on it.
+     - FOCUS: the press removes the button, so the loading line takes focus while the check is
+       in flight and the settled heading takes it after, each only when focus is lost; a heading
+       that will not take focus falls to the shared page floor. Nothing moves on first load.
+     - THE REGION HOLD: the page region reads '' from the press until the outcome has committed
+       AND REGION_EMPTY_DWELL_MS has passed, so a failure with the same words is spoken again.
+     - COST, accepted by the owner: the check consumes nothing and sends nothing, but each press
+       that meets a failed answer counts toward the magic-link limiter (5 failed answers per 15
+       minutes per address and link, one bucket shared with the submit route,
+       backend:Sonnet/routes/magicAuth.js, magicTokenLimiter). A page reload costs the same.
+     - NEVER on the red card: a dead link is not fixed by asking again.
+     REJECTED: a new in-flight label or a busy button (the restore page replaces the branch with
+     its loading view; one rule, one treatment; no new words). REJECTED: a shared retry hook
+     (DECISION Phase 88.2 D-02 on the restore page: these guards are copied, not extracted).
+     Removing the control, or showing it on the red card, is a decision, not a cleanup. */
+  const [attempt, setAttempt] = useState(0);
+  const loadingLineRef = useRef(null);
+  const settledHeadingRef = useRef(null);
+  const retryFocusArmedRef = useRef(false);
+  const [regionDwell, setRegionDwell] = useState(false);
+  const regionDwellTimerRef = useRef(null);
+  useEffect(() => () => {
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+  }, []);
 
   // Token validation data
   const [tokenData, setTokenData] = useState(null);
@@ -238,8 +273,12 @@ export default function AvailabilityFormPage() {
            REJECTED: keeping the guidance always-rendered (it contradicts the network /
            rate-limited lines beneath the same heading). REJECTED: minting a new failure heading
            (P1) — `FetchErrorBanner`'s ratified default title is REUSED. Restoring the
-           always-rendered guidance or the fixed heading is a decision, not a cleanup.] */
-        setErrorMessage(getFetchErrorMessage(error));
+           always-rendered guidance or the fixed heading is a decision, not a cleanup.]
+           AMENDED Phase 88.9-52 (R29, owner 2026-11-17): this arm now renders Try again under
+           its line, so the line is the register line's beside-retry form (X68, owner ruled
+           2026-11-14: one remedy beside a retry). Only the three lines that say "refresh the
+           page" change; the network, rate-limit and our-end lines read as before. */
+        setErrorMessage(messageBesideRetry(getFetchErrorMessage(error)));
         setPageState(PAGE_STATES.ERROR);
       }
     };
@@ -248,7 +287,37 @@ export default function AvailabilityFormPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, attempt]);
+
+  /** R29 (88.9-52): re-run the link check after a failure that may pass. See the marker on attempt. */
+  const retryValidation = () => {
+    retryFocusArmedRef.current = true;
+    // A press while a hold is running restarts it.
+    if (regionDwellTimerRef.current) clearTimeout(regionDwellTimerRef.current);
+    setRegionDwell(true);
+    regionDwellTimerRef.current = setTimeout(() => {
+      regionDwellTimerRef.current = null;
+      setRegionDwell(false);
+    }, REGION_EMPTY_DWELL_MS);
+    setErrorMessage(null);
+    setPageState(PAGE_STATES.LOADING);
+    setAttempt((a) => a + 1);
+  };
+
+  // R29 (88.9-52): the focus edge for a Try again. In flight the arm STAYS on and the loading
+  // line takes focus when focus is lost (the pressed button has just unmounted); never a floor in
+  // flight, or focus would not read as lost at settle. On the first settled render the arm is
+  // dropped and, only when focus is lost, the settled heading takes it, else the page floor.
+  useEffect(() => {
+    if (!retryFocusArmedRef.current) return;
+    if (pageState === PAGE_STATES.LOADING) {
+      if (isFocusLost()) focusElement(loadingLineRef.current);
+      return;
+    }
+    retryFocusArmedRef.current = false;
+    if (!isFocusLost()) return;
+    if (!focusElement(settledHeadingRef.current)) focusPageFloor();
+  }, [pageState]);
 
   // Handle successful form submission
   const handleSubmissionSuccess = useCallback((result) => {
@@ -264,7 +333,11 @@ export default function AvailabilityFormPage() {
      `Heading` forwards a ref (it is built on `React.forwardRef`), so this needs no wrapper.
 
      The ERROR flip deliberately takes the announcement but NOT a focus move: the error branch has
-     no control the user was operating, so moving focus there would be an unrequested jump. */
+     no control the user was operating, so moving focus there would be an unrequested jump.
+     AMENDED Phase 88.9-52 (R29, owner 2026-11-17): true of the FIRST load only. After a Try again
+     the user WAS operating a control and it has unmounted, so the settled heading (the failure
+     heading, or the form's title) takes focus once, only when focus is lost. See the R29 marker
+     on attempt. */
   const confirmationHeadingRef = useRef(null);
   useEffect(() => {
     if (pageState === PAGE_STATES.SUBMITTED) {
@@ -322,8 +395,10 @@ export default function AvailabilityFormPage() {
      inside a region the ruling already puts on the page. The mechanism is untouched.
 
      Every other state yields `''`. */
-  const announcement =
-    pageState === PAGE_STATES.SUBMITTED
+  // R29 (88.9-52): '' while the Try again hold runs, so the same failure text is spoken again.
+  const announcement = regionDwell
+    ? ''
+    : pageState === PAGE_STATES.SUBMITTED
       ? `${SUBMITTED_HEADLINE} ${submittedDetail}`
       : pageState === PAGE_STATES.ERROR
         ? errorMessage || ''
@@ -337,7 +412,7 @@ export default function AvailabilityFormPage() {
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent mx-auto"></div>
-          <p className="mt-4 text-content-secondary">Validating your link...</p>
+          <p ref={loadingLineRef} className="mt-4 text-content-secondary">{VALIDATING_LINE}</p>
         </div>
       </div>
     );
@@ -346,17 +421,43 @@ export default function AvailabilityFormPage() {
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
-          <div className="w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4">
+          {/* DECISION Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the X colour follows
+              the cause, keyed on the linkInvalid state the heading below already reads, chosen
+              OVER one red X for both. Red when the link is dead (no token, the resolved 400
+              token_invalid). Amber (warning ink on the warning circle, 5.50 light / 4.95 dark)
+              when the check could not complete (connection, 5xx, 429, an unreadable answer).
+              NO retry control is added in this pass, so the amber card still offers nothing to
+              press. One literal class string per arm.
+              AMENDED Phase 88.9-52 (S-C5): that gap is OPEN with the owner, not accepted; the
+              words "a known gap" that stood here named no owner and no phase. A Try again was
+              NOT built because re-running the check is not free: the validate route sits behind
+              the magic-link limiter (backend:Sonnet/routes/magicAuth.js, magicTokenLimiter; 5
+              failed answers per 15 minutes per address and link, one bucket shared with the
+              submit route), so each press that meets a 5xx spends one of the five tries the
+              person needs to submit. The check itself is safe to repeat (it consumes nothing and
+              sends nothing). Adding the control, or accepting the card without one, is the
+              owner's ruling.
+              AMENDED Phase 88.9-52 (R29, owner 2026-11-17 "Build"): RULED and built. The amber
+              card has a Try again under its sentence; the limiter cost above is accepted. The
+              red card still has nothing to press. Superseded: "NO retry control is added in this
+              pass" (Q69) and the open S-C5 gap. See the R29 marker on attempt. */}
+          <div
+            className={
+              linkInvalid
+                ? 'w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4'
+                : 'w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4'
+            }
+          >
             {/* Decorative: the meaning is carried by the heading beside it. Repo idiom —
                 `aria-hidden` + `focusable="false"` on the graphic itself, matching the
                 `<svg>`s on the sibling invite pages and `Icon`'s own default. */}
-            <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={linkInvalid ? 'w-8 h-8 text-content-status-error' : 'w-8 h-8 text-content-status-warning'} aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
           {/* h1 @ 20 STAYS at 20 (D-04 row 2). This is the ERROR branch, mutually exclusive with
               the page title below — not a loading branch, and not the title. */}
-          <Heading level={1} size="heading" className="text-content-primary mb-2">
+          <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
             {linkInvalid ? LINK_INVALID_HEADLINE : FAILURE_HEADLINE}
           </Heading>
           <p className="text-content-secondary mb-6">
@@ -367,6 +468,17 @@ export default function AvailabilityFormPage() {
             <p className="text-sm text-content-muted">
               Please contact your group organizer to request a new availability link.
             </p>
+          )}
+          {/* R29 (88.9-52): the amber card only. The restore page's Try again, class for class. */}
+          {!linkInvalid && (
+            <Button
+              variant="primary"
+              size="default"
+              onClick={retryValidation}
+              className="w-full text-center"
+            >
+              Try again
+            </Button>
           )}
         </div>
       </div>
@@ -419,7 +531,7 @@ export default function AvailabilityFormPage() {
         <div className="max-w-3xl mx-auto">
           {/* Header */}
           <div className="bg-surface-card rounded-card shadow-theme-lg p-3 md:p-6 mb-6">
-            <Heading level={1} size="display" className="text-content-primary mb-2">
+            <Heading level={1} size="display" className="text-content-primary mb-2" ref={settledHeadingRef}>
               Submit Your Availability
             </Heading>
             <p className="text-content-secondary">

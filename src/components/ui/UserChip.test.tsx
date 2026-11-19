@@ -152,3 +152,22 @@ describe('UserChip — §4.5 pill-ink weight (W36 twin)', () => {
     expect(screen.getByText('MK')).toHaveClass('h-8', 'w-8', 'text-sm');
   });
 });
+
+// 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room). The label was
+// cut to one line with an ellipsis. jsdom lays nothing out, so this holds the classes; the rendered
+// widths are in e2e/friend-invite-panel-header.spec.ts ("R4 D2 (88.9-52)").
+// The marker is at src/components/ui/UserChip.tsx ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the label wraps").
+describe('UserChip — the label wraps by whole words (88.9-52 R4 D2)', () => {
+  it('R4 D2 (88.9-52): the label is never cut, keeps its longest word, and drops under the avatar in a chip capped at its container', () => {
+    const { container } = render(<UserChip user={{ name: 'Weekend Warriors' }} size="sm" />);
+    const label = screen.getByText('Weekend Warriors');
+    expect(label.className).not.toMatch(/(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere|break-all)(\s|$)/);
+    // min-w-0 or an overflow clip on the label would let it be squeezed under one word.
+    expect(label.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
+    expect(label).toHaveClass('wrap-break-word', 'flex-1', 'max-w-full');
+    const chip = container.firstElementChild as HTMLElement;
+    expect(chip).toHaveClass('inline-flex', 'max-w-full', 'flex-wrap');
+    // The avatar box never gives up its width to the name.
+    expect(screen.getByText('WW')).toHaveClass('shrink-0');
+  });
+});

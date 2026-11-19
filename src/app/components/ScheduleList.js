@@ -193,21 +193,27 @@ export default function ScheduleList({
                   )}
                 </div>
 
-                <div className="space-y-1 text-sm text-content-secondary">
+                {/* DECISION Phase 88.9-34 (E6a): value first — the row wrapper carries the value ink
+                    (text-content-primary) and the four labels step down to text-content-muted, chosen
+                    OVER wrapping each value in its own primary span: one ink source per row, so the
+                    inline Response-window computation stays unwrapped and a future fact line inherits
+                    the value ink. Muted on card measures 6.58 light / 6.00 dark (above 4.5, D-07). The
+                    status badges below keep DECISION Phase 88.6-32 untouched. */}
+                <div className="space-y-1 text-sm text-content-primary">
                   <p>
-                    <span className="text-content-primary">When:</span> {dayName} at {timeFormatted}
+                    <span className="text-content-muted">When:</span> {dayName} at {timeFormatted}
                   </p>
                   <p>
-                    <span className="text-content-primary">Game:</span> {gameName}
+                    <span className="text-content-muted">Game:</span> {gameName}
                   </p>
                   {schedule.min_participants && (
                     <p>
-                      <span className="text-content-primary">Min players:</span> {schedule.min_participants}
+                      <span className="text-content-muted">Min players:</span> {schedule.min_participants}
                     </p>
                   )}
                   {schedule.default_deadline_hours && (
                     <p>
-                      <span className="text-content-primary">Response window:</span> {(() => {
+                      <span className="text-content-muted">Response window:</span> {(() => {
                         const days = Math.round(schedule.default_deadline_hours / 24);
                         if (days < 1) return 'Less than 1 day';
                         return `${days} day${days === 1 ? '' : 's'}`;
@@ -232,19 +238,25 @@ export default function ScheduleList({
                 {/* Pause/Resume toggle. 88.6.1 code review A-47: the in-flight state is SHOWN as
                     well as exposed — `aria-disabled:opacity-50`, the house raw-button wash
                     (ResponseDashboard's Remind, KebabMenu items), so a sighted user sees why a
-                    second press does nothing. */}
-                <button
+                    second press does nothing.
+                    AMENDED Phase 88.9-23 (O-17): the in-flight look is muted ink, not an opacity wash, with the kebab items.
+                    DECISION Phase 88.9-57 (owner 52-X46): Button primitive on the ghost arm with its tint fills, sharing Edit's and Delete's .btn box, weight and house offset ring on the card halo, chosen OVER the raw button's smaller box and browser outline and OVER a secondary fill (the unlayered .btn-secondary beats a tint utility); muted in-flight ink kept. Changing this is a decision, not a cleanup.
+                    How it holds: the tint literal below is merged over the ghost arm, so the arm's own transparent ground, secondary ink and neutral hover drop out and its muted aria-disabled ink (the A-47 / O-17 look) stays; the primitive's busy prop is NOT used, chosen OVER it, because it adds a spinner and a spoken suffix that the phone kebab's Pause does not have.
+                    AMENDED Phase 88.9-52 (W28): the hovered word takes the status hover ink (dark Pause 4.14 to 5.33, dark Resume 3.94 to 5.16; light unchanged), chosen OVER moving the dark status text tokens every other status word reads. */}
+                <Button
+                  variant="ghost"
+                  size="default"
                   onClick={() => onToggle?.(schedule.id)}
                   aria-disabled={togglingIds?.[schedule.id] ? 'true' : undefined}
-                  className={`px-3 py-1.5 text-sm rounded-btn transition-colors aria-disabled:opacity-50 ${
+                  className={
                     isActive
-                      ? 'bg-status-warning-subtle text-content-status-warning enabled-hover:bg-status-warning-subtle-hover'
-                      : 'bg-status-success-subtle text-content-status-success enabled-hover:bg-status-success-subtle-hover'
-                  }`}
+                      ? 'bg-status-warning-subtle text-content-status-warning enabled-hover:bg-status-warning-subtle-hover enabled-hover:text-content-status-warning-hover'
+                      : 'bg-status-success-subtle text-content-status-success enabled-hover:bg-status-success-subtle-hover enabled-hover:text-content-status-success-hover'
+                  }
                   title={isActive ? 'Pause schedule' : 'Resume schedule'}
                 >
                   {isActive ? 'Pause' : 'Resume'}
-                </button>
+                </Button>
 
                 {/* Delete button */}
                 <Button

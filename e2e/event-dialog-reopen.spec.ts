@@ -19,7 +19,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 import { fillCreateEventManualEntry } from './support/createEvent';
 import { E2E_GROUP_ID } from './support/groupSettings';
-import { holdWrites, holdUntilReleased } from './support/inFlight';
+import { expectNoApiWrites, holdWrites, holdUntilReleased } from './support/inFlight';
 import { expectTouchTarget } from './support/touchTarget';
 import { scrubbedFetch } from './support/scrubbedFetch';
 
@@ -94,7 +94,7 @@ test.describe('Edit Event on the event page — reopening while an update is sav
     await page.keyboard.press('Escape');
   });
 
-  test('R2: the ordinary update still closes the dialog, refreshes the page and says Event updated (confirm-only)', async ({ page }) => {
+  test('R2: the ordinary update still closes the dialog, refreshes the page and fires no success toast (save-feedback rule 2)', async ({ page }) => {
     await holdWrites(page);
     let readsAfterPut = 0;
     let put: Awaited<ReturnType<typeof holdUntilReleased>> | null = null;
@@ -116,11 +116,94 @@ test.describe('Edit Event on the event page — reopening while an update is sav
     await page.getByRole('dialog').getByLabel('Comments').fill(MARKER);
     await submit.click();
     await expect(editHeading(page)).toBeHidden();
-    await expect(page.getByText('Event updated', { exact: true })).toBeVisible();
+    // 88.9-52 (A-09): the result IS spoken, once, by the root announcer's sr-only polite region
+    // (DECISION Phase 88.9-24 in src/app/components/createEvent.js). Read straight after the close:
+    // the announcer clears its text 4s after it is written.
+    await expect(page.getByRole('status').filter({ hasText: /^Event updated$/ })).toHaveCount(1);
     await expect.poll(() => readsAfterPut).toBeGreaterThanOrEqual(1);
     await page.waitForTimeout(1000);
+    // Save-feedback rule 2 (88.9-24): the page shows the result, so no toast. Scoped to sonner's
+    // toast items because the root announcer's sr-only region speaks the same words.
+    // 88.9-52 (A-05): read AFTER the fixed wait — an absence read taken at once would pass on a
+    // toast that had not been raised yet.
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Event updated' })).toHaveCount(0);
     await expect(editHeading(page)).toBeHidden();
     expect(put.count()).toBe(1);
+  });
+});
+
+// The rendered proof for G5 and its fleet form L3 (round 4). A screen-reader-only box is position
+// absolute; while the dialog's scrolling Body was not positioned, the form's sr-only boxes were laid
+// out against the dialog SHELL, below its foot, so the clipping shell could be scrolled: a
+// scrollIntoView on a field slid the shell up by its header and left a blank band at its foot (the
+// after-build capture of the Edit Event dialog). The Body is positioned now,
+// src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18)"), so the shell has nothing to scroll to.
+// This test opens the dialog and scrolls only: it presses no submit. holdWrites is registered
+// before the navigation and never hands a write on, so nothing reaches the shared fixture.
+test.describe('Edit Event — the dialog shell cannot be scrolled (88.9-52 round 4)', () => {
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('R4 L4 (88.9-52): with the Participants group scrolled to the top, the dialog shell has not moved and has nothing to scroll to', async ({ page }) => {
+    const net = await holdWrites(page);
+    await page.goto(E2E_EVENT_DETAIL_PATH);
+    await page.getByRole('button', { name: 'Edit Event', exact: true }).click();
+    await expect(editHeading(page)).toBeVisible();
+    // The form has loaded (the body gate is open) once its submit reads Update Event.
+    await expect(page.getByTestId('create-event-submit')).toHaveText('Update Event');
+    const dialog = page.getByRole('dialog');
+    const group = dialog.getByRole('group', { name: /^Participants/ });
+    await expect(group).toBeVisible();
+
+    // Guards, so the reads below are not true by having nothing to measure: the form holds
+    // sr-only boxes, and it is taller than the dialog (its Body really scrolls).
+    const before = await dialog.evaluate((shell) => {
+      const body = Array.from(shell.children).find((el) => getComputedStyle(el).overflowY === 'auto');
+      return {
+        srOnly: body ? body.querySelectorAll('.sr-only').length : 0,
+        bodyFound: Boolean(body),
+        bodyPosition: body ? getComputedStyle(body).position : '',
+        bodyScrollHeight: body ? body.scrollHeight : 0,
+        bodyClientHeight: body ? body.clientHeight : 0,
+      };
+    });
+    expect(before.bodyFound, 'the dialog has no scrolling Body child: the shell changed shape').toBe(true);
+    expect(before.srOnly, 'the Body holds no sr-only box, so this test measures nothing').toBeGreaterThan(0);
+    expect(
+      before.bodyScrollHeight,
+      'the form fits the dialog without scrolling at this size, so no box sits below the shell and this test measures nothing',
+    ).toBeGreaterThan(before.bodyClientHeight);
+    expect(before.bodyPosition, 'Modal.Body is not positioned').toBe('relative');
+
+    // What the capture did, and what a find-in-page does: bring the group to the top.
+    await group.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+
+    const after = await dialog.evaluate((shell) => {
+      const body = Array.from(shell.children).find((el) => getComputedStyle(el).overflowY === 'auto');
+      return {
+        scrollTop: shell.scrollTop,
+        scrollHeight: shell.scrollHeight,
+        clientHeight: shell.clientHeight,
+        bodyScrollTop: body ? body.scrollTop : -1,
+      };
+    });
+    expect(after.scrollTop, 'the dialog shell itself scrolled: its header is off the top and a blank band shows at its foot').toBe(0);
+    expect(
+      after.scrollHeight,
+      `the dialog shell has ${after.scrollHeight - after.clientHeight}px to scroll to: a box inside it is laid out below its foot`,
+    ).toBeLessThanOrEqual(after.clientHeight + 1);
+    // The scroll went where it belongs: the Body moved, and the header is still on screen.
+    expect(after.bodyScrollTop, 'the Body did not scroll, so the scrollIntoView above did nothing').toBeGreaterThan(0);
+    await expect(editHeading(page)).toBeInViewport();
+
+    expect(net.count('PUT', /\/events\//)).toBe(0);
+    expect(net.count('POST', /\/events/)).toBe(0);
+    // Scoped check 3 (L1): this test presses nothing that writes, so NO write of any kind may be
+    // waiting in the hold when the routes are removed (removing them would let it through).
+    expectNoApiWrites(net);
+    await page.keyboard.press('Escape');
+    await expect(editHeading(page)).toBeHidden();
   });
 });
 
@@ -147,7 +230,7 @@ test.describe('Create Event — late success and the ordinary close at the other
 
     await page.keyboard.press('Escape');
     await expect(createHeading(page)).toBeHidden();
-    await page.getByRole('button', { name: /add new game event/i }).click();
+    await page.getByRole('button', { name: 'Create Event', exact: true }).click();
     await expect(createHeading(page)).toBeVisible();
     const submit = page.getByTestId('create-event-submit');
     await expect(submit).toBeVisible();

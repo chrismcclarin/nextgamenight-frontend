@@ -21,9 +21,12 @@
 //   use `renderFriends({ friends: [] })` for the empty case and
 //   `renderFriends({ loadError: ... })` for the failed-fetch case. Those two are
 //   deliberately DIFFERENT surfaces; see the DECISION marker on the Friends tab.
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import * as React from 'react';
 import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 
 const SELF_UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const FRIEND_UUID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
@@ -63,10 +66,12 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 // import, before a plain module-level const would be initialised.
 const auth = vi.hoisted(() => ({
   user: { sub: 'auth0|self', name: 'Self', email: 'self@example.com' },
+  // 88.9-40 (SESSION-01): what useUser reports when /api/auth/me itself fails.
+  error: null as unknown,
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: auth.user, isLoading: false }),
+  useUser: () => ({ user: auth.user, error: auth.error, isLoading: false }),
 }));
 
 // Received requests live in the shared provider (POLL-02), not in page state.
@@ -154,7 +159,27 @@ import FriendsPage from './page';
 import { ApiError, friendshipsAPI, groupsAPI, invitesAPI } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { queryCacheOnError } from '@/lib/queryClient';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
+import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
+import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+
+// F9b (88.9-23): the two-tap gate refuses the second tap for CONFIRM_DELAY_MS after arming.
+// A test that commits installs a fake clock that still advances with real time (so the
+// promise-driven renders keep flowing; installed after the mount fetches settle, as the
+// revert test below does) BEFORE the arming tap, then steps past the gate with passGate().
+function fakeClock() {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+}
+
+function passGate() {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+}
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -207,6 +232,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
   h.identityError = false;
+  auth.error = null;
+  window.sessionStorage.clear();
   // `clearAllMocks` clears CALLS, not IMPLEMENTATIONS, so a rejection set by one arm
   // would leak into every later one in file order. Restore the defaults explicitly.
   providerCtx.receivedRequests = [];
@@ -239,6 +266,35 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// 88.9-40 (SESSION-01): the gameDetail suite's location stub (src/app/gameDetail/page.test.tsx ("function stubLocation(")),
+// pinned to /friends: the guard reads pathname + search + hash and calls replace; the prompt's Log In
+// href and the latch key read the same location. Each caller restores REAL_LOCATION itself.
+const REAL_LOCATION = window.location;
+function stubLocation(pathname = '/friends') {
+  const replace = vi.fn();
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: {
+      origin: 'http://localhost',
+      protocol: 'http:',
+      host: 'localhost',
+      hostname: 'localhost',
+      port: '',
+      pathname,
+      search: '',
+      hash: '',
+      href: `http://localhost${pathname}`,
+      replace,
+      assign: vi.fn(),
+    },
+  });
+  return replace;
+}
+function restoreLocation() {
+  Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+}
+
 describe('friends render harness', () => {
   it('renders the page shell and the add-friend search once identity resolves', async () => {
     renderFriends();
@@ -266,21 +322,35 @@ describe('friends render harness', () => {
            `<Link>`, this role query is what notices.
          - the EXACT href: a client-router navigation to Auth0's handoff route is a behaviour
            change, not a cleanup (UI-SPEC §3.2's asChild row says so in terms).
-       `auth.user` is restored in the `finally` so no later test inherits a signed-out page. */
+       `auth.user` is restored in the `finally` so no later test inherits a signed-out page.
+       AMENDED Phase 88.9-40 (SESSION-01): the prompt is now the DECLINED arm (a signed-out visitor is
+       redirected first), so the latch is set after the location stub, and the href carries returnTo
+       (buildSignInUrl, src/lib/signIn.ts) — still a hard-navigation `<a>`, which is 88.6-19's rule. */
     const saved = auth.user;
     auth.user = null as unknown as typeof auth.user;
+    const replace = stubLocation('/friends');
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
     try {
       render(<FriendsPage />);
-      const login = await screen.findByRole('link', { name: 'Log In' });
-      expect(login).toHaveAttribute('href', '/api/auth/login');
-      expect(login.tagName).toBe('A');
-      // The primitive's own classes reached the slotted child (the `Slot` contract).
-      expect(login.className).toContain('btn');
-      expect(login.className).toContain('min-h-11');
-      // `type` is meaningless on an anchor and `Button` omits it when slotted.
-      expect(login).not.toHaveAttribute('type');
+      // AMENDED Phase 88.9-66 (X70b, owner 2026-11-14): the declined return is the shared banner in
+      // the centred frame, so the hard-navigation anchor this test guards is the banner's own Sign
+      // in. It is a plain link, not a slotted Button, so the btn class read is gone; the 44px floor
+      // and the exact href stay.
+      const signInLink = await screen.findByRole('link', { name: 'Sign in' });
+      expect(signInLink).toHaveAttribute('href', '/api/auth/login?returnTo=%2Ffriends');
+      expect(replace).not.toHaveBeenCalled();
+      expect(signInLink.tagName).toBe('A');
+      expect(signInLink.className).toContain('min-h-11');
+      expect(signInLink).not.toHaveAttribute('type');
+      expect(signInLink.closest('[data-slot="page-frame"]'), 'the banner sits in the shared centred frame').not.toBeNull();
+      expect(screen.getByText("Couldn't load your friends")).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Log In' })).toBeNull();
+      // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(screen.getByRole('heading', { level: 1, name: 'Friends' })).toHaveClass('sr-only');
     } finally {
       auth.user = saved;
+      restoreLocation();
     }
   });
 
@@ -385,7 +455,9 @@ describe('remove friend prunes the bulk-invite selection (MED#1)', () => {
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Dana' }));
     expect(screen.getByText('1 selected')).toBeInTheDocument();
 
+    fakeClock();
     fireEvent.click(screen.getByRole('button', { name: 'Remove Dana' }));
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
 
     await waitFor(() =>
@@ -401,7 +473,6 @@ describe('send friend request — conflict/validation copy (D2)', () => {
     (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValue({
       id: 'user-search-hit',
       username: 'Riley',
-      email: 'riley@example.com',
     });
     fireEvent.change(screen.getByPlaceholderText("Enter friend's email address"), {
       target: { value: 'riley@example.com' },
@@ -468,13 +539,24 @@ describe('remove friend (two-tap tier)', () => {
 
   it('arms on the first tap and sends nothing', async () => {
     renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
 
     expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
     expect(screen.getByText('Dana')).toBeInTheDocument();
 
+    // F9b (MED-62): inside the gate the armed Remove counts down and is aria-disabled, and
+    // nothing is announced yet.
+    const gated = screen.getByRole('button', { name: 'Remove Dana, wait 3 seconds' });
+    expect(gated).toHaveTextContent('Wait (3)');
+    expect(gated).toHaveAttribute('aria-disabled', 'true');
+    expect(gated).toHaveAttribute('aria-pressed', 'true');
+    expect(gateStatus().textContent).toBe('');
+    passGate();
+
     const armed = screen.getByRole('button', { name: 'Tap again to confirm' });
-    expect(armed).toHaveTextContent('Tap again to confirm');
+    expect(armed).toHaveTextContent(/^Tap again$/);
     expect(armed).toHaveAttribute('aria-pressed', 'true');
     // The live region names the target so a row switch re-announces.
     expect(gateStatus()).toHaveTextContent(
@@ -484,7 +566,10 @@ describe('remove friend (two-tap tier)', () => {
 
   it('commits on a second tap inside the window and drops the row', async () => {
     renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
 
     await waitFor(() =>
@@ -505,10 +590,11 @@ describe('remove friend (two-tap tier)', () => {
     // first would stall the promise-driven render this test depends on.
     vi.useFakeTimers();
     fireEvent.click(button);
-    expect(button).toHaveTextContent('Tap again to confirm');
+    // F9b: the armed label counts down first; the window is now gated + live.
+    expect(button).toHaveTextContent('Wait (3)');
 
     act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
     });
 
     expect(button).toHaveTextContent('Remove');
@@ -523,11 +609,14 @@ describe('remove friend (two-tap tier)', () => {
   // without that, arming one row and single-tapping another destroys the second.
   it('re-arms rather than commits when a DIFFERENT row is tapped inside the window', async () => {
     renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
     fireEvent.click(removeButton('Sam'));
 
     expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
     expect(screen.getByText('Sam')).toBeInTheDocument();
+    passGate();
 
     // Sam is now the armed row; Dana has reverted to resting.
     const armed = screen.getByRole('button', { name: 'Tap again to confirm' });
@@ -540,8 +629,11 @@ describe('remove friend (two-tap tier)', () => {
 
   it('removes the row that is actually armed after a cross-row switch', async () => {
     renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
     fireEvent.click(removeButton('Sam'));
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
 
     await waitFor(() =>
@@ -658,7 +750,10 @@ describe('friends AC-2 — the converted channel, and what it did NOT become', (
   it('a failed REMOVE keeps its sink — which is why it is EXCLUDED from that residual', async () => {
     (friendshipsAPI.removeFriend as Mock).mockRejectedValue(boom());
     renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
+    passGate();
     fireEvent.click(await screen.findByRole('button', { name: 'Tap again to confirm' }));
 
     await waitFor(() =>
@@ -695,6 +790,30 @@ describe('friends D-16 / R2 #171 — the tab strip', () => {
     fireEvent.click(sentTab);
     await waitFor(() => expect(sentTab).toHaveAttribute('aria-current', 'true'));
     expect(screen.getByRole('button', { name: /^Friends/ })).not.toHaveAttribute('aria-current');
+  });
+
+  // PIX-8 (88.9-52, picture pass): the active tab's label was the primary BUTTON FILL colour used as
+  // ink (a dim slate blue on the dark page: 2.99, and 4.34 on the light page, both under 4.5). It is the
+  // primary text ink now, the Tabs primitive's active ink. The active tab is still told apart by more
+  // than colour: the 2px underline and aria-current. The numbers are held in
+  // src/app/tokenContrast.test.ts ("PIX-8 (88.9-52): the Friends tab labels on the page").
+  it('PIX-8 (88.9-52): the active tab label is the primary text ink with its underline; the inactive tabs keep the secondary ink and no underline', async () => {
+    renderFriends();
+    await screen.findByText('Dana');
+    const tokens = (el: HTMLElement) => el.className.split(/\s+/);
+    const friendsTab = screen.getByRole('button', { name: /^Friends/ });
+    const sentTab = screen.getByRole('button', { name: /^Sent/ });
+    expect(tokens(friendsTab)).toContain('text-content-primary');
+    expect(tokens(friendsTab)).not.toContain('text-btn-primary');
+    expect(tokens(friendsTab)).toContain('border-b-2');
+    expect(tokens(friendsTab)).toContain('border-btn-primary');
+    expect(tokens(sentTab)).toContain('text-content-secondary');
+    expect(tokens(sentTab)).not.toContain('border-b-2');
+
+    fireEvent.click(sentTab);
+    await waitFor(() => expect(tokens(sentTab)).toContain('text-content-primary'));
+    expect(tokens(sentTab)).toContain('border-b-2');
+    expect(tokens(screen.getByRole('button', { name: /^Friends/ }))).toContain('text-content-secondary');
   });
 });
 
@@ -773,7 +892,7 @@ const adminGroup = (id: string, name: string) => ({
 
 const statusRegion = () => document.getElementById('friends-batch-status');
 const errorRegion = () => document.getElementById('friends-batch-error');
-const inviteButton = () => screen.getByRole('button', { name: /Invite to Group$/ });
+const inviteButton = () => screen.getByRole('button', { name: /^Invite to Group( ?, sending)?$/ }); // AMENDED Phase 88.9-56 (R-C3b reach): Button busy names it Invite to Group, sending
 
 // Renders with the given admin groups, selects `select`, and returns once that group's member
 // load has settled: the members call was made (positive), one macrotask has flushed, and the
@@ -790,26 +909,198 @@ async function renderWithGroups(
   });
   await waitFor(() => expect(groupsAPI.getGroupMembers as Mock).toHaveBeenCalledWith(select));
   await flushMacrotask();
-  expect(screen.queryByRole('status', { name: 'Loading group members' })).toBeNull();
+  // AMENDED Phase 88.9-66 (X35): the members line is plain text now (its heard words moved to a region).
+  expect(screen.queryByText('Loading group members...')).toBeNull();
   return utils;
 }
 
 describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-40)', () => {
-  it('T: each tab button carries the house OUTSET ring, never the inset form (Req 7, AC-23)', async () => {
+  // AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred): this test held the OUTSET ring (Req 7,
+  // AC-23) and now holds the ring INSIDE the tab with the label padded clear of it. The marker is at
+  // src/app/friends/page.js ("AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred").
+  it('T: each tab button carries the INSET ring with the label padded clear of it, never the outset form (R11)', async () => {
     renderFriends();
     await screen.findByText('Dana');
-    for (const name of [/^Friends/, /^Requests/, /^Sent/]) {
-      const tab = screen.getByRole('button', { name });
+    const tabs = [/^Friends/, /^Requests/, /^Sent/].map((name) => screen.getByRole('button', { name }));
+    for (const tab of tabs) {
+      const classes = tab.className.split(/\s+/);
       for (const token of [
         'focus:outline-hidden',
         'focus-visible:ring-2',
+        'focus-visible:ring-inset',
         'focus-visible:ring-focus-ring',
-        'focus-visible:ring-offset-2',
+        // The label sits clear of the 2px ring at each side (12px). Up and down it is centred by
+        // the tab itself (88.9-52 R4 S3, the test below), no longer by a 3px bottom padding.
+        'px-3',
+        'min-h-11',
+        'min-w-11',
+        // A tab never shrinks or wraps its label: the gaps between tabs give way instead.
+        'shrink-0',
+        'whitespace-nowrap',
       ]) {
-        expect(tab.className.split(/\s+/)).toContain(token);
+        expect(classes, token).toContain(token);
       }
-      expect(tab.className).not.toContain('focus-visible:ring-inset');
+      // The outset form is gone whole: no offset, no halo colour, no bottom-only padding.
+      expect(tab.className).not.toContain('ring-offset');
+      expect(classes).not.toContain('pb-3');
+      expect(classes).not.toContain('pb-[3px]');
     }
+    // The strip row holds the three tabs and the two gaps between them, nothing else; a gap is not
+    // exposed to a screen reader and may narrow (the tabs may not).
+    const row = tabs[0].parentElement as HTMLElement;
+    expect(Array.from(row.children).map((el) => el.tagName)).toEqual(['BUTTON', 'SPAN', 'BUTTON', 'SPAN', 'BUTTON']);
+    for (const gap of Array.from(row.children).filter((el) => el.tagName === 'SPAN')) {
+      expect(gap).toHaveAttribute('aria-hidden', 'true');
+      expect(gap.className.split(/\s+/)).toEqual(expect.arrayContaining(['w-8', 'shrink', 'min-w-0']));
+    }
+    expect(row.className.split(/\s+/)).not.toContain('gap-8');
+    // The active tab keeps its underline and its spoken state.
+    expect(tabs[0]).toHaveAttribute('aria-current', 'true');
+    expect(tabs[0].className.split(/\s+/)).toEqual(expect.arrayContaining(['border-b-2', 'border-btn-primary']));
+    expect(tabs[1]).not.toHaveAttribute('aria-current');
+  });
+
+  // 88.9-52 R4 S3 (the round-3 capture). Two defects in what R11 built. (1) At 200% text the
+  // three tabs came to 549px in a 311px strip and the PAGE scrolled sideways, with Sent off
+  // screen: the strip now scrolls inside itself, the house rule for a tab strip
+  // (src/components/ui/Tabs.tsx ("the strip SCROLLS at 375px, it does not wrap")), and a pressed tab is brought into view.
+  // (2) The word was not in the middle of its tab (11.5 above and 12.5 below on Requests, 10.5
+  // and 13.5 on Friends, 11.5 and 14.5 on Sent): each tab is now a centring flex box, so the
+  // word and its count pill share one centre line, and the active tab's 2px underline is paid
+  // for by 2px of top padding. jsdom lays nothing out, so this pins the tokens and the scroll
+  // call; the rendered numbers are in e2e/friends-page.spec.ts ("R4 S3 (88.9-52)").
+  it('R4 S3 (88.9-52): the strip scrolls inside itself, a pressed tab is brought into view, and each label is centred by its tab', async () => {
+    const scrolled: Array<{ label: string | null; arg: unknown }> = [];
+    const original = (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = function (this: Element, arg: unknown) {
+      scrolled.push({ label: this.textContent, arg });
+    };
+    try {
+      renderFriends();
+      await screen.findByText('Dana');
+      const tabs = [/^Friends/, /^Requests/, /^Sent/].map((name) => screen.getByRole('button', { name }));
+      const row = tabs[0].parentElement as HTMLElement;
+      // The row is the scroll box; the strip line stays on its parent, outside the scroll box.
+      expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto']));
+      expect(row.className.split(/\s+/)).not.toContain('flex-wrap');
+      expect((row.parentElement as HTMLElement).className.split(/\s+/)).toEqual(expect.arrayContaining(['border-b', 'border-line']));
+      for (const tab of tabs) {
+        const classes = tab.className.split(/\s+/);
+        expect(classes).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'justify-center']));
+        const active = tab.getAttribute('aria-current') === 'true';
+        // Only the active tab has the underline, and only it has the 2px that balances it.
+        expect(classes.includes('border-b-2'), tab.textContent ?? '').toBe(active);
+        expect(classes.includes('pt-[2px]'), tab.textContent ?? '').toBe(active);
+        // R4 D7 (owner page pick S3 = Merge, 2026-11-18): while the ACTIVE tab has keyboard focus
+        // its underline is not a border under the ring but a 2px band drawn over the ring's bottom
+        // edge, so inside the ring the label has the same space above and below (10 / 10; it was
+        // 10 / 8). Three classes, all on the active tab only and all behind focus-visible: the
+        // border goes, 2px of bottom padding takes its place (the label does not move), and an
+        // inset band in the underline's own colour is painted above the ring layer.
+        // The marker is at src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 D7, owner page pick S3 = Merge, 2026-11-18)").
+        for (const merged of ['focus-visible:border-b-0', 'focus-visible:pb-[2px]', 'focus-visible:inset-shadow-[0_-2px_0_0_var(--color-btn-primary)]']) {
+          expect(classes.includes(merged), merged + ' on ' + (tab.textContent ?? '')).toBe(active);
+        }
+        // The ring itself is unchanged on every tab: 2px, inset, the focus-ring colour.
+        expect(classes).toEqual(expect.arrayContaining(['focus-visible:ring-2', 'focus-visible:ring-inset', 'focus-visible:ring-focus-ring']));
+        // The underline keeps its colour: the band reads the same token the border class names.
+        if (active) expect(classes).toContain('border-btn-primary');
+        // No other up-or-down padding or margin is left to push the label off the middle.
+        expect(classes.filter((c) => /^-?(p[ytb]|m[ytb])-/.test(c) && c !== 'pt-[2px]')).toEqual([]);
+      }
+      // Nothing scrolled on arrival.
+      expect(scrolled).toEqual([]);
+      fireEvent.click(tabs[2]);
+      expect(scrolled).toHaveLength(1);
+      expect(scrolled[0].label).toMatch(/^Sent/);
+      // Nearest both ways: a tab already in view moves nothing, and the page is not re-centred.
+      expect(scrolled[0].arg).toEqual({ block: 'nearest', inline: 'nearest' });
+      const now = [/^Friends/, /^Requests/, /^Sent/].map((name) => screen.getByRole('button', { name }));
+      expect(now[2]).toHaveAttribute('aria-current', 'true');
+      expect(now[2].className.split(/\s+/)).toEqual(expect.arrayContaining(['border-b-2', 'pt-[2px]']));
+      expect(now[0].className.split(/\s+/)).not.toContain('pt-[2px]');
+    } finally {
+      (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = original;
+    }
+  });
+
+  // 88.9-52 R4 B1 (the round-4 re-shoot). With text at 200% the request card was wider than the
+  // screen (438px at 375, 437px at 320): the name column could shrink to one letter and the
+  // Accept / Decline pair could not shrink or drop. Now each of the four rows may wrap, the name
+  // breaks between words (inside a word only when that word is wider than the row), and the
+  // action keeps to the right on a line of its own. jsdom lays nothing out, so this pins the
+  // tokens; the rendered widths are in e2e/friends-page.spec.ts ("R4 B1 (88.9-52)").
+  // The marker is at src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot").
+  it('R4 B1 (88.9-52): the friend, request, sent and found rows may wrap, their names break between words, and the action keeps to the right', async () => {
+    const tokens = (el: Element | null | undefined) => (el?.className ?? '').split(/\s+/);
+    const checkName = (name: HTMLElement, what: string) => {
+      expect(tokens(name), `${what}: the name breaks between words`).toContain('wrap-break-word');
+      expect(tokens(name), `${what}: the name may not break at any letter`).not.toContain('wrap-anywhere');
+    };
+    const checkRow = (row: HTMLElement | null, what: string) => {
+      expect(row, `${what}: no row`).not.toBeNull();
+      expect(tokens(row), `${what}: the row may wrap`).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'gap-3']));
+      const column = (row as HTMLElement).firstElementChild as HTMLElement;
+      // The text column's floor is its longest word, capped at the row: never zero.
+      expect(tokens(column), `${what}: the text column`).toEqual(expect.arrayContaining(['flex-1', 'max-w-full']));
+      expect(tokens(column), `${what}: the text column may not shrink to nothing`).not.toContain('min-w-0');
+      const action = (row as HTMLElement).lastElementChild as HTMLElement;
+      expect(action, `${what}: the action is a second child`).not.toBe(column);
+      expect(tokens(action), `${what}: the action keeps to the right`).toContain('ml-auto');
+      return action;
+    };
+
+    providerCtx.receivedRequests = [SAM_REQUEST];
+    renderFriends({ sent: [ALEX_SENT] });
+    // Friends tab: the friend row.
+    const dana = await screen.findByText('Dana');
+    checkName(dana, 'friend row');
+    const friendRow = dana.closest('[data-friend-row]') as HTMLElement;
+    const remove = checkRow(friendRow, 'friend row');
+    expect(remove.tagName, 'friend row: the action is Remove').toBe('BUTTON');
+    // The name and the already-in-group note share a line that may wrap.
+    expect(tokens(dana.parentElement), 'friend row: the name line may wrap').toContain('flex-wrap');
+
+    // The found row.
+    const found = await searchShows(MORGAN_HIT, 'morgan@example.com');
+    checkName(found, 'found row');
+    const foundAction = checkRow(found.closest('[data-found-row]') as HTMLElement, 'found row');
+    expect(tokens(foundAction), 'found row: the action is capped at the row').toContain('max-w-full');
+    expect(tokens(foundAction), 'found row: the action may shrink to the row').not.toContain('shrink-0');
+
+    // Requests tab: the request row. Accept and Decline may stack inside the row.
+    fireEvent.click(screen.getByRole('button', { name: /^Requests/ }));
+    const sam = await screen.findByText('Sam');
+    checkName(sam, 'request row');
+    const pair = checkRow(sam.closest('[data-request-row]') as HTMLElement, 'request row');
+    expect(tokens(pair), 'request row: the pair').toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'justify-end', 'max-w-full', 'gap-2']));
+    expect(tokens(pair), 'request row: the pair may shrink to the row').not.toContain('shrink-0');
+    expect(within(pair).getAllByRole('button').map((b) => b.textContent)).toEqual(['Accept', 'Decline']);
+
+    // Sent tab: the sent row.
+    fireEvent.click(screen.getByRole('button', { name: /^Sent/ }));
+    const alex = await screen.findByText('Alex');
+    checkName(alex, 'sent row');
+    const pill = checkRow(alex.closest('[data-sent-row]') as HTMLElement, 'sent row');
+    expect(pill.textContent).toBe('Pending');
+  });
+
+  // 88.9-52 R4 B1b (the round-4 re-shoot, 375 with text at 200%): the address field was squeezed
+  // to about 80px beside the Search button. The search row may wrap and the field asks for 8rem
+  // before it shares a line, so at large text the button drops under a full-width field.
+  // The marker is at src/app/friends/page.js ("DECISION Phase 88.9-52 (R4 B1b, the round-4 re-shoot").
+  it('R4 B1b (88.9-52): the search row may wrap and the address field asks for 8rem before it shares a line', async () => {
+    renderFriends();
+    await screen.findByText('Dana');
+    const field = emailField();
+    const form = field.closest('form') as HTMLFormElement;
+    expect(form.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'gap-3']));
+    const classes = field.className.split(/\s+/);
+    expect(classes).toEqual(expect.arrayContaining(['grow', 'basis-32']));
+    // flex-1 is a zero basis: with it the row never wraps and the field is the part that gives.
+    expect(classes).not.toContain('flex-1');
+    // The button is the field's sibling in the same row.
+    expect(within(form).getByRole('button', { name: 'Search' }).parentElement).toBe(form);
   });
 
   it('B-gate: Invite to Group is aria-disabled (never native), refuses a gated press, and sends once for two presses (D-35)', async () => {
@@ -1042,8 +1333,9 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
 // Phase 88.6.1-40 Task 2 (D-35, Req 5 / D-04 / D-05, review r2 #47 / #201, review r3 H-02).
 // jsdom never blurs a disabled element (FE-TESTING-CONVENTIONS C-11), so every RED half below is
 // an ATTRIBUTE or a REQUEST COUNT; the focus claims are proven on a positive signal (C-5).
-const RILEY_HIT = { id: 'user-search-hit', username: 'Riley', email: 'riley@example.com' };
-const MORGAN_HIT = { id: 'user-morgan', username: 'Morgan', email: 'morgan@example.com' };
+// AMENDED Phase 88.9-52 (Q66): a search hit is id and username only, as the backend sends it.
+const RILEY_HIT = { id: 'user-search-hit', username: 'Riley' };
+const MORGAN_HIT = { id: 'user-morgan', username: 'Morgan' };
 const SAM_REQUEST = { id: 'req-1', Requester: { id: FRIEND_2_UUID, username: 'Sam' } };
 const RILEY_REQUEST = { id: 'req-2', Requester: { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', username: 'Riley' } };
 
@@ -1103,7 +1395,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(search);
     expect(search).toHaveAttribute('aria-disabled', 'true');
     expect(search).not.toHaveAttribute('disabled');
-    expect(search).toHaveTextContent('Searching...');
+    // rule 1 (88.9-46 B21): the label is kept; the busy name adds the heard suffix.
+    expect(search).toHaveAccessibleName('Search, searching');
+    expect(search).toHaveTextContent(/^Search/);
     fireEvent.click(search);
     // The Enter-from-field path.
     fireEvent.submit(search.closest('form') as HTMLFormElement);
@@ -1114,7 +1408,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     });
   });
 
-  it('S2: Send Request in flight is aria-disabled, reads Sending..., and sends once for two presses', async () => {
+  it('S2: Send Request in flight is aria-disabled, keeps its label (rule 1), and sends once for two presses', async () => {
     renderFriends({ friends: [] });
     await screen.findByRole('heading', { name: 'No friends yet' });
     const send = await searchTo(RILEY_HIT, 'riley@example.com');
@@ -1124,7 +1418,8 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(send);
     expect(send).toHaveAttribute('aria-disabled', 'true');
     expect(send).not.toHaveAttribute('disabled');
-    expect(send).toHaveTextContent('Sending...');
+    expect(send).toHaveAccessibleName('Send Request, sending');
+    expect(send).toHaveTextContent(/^Send Request/);
     fireEvent.click(send);
     expect(friendshipsAPI.sendRequest as Mock).toHaveBeenCalledTimes(1);
 
@@ -1185,7 +1480,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     await act(async () => {
       held.resolve({});
     });
-    // Positive signal: the send settled (Morgan's button no longer reads Sending...).
+    // Positive signal: the send settled (Morgan's button is no longer busy — its name is the bare label).
     expect(await screen.findByRole('button', { name: 'Send Request' })).toBeInTheDocument();
     expect(screen.queryByText('Request sent')).toBeNull();
     expect(document.activeElement?.textContent).not.toBe('Request sent');
@@ -1207,17 +1502,20 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('R1: Remove in flight is aria-disabled, reads Removing..., names the person, and removes once', async () => {
+  it('R1: Remove in flight is aria-disabled, keeps Remove (rule 1), names the person, and removes once', async () => {
     const held = deferred<unknown>();
     (friendshipsAPI.removeFriend as Mock).mockReturnValueOnce(held.promise);
     renderFriends();
     const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     expect(remove).toHaveAttribute('aria-disabled', 'true');
     expect(remove).not.toHaveAttribute('disabled');
-    expect(remove).toHaveTextContent('Removing...');
-    expect(remove).toHaveAccessibleName('Removing Dana');
+    // rule 1 (88.9-46 B23): the visible word stays Remove; the aria-label carries the suffix.
+    expect(remove).toHaveTextContent(/^Remove/);
+    expect(remove).toHaveAccessibleName('Remove Dana, removing');
     // GUARD half: the confirm hook's own re-entry refusal.
     fireEvent.click(remove);
     expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledTimes(1);
@@ -1231,7 +1529,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
     const remove = await screen.findByRole('button', { name: 'Remove Dana' });
     act(() => remove.focus());
+    fakeClock();
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     // No group is selected, so Sam's checkbox is natively disabled and his Remove is first.
     await waitFor(() =>
@@ -1244,7 +1544,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     const remove = await screen.findByRole('button', { name: 'Remove Dana' });
     // iOS Safari does not focus a tapped button: nothing is focused for either tap.
     (document.activeElement as HTMLElement | null)?.blur();
+    fakeClock();
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     expect(document.activeElement).toBe(document.body);
     await waitFor(() => expect(screen.queryByText('Dana')).not.toBeInTheDocument());
@@ -1257,7 +1559,9 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     renderFriends();
     const remove = await screen.findByRole('button', { name: 'Remove Dana' });
     act(() => remove.focus());
+    fakeClock();
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Friends/ }))
@@ -1273,7 +1577,7 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     fireEvent.click(samAccept);
     expect(samAccept).toHaveAttribute('aria-disabled', 'true');
     expect(samAccept).not.toHaveAttribute('disabled');
-    expect(samAccept).toHaveTextContent('Accepting...');
+    expect(samAccept).toHaveAccessibleName('Accept, accepting');
     expect(sam.getByRole('button', { name: 'Decline' })).toHaveAttribute('disabled');
     fireEvent.click(samAccept);
     expect(providerCtx.acceptRequest).toHaveBeenCalledTimes(1);
@@ -1284,11 +1588,124 @@ describe('friends — pressed controls keep focus and land it somewhere real (88
     const rileyDecline = riley.getByRole('button', { name: 'Decline' });
     fireEvent.click(rileyDecline);
     expect(rileyDecline).toHaveAttribute('aria-disabled', 'true');
-    expect(rileyDecline).toHaveTextContent('Declining...');
+    expect(rileyDecline).toHaveAccessibleName('Decline, declining');
     expect(riley.getByRole('button', { name: 'Accept' })).toHaveAttribute('disabled');
     fireEvent.click(rileyDecline);
     expect(providerCtx.declineRequest).toHaveBeenCalledTimes(1);
     expect(requestRow('Sam')).toHaveAttribute('data-request-row', 'req-1');
+
+    await act(async () => {
+      accepting.resolve({});
+      declining.resolve({});
+    });
+  });
+
+  // Rule 1 (88.9-46, owner pick O16a extended by the Q3 ruling): every in-flight friends button
+  // keeps its resting label, shows the one house spinner (data-slot spinner, plan 88.9-24) and is
+  // NAMED label plus a heard suffix that re-uses its retired in-flight word. The visible text is
+  // read as /^Label/ because the sr-only suffix is part of textContent, not of what is painted.
+  it('rule 1 (88.9): Search and Send Request keep their labels and show the spinner while busy (B21, B22)', async () => {
+    renderFriends({ friends: [] });
+    await screen.findByRole('heading', { name: 'No friends yet' });
+    const search = screen.getByRole('button', { name: 'Search' });
+    fireEvent.change(emailField(), { target: { value: 'riley@example.com' } });
+    const heldSearch = deferred<unknown>();
+    (friendshipsAPI.searchUserByEmail as Mock).mockReturnValueOnce(heldSearch.promise);
+    fireEvent.click(search);
+    // B21: the SAME node, now busy.
+    expect(search).toHaveAccessibleName('Search, searching');
+    expect(search).toHaveTextContent(/^Search/);
+    await waitFor(() => expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(search).toHaveAttribute('aria-disabled', 'true');
+    expect(search).not.toHaveAttribute('disabled');
+    // The status line below the form is a caption, not a button (census B note): it keeps its word.
+    // AMENDED Phase 88.9-66 (X35): the caption is plain text; the words it is heard by are pinned in the X35 describe.
+    expect(screen.getByText('Searching...').closest('[role="status"]')).toBeNull();
+    fireEvent.click(search);
+    expect(friendshipsAPI.searchUserByEmail as Mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      heldSearch.resolve(RILEY_HIT);
+    });
+    expect(search).not.toHaveAttribute('aria-disabled');
+    await waitFor(() => expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
+
+    // B22: the hit's Send Request, held.
+    const send = await screen.findByRole('button', { name: 'Send Request' });
+    const heldSend = deferred<unknown>();
+    (friendshipsAPI.sendRequest as Mock).mockReturnValueOnce(heldSend.promise);
+    fireEvent.click(send);
+    expect(send).toHaveAccessibleName('Send Request, sending');
+    expect(send).toHaveTextContent(/^Send Request/);
+    await waitFor(() => expect(send.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(send).toHaveAttribute('aria-disabled', 'true');
+    expect(send).not.toHaveAttribute('disabled');
+    fireEvent.click(send);
+    expect(friendshipsAPI.sendRequest as Mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      heldSend.resolve({});
+    });
+  });
+
+  it('rule 1 (88.9): Remove, Accept and Decline keep their labels and show the spinner while busy (B23-B25)', async () => {
+    // B23 — a RAW button behind the two-tap gate: the visible word stays Remove, the spinner sits
+    // beside it, and the aria-label (which overrides content) carries the person and the suffix,
+    // so Label-in-Name (WCAG 2.5.3) still holds.
+    const heldRemove = deferred<unknown>();
+    (friendshipsAPI.removeFriend as Mock).mockReturnValueOnce(heldRemove.promise);
+    renderFriends();
+    const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(remove);
+    passGate();
+    fireEvent.click(remove);
+    expect(remove).toHaveAccessibleName('Remove Dana, removing');
+    expect(remove).toHaveTextContent(/^Remove/);
+    await waitFor(() => expect(remove.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(remove).not.toHaveAttribute('disabled');
+    fireEvent.click(remove);
+    expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      heldRemove.resolve({});
+    });
+    // The row leaves with the friend, and the spinner with it (no hold read).
+    await waitFor(() => expect(remove).not.toBeInTheDocument()); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
+    vi.useRealTimers();
+    cleanup();
+
+    // B24 / B25 — the Requests tab: the pressed control is busy, its sibling natively disabled
+    // (the 88.6-22 rule of KIND split is unchanged).
+    await openRequests([SAM_REQUEST, RILEY_REQUEST]);
+    const accepting = deferred<unknown>();
+    providerCtx.acceptRequest.mockReturnValueOnce(accepting.promise);
+    const sam = within(requestRow('Sam'));
+    const samAccept = sam.getByRole('button', { name: 'Accept' });
+    fireEvent.click(samAccept);
+    expect(samAccept).toHaveAccessibleName('Accept, accepting');
+    expect(samAccept).toHaveTextContent(/^Accept/);
+    await waitFor(() => expect(samAccept.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(samAccept).toHaveAttribute('aria-disabled', 'true');
+    expect(samAccept).not.toHaveAttribute('disabled');
+    expect(sam.getByRole('button', { name: 'Decline' })).toHaveAttribute('disabled');
+    fireEvent.click(samAccept);
+    expect(providerCtx.acceptRequest).toHaveBeenCalledTimes(1);
+
+    const declining = deferred<unknown>();
+    providerCtx.declineRequest.mockReturnValueOnce(declining.promise);
+    const riley = within(requestRow('Riley'));
+    const rileyDecline = riley.getByRole('button', { name: 'Decline' });
+    fireEvent.click(rileyDecline);
+    // R-W4 (owner, 2026-11-08): ', declining' — the same word the bell's Declines took in 88.9-45.
+    expect(rileyDecline).toHaveAccessibleName('Decline, declining');
+    expect(rileyDecline).toHaveTextContent(/^Decline/);
+    await waitFor(() => expect(rileyDecline.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(rileyDecline).toHaveAttribute('aria-disabled', 'true');
+    expect(rileyDecline).not.toHaveAttribute('disabled');
+    expect(riley.getByRole('button', { name: 'Accept' })).toHaveAttribute('disabled');
+    fireEvent.click(rileyDecline);
+    expect(providerCtx.declineRequest).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       accepting.resolve({});
@@ -1513,9 +1930,9 @@ describe('friends — lists refresh in place (88.6.1-40, AC-29)', () => {
     (friendshipsAPI.getFriends as Mock).mockReturnValueOnce(firstLoad.promise);
     renderFriends();
     await screen.findByRole('heading', { name: 'Add Friend' });
-    await searchShows({ ...FRIENDSHIP.friend, email: 'dana@example.com' } as { username: string }, 'dana@example.com');
+    await searchShows(FRIENDSHIP.friend, 'dana@example.com');
     // Positive signal: the result card is shown (the list behind it is still loading).
-    expect(screen.getByText('dana@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Dana')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send Request' })).toBeNull();
 
     await act(async () => {
@@ -1529,8 +1946,8 @@ describe('friends — lists refresh in place (88.6.1-40, AC-29)', () => {
     providerCtx.loading = true;
     const { rerender } = renderFriends({ friends: [] });
     await screen.findByRole('heading', { name: 'No friends yet' });
-    await searchShows({ ...SAM_REQUEST.Requester, email: 'sam@example.com' } as { username: string }, 'sam@example.com');
-    expect(screen.getByText('sam@example.com')).toBeInTheDocument();
+    await searchShows(SAM_REQUEST.Requester, 'sam@example.com');
+    expect(screen.getByText('Sam')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send Request' })).toBeNull();
 
     // The provider's first load lands, listing Sam's request to you.
@@ -1715,7 +2132,7 @@ describe('friends — the Requests tab tells the truth (88.6.1-72, owner rulings
       expect(await screen.findByText(FR1)).toBeInTheDocument();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       expect(screen.queryByText('Sam')).toBeNull();
-      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(messageBesideRetry(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
       cleanup();
       providerCtx.error = null;
     }
@@ -1848,7 +2265,10 @@ describe('friends — the Requests tab tells the truth (88.6.1-72, owner rulings
   it('L4. the same tab change clears the Friends tab remove line (#83, review r3 L-20)', async () => {
     (friendshipsAPI.removeFriend as Mock).mockRejectedValue(boom());
     renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    const dana = await screen.findByRole('button', { name: 'Remove Dana' });
+    fakeClock();
+    fireEvent.click(dana);
+    passGate();
     fireEvent.click(await screen.findByRole('button', { name: 'Tap again to confirm' }));
     expect(await screen.findByText("We couldn't remove that friend. Please try again.")).toBeInTheDocument();
 
@@ -1874,6 +2294,11 @@ async function friendsRefreshFails(err: unknown, friends: Array<Record<string, u
   const utils = renderFriends({ friends });
   if (friends.length > 0) await screen.findByText('Dana');
   else await screen.findByRole('heading', { name: 'No friends yet' });
+  // AMENDED Phase 88.9-40 (RF-F6 / RF-S2, SESSION-01): a 401 refresh now redirects once (the shared
+  // guard), and a load that succeeds clears a latch set before it, so for a 401 answer the latch is
+  // set HERE — after the load, before the refresh — and the test pins the DECLINED arm: the banner
+  // with the register line it always held.
+  if (err instanceof ApiError && err.code === 'unauthorized') window.sessionStorage.setItem(signInLatchKey(window.location), '1');
   // After the mount's own call, so the mount does not consume it.
   (friendshipsAPI.getFriends as Mock).mockRejectedValueOnce(err);
   // Relative counts: an arm that runs this twice (after a cleanup) keeps the earlier calls.
@@ -1894,6 +2319,8 @@ async function sentRefreshFails(err: unknown, sent: Array<Record<string, unknown
   if (sent.length > 0) await screen.findByText('Alex');
   else await screen.findByText('No sent friend requests.');
   const send = await searchTo(RILEY_HIT, 'riley@example.com');
+  // AMENDED Phase 88.9-40 (RF-S2): the same seam as friendsRefreshFails — a 401 answer pins the declined arm.
+  if (err instanceof ApiError && err.code === 'unauthorized') window.sessionStorage.setItem(signInLatchKey(window.location), '1');
   (friendshipsAPI.getSentRequests as Mock).mockRejectedValueOnce(err);
   const calls = (friendshipsAPI.getSentRequests as Mock).mock.calls.length;
   fireEvent.click(send);
@@ -1948,13 +2375,15 @@ describe('friends — one treatment per page: Friends and Sent keep their rows u
     (friendshipsAPI.getFriends as Mock).mockReturnValueOnce(held.promise);
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(rf1Line()).not.toBeNull();
-    expect(screen.getByRole('button', { name: /Retrying/ })).toHaveAttribute('aria-disabled', 'true');
+    // AMENDED Phase 88.9-46 (RF-F3): the notice's Retry is FetchErrorBanner's — rule 1 keeps its label and
+    // names it 'Retry, retrying' while busy (the bare /Retrying/ stem matched the retired swap word).
+    expect(screen.getByRole('button', { name: /^Retry, retrying$/ })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('Dana')).toBeInTheDocument();
 
     await act(async () => {
       held.resolve([FRIENDSHIP]);
     });
-    await waitFor(() => expect(screen.queryByRole('button', { name: /Retrying/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Retry, retrying$/ })).toBeNull());
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
   });
 
@@ -1993,7 +2422,7 @@ describe('friends — one treatment per page: Friends and Sent keep their rows u
       expect(await screen.findByText(FRIENDS_TITLE)).toBeInTheDocument();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       expect(screen.queryByText('Dana')).toBeNull();
-      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(messageBesideRetry(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
       cleanup();
     }
 
@@ -2051,7 +2480,7 @@ describe('friends — one treatment per page: Friends and Sent keep their rows u
       expect(await screen.findByText(SENT_TITLE)).toBeInTheDocument();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       expect(screen.queryByText('Alex')).toBeNull();
-      expect(screen.getAllByText(getFetchErrorMessage(err)).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(messageBesideRetry(getFetchErrorMessage(err))).length).toBeGreaterThan(0);
       cleanup();
     }
 
@@ -2167,6 +2596,49 @@ describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)'
     expect(errorRegion()?.textContent).toBe('');
   });
 
+  // R-C1 twin (88.9-56): the friends page Invite to Group clears only the ids whose outcome is final.
+  it('R-C1 (88.9): the friends page bulk invite clears only the ids with a final outcome and keeps a transient failure and a mid-send tick', async () => {
+    const LEE_UUID = 'cacacaca-caca-4aca-8aca-cacacacacaca';
+    const FRIENDSHIP_3 = { id: 'fr-3', friend: { id: LEE_UUID, username: 'Lee' } };
+    await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1', { friends: [FRIENDSHIP, FRIENDSHIP_2, FRIENDSHIP_3] });
+    const send = deferred();
+    (invitesAPI.sendFriendInvite as Mock)
+      .mockReturnValueOnce(send.promise)
+      .mockRejectedValueOnce(new ApiError('Server error', 'internal', 500));
+    const dana = screen.getByRole('checkbox', { name: 'Select Dana' });
+    const sam = screen.getByRole('checkbox', { name: 'Select Sam' });
+    const lee = screen.getByRole('checkbox', { name: 'Select Lee' });
+    fireEvent.click(dana);
+    fireEvent.click(sam);
+    fireEvent.click(inviteButton());
+    await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(1));
+    // R-C3b reach (88.9-56): Invite to Group is on Button busy now — the heard suffix, the label
+    // kept, the house spinner after the appear delay, and no hand-rolled spinning div.
+    const sending = inviteButton();
+    expect(sending).toHaveAccessibleName('Invite to Group, sending'); // AMENDED Phase 88.9-56 (R-C3b reach): the busy name
+    const visible = sending.cloneNode(true) as HTMLElement;
+    visible.querySelectorAll('.sr-only').forEach((node) => node.remove());
+    expect(visible.textContent).toBe('Invite to Group'); // AMENDED Phase 88.9-56 (R-C3b reach): the label is kept
+    await waitFor(() => expect(sending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
+    expect(sending.querySelectorAll('div.animate-spin')).toHaveLength(0); // AMENDED Phase 88.9-56 (R-C3b reach): no hand-rolled glyph
+    // A friend ticked while the batch is in flight.
+    fireEvent.click(lee);
+
+    await act(async () => {
+      send.resolve({});
+    });
+    await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(dana).not.toBeChecked()); // sent
+    expect(sam).toBeChecked(); // transient (internal): kept for the retry
+    expect(lee).toBeChecked(); // ticked mid-send, never sent
+
+    fireEvent.click(inviteButton());
+    await waitFor(() => expect(invitesAPI.sendFriendInvite as Mock).toHaveBeenCalledTimes(4));
+    expect((invitesAPI.sendFriendInvite as Mock).mock.calls.slice(2).map((call) => call[1]).sort()).toEqual(
+      [FRIEND_2_UUID, LEE_UUID].sort()
+    );
+  });
+
   it('K2. a batch where everyone was already a member reads the panel line, success tint, never a failure', async () => {
     await renderWithGroups([adminGroup('g1', 'Test Group')], 'g1');
     (invitesAPI.sendFriendInvite as Mock).mockRejectedValueOnce(
@@ -2207,16 +2679,30 @@ describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)'
     await searchTo(RILEY_HIT, 'riley@example.com');
     expect(searchStatus()?.textContent).toBe('Found Riley.');
     expect(searchStatus()).toBe(region);
-    cleanup();
+  });
 
-    // An email-only hit is announced by what the row shows: the address.
-    renderFriends({ friends: [] });
+  // 88.9-52 Q66: the backend never sends the other person's email (the search answers id and
+  // username; request rows carry id, username and picture_url), so the page has no branch that
+  // draws one. A payload that carried one anyway must not put it on screen or in a spoken line.
+  it("Q66 (88.9-52): the other person's email is never drawn or spoken, in the found row, a request row or a sent row", async () => {
+    const OTHER = 'other.person@example.test';
+    providerCtx.receivedRequests = [{ id: 'req-q66', Requester: { id: FRIEND_2_UUID, username: 'Sam', email: OTHER } }];
+    renderFriends({ friends: [], sent: [{ id: 'sr-q66', Addressee: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'Alex', email: OTHER } }] });
     await screen.findByRole('heading', { name: 'No friends yet' });
-    (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValueOnce({ ...RILEY_HIT, username: null });
+    (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValueOnce({ ...RILEY_HIT, email: OTHER });
     fireEvent.change(emailField(), { target: { value: 'riley@example.com' } });
     fireEvent.submit(emailField().closest('form') as HTMLFormElement);
     await screen.findByRole('button', { name: 'Send Request' });
-    expect(searchStatus()?.textContent).toBe('Found riley@example.com.');
+    expect(searchStatus()?.textContent).toBe('Found Riley.');
+    expect(document.body.textContent).not.toContain(OTHER);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Requests/ }));
+    await screen.findByText('Sam');
+    expect(document.body.textContent).not.toContain(OTHER);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Sent/ }));
+    await screen.findByText('Alex');
+    expect(document.body.textContent).not.toContain(OTHER);
   });
 
   it('F2. a miss keeps the search alert and leaves the found region empty', async () => {
@@ -2251,6 +2737,405 @@ describe('friends — outcomes told right (88.6.1-72, owner rulings 2026-10-05)'
       expect(region.textContent).toBe('Found Riley.');
     } finally {
       observer.disconnect();
+    }
+  });
+});
+
+// Phase 88.9-40 (SESSION-01, owner ruling 2026-11-07, SPEC A8): a signed-out friends visit goes
+// straight to sign-in and back here (the shared guard,
+// src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling"))); the
+// prompt remains for a return with the latch set, its Log In link now carrying returnTo; a
+// useUser() error is the Reload fallback, not the prompt. AMENDED Phase 88.9-66 (X70b, owner
+// 2026-11-14): the return with the latch set now shows the shared banner with Sign in.
+describe('friends sign-in guard (88.9-40: SESSION-01)', () => {
+  let savedUser: typeof auth.user;
+  beforeEach(() => {
+    savedUser = auth.user;
+  });
+  afterEach(() => {
+    auth.user = savedUser;
+    auth.error = null;
+    restoreLocation();
+  });
+
+  it("SESSION-01 (88.9): a signed-out friends visit is sent to sign-in once with /friends as returnTo; back with the latch set the banner's Sign in link carries returnTo", async () => {
+    const replace = stubLocation('/friends');
+    auth.user = null as unknown as typeof auth.user;
+    render(<FriendsPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2Ffriends');
+    // The redirect frame is the auth hold, never the prompt. AMENDED Phase 88.9-66 (X35): the hold is
+    // recognised by the words its polite region takes after the dwell.
+    expect(await screen.findByText('Signing you in')).toHaveAttribute('role', 'status');
+    // AMENDED Phase 88.9-66 (X70b): no Sign in paints during the redirect frame.
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    cleanup();
+
+    // Back in the same tab without signing in: the shared banner, its Sign in carrying returnTo, no
+    // redirect (AMENDED Phase 88.9-66, X70b: the older log-in prompt is gone).
+    render(<FriendsPage />);
+    const signInLink = await screen.findByRole('link', { name: 'Sign in' });
+    expect(signInLink).toHaveAttribute('href', '/api/auth/login?returnTo=%2Ffriends');
+    expect(screen.getByText("Couldn't load your friends")).toBeInTheDocument();
+    expect(screen.queryByText('Please log in to view your friends.')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Log In' })).toBeNull();
+    expect(screen.queryByText('Signing you in')).toBeNull();
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('SESSION-01 (88.9): a useUser error on friends shows Reload, not the signed-out banner, and never redirects', async () => {
+    const replace = stubLocation('/friends');
+    auth.user = null as unknown as typeof auth.user;
+    auth.error = Object.assign(new Error('me failed'), { status: 500 });
+    render(<FriendsPage />);
+    expect(await screen.findByRole('button', { name: 'Reload page' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: "Couldn't load your friends" })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
+  });
+
+  // 88.9-52 review A-37: the REDIRECT arm of a list read's 401 (the helpers above pin only the
+  // declined arm, by setting the latch first). No latch here, so the guard navigates once.
+  it('SESSION-01 (88.9-52 A-37): a 401 on the friends list with no latch is sent to sign-in once, /friends as returnTo, and sets the latch', async () => {
+    const replace = stubLocation('/friends');
+    renderFriends({ loadError: new ApiError('Unauthorized', 'unauthorized', 401) });
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2Ffriends');
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    // The redirect frame is the hold, never a banner.
+    expect(screen.queryByText("Couldn't load your friends")).toBeNull();
+  });
+
+  it('SESSION-01 (88.9-52 A-37): a 401 on the sent list with no latch is sent to sign-in once and sets the latch', async () => {
+    const replace = stubLocation('/friends');
+    h.selfUuid = SELF_UUID;
+    (friendshipsAPI.getFriends as Mock).mockResolvedValue([FRIENDSHIP]);
+    (friendshipsAPI.getSentRequests as Mock).mockRejectedValue(new ApiError('Unauthorized', 'unauthorized', 401));
+    render(<FriendsPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2Ffriends');
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+  });
+
+  // 88.9-52 review A-31 (Friends half): back from sign-in with the latch set, the friends list
+  // answering first must not clear the latch while the sent list is still out; its 401 then takes
+  // the declined arm (the banner with Sign in), never a second trip.
+  it('SESSION-01 (88.9-52 A-31): back with the latch set, a friends list that loads before the sent list answers 401 does not redirect again', async () => {
+    const replace = stubLocation('/friends');
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.selfUuid = SELF_UUID;
+    const sent = deferred<unknown>();
+    (friendshipsAPI.getFriends as Mock).mockResolvedValue([FRIENDSHIP]);
+    (friendshipsAPI.getSentRequests as Mock).mockReturnValue(sent.promise);
+    render(<FriendsPage />);
+    await screen.findByText('Dana');
+    // The friends list alone has not proven the session: the latch is still set.
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    await act(async () => {
+      sent.reject(new ApiError('Unauthorized', 'unauthorized', 401));
+    });
+    fireEvent.click(sentTabButton());
+    expect(await screen.findByText(SENT_TITLE)).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+  });
+
+  // The stale-latch trap: a read that settles as a plain failure must not hold the latch set, or the
+  // person's next real expiry would show a banner where it should send them to sign-in.
+  it('SESSION-01 (88.9-52 A-31): the latch is cleared once the three reads have settled with no 401, even when the sent list failed', async () => {
+    stubLocation('/friends');
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.selfUuid = SELF_UUID;
+    (friendshipsAPI.getFriends as Mock).mockResolvedValue([FRIENDSHIP]);
+    (friendshipsAPI.getSentRequests as Mock).mockRejectedValue(new ApiError('Server error', 'internal', 500));
+    render(<FriendsPage />);
+    await screen.findByText('Dana');
+    await waitFor(() => expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull());
+  });
+});
+
+// 88.9-52 W38 (owner ruling, 88.9-RULINGS.md: the inline two-tap controls take ONE look at rest,
+// armed and busy; schedule Delete and phone Remove on Profile are the model). The friend Remove has
+// no border in any state (it drew an outlined box when armed), speaks its arm in weight alone, and
+// while its write runs the spinner sits BEFORE the word, so the word stays where the other rows'
+// Remove is. jsdom has no layout, so the proof is the class list and the child order.
+describe('friend Remove takes the one inline two-tap look (88.9-52: W38)', () => {
+  const borderClasses = (el: HTMLElement) => el.className.split(/\s+/).filter((c) => /(^|:)border(-|$)/.test(c));
+
+  it('W38 (88.9-52): the friend Remove has no box at rest, armed or busy; armed is weight only; the busy spinner leads the word', async () => {
+    const heldRemove = deferred<unknown>();
+    (friendshipsAPI.removeFriend as Mock).mockReturnValueOnce(heldRemove.promise);
+    renderFriends();
+    const remove = await screen.findByRole('button', { name: 'Remove Dana' });
+    const classes = () => remove.className.split(/\s+/);
+
+    // At rest: the model's host classes, and no border class of any kind.
+    expect(borderClasses(remove)).toEqual([]);
+    for (const c of ['inline-flex', 'items-center', 'min-h-11', 'shrink-0', 'whitespace-nowrap', 'px-2', 'rounded-btn', 'text-sm', 'text-content-status-error', 'hover:bg-status-error-subtle', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring']) {
+      expect(classes(), c).toContain(c);
+    }
+    expect(classes()).not.toContain('font-semibold');
+
+    // Armed, while it counts down and once live: weight only, still no border.
+    fakeClock();
+    fireEvent.click(remove);
+    expect(remove).toHaveTextContent('Wait (3)');
+    expect(borderClasses(remove)).toEqual([]);
+    expect(classes()).toContain('font-semibold');
+    // PIX-2 (88.9-52, W38 one look): the short Wait (3) is anchored to the RIGHT end of the reserve, as
+    // the schedule Delete's is. A button centres its text, so without this the label sat mid-reserve
+    // (measured: left edge 240 in a 151px reserve at 375) while the schedule Delete's ended at the edge.
+    const reserveRoot = remove.querySelector('span.inline-grid') as HTMLElement;
+    expect(reserveRoot, 'the armed Remove has no reserve around its label').not.toBeNull();
+    expect(reserveRoot.querySelectorAll('[data-reserve]').length).toBeGreaterThan(0);
+    expect(reserveRoot.className.split(/\s+/)).toContain('justify-items-end');
+    passGate();
+    expect(remove).toHaveTextContent(/^Tap again$/);
+    expect(borderClasses(remove)).toEqual([]);
+    expect(classes()).toContain('font-semibold');
+
+    // Busy: the resting weight, no border, and the spinner is the FIRST child, before the word.
+    fireEvent.click(remove);
+    expect(remove).toHaveAccessibleName('Remove Dana, removing');
+    await waitFor(() => expect(remove.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    expect(borderClasses(remove)).toEqual([]);
+    expect(classes()).not.toContain('font-semibold');
+    const spinner = remove.querySelector('[data-slot="spinner"]') as HTMLElement;
+    expect(remove.firstElementChild).toBe(spinner);
+    expect(spinner.className.split(/\s+/)).toContain('mr-2');
+    expect(spinner.className.split(/\s+/)).not.toContain('ml-2');
+    expect(remove).toHaveTextContent(/^Remove$/);
+
+    await act(async () => {
+      heldRemove.resolve({});
+    });
+    await waitFor(() => expect(remove).not.toBeInTheDocument());
+  });
+});
+
+// DECISION Phase 88.9-58 (X14 family, owner 2026-11-14 on the live page: "Why not just turn them
+// into white cards?"): the three bordered rows on the Friends page are card surfaces with no hover,
+// chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a
+// row that is not clickable). The controls inside a row therefore sit on a card, so their focus
+// halo names the card, not the page. The rendered half is e2e/friends-page.spec.ts ("X14 Friends rows (88.9): friend and request rows paint the card colour").
+describe('friends rows are cards (88.9-58: X14 family)', () => {
+  it('X14 Friends rows (88.9): the friend, received-request and sent-request rows are card surfaces with no hover, and their checkbox, Accept and Decline take the card as halo host', async () => {
+    providerCtx.receivedRequests = [SAM_REQUEST];
+    renderFriends({ sent: [ALEX_SENT] });
+    await screen.findByText('Dana');
+
+    const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+    const expectCardRow = (row: Element | null, what: string) => {
+      expect(row, `${what}: the row is not rendered`).not.toBeNull();
+      const tokens = classesOf(row as Element);
+      expect(tokens, `${what}: the row must paint the card colour`).toContain('bg-surface-card');
+      expect(tokens, `${what}: the row keeps its own border`).toContain('border-line');
+      expect(tokens, `${what}: the row is a list row, not the card utility (its p-4 is right for a list item)`).not.toContain('card');
+      expect(
+        tokens.filter((t) => t.split(':').includes('hover')),
+        `${what}: the row is not clickable, so it must not react to hover`,
+      ).toEqual([]);
+    };
+
+    const friendRow = document.querySelector('[data-friend-row]');
+    expectCardRow(friendRow, 'friend row');
+    const checkbox = within(friendRow as HTMLElement).getByRole('checkbox');
+    expect(classesOf(checkbox), 'the checkbox sits on a card, so its halo names the card').toContain('focus-visible:ring-offset-surface-card');
+    expect(classesOf(checkbox), 'the checkbox no longer sits on the page').not.toContain('focus-visible:ring-offset-surface-page');
+
+    fireEvent.click(requestsTab());
+    await screen.findByText('Sam');
+    const requestRowEl = document.querySelector('[data-request-row]');
+    expectCardRow(requestRowEl, 'received-request row');
+    for (const name of ['Accept', 'Decline']) {
+      const button = within(requestRowEl as HTMLElement).getByRole('button', { name });
+      expect(classesOf(button), `${name} sits on a card, so it must not carry the page halo`).not.toContain('focus-visible:ring-offset-surface-page');
+      expect(classesOf(button), `${name} keeps the Button default card halo`).toContain('focus-visible:ring-offset-surface-card');
+    }
+    // Decline is the ordinary secondary on the card: no page-ground fill override.
+    const decline = within(requestRowEl as HTMLElement).getByRole('button', { name: 'Decline' });
+    expect(classesOf(decline)).toContain('btn-secondary');
+    expect(decline.getAttribute('class') ?? '', 'Decline takes the ordinary secondary fill on its card').not.toContain('color-btn-secondary-page-bg');
+
+    fireEvent.click(sentTabButton());
+    const alex = await screen.findByText('Alex');
+    let sentRow: HTMLElement | null = alex.parentElement;
+    while (sentRow && !classesOf(sentRow).includes('justify-between')) sentRow = sentRow.parentElement;
+    expectCardRow(sentRow, 'sent-request row');
+  });
+});
+
+// Phase 88.9-66 (X35, once-over R13): the Friends busy lines are HEARD. Each line used to be a row
+// that mounted already holding its words with the status role, and a screen reader announces a
+// change to a live region, never the arrival of one, so none of them was spoken. Now each host
+// keeps ONE visually hidden polite region mounted (StatusRegion with settleOnMount, plan 88.9-65),
+// fed the line's former accessible name while the line shows; the visible row is plain text with
+// the same words, classes and timing as before. The shape every test here uses: capture the polite
+// regions while they are empty, wait for the words, and require the node that speaks to be one of
+// the captured ones.
+describe('friends busy lines are heard (88.9-66: X35)', () => {
+  const statuses = () => screen.queryAllByRole('status');
+  const emptyRegions = () => statuses().filter((n) => n.textContent === '');
+  const speaking = (words: string) => statuses().find((n) => n.textContent === words);
+
+  async function expectSpokenFrom(mountedEmpty: HTMLElement[], words: string) {
+    await waitFor(() => expect(speaking(words), `no polite region ever said "${words}"`).toBeDefined());
+    const region = speaking(words) as HTMLElement;
+    expect(mountedEmpty, `the region that says "${words}" was not on the page, empty, before it spoke`).toContain(region);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveClass('sr-only');
+    return region;
+  }
+
+  // A visible busy row: on screen with its words, and not itself a live region or hidden from one.
+  function expectPlainRow(words: string) {
+    const row = screen.getByText(words);
+    expect(row.closest('[role="status"]'), `"${words}" is still inside a status row`).toBeNull();
+    expect(row.closest('[aria-hidden="true"]'), `"${words}" must stay readable in place`).toBeNull();
+    return row;
+  }
+
+  it('X35 (88.9): Signing you in and Loading your friends are spoken from a region that was mounted empty', async () => {
+    const savedUser = auth.user;
+    stubLocation('/friends');
+    auth.user = null as unknown as typeof auth.user;
+    try {
+      render(<FriendsPage />);
+      // The redirect frame's first commit: one polite region, empty.
+      expect(statuses(), 'the sign-in hold mounts exactly one polite region').toHaveLength(1);
+      const mounted = emptyRegions();
+      expect(mounted, 'the sign-in hold mounted its region already holding words').toHaveLength(1);
+      await expectSpokenFrom(mounted, 'Signing you in');
+    } finally {
+      auth.user = savedUser;
+      restoreLocation();
+    }
+    cleanup();
+
+    renderFriends({ selfUuid: null });
+    expect(statuses(), 'the identity loader mounts exactly one polite region').toHaveLength(1);
+    const mounted = emptyRegions();
+    expect(mounted, 'the identity loader mounted its region already holding words').toHaveLength(1);
+    await expectSpokenFrom(mounted, 'Loading your friends');
+  });
+
+  it('X35 (88.9): Searching and Loading group members are spoken from a region that was already there, and the visible rows keep their words', async () => {
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([adminGroup('g-1', 'Tuesday Crew')]);
+    renderFriends();
+    const select = await screen.findByLabelText('Invite to group');
+    // Past the arrival dwell of every region mounted with the page and with the invite bar.
+    await act(() => new Promise<void>((r) => setTimeout(r, REGION_EMPTY_DWELL_MS + 20)));
+    const before = statuses();
+    expect(speaking('Searching for that email address')).toBeUndefined();
+
+    const heldSearch = deferred<unknown>();
+    (friendshipsAPI.searchUserByEmail as Mock).mockReturnValueOnce(heldSearch.promise);
+    fireEvent.change(emailField(), { target: { value: 'riley@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    const searchRegion = speaking('Searching for that email address') as HTMLElement;
+    expect(searchRegion, 'no polite region said the search words the moment the search started').toBeDefined();
+    expect(before, 'the search region was mounted with its words instead of being fed them').toContain(searchRegion);
+    expectPlainRow('Searching...');
+    await act(async () => {
+      heldSearch.resolve(null);
+    });
+    await waitFor(() => expect(screen.queryByText('Searching...')).toBeNull());
+    expect(searchRegion.textContent).toBe('');
+
+    const heldMembers = deferred<unknown[]>();
+    (groupsAPI.getGroupMembers as Mock).mockReturnValueOnce(heldMembers.promise);
+    fireEvent.change(select, { target: { value: 'g-1' } });
+    const membersRegion = await waitFor(() => {
+      const region = speaking('Loading group members');
+      expect(region, 'no polite region said the members words').toBeDefined();
+      return region as HTMLElement;
+    });
+    expect(before, 'the members region was mounted with its words instead of being fed them').toContain(membersRegion);
+    expectPlainRow('Loading group members...');
+    await act(async () => {
+      heldMembers.resolve([]);
+    });
+    await waitFor(() => expect(screen.queryByText('Loading group members...')).toBeNull());
+    expect(membersRegion.textContent).toBe('');
+  });
+
+  it('X35 (88.9): the Friends, Requests and Sent loaders are spoken after the dwell from a region mounted with their tab', async () => {
+    h.selfUuid = SELF_UUID;
+    (friendshipsAPI.getFriends as Mock).mockReturnValue(deferred<unknown[]>().promise);
+    (friendshipsAPI.getSentRequests as Mock).mockReturnValue(deferred<unknown[]>().promise);
+    providerCtx.loading = true;
+    render(<FriendsPage />);
+
+    // The Friends tab's first commit: its row shows at once, its region is there and empty.
+    let mounted = emptyRegions();
+    expectPlainRow('Loading friends...');
+    expect(speaking('Loading your friends')).toBeUndefined();
+    await expectSpokenFrom(mounted, 'Loading your friends');
+
+    fireEvent.click(requestsTab());
+    mounted = emptyRegions();
+    expectPlainRow('Loading requests...');
+    expect(speaking('Loading your friend requests')).toBeUndefined();
+    await expectSpokenFrom(mounted, 'Loading your friend requests');
+
+    fireEvent.click(sentTabButton());
+    mounted = emptyRegions();
+    expectPlainRow('Loading sent requests...');
+    expect(speaking('Loading your sent requests')).toBeUndefined();
+    await expectSpokenFrom(mounted, 'Loading your sent requests');
+  });
+
+  it('X35 (88.9): this page and FriendInvitePanel hold no conditionally mounted labelled status row', () => {
+    // Read from disk with fs: every polite region in these two files is the StatusRegion primitive,
+    // so neither source writes the status role as an attribute any more.
+    for (const file of ['src/app/friends/page.js', 'src/app/components/FriendInvitePanel.js']) {
+      const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+      expect(source.split('role="status"').length - 1, `${file} still writes a status role by hand`).toBe(0);
+      expect(source, `${file} feeds no settle-on-mount region`).toContain('settleOnMount');
+    }
+  });
+});
+
+// 88.9-52 R3 (owner: "we have to remember to update the[m] if we modify the title"): the heading
+// only screen readers get and the page's own visible name are ONE constant, so one cannot be
+// changed without the other. Read off the page source: a hand-typed copy at either site fails here.
+describe('friends page name, one source (88.9-52 R3)', () => {
+  it('R3 (88.9-52): the screen-reader-only page heading and the visible page name come from one constant', () => {
+    const src = readFileSync(resolve(__dirname, 'page.js'), 'utf8');
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
+    expect(count(src, "const FRIENDS_PAGE_TITLE = 'Friends';"), 'the one declaration').toBe(1);
+    expect(count(src, 'srHeading="'), 'a hand-typed hidden heading').toBe(0);
+    expect(count(src, 'srHeading={FRIENDS_PAGE_TITLE}'), 'the signed-out frame').toBe(1);
+    expect(count(src, '>{FRIENDS_PAGE_TITLE}</Heading>'), 'the three visible level-1 titles').toBe(3);
+    expect(count(src, '>Friends</Heading>'), 'a hand-typed visible title').toBe(0);
+  });
+
+  // 88.9-52 S-C6: the source read above counts substrings, so a comment could satisfy it. This one
+  // reads the two RENDERED headings: the visible title on a normal render and the screen-reader-only
+  // heading on the signed-out banner screen must be the same words.
+  it('S-C6 (88.9-52): rendered, the signed-out screen-reader-only heading reads what the visible title reads', async () => {
+    renderFriends();
+    const visible = await screen.findByRole('heading', { level: 1 });
+    expect(visible).not.toHaveClass('sr-only');
+    const visibleName = visible.textContent;
+    expect(visibleName).toBeTruthy();
+    cleanup();
+
+    const saved = auth.user;
+    auth.user = null as unknown as typeof auth.user;
+    stubLocation('/friends');
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    try {
+      render(<FriendsPage />);
+      await screen.findByRole('link', { name: 'Sign in' });
+      const hidden = screen.getByRole('heading', { level: 1 });
+      expect(hidden).toHaveClass('sr-only');
+      expect(hidden.textContent).toBe(visibleName);
+    } finally {
+      auth.user = saved;
+      restoreLocation();
     }
   });
 });

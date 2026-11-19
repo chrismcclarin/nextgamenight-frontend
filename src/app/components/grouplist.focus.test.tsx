@@ -427,3 +427,46 @@ describe('home group list: the full banner retry landing (88.6.1-41 #204)', () =
     expect(document.activeElement).not.toBe(document.body);
   });
 });
+
+// Phase 88.9-31 — the home card's round-2 look rows (owner picks F5b, 88.9-PICKS-B5.json, and B2a,
+// 88.9-PICKS-B1.json; census R047 B078 R048). Token pins: jsdom paints nothing, so each test reads
+// the tokens the picked variant ships and the ones it must not.
+describe('home group card round-2 look (88.9-31: F5b cog glyph, B2a G halos)', () => {
+  const GROUP_HALO = 'focus-visible:ring-offset-surface-group-halo';
+  const CARD_HALO = 'focus-visible:ring-offset-surface-card';
+
+  it('F5b (88.9): no gear emoji in the home cog; the SVG is present and hidden, and the title still names it', async () => {
+    fx.getUserGroups.mockResolvedValueOnce([ALPHA]);
+    render(renderList(0));
+    await screen.findByRole('button', { name: 'Alpha Crew' });
+    const gear = gearOf('Alpha Crew');
+    expect(gear.querySelector('svg[aria-hidden="true"]'), 'the cog has no hidden svg glyph').not.toBeNull();
+    expect(gear.textContent ?? '', 'the cog still carries the emoji').not.toMatch(/⚙/);
+    expect(gear).toHaveAccessibleName('Customize Alpha Crew');
+  });
+
+  it('G halo (88.9): on a tinted card the title block, Invite Member and the cog take the group halo; an untinted card keeps the card halo', async () => {
+    fx.getUserGroups.mockResolvedValueOnce([{ ...ALPHA, background_color: '#722f37' }, BETA]);
+    render(renderList(0));
+    await screen.findByRole('button', { name: 'Beta Crew' });
+
+    const tintedCard = cardOf('Alpha Crew');
+    expect(tintedCard).toHaveClass('[--group-halo:var(--group-ground-light)]', 'dark:[--group-halo:var(--group-ground)]');
+    for (const el of [
+      titleBlock('Alpha Crew'),
+      within(tintedCard).getByRole('button', { name: 'Invite member to Alpha Crew' }),
+      gearOf('Alpha Crew'),
+    ]) {
+      expect(el).toHaveClass(GROUP_HALO);
+      expect(el).not.toHaveClass(CARD_HALO);
+    }
+
+    const plainCard = cardOf('Beta Crew');
+    expect(plainCard.className).not.toContain('--group-halo');
+    for (const el of [titleBlock('Beta Crew'), gearOf('Beta Crew')]) {
+      expect(el).toHaveClass(CARD_HALO);
+      expect(el).not.toHaveClass(GROUP_HALO);
+    }
+    expect(within(plainCard).getByRole('button', { name: 'Invite member to Beta Crew' })).not.toHaveClass(GROUP_HALO);
+  });
+});

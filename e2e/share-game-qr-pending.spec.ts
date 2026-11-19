@@ -11,14 +11,15 @@ import { scrubbedFetch } from './support/scrubbedFetch';
 // .planning/codebase/FE-TESTING-CONVENTIONS.md), so src/app/gameDetail/page.test.tsx (Q1-Q3)
 // pins the attributes, the label and the request count but cannot prove focus, paint or the QR
 // dialog's focus return. Here, in Chromium:
-//   1. after Enter, the pressed button keeps focus while the code loads, reads the E6 label
-//      "Loading QR code...", carries aria-disabled with no disabled attribute, and paints the
-//      gated accent pair at opacity 1 (the owner's answer 2Q, recorded 2026-10-16 by plan
-//      88.6.1-22);
+//   1. after Enter, the pressed button keeps focus while the code loads, keeps its label
+//      "Share Game QR" beside the house spinner and is named "Share Game QR, loading" (rule 1,
+//      88.9-46 B29 — the heard suffix replaced the E6 label swap), carries aria-disabled with no
+//      disabled attribute, and paints the gated accent pair at opacity 1 (the owner's answer 2Q,
+//      recorded 2026-10-16 by plan 88.6.1-22);
 //   2. a second Enter while it loads sends no second request (single flight);
 //   3. when the QR dialog closes on Escape, focus comes back to the button (W014 case 1 at its
 //      source: the button kept focus, so the dialog recorded it as its opener);
-//   4. the longer label causes no horizontal overflow at 375px.
+//   4. the busy state (label plus spinner) causes no horizontal overflow at 375px.
 //
 // WHAT IS TRUE OF THE NETWORK (review #113). One route on the events API, registered before
 // navigation:
@@ -69,8 +70,9 @@ const E2E_EVENT_DETAIL_PATH =
   process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${E2E_GROUP_ID}`;
 
 const SHARE = 'Share Game QR';
-// Copy row E6, byte-equal to 88.6.1-COPY-TABLE.html (three ASCII dots).
-const LOADING = 'Loading QR code...';
+// Rule 1 (88.9-46 B29): copy row E6's swap word is retired; the busy control is named by its kept
+// label plus the heard suffix. Chromium may insert a space before the sr-only comma (plan 88.9-24).
+const LOADING = /^Share Game QR ?, loading$/;
 const FAKE_INVITE_URL = 'https://example.test/e2e-qr';
 const EVENT_GET_PATH = /^\/api\/events\/[^/]+$/;
 
@@ -136,6 +138,9 @@ test('Share Game QR stays focused and single-flight while the QR loads, and the 
 
   const loading = page.getByRole('button', { name: LOADING });
   await expect(loading).toBeVisible();
+  // The visible label is unchanged and the one house spinner sits beside it (rule 1).
+  await expect(loading).toHaveText(/^Share Game QR/);
+  await expect(loading.locator('[data-slot="spinner"]')).toHaveCount(1);
   await expect(loading).toHaveAttribute('aria-disabled', 'true');
   await expect(loading).not.toHaveAttribute('disabled', /.*/);
   expect(
@@ -153,6 +158,12 @@ test('Share Game QR stays focused and single-flight while the QR loads, and the 
   await page.waitForTimeout(300);
   expect(tokenRequests, 'a second Enter while the QR loads sends no second request').toBe(1);
   await expect(loading).toHaveAttribute('aria-disabled', 'true');
+  // MED-27 (88.9-46): the one real-browser width proof of a BUSY control in rule 1's page sweep —
+  // the spinner plus the .btn gap must not push the Participants header row past 375px.
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    'no horizontal overflow at 375px while Share Game QR is busy (label plus spinner)',
+  ).toBe(true);
 
   for (const route of heldTokens) {
     const origin = route.request().headers()['origin'];

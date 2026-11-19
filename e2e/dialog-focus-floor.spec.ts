@@ -10,7 +10,7 @@ import { openGroupSettings } from './support/groupSettings';
  * ownership instead" closes the settings dialog and opens Manage Members in ONE handler
  * (`groupHomePage/page.js`, `onOpenManageMembers`). The closing dialog's restore
  * (`restoreDialogFocus` in `src/components/ui/dialog.tsx`) must not move focus out of the
- * dialog that opened after it — so the "Group actions" trigger that opened settings never
+ * dialog that opened after it — so the header "Group settings" gear that opened settings never
  * receives a focus event — and closing Manage Members must land on the page's `main h1`, not
  * `<body>`. The unit suites (`Modal.test.tsx` D/D2/D3) prove the same rules in jsdom; this spec
  * exists because jsdom diverges exactly where these rules live: it runs no exit animation (so
@@ -50,8 +50,9 @@ test.describe('Phase 88.6.1-20 — dialog focus floor on close (phone project)',
 
     // The settings dialog's opener. Radix hides the page from the accessibility tree while a
     // modal is open, so the trigger is resolved with includeHidden.
-    const trigger = page.getByRole('button', { name: /group actions/i, includeHidden: true });
-    await expect(trigger, 'exactly one "Group actions" trigger').toHaveCount(1);
+    // Re-pointed Phase 88.9-31 (owner pick F5b): the opener is the header gear, no longer a kebab.
+    const trigger = page.getByRole('button', { name: 'Group settings', exact: true, includeHidden: true });
+    await expect(trigger, 'exactly one "Group settings" gear').toHaveCount(1);
     await trigger.evaluate((el) => {
       const w = window as FocusCounterWindow;
       w.__dialogFloorTriggerFocusCount = 0;

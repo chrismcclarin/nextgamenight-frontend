@@ -97,7 +97,11 @@ const NOT_PROVISIONED_MESSAGE =
    fuller sentence is wanted here is an owner question, routed with plan 88.6-30's
    checkpoint — not a guess taken at execution.
    AMENDED Phase 88.6.1-22 (W008): the button now reads the constant too — until this line it
-   carried its own literal, so the "cannot drift" claim was false. */
+   carried its own literal, so the "cannot drift" claim was false.
+   AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; register 53.24 Deleting half):
+   the danger action keeps its label + the house spinner while deleting; the constant is now the
+   progress region's string alone, so the W008 one-literal claim holds with one reader, chosen OVER
+   keeping the button swap (rule 1). */
 const DELETING_LABEL = 'Deleting…';
 
 /* DECISION Phase 88.6-30 (D1, round-3 verdict): the in-flight DELETE is BOUNDED by a
@@ -564,14 +568,17 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-base text-content-primary">
+              <p className="text-sm text-content-primary">
                 This permanently deletes your account. It cannot be undone.
               </p>
-              {/* R2 / UI-SPEC §4.3: this is the consequence copy a user reads before
-                  permanently deleting their account — RUNNING PROSE, so Body 16, not the
-                  Label 14 it shipped at. Classified explicitly because getting it wrong
-                  makes the most consequential text in the app smaller. */}
-              <div className="space-y-2 text-base text-content-secondary">
+              {/* AMENDED Phase 88.9-34 (owner pick E5b, 88.9-PICKS-B4.json, 2026-11-06): the
+                  consequence copy of the delete state moved to Label 14 (text-sm, 14/20), chosen
+                  OVER the R2 / UI-SPEC §4.3 Body 16 it carried (16/24), because at 375x667 Body 16
+                  scrolled the dialog 32px and put the confirm field under the footer line; the
+                  owner ruled fit-on-one-screen on a rendered pair. The blocked-branch paragraphs
+                  above and the card lede stay Body 16 — not the picked state. Ink is unchanged
+                  (primary lead, secondary list). */}
+              <div className="space-y-2 text-sm text-content-secondary">
                 <p>The following are permanently destroyed:</p>
                 <ul className="list-disc space-y-1 pl-5">
                   <li>Your groups and group memberships</li>
@@ -613,7 +620,12 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                     is NOT re-authored to a red token — it goes to the primitive's
                     `focus-visible:ring-focus-ring`, because focus indication is a system-wide
                     affordance and a per-surface focus colour is exactly the drift this phase's
-                    §7.2 contract exists to stop. Behaviour is unchanged either way. */}
+                    §7.2 contract exists to stop. Behaviour is unchanged either way.
+
+                    DECISION Phase 88.9-68 (X66): while deleting the typed phrase keeps its ink, chosen OVER the 50% wash that greyed it so the field looked emptied; the field stays natively disabled (DECISION Phase 88.6-30). The text-fill reset covers WebKit's own disabled dimming (assumed; owner phone check after deploy).
+                    Two COMPLETE literal class strings, picked on the deleting flag (Tailwind v4 emits
+                    literals only): the pre-flight arm keeps the wash, because that field is empty and
+                    cannot be typed in yet. */}
                 <Input
                   ref={confirmInputRef}
                   id="delete-account-confirm"
@@ -628,7 +640,11 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                   disabled={preflightPending || deleting}
                   placeholder={CONFIRM_PHRASE}
                   autoComplete="off"
-                  className="border-status-error disabled:opacity-50"
+                  className={
+                    deleting
+                      ? 'border-status-error disabled:opacity-100 disabled:[-webkit-text-fill-color:currentColor]'
+                      : 'border-status-error disabled:opacity-50'
+                  }
                 />
               </div>
               {/* DECISION Phase 88.6-30 (D28, round-3 verdict): the failure region is an
@@ -768,8 +784,10 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
               onClick={handleDelete}
               disabled={confirmInvalid}
               aria-disabled={deleting || undefined}
+              busy={deleting}
+              busySuffix=", deleting"
             >
-              {deleting ? DELETING_LABEL : 'Delete my account'}
+              Delete my account
             </Modal.Action>
           )}
         </Modal.Footer>

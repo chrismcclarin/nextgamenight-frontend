@@ -364,7 +364,8 @@ describe('QuickSuggestions — a REAL failure reports, and the slot says so (D-2
     await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
     const box = failedBox();
     expect(box).not.toBeNull();
-    expect(box!.textContent).toBe(H4_FAILED_LINE);
+    // 88.9 D13c: the box also holds the Try again link now, so the H4 line is read from its <p>.
+    expect(box!.querySelector('p')!.textContent).toBe(H4_FAILED_LINE);
     expect(emptyBox()).toBeNull();
     expect(screen.queryByText(EMPTY_HINT)).toBeNull();
     expect(slot().querySelectorAll('[role="alert"], [role="status"], [aria-live]')).toHaveLength(0);
@@ -474,6 +475,242 @@ describe('QuickSuggestions — a REAL failure reports, and the slot says so (D-2
     }
 
     expect(log.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('D13c (88.9): Try again re-runs the fetch', async () => {
+    // 88.9 D13c (owner pick, 88.9-PICKS-B3.json item D13, 2026-11-06): the failed box carries a
+    // Try again link right of the H4 line. Pressing it bumps retryKey and re-runs the fetch in
+    // place: the line and the link stay until the retry settles, the report latch still files
+    // nothing new for the same key, and the slot stays free of live regions. A PRESSED retry that
+    // fails again is announced ONCE through a press-only polite region OUTSIDE the slot (the H4
+    // sentence); automatic dep-change re-fires never write it. When a retry succeeds under focus,
+    // focus moves to the slot's first control (the first chip).
+    const sameParams = () => api.getGroupSuggestions.mock.calls.map((c) => JSON.stringify(c));
+    api.getGroupSuggestions.mockRejectedValue(failure());
+    const { rerender } = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+
+    const box = failedBox() as HTMLElement;
+    expect(box).not.toBeNull();
+    expect(box.querySelector('p')!.textContent).toBe(H4_FAILED_LINE);
+    expect(screen.queryByRole('button', { name: 'Try again' }), 'the Try again link renders').not.toBeNull();
+    const retry = () => screen.getByRole('button', { name: 'Try again' });
+    expect(box.contains(retry())).toBe(true);
+    for (const cls of ['text-xs', 'font-bold', 'text-content-accent', 'underline', 'min-h-11']) {
+      expect(retry().classList.contains(cls), `Try again carries ${cls}`).toBe(true);
+    }
+    // The press-only region sits OUTSIDE the slot, polite, and starts empty.
+    const region = screen.getByRole('status');
+    expect(slot().contains(region)).toBe(false);
+    expect(region.textContent).toBe('');
+
+    // (1) An automatic re-fire that rejects, with NO press: silent.
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={90} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(api.getGroupSuggestions).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(region.textContent).toBe('');
+    // The latch files one report per distinct key: a second key, a second report; it stays there.
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(2));
+
+    // (2) A PRESSED retry that rejects again: same params, no new report, line + link stay,
+    //     announced once.
+    fireEvent.click(retry());
+    await runDebounce();
+    await waitFor(() => expect(api.getGroupSuggestions).toHaveBeenCalledTimes(3));
+    expect(sameParams()[2]).toBe(sameParams()[1]);
+    await waitFor(() => expect(region.textContent).toBe(H4_FAILED_LINE));
+    expect(log.error).toHaveBeenCalledTimes(2);
+    expect(failedBox()).toBe(box);
+    expect(box.querySelector('p')!.textContent).toBe(H4_FAILED_LINE);
+    expect(box.contains(retry())).toBe(true);
+    expect(slot().querySelectorAll('[role="alert"], [role="status"], [aria-live]')).toHaveLength(0);
+
+    // (3) A press superseded by a dep change before its fetch runs: the press clears the region
+    //     and the superseding (automatic) run's failure does not re-fill it.
+    fireEvent.click(retry());
+    expect(region.textContent).toBe('');
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={60} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(api.getGroupSuggestions).toHaveBeenCalledTimes(4));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(region.textContent).toBe('');
+
+    // (4) A pressed retry that RESOLVES, with the link focused: chips render and the first chip
+    //     takes focus (the link it replaced had it).
+    api.getGroupSuggestions.mockResolvedValue({ suggestions: GAMES });
+    retry().focus();
+    expect(document.activeElement).toBe(retry());
+    fireEvent.click(retry());
+    await runDebounce();
+    await waitFor(() => expect(screen.getByText('Catan')).toBeInTheDocument());
+    expect(failedBox()).toBeNull();
+    const firstChip = slot().querySelector('button') as HTMLElement;
+    expect(firstChip.textContent).toContain('Catan');
+    expect(document.activeElement).toBe(firstChip);
+  });
+
+  it('A-20 (88.9-52): a pressed Try again shows busy and refuses a second press until the retry settles', async () => {
+    // Review 88.9-52 A-20 (+A-29): the press used to change nothing on screen, and each further
+    // press restarted the 500ms debounce. Rule 1 (88.9-46): the link keeps its label, takes
+    // aria-disabled, the heard suffix and the delayed house Spinner; a press in flight is refused.
+    api.getGroupSuggestions.mockRejectedValueOnce(failure());
+    renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+    const link = () => failedBox()!.querySelector('button') as HTMLElement;
+    expect(link()).toHaveAccessibleName('Try again');
+    expect(link()).not.toHaveAttribute('aria-disabled');
+
+    const gate = deferred<never>();
+    api.getGroupSuggestions.mockReturnValue(gate.promise);
+    fireEvent.click(link());
+    expect(link()).toHaveAttribute('aria-disabled', 'true');
+    expect(link()).toHaveAccessibleName('Try again, retrying');
+    expect(link()).not.toHaveAttribute('disabled');
+
+    // A second press 300ms in must NOT restart the debounce: the fetch starts 500ms after the FIRST.
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    fireEvent.click(link());
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(2);
+    // The delayed house Spinner is up by now (appear delay 200ms), inside the link.
+    expect(link().querySelector('[data-slot="spinner"]')).not.toBeNull();
+
+    // A press while the fetch is in the air starts no second fetch.
+    fireEvent.click(link());
+    await runDebounce();
+    await runDebounce();
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(2);
+    expect(link()).toHaveAttribute('aria-disabled', 'true');
+
+    // The retry fails again: the link is live again, and the next press runs.
+    await act(async () => {
+      gate.reject(failure());
+    });
+    expect(link()).not.toHaveAttribute('aria-disabled');
+    expect(link()).toHaveAccessibleName('Try again');
+    api.getGroupSuggestions.mockResolvedValue({ suggestions: GAMES });
+    fireEvent.click(link());
+    await runDebounce();
+    await waitFor(() => expect(screen.getByText('Catan')).toBeInTheDocument());
+    expect(api.getGroupSuggestions).toHaveBeenCalledTimes(3);
+  });
+
+  it('A-20 (88.9-52, CI): the busy name is exactly Try again, retrying where the visually hidden suffix is its own box, before and after the Spinner shows', async () => {
+    // CI on e2e2331: Chromium named the busy link "Try again , retrying" (a space before the
+    // comma), so the exact-name locator in e2e/quick-suggestions-failed.spec.ts found nothing. The
+    // suffix used to be a visually hidden span; that class is position: absolute, which makes the
+    // span a block box, and the accessible-name computation puts a space round a non-inline child.
+    // jsdom does not blockify an absolutely positioned box, so the stylesheet below states the
+    // resulting display outright. The name is now an aria-label on the busy link, which no child
+    // box (the suffix, the Spinner) can change.
+    const style = document.createElement('style');
+    style.textContent = '.sr-only { display: block; }';
+    document.head.appendChild(style);
+    try {
+      api.getGroupSuggestions.mockRejectedValueOnce(failure());
+      renderSuggestions();
+      await runDebounce();
+      await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+      const link = () => failedBox()!.querySelector('button') as HTMLElement;
+      const gate = deferred<never>();
+      api.getGroupSuggestions.mockReturnValue(gate.promise);
+      fireEvent.click(link());
+      expect(link()).toHaveAccessibleName('Try again, retrying');
+      // The visible label is unchanged (WCAG 2.5.3: the name starts with it).
+      expect(link()).toHaveTextContent(/^Try again$/);
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(link().querySelector('[data-slot="spinner"]')).not.toBeNull();
+      expect(link()).toHaveAccessibleName('Try again, retrying');
+      await act(async () => {
+        gate.reject(failure());
+      });
+      expect(link()).toHaveAccessibleName('Try again');
+      expect(link()).not.toHaveAttribute('aria-label');
+    } finally {
+      style.remove();
+    }
+  });
+
+  it('A-20 (88.9-52): a dep change that supersedes a pressed retry still ends the busy state', async () => {
+    api.getGroupSuggestions.mockRejectedValue(failure());
+    const { rerender } = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+    const link = () => failedBox()!.querySelector('button') as HTMLElement;
+    fireEvent.click(link());
+    expect(link()).toHaveAttribute('aria-disabled', 'true');
+    // Invalid params: no fetch can settle, so the branch itself must end the busy state.
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={0} duration={120} onSelectGame={vi.fn()} />
+    );
+    expect(emptyBox()).toBeInTheDocument();
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={120} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(failedBox()).not.toBeNull());
+    expect(link()).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(link());
+    expect(link()).toHaveAttribute('aria-disabled', 'true');
+    // A valid dep change: the superseding run's own settle ends it.
+    rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={60} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(link()).not.toHaveAttribute('aria-disabled'));
+  });
+
+  it('A-23 (88.9-52): a pressed retry that returns NOTHING says the empty hint once; an automatic one stays silent', async () => {
+    // Review 88.9-52 A-23: the link unmounts, focus goes to the D13c floor (the dialog title), and
+    // nothing said what happened. The existing empty hint is spoken through the press-only region.
+    api.getGroupSuggestions.mockRejectedValueOnce(failure());
+    renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(log.error).toHaveBeenCalledTimes(1));
+    const region = screen.getByRole('status');
+    api.getGroupSuggestions.mockResolvedValue({ suggestions: [] });
+    const link = failedBox()!.querySelector('button') as HTMLElement;
+    link.focus();
+    fireEvent.click(link);
+    await runDebounce();
+    await waitFor(() => expect(emptyBox()).not.toBeNull());
+    expect(region.textContent).toBe(EMPTY_HINT);
+    expect(emptyBox()!.querySelector('p')!.textContent).toBe(EMPTY_HINT);
+    // Focus is where the D13c marker put it: no control in the slot, so the shared floor, never the box.
+    expect(emptyBox()!.contains(document.activeElement)).toBe(false);
+    expect(slot().querySelectorAll('[role="alert"], [role="status"], [aria-live]')).toHaveLength(0);
+
+    // An automatic empty settle (a dep change after a failure) writes nothing.
+    cleanup();
+    api.getGroupSuggestions.mockReset();
+    api.getGroupSuggestions.mockRejectedValueOnce(failure()).mockResolvedValue({ suggestions: [] });
+    const second = renderSuggestions();
+    await runDebounce();
+    await waitFor(() => expect(failedBox()).not.toBeNull());
+    second.rerender(
+      <QuickSuggestions groupId={GROUP_ID} playerCount={4} duration={90} onSelectGame={vi.fn()} />
+    );
+    await runDebounce();
+    await waitFor(() => expect(emptyBox()).not.toBeNull());
+    expect(screen.getByRole('status').textContent).toBe('');
   });
 });
 
@@ -759,5 +996,44 @@ describe('QuickSuggestions — the debounce is cancelled on unmount (review roun
       vi.advanceTimersByTime(600);
     });
     expect(api.getGroupSuggestions).not.toHaveBeenCalled();
+  });
+});
+
+// 88.9-52 R4 D1 (owner 2026-11-18: keep the chips, remove the cap). The chip's game name was cut at
+// 120px with an ellipsis. It now shows in full on one line inside its chip (the chip row already
+// scrolls sideways inside itself); only a name wider than the row itself wraps, inside its chip,
+// by whole words. The chip keeps its 44px floor, and the slot's floor is still that one token, so a
+// wrapped name makes the row taller rather than being cut. jsdom lays nothing out: class pins.
+// The marker is at src/app/components/QuickSuggestions.js ("DECISION Phase 88.9-52 (R4 D1, owner 2026-11-18)").
+describe('R4 D1 (88.9-52) — a quick-suggestion chip shows the whole game name', () => {
+  it('R4 D1 (88.9-52): the name carries no width cap and no cut; the chip is capped at the row so only a name wider than the row wraps, and the 44px floor and the scrolling row are kept', async () => {
+    const LONG = 'Twilight Imperium: Fourth Edition Prophecy of Kings';
+    api.getGroupSuggestions.mockResolvedValue({ suggestions: [{ ...GAMES[0], id: 'g-long', name: LONG }, ...GAMES] });
+    renderSuggestions();
+    await runDebounce();
+    const name = await waitFor(() => screen.getByText(LONG));
+    const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+    // The whole name is in the page, uncut: no truncate, no max width, no clamp of any kind.
+    expect(name.textContent).toBe(LONG);
+    expect(tokens(name).filter((t) => t === 'truncate' || t.startsWith('max-w-') || t.startsWith('line-clamp') || t === 'overflow-hidden' || t === 'text-ellipsis')).toEqual([]);
+    expect(tokens(name)).toEqual(['text-sm', 'text-content-primary', 'min-w-0', 'wrap-break-word']);
+    // The chip: its 44px floor, never shrunk by the row, never wider than the row.
+    const chip = name.closest('button') as HTMLElement;
+    expect(tokens(chip)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'min-h-11', 'shrink-0', 'max-w-full']));
+    expect(tokens(chip)).not.toContain('whitespace-nowrap');
+    // The row still scrolls sideways inside itself and does not wrap its chips.
+    const row = chip.parentElement as HTMLElement;
+    expect(tokens(row)).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto', 'flex-nowrap', 'flex-1', 'min-w-0']));
+    // The slot's floor is still the chip's own token, with no height cap that would cut a wrapped name.
+    const slot = screen.getByTestId('quick-suggestions-slot');
+    expect(tokens(slot)).toContain('min-h-11');
+    expect(tokens(slot).filter((t) => /^(h|max-h)-/.test(t))).toEqual([]);
+    expect(tokens(row).filter((t) => /^(h|max-h)-/.test(t) || t === 'overflow-y-hidden' || t === 'overflow-hidden')).toEqual([]);
+    // Every chip, not just the long one.
+    for (const game of GAMES) {
+      const other = screen.getByText(game.name);
+      expect(tokens(other)).not.toContain('truncate');
+      expect(tokens(other).some((t) => t.startsWith('max-w-'))).toBe(false);
+    }
   });
 });

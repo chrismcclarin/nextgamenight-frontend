@@ -143,7 +143,7 @@ describe('selfIdentityErrorSource — failed AND no row (88.6.1-79, AC-29)', () 
 
 // ---------------------------------------------------------------------------------------------
 // Census (Phase 88.6.1-63, AC-29): every self-identity site decides "identity failed" through
-// the one rule above. Eight hosts wrap their error state in the no-row source; one site keeps
+// the one rule above. Seven hosts wrap their error state in the no-row source (the group page left the list in 88.9-52 P1: it still decides by the one rule, with no wrapped state of its own); one site keeps
 // its state raw ON PURPOSE and converges on the boolean rule instead; no file carries its own
 // hand-written copy of the rule. Source is read with comments blanked, so a comment that names
 // a pattern in words never counts.
@@ -162,7 +162,6 @@ const WRAPPED_SELF_IDENTITY_SITES = [
   'app/components/grouplist.js',
   'app/friends/page.js',
   'app/gameDetail/page.js',
-  'app/groupHomePage/page.js',
   'app/groupPlanning/page.js',
   'app/userHome/UserHomePage.js',
 ];
@@ -178,13 +177,13 @@ const RAW_STATE = /useFetchErrorState\(\s*self(?:Identity)?Query\s*\)/;
 const HAND_WRITTEN_RULE = /selfIdentityErrorState\.showError\s*&&\s*(?:!selfUuid\b|self\s*===\s*undefined)/;
 
 describe('self-identity census (88.6.1-63, AC-29)', () => {
-  it('(a) eight sites wrap their identity state in the no-row source; only the rostered site stays raw', () => {
+  it('(a) seven sites wrap their identity state in the no-row source; only the rostered site stays raw', () => {
     const wrapped = censusCode.filter((f) => WRAPPED_STATE.test(f.code)).map((f) => f.rel).sort();
     const raw = censusCode.filter((f) => RAW_STATE.test(f.code)).map((f) => f.rel).sort();
     expect(wrapped).toEqual([...WRAPPED_SELF_IDENTITY_SITES].sort());
     expect(raw).toEqual(Object.keys(RAW_SELF_IDENTITY_SITES).sort());
     // Anti-vacuity: the census saw every identity site there is.
-    expect(wrapped.length + raw.length).toBe(9);
+    expect(wrapped.length + raw.length).toBe(8);
   });
 
   it('(b) a site that keeps its state raw still decides "no row" through the one rule', () => {

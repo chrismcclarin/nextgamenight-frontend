@@ -25,6 +25,8 @@
  * amber-500 dark) and bridged it into `@theme inline` as `--color-content-accent`
  * (src/app/globals.css ("--color-content-accent: var(--color-accent-text);")). This plan moves the 27 failing call sites onto it. This suite is what
  * stops them drifting back.
+ * AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark is amber-400 now, and
+ * Header's dark hover:text-accent reads 10.76 on warm-900 (was 8.37); light is unchanged at 7.00.
  *
  * DECISION Phase 88.3 (Req 4): the zero-offenders test is scoped to an explicit `MIGRATE_FILES`
  * list, chosen OVER a repo-wide `sourceFiles(SRC)` zero-offenders test. A repo-wide gate would

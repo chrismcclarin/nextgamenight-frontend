@@ -36,10 +36,16 @@
 // false-positive failure mode hit plans 88-01..05). That gate has run; 88-10
 // then wrote the real assertions, which is why the literals now appear in the
 // test bodies below. Do not "restore" the prose form over a live assertion.
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import * as React from 'react';
 import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner';
+import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { INLINE_RECEIPT_MS } from '@/components/ui/useInlineReceipt';
 import { axe } from 'vitest-axe';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -65,6 +71,8 @@ const h = vi.hoisted(() => ({
   selfError: null as null | Error,
   // Plan 88.6.1-61: ONE stable refetch for the identity query, so a case can supply the row on Retry.
   refetchSelf: vi.fn(),
+  // Plan 88.9-56 (R-C2): the identity query's isFetching, so a case can model a tab-return refetch.
+  selfFetching: false,
   /**
    * Availability rows the mocked `useQuery` returns. Held here (not baked into
    * the mock) so the two-tap delete pins can render real rows without a
@@ -99,7 +107,8 @@ const h = vi.hoisted(() => ({
     name: 'Self',
     email: 'self@example.com',
     picture: null,
-  } as Record<string, unknown>,
+    // 88.9-40 (SESSION-01): `undefined` is the signed-out shape; every reader tolerates it.
+  } as Record<string, unknown> | undefined,
   /**
    * Auth0 session error. Plan 88-19 needs a NON-null value to reach the page's
    * error branch, which no earlier suite exercised — that branch used to render
@@ -120,10 +129,10 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({
     self: h.self,
     selfUuid: h.self?.id as string | undefined,
-    query: { isError: Boolean(h.selfError), error: h.selfError, isPending: !h.self && !h.selfError, refetch: h.refetchSelf },
+    query: { isError: Boolean(h.selfError), error: h.selfError, isPending: !h.self && !h.selfError, isFetching: h.selfFetching, refetch: h.refetchSelf },
     isPending: !h.self && !h.selfError,
     // Plan 88.6.1-79 (D-r3-10): the identity query's cache key, the same shape the real hook builds.
-    queryKey: ['users', 'self', h.authUser.sub],
+    queryKey: ['users', 'self', h.authUser?.sub],
   }),
 }));
 
@@ -181,6 +190,10 @@ vi.mock('sonner', () => {
   return { toast };
 });
 
+// Save-feedback rule 2 (88.9-24): a save whose result is in view fires no success toast and is
+// spoken once by the root announcer instead. Automocked; the root beforeEach clears its calls.
+vi.mock('@/components/ui/announcer');
+
 // Provider hooks the page consumes; each has its own dedicated identity suite.
 vi.mock('@/app/components/tutorial/TutorialProvider', () => ({
   useTutorial: () => ({ replayTutorial: h.replayTutorial, showTutorial: h.showTutorial }),
@@ -195,7 +208,8 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // `useFetchErrorState` and `FetchErrorBanner` are kept REAL — the hook is a pure
 // derivation over the query object supplied above and the banner renders null
 // while `showError` is false, so stubbing them would only hide regressions.
-vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
+// A spy, so the A-49 case below can count how often each collection card renders.
+vi.mock('@/app/components/SafeImage', () => ({ default: vi.fn(() => null) }));
 vi.mock('@/app/components/DangerZoneDeleteAccount', () => ({ default: () => null }));
 vi.mock('next/link', () => ({
   default: ({ children }: { children: React.ReactNode }) => children,
@@ -249,10 +263,15 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { auditFormControls } from '../../test-utils/formControlAudit';
 import { ApiError } from '@/lib/api';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
+import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
 import { availabilityKeys } from '@/lib/queryKeys/availabilityKeys';
 import { QueryClientContext, hashKey } from '@tanstack/react-query';
 import { UNAVAILABLE_COPY } from '@/app/components/EmailAddressSection';
+import { announceStatus } from '@/components/ui/announcer';
 
 /** Accessor for the mocked house logger — AC-2's channel on this surface. */
 export function loggerMock() {
@@ -327,6 +346,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.self = undefined;
   h.selfError = null;
+  h.selfFetching = false;
   h.refetchSelf.mockReset();
   h.patterns = [];
   h.patternsError = null;
@@ -334,6 +354,7 @@ beforeEach(() => {
   h.patternsEntry = {};
   h.authError = null;
   h.showTutorial = false;
+  window.sessionStorage.clear();
 });
 
 afterEach(cleanup);
@@ -667,6 +688,26 @@ const PATTERNS = [
   },
 ];
 
+/**
+ * F9b (88.9-23): every two-tap and dialog-tier confirm is gated for CONFIRM_DELAY_MS after it
+ * arms or opens. The describes that commit run on a fake clock that still advances with real
+ * time (findBy and waitFor keep working), and step past the gate here before the commit.
+ */
+function passGate() {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+}
+
+function installGateClock() {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+}
+
 /** The armed live-region text, as composed by the hook's default announcement. */
 function armedAnnouncement() {
   return screen
@@ -676,6 +717,8 @@ function armedAnnouncement() {
 }
 
 describe('userProfile destructive gates (Req 11)', () => {
+  installGateClock();
+
   it('disconnect Google Calendar blocks in a dialog and does not call the API until confirmed', async () => {
     const { googleCalendarAPI } = await import('@/lib/api');
     (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -689,15 +732,17 @@ describe('userProfile destructive gates (Req 11)', () => {
     expect(within(dialog).getByText('Disconnect Google Calendar?')).toBeInTheDocument();
     expect(googleCalendarAPI.disconnect).not.toHaveBeenCalled();
 
+    passGate();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
     await waitFor(() =>
       expect(googleCalendarAPI.disconnect).toHaveBeenCalledWith(SELF_UUID)
     );
   });
 
-  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): while the disconnect is in
-  // flight the pressed confirm reads "Disconnecting…" (ConfirmDialog's pendingLabel).
-  it('the pending disconnect confirm reads the ratified pending label until it settles (CR-5)', async () => {
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19), re-shaped by rule 1 (88.9-45):
+  // while the disconnect is in flight the pressed confirm keeps "Disconnect" with the house
+  // spinner and is named "Disconnect, disconnecting" (ConfirmDialog's busySuffix).
+  it('rule 1 (88.9): the pending disconnect confirm keeps its label + spinner until it settles (CR-5)', async () => {
     const { googleCalendarAPI } = await import('@/lib/api');
     (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       connected: true,
@@ -711,8 +756,11 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
     const dialog = await screen.findByRole('dialog');
 
+    passGate();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
-    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Disconnecting\u2026' });
+    const pendingConfirm = await within(dialog).findByRole('button', { name: 'Disconnect, disconnecting' });
+    expect(pendingConfirm).toHaveTextContent('Disconnect');
+    await waitFor(() => expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
     expect(within(dialog).queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
 
@@ -765,37 +813,55 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(trigger);
     expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
     // Armed: aria-pressed appears (F-357) and the live region names the target.
+    // F9b: the live region names it at the live edge, past the gate.
+    passGate();
         expect(armedAnnouncement()).toContain('Catan');
 
     // 88-33 Task 5 (fork 7, walk row 381): the GLYPH control arms into the
     // labeled verb 'Remove' — not the default instruction copy.
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
     await waitFor(() =>
       expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-catan')
     );
   });
 
-  // 88-33 Task 5 (fork 7): resting prominence + no-reflow reservation on the
-  // collection glyph control — a real affordance box at the 44px floor, with the
-  // armed label's width reserved at rest so arming cannot squeeze the title.
-  it('collection remove is a 44px affordance box whose armed width is pre-reserved', async () => {
+  // 88-33 Task 5 (fork 7): resting prominence + no-reflow reservation on the collection glyph
+  // control. AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the glyph is gone. The control is a
+  // worded Remove button that arms to the house Tap again; its width is held from the arm (the
+  // phone Remove's form), not reserved at rest. The look is pinned in the R4 D4 test below.
+  it('collection remove is a worded 44px Remove that counts down and then reads Tap again, in one armed width', async () => {
     const { userGamesAPI } = await import('@/lib/api');
     (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(OWNED_GAMES);
 
     renderProfile();
     const trigger = await screen.findByRole('button', { name: 'Remove Catan' });
-    expect(trigger.className).toContain('min-h-11');
-    expect(trigger.className).toContain('min-w-11');
-    expect(trigger.className).toContain('border');
-    // The invisible sizer carries the armed label so the box is armed-width at rest.
-    const sizer = trigger.querySelector('[aria-hidden="true"]');
-    expect(sizer?.textContent).toBe('Remove');
-    expect(sizer?.className).toContain('invisible');
+    expect(trigger.className.split(/\s+/)).toContain('min-h-11');
+    expect(trigger.textContent).toBe('Remove');
+    expect(trigger.querySelector('svg')).toBeNull();
+    // Nothing is reserved at rest.
+    expect(trigger.querySelectorAll('[data-reserve]')).toHaveLength(0);
 
-    // Armed: visible label swaps to 'Remove' on the error-subtle treatment.
+    // Armed: the visible label counts Wait 3, 2, 1, then reads Tap again; the weight is the
+    // only change of look (W38), and the width is held from the arm through every label.
     fireEvent.click(trigger);
-    const armed = screen.getByRole('button', { name: 'Remove' });
-    expect(armed.className).toContain('bg-status-error-subtle');
+    const gated = screen.getByRole('button', { name: 'Remove Catan, wait 3 seconds' });
+    expect(gated.textContent).toBe('Wait (3)');
+    expect(gated.className.split(/\s+/)).toContain('font-semibold');
+    const reserves = Array.from(gated.querySelectorAll('[data-reserve]'));
+    expect(reserves.map((span) => span.getAttribute('data-reserve'))).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again']);
+    for (const span of reserves) {
+      expect(span.getAttribute('aria-hidden')).toBe('true');
+      expect(span.className.split(/\s+/)).toContain('invisible');
+      expect(span.textContent).toBe('');
+    }
+    passGate();
+    const armed = screen.getByRole('button', { name: 'Tap again to remove' });
+    expect(armed).toBe(gated);
+    expect(armed.textContent).toBe('Tap again');
+    expect(armed.className.split(/\s+/)).toContain('font-semibold');
+    for (const cls of armed.className.split(/\s+/)) {
+      expect(cls === 'border' || cls.startsWith('border-') || cls.startsWith('bg-'), cls).toBe(false);
+    }
   });
 
   // AR DEC-2: the armed state is keyed by TARGET, not a boolean. Without that,
@@ -809,8 +875,9 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Brass' }));
 
     expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    passGate();
     // The new target is armed (labeled 'Remove' — fork 7), the old one is back at rest.
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tap again to remove' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove Catan' })).toBeInTheDocument();
     expect(armedAnnouncement()).toContain('Brass');
   });
@@ -830,6 +897,7 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete Tuesday schedule' }));
     expect(availabilityAPI.deleteAvailability).not.toHaveBeenCalled();
 
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
     await waitFor(() =>
       expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-tue')
@@ -964,7 +1032,7 @@ describe('userProfile timezone picker (F-359)', () => {
     expect(field).toHaveAttribute('aria-activedescendant');
 
     await user.keyboard('{Enter}');
-    expect(h.setTimezone).toHaveBeenCalledWith('America/Chicago');
+    expect(h.setTimezone).toHaveBeenCalledWith('America/Chicago', { onSaveFailed: expect.any(Function) });
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 
@@ -999,18 +1067,61 @@ describe('userProfile two-tap armed state (F-357)', () => {
       );
 
       fireEvent.click(screen.getByRole('button', { name: 'Remove Catan' }));
-      expect(screen.getByRole('button', { name: 'Remove' })).toHaveAttribute(
+      // F9b: armed first inside its gate, named for the game, then the wait (X69, 88.9-67).
+      expect(screen.getByRole('button', { name: 'Remove Catan, wait 3 seconds' })).toHaveAttribute(
         'aria-pressed',
         'true'
       );
 
+      // F9b: the window is now gated CONFIRM_DELAY_MS + live CONFIRM_LIVE_MS.
       await act(async () => {
-        vi.advanceTimersByTime(3000);
+        vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
       });
 
       const reverted = screen.getByRole('button', { name: 'Remove Catan' });
       expect(reverted).not.toHaveAttribute('aria-pressed');
       expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // PIX-1 / A-49 (88.9-52, owner condition met: the picture pass measured a hitch with 120 games).
+  // Each card renders its one SafeImage, so the stub's call count is the number of card renders.
+  // Before the memoised card every mounted card rendered on every countdown tick (30 of 30).
+  it('A-49 (88.9-52): a countdown tick re-renders the armed collection card only, not the other 29', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      const SafeImageStub = (await import('@/app/components/SafeImage')).default as unknown as ReturnType<typeof vi.fn>;
+      const thirty = Array.from({ length: 30 }, (_, i) => ({ id: 'g' + i, name: 'Game ' + i, image_url: null }));
+      (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(thirty);
+
+      renderProfile();
+      await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Show all 30 games' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Show all 30 games' }));
+      expect(screen.getAllByRole('button', { name: /^Remove Game \d+$/ })).toHaveLength(30);
+
+      const perStep: number[] = [];
+      SafeImageStub.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Game 7' }));
+      perStep.push(SafeImageStub.mock.calls.length);
+      expect(screen.getByRole('button', { name: 'Remove Game 7, wait 3 seconds' })).toBeInTheDocument();
+      // Three ticks: Wait (2), Wait (1), then the live label.
+      for (let tick = 0; tick < 3; tick += 1) {
+        SafeImageStub.mockClear();
+        await act(async () => {
+          vi.advanceTimersByTime(1000);
+        });
+        perStep.push(SafeImageStub.mock.calls.length);
+      }
+      // The control went live, so the ticks really ran.
+      expect(screen.getByRole('button', { name: 'Tap again to remove' })).toHaveAttribute('aria-pressed', 'true');
+      // On arm and on each tick: the armed card renders (at least once), the other 29 do not.
+      for (const count of perStep) {
+        expect(count, 'card renders per step: ' + perStep.join(', ')).toBeGreaterThanOrEqual(1);
+        expect(count, 'card renders per step: ' + perStep.join(', ')).toBeLessThanOrEqual(2);
+      }
     } finally {
       vi.useRealTimers();
     }
@@ -1026,22 +1137,44 @@ describe('userProfile two-tap armed state (F-357)', () => {
 // time — which no shape-based assertion would catch.
 
 describe('userProfile toast register (OI-5)', () => {
-  it('converges the username receipt', async () => {
+  installGateClock();
+
+  // AMENDED Phase 88.9-24 (save-feedback rule 3): was 'converges the username receipt', which
+  // asserted the success toast. The receipt is now an inline caption in a polite region that is
+  // mounted empty BEFORE the editor opens; the node is captured first and compared after, never
+  // picked by index or by its text after the save (either would pass an in-branch placement).
+  it('save-feedback rule 3 (88.9): a username save shows Username updated under the username row in a polite status region that was mounted empty before the save, and no toast', async () => {
     const { usersAPI } = await import('@/lib/api');
     (usersAPI.updateUsername as ReturnType<typeof vi.fn>).mockResolvedValue({
       username: 'Renamed',
     });
 
     renderProfile();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit username' }));
+    const pencil = await screen.findByRole('button', { name: 'Edit username' });
+    const region = screen.getByTestId('username-receipt');
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region.textContent).toBe('');
+    fireEvent.click(pencil);
     fireEvent.change(screen.getByRole('textbox', { name: 'Username' }), {
       target: { value: 'Renamed' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() =>
-      expect(toastMock().success).toHaveBeenCalledWith('Username updated')
-    );
+    await waitFor(() => expect(screen.getByTestId('username-receipt')).toHaveTextContent('Username updated'));
+    expect(screen.getByTestId('username-receipt')).toBe(region);
+    expect(screen.getByText('Username updated').closest('[role="status"]')).toBe(region);
+    // Visible: the region drops its sr-only class once it holds text, in the matrix's success ink.
+    expect(region).not.toHaveClass('sr-only');
+    expect(region).toHaveClass('text-content-status-success');
+    expect(toastMock().success).not.toHaveBeenCalled();
+    // Cross note 4: a rule-3 receipt is spoken by its own region, never also by the root announcer.
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
+
+    // The lifetime of the toast it replaced, then gone.
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+    expect(region.textContent).toBe('');
   });
 
   it('converges the Google Calendar receipt', async () => {
@@ -1053,11 +1186,15 @@ describe('userProfile toast register (OI-5)', () => {
     renderProfile();
     fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
     const dialog = await screen.findByRole('dialog');
+    passGate();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
 
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): no success toast; the root announcer speaks it once.
     await waitFor(() =>
-      expect(toastMock().success).toHaveBeenCalledWith('Google Calendar disconnected')
+      expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Google Calendar disconnected')
     );
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toastMock().success).not.toHaveBeenCalled();
   });
 
   it('converges the pattern-deleted receipt', async () => {
@@ -1066,9 +1203,13 @@ describe('userProfile toast register (OI-5)', () => {
 
     const trigger = await screen.findByRole('button', { name: 'Delete Monday schedule' });
     fireEvent.click(trigger);
+    passGate();
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
 
-    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Pattern deleted'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): no success toast; the root announcer speaks it once.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Pattern deleted'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toastMock().success).not.toHaveBeenCalled();
   });
 
   it('gives the collection mutations a receipt in the same register', async () => {
@@ -1077,21 +1218,28 @@ describe('userProfile toast register (OI-5)', () => {
 
     renderProfile();
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Catan' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    passGate();
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
 
-    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Game removed'));
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): no success toast; the root announcer speaks it once.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Game removed'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toastMock().success).not.toHaveBeenCalled();
   });
 
   // The register is a contract, not four hand-checked strings: this reads every
   // success string the file emits and holds them ALL to §6.2, so a sixth added
   // later cannot quietly arrive in the old voice.
+  // AMENDED Phase 88.9-24 (save-feedback rules 2/3): the success strings left the toaster — six are
+  // spoken by the root announcer and Username updated is an inline receipt — so the scan reads all
+  // three call shapes. The contract and the floor of 7 are unchanged.
   it('holds every success string on this surface to the §6.2 contract', async () => {
     const source = await import('node:fs/promises').then((fs) =>
       fs.readFile('src/app/userProfile/page.js', 'utf8')
     );
-    const strings = [...source.matchAll(/toast\.success\((['"`])([^'"`]*)\1\)/g)].map(
-      (match) => match[2]
-    );
+    const strings = [
+      ...source.matchAll(/(?:toast\.success|announceStatus|showReceipt)\((['"`])([^'"`]*)\1\)/g),
+    ].map((match) => match[2]);
 
     expect(strings.length).toBeGreaterThanOrEqual(7);
     for (const value of strings) {
@@ -1353,7 +1501,9 @@ describe('userProfile type scale (Req 2)', () => {
     expect(raw.map((m) => m[0])).toEqual([]);
     // 14 -> 15 (Phase 88.6.1-79): the withdrawn identity arm's page heading, a second `level={1}`
     // TAG in source; only one of the two arms is ever mounted, so the page renders one h1.
-    expect(headingTags(source).length).toBe(15);
+    // AMENDED Phase 88.9-68 (X58, owner R2: It has no title): 15 -> 16, the search panel's title
+    // (Search BoardGameGeek, level 3 on the body rung, as the import box's title beside it).
+    expect(headingTags(source).length).toBe(16);
   });
 
   // §4.2 states 600 as a PROHIBITION, not a preference, and D-01 gives it exactly
@@ -1372,7 +1522,7 @@ describe('userProfile type scale (Req 2)', () => {
   it('keeps every heading inside the working set', async () => {
     const source = await pageSource();
     const tags = headingTags(source);
-    expect(tags.length).toBe(15);
+    expect(tags.length).toBe(16); // AMENDED Phase 88.9-68 (X58): 15 -> 16, the search panel's title
     const offenders = tags.filter((attrs) =>
       /\b(?:[a-z]+:)?text-(?:lg|2xl|4xl|5xl)\b/.test(attrs)
     );
@@ -1382,7 +1532,7 @@ describe('userProfile type scale (Req 2)', () => {
   it('gives every heading an explicit size and an explicit level', async () => {
     const source = await pageSource();
     const tags = headingTags(source);
-    expect(tags.length).toBe(15);
+    expect(tags.length).toBe(16); // AMENDED Phase 88.9-68 (X58): 15 -> 16, the search panel's title
     for (const attrs of tags) {
       // UI-SPEC §4.4: every migrated call site records its rung rather than
       // inheriting one from the level.
@@ -1401,7 +1551,8 @@ describe('userProfile type scale (Req 2)', () => {
       counts[lvl] = (counts[lvl] ?? 0) + 1;
     }
     // '1': 1 -> 2 (Phase 88.6.1-79): the withdrawn identity arm's heading; the two arms are exclusive.
-    expect(counts).toEqual({ '1': 2, '2': 7, '3': 4, '4': 2 });
+    // AMENDED Phase 88.9-68 (X58, owner R2: It has no title): '3': 4 -> 5, the search panel's title.
+    expect(counts).toEqual({ '1': 2, '2': 7, '3': 5, '4': 2 });
   });
 
   // The two h4s at 16 are the one judgement D-04's table does not make for us.
@@ -1442,7 +1593,11 @@ describe('userProfile type scale (Req 2)', () => {
   // and `gap-*` are DEAD, so carrying one is a lie about what paints.
   it('leaves no dead class on any `Button` in this file', async () => {
     const source = await pageSource();
-    const buttons = [...source.matchAll(/<Button\n((?:\s+[^\n]*\n)*?)\s*>/g)].map((m) => m[1]);
+    // 88.9-52 (CodeQL alert 6, js/redos): an attribute line is spaces or tabs, then a non-space, then
+    // the rest of the line. The earlier form let the leading run and the rest of the line both take
+    // the same spaces and newlines, which backtracks without bound on a hostile input. Same matches
+    // on this file (18 of 18, compared when this was written).
+    const buttons = [...source.matchAll(/<Button\n((?:[ \t]+\S[^\n]*\n)*?)[ \t]*>/g)].map((m) => m[1]);
     expect(buttons.length).toBeGreaterThanOrEqual(13);
     for (const attrs of buttons) {
       const cls = /className="([^"]*)"/.exec(attrs)?.[1] ?? '';
@@ -1749,9 +1904,11 @@ describe('userProfile phone block (plan 88.6-17)', () => {
 
     fireEvent.click(save);
 
-    // Settle on the POSITIVE signal — the in-flight label landing on the SAME node —
-    // rather than on an absence, which is satisfied on the first tick.
-    await waitFor(() => expect(save).toHaveTextContent('Sending code...'));
+    // Settle on the POSITIVE signal — the busy name landing on the SAME node (rule 1, 88.9-46
+    // B31: the label is kept, the suffix is heard) — rather than on an absence, which is
+    // satisfied on the first tick.
+    await waitFor(() => expect(save).toHaveAccessibleName('Save & Verify, sending code'));
+    expect(save).toHaveTextContent(/^Save & Verify/);
     expect(save.isConnected).toBe(true);
     expect(document.activeElement).toBe(save);
     expect(save).toHaveAttribute('aria-disabled', 'true');
@@ -1759,6 +1916,73 @@ describe('userProfile phone block (plan 88.6-17)', () => {
 
     release({});
     await screen.findByRole('textbox', { name: 'Verification code' });
+  });
+
+  // Rule 1 (88.9-46 B31-B33, owner pick O16a + the Q3 ruling): each pressed control keeps its
+  // resting label, shows the one house spinner (data-slot spinner, plan 88.9-24), is named label
+  // plus its heard suffix, stays focused and refuses a second press through its own latch.
+  it('rule 1 (88.9): Save & Verify, Verify and Replay Tutorial keep their labels and show the spinner while busy (B31-B33)', async () => {
+    const { usersAPI } = await import('@/lib/api');
+
+    // B31 — Save & Verify, held.
+    let releaseSave: (value?: unknown) => void = () => {};
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { releaseSave = resolve; })
+    );
+    await reachEditing();
+    const save = screen.getByRole('button', { name: 'Save & Verify' });
+    save.focus();
+    fireEvent.click(save);
+    await waitFor(() => expect(save).toHaveAccessibleName('Save & Verify, sending code'));
+    expect(save).toHaveTextContent(/^Save & Verify/);
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).not.toBeDisabled();
+    expect(document.activeElement).toBe(save);
+    fireEvent.click(save);
+    expect(usersAPI.savePhone).toHaveBeenCalledTimes(1);
+    releaseSave({});
+    await screen.findByRole('textbox', { name: 'Verification code' });
+    cleanup();
+
+    // B32 — Verify, held (copy row P1's word is now the heard suffix).
+    let releaseVerify: (value?: unknown) => void = () => {};
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { releaseVerify = resolve; })
+    );
+    const verify = await reachArmedVerify();
+    verify.focus();
+    fireEvent.click(verify);
+    await waitFor(() => expect(verify).toHaveAccessibleName('Verify, verifying'));
+    expect(verify).toHaveTextContent(/^Verify/);
+    await waitFor(() => expect(verify.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(verify).toHaveAttribute('aria-disabled', 'true');
+    expect(verify).not.toBeDisabled();
+    expect(document.activeElement).toBe(verify);
+    fireEvent.click(verify);
+    expect(usersAPI.verifyPhone).toHaveBeenCalledTimes(1);
+    await act(async () => { releaseVerify({ verified: true }); });
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    cleanup();
+
+    // B33 — Replay Tutorial, held.
+    let releaseReset: (value?: unknown) => void = () => {};
+    (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { releaseReset = resolve; })
+    );
+    renderProfile();
+    const replay = await screen.findByRole('button', { name: 'Replay Tutorial' });
+    replay.focus();
+    fireEvent.click(replay);
+    await waitFor(() => expect(replay).toHaveAccessibleName('Replay Tutorial, starting'));
+    expect(replay).toHaveTextContent(/^Replay Tutorial/);
+    await waitFor(() => expect(replay.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(replay).toHaveAttribute('aria-disabled', 'true');
+    expect(replay).not.toBeDisabled();
+    expect(document.activeElement).toBe(replay);
+    fireEvent.click(replay);
+    expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(1);
+    await act(async () => { releaseReset({ tutorial_version: 0 }); });
   });
 
   // The other half of the same pair. An `aria-disabled` control with no handler refusal is
@@ -1889,14 +2113,22 @@ describe('userProfile phone block (plan 88.6-17)', () => {
       const classes = el.className.split(/\s+/);
       expect(classes).toContain('min-h-11');
       expect(classes, 'these are floored IN PLACE, not migrated').not.toContain('btn');
+      expect(classes).toContain('focus-visible:ring-2');
       expect(classes).toContain('focus-visible:ring-focus-ring');
-      expect(classes).toContain('focus-visible:ring-offset-2');
     }
+    // AMENDED Phase 88.9-52 (W38 completion): Change number keeps its card-ground ring offset; Remove
+    // now wears the schedule Delete's look, whose ring has none (the exact set is pinned in the
+    // 88.9-52 W38 phone Remove test below).
+    expect(change.className.split(/\s+/)).toContain('focus-visible:ring-offset-2');
+    expect(remove.className.split(/\s+/)).not.toContain('focus-visible:ring-offset-2');
     expect(remove.className).toMatch(/\btext-content-status-error\b/);
 
+    // AMENDED Phase 88.9-68 (X36b): the arm is the shared gated two-tap, so the armed state is read
+    // on the same node by aria-pressed and the 600 cue, not by a label that now counts down first.
+    expect(remove.className).not.toMatch(/\bfont-semibold\b/);
     fireEvent.click(remove);
-    const armed = screen.getByRole('button', { name: 'Tap again to remove' });
-    expect(armed.className).toMatch(/\bfont-semibold\b/);
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(remove.className).toMatch(/\bfont-semibold\b/);
     expect(usersAPI.removePhone).not.toHaveBeenCalled();
   });
 
@@ -1907,18 +2139,26 @@ describe('userProfile phone block (plan 88.6-17)', () => {
       phone: null,
       notification_preferences: DEFAULT_PREFS,
     });
-    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+    // AMENDED Phase 88.9-68 (X36b): the commit is two LIVE taps, so this test runs on the gate
+    // clock and steps past the wait between them.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+      passGate();
+      fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
 
-    const dismiss = await screen.findByRole('button', { name: 'Dismiss' });
-    const classes = dismiss.className.split(/\s+/);
-    expect(classes).toContain('min-h-11');
-    expect(classes).toContain('min-w-11');
-    expect(classes).toContain('focus-visible:ring-focus-ring');
-    // §4.3: a glyph-only control is ICON sizing, never a type rung — byte-unchanged.
-    expect(classes).toContain('text-lg');
+      const dismiss = await screen.findByRole('button', { name: 'Dismiss' });
+      const classes = dismiss.className.split(/\s+/);
+      expect(classes).toContain('min-h-11');
+      expect(classes).toContain('min-w-11');
+      expect(classes).toContain('focus-visible:ring-focus-ring');
+      // §4.3: a glyph-only control is ICON sizing, never a type rung — byte-unchanged.
+      expect(classes).toContain('text-lg');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -1933,8 +2173,11 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     expect(css).toMatch(/@layer components\s*\{\s*\.btn\s*\{\s*border:\s*none;\s*\}\s*\}/);
   });
 
-  // D-11 outcome (a). The fill is byte-unchanged (P6) and the border survives (W19).
-  it('renders both theme toggles as `Button` with their fills, borders and pressed state intact', async () => {
+  // D-11 outcome (a). The border survives (W19).
+  // AMENDED Phase 88.9-32 (owner pick E4a): was 'renders both theme toggles as Button with their fills,
+  // borders and pressed state intact'. The raw-fill asserts (amber-50 / amber-500, the dark arm's source
+  // string, the amber hover pin) left with the raw fills; the pressed token arm is pinned by the E4a test below.
+  it('renders both theme toggles as `Button` with their borders and pressed state intact', async () => {
     renderProfile();
     const light = await screen.findByRole('button', { name: 'Light' });
     const dark = screen.getByRole('button', { name: 'Dark' });
@@ -1945,22 +2188,16 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     expect(light).toHaveAttribute('aria-pressed', 'true');
     expect(dark).toHaveAttribute('aria-pressed', 'false');
 
-    // P6: the fill and the amber border are byte-unchanged.
-    expect(lightClasses).toContain('bg-amber-50');
-    expect(lightClasses).toContain('border-amber-500');
     expect(lightClasses).toContain('border');
     // `resolvedTheme` is mocked 'light', so Dark renders its UNSELECTED arm here.
     expect(dark.className.split(/\s+/)).toContain('bg-surface-card');
     expect(dark.className.split(/\s+/)).toContain('border-line');
-    // The selected DARK arm is unreachable under this mock, so its fill and its hover pin
-    // are held at the source rather than left unasserted.
-    const source = await pageSource();
-    expect(source).toContain("'border-amber-500 bg-purple-900 enabled-hover:bg-purple-900 text-white'");
 
     // The selected fill is PINNED through hover: ghost's base carries
-    // `enabled-hover:bg-surface-hover`, which would otherwise wash the amber on hover.
-    expect(lightClasses).toContain('enabled-hover:bg-amber-50');
+    // `enabled-hover:bg-surface-ghost-hover` (R8c, 88.9-52; it was `enabled-hover:bg-surface-hover`),
+    // which would otherwise wash the pressed fill on hover. Neither wash is on the pressed arm.
     expect(lightClasses).not.toContain('enabled-hover:bg-surface-hover');
+    expect(lightClasses).not.toContain('enabled-hover:bg-surface-ghost-hover');
 
     // The dead classes went with the migration.
     for (const dead of ['px-4', 'py-2', 'rounded-lg', 'font-semibold', 'gap-2']) {
@@ -1977,17 +2214,139 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     ).toBeInTheDocument();
   });
 
-  // T-88.6-138: once the current-page span drops to 400, colour is the only remaining
-  // VISUAL cue, so the state is exposed programmatically as well.
-  it('exposes the breadcrumb current page programmatically, at 400', async () => {
+  // T-88.6-138: the state is exposed programmatically as well as visually.
+  // AMENDED Phase 88.9-32 (owner pick C4a): was 'exposes the breadcrumb current page programmatically,
+  // at 400'; the weight now reads 700 and is pinned by the C4a test below, so only the 400 assert left.
+  it('exposes the breadcrumb current page programmatically', async () => {
     renderProfile();
     const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
     const current = within(nav).getByText('Profile');
     expect(current).toHaveAttribute('aria-current', 'page');
     const classes = current.className.split(/\s+/);
-    expect(classes).toContain('font-normal');
     expect(classes).not.toContain('font-semibold');
     expect(classes).toContain('text-content-primary');
+  });
+
+  // C4a (owner pick, 88.9-PICKS-B2.json, 2026-11-05; UI-SPEC R2-19): all five breadcrumb current
+  // crumbs read 700; the Profile one was the last at 400.
+  it('C4a (88.9): the Profile crumb reads 700', async () => {
+    renderProfile();
+    const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    const current = within(nav).getByText('Profile');
+    expect(current).toHaveAttribute('aria-current', 'page');
+    const classes = current.className.split(/\s+/);
+    expect(classes).toContain('font-bold');
+    expect(classes).toContain('text-content-primary');
+    expect(classes).not.toContain('font-normal');
+    expect(classes).not.toContain('font-semibold');
+  });
+
+  // E3a (owner pick, 88.9-PICKS-B4.json, 2026-11-06; UI-SPEC R2-24): the owned-game card is not a
+  // control, so it carries no hover lift; its border and padding are unchanged.
+  it('E3a (88.9): an owned-game card carries no hover shadow', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    const owned = userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>;
+    owned.mockResolvedValue(OWNED_GAMES);
+    try {
+      renderProfile();
+      const heading = await screen.findByRole('heading', { level: 3, name: 'Catan' });
+      const grid = heading.closest('.grid');
+      expect(grid).not.toBeNull();
+      const card = Array.from((grid as HTMLElement).children).find((c) => c.contains(heading)) as HTMLElement;
+      expect(card).toBeTruthy();
+      const classes = card.className.split(/\s+/);
+      expect(classes.filter((c) => c.startsWith('hover:shadow-'))).toEqual([]);
+      expect(classes).not.toContain('transition-shadow');
+      for (const kept of ['border', 'border-line', 'rounded-lg', 'p-4']) expect(classes).toContain(kept);
+    } finally {
+      owned.mockReset().mockResolvedValue([]);
+    }
+  });
+
+  // E4a (owner pick, 88.9-PICKS-B4.json, 2026-11-06; UI-SPEC R2-44 + R2-87) and MED-74
+  // (88.9-RULINGS.md R-P3a, 2026-11-08): the pressed arm is ONE token string for both toggles, and
+  // the pressed button leads with the aria-hidden check glyph so the state is not colour alone.
+  it('E4a (88.9): pressed = border-line-accent bg-surface-muted text-content-accent', async () => {
+    renderProfile();
+    const light = await screen.findByRole('button', { name: 'Light' });
+    const dark = screen.getByRole('button', { name: 'Dark' });
+    expect(light).toHaveAttribute('aria-pressed', 'true');
+    expect(dark).toHaveAttribute('aria-pressed', 'false');
+
+    const lightClasses = light.className.split(/\s+/);
+    for (const cls of ['border-line-accent', 'bg-surface-muted', 'enabled-hover:bg-surface-muted', 'text-content-accent']) {
+      expect(lightClasses).toContain(cls);
+    }
+    for (const gone of ['bg-amber-50', 'border-amber-500', 'enabled-hover:bg-surface-hover']) {
+      expect(lightClasses).not.toContain(gone);
+    }
+    // `resolvedTheme` is mocked 'light', so Dark renders its UNSELECTED arm.
+    const darkClasses = dark.className.split(/\s+/);
+    expect(darkClasses).toContain('border-line');
+    expect(darkClasses).toContain('bg-surface-card');
+    // R8c (88.9-52, owner pick Fill, 2026-11-17): the unpressed arm hovers on the ghost family's
+    // visible fill. The arm restates the hover after its own card fill, so it has to name the
+    // ghost key itself; the old shared wash left here would win over the variant's and keep the
+    // near-invisible light hover (1.06 off the card) on these two buttons only.
+    expect(darkClasses).toContain('enabled-hover:bg-surface-ghost-hover');
+    expect(darkClasses).not.toContain('enabled-hover:bg-surface-hover');
+    expect(lightClasses).not.toContain('enabled-hover:bg-surface-ghost-hover');
+
+    // The pressed Dark arm is unreachable under this mock, so the ONE constant is held at the source.
+    const source = await pageSource();
+    expect(source.split("const THEME_TOGGLE_PRESSED = 'border-line-accent bg-surface-muted enabled-hover:bg-surface-muted text-content-accent';").length - 1).toBe(1);
+    expect(source.split('? THEME_TOGGLE_PRESSED').length - 1).toBe(2);
+    // Both unpressed arms (the Light one is unreachable under this mock) are the same string.
+    expect(source.split(": 'border-line bg-surface-card enabled-hover:bg-surface-ghost-hover text-content-secondary'").length - 1).toBe(2);
+    expect(source).not.toContain("bg-surface-card enabled-hover:bg-surface-hover");
+    expect(source).not.toContain('bg-purple-900 enabled-hover:bg-purple-900');
+    expect(source).not.toContain("'border-amber-500");
+
+    // MED-74: the glyph leads the pressed button (the M5a shape).
+    // AMENDED Phase 88.9-68 (X57, owner at N48: adding the checkmark makes the text move a little):
+    // BOTH buttons lead with the aria-hidden glyph, and the unpressed one's is invisible, so its
+    // space is held in both states and neither label moves at a switch.
+    const first = light.firstElementChild as HTMLElement | null;
+    expect(first?.tagName).toBe('SPAN');
+    expect(first).toHaveAttribute('aria-hidden', 'true');
+    expect(first?.textContent).toBe('\u2713');
+    expect(first?.className.split(/\s+/) ?? []).not.toContain('invisible');
+    const unpressedFirst = dark.firstElementChild as HTMLElement | null;
+    expect(unpressedFirst?.tagName).toBe('SPAN');
+    expect(unpressedFirst).toHaveAttribute('aria-hidden', 'true');
+    expect(unpressedFirst?.textContent).toBe('\u2713');
+    expect(unpressedFirst?.className.split(/\s+/) ?? []).toContain('invisible');
+    // The glyph is outside the accessible name, which is still exactly the label, on both.
+    expect(screen.getByRole('button', { name: 'Light' })).toBe(light);
+    expect(screen.getByRole('button', { name: 'Dark' })).toBe(dark);
+    // One shared width floor, so the pair does not shift when the glyph moves.
+    expect(lightClasses).toContain('min-w-32');
+    expect(darkClasses).toContain('min-w-32');
+  });
+
+  // 88.9-68 (X55, owner at N37: a small "remind me" text next to a large drop down menu). The
+  // select cannot shrink (16px so iOS does not zoom, 44px on phones, DECISION Phase 88-03), so the
+  // label rises to the form-label rung: Label 14 in primary ink.
+  it("X55 (88.9-68): Remind me: is a 14px label in primary ink, and the select keeps the primitive's size with w-auto its only override", async () => {
+    renderProfile();
+    const select = await screen.findByRole('combobox', { name: 'Remind me' });
+    const row = select.parentElement as HTMLElement;
+    const label = within(row).getByText('Remind me:');
+    const labelClasses = label.className.split(/\s+/);
+    expect(labelClasses).toContain('text-sm');
+    expect(labelClasses).toContain('text-content-primary');
+    expect(labelClasses).not.toContain('text-xs');
+    expect(labelClasses).not.toContain('text-content-muted');
+    expect(row.className.split(/\s+/)).toContain('items-center');
+
+    // The select: the primitive's 16px and its 44px phone floor, with w-auto the one override.
+    const selectClasses = select.className.split(/\s+/);
+    expect(selectClasses).toContain('text-base');
+    expect(selectClasses).toContain('max-md:min-h-11');
+    expect(selectClasses).toContain('w-auto');
+    expect(selectClasses.filter((c) => /^text-(xs|sm|lg|xl)$/.test(c))).toEqual([]);
+    const source = await pageSource();
+    expect(source).toMatch(/<SelectControl\s+id="reminder-window"[\s\S]{0,400}?className="w-auto"\s*>/);
   });
 
   // D-01 / T-88.6-42: legal text is never caption-sized.
@@ -2051,21 +2410,41 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
 
   // D-03's floor for this file, held as an ENUMERATION rather than a count: the five 600s that
   // survive are named, so a sixth is a decision and not a rebase.
-  it('leaves exactly five 600 weights, all of them armed-state or the armed-label sizer', async () => {
+  // AMENDED Phase 88.9-67 (X69 width): the fifth 600 is no longer a sizer span's className; it is
+  // the collection x's reserveClassName on ReservedLabel, the same measurement in the shared reserve.
+  // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): FOUR. The collection x's sizer and its armed box
+  // are gone with the x; the worded Remove that replaced it is one armed site, like the others.
+  it('leaves exactly four 600 weights, all of them armed-state (five until the collection x and its sizer went, R4 D4)', async () => {
     const source = await pageSource();
     const stripped = source
       .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
       .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
     const sites = [...stripped.matchAll(/\bfont-(?:medium|semibold)\b/g)];
-    expect(sites).toHaveLength(5);
+    expect(sites).toHaveLength(4);
     expect(sites.every((m) => m[0] === 'font-semibold')).toBe(true);
 
     // Each survivor sits within reach of the thing that justifies it.
-    const windows = sites.map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60));
-    const armed = windows.filter((w) => /isArmed|removeArmed/.test(w));
-    const sizer = windows.filter((w) => /aria-hidden="true"[^>]*invisible/.test(w));
-    expect(armed.length + sizer.length).toBe(5);
-    expect(sizer).toHaveLength(1);
+    // AMENDED Phase 88.9-68 (X53, X36b): the sizer is the site whose 600 opens a reserveClassName
+    // (the slot's reserve now WRAPS the x, so a window around the x's armed 600 also reaches back to
+    // that tag); the other four are armed sites, and all four name a gate's isArmed call (the phone
+    // Remove's hand-rolled flag is gone).
+    const SIZER_OPEN = 'reserveClassName="';
+    const isSizer = (m: RegExpMatchArray) => stripped.slice(m.index! - SIZER_OPEN.length, m.index!) === SIZER_OPEN;
+    const sizer = sites.filter(isSizer);
+    // AMENDED Phase 88.9-52 (PIX-1 / A-49): the collection x lives in the memoised CollectionCard, which
+    // cannot take the gate (the gate object is new on every countdown tick), so its armed 600 hangs on the
+    // card's own armed value, and that value has ONE writer, the gate's isArmed call in the page's map.
+    const windows = sites
+      .filter((m) => !isSizer(m))
+      .map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60));
+    const armed = windows.filter((w) => /\.isArmed\(/.test(w));
+    const cardArmed = windows.filter((w) => !/\.isArmed\(/.test(w) && /\barmed \? ' font-semibold' : ''/.test(w));
+    expect(sizer).toHaveLength(0);
+    expect(armed).toHaveLength(3);
+    expect(cardArmed).toHaveLength(1);
+    expect(stripped.match(/\barmed=\{/g)).toEqual(['armed={']);
+    expect(stripped).toContain('armed={removeGameGate.isArmed(game.id)}');
+    expect(stripped).not.toMatch(/removeArmed/);
   });
 
   // P1 / 88-UI-SPEC §6.2 OI-5 / D-12: the existing toasts are OUT OF CONTRACT by decision and
@@ -2084,25 +2463,23 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
       'Please enter a username',
       'Username must be 50 characters or less',
       'Still loading your account — please try again in a moment.',
-      'Username updated',
+      // AMENDED Phase 88.9-24 (save-feedback rules 2/3): the seven success strings left the toaster
+      // (Username updated is an inline receipt; the other six are spoken by the root announcer).
+      // Every error string and the neutral No games found line stay, in order.
+      // AMENDED Phase 88.9-68 (X58, owner R2: Line under the box.): the No games found sentence left
+      // the toaster too; it is a visible polite line under the search box now, pinned by the X58 test
+      // at the end of this file. Every error string stays, in order.
       "We couldn't connect Google Calendar. Please try again.",
-      'Google Calendar disconnected',
       'Still loading your account — please try again in a moment.',
-      'No games found. Try a different search term.',
       'Still loading your account — please try again in a moment.',
-      'Game added',
       'Still loading your account — please try again in a moment.',
-      'Game removed',
       // 88.6.1-61 (review 65): the two availability create guards reuse the page's existing
       // still-loading sentence instead of returning without a word — no new string.
       'Still loading your account — please try again in a moment.',
       'Please select at least one day.',
       'Start time must be before end time.',
-      'Schedules created',
       'Still loading your account — please try again in a moment.',
       'Start time must be before end time.',
-      'Override created',
-      'Pattern deleted',
       'Please enter your BGG username',
       'Still loading your account — please try again in a moment.',
     ]);
@@ -2218,13 +2595,15 @@ describe('phone verification — wrong code shows error, never verifies (H1)', (
 // Plan 88.6.1-18 — the pressed Verify (W066 / WR-505, D-35) and focus after success (Req 5)
 // ===========================================================================
 // Rule of POSITION: while a check is in flight the pressed Verify is aria-disabled (never
-// natively disabled), reads copy row P1, and a synchronous ref latch refuses a second press.
+// natively disabled), keeps its label with copy row P1's word heard as the busy suffix (rule 1,
+// 88.9-46 B32), and a synchronous ref latch refuses a second press.
 // jsdom never blurs a disabled element (C-11), so the RED half of each in-flight pin is the
 // attributes and the request count; the focus lines are confirm-only here and proven in the
 // phone e2e spec (e2e/profile-pressed-controls.spec.ts).
 describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
   const WRONG_CODE_LINE = "That code didn't match. Check it and try again.";
-  const P1 = 'Verifying...';
+  // Rule 1 (88.9-46 B32): copy row P1's word is heard as the busy suffix; the label stays Verify.
+  const BUSY_VERIFY = 'Verify, verifying';
 
   // Each case sets its own verifyPhone implementation; restore the default afterwards so a
   // held or failing implementation never leaks into a later suite (clearAllMocks keeps impls).
@@ -2233,7 +2612,7 @@ describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
     (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
   });
 
-  it('V1: the pressed Verify reads Verifying..., is aria-disabled (not native) and stays mounted while the check runs', async () => {
+  it('V1: the pressed Verify keeps its label (rule 1), is aria-disabled (not native) and stays mounted while the check runs', async () => {
     const { usersAPI } = await import('@/lib/api');
     let release: (value?: unknown) => void = () => {};
     (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockImplementation(
@@ -2245,7 +2624,8 @@ describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
     fireEvent.click(verify);
 
     // POSITIVE settle on the SAME node.
-    await waitFor(() => expect(verify).toHaveTextContent(P1));
+    await waitFor(() => expect(verify).toHaveAccessibleName(BUSY_VERIFY));
+    expect(verify).toHaveTextContent(/^Verify/);
     expect(verify).toHaveAttribute('aria-disabled', 'true');
     expect(verify).not.toBeDisabled();
     expect(verify.isConnected).toBe(true);
@@ -2274,11 +2654,11 @@ describe('phone Verify in flight (88.6.1-18: W066, D-35, Req 5)', () => {
     fireEvent.click(verify);
     fireEvent.click(verify);
 
-    await waitFor(() => expect(verify).toHaveTextContent(P1));
+    await waitFor(() => expect(verify).toHaveAccessibleName(BUSY_VERIFY));
     expect(usersAPI.verifyPhone).toHaveBeenCalledTimes(1);
     // Still in flight after the second and third press, until the FIRST check settles.
     expect(verify).toHaveAttribute('aria-disabled', 'true');
-    expect(verify).toHaveTextContent(P1);
+    expect(verify).toHaveAccessibleName(BUSY_VERIFY);
 
     await act(async () => { releaseFirst({ verified: true }); });
     // POSITIVE settle first, then the absence (CF-26).
@@ -2355,7 +2735,7 @@ describe('Replay Tutorial in flight (88.6.1-18: W016, D-35)', () => {
     (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockResolvedValue({});
   });
 
-  it('R1: the pressed Replay reads Starting..., is aria-disabled (not native), and three presses send ONE reset', async () => {
+  it('R1: the pressed Replay keeps its label (rule 1), is aria-disabled (not native), and three presses send ONE reset', async () => {
     const { usersAPI } = await import('@/lib/api');
     let release: (value?: unknown) => void = () => {};
     (usersAPI.resetTutorial as ReturnType<typeof vi.fn>).mockImplementation(
@@ -2367,14 +2747,15 @@ describe('Replay Tutorial in flight (88.6.1-18: W016, D-35)', () => {
     replay.focus();
     fireEvent.click(replay);
 
-    await waitFor(() => expect(replay).toHaveTextContent('Starting...'));
+    await waitFor(() => expect(replay).toHaveAccessibleName('Replay Tutorial, starting'));
+    expect(replay).toHaveTextContent(/^Replay Tutorial/);
     expect(replay).toHaveAttribute('aria-disabled', 'true');
     expect(replay).not.toBeDisabled();
 
     fireEvent.click(replay);
     fireEvent.click(replay);
     expect(usersAPI.resetTutorial).toHaveBeenCalledTimes(1);
-    expect(replay).toHaveTextContent('Starting...');
+    expect(replay).toHaveAccessibleName('Replay Tutorial, starting');
     expect(replay).toHaveAttribute('aria-disabled', 'true');
     // CONFIRM-ONLY in jsdom (jsdom never blurs a disabled element, C-11); the real-browser
     // proof is the phone e2e spec.
@@ -2720,6 +3101,10 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
   const REMOVE_FAILED = "We couldn't remove your number. Please try again.";
   const REMOVED_USER = { sms_enabled: true, phone: null, phone_verified: false, notification_preferences: DEFAULT_PREFS };
 
+  // AMENDED Phase 88.9-68 (X36b): the phone Remove is the shared gated two-tap, so every commit in
+  // this describe is two LIVE taps with the wait stepped past between them (passGate).
+  installGateClock();
+
   function deferred<T = unknown>() {
     let resolve: (value: T) => void = () => {};
     const promise = new Promise<T>((r) => { resolve = r; });
@@ -2820,17 +3205,21 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     const remove = await screen.findByRole('button', { name: 'Remove' });
     fireEvent.click(remove);
-    // The SAME node is now armed.
-    expect(remove).toHaveTextContent('Tap again to remove');
+    // The SAME node is now armed, and live once the wait has passed.
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    passGate();
+    expect(remove).toHaveTextContent(/^Tap again$/);
     fireEvent.click(remove);
-    // POSITIVE settle on the same node.
-    await waitFor(() => expect(remove).toHaveAttribute('aria-disabled', 'true'));
+    // POSITIVE settle on the same node: the removal is running (no longer armed).
+    await waitFor(() => expect(remove).not.toHaveAttribute('aria-pressed'));
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(remove);
     fireEvent.click(remove);
 
     expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
     expect(remove).toHaveTextContent('Remove');
-    expect(remove).not.toHaveTextContent('Tap again to remove');
+    expect(remove).not.toHaveTextContent('Tap again');
+    expect(remove).not.toHaveAttribute('aria-pressed');
     expect(remove).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => { removal.resolve(REMOVED_USER); });
@@ -2847,6 +3236,7 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     const remove = await screen.findByRole('button', { name: 'Remove' });
     await user.click(remove);
+    passGate();
     await user.click(remove);
     // CONFIRM-ONLY in jsdom (C-11): the held removal leaves the pressed control focused. The R5
     // ordering is proven in the phone e2e spec in a real browser.
@@ -2867,12 +3257,14 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     const remove = await screen.findByRole('button', { name: 'Remove' });
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     await screen.findByText(REMOVE_FAILED);
     expect(loggerMock().info).toHaveBeenCalledWith('Error removing phone:', expect.any(Object));
-    expect(remove).not.toHaveAttribute('aria-disabled');
+    await waitFor(() => expect(remove).not.toHaveAttribute('aria-disabled'));
 
     fireEvent.click(remove);
+    passGate();
     fireEvent.click(remove);
     expect(usersAPI.removePhone).toHaveBeenCalledTimes(2);
     await screen.findByText(BANNER);
@@ -2886,6 +3278,7 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
     const remove = await screen.findByRole('button', { name: 'Remove' });
     await user.click(remove);
+    passGate();
     await user.click(remove);
     await screen.findByText(BANNER);
 
@@ -2895,6 +3288,48 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
     );
     expect(document.activeElement).not.toBe(document.body);
     expect(screen.queryByText(BANNER)).toBeNull();
+  });
+
+  // R065 / B3a (owner pick, 88.9-PICKS-B1.json, 2026-11-04; UI-SPEC R2-69): the SMS-disabled box is the
+  // OPAQUE status-warning family, and its Dismiss halo is that same declared key with no dark variant
+  // (ring vs halo 6.65 / 6.37, band 1.00 in both themes). Only classes move; the R4 flow above is reused.
+  it('R065 halo (88.9): the SMS-disabled box and its Dismiss sit on the status-warning family, halo the same token', async () => {
+    const user = userEvent.setup();
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockResolvedValue(REMOVED_USER);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    await user.click(remove);
+    passGate();
+    await user.click(remove);
+    const sentence = await screen.findByText(BANNER);
+    const box = sentence.parentElement as HTMLElement;
+
+    const boxClasses = box.className.split(/\s+/);
+    for (const cls of ['bg-status-warning-subtle', 'border', 'border-status-warning']) expect(boxClasses).toContain(cls);
+    expect(boxClasses.filter((c) => c.includes('amber'))).toEqual([]);
+
+    const sentenceClasses = sentence.className.split(/\s+/);
+    expect(sentenceClasses).toContain('text-sm');
+    expect(sentenceClasses).toContain('text-content-status-warning');
+    expect(sentenceClasses.filter((c) => c.includes('amber'))).toEqual([]);
+
+    const dismissClasses = screen.getByRole('button', { name: 'Dismiss' }).className.split(/\s+/);
+    for (const cls of [
+      'text-content-status-warning',
+      'focus-visible:ring-2',
+      'focus-visible:ring-focus-ring',
+      'focus-visible:ring-offset-2',
+      'focus-visible:ring-offset-status-warning-subtle',
+      'min-h-11',
+      'min-w-11',
+      '-m-2',
+    ]) {
+      expect(dismissClasses).toContain(cls);
+    }
+    expect(dismissClasses.filter((c) => c.startsWith('dark:focus-visible:ring-offset-'))).toEqual([]);
+    expect(dismissClasses.filter((c) => c.includes('amber'))).toEqual([]);
   });
 
   it('F1: the format hint is one always-mounted polite region, empty and visually hidden until an error, and the same node after', async () => {
@@ -2941,7 +3376,7 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
 
 // ---------------------------------------------------------------------------
 // 88.6.1-59 Task 1 (D-35, Req 4, Req 5; D-44, Req 6): Save Schedule and Save Override are
-// PRESSED controls. While a save runs each keeps its node, reads Saving..., carries
+// PRESSED controls. While a save runs each keeps its node and its label (88.9-24 rule 1), carries
 // aria-disabled (never native disabled) and refuses every further press through one shared
 // first-line latch; a success closes the form and focus lands on the form's own toggle. The two
 // toggles are disclosures: aria-expanded always, aria-controls only while the form exists.
@@ -2968,7 +3403,8 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     (availabilityAPI.createOverride as Mock).mockResolvedValue({});
   });
 
-  it('S1: Save Schedule keeps its node, reads Saving... under aria-disabled, and three presses send one request', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 1): the label no longer swaps to the in-flight word.
+  it('S1 rule 1 (88.9): Save Schedule keeps its label and shows the spinner while saving, under aria-disabled, and three presses send one request', async () => {
     const { availabilityAPI } = await import('@/lib/api');
     const pending = deferred();
     (availabilityAPI.createRecurringPattern as Mock).mockReturnValue(pending.promise);
@@ -2983,18 +3419,21 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
     expect(save).not.toBeDisabled();
     expect(save.isConnected).toBe(true);
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save Schedule');
+    expect(save).toHaveAccessibleName('Save Schedule, saving');
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
 
     fireEvent.click(save);
     fireEvent.click(save);
     expect(availabilityAPI.createRecurringPattern).toHaveBeenCalledTimes(1);
     expect(save).toHaveAttribute('aria-disabled', 'true');
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save Schedule');
 
     await act(async () => { pending.resolve({}); });
   });
 
-  it('S2: Save Override keeps its node, reads Saving... under aria-disabled, and three presses send one request', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 1): the label no longer swaps to the in-flight word.
+  it('S2 rule 1 (88.9): Save Override keeps its label and shows the spinner while saving, under aria-disabled, and three presses send one request', async () => {
     const user = userEvent.setup();
     const { availabilityAPI } = await import('@/lib/api');
     const pending = deferred();
@@ -3009,13 +3448,15 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
     expect(save).not.toBeDisabled();
     expect(save.isConnected).toBe(true);
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save Override');
+    expect(save).toHaveAccessibleName('Save Override, saving');
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
 
     fireEvent.click(save);
     fireEvent.click(save);
     expect(availabilityAPI.createOverride).toHaveBeenCalledTimes(1);
     expect(save).toHaveAttribute('aria-disabled', 'true');
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save Override');
 
     await act(async () => { pending.resolve({}); });
   });
@@ -3150,6 +3591,8 @@ describe('availability Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
 // when nothing is retained, or on an access answer); focus never falls to the body when a row,
 // the notice or the rows leave; a row Delete lands on the panel's toggle.
 describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 5)', () => {
+  installGateClock();
+
   type Mock = ReturnType<typeof vi.fn>;
   // Copy row RF1 (D-47), written ONCE here (contract C7). The notice renders it twice while it
   // shows (the visible line and its polite region), so every query is an All query. A notice
@@ -3342,7 +3785,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
       h.patternsError = error;
       renderProfile();
       await screen.findByText("Couldn't load your schedules");
-      expect(screen.getByText(getFetchErrorMessage(error))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(error)))).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Delete Monday schedule' })).toBeNull();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       cleanup();
@@ -3534,6 +3977,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
 
     const del = await screen.findByRole('button', { name: 'Delete Monday schedule' });
     await user.click(del);
+    passGate();
     await user.click(del);
     // CONFIRM-ONLY in jsdom (C-11): the committed Delete still holds focus while it is held.
     await waitFor(() => expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon'));
@@ -3563,6 +4007,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
     // iOS Safari does not focus a tapped button: nothing is focused for either tap.
     (document.activeElement as HTMLElement | null)?.blur();
     fireEvent.click(del);
+    passGate();
     fireEvent.click(del);
     expect(document.activeElement).toBe(document.body);
     await waitFor(() => expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon'));
@@ -3586,6 +4031,7 @@ describe('availability lists after a write (88.6.1-59: Req 11, AC-29 / RF1, Req 
 
     const del = await screen.findByRole('button', { name: /^Delete .+ override$/ });
     await user.click(del);
+    passGate();
     await user.click(del);
 
     await waitFor(() =>
@@ -3620,7 +4066,8 @@ describe('username Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
     (usersAPI.updateUsername as Mock).mockResolvedValue({ username: 'Self' });
   });
 
-  it('U1: Save keeps its node, reads Saving... under aria-disabled, Cancel stays native, three presses send one request', async () => {
+  // AMENDED Phase 88.9-24 (save-feedback rule 1): the label no longer swaps to the in-flight word.
+  it('U1 rule 1 (88.9): Save keeps its label and shows the spinner while saving, under aria-disabled, Cancel stays native, three presses send one request', async () => {
     const { usersAPI } = await import('@/lib/api');
     const pending = deferred();
     (usersAPI.updateUsername as Mock).mockReturnValue(pending.promise);
@@ -3633,14 +4080,16 @@ describe('username Save in flight (88.6.1-59: D-35, Req 4, Req 5)', () => {
 
     await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
     expect(save).not.toBeDisabled();
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save');
+    expect(save).toHaveAccessibleName('Save, saving');
+    await waitFor(() => expect(save.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(cancel).toBeDisabled();
 
     fireEvent.click(save);
     fireEvent.click(save);
     expect(usersAPI.updateUsername).toHaveBeenCalledTimes(1);
     expect(save).toHaveAttribute('aria-disabled', 'true');
-    expect(save.textContent).toBe('Saving...');
+    expect(save.firstChild?.textContent).toBe('Save');
 
     await act(async () => { pending.resolve({ username: 'Self' }); });
   });
@@ -3737,7 +4186,7 @@ describe('BGG import in flight (88.6.1-60: D-35, Req 4, Req 5)', () => {
     (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
   });
 
-  it('I1: Import Collection keeps its node, reads Importing... under aria-disabled, and three presses neither reopen the dialog nor send a second import', async () => {
+  it('I1: Import Collection keeps its node and its label (rule 1) under aria-disabled, and three presses neither reopen the dialog nor send a second import', async () => {
     const { userGamesAPI } = await import('@/lib/api');
     const pending = deferred();
     (userGamesAPI.importBGGCollection as Mock).mockReturnValue(pending.promise);
@@ -3754,7 +4203,8 @@ describe('BGG import in flight (88.6.1-60: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(importBtn).toHaveAttribute('aria-disabled', 'true'));
     expect(importBtn).not.toBeDisabled();
     expect(importBtn.isConnected).toBe(true);
-    expect(importBtn.textContent).toBe('Importing...');
+    expect(importBtn).toHaveAccessibleName('Import Collection, importing');
+    expect(importBtn).toHaveTextContent(/^Import Collection/);
 
     // The click handler commits inside act, so a reopened dialog would already be in the document.
     fireEvent.click(importBtn);
@@ -3764,7 +4214,7 @@ describe('BGG import in flight (88.6.1-60: D-35, Req 4, Req 5)', () => {
 
     expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(1);
     expect(importBtn).toHaveAttribute('aria-disabled', 'true');
-    expect(importBtn.textContent).toBe('Importing...');
+    expect(importBtn).toHaveAccessibleName('Import Collection, importing');
 
     await act(async () => { pending.resolve({ imported: 0 }); });
   });
@@ -3975,14 +4425,15 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
     await waitFor(() => expect(search).toHaveAttribute('aria-disabled', 'true'));
     expect(search).not.toBeDisabled();
     expect(search.isConnected).toBe(true);
-    expect(search.textContent).toBe('Searching...');
+    expect(search).toHaveAccessibleName('Search, searching');
+    expect(search).toHaveTextContent(/^Search/);
 
     fireEvent.click(search);
     fireEvent.click(search);
     fireEvent.keyPress(field, { key: 'Enter', code: 'Enter', charCode: 13 });
     expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(1);
     expect(search).toHaveAttribute('aria-disabled', 'true');
-    expect(search.textContent).toBe('Searching...');
+    expect(search).toHaveAccessibleName('Search, searching');
 
     await act(async () => { pending.resolve([]); });
   });
@@ -4019,7 +4470,8 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
     await waitFor(() => expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(2));
   });
 
-  it('S4: a search with results is announced once, screen-reader only; a zero result keeps the toast alone', async () => {
+  // AMENDED Phase 88.9-68 (X58): a zero result shows the line under the search box; the toast is gone.
+  it('S4: a search with results is announced once, screen-reader only; a zero result shows the line under the search box alone, with no toast', async () => {
     const { gamesAPI } = await import('@/lib/api');
     (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([
       { bgg_id: 1, name: 'Azul', year_published: 2017 },
@@ -4035,7 +4487,8 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
     expect(region).not.toBeNull();
     expect(region).toHaveAttribute('aria-live', 'polite');
     expect(region.classList).toContain('sr-only');
-    expect(toastMock()).not.toHaveBeenCalledWith('No games found. Try a different search term.');
+    expect(toastMock()).not.toHaveBeenCalled();
+    expect(screen.getByTestId('bgg-no-results').textContent).toBe('');
 
     await waitFor(() => expect(search.textContent).toBe('Search'));
     (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([{ bgg_id: 3, name: 'Azul: Summer', year_published: 2019 }]);
@@ -4047,8 +4500,9 @@ describe('BGG search in flight (88.6.1-60: D-35, Req 4)', () => {
     (gamesAPI.searchBGG as Mock).mockResolvedValueOnce([]);
     fireEvent.click(search);
     await waitFor(() =>
-      expect(toastMock()).toHaveBeenCalledWith('No games found. Try a different search term.')
+      expect(screen.getByTestId('bgg-no-results').textContent).toBe('No games found. Try a different search term.')
     );
+    expect(toastMock()).not.toHaveBeenCalled();
     expect(screen.queryByText(/^Found \d+ games?\.$/)).toBeNull();
   });
 });
@@ -4070,9 +4524,11 @@ describe('BGG search answer and result-count region (88.6.1 code review A-68 / A
     (gamesAPI.searchBGG as Mock).mockResolvedValueOnce(null);
     renderProfile();
     await openAndSearch('nothing');
+    // AMENDED Phase 88.9-68 (X58): the zero-result sentence is the line under the search box.
     await waitFor(() =>
-      expect(toastMock()).toHaveBeenCalledWith('No games found. Try a different search term.')
+      expect(screen.getByTestId('bgg-no-results').textContent).toBe('No games found. Try a different search term.')
     );
+    expect(toastMock()).not.toHaveBeenCalled();
     expect(toastMock().error).not.toHaveBeenCalled();
   });
 
@@ -4558,6 +5014,8 @@ describe('identity row kept or late (88.6.1-61: Req 11, AC-29)', () => {
 });
 
 describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)', () => {
+  installGateClock();
+
   type Mock = ReturnType<typeof vi.fn>;
   // Copy row P8 (owner-ratified 2026-10-05), straight apostrophe.
   const P8 = "Couldn't load your collection";
@@ -4576,7 +5034,8 @@ describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)
   // The collection Remove is a two-tap gate: the glyph arms into the labelled verb `Remove`.
   async function twoTapRemove(name: string) {
     fireEvent.click(await screen.findByRole('button', { name: `Remove ${name}` }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    passGate();
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
   }
 
   afterEach(async () => {
@@ -4802,6 +5261,8 @@ describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)
 });
 
 describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', () => {
+  installGateClock();
+
   type Mock = ReturnType<typeof vi.fn>;
   // Copy row RF1 (D-47), written ONCE here (88.6.1-70 contract C7): plan 70's notice renders it
   // twice while it shows (the visible line and its polite region), so every lookup is an All query.
@@ -4823,7 +5284,8 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
   // Both taps of the two-tap Remove with real focus (userEvent), so the focus hook has a seed.
   async function twoTapRemove(user: ReturnType<typeof userEvent.setup>, name: string) {
     await user.click(await screen.findByRole('button', { name: `Remove ${name}` }));
-    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    passGate();
+    await user.click(screen.getByRole('button', { name: 'Tap again to remove' }));
   }
 
   function addFromBgg() {
@@ -4912,7 +5374,8 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
     // iOS Safari does not focus a tapped button: nothing is focused for either tap.
     (document.activeElement as HTMLElement | null)?.blur();
     fireEvent.click(remove);
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    passGate();
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
     await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
     expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
     await act(async () => { refresh.resolve([OWNED_GAMES[1]]); });
@@ -4931,7 +5394,8 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
 
     const remove = await screen.findByRole('button', { name: 'Remove Catan' });
     await user.click(remove);
-    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    passGate();
+    await user.click(screen.getByRole('button', { name: 'Tap again to remove' }));
     await waitFor(() => expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1));
     // CONFIRM-ONLY in jsdom: the pressed Remove keeps focus and its row stays while the call is held.
     expect(document.activeElement).toBe(remove);
@@ -4987,7 +5451,7 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
 
       await twoTapRemove(user, 'Catan');
       await screen.findByText(P8);
-      expect(screen.getByText(getFetchErrorMessage(err))).toBeInTheDocument();
+      expect(screen.getByText(messageBesideRetry(getFetchErrorMessage(err)))).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Remove Brass' })).toBeNull();
       expect(screen.queryAllByText(RF1)).toHaveLength(0);
       const text = screen.getByRole('heading', { name: /^My Game Collection/ }).textContent ?? '';
@@ -5109,8 +5573,9 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
   const AZUL_RESULT = { bgg_id: 230802, name: 'Azul', year_published: 2017 };
   const BRASS_RESULT = { bgg_id: 224517, name: 'Brass: Birmingham', year_published: 2018 };
   const AZUL_ROW = { id: 'game-azul', name: 'Azul', bgg_id: 230802, year_published: 2017, image_url: null };
-  // The pressed Add's name follows its visible label (P7), so a lookup matches both labels.
-  const ADD_NAME = /^(Add to Collection|Adding\.\.\.)$/;
+  // The pressed Add keeps its label and gains the heard suffix (rule 1, 88.9-46 B36; copy row
+  // P7's word is the suffix), so a lookup matches the idle name and the busy name.
+  const ADD_NAME = /^Add to Collection(, adding)?$/;
 
   function deferred<T = unknown>() {
     let resolve: (value: T) => void = () => {};
@@ -5143,7 +5608,72 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
   });
 
-  it('A1: a burst of presses sends one import and one add; the pressed Add reads Adding... and stays aria-disabled', async () => {
+  // Rule 1 (88.9-46 B34-B36): the three collection controls keep their labels, show the one house
+  // spinner, are named label plus the heard suffix, stay focused and refuse a second press.
+  it('rule 1 (88.9): Import Collection, Search and Add to Collection keep their labels and show the spinner while busy (B34-B36)', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+
+    // B34 — Import Collection, held behind its Continue dialog.
+    const importing = deferred<unknown>();
+    (userGamesAPI.importBGGCollection as Mock).mockReturnValue(importing.promise);
+    renderProfile();
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const importBtn = screen.getByRole('button', { name: 'Import Collection' });
+    fireEvent.click(importBtn);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(importBtn).toHaveAccessibleName('Import Collection, importing'));
+    expect(importBtn).toHaveTextContent(/^Import Collection/);
+    await waitFor(() => expect(importBtn.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(importBtn).toHaveAttribute('aria-disabled', 'true');
+    expect(importBtn).not.toBeDisabled();
+    fireEvent.click(importBtn);
+    expect(userGamesAPI.importBGGCollection).toHaveBeenCalledTimes(1);
+    await act(async () => { importing.resolve({ imported: 0 }); });
+    (userGamesAPI.importBGGCollection as Mock).mockResolvedValue({ imported: 0 });
+    cleanup();
+
+    // B35 — Search, held.
+    const searching = deferred<unknown>();
+    (gamesAPI.searchBGG as Mock).mockReturnValueOnce(searching.promise);
+    renderProfile();
+    await screen.findByRole('heading', { name: /^My Game Collection/ });
+    fireEvent.click(addFromBgg());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'azul' } });
+    const search = screen.getByRole('button', { name: 'Search' });
+    search.focus();
+    fireEvent.click(search);
+    await waitFor(() => expect(search).toHaveAccessibleName('Search, searching'));
+    expect(search).toHaveTextContent(/^Search/);
+    await waitFor(() => expect(search.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(search).toHaveAttribute('aria-disabled', 'true');
+    expect(search).not.toBeDisabled();
+    expect(document.activeElement).toBe(search);
+    fireEvent.click(search);
+    expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(1);
+    await act(async () => { searching.resolve([AZUL_RESULT]); });
+
+    // B36 — Add to Collection on the result row, held.
+    const imported = deferred<unknown>();
+    (gamesAPI.importFromBGG as Mock).mockReturnValueOnce(imported.promise);
+    const add = await screen.findByRole('button', { name: 'Add to Collection' });
+    add.focus();
+    fireEvent.click(add);
+    await waitFor(() => expect(add).toHaveAccessibleName('Add to Collection, adding'));
+    expect(add).toHaveTextContent(/^Add to Collection/);
+    await waitFor(() => expect(add.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
+    expect(add).toHaveAttribute('aria-disabled', 'true');
+    expect(add).not.toBeDisabled();
+    expect(document.activeElement).toBe(add);
+    fireEvent.click(add);
+    expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(1);
+    await act(async () => { imported.resolve({ id: 'game-azul' }); });
+    await waitFor(() => expect(userGamesAPI.addOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-azul'));
+  });
+
+  it('A1: a burst of presses sends one import and one add; the pressed Add keeps its label (rule 1) and stays aria-disabled', async () => {
     const { userGamesAPI, gamesAPI } = await import('@/lib/api');
     const imported = deferred<unknown>();
     (gamesAPI.searchBGG as Mock).mockResolvedValue([AZUL_RESULT]);
@@ -5157,13 +5687,14 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(add).toHaveAttribute('aria-disabled', 'true'));
     expect(add).not.toBeDisabled();
     expect(add.isConnected).toBe(true);
-    expect(add.textContent).toBe('Adding...');
+    expect(add).toHaveAccessibleName('Add to Collection, adding');
+    expect(add).toHaveTextContent(/^Add to Collection/);
 
     fireEvent.click(add);
     fireEvent.click(add);
     expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(1);
     expect(add).toHaveAttribute('aria-disabled', 'true');
-    expect(add.textContent).toBe('Adding...');
+    expect(add).toHaveAccessibleName('Add to Collection, adding');
 
     await act(async () => { imported.resolve({ id: 'game-azul' }); });
     await waitFor(() => expect(userGamesAPI.addOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-azul'));
@@ -5237,11 +5768,14 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
     expect(userGamesAPI.getOwnedGames).toHaveBeenCalledTimes(2); // the refresh is still held
     expect(toastMock().success).not.toHaveBeenCalledWith('Game added');
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
 
     await act(async () => { refresh.resolve([...OWNED_GAMES, AZUL_ROW]); });
     await screen.findByRole('button', { name: 'Remove Azul' });
-    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Game added'));
-    expect(toastMock().success).toHaveBeenCalledTimes(1);
+    // AMENDED Phase 88.9-24 (save-feedback rule 2): no success toast; the root announcer speaks it once.
+    await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Game added'));
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(toastMock().success).not.toHaveBeenCalled();
   });
 
   it('A4: a failed add releases the latch and the label; toast and diagnostic unchanged', async () => {
@@ -5266,7 +5800,7 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     await waitFor(() => expect(gamesAPI.importFromBGG).toHaveBeenCalledTimes(2));
   });
 
-  it('A5: one focus instance serves Remove and Add, the latch exists, and P7 ships with three ASCII full stops', async () => {
+  it('A5: one focus instance serves Remove and Add, the latch exists, and P7 is heard as the busy suffix (rule 1)', async () => {
     const src = await pageSource();
     // CODE lines only: a comment that names the arm call is not a second call site.
     const code = src
@@ -5280,7 +5814,8 @@ describe('Add to Collection in flight (88.6.1-67: D-35, Req 4, Req 5)', () => {
     expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: opts?.from ?? null })')).toBe(1);
     expect(count(code, 'collectionRecovery.arm({ preferred: () => addFromBggToggleRef.current, from: pressed })')).toBe(1);
     expect(src).toContain('addGameInFlightRef');
-    expect(count(src, "const ADDING_TO_COLLECTION_LABEL = 'Adding...';")).toBe(1);
+    // Rule 1 (88.9-46 B36): copy row P7's word is the heard suffix, lower-cased, no trailing dots.
+    expect(count(src, "const ADDING_TO_COLLECTION_BUSY_SUFFIX = ', adding';")).toBe(1);
     expect(src).not.toContain('Adding…');
   });
 
@@ -5382,7 +5917,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     await waitFor(() => expect(within(headerCard()).getAllByText(RF1)).toHaveLength(2));
     const heading = screen.getByRole('heading', { level: 1, name: 'RealName' });
     expect(visibleRf1(headerCard()).compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(headerCard()).queryByText('Something went wrong')).toBeNull();
+    expect(within(headerCard()).queryByText("Couldn't load your profile")).toBeNull();
   });
 
   it('K2: the RF1 region is one of the header card status nodes present before the failure', async () => {
@@ -5416,6 +5951,11 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
   });
 
   async function withdrawnCase(err: ApiError) {
+    // AMENDED Phase 88.9-40 (K4, SESSION-01): a 401 over the kept row now redirects once (the shared
+    // guard); only a read made on THIS visit clears the latch (isFetchedAfterMount), which this
+    // harness's identity query never reports, so a latch set before render holds and the 401 case
+    // pins the DECLINED arm — the withdrawal it always held.
+    if (err.code === 'unauthorized') window.sessionStorage.setItem(signInLatchKey(window.location), '1');
     const view = await healthy();
     // Positive signal: the collection list renders live over the healthy row.
     await screen.findByRole('button', { name: 'Remove Catan' });
@@ -5425,7 +5965,9 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     h.selfError = err;
     await commit(view.rerender);
 
-    const line = (await within(headerCard()).findAllByText(getFetchErrorMessage(err)))[0];
+    const line = (await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(err))))[0];
+    // BANNER-01 (88.9-49, F26): the withdrawn header banner names what failed.
+    expect(within(headerCard()).getByText("Couldn't load your profile")).toBeInTheDocument();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
     const headings = screen.getAllByRole('heading', { level: 1 });
     expect(headings).toHaveLength(1);
@@ -5465,7 +6007,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
       const forbidden = new ApiError('Forbidden', 'forbidden', 403);
       h.selfError = forbidden;
       await commit(view.rerender);
-      await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+      await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(forbidden)));
       const headings = screen.getAllByRole('heading', { level: 1 });
       expect(headings).toHaveLength(1);
       expect(headings[0]).toHaveAccessibleName('self');
@@ -5488,7 +6030,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const forbidden = new ApiError('Forbidden', 'forbidden', 403);
     h.selfError = forbidden;
     await commit(view.rerender);
-    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+    await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(forbidden)));
 
     h.selfError = new ApiError('Server error', 'internal', 500);
     await commit(view.rerender);
@@ -5508,6 +6050,8 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
       new ApiError('Forbidden', 'forbidden', 403),
       new ApiError('Unauthorized', 'unauthorized', 401),
     ]) {
+      // AMENDED Phase 88.9-40 (K8): the 401 arm pins the declined withdrawal (see withdrawnCase).
+      window.sessionStorage.setItem(signInLatchKey(window.location), '1');
       const view = await healthy(mainContainer());
       h.selfError = new ApiError('Server error', 'internal', 500);
       await commit(view.rerender);
@@ -5557,7 +6101,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const forbidden = new ApiError('Forbidden', 'forbidden', 403);
     h.selfError = forbidden;
     await commit(view.rerender);
-    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+    await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(forbidden)));
 
     expect(within(emailRegion()).queryByText(ROW_ADDRESS)).toBeNull();
     expect(within(emailRegion()).queryByRole('button', { name: 'Change' })).toBeNull();
@@ -5579,11 +6123,11 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const fakeClient = {
       getQueryCache: () => ({
         find: (filters: { queryKey?: unknown }) =>
-          JSON.stringify(filters?.queryKey) === JSON.stringify(['users', 'self', h.authUser.sub])
+          JSON.stringify(filters?.queryKey) === JSON.stringify(['users', 'self', h.authUser?.sub])
             ? selfEntry
             : undefined,
         // P5 A-79: useRetainedContent looks its query up by hash (`get`), so the fake answers both.
-        get: (hash: string) => (hash === hashKey(['users', 'self', h.authUser.sub]) ? selfEntry : undefined),
+        get: (hash: string) => (hash === hashKey(['users', 'self', h.authUser?.sub]) ? selfEntry : undefined),
       }),
     };
     const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -5595,7 +6139,7 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     const forbidden = new ApiError('Forbidden', 'forbidden', 403);
     h.selfError = forbidden;
     await commit(first.rerender);
-    await within(headerCard()).findAllByText(getFetchErrorMessage(forbidden));
+    await within(headerCard()).findAllByText(messageBesideRetry(getFetchErrorMessage(forbidden)));
     h.selfError = new ApiError('Server error', 'internal', 500);
     await commit(first.rerender);
     expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName('Self');
@@ -5611,5 +6155,1307 @@ describe('a failed identity refresh on Profile is labelled (88.6.1-79, D-51, RF1
     h.selfError = null;
     await commit(second.rerender);
     expect(await screen.findByRole('heading', { level: 1, name: 'RealName' })).toBeInTheDocument();
+  });
+});
+
+// Phase 88.9-40 (SESSION-01, owner ruling 2026-11-07, SPEC A8): a signed-out profile visit goes to
+// sign-in and back here (the shared guard,
+// src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling"))) instead
+// of the shipped blank page; a return with the latch set is the profile banner with Sign in; a
+// useUser() error with no user still reaches the DECISION Phase 88-19 fallback — that test, not the
+// marker count, is the evidence 88-19 is honoured in behaviour.
+describe('userProfile sign-in guard (88.9-40: SESSION-01)', () => {
+  const REAL_LOCATION = window.location;
+  let savedUser: typeof h.authUser;
+
+  function stubLocation(pathname = '/userProfile') {
+    const replace = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: {
+        origin: 'http://localhost',
+        protocol: 'http:',
+        host: 'localhost',
+        hostname: 'localhost',
+        port: '',
+        pathname,
+        search: '',
+        hash: '',
+        href: `http://localhost${pathname}`,
+        replace,
+        assign: vi.fn(),
+      },
+    });
+    return replace;
+  }
+
+  beforeEach(() => {
+    savedUser = h.authUser;
+  });
+  afterEach(() => {
+    h.authUser = savedUser;
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+  });
+
+  it('SESSION-01 (88.9): a signed-out profile visit is sent to sign-in once, never a blank page; back with the latch set it shows the profile banner with Sign in', async () => {
+    const replace = stubLocation();
+    h.authUser = undefined;
+    render(<Profile />);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith('/api/auth/login?returnTo=%2FuserProfile');
+    // The redirect frame is the loading line, never a blank page.
+    expect(screen.getByText('Loading your profile...')).toBeInTheDocument();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    cleanup();
+
+    // Back in the same tab without signing in: the profile banner with Sign in, no redirect.
+    render(<Profile />);
+    expect(await screen.findByText("Couldn't load your profile")).toBeInTheDocument();
+    // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Profile' })).toHaveClass('sr-only');
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      '/api/auth/login?returnTo=%2FuserProfile'
+    );
+    expect(screen.queryByText('Loading your profile...')).toBeNull();
+    expect(document.body.textContent).not.toBe('');
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('SESSION-01 (88.9): a useUser error with no user shows the 88-19 fallback, never a redirect', async () => {
+    const replace = stubLocation();
+    h.authUser = undefined;
+    h.authError = Object.assign(new Error('me failed'), { status: 500 });
+    render(<Profile />);
+    expect(await screen.findByText("We couldn't load your profile")).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reload page' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBeNull();
+  });
+
+  // 88.9-52 S-C6: the R3 source read at the foot of this file counts substrings, so a comment
+  // could satisfy it. This one reads the RENDERED names: the screen-reader-only heading on each
+  // of the two banner-only screens (signed out; a live cookie whose identity read answers 401)
+  // must read what the breadcrumb's current-page crumb reads on a normal render. It lives in this
+  // describe for its location stub.
+  it('S-C6 (88.9-52): rendered, the screen-reader-only heading on both banner-only screens reads what the breadcrumb current-page crumb reads', async () => {
+    // The session-expired frame: signed in, the identity read answers 401, the latch is set.
+    stubLocation();
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.selfError = new ApiError('Unauthorized', 'unauthorized', 401);
+    render(<Profile />);
+    await screen.findByText("Couldn't load your profile");
+    const expired = screen.getByRole('heading', { level: 1 });
+    expect(expired).toHaveClass('sr-only');
+    const expiredName = expired.textContent;
+    cleanup();
+
+    // The signed-out frame: no user, back with the latch set.
+    h.selfError = null;
+    h.authUser = undefined;
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    render(<Profile />);
+    await screen.findByText("Couldn't load your profile");
+    const signedOut = screen.getByRole('heading', { level: 1 });
+    expect(signedOut).toHaveClass('sr-only');
+    const signedOutName = signedOut.textContent;
+    cleanup();
+
+    // A normal render: the page's static visible name is the breadcrumb's current-page crumb.
+    h.authUser = savedUser;
+    window.sessionStorage.clear();
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: REAL_LOCATION });
+    renderProfile();
+    const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    const crumb = nav.querySelector('[aria-current="page"]')?.textContent;
+    expect(crumb).toBeTruthy();
+    expect(expiredName, 'the session-expired frame').toBe(crumb);
+    expect(signedOutName, 'the signed-out frame').toBe(crumb);
+  });
+
+  // R-C2 (88.9-56, owner ruling 2026-11-10 + 'profile'; closes plan 88.9-40 Deviations 8): a LIVE
+  // cookie whose identity read still 401s, with no row held and the latch set, gets ONE page-level
+  // banner with Sign in. The banner reads a latched state of its own, so a tab-return refetch (which
+  // drops the raw identity error for the fetch's duration) never swaps it for the body.
+  it('R-C2 (88.9): a live-cookie return whose identity read 401s with no row and the latch set shows ONE latched page-level banner with Sign in — no redirect, no Retry notices; a tab-return refetch keeps it and focus lands on it once', async () => {
+    const replace = stubLocation();
+    window.sessionStorage.setItem(signInLatchKey(window.location), '1');
+    h.selfError = new ApiError('Unauthorized', 'unauthorized', 401);
+    const { rerender } = render(<Profile />);
+
+    const title = await screen.findByText("Couldn't load your profile");
+    expect(screen.getAllByText("Couldn't load your profile")).toHaveLength(1);
+    // 88.9-52 A-04: the page-replacing banner screen keeps ONE level-1 heading, for screen readers only.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Profile' })).toHaveClass('sr-only');
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      '/api/auth/login?returnTo=%2FuserProfile'
+    );
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Try again/ })).toBeNull();
+    expect(screen.queryByText('Loading your profile...')).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(signInLatchKey(window.location))).toBe('1');
+    expect(document.body.textContent).not.toBe('');
+    // First commit, focus on body: the banner wrapper takes focus once.
+    // AMENDED Phase 88.9-66 (X70a): the wrapper is the shared centred frame's inner box.
+    const wrapper = title.closest('[data-slot="page-frame"]') as HTMLElement | null;
+    expect(wrapper).not.toBeNull();
+    expect(wrapper).toHaveAttribute('tabindex', '-1');
+    await waitFor(() => expect(document.activeElement).toBe(wrapper));
+    const refocus = vi.spyOn(wrapper as HTMLElement, 'focus');
+
+    // A tab return: the identity refetch runs (error flag down, fetching, no row), held in flight.
+    let release!: (value: unknown) => void;
+    h.refetchSelf.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    h.selfError = null;
+    h.selfFetching = true;
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    rerender(<Profile />);
+    expect(screen.getAllByText("Couldn't load your profile")).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(document.activeElement).toBe(wrapper);
+    expect(refocus).not.toHaveBeenCalled();
+
+    // The refetch answers the same 401: still the one banner, focus untouched, no redirect.
+    h.selfError = new ApiError('Unauthorized', 'unauthorized', 401);
+    h.selfFetching = false;
+    await act(async () => {
+      release({ isError: true });
+    });
+    rerender(<Profile />);
+    expect(screen.getAllByText("Couldn't load your profile")).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(document.activeElement).toBe(wrapper);
+    expect(refocus).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+  });
+});
+
+// R-C8 (88.9-55, owner pick A, 2026-11-10): on a fresh load an enabled Import Collection received a
+// press while the identity read was still pending, toasted the still-loading sentence and opened no
+// dialog (three CI flakes). The opener is now natively disabled while that read is PENDING only; a
+// FAILED read keeps it enabled with the unchanged toast branch.
+describe('Import Collection opener waits for identity (88.9-55: R-C8)', () => {
+  const STILL_LOADING = 'Still loading your account — please try again in a moment.';
+
+  it('R-C8 (88.9-55): Import Collection is natively disabled while the identity read is pending, enabled once it lands, and on a failed read stays enabled with the toast', async () => {
+    const { toast } = await import('sonner');
+    const toastError = toast.error as unknown as ReturnType<typeof vi.fn>;
+
+    // Pending arm: no row, no error (the harness reports isPending).
+    const view = render(<Profile />);
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const pendingBtn = screen.getByRole('button', { name: 'Import Collection' });
+    expect(pendingBtn).toBeDisabled();
+    fireEvent.click(pendingBtn);
+    expect(toastError).not.toHaveBeenCalledWith(STILL_LOADING);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // The identity read lands: the same control enables and a press opens the dialog.
+    h.self = harnessSelfRow();
+    view.rerender(<Profile />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Import Collection' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    expect(await screen.findByRole('dialog', { name: 'Import your BGG collection?' })).toBeInTheDocument();
+    expect(toastError).not.toHaveBeenCalledWith(STILL_LOADING);
+    view.unmount();
+
+    // Failed arm: errored, not pending, no row. The control stays enabled and keeps the toast.
+    h.self = undefined;
+    h.selfError = new Error('boom');
+    render(<Profile />);
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    const failedBtn = screen.getByRole('button', { name: 'Import Collection' });
+    expect(failedBtn).toBeEnabled();
+    fireEvent.click(failedBtn);
+    expect(toastError).toHaveBeenCalledWith(STILL_LOADING);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+// Plan 88.9-68 (52-X52 ruled X52d, 52-X56 ruled X56c; owner pick page 10c, 2026-11-14). A long
+// collection starts closed every visit: three cards on a phone and six from md, the next row
+// peeking inert under a fade, and one bar that opens and closes the rest. In dark every card takes
+// the raised fill. jsdom applies no stylesheet, so these read the DOM contract (which cards mount,
+// what is inert, where focus lands, the classes); the rendered geometry and colours are read in
+// e2e/profile-look-fixes.spec.ts.
+describe('collection bar and dark card fill (88.9-68: X52d, X56c)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  const NAMES = ['Azul', 'Brass', 'Catan', 'Dominion', 'Everdell', 'Faiyum', 'Gloomhaven', 'Hanabi', 'Inis'];
+  const gamesNamed = (count: number) =>
+    NAMES.slice(0, count).map((name, index) => ({ id: `shelf-${index + 1}`, name, year_published: 2001 + index, image_url: null }));
+
+  // The usePhoneViewport query answers true (a phone) or false; every other query answers false.
+  let restoreMedia: (() => void) | undefined;
+  function stubPhoneViewport(isPhone: boolean) {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: isPhone && query.includes('max-width: 767px'),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    restoreMedia = () => {
+      window.matchMedia = original;
+    };
+  }
+
+  // Role queries skip an aria-hidden subtree, so a peeked card's Remove is not in this list.
+  const reachableRemoves = () => screen.queryAllByRole('button', { name: /^Remove / });
+  const gameTitle = (name: string) => screen.getByRole('heading', { level: 3, name, hidden: true });
+  function gameCard(name: string): HTMLElement {
+    const card = gameTitle(name).closest('div.border.border-line');
+    if (!(card instanceof HTMLElement)) throw new Error(`no collection card around ${name}`);
+    return card;
+  }
+  const collectionBar = () => screen.getByRole('button', { name: /^(Show all \d+ games|Show fewer)$/ });
+
+  async function ownGames(count: number) {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(gamesNamed(count));
+  }
+
+  afterEach(async () => {
+    restoreMedia?.();
+    restoreMedia = undefined;
+    vi.useRealTimers();
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+    // The Q2 tests script the search, the import, the add and the remove; back to the harness defaults.
+    (userGamesAPI.addOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (userGamesAPI.removeOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+    (gamesAPI.importFromBGG as Mock).mockReset().mockResolvedValue({ id: 'game-imported' });
+  });
+
+  it('X52d (88.9-68): on a phone with eight games the collection starts closed with three cards, the fourth peeks inert and hidden from assistive tech, and the Show all 8 games bar opens and closes the rest', async () => {
+    stubPhoneViewport(true);
+    await ownGames(8);
+    const view = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+
+    // Closed: three reachable cards, the fourth mounted as the peek, the rest not mounted.
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+    const peek = gameCard('Dominion');
+    expect(peek).toHaveAttribute('inert');
+    expect(peek).toHaveAttribute('aria-hidden', 'true');
+    expect(within(peek).getByRole('button', { hidden: true })).toHaveAttribute('tabindex', '-1');
+    expect(screen.queryByText('Everdell')).toBeNull();
+    expect(gameCard('Catan')).not.toHaveAttribute('inert');
+
+    const bar = collectionBar();
+    expect(bar).toHaveAccessibleName('Show all 8 games');
+    expect(bar).toHaveAttribute('aria-expanded', 'false');
+    const grid = document.getElementById(bar.getAttribute('aria-controls') ?? '');
+    expect(grid).not.toBeNull();
+    expect(grid).toContainElement(peek);
+
+    // Open: every card, nothing inert, focus on the first revealed game's title.
+    bar.focus();
+    fireEvent.click(bar);
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(8));
+    expect(collectionBar()).toBe(bar);
+    expect(bar).toHaveAttribute('aria-expanded', 'true');
+    expect(bar).toHaveAccessibleName('Show fewer');
+    expect(document.querySelector('[inert]')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(gameTitle('Dominion')));
+
+    // Closed again: three cards, focus kept on the bar.
+    bar.focus();
+    fireEvent.click(bar);
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+    expect(bar).toHaveAttribute('aria-expanded', 'false');
+    expect(bar).toHaveAccessibleName('Show all 8 games');
+    expect(document.activeElement).toBe(bar);
+
+    // A fresh visit starts closed and moves no focus.
+    fireEvent.click(bar);
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(8));
+    view.unmount();
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('X52d (88.9-68): off the phone six cards show before the bar, three peek, and with the visible count or fewer there is no bar', async () => {
+    // Nine games off the phone: six reachable, the next three peek, the third only from lg.
+    await ownGames(9);
+    const view = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(6));
+    const peeks = Array.from(document.querySelectorAll('[inert]'));
+    expect(peeks).toEqual([gameCard('Gloomhaven'), gameCard('Hanabi'), gameCard('Inis')]);
+    peeks.forEach((card) => expect(card).toHaveAttribute('aria-hidden', 'true'));
+    expect(gameCard('Inis').className.split(/\s+/)).toContain('max-lg:hidden');
+    expect(gameCard('Hanabi').className.split(/\s+/)).not.toContain('max-lg:hidden');
+    const bar = collectionBar();
+    expect(bar).toHaveAccessibleName('Show all 9 games');
+
+    bar.focus();
+    fireEvent.click(bar);
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(9));
+    await waitFor(() => expect(document.activeElement).toBe(gameTitle('Gloomhaven')));
+    expect(gameCard('Inis').className.split(/\s+/)).not.toContain('max-lg:hidden');
+    view.unmount();
+
+    // Eight games off the phone: the two past the sixth peek.
+    await ownGames(8);
+    const eight = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(6));
+    expect(document.querySelectorAll('[inert]')).toHaveLength(2);
+    expect(collectionBar()).toHaveAccessibleName('Show all 8 games');
+    eight.unmount();
+
+    // Six games off the phone: the whole list, no bar, nothing inert.
+    await ownGames(6);
+    const six = renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(6));
+    expect(screen.queryByRole('button', { name: /^(Show all \d+ games|Show fewer)$/ })).toBeNull();
+    expect(document.querySelector('[inert]')).toBeNull();
+    six.unmount();
+
+    // Three games on a phone: the whole list, no bar.
+    stubPhoneViewport(true);
+    await ownGames(3);
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+    expect(screen.queryByRole('button', { name: /^(Show all \d+ games|Show fewer)$/ })).toBeNull();
+    expect(document.querySelector('[inert]')).toBeNull();
+  });
+
+  it('X56c (88.9-68): every collection card carries the dark raised fill and keeps its border; light is unchanged', async () => {
+    await ownGames(9);
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+
+    const expectCardFill = (name: string) => {
+      const tokens = gameCard(name).className.split(/\s+/);
+      expect(tokens, `${name}: the dark raised fill`).toContain('dark:bg-surface-elevated');
+      expect(tokens, `${name}: the border`).toEqual(expect.arrayContaining(['border', 'border-line']));
+      // Light is unchanged: no fill of its own outside the dark variant.
+      expect(tokens.filter((token) => token.startsWith('bg-')), `${name}: no light fill`).toEqual([]);
+    };
+    // Ordinary cards and the peeked ones alike.
+    NAMES.forEach(expectCardFill);
+
+    fireEvent.click(collectionBar());
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(9));
+    NAMES.forEach(expectCardFill);
+  });
+
+  // W45 (88.9-52, owner pick B, 2026-11-17): in DARK the bar is a lighter strip than the game cards
+  // above it (purple-700 against their purple-800, 1.45), with a purple-500 top rule. Light keeps
+  // the muted bar and the line rule. Exact colour sets on the wrapper, closed and open, so a dark
+  // fill or rule dropped from one arm goes red here; the ratios are pinned at the token layer
+  // (the X52d row of src/app/tokenContrast.test.ts) and in the browser (e2e/profile-look-fixes.spec.ts).
+  it('W45 (88.9-52): the collection bar wrapper names the muted fill and line rule for light and the lighter dark fill and stronger dark rule, closed and open', async () => {
+    stubPhoneViewport(true);
+    await ownGames(8);
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    const colours = () =>
+      (collectionBar().parentElement as HTMLElement).className
+        .split(/\s+/)
+        .filter((token) => /^(dark:)?(bg|border)-/.test(token))
+        .sort();
+    const WANT = ['bg-surface-muted', 'border-line', 'border-t', 'dark:bg-btn-secondary-hover', 'dark:border-line-strong'];
+    expect(colours()).toEqual(WANT);
+    fireEvent.click(collectionBar());
+    await waitFor(() => expect(collectionBar()).toHaveAttribute('aria-expanded', 'true'));
+    expect(colours()).toEqual(WANT);
+    // The words and the chevron keep the primary ink (7.35 on the dark bar, 11.94 on the light one).
+    expect(collectionBar().className.split(/\s+/)).toContain('text-content-primary');
+  });
+
+  // Q2 (owner ruling 2026-11-14, "Q2-y-inline"): the bar never opens by itself; a plain visible
+  // Game added line shows under + Add from BGG. The owned-games read answers whatever `rows` holds,
+  // so a refresh after the add brings the new list.
+  const addFromBgg = () => screen.getByRole('button', { name: /^(\+ Add from BGG|Hide Search)$/ });
+  const addGameReceipt = () => screen.getByTestId('add-game-receipt');
+  const settle = async () => {
+    for (let i = 0; i < 3; i += 1) await act(async () => {});
+  };
+  async function serveRows(initial: ReturnType<typeof gamesNamed>) {
+    const { userGamesAPI } = await import('@/lib/api');
+    const shelf = { rows: initial };
+    (userGamesAPI.getOwnedGames as Mock).mockImplementation(async () => shelf.rows);
+    return shelf;
+  }
+  function searchAndPressAdd(query: string) {
+    fireEvent.click(addFromBgg());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: query } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+  }
+
+  it('Q2 (88.9-68): on a phone with eight games, adding a game that sorts last from an answer carrying its row shows Game added under + Add from BGG as plain text outside any status region, keeps the bar closed reading Show all 9 games, and the root announcer speaks Game added once', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    stubPhoneViewport(true);
+    const shelf = await serveRows(gamesNamed(8));
+    const inis = gamesNamed(9)[8];
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: 9009, name: 'Inis', year_published: 2009 }]);
+    (gamesAPI.importFromBGG as Mock).mockResolvedValue({ id: inis.id });
+    (userGamesAPI.addOwnedGame as Mock).mockImplementation(async () => {
+      shelf.rows = gamesNamed(9);
+      return { message: 'Game added to your collection', game: inis };
+    });
+    renderProfile();
+    await screen.findByRole('button', { name: 'Remove Azul' });
+    await waitFor(() => expect(reachableRemoves()).toHaveLength(3));
+
+    // The line: a paragraph directly after the header row that holds + Add from BGG, mounted empty,
+    // with its 16px always reserved in place of the header row's old bottom margin.
+    const receipt = addGameReceipt();
+    expect(receipt.tagName).toBe('P');
+    expect(receipt.textContent).toBe('');
+    expect(receipt.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['min-h-4', 'text-xs', 'text-content-status-success', 'sm:text-right'])
+    );
+    // W41 (88.9-52): 4px of air under the button and 12px above the import box (the line touched both).
+    expect(receipt.className.split(/\s+/)).toEqual(expect.arrayContaining(['mt-1', 'mb-3']));
+    const headerRow = receipt.previousElementSibling as HTMLElement;
+    expect(headerRow).toContainElement(addFromBgg());
+    expect(headerRow.className.split(/\s+/)).not.toContain('mb-4');
+
+    searchAndPressAdd('inis');
+    fireEvent.click(await screen.findByRole('button', { name: /^Add to Collection(, adding)?$/ }));
+
+    await waitFor(() => expect(receipt.textContent).toBe('Game added'));
+    expect(addGameReceipt()).toBe(receipt);
+    // Plain text: no role, not live, not hidden, and inside no status region.
+    expect(receipt).not.toHaveAttribute('role');
+    expect(receipt).not.toHaveAttribute('aria-live');
+    expect(receipt).not.toHaveAttribute('aria-hidden');
+    expect(receipt.closest('[role="status"]')).toBeNull();
+    expect(receipt.closest('[aria-live]')).toBeNull();
+    expect(receipt.closest('[aria-hidden="true"]')).toBeNull();
+    // The bar stays closed and counts the new game; the new game is behind it.
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'false');
+    expect(collectionBar()).toHaveAccessibleName('Show all 9 games');
+    expect(screen.getByRole('heading', { level: 2, name: 'My Game Collection (9)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove Inis' })).toBeNull();
+    expect(reachableRemoves()).toHaveLength(3);
+    // Spoken once, by the root announcer; no toast of any kind.
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Game added');
+    expect(toastMock()).not.toHaveBeenCalled();
+    expect(toastMock().success).not.toHaveBeenCalled();
+  });
+
+  it('Q2 (88.9-68): with the no-row answer the refresh brings the ninth game and the same line shows with the bar closed; the line clears after INLINE_RECEIPT_MS and at the next + Add from BGG press; a list opened at four games and cut to three by a Remove starts closed when a fourth is added back', async () => {
+    const { userGamesAPI, gamesAPI } = await import('@/lib/api');
+    vi.useFakeTimers();
+    const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+    stubPhoneViewport(true);
+    const shelf = await serveRows(gamesNamed(8));
+    const jaipur = { id: 'shelf-10', name: 'Jaipur', year_published: 2010, image_url: null };
+    (gamesAPI.importFromBGG as Mock).mockResolvedValue({ id: 'game-imported' });
+    // The harness default answer: no `game` row, so only the refresh can bring the new game.
+    (userGamesAPI.addOwnedGame as Mock).mockImplementation(async () => {
+      shelf.rows = shelf.rows.length === 8 ? gamesNamed(9) : [...gamesNamed(9), jaipur];
+      return {};
+    });
+    const view = renderProfile();
+    await settle();
+    expect(reachableRemoves()).toHaveLength(3);
+    const receipt = addGameReceipt();
+
+    // The ninth game arrives with the refresh: the same line, the bar closed.
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: 9009, name: 'Inis', year_published: 2009 }]);
+    searchAndPressAdd('inis');
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: /^Add to Collection(, adding)?$/ }));
+    await settle();
+    expect(receipt.textContent).toBe('Game added');
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'false');
+    expect(collectionBar()).toHaveAccessibleName('Show all 9 games');
+    expect(screen.queryByRole('button', { name: 'Remove Inis' })).toBeNull();
+
+    // The next press of + Add from BGG clears it early.
+    fireEvent.click(addFromBgg());
+    expect(receipt.textContent).toBe('');
+    fireEvent.click(addFromBgg()); // Hide Search
+    // AMENDED Phase 88.9-52 (A-59): the receipt hook holds a new line until the text has been empty
+    // for the region dwell. A person cannot search and add inside that dwell; the fake clock is
+    // moved past it here so the second line is read where it would really show.
+    advance(REGION_EMPTY_DWELL_MS);
+
+    // A second add: the line shows again and clears by itself after INLINE_RECEIPT_MS.
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: 9010, name: 'Jaipur', year_published: 2010 }]);
+    searchAndPressAdd('jaipur');
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: /^Add to Collection(, adding)?$/ }));
+    await settle();
+    expect(receipt.textContent).toBe('Game added');
+    expect(collectionBar()).toHaveAccessibleName('Show all 10 games');
+    advance(INLINE_RECEIPT_MS - 1);
+    expect(receipt.textContent).toBe('Game added');
+    advance(1);
+    expect(receipt.textContent).toBe('');
+    view.unmount();
+
+    // Four games, opened, cut to three by a Remove (no bar), then a fourth added back: closed.
+    shelf.rows = gamesNamed(4);
+    (userGamesAPI.removeOwnedGame as Mock).mockImplementation(async () => {
+      shelf.rows = gamesNamed(3);
+      return {};
+    });
+    (userGamesAPI.addOwnedGame as Mock).mockImplementation(async () => {
+      shelf.rows = gamesNamed(4);
+      return {};
+    });
+    renderProfile();
+    await settle();
+    expect(collectionBar()).toHaveAccessibleName('Show all 4 games');
+    fireEvent.click(collectionBar());
+    await settle();
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'true');
+    expect(reachableRemoves()).toHaveLength(4);
+    const x = screen.getByRole('button', { name: 'Remove Dominion' });
+    fireEvent.click(x);
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.click(x);
+    await settle();
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1);
+    expect(reachableRemoves()).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /^(Show all \d+ games|Show fewer)$/ })).toBeNull();
+
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: 9004, name: 'Dominion', year_published: 2004 }]);
+    searchAndPressAdd('dominion');
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: /^Add to Collection(, adding)?$/ }));
+    await settle();
+    expect(collectionBar()).toHaveAttribute('aria-expanded', 'false');
+    expect(collectionBar()).toHaveAccessibleName('Show all 4 games');
+    expect(reachableRemoves()).toHaveLength(3);
+    expect(addGameReceipt().textContent).toBe('Game added');
+  });
+});
+
+// 88.9-68 Task 2 (X53, X36a, X36b). X53: the collection x is a 44px button holding one small
+// bordered box with the dialog's X icon, and the armed width is reserved on a slot AROUND the
+// button. X36a: a committing collection Remove and a committing schedule or override Delete show
+// their flight like the Friends Remove (aria-disabled, the busy name, the delayed house spinner).
+// X36b: the phone Remove is the shared gated two-tap. An armed control is found by aria-pressed
+// and a refused tap by "nothing was sent", never by the countdown's words. Pure fake timers: the
+// 200 ms appear and the 3 s wait are stepped exactly, so nothing here races the real clock.
+describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X53, X36a, X36b)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  const VALID = '+1 415 555 2671';
+  const BANNER = 'SMS disabled — add a phone number to re-enable.';
+  const REMOVED_USER = { sms_enabled: true, phone: null, phone_verified: false, notification_preferences: DEFAULT_PREFS };
+  const OVERRIDE = {
+    id: 'override-1',
+    type: 'specific_override',
+    is_available: true,
+    pattern_data: { date: '2026-11-03', startTime: '18:00', endTime: '22:00' },
+  };
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+  const spinnersIn = (el: Element) => el.querySelectorAll('[data-slot="spinner"]');
+  const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+  const flush = () => act(async () => {});
+  const statusTexts = () => screen.getAllByRole('status').map((node) => node.textContent ?? '');
+
+  // The spinner is absent for the first SPINNER_DELAY_MS of a flight and present from then on.
+  function expectSpinnerAppearsAfterTheDelay(control: Element) {
+    expect(spinnersIn(control)).toHaveLength(0);
+    advance(SPINNER_DELAY_MS - 1);
+    expect(spinnersIn(control)).toHaveLength(0);
+    advance(1);
+    expect(spinnersIn(control)).toHaveLength(1);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    const { userGamesAPI, availabilityAPI, usersAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+    (userGamesAPI.removeOwnedGame as Mock).mockReset().mockResolvedValue({});
+    (availabilityAPI.deleteAvailability as Mock).mockReset().mockResolvedValue({});
+    (usersAPI.removePhone as Mock).mockReset().mockResolvedValue({});
+  });
+
+  // R4 D4 (88.9-52, owner 2026-11-18: the x becomes a Remove button; his reason: "the x works better
+  // for quick removal of things, but the fact that we aren't allowing quick removal, I'm not sure if
+  // the x is warranted here."). This REPLACES the X53 test (the 32px bordered x in a 44px hit area)
+  // and PIX-2's anchor pins: there is no x, no box and no slot around the button any more.
+  // The marker is at src/app/userProfile/page.js ("DECISION Phase 88.9-52 (R4 D4, owner 2026-11-18): the collection remove is a worded Remove button").
+  it('R4 D4 (88.9-52; X53 superseded): the collection remove is a worded Remove button in the look of the other list removes, with no x, no box and no slot, on a line that lets it drop under the title', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    renderProfile();
+    const remove = await vi.waitFor(() => screen.getByRole('button', { name: 'Remove Catan' }));
+
+    // A word, not a glyph; the name still names the action and the object (F-369).
+    expect(remove.textContent).toBe('Remove');
+    expect(remove.querySelector('svg')).toBeNull();
+    expect(remove).toHaveAccessibleName('Remove Catan');
+    // The schedule Delete's class string plus ml-auto and shrink-0 (the Friends Remove's form):
+    // 44px tall, no border and no fill in any state, error-subtle on hover.
+    expect(remove.className.split(/\s+/).filter(Boolean)).toEqual([
+      'ml-auto', 'inline-flex', 'min-h-11', 'shrink-0', 'items-center', 'whitespace-nowrap', 'rounded-btn', 'px-2', 'text-sm',
+      'text-content-status-error', 'hover:bg-status-error-subtle', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring',
+    ]);
+    // The page's own phone Remove is the model: every look class it carries, this one carries.
+    const source = await pageSource();
+    const phone = /className=\{`-mx-2 ml-3 (inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring)\$\{/.exec(source);
+    expect(phone, 'LOCATOR: the phone Remove class string').not.toBeNull();
+    for (const cls of phone![1].split(' ')) expect(remove.className.split(/\s+/), cls).toContain(cls);
+    // No slot around the button and nothing reserved at rest.
+    expect(remove.closest('span.inline-grid')).toBeNull();
+    expect(remove.querySelectorAll('[data-reserve]')).toHaveLength(0);
+
+    // ROOM (the D2 form): the line may wrap, the title column asks for 8rem before it shares the
+    // line, and the button keeps to the right when it drops.
+    const line = remove.parentElement as HTMLElement;
+    expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'justify-between', 'items-start', 'gap-x-2']));
+    const title = line.firstElementChild as HTMLElement;
+    expect(title.className.split(/\s+/).filter(Boolean)).toEqual(['flex-[1_1_8rem]', 'min-w-0']);
+    expect(within(title).getByRole('heading', { name: 'Catan' })).toBeInTheDocument();
+    expect(line.children).toHaveLength(2);
+
+    // Armed: Wait (3), then the house Tap again, spoken as the sentence the other removes use.
+    fireEvent.click(remove);
+    expect(remove).toHaveAccessibleName('Remove Catan, wait 3 seconds');
+    expect(remove.textContent).toBe('Wait (3)');
+    expect(remove.className.split(/\s+/)).toContain('font-semibold');
+    advance(CONFIRM_DELAY_MS);
+    expect(remove).toHaveAccessibleName('Tap again to remove');
+    expect(remove.textContent).toBe('Tap again');
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    // The config: the fork 7 armedLabel is gone, the hook default applies.
+    const stripped = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(stripped).not.toMatch(/armedLabel:/);
+    expect(stripped.match(/armedName: 'Tap again to remove'/g)).toHaveLength(2);
+  });
+
+  it('X36a (88.9-68): a committing collection Remove is aria-disabled, named with the removing suffix, shows the house spinner after 200 ms, and two taps send one DELETE', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    const removal = deferred();
+    (userGamesAPI.removeOwnedGame as Mock).mockImplementation(() => removal.promise);
+    renderProfile();
+    const x = await vi.waitFor(() => screen.getByRole('button', { name: 'Remove Catan' }));
+
+    fireEvent.click(x);
+    expect(x).toHaveAttribute('aria-pressed', 'true');
+    // A tap while it counts down sends nothing.
+    fireEvent.click(x);
+    expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.click(x);
+    await flush();
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1);
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-catan');
+
+    // In flight: no longer armed, aria-disabled, named with the suffix, the word Remove showing
+    // (AMENDED Phase 88.9-52 R4 D4: a word now, where the X icon was).
+    expect(x).not.toHaveAttribute('aria-pressed');
+    expect(x).toHaveAttribute('aria-disabled', 'true');
+    expect(x).toHaveAttribute('aria-label', 'Remove Catan, removing');
+    expect(x.textContent).toBe('Remove');
+    expectSpinnerAppearsAfterTheDelay(x);
+    // W38 (88.9-52): the spinner LEADS the word, so the right-anchored word holds its place while the
+    // button grows left. AMENDED Phase 88.9-52 (R4 D4): the bordered box and PIX-2's anchor classes
+    // went with the x; the button keeps its resting class string while busy.
+    const busyClasses = x.className.split(/\s+/);
+    expect(busyClasses).toContain('ml-auto');
+    expect(busyClasses).not.toContain('font-semibold');
+    const parts = Array.from(x.children);
+    expect(parts).toHaveLength(2);
+    expect(parts[0].getAttribute('data-slot')).toBe('spinner');
+    expect(parts[0].className.split(/\s+/)).toContain('mr-2');
+    expect(parts[1].textContent).toBe('Remove');
+    // The other card's x is untouched.
+    const other = screen.getByRole('button', { name: 'Remove Brass' });
+    expect(other).not.toHaveAttribute('aria-disabled');
+    expect(spinnersIn(other)).toHaveLength(0);
+
+    // Further taps send nothing and arm nothing.
+    fireEvent.click(x);
+    fireEvent.click(x);
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1);
+    expect(x).not.toHaveAttribute('aria-pressed');
+
+    // The refresh after the removal answers without the removed game.
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue([OWNED_GAMES[1]]);
+    await act(async () => { removal.resolve({}); });
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: /^Remove Catan/ })).toBeNull());
+    expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1);
+  });
+
+  it('X36a (88.9-68): a committing schedule Delete is aria-disabled, named with the deleting suffix, shows the house spinner after 200 ms, and two taps send one DELETE', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    h.patterns = [...PATTERNS, OVERRIDE];
+    const first = deferred();
+    (availabilityAPI.deleteAvailability as Mock).mockImplementation(() => first.promise);
+    renderProfile();
+    const del = await vi.waitFor(() => screen.getByRole('button', { name: 'Delete Monday schedule' }));
+
+    fireEvent.click(del);
+    expect(del).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(del);
+    expect(availabilityAPI.deleteAvailability).not.toHaveBeenCalled();
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.click(del);
+    await flush();
+    expect(availabilityAPI.deleteAvailability).toHaveBeenCalledTimes(1);
+    expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-mon');
+
+    expect(del).not.toHaveAttribute('aria-pressed');
+    expect(del).toHaveAttribute('aria-disabled', 'true');
+    expect(del).toHaveAttribute('aria-label', 'Delete Monday schedule, deleting');
+    expect(del).toHaveTextContent('Delete');
+    expectSpinnerAppearsAfterTheDelay(del);
+    // W38 (88.9-52): the spinner LEADS the label with mr-2, so the right-anchored word holds its place.
+    const expectLeadingSpinner = (control: HTMLElement) => {
+      const kids = Array.from(control.children);
+      expect(kids).toHaveLength(2);
+      expect(kids[0].getAttribute('data-slot')).toBe('spinner');
+      expect(kids[0].getAttribute('class')?.split(/\s+/)).toContain('mr-2');
+      expect(kids[0].getAttribute('class')?.split(/\s+/)).not.toContain('ml-2');
+      expect(kids[1].className).toContain('inline-grid');
+    };
+    expectLeadingSpinner(del);
+    const tuesday = screen.getByRole('button', { name: 'Delete Tuesday schedule' });
+    expect(tuesday).not.toHaveAttribute('aria-disabled');
+    expect(spinnersIn(tuesday)).toHaveLength(0);
+
+    fireEvent.click(del);
+    fireEvent.click(del);
+    expect(availabilityAPI.deleteAvailability).toHaveBeenCalledTimes(1);
+
+    await act(async () => { first.resolve({}); });
+    // The harness keeps the row (its query answers the same rows), so the same node settles.
+    await vi.waitFor(() => expect(del).not.toHaveAttribute('aria-disabled'));
+    expect(del).toHaveAttribute('aria-label', 'Delete Monday schedule');
+
+    // The override Delete is the same gate with the same suffix.
+    const second = deferred();
+    (availabilityAPI.deleteAvailability as Mock).mockImplementation(() => second.promise);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
+    const overrideDelete = await vi.waitFor(() => screen.getByRole('button', { name: /^Delete .+ override$/ }));
+    const overrideName = overrideDelete.getAttribute('aria-label');
+    fireEvent.click(overrideDelete);
+    expect(overrideDelete).toHaveAttribute('aria-pressed', 'true');
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.click(overrideDelete);
+    await flush();
+    expect(availabilityAPI.deleteAvailability).toHaveBeenCalledTimes(2);
+    expect(availabilityAPI.deleteAvailability).toHaveBeenLastCalledWith('override-1');
+    expect(overrideDelete).toHaveAttribute('aria-disabled', 'true');
+    expect(overrideDelete).toHaveAttribute('aria-label', `${overrideName}, deleting`);
+    expectSpinnerAppearsAfterTheDelay(overrideDelete);
+    expectLeadingSpinner(overrideDelete);
+    await act(async () => { second.resolve({}); });
+    await vi.waitFor(() => expect(overrideDelete).not.toHaveAttribute('aria-disabled'));
+  });
+
+  it('X36b (88.9-68): the phone Remove is the shared gated two-tap: a tap while it counts down sends nothing, the live label is Tap again (named Tap again to remove), two live taps send one removePhone, and while it runs it is aria-disabled, named Remove, removing, with the house spinner', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const removal = deferred();
+    (usersAPI.removePhone as Mock).mockImplementation(() => removal.promise);
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+    // Found by its place: the last button in the Phone verified row.
+    const row = (await vi.waitFor(() => screen.getByText('Phone verified'))).parentElement as HTMLElement;
+    const remove = within(row).getAllByRole('button').at(-1) as HTMLElement;
+    expect(remove).toHaveTextContent('Remove');
+    expect(remove).not.toHaveAttribute('aria-label');
+    expect(remove).not.toHaveAttribute('aria-pressed');
+    expect(remove.className.split(/\s+/)).not.toContain('btn');
+    expect(remove.className.split(/\s+/)).not.toContain('font-semibold');
+
+    // First tap: armed and gated; nothing is said yet (the instruction would be false).
+    fireEvent.click(remove);
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(remove.className.split(/\s+/)).toContain('font-semibold');
+    expect(statusTexts().filter((text) => text.startsWith('Press again'))).toEqual([]);
+    // A tap while it counts down sends nothing.
+    fireEvent.click(remove);
+    expect(usersAPI.removePhone).not.toHaveBeenCalled();
+    advance(CONFIRM_DELAY_MS - 1);
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(statusTexts().filter((text) => text.startsWith('Press again'))).toEqual([]);
+
+    // Live: the short words (R13, 88.9-52), named by the shipped sentence, and the gate's region says what to do, once.
+    advance(1);
+    expect(remove).toHaveTextContent(/^Tap again$/);
+    expect(remove).toHaveAccessibleName('Tap again to remove');
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(remove).not.toHaveAttribute('aria-disabled');
+    expect(statusTexts().filter((text) => text.startsWith('Press again'))).toEqual([
+      'Press again to confirm: Remove your phone number',
+    ]);
+
+    // Second live tap commits: one removePhone.
+    fireEvent.click(remove);
+    await flush();
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+    expect(usersAPI.removePhone).toHaveBeenCalledWith(SELF_UUID);
+    expect(remove).not.toHaveAttribute('aria-pressed');
+    expect(remove).toHaveAttribute('aria-disabled', 'true');
+    expect(remove).toHaveAttribute('aria-label', 'Remove, removing');
+    expect(remove).toHaveTextContent('Remove');
+    expect(remove).not.toHaveTextContent('Tap again');
+    expectSpinnerAppearsAfterTheDelay(remove);
+    // W38 (88.9-52): this control is LEFT-anchored, so its spinner trails the word (a leading one
+    // would push the word 24px right); the right-anchored Delete and x lead with theirs.
+    expect(Array.from(remove.children).at(-1)?.getAttribute('data-slot')).toBe('spinner');
+    expect(Array.from(remove.children).at(-1)?.getAttribute('class')?.split(/\s+/)).toContain('ml-2');
+
+    // Taps while it runs send nothing and arm nothing.
+    fireEvent.click(remove);
+    fireEvent.click(remove);
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+    expect(remove).not.toHaveAttribute('aria-pressed');
+
+    await act(async () => { removal.resolve(REMOVED_USER); });
+    await vi.waitFor(() => expect(screen.getByText(BANNER)).toBeInTheDocument());
+    expect(usersAPI.removePhone).toHaveBeenCalledTimes(1);
+  });
+});
+
+// 88.9-68 Task 4 (X58, X33b). X58: a search with no results says so in a visible polite line under
+// the search row (the toast is gone), and the search panel has a title and the import box's corners.
+// X33b: the timezone picker shows Saved beside it once the save has landed. The provider is mocked
+// in this file, so its save result is whatever `h.setTimezone` resolves.
+describe('phone layout of the availability panels and the inline two-tap controls (88.9-52: W37, W38, W39, W43)', () => {
+  it('W43 (88.9-52): + Add Schedule and + Add Override never wrap inside their buttons: each header stacks on a phone and the button keeps one line', async () => {
+    renderProfile();
+    const check = (toggle: HTMLElement) => {
+      const classes = toggle.className.split(/\s+/);
+      expect(classes).toEqual(expect.arrayContaining(['whitespace-nowrap', 'self-start', 'sm:self-auto']));
+      const header = toggle.parentElement as HTMLElement;
+      expect(header.className.split(/\s+/)).toEqual(
+        expect.arrayContaining(['flex', 'flex-col', 'gap-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between'])
+      );
+      // The phone layout is the base: no unprefixed row alignment left behind.
+      expect(header.className.split(/\s+/)).not.toContain('justify-between');
+      expect(header.className.split(/\s+/)).not.toContain('items-center');
+    };
+    check(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
+    check(await screen.findByRole('button', { name: '+ Add Override' }));
+  });
+
+  it('W37 (88.9-52): a schedule row is a two-line grid on a phone, hours on the first line at full width and Delete beside the dates on the second, so arming Delete neither squeezes the hours nor grows the row; R17: no padding under the control line on a phone (82px)', async () => {
+    const before = h.patterns;
+    h.patterns = [
+      ...PATTERNS,
+      { id: 'override-w37', type: 'specific_override', is_available: true, pattern_data: { date: '2026-11-03', startTime: '18:00', endTime: '22:00' } },
+    ];
+    try {
+      renderProfile();
+      const check = (del: HTMLElement) => {
+        const row = del.parentElement as HTMLElement;
+        expect(row.className.split(/\s+/)).toEqual(
+          expect.arrayContaining(['grid', 'grid-cols-[minmax(0,1fr)_auto]', 'items-center', 'gap-x-2'])
+        );
+        expect(row.className.split(/\s+/)).not.toContain('flex');
+        // R17 (88.9-52, owner pick A, 2026-11-17): a phone row is 82px, not 94: 12px on top and at
+        // the sides and NONE under the 44px control line (1 + 12 + 24 + 44 + 0 + 1). From sm the
+        // bottom padding is back (the 70px one-line row is unchanged). Exact padding set, so a
+        // returned all-round p-3 goes red here.
+        expect(row.className.split(/\s+/).filter((token) => /^(sm:)?p[xytblr]?-/.test(token)).sort()).toEqual(
+          ['pb-0', 'pt-3', 'px-3', 'sm:pb-3']
+        );
+        // Three cells, in reading order: the hours, the dates, the control.
+        expect(Array.from(row.children).map((child) => child.tagName)).toEqual(['P', 'P', 'BUTTON']);
+        const [hours, dates] = Array.from(row.children) as HTMLElement[];
+        // Phone base: the hours span both columns. From sm they take column one of row one again.
+        expect(hours.className.split(/\s+/)).toEqual(
+          expect.arrayContaining(['col-span-2', 'sm:col-span-1', 'sm:col-start-1', 'sm:row-start-1'])
+        );
+        expect(dates.className.split(/\s+/)).toEqual(expect.arrayContaining(['sm:col-start-1', 'sm:row-start-2']));
+        expect(del.className.split(/\s+/)).toEqual(
+          expect.arrayContaining(['justify-self-end', 'sm:col-start-2', 'sm:row-start-1', 'sm:row-span-2', 'min-h-11'])
+        );
+        // The label is right-anchored in its reserve, so Wait (3) ends where Delete ended.
+        expect((del.querySelector('span.inline-grid') as HTMLElement).className.split(/\s+/)).toContain('justify-items-end');
+      };
+      check(await screen.findByRole('button', { name: 'Delete Monday schedule' }));
+      fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
+      check(await screen.findByRole('button', { name: /^Delete .+ override$/ }));
+    } finally {
+      h.patterns = before;
+    }
+  });
+
+  it('R4-A2 (88.9-52): an override stored as 2026-11-27 reads Nov 27, and a schedule from 2026-01-01 to 2026-12-31 reads Jan 1 - Dec 31, with the browser in Pacific', async () => {
+    // The round-3 capture: the override row read Nov 26, a day early. A date-only string is a
+    // calendar day; new Date() read it as UTC midnight and the browser's zone moved it back. The
+    // test sets the process zone itself, so it is red on the old code on any host (CI is UTC).
+    // The year is optional in each pattern so the test still holds after 2026.
+    const before = h.patterns;
+    const hostTz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    h.patterns = [
+      PATTERNS[0],
+      { id: 'override-a2', type: 'specific_override', is_available: true, pattern_data: { date: '2026-11-27', startTime: '18:00', endTime: '22:00' } },
+    ];
+    try {
+      renderProfile();
+      const scheduleDelete = await screen.findByRole('button', { name: 'Delete Monday schedule' });
+      const dates = (scheduleDelete.parentElement as HTMLElement).children[1] as HTMLElement;
+      expect(dates.textContent).toMatch(/^Jan 1(, 2026)? - Dec 31(, 2026)?$/);
+      fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
+      const overrideDelete = await screen.findByRole('button', { name: /^Delete Nov 27(, 2026)? override$/ });
+      const line = (overrideDelete.parentElement as HTMLElement).children[0] as HTMLElement;
+      expect(line.textContent).toMatch(/^Nov 27(, 2026)?: 6:00 PM - 10:00 PM$/);
+    } finally {
+      h.patterns = before;
+      if (hostTz === undefined) delete process.env.TZ;
+      else process.env.TZ = hostTz;
+    }
+  });
+
+  it('W39 (88.9-52): on a phone Phone verified takes the first line, Change number and Remove share the second, and the Remove label is left-anchored in its reserve', async () => {
+    renderProfile({ sms_enabled: true, phone: '+1 415 555 2671', phone_verified: true });
+    const verified = await screen.findByText('Phone verified');
+    const row = verified.parentElement as HTMLElement;
+    expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'items-center', 'gap-2']));
+    // The status words fill the first line beside the 20px tick (40px left for it and the gap), so
+    // nothing else fits there; from sm they are their own width again and the row is one line.
+    expect(verified.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['basis-[calc(100%-2.5rem)]', 'sm:basis-auto'])
+    );
+    const [change, remove] = within(row).getAllByRole('button');
+    expect(change).toHaveTextContent('Change number');
+    // On the second line Change number starts at the row's left edge: no base left margin.
+    expect(change.className.split(/\s+/)).toContain('sm:ml-2');
+    expect(change.className.split(/\s+/)).not.toContain('ml-2');
+    expect(remove).toHaveTextContent('Remove');
+    expect((remove.querySelector('span.inline-grid') as HTMLElement).className.split(/\s+/)).toContain('justify-items-start');
+  });
+
+  // W38 completion (88.9-52, owner: every inline two-tap control takes ONE look). The phone Remove
+  // wears the schedule Delete's look: no underline, the error-subtle hover fill, one line, the house
+  // ring with no offset. Only its place (-mx-2 ml-3) is its own. Armed adds the 600 weight and
+  // nothing else. Exact class sets, so a class added to one arm only goes red here.
+  it('W38 (88.9-52): the phone Remove wears the schedule Delete look at rest and armed; only its position classes are its own', async () => {
+    const DELETE_LOOK = [
+      'inline-flex', 'min-h-11', 'items-center', 'whitespace-nowrap', 'rounded-btn', 'px-2', 'text-sm',
+      'text-content-status-error', 'hover:bg-status-error-subtle',
+      'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring',
+    ];
+    const PLACE = ['-mx-2', 'ml-3'];
+    const sorted = (list: string[]) => [...list].sort();
+    renderProfile({ sms_enabled: true, phone: '+1 415 555 2671', phone_verified: true });
+    const row = (await vi.waitFor(() => screen.getByText('Phone verified'))).parentElement as HTMLElement;
+    const remove = within(row).getAllByRole('button').at(-1) as HTMLElement;
+    expect(remove).toHaveTextContent('Remove');
+    const classes = () => remove.className.split(/\s+/).filter(Boolean);
+    expect(sorted(classes())).toEqual(sorted([...DELETE_LOOK, ...PLACE]));
+
+    // First tap arms it: the same set plus the 600 weight.
+    fireEvent.click(remove);
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(sorted(classes())).toEqual(sorted([...DELETE_LOOK, ...PLACE, 'font-semibold']));
+  });
+});
+
+describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)', () => {
+  type Mock = ReturnType<typeof vi.fn>;
+  const SENTENCE = 'No games found. Try a different search term.';
+
+  function deferred<T = unknown>() {
+    let resolve: (value: T) => void = () => {};
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+  const flush = () => act(async () => {});
+  const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    h.setTimezone.mockReset();
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+  });
+
+  it("X58 (88.9-68): a search with no results writes No games found. Try a different search term. into a polite line under the search box, never a toast; a new search empties it first and keeps it empty at least REGION_EMPTY_DWELL_MS; the search panel carries its title and the import box's corners", async () => {
+    vi.useFakeTimers();
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([]);
+    renderProfile();
+    await flush();
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add from BGG' }));
+    const field = screen.getByRole('textbox', { name: 'Search BoardGameGeek' });
+    const search = screen.getByRole('button', { name: 'Search' });
+
+    // The line is mounted EMPTY with the panel: polite, hidden from sight while it says nothing.
+    const line = screen.getByTestId('bgg-no-results');
+    expect(line.textContent).toBe('');
+    expect(line).toHaveAttribute('role', 'status');
+    expect(line).toHaveAttribute('aria-live', 'polite');
+    expect(line.classList).toContain('sr-only');
+
+    // The panel: its title, the import box's corners, and no gap under the search row.
+    const panel = line.parentElement as HTMLElement;
+    expect(panel).toContainElement(field);
+    expect(within(panel).getByRole('heading', { level: 3, name: 'Search BoardGameGeek' })).toBeInTheDocument();
+    const importBox = screen.getByRole('heading', { level: 3, name: 'Import Your Entire BGG Collection' }).parentElement as HTMLElement;
+    const corner = (el: HTMLElement) => el.className.split(/\s+/).filter((token) => token.startsWith('rounded'));
+    expect(corner(panel)).toEqual(['rounded-lg']);
+    expect(corner(panel)).toEqual(corner(importBox));
+    expect(line.previousElementSibling).toContainElement(field);
+    expect((line.previousElementSibling as HTMLElement).className.split(/\s+/).filter((token) => token.startsWith('mb-'))).toEqual([]);
+
+    // A search that finds nothing: the sentence in the line, in muted small type, and no toast.
+    fireEvent.change(field, { target: { value: 'nothing' } });
+    fireEvent.click(search);
+    await flush();
+    advance(REGION_EMPTY_DWELL_MS);
+    expect(line.textContent).toBe(SENTENCE);
+    expect(screen.getByTestId('bgg-no-results')).toBe(line);
+    expect(line.classList).not.toContain('sr-only');
+    expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(['mt-3', 'text-sm', 'text-content-muted']));
+    expect(toastMock()).not.toHaveBeenCalled();
+    expect(toastMock().error).not.toHaveBeenCalled();
+    // The found-count region stays empty on zero, so the outcome is announced once.
+    expect(screen.queryByText(/^Found \d+ games?\.$/)).toBeNull();
+
+    // The same search again, answered at once: the line empties at the press, is still empty one
+    // millisecond before the dwell ends, and holds the sentence when it ends.
+    fireEvent.click(search);
+    expect(line.textContent).toBe('');
+    await flush();
+    expect(gamesAPI.searchBGG).toHaveBeenCalledTimes(2);
+    advance(REGION_EMPTY_DWELL_MS - 1);
+    expect(line.textContent).toBe('');
+    advance(1);
+    expect(line.textContent).toBe(SENTENCE);
+    expect(toastMock()).not.toHaveBeenCalled();
+
+    // A-48 (88.9-52): typing a new term takes the sentence away at the first character (it used
+    // to stay under the box, beside a term it was not about, until the next Search press).
+    fireEvent.change(field, { target: { value: 'nothing e' } });
+    expect(line.textContent).toBe('');
+    expect(line.classList).toContain('sr-only');
+    // The next search puts it back, so the reopen check below still starts from a shown line.
+    fireEvent.click(search);
+    await flush();
+    advance(REGION_EMPTY_DWELL_MS);
+    expect(line.textContent).toBe(SENTENCE);
+
+    // Hiding the search and opening it again starts from an empty line.
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Search' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Add from BGG' }));
+    expect(screen.getByTestId('bgg-no-results').textContent).toBe('');
+  });
+
+  it("X33b (88.9-68): picking a timezone shows Saved beside the picker in success ink once the save lands, from a polite region mounted empty; a failed save shows nothing; reopening the picker clears it; the list closes at the pick, before the save lands; of two overlapping picks only the later one's landed save shows Saved", async () => {
+    renderProfile();
+    const field = await screen.findByRole('combobox', { name: 'Timezone' });
+    // Open the picker, narrow it to one zone and press that option.
+    const pickZone = (zone: string) => {
+      fireEvent.click(field);
+      fireEvent.change(field, { target: { value: zone } });
+      fireEvent.click(within(screen.getByRole('listbox')).getAllByRole('option')[0]);
+    };
+
+    // The caption's region: mounted empty, polite, in the success ink at the caption size.
+    const receipt = screen.getByTestId('timezone-receipt');
+    expect(receipt.textContent).toBe('');
+    expect(receipt).toHaveAttribute('role', 'status');
+    expect(receipt).toHaveAttribute('aria-live', 'polite');
+    expect(receipt.classList).toContain('sr-only');
+    expect(receipt.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-xs', 'text-content-status-success']));
+
+    // The list closes at the pick, before the save lands; Saved shows once it has landed.
+    const save = deferred<boolean>();
+    h.setTimezone.mockReturnValueOnce(save.promise);
+    pickZone('America/Chicago');
+    expect(h.setTimezone).toHaveBeenCalledWith('America/Chicago', { onSaveFailed: expect.any(Function) });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(receipt.textContent).toBe('');
+    await act(async () => { save.resolve(true); });
+    await waitFor(() => expect(receipt.textContent).toBe('Saved'));
+    expect(screen.getByTestId('timezone-receipt')).toBe(receipt);
+    expect(receipt.classList).not.toContain('sr-only');
+    // The region is the caption's only speaker: no toast, nothing through the root announcer.
+    expect(toastMock().success).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
+
+    // Reopening the picker clears it.
+    fireEvent.click(field);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(receipt.textContent).toBe('');
+
+    // A failed save shows nothing.
+    h.setTimezone.mockResolvedValueOnce(false);
+    fireEvent.change(field, { target: { value: 'America/Denver' } });
+    fireEvent.click(within(screen.getByRole('listbox')).getAllByRole('option')[0]);
+    await flush();
+    await flush();
+    expect(h.setTimezone).toHaveBeenLastCalledWith('America/Denver', { onSaveFailed: expect.any(Function) });
+    expect(receipt.textContent).toBe('');
+
+    // Two overlapping picks, the later one FAILS: the earlier one landing shows nothing, and
+    // neither does the later one's failure.
+    let earlier = deferred<boolean>();
+    let later = deferred<boolean>();
+    h.setTimezone.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(later.promise);
+    pickZone('Asia/Tokyo');
+    pickZone('Europe/Berlin');
+    await act(async () => { earlier.resolve(true); });
+    await flush();
+    expect(receipt.textContent).toBe('');
+    await act(async () => { later.resolve(false); });
+    await flush();
+    expect(receipt.textContent).toBe('');
+
+    // Two overlapping picks, the later one LANDS: Saved shows once, only after the later one.
+    earlier = deferred<boolean>();
+    later = deferred<boolean>();
+    h.setTimezone.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(later.promise);
+    pickZone('Asia/Tokyo');
+    pickZone('Europe/Berlin');
+    await act(async () => { earlier.resolve(true); });
+    await flush();
+    expect(receipt.textContent).toBe('');
+    await act(async () => { later.resolve(true); });
+    await waitFor(() => expect(receipt.textContent).toBe('Saved'));
+    expect(h.setTimezone).toHaveBeenLastCalledWith('Europe/Berlin', { onSaveFailed: expect.any(Function) });
+  });
+
+  // T1 (88.9-52, owner pick Field, 2026-11-17). The provider is mocked here: a failed save is the
+  // mock calling the onSaveFailed it was handed (what the real provider does, pinned in
+  // src/app/components/TimezoneProvider.identity.test.tsx) and resolving false.
+  it('T1 (88.9-52): a failed timezone save shows its line under the Timezone field as an alert in the error ink, with no toast; the line stays while the picker is reopened, clears at the next pick, never shows beside Saved, ignores a result from an earlier pick, and becomes a toast when the field is no longer on screen', async () => {
+    const SENTENCE = 'Failed to save your timezone — please try again.';
+    const OFFLINE = "We couldn't reach the server. Check your connection and try again.";
+    type Options = { onSaveFailed: (message: string) => void };
+    const failWith = (message: string) =>
+      h.setTimezone.mockImplementationOnce(async (_zone: string, options: Options) => {
+        options.onSaveFailed(message);
+        return false;
+      });
+    const { unmount } = renderProfile();
+    const field = await screen.findByRole('combobox', { name: 'Timezone' });
+    const pickZone = (zone: string) => {
+      fireEvent.click(field);
+      fireEvent.change(field, { target: { value: zone } });
+      fireEvent.click(within(screen.getByRole('listbox')).getAllByRole('option')[0]);
+    };
+    const errorLine = () => screen.queryByTestId('timezone-save-error');
+    const receipt = screen.getByTestId('timezone-receipt');
+
+    // Nothing at rest: the line is not mounted (no standing empty alert, no footprint).
+    expect(errorLine()).toBeNull();
+
+    // A failed save: the sentence, in the page's inline error style, as an alert, right after
+    // the Saved region in the Timezone card; no toast, and no Saved.
+    failWith(SENTENCE);
+    pickZone('America/Chicago');
+    await waitFor(() => expect(errorLine()).not.toBeNull());
+    const line = errorLine() as HTMLElement;
+    expect(line.textContent).toBe(SENTENCE);
+    expect(line).toHaveAttribute('role', 'alert');
+    expect(line.className.split(/\s+/).sort()).toEqual(['mt-1', 'text-content-status-error', 'text-xs']);
+    expect(line.previousElementSibling).toBe(receipt);
+    expect(receipt.textContent).toBe('');
+    expect(toastMock().error).not.toHaveBeenCalled();
+    expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
+
+    // Reopening the picker and typing keep the line (it says why the field went back).
+    fireEvent.click(field);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: 'America/Den' } });
+    expect(errorLine()?.textContent).toBe(SENTENCE);
+
+    // The next pick clears it at the press, before its save answers; a landed save shows Saved alone.
+    const save = deferred<boolean>();
+    h.setTimezone.mockReturnValueOnce(save.promise);
+    fireEvent.click(within(screen.getByRole('listbox')).getAllByRole('option')[0]);
+    expect(errorLine()).toBeNull();
+    await act(async () => { save.resolve(true); });
+    await waitFor(() => expect(receipt.textContent).toBe('Saved'));
+    expect(errorLine()).toBeNull();
+
+    // A known cause shows its own register line in the same place, and Saved is gone at that pick.
+    failWith(OFFLINE);
+    pickZone('Asia/Tokyo');
+    await waitFor(() => expect(errorLine()?.textContent).toBe(OFFLINE));
+    expect(receipt.textContent).toBe('');
+
+    // A result handed over by an EARLIER pick after a later pick was made changes nothing.
+    const earlier = deferred<boolean>();
+    const later = deferred<boolean>();
+    let earlierOptions: Options | undefined;
+    h.setTimezone
+      .mockImplementationOnce((_zone: string, options: Options) => { earlierOptions = options; return earlier.promise; })
+      .mockReturnValueOnce(later.promise);
+    pickZone('Europe/Berlin');
+    pickZone('Europe/Paris');
+    expect(errorLine()).toBeNull();
+    await act(async () => { earlierOptions?.onSaveFailed(SENTENCE); earlier.resolve(false); });
+    await flush();
+    expect(errorLine()).toBeNull();
+    expect(toastMock().error).not.toHaveBeenCalled();
+    await act(async () => { later.resolve(true); });
+    await waitFor(() => expect(receipt.textContent).toBe('Saved'));
+
+    // The person left the page before the save answered: no field to put the line beside, so the
+    // failure is the top toast (it must not vanish).
+    const leaving = deferred<boolean>();
+    let leavingOptions: Options | undefined;
+    h.setTimezone.mockImplementationOnce((_zone: string, options: Options) => { leavingOptions = options; return leaving.promise; });
+    pickZone('America/Denver');
+    unmount();
+    await act(async () => { leavingOptions?.onSaveFailed(SENTENCE); leaving.resolve(false); });
+    expect(toastMock().error).toHaveBeenCalledTimes(1);
+    expect(toastMock().error).toHaveBeenCalledWith(SENTENCE);
+  });
+});
+
+// 88.9-52 R3 (owner: "we have to remember to update the[m] if we modify the title"): the heading
+// only screen readers get and the page's own visible name are ONE constant, so one cannot be
+// changed without the other. Read off the page source: a hand-typed copy at either site fails here.
+describe('profile page name, one source (88.9-52 R3)', () => {
+  it('R3 (88.9-52): the screen-reader-only page heading and the visible page name come from one constant', () => {
+    const src = readFileSync(resolvePath(__dirname, 'page.js'), 'utf8');
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
+    // The visible level-1 title here is the person's own name, so the page's static visible name is
+    // the breadcrumb's current-page crumb; that crumb and both hidden headings share the constant.
+    expect(count(src, "const PROFILE_PAGE_NAME = 'Profile';"), 'the one declaration').toBe(1);
+    expect(count(src, 'srHeading="'), 'a hand-typed hidden heading').toBe(0);
+    expect(count(src, 'srHeading={PROFILE_PAGE_NAME}'), 'the signed-out frame and the session-expired frame').toBe(2);
+    expect(count(src, '>{PROFILE_PAGE_NAME}</span>'), 'the breadcrumb current-page crumb').toBe(1);
+    expect(count(src, '>Profile</span>'), 'a hand-typed crumb').toBe(0);
   });
 });

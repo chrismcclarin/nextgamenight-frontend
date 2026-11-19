@@ -12,7 +12,7 @@
 // `.tsx` is mandatory: vitest.config.mts only collects `.ts`/`.tsx`; its jsx-in-js transform
 // handles the `.js` component under test.
 import * as React from 'react';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { auth, unreadState } = vi.hoisted(() => ({
@@ -278,5 +278,347 @@ describe('Header — one Main navigation landmark (AC-18, copy row H5)', () => {
     const links = Array.from(document.querySelectorAll('a'));
     expect(links).toHaveLength(3);
     expect(links.filter((a) => !nav.contains(a))).toEqual([]);
+    cleanup();
+
+    // 88.9-52 W6: while the session is still being read, the strip is not empty. The brand (logo
+    // and name) is there, inside the same one Main landmark; the lists and the menu button, which
+    // depend on who is signed in, are not there yet.
+    auth.isLoading = true;
+    render(<Header />);
+    const waitingNavs = document.querySelectorAll('nav');
+    expect(waitingNavs).toHaveLength(1);
+    expect(waitingNavs[0].getAttribute('aria-label')).toBe('Main');
+    const waitingLinks = Array.from(document.querySelectorAll('a'));
+    expect(waitingLinks).toHaveLength(1);
+    expect(waitingLinks[0]).toHaveAttribute('href', '/');
+    expect(waitingLinks[0]).toHaveTextContent('Next Game Night');
+    expect(waitingNavs[0].contains(waitingLinks[0])).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Toggle menu' })).toBeNull();
+    expect(screen.queryByText('Login')).toBeNull();
+    expect(document.querySelectorAll('[inert]')).toHaveLength(0);
+  });
+});
+
+// 88.9-52 R21 (owner 2026-11-17, pick Fit or logo): at enlarged text the site name is held at the
+// largest size that keeps it on one line between the logo and the menu button, never below its
+// ordinary 18px; where 18px cannot fit, the logo stands alone and the link keeps its name.
+// jsdom performs no layout and resolves no container query, so this reads the two class tokens
+// the rule is written in and works the same arithmetic the browser does, at the widths the
+// capture measured (20px fits at 375 with doubled text; at 320 with doubled text only 13px would).
+describe('R21 (88.9-52): the header site name fits one line at enlarged text, or gives way to the logo', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  const SIZE = /^text-\[length:clamp\((\d+)px,calc\(\(100cqw_-_(\d+)px_-_([\d.]+)rem_-_(\d+)px\)_\/_([\d.]+)\),([\d.]+)rem\)\]$/;
+  const HIDE = /^@max-\[calc\((\d+)px_\+_([\d.]+)rem\)\]:sr-only$/;
+  // Measured by capture j on the real element: the name is 157.4px wide at 20px and 102.3px at 13px.
+  const NAME_WIDTH_EM = 157.4 / 20;
+
+  const read = () => {
+    render(<Header />);
+    // Matched as a pattern from when the logo carried a label of its own; the logo is decoration
+    // since 88.9-52 and the exact name is pinned in the last describe of this file.
+    const link = screen.getByRole('link', { name: /Next Game Night$/ });
+    const name = Array.from(link.querySelectorAll('span')).find((s) => s.textContent?.trim() === 'Next Game Night') as HTMLElement;
+    const cls = tokens(name);
+    const size = cls.map((t) => SIZE.exec(t)).find(Boolean);
+    const hide = cls.map((t) => HIDE.exec(t)).find(Boolean);
+    return { link, name, cls, size, hide };
+  };
+  const numbers = (m: RegExpExecArray) => m.slice(1).map(Number);
+
+  it('R21 tokens: the name carries one fit rule and one give-way rule, never wraps, and its row is the measured container', () => {
+    const { link, name, cls, size, hide } = read();
+    expect(size, 'the fit rule (a clamp on the row width) is on the name').toBeTruthy();
+    expect(hide, 'the give-way rule (visually hidden under a row width) is on the name').toBeTruthy();
+    expect(cls).toContain('whitespace-nowrap');
+    // The desktop rung of the owner-accepted pair (C10a) is kept; the phone rung is now the fit rule's cap.
+    // Since 88.9-52 R4 S2 the desktop rung applies only while the desktop list is drawn (the S2
+    // describe below); a bare md rung would put the 20px name back beside the menu button.
+    expect(cls).toContain('md:@min-[40rem]/header:text-xl');
+    expect(cls).not.toContain('md:text-xl');
+    expect(cls).not.toContain('text-lg');
+    // The row that holds the brand link and the menu button is the query container.
+    const row = link.parentElement as HTMLElement;
+    expect(tokens(row)).toContain('@container');
+    expect(row.contains(screen.getByRole('button', { name: 'Toggle menu' }))).toBe(true);
+    // Hidden from sight only: the name stays in the link, so the link keeps its name.
+    expect(link.contains(name)).toBe(true);
+  });
+
+  it('R21 lockstep: the constants in the two rules are the logo, the gap after it, the menu button and an 8px clearance', () => {
+    const { link, size, hide } = read();
+    const [minPx, logoPx, remTerm, clearPx, divisor, capRem] = numbers(size as RegExpExecArray);
+    const [hidePx, hideRem] = numbers(hide as RegExpExecArray);
+    expect(minPx).toBe(18);
+    expect(capRem * 16).toBe(18);
+    // The logo is a fixed px size: it does not grow with text.
+    const logo = link.querySelector('svg') as SVGElement;
+    expect(Number(logo.getAttribute('width'))).toBe(logoPx);
+    // gap-2.5 after the logo (0.625rem) plus the menu button, p-2.5 round a w-6 icon (2.75rem).
+    expect(tokens(link)).toContain('gap-2.5');
+    const menu = screen.getByRole('button', { name: 'Toggle menu' });
+    expect(tokens(menu)).toContain('p-2.5');
+    expect(tokens(menu.querySelector('svg') as Element)).toEqual(['w-6', 'h-6']);
+    expect(remTerm).toBe(0.625 + 0.625 * 2 + 1.5);
+    expect(clearPx).toBe(8);
+    // The divisor is the name's measured width in em, rounded up, so the clearance is never eaten.
+    expect(divisor).toBeGreaterThanOrEqual(NAME_WIDTH_EM);
+    expect(divisor).toBeLessThanOrEqual(NAME_WIDTH_EM * 1.03);
+    // The give-way width is exactly where the fit rule reaches its 18px floor.
+    expect(hideRem).toBe(remTerm);
+    expect(hidePx).toBe(logoPx + clearPx + minPx * divisor);
+  });
+
+  it('R21 arithmetic: 18px at ordinary text, about 20px at 375 with doubled text, the logo alone at 320 with doubled text', () => {
+    const { size, hide } = read();
+    const [minPx, logoPx, remTerm, clearPx, divisor, capRem] = numbers(size as RegExpExecArray);
+    const [hidePx, hideRem] = numbers(hide as RegExpExecArray);
+    // The row is the screen less the nav's px-4 on each side (1rem each).
+    const row = (viewport: number, rem: number) => viewport - 2 * rem;
+    const shown = (viewport: number, rem: number) => row(viewport, rem) >= hidePx + hideRem * rem;
+    const fontPx = (viewport: number, rem: number) =>
+      Math.min(Math.max(minPx, (row(viewport, rem) - logoPx - remTerm * rem - clearPx) / divisor), capRem * rem);
+    // What is left between the end of the name and the menu button.
+    const clearance = (viewport: number, rem: number) =>
+      row(viewport, rem) - logoPx - remTerm * rem - NAME_WIDTH_EM * fontPx(viewport, rem);
+
+    // Ordinary text: nothing changes, at either phone width.
+    expect(shown(375, 16)).toBe(true);
+    expect(fontPx(375, 16)).toBe(18);
+    expect(shown(320, 16)).toBe(true);
+    expect(fontPx(320, 16)).toBe(18);
+    // Doubled text at 375: the capture measured 20px as the largest size with 8px clear.
+    expect(shown(375, 32)).toBe(true);
+    expect(fontPx(375, 32)).toBeGreaterThanOrEqual(20);
+    expect(fontPx(375, 32)).toBeLessThan(20.5);
+    expect(clearance(375, 32)).toBeGreaterThanOrEqual(8);
+    // Doubled text at 320: 18px cannot fit (the capture measured 13px), so the logo stands alone.
+    expect(shown(320, 32)).toBe(false);
+    // Wide enough, doubled text: the name reaches its doubled size (36px) and still clears the button.
+    expect(fontPx(600, 32)).toBe(36);
+    expect(clearance(600, 32)).toBeGreaterThanOrEqual(8);
+    // Never under 18px while shown, at any width and text size on the way.
+    for (const rem of [16, 20, 24, 28, 32, 40]) {
+      for (let viewport = 280; viewport <= 767; viewport += 1) {
+        if (!shown(viewport, rem)) continue;
+        expect(fontPx(viewport, rem)).toBeGreaterThanOrEqual(18);
+        expect(clearance(viewport, rem), viewport + ' at ' + rem).toBeGreaterThanOrEqual(8);
+      }
+    }
+  });
+});
+
+// 88.9-52 (found by the R21 fixer): the logo inside the home link carried a label of its own with
+// the legacy name of one group, so the link was spoken with that name in front of the product's.
+// The logo is decoration there: the link's name is the product name, once, and nothing else.
+describe('the header home link is named by the product name alone (88.9-52)', () => {
+  it('brand name: signed in and signed out, the home link is named exactly Next Game Night and the logo is hidden from assistive tech', () => {
+    for (const signedIn of [true, false]) {
+      auth.user = signedIn ? { sub: 'auth0|me', name: 'Me' } : undefined;
+      render(<Header />);
+      // A string name is an exact match of the whole computed name.
+      const link = screen.getByRole('link', { name: 'Next Game Night' });
+      expect(link).toHaveAttribute('href', '/');
+      const logo = link.querySelector('svg') as SVGElement;
+      expect(logo).not.toBeNull();
+      expect(logo).toHaveAttribute('aria-hidden', 'true');
+      expect(logo).not.toHaveAttribute('aria-label');
+      expect(document.querySelector('[aria-label*="Periodic"]')).toBeNull();
+      // The give-way state of R21 keeps the name in the link as text, so the name does not depend
+      // on the word being drawn: outside the hidden logo, the name span is the link's only text.
+      const outsideLogo = Array.from(link.querySelectorAll('span')).filter((el) => !logo.contains(el));
+      expect(outsideLogo.map((el) => el.textContent?.trim())).toEqual(['Next Game Night']);
+      cleanup();
+    }
+  });
+});
+
+// 88.9-52 R4 S2 (the round-3 capture, 768px with doubled text): the desktop header's 40px site
+// name ran straight into Home with no gap, and the list ran off the right edge of the screen
+// (Profile was cut, Logout and the theme switch were not reachable). From md the header now shows
+// the desktop list only while the strip is at least 40rem wide (42rem until R4 B4, which
+// measured the list in a browser, then 40.25rem until R4 D5); under that it is the phone header:
+// the menu button, the panel, and the name on R21's fit rule. At ordinary text the strip is 48rem
+// at md, so nothing changes there. jsdom resolves no media or container query, so these pin the
+// class tokens, work the arithmetic, and drive the one piece of script (the menu closes when its
+// button stops being drawn). The rendered proof is in e2e/touch-targets.spec.ts ("R21 (88.9-52 R4 S2)").
+describe('S2 (88.9-52 R4): from md the header falls back to the phone menu while the desktop list cannot fit', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  // AMENDED Phase 88.9-52 (R4 B4): 40.25rem, from the widths measured in the browser (the
+  // arithmetic test below works it); 42rem rested on widths read off a picture.
+  // AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): 40rem. The owner took the desktop list back
+  // at exactly 1280px with doubled text OVER the 48px floor: the tightest gap is 47.5px, at one
+  // text size (the arithmetic test below shows the sum and holds a 47px floor).
+  const SWITCH_REM = 40;
+  const WHEN_NARROW = 'md:@max-[40rem]/header:';
+  const WHEN_WIDE = 'md:@min-[40rem]/header:';
+
+  const parts = () => {
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const strip = nav.parentElement as HTMLElement;
+    const menu = screen.getByRole('button', { name: 'Toggle menu' });
+    const list = Array.from(nav.querySelectorAll('ul')).find((ul) => tokens(ul).includes('md:flex')) as HTMLElement;
+    const panel = nav.querySelector('[inert]') as HTMLElement;
+    const backdrop = strip.previousElementSibling as HTMLElement;
+    const link = screen.getByRole('link', { name: 'Next Game Night' });
+    const name = Array.from(link.querySelectorAll('span')).find((el) => el.textContent?.trim() === 'Next Game Night') as HTMLElement;
+    return { nav, strip, menu, list, panel, backdrop, name };
+  };
+
+  it('S2 tokens: one 40rem width on the strip switches the list, the menu button, the panel and the name together', () => {
+    render(<Header />);
+    const { strip, menu, list, panel, backdrop, name } = parts();
+    // The strip (the full-width bar) is the named container all four read.
+    expect(tokens(strip)).toContain('@container/header');
+    // Each keeps its md class and gains the opposite display for a strip under the switch.
+    expect(tokens(list)).toEqual(expect.arrayContaining(['hidden', 'md:flex', WHEN_NARROW + 'hidden']));
+    expect(tokens(menu)).toEqual(expect.arrayContaining(['md:hidden', WHEN_NARROW + 'inline-block']));
+    expect(tokens(panel)).toEqual(expect.arrayContaining(['md:hidden', WHEN_NARROW + 'block']));
+    expect(tokens(name)).toContain(WHEN_WIDE + 'text-xl');
+    // One width, written the same way at every site (a container max is exclusive and a min is
+    // inclusive, so the two forms meet with no gap and no overlap).
+    const widths = [strip.parentElement as HTMLElement]
+      .flatMap((root) => Array.from(root.querySelectorAll('[class]')))
+      .flatMap((el) => tokens(el))
+      .filter((t) => t.includes('/header:'))
+      .map((t) => /^md:@(?:min|max)-\[([^\]]+)\]\/header:/.exec(t)?.[1]);
+    expect(widths).toHaveLength(4);
+    expect(new Set(widths)).toEqual(new Set([SWITCH_REM + 'rem']));
+    // The dim layer behind the open menu is outside the strip and cannot read its width, so it
+    // carries no md class: it is drawn whenever the menu is open, at any width.
+    expect(tokens(backdrop)).toEqual(expect.arrayContaining(['fixed', 'inset-0']));
+    expect(tokens(backdrop)).not.toContain('md:hidden');
+    expect(backdrop).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('S2 arithmetic: under the switch the name keeps its 8px before the menu button from 768 up; from the switch the name and the list keep at least 47px between them at every text size from 100% to 200%', () => {
+    // The name is 7.87em wide (capture j: 157.4px at 20px).
+    const NAME_EM = 157.4 / 20;
+    // R21's fit rule, the same constants its lockstep test reads off the class.
+    const fit = (strip: number, rem: number) => {
+      const row = strip - 2 * rem;
+      const shown = row >= 186 + 3.375 * rem;
+      const fontPx = Math.min(Math.max(18, (row - 34 - 3.375 * rem - 8) / 8), 1.125 * rem);
+      return { shown, fontPx, clearance: row - 34 - 3.375 * rem - NAME_EM * fontPx };
+    };
+    // The desktop list's width in rem. AMENDED Phase 88.9-52 (R4 B4): MEASURED in the browser by
+    // the round-4 re-shoot (r4-m), 745.3px at 200% text (a 32px root), the same at 1200, 1280 and
+    // 1344 wide. It was an estimate read off a picture (23.125rem); it is 23.29rem.
+    const LIST_REM = 745.3 / 32;
+    // The space between the name and Home: the strip less its 2rem of side padding, the 34px
+    // logo, the 0.625rem gap, the name at its md size (7.87em of 1.25rem) and the list. At a
+    // 32px root that is strip - 1178.1, the re-shoot's own measured line (22px at 1200, 102px
+    // at 1280, 166px at 1344: screen width less 1178).
+    const desktopGap = (strip: number, rem: number) =>
+      strip - 2 * rem - 34 - 0.625 * rem - NAME_EM * 1.25 * rem - LIST_REM * rem;
+    expect(desktopGap(1200, 32)).toBeCloseTo(22, 0);
+    expect(desktopGap(1280, 32)).toBeCloseTo(102, 0);
+    expect(desktopGap(1344, 32)).toBeCloseTo(166, 0);
+
+    // WHERE THE SWITCH MUST SIT. The list is drawn when the screen is at least md (768px: a
+    // media query, which a larger root text size does not move) AND the strip is at least the
+    // switch (in rem of the root, which it does move). The tightest case is not 200%: it is the
+    // text size at which the switch falls exactly on 768px, because there the list is drawn on
+    // the narrowest screen that can draw it. With the switch at T rem that size is 768 / T px,
+    // and the gap there is 768 - 34 - 35.75rem x (768 / T). Asking 48px of it gives
+    // T >= 35.75 x 768 / 686 = 40.03rem. The smallest quarter-rem step over that is 40.25.
+    // AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): the switch is 40rem, 0.03rem UNDER that
+    // number, by the owner's ruling. THE SUM at 40rem: the tightest root is 768 / 40 = 19.2px
+    // (text at 120%) on a 768px screen, and the gap there is 768 - 34 - 35.75 x 19.2 = 47.6px
+    // with these rounded parts (47.5px with the measured ones). The floor this test holds is
+    // therefore 47px, not 48. What it buys: 40 x 32 = 1280, so with doubled text the desktop
+    // list is back at exactly a 1280px screen (40.25rem gave 1288px).
+    const PX_PARTS = 34;
+    const REM_PARTS = 2 + 0.625 + NAME_EM * 1.25 + LIST_REM;
+    const smallest = (REM_PARTS * 768) / (768 - PX_PARTS - 48);
+    expect(smallest).toBeGreaterThan(40);
+    expect(smallest).toBeLessThan(40.25);
+    const smallestFor47 = (REM_PARTS * 768) / (768 - PX_PARTS - 47);
+    expect(smallestFor47).toBeLessThanOrEqual(SWITCH_REM);
+    // The tightest gap any drawn desktop list has, for a given switch, over every root size from
+    // 16px to 32px (hundredths of a pixel) and every screen from 768px up.
+    const tightest = (switchRem: number) => {
+      let least = Infinity;
+      for (let rem = 16; rem <= 32.0001; rem += 0.01) {
+        const narrowestDrawn = Math.max(768, Math.ceil(switchRem * rem));
+        least = Math.min(least, desktopGap(narrowestDrawn, rem));
+      }
+      return least;
+    };
+    expect(tightest(SWITCH_REM)).toBeGreaterThanOrEqual(47);
+    expect(tightest(SWITCH_REM)).toBeCloseTo(47.5, 0);
+    // 38.5rem, the value the 200% case alone asks for (1226px / 32 = 38.3rem), is too small: at
+    // a 20px root (text at 125%) it draws the list on a 770px screen with about 21px after the name.
+    expect(tightest(38.5)).toBeLessThan(30);
+    // 40rem misses 48px by half a pixel (47.5px at a 19.2px root on a 768px screen): accepted by
+    // the owner (R4 D5). 40.25rem, the value it replaces, held 48px and cost 8px of screen at 200%.
+    expect(tightest(40)).toBeLessThan(48);
+    expect(tightest(40.25)).toBeGreaterThanOrEqual(48);
+
+    for (const rem of [16, 18, 19, 19.2, 20, 24, 28, 32]) {
+      for (let viewport = 768; viewport <= 1600; viewport += 1) {
+        if (viewport < SWITCH_REM * rem) {
+          // The phone header, above md: the name is on one line, at least 18px, 8px clear.
+          const { shown, fontPx, clearance } = fit(viewport, rem);
+          expect(shown, viewport + ' at ' + rem).toBe(true);
+          expect(fontPx, viewport + ' at ' + rem).toBeGreaterThanOrEqual(18);
+          expect(clearance, viewport + ' at ' + rem).toBeGreaterThanOrEqual(8);
+        } else {
+          // The desktop list: at least 47px (R4 D5), and at least 1.5rem (one of its own gaps), between the name and Home.
+          expect(desktopGap(viewport, rem), viewport + ' at ' + rem).toBeGreaterThanOrEqual(Math.max(47, 1.5 * rem));
+        }
+      }
+    }
+    // Ordinary text: the strip is 48rem at md, over the switch, so md alone still decides.
+    expect(768 / 16).toBeGreaterThanOrEqual(SWITCH_REM);
+    // The captured defect: 768 with doubled text is 24rem, far under the switch, so it is the phone header.
+    expect(768 / 32).toBeLessThan(SWITCH_REM);
+    // Doubled text: the desktop list is back from 1280px (1288px at 40.25rem, 1344px at 42rem), with 102px after the name.
+    expect(SWITCH_REM * 32).toBe(1280);
+    expect(desktopGap(1280, 32)).toBeCloseTo(102, 0);
+    // And what it was: the old md-only rule put the list beside the name there, short by this much.
+    expect(desktopGap(768, 32)).toBeLessThan(0);
+  });
+
+  it('S2 close: an open menu closes when its button stops being drawn (the strip grew past the switch)', () => {
+    const observers: Array<{ cb: () => void; targets: Element[]; live: boolean }> = [];
+    class FakeResizeObserver {
+      private entry: { cb: () => void; targets: Element[]; live: boolean };
+      constructor(cb: () => void) {
+        this.entry = { cb, targets: [], live: true };
+        observers.push(this.entry);
+      }
+      observe(el: Element) {
+        this.entry.targets.push(el);
+      }
+      unobserve() {}
+      disconnect() {
+        this.entry.live = false;
+      }
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    try {
+      render(<Header />);
+      const { strip, menu, panel } = parts();
+      // Closed: nothing is watching.
+      expect(observers.filter((o) => o.live)).toHaveLength(0);
+      fireEvent.click(menu);
+      expect(menu).toHaveAttribute('aria-expanded', 'true');
+      const live = observers.filter((o) => o.live);
+      expect(live).toHaveLength(1);
+      expect(live[0].targets).toEqual([strip]);
+      // A resize that leaves the button drawn changes nothing.
+      act(() => live[0].cb());
+      expect(menu).toHaveAttribute('aria-expanded', 'true');
+      expect(panel).not.toHaveAttribute('inert');
+      // The strip passes the switch: the stylesheet stops drawing the button. The menu closes.
+      menu.style.display = 'none';
+      act(() => live[0].cb());
+      expect(menu).toHaveAttribute('aria-expanded', 'false');
+      expect(panel).toHaveAttribute('inert');
+      // And the watcher is gone with it.
+      expect(observers.filter((o) => o.live)).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

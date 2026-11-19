@@ -1,10 +1,24 @@
-import { handleAuth, handleLogout } from '@auth0/nextjs-auth0';
+import { handleAuth, handleLogin, handleLogout } from '@auth0/nextjs-auth0';
 
 // Force dynamic rendering - Auth0 routes use cookies and cannot be statically generated
 export const dynamic = 'force-dynamic';
 
 export const GET = handleAuth({
-  // The installed @auth0/nextjs-auth0@3.5.0 IGNORES a `returnTo` query param —
+  // DECISION Phase 88.9-33 LAND-03 (owner Q5, 88.9-RULINGS.md round 2): the login handler
+  // forwards connection to Auth0 ONLY for the exact literal google-oauth2, so Sign in with
+  // Google goes straight to Google's account picker, chosen OVER forwarding the query value (any
+  // link could then pick another tenant connection or smuggle an authorize parameter) and over a
+  // prefix or case-insensitive match (the logout allowlist's reason below). Anything else returns
+  // {} — Auth0's default Universal Login, never an error. returnTo stays the SDK's: it merges the
+  // query value after these options through its same-origin helper. If the tenant's Google
+  // connection is ever renamed, re-point this literal and the LandingPage href together (UI-SPEC
+  // F20).
+  login: handleLogin((req) => {
+    const connection = new URL(req.url).searchParams.get('connection');
+    if (connection === 'google-oauth2') return { authorizationParams: { connection: 'google-oauth2' } };
+    return {};
+  }),
+  // The installed @auth0/nextjs-auth0@3.8.0 (re-read Phase 88.9-33) IGNORES a `returnTo` query param —
   // its logout handler only honors `options.returnTo` (RESEARCH Finding 1).
   // Read the query param ourselves and STRICTLY allowlist `/goodbye` (open-redirect
   // guard: never reflect arbitrary values). A relative `/goodbye` is joined onto

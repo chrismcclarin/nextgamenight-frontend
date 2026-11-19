@@ -17,11 +17,15 @@ const LOADING_NOTIFICATIONS = 'Loading notifications';
 
 // Copy row N7 (D-47, owner-ratified 2026-10-05; planning:.planning/phases/88.6.1-non-look-a11y-and-correctness-residuals-from-88-6/planning-briefs/revision-lap-3-manifest.md ("## Ratified strings")), the
 // full banner's title when the notifications could not be loaded and there is nothing to show;
-// straight apostrophe (D-32 R8).
-const NOTIFICATIONS_LOAD_FAILED_COPY = "Couldn't load your notifications";
+// straight apostrophe (D-32 R8). AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): the constant holds the thing and FetchErrorBanner composes the same title, chosen OVER typing the whole title here.
+const NOTIFICATIONS_LOAD_FAILED_THING = 'your notifications';
 
-// Copy row N2 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:101) — seen and heard.
-const ACCEPTING_COPY = 'Accepting...';
+// DECISION Phase 88.9-45 (rule 1, owner pick O16a, 88.9-PICKS-B9.json; Q3 scope B): both row Accepts
+// and both row Declines keep their labels with the house spinner while busy, named "Accept, accepting"
+// / "Decline, declining" through Button's busy / busySuffix — chosen OVER copy row N2's swap word
+// (retired) and OVER the N8 marker's REJECTED (d) for the in-flight state only (one app-wide busy
+// shape beats a per-site naming rule). This constant is the Accepts' suffix.
+const ACCEPT_BUSY_SUFFIX = ', accepting';
 
 // Copy rows N3-N6 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:102-105), each U+2019
 // written as the straight apostrophe (D-32 R8). Each failure arm passes its own row as the fallback
@@ -67,7 +71,13 @@ const declinedInviteCopy = (groupName) => `Declined invite to ${groupName}.`;
    REJECTED (e): truncating long names.
    NOTE: Sentry click breadcrumbs copy a clicked control's name; plan 88.6.1-76 (split from 08)
    keeps only the static prefix of those values (its NAMED_ATTRIBUTE_PREFIXES lists the four N8
-   prefixes). Changing how these buttons are named is a decision, not a cleanup. */
+   prefixes). Changing how these buttons are named is a decision, not a cleanup.
+   AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; Q3 scope B): in flight the
+   visible label stays Accept and the name becomes "Accept, accepting" — the house busy suffix (an
+   sr-only span inside the button). REJECTED (d) is overruled by rule 1 for the in-flight state only
+   (one app-wide busy shape beats a per-site naming rule); copy row N2's swap word is retired. The
+   pressed Decline now also drops its N8 name while in flight (heard as "Decline, declining", the
+   same busy suffix). The at-rest N8 names are unchanged. */
 // The per-row record's key: the row's kind, a colon, then its id (two id spaces from two tables in
 // one map, so the kind rules out a collision). Built only here: it is a map key, never a class, and
 // one spelling keeps all six sites in step. Spelled inline as a literal kind, a colon and an
@@ -290,7 +300,10 @@ function NotificationBell({ user, variant = 'icon', label }) {
      A press made here keeps its rule of POSITION: the fact is read only while the row has no
      record of its own.
      Going back to one shared flag, or dropping either half of the gate, is a decision, not a
-     cleanup. */
+     cleanup.
+     AMENDED Phase 88.9-45 (rule 1): Decline still takes no swap word (D-33 row 15); it gains the house
+     spinner and the heard suffix, by REJECTED (d)'s own reason — the friends page's Decline (88.9-46
+     B25) shows the spinner for the same action. */
   function beginRowAction(key, action) {
     if (inFlightRef.current.has(key)) return false;
     inFlightRef.current.add(key);
@@ -340,7 +353,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
      REJECTED: arming on the status code (a 400) — a 500 after a committed accept removes the row
      with nothing armed, and a 400 whose reconcile read failed keeps the row with the hook armed;
      the mark is the provider's own record of what it did. Since the friend row now stays while
-     its request runs, Accepting... paints on friend rows too.
+     its request runs, the busy spinner shows on friend rows too.
      Arming earlier, or focusing inside the handler, is a decision, not a cleanup. */
   function armRowRecovery(pressedEl) {
     const row = pressedEl?.closest?.('li');
@@ -671,7 +684,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
           {countBadge}
         </button>
       ) : (
-        // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01.
+        // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01 except the O07a padding (marker below).
         <button
           ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
@@ -680,7 +693,14 @@ function NotificationBell({ user, variant = 'icon', label }) {
           // outline on the warm-800 header. It now carries the same treatment as the row
           // variant, and inherits the amber-400 `--ring` override scoped to the header
           // subtree at `Header.js`'s container. See the DECISION marker on the row label below.
-          className="relative text-white hover:text-amber-400 transition-colors p-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+          // DECISION Phase 88.9-37 O07a (owner ruling by chat, 2026-11-07 6:18 PM Pacific; page 8a,
+          // 88.9-PICKS-B8A.json item O07): this icon trigger pads 6px around the 24px bell = 36x36,
+          // the theme toggle's size beside it, chosen OVER O07b (both at 44 — bell 10px, toggle 12px —
+          // which grows the header row and pushes Profile away from the bell) and OVER the shipped 4px
+          // padding (32x32, a 4px mismatch between two adjacent icon controls). Desktop only: this
+          // trigger lives in the header list hidden below md; the phone row variant is untouched. The
+          // count badge stays positioned on the button corner. Changing it is a decision, not a cleanup.
+          className="relative text-white hover:text-amber-400 transition-colors p-1.5 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label="Notifications"
           aria-describedby={countDescriptionId}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
@@ -831,7 +851,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
             ) : loadErrorState?.showError ? (
               <div className="px-4 py-3">
                 {/* DECISION Phase 88.6.1-80 (N7 banner): CHOSEN — the house FULL banner titled
-                    with NOTIFICATIONS_LOAD_FAILED_COPY (copy row N7, D-47), in a branch AFTER the
+                    from NOTIFICATIONS_LOAD_FAILED_THING (copy row N7, D-47), in a branch AFTER the
                     first load and BEFORE the empty branch (Prohibition 2: the bell never says there
                     is nothing pending when it could not find out), keyed on the provider's one
                     adapter; focusTarget is the panel heading, so a successful Try again keeps focus
@@ -845,7 +865,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                     context string (none ratified). Changing this is a decision, not a cleanup. */}
                 <FetchErrorBanner
                   state={loadErrorState}
-                  title={NOTIFICATIONS_LOAD_FAILED_COPY}
+                  thing={NOTIFICATIONS_LOAD_FAILED_THING}
                   focusTarget={panelHeadingRef}
                 />
               </div>
@@ -897,16 +917,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
                                 onClick={(e) => handleAccept(invite, e.currentTarget)}
                                 aria-label={pressed === 'accept' ? undefined : acceptInviteLabel(groupName)}
                                 aria-disabled={pressed === 'accept' ? 'true' : undefined}
+                                busy={pressed === 'accept'}
+                                busySuffix={ACCEPT_BUSY_SUFFIX}
                                 disabled={pressed === 'decline'}
                                 className="flex-1"
                               >
-                                {pressed === 'accept' ? ACCEPTING_COPY : 'Accept'}
+                                Accept
                               </Button>
                               <Button
                                 variant="secondary"
                                 onClick={(e) => handleDecline(invite, e.currentTarget)}
-                                aria-label={declineInviteLabel(groupName)}
+                                aria-label={pressed === 'decline' ? undefined : declineInviteLabel(groupName)}
                                 aria-disabled={pressed === 'decline' ? 'true' : undefined}
+                                busy={pressed === 'decline'}
+                                busySuffix=", declining"
                                 disabled={pressed === 'accept'}
                                 className="flex-1"
                               >
@@ -947,16 +971,20 @@ function NotificationBell({ user, variant = 'icon', label }) {
                                 onClick={(e) => handleAcceptFriend(request, e.currentTarget)}
                                 aria-label={pressed === 'accept' ? undefined : acceptFriendLabel(requesterName)}
                                 aria-disabled={pressed === 'accept' ? 'true' : undefined}
+                                busy={pressed === 'accept'}
+                                busySuffix={ACCEPT_BUSY_SUFFIX}
                                 disabled={pressed === 'decline' || (!pressed && isRequestActionPending(request.id))}
                                 className="flex-1"
                               >
-                                {pressed === 'accept' ? ACCEPTING_COPY : 'Accept'}
+                                Accept
                               </Button>
                               <Button
                                 variant="secondary"
                                 onClick={(e) => handleDeclineFriend(request, e.currentTarget)}
-                                aria-label={declineFriendLabel(requesterName)}
+                                aria-label={pressed === 'decline' ? undefined : declineFriendLabel(requesterName)}
                                 aria-disabled={pressed === 'decline' ? 'true' : undefined}
+                                busy={pressed === 'decline'}
+                                busySuffix=", declining"
                                 disabled={pressed === 'accept' || (!pressed && isRequestActionPending(request.id))}
                                 className="flex-1"
                               >

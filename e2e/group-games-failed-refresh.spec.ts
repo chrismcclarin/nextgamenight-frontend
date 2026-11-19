@@ -2,7 +2,7 @@
 // keeps what loaded, under the RF1 refresh notice, at 375px.
 //
 // What this proves that jsdom cannot: a real browser at phone width laying the notice row out
-// BETWEEN the 'Group Games' heading and the sort toolbar (cards kept), and ABOVE the empty state
+// BETWEEN the 'Play history' heading and the sort toolbar (cards kept), and ABOVE the empty state
 // (a list that loaded empty, owner ruling Y / D-50), with a Retry that is on screen, at least
 // 44x44, and no sideways scroll. The logic halves are pinned RED-then-GREEN in jsdom
 // (GroupGamesList.emptyState.test.tsx: GG-1, GG-4, GG-6); this spec runs in CI only.
@@ -25,7 +25,7 @@ const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 // copy row RF1 / D-47 — the shared refresh notice's sentence (plan 88.6.1-70 owns the one constant;
 // written once here, contract C7).
 const RF1 = "Couldn't refresh. Showing what loaded earlier.";
-const GAMES_TITLE = "We couldn't load this group's games";
+const GAMES_TITLE = "Couldn't load this group's games";
 const EMPTY_HEADING = 'No game nights logged yet';
 const RETAINED_GAME = 'E2E Retained Game';
 
@@ -141,11 +141,11 @@ test.describe('group games failed refresh — phone', () => {
     await expect(card).toBeVisible();
     await expect(page.getByText(GAMES_TITLE, { exact: true })).toHaveCount(0);
 
-    const heading = page.getByRole('heading', { level: 2, name: 'Group Games', exact: true });
+    const heading = page.getByRole('heading', { level: 2, name: 'Play history', exact: true });
     const rowBox = await row.boundingBox();
     const headingBox = await heading.boundingBox();
     const sortBox = await page.getByText('Sort by:', { exact: true }).boundingBox();
-    expect(rowBox!.y, 'STOP (owner mockup): the notice is not below the Group Games heading').toBeGreaterThanOrEqual(
+    expect(rowBox!.y, 'STOP (owner mockup): the notice is not below the Play history heading').toBeGreaterThanOrEqual(
       headingBox!.y + headingBox!.height,
     );
     expect(rowBox!.y + rowBox!.height, 'STOP (owner mockup): the notice is not above Sort by').toBeLessThanOrEqual(

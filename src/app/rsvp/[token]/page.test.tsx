@@ -32,9 +32,16 @@ const USER_ID = 'usr-1';
 // changes, every arm below that queries it fails loudly rather than silently passing.
 const PAGE_STATUS_TESTID = 'rsvp-page-status';
 
+// Plan 88.9-69 (X13-5): one test needs the query string to change between renders, so the mock
+// reads this slot when it is set. Null (every other test) is the shipped fixed link.
+let searchQueryOverride: (() => string) | null = null;
+
 vi.mock('next/navigation', () => ({
   useParams: () => ({ token: TOKEN }),
-  useSearchParams: () => new URLSearchParams(`e=${EVENT_ID}&u=${USER_ID}&s=yes`),
+  useSearchParams: () =>
+    new URLSearchParams(
+      searchQueryOverride ? searchQueryOverride() : `e=${EVENT_ID}&u=${USER_ID}&s=yes`
+    ),
 }));
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -87,6 +94,7 @@ const BODY_EXPIRED_LINK_403 = {
 beforeEach(() => {
   vi.clearAllMocks();
   respond().mockReset();
+  searchQueryOverride = null;
 });
 
 afterEach(() => {
@@ -271,6 +279,47 @@ describe('rsvp/[token] — the four page states, pinned against the backend real
   });
 });
 
+// Plan 88.9-43 — O06c (owner pick 2026-11-07 4:37 PM Pacific, 88.9-PICKS-B8B.json): the page
+// leads to the event the link names, on SUCCESS and on EXPIRED_LINK only.
+describe('rsvp/[token] — O06c Go to the event (plan 88.9-43)', () => {
+  const eventLink = () => screen.queryByRole('link', { name: 'Go to the event' });
+  const goHome = () => screen.getByRole('link', { name: 'Go to Home' });
+
+  it('O06c (88.9): Go to the event opens the event view on SUCCESS and EXPIRED_LINK, never on ACCOUNT_NOT_FOUND', async () => {
+    // SUCCESS: a primary link to the event_id-only route, placed before the close-this-tab line.
+    respond().mockResolvedValue(BODY_SUCCESS);
+    render(<RsvpPage />);
+    await screen.findByRole('heading', { name: "You're in!" });
+    expect(eventLink(), 'SUCCESS offers Go to the event').not.toBeNull();
+    expect(eventLink()).toHaveAttribute('href', `/gameDetail?event_id=${EVENT_ID}`);
+    const closeLine = screen.getByText('You can safely close this tab.');
+    expect(eventLink()!.compareDocumentPosition(closeLine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    cleanup();
+
+    // EXPIRED_LINK: the same link precedes Go to Home, which keeps href '/' and steps to secondary.
+    respond().mockReset();
+    respond().mockResolvedValue(BODY_EXPIRED_LINK_403);
+    render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'This link has already been used' });
+    expect(eventLink(), 'EXPIRED_LINK offers Go to the event').not.toBeNull();
+    expect(eventLink()).toHaveAttribute('href', `/gameDetail?event_id=${EVENT_ID}`);
+    expect(goHome()).toHaveAttribute('href', '/');
+    expect(eventLink()!.compareDocumentPosition(goHome()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(goHome().className).toContain('btn-secondary');
+    expect(goHome().className).not.toContain('btn-primary');
+    cleanup();
+
+    // ACCOUNT_NOT_FOUND: byte-unchanged — no event link, Go to Home primary.
+    respond().mockReset();
+    respond().mockResolvedValue(BODY_ACCOUNT_NOT_FOUND_403);
+    render(<RsvpPage />);
+    await screen.findByRole('heading', { name: "We couldn't find your account" });
+    expect(eventLink()).toBeNull();
+    expect(goHome()).toHaveAttribute('href', '/');
+    expect(goHome().className).toContain('btn-primary');
+  });
+});
+
 describe('rsvp/[token] — r2 #181 / AC-19: the LOADING to result swap is announced', () => {
   it('fills the SAME slot-0 region on the LOADING to SUCCESS flip — node identity, not presence', async () => {
     let resolveRespond: (v: unknown) => void = () => {};
@@ -377,6 +426,10 @@ describe('rsvp/[token] — r2 #181 / AC-19: the LOADING to result swap is announ
   it('r2 #180: no glyph on any branch is exposed to the accessibility tree', async () => {
     // All five `<svg>`s are decorative duplicates of the heading beside them. Asserted per
     // branch rather than as a file-wide grep, so a NEW glyph added to any branch reds here.
+    // AMENDED Phase 88.9-69 (X59a): a lucide glyph drawn through the Icon primitive carries
+    // aria-hidden and no focusable attribute (that attribute is read only by IE11 and legacy
+    // Edge), so focusable is asserted on the hand-written svgs only. aria-hidden stays asserted
+    // on every glyph.
     const branches: Array<[string, unknown, RegExp, number]> = [
       ['SUCCESS', BODY_SUCCESS, /You're in!/, 1],
       ['EVENT_PASSED', BODY_PASSED_410, /This event has already happened/, 1],
@@ -394,7 +447,9 @@ describe('rsvp/[token] — r2 #181 / AC-19: the LOADING to result swap is announ
       expect(svgs).toHaveLength(expected);
       for (const svg of svgs) {
         expect(svg).toHaveAttribute('aria-hidden', 'true');
-        expect(svg).toHaveAttribute('focusable', 'false');
+        if (!svg.classList.contains('lucide')) {
+          expect(svg).toHaveAttribute('focusable', 'false');
+        }
       }
       cleanup();
     }
@@ -714,5 +769,213 @@ describe('rsvp/[token] — the event is gone (88.6.1-87, close ruling P-77)', ()
     await screen.findByRole('heading', { level: 1, name: 'Something went wrong' });
     expect(screen.getByText(RETAP_DETAIL)).toBeInTheDocument();
     expect(screen.queryByText(EVENT_GONE_HEADLINE)).toBeNull();
+  });
+});
+
+// Plan 88.9-69, Task 1. Owner rows (round2-planning/orchestrator-52-additions.md): 52-X59 (a)
+// pick Ga, 52-X59 (b) pick Ta (pick page 10b, 2026-11-14), and 52-X13's N35 Go to Home.
+const CLOCK_PATH = 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z';
+
+describe('rsvp/[token] — the used-link glyph, the success card top and Go to Home (plan 88.9-69)', () => {
+  const onlyGlyph = (container: HTMLElement): SVGSVGElement => {
+    const svgs = Array.from(container.querySelectorAll('svg'));
+    expect(svgs).toHaveLength(1);
+    return svgs[0] as SVGSVGElement;
+  };
+
+  it('X59a (88.9-69): the used-link card shows the link-with-a-slash glyph; the account, cancelled-night and already-happened cards keep the clock', async () => {
+    // The used link: lucide link-2-off through the Icon primitive, on the warning ink, hidden
+    // from the accessibility tree, and no clock path left behind it.
+    respond().mockResolvedValue(BODY_EXPIRED_LINK_403);
+    let view = render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'This link has already been used' });
+    const used = onlyGlyph(view.container);
+    expect(used.classList.contains('lucide-link-2-off'), 'the used-link card still draws the clock').toBe(true);
+    expect(used).toHaveClass('w-8', 'h-8', 'text-content-status-warning');
+    expect(used).toHaveAttribute('aria-hidden', 'true');
+    expect(used.getAttribute('stroke-width')).toBe('2');
+    expect(used.querySelector(`path[d="${CLOCK_PATH}"]`)).toBeNull();
+    cleanup();
+
+    // The three other clock cards keep the clock byte for byte: no lucide glyph on them.
+    const keepers: Array<[() => void, RegExp]> = [
+      [() => respond().mockResolvedValue(BODY_ACCOUNT_NOT_FOUND_403), /We couldn't find your account/],
+      [
+        () =>
+          respond().mockRejectedValue(
+            new ApiError('rsvp respond: the event no longer exists', 'not_found', 404)
+          ),
+        /This game night was cancelled/,
+      ],
+      [() => respond().mockResolvedValue(BODY_PASSED_410), /This event has already happened/],
+    ];
+    for (const [arrange, heading] of keepers) {
+      respond().mockReset();
+      arrange();
+      view = render(<RsvpPage />);
+      await screen.findByRole('heading', { name: heading });
+      const glyph = onlyGlyph(view.container);
+      expect(glyph.classList.contains('lucide')).toBe(false);
+      expect(glyph.querySelector(`path[d="${CLOCK_PATH}"]`)).not.toBeNull();
+      expect(glyph).toHaveClass('w-8', 'h-8', 'text-content-status-warning');
+      cleanup();
+    }
+  });
+
+  it('X59b (88.9-69): the success card has no top line for Yes, Maybe or No', async () => {
+    const answers: Array<[string, string]> = [
+      ['yes', "You're in!"],
+      ['maybe', 'Got it!'],
+      ['no', 'Got it!'],
+    ];
+    for (const [status, heading] of answers) {
+      respond().mockReset();
+      respond().mockResolvedValue({ ...BODY_SUCCESS, status });
+      render(<RsvpPage />);
+      const h1 = await screen.findByRole('heading', { level: 1, name: heading });
+      const card = h1.closest('.max-w-md');
+      expect(card, 'the success heading sits in no card').not.toBeNull();
+      const tokens = Array.from(card!.classList);
+      expect(
+        tokens.filter((token) => /^border-t(-|$)/.test(token)),
+        `the ${status} card still carries a top-border width`
+      ).toEqual([]);
+      for (const colour of ['border-status-success', 'border-status-warning', 'border-line']) {
+        expect(tokens, `the ${status} card still names the line colour ${colour}`).not.toContain(colour);
+      }
+      cleanup();
+    }
+  });
+
+  it('X13-5 (88.9-69): the success card offers Go to Home under Go to the event as a secondary, and as the one primary link when the RSVP link names no event', async () => {
+    // With an event in the link: the primary event link, then a secondary Go to Home in the same
+    // column, then the close-this-tab line.
+    respond().mockResolvedValue(BODY_SUCCESS);
+    render(<RsvpPage />);
+    await screen.findByRole('heading', { name: "You're in!" });
+    const eventLink = screen.getByRole('link', { name: 'Go to the event' });
+    const home = screen.queryByRole('link', { name: 'Go to Home' });
+    expect(home, 'the success card offers no Go to Home link').not.toBeNull();
+    expect(home).toHaveAttribute('href', '/');
+    expect(home!.className).toContain('btn-secondary');
+    expect(home!.className).not.toContain('btn-primary');
+    expect(eventLink.className).toContain('btn-primary');
+    expect(home!.parentElement).toBe(eventLink.parentElement);
+    expect(eventLink.compareDocumentPosition(home!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const closeLine = screen.getByText('You can safely close this tab.');
+    expect(home!.compareDocumentPosition(closeLine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    cleanup();
+
+    // With no event in the link at render time: one link, Go to Home, primary. The page sends its
+    // request from the first render's query (which must name the event, or the page stops on its
+    // error card), so the query loses the event only from the second read on.
+    respond().mockReset();
+    respond().mockResolvedValue(BODY_SUCCESS);
+    let reads = 0;
+    searchQueryOverride = () => {
+      reads += 1;
+      return reads === 1 ? `e=${EVENT_ID}&u=${USER_ID}&s=yes` : `u=${USER_ID}&s=yes`;
+    };
+    render(<RsvpPage />);
+    await screen.findByRole('heading', { name: "You're in!" });
+    expect(screen.queryByRole('link', { name: 'Go to the event' })).toBeNull();
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveTextContent('Go to Home');
+    expect(links[0]).toHaveAttribute('href', '/');
+    expect(links[0].className).toContain('btn-primary');
+  });
+});
+
+// Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the error card draws the X, in place of
+// the warning triangle. Amber X: the RSVP could not be confirmed, or the server asked the person
+// to slow down. Red X: the link itself is malformed or was tampered with. The amber cards with
+// their own glyphs (used link, account, cancelled, already happened) are untouched (Q69-4).
+describe('rsvp/[token] — Q69 the error card glyph by cause (88.9-52)', () => {
+  const X_PATH = 'M6 18L18 6M6 6l12 12';
+  const TRIANGLE_START = 'M12 9v2m0 4h.01';
+  const RETAP = 'This link may be invalid or expired. Please try clicking the RSVP link from your email again.';
+  const RATE_LIMITED_LINE = "You're going a little fast — give it a moment, then try again.";
+  // The limiter's body, in shape (the envelope's code, its message and the alias), from
+  // backend:Sonnet/middleware/rateLimiter.js ("const rateLimitedBody = (message) =>")
+  const BODY_RATE_LIMITED_429 = {
+    code: 'rate_limited',
+    message: 'Too many requests from this IP, please try again later.',
+    error: 'Too many requests from this IP, please try again later.',
+  };
+  const expectTone = (container: HTMLElement, tone: 'amber' | 'red', label: string) => {
+    expect(container.querySelector(`path[d^="${TRIANGLE_START}"]`), `${label}: the triangle is still drawn`).toBeNull();
+    const path = container.querySelector(`path[d="${X_PATH}"]`);
+    expect(path, `${label}: the error card draws no X`).not.toBeNull();
+    const svg = path!.closest('svg')!;
+    const circle = svg.parentElement!;
+    const on = tone === 'amber' ? 'warning' : 'error';
+    const off = tone === 'amber' ? 'error' : 'warning';
+    expect(circle, `${label}: the circle is not the ${on} fill`).toHaveClass(`bg-status-${on}-subtle`);
+    expect(circle, label).not.toHaveClass(`bg-status-${off}-subtle`);
+    expect(svg, `${label}: the X is not the ${on} ink`).toHaveClass(`text-content-status-${on}`);
+    expect(svg, label).not.toHaveClass(`text-content-status-${off}`);
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelectorAll('svg'), `${label}: one glyph on the card`).toHaveLength(1);
+  };
+
+  it('Q69: a malformed or tampered link draws the red X over the retap line (unrecognised body, missing query value)', async () => {
+    respond().mockResolvedValue({ error: 'Invalid or expired link' });
+    let view = render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'Something went wrong' });
+    expect(screen.getByText(RETAP)).toBeInTheDocument();
+    expectTone(view.container, 'red', 'signature-mismatch 403');
+    cleanup();
+
+    respond().mockReset();
+    searchQueryOverride = () => `e=${EVENT_ID}&u=${USER_ID}`;
+    view = render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'Something went wrong' });
+    expect(screen.getByText(RETAP)).toBeInTheDocument();
+    expectTone(view.container, 'red', 'missing status');
+    expect(respond()).not.toHaveBeenCalled();
+  });
+
+  it('Q69: an RSVP that could not be confirmed draws the amber X (network, internal), words unchanged', async () => {
+    const arms: Array<[ApiError, string]> = [
+      [
+        new ApiError('RSVP request failed', 'network', 0),
+        "We couldn't confirm your RSVP — the connection timed out. Sign in and open the event to check your answer.",
+      ],
+      [
+        new ApiError('HTTP error! status: 500', 'internal', 500),
+        "We couldn't confirm your RSVP. Sign in and open the event to check your answer.",
+      ],
+    ];
+    for (const [err, line] of arms) {
+      respond().mockReset();
+      respond().mockRejectedValue(err);
+      const { container } = render(<RsvpPage />);
+      await screen.findByRole('heading', { name: 'Something went wrong' });
+      expect(screen.getByText(line)).toBeInTheDocument();
+      expectTone(container, 'amber', err.code);
+      cleanup();
+    }
+  });
+
+  it('Q69: a rate-limited answer (429) shows the amber X over the register rate-limit line, never the retap advice or the backend message', async () => {
+    respond().mockResolvedValue(BODY_RATE_LIMITED_429);
+    const { container } = render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'Something went wrong' });
+    expect(screen.getByText(RATE_LIMITED_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(RETAP)).toBeNull();
+    expect(screen.queryByText(/Too many requests/)).toBeNull();
+    expectTone(container, 'amber', '429');
+    expect(screen.getByTestId(PAGE_STATUS_TESTID)).toHaveTextContent(`Something went wrong ${RATE_LIMITED_LINE}`);
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/');
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('Q69: REGRESSION PIN — only the rate_limited code is read; any other code-only body stays on the red retap card (D62)', async () => {
+    respond().mockResolvedValue({ code: 'event_cancelled', group_id: GROUP_ID });
+    const { container } = render(<RsvpPage />);
+    await screen.findByRole('heading', { name: 'Something went wrong' });
+    expect(screen.getByText(RETAP)).toBeInTheDocument();
+    expectTone(container, 'red', 'code-only body');
   });
 });

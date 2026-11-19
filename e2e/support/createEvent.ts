@@ -5,7 +5,7 @@ import { expect, type Page } from '@playwright/test';
  * manual entry, WITHOUT submitting. Moved here by Phase 88.6.1-71 from the create-event journey
  * (e2e/create-event.spec.ts), so the journey, e2e/group-home-load-failures.spec.ts and plan
  * 88.6.1-56's phone spec share one drive instead of three copies. The caller has already
- * navigated to `/groupHomePage?id=…` (the "Add New Game Event" button lives there) and presses
+ * navigated to `/groupHomePage?id=…` (the "Create Event" button lives there) and presses
  * `create-event-submit` itself, so it can arm its own routes first.
  *
  * Phase 88.6.2-11 split the drive into its steps, so a spec that needs only a slice of it calls
@@ -32,7 +32,7 @@ import { expect, type Page } from '@playwright/test';
 
 /** Open the Create Event dialog from the group home page; the heading proves it mounted. */
 export async function openCreateEventDialog(page: Page): Promise<void> {
-  await page.getByRole('button', { name: /add new game event/i }).click();
+  await page.getByRole('button', { name: 'Create Event', exact: true }).click();
   await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
 }
 

@@ -26,7 +26,7 @@
 // suite written anywhere else, or spelled any other way, would evaporate with nothing
 // going red.
 import * as React from 'react';
-import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -529,7 +529,8 @@ describe('BallotSection — one pick per press, the heard in-flight name, and fo
 
     expect(pick).toHaveAttribute('aria-label', 'Ticket to Ride: "Europe" 🚂, saving');
     expect(pick).toHaveAccessibleName('Ticket to Ride: "Europe" 🚂, saving');
-    expect(pick.textContent).toBe('Ticket to Ride: "Europe" 🚂');
+    // D10b (88.9-35): the in-flight pick also holds an aria-hidden caption; the name text is unchanged
+    expect(within(pick).getByText('Ticket to Ride: "Europe" 🚂', { exact: true })).toBeInTheDocument();
 
     await act(async () => {
       hold.resolve({});
@@ -1047,5 +1048,77 @@ describe('BallotSection without an event id (IN-06)', () => {
     render(<BallotSection {...ballotProps(undefined as unknown as string)} />);
     await act(async () => {});
     expect(screen.queryByText('Loading ballot...')).toBeNull();
+  });
+});
+
+// Plan 88.9-35 (owner picks D10b, 88.9-PICKS-B3.json, and B1a, 88.9-PICKS-B1.json): the round-2
+// cues on the ballot cards. D10b: a visible, aria-hidden Saving… caption on the pressed organizer
+// pick only; the heard name stays the E14 template. R006-R008: the three option cards take the
+// ground their HOST paints as the focus halo, card by default, the page when the host passes it.
+describe('BallotSection — round-2 cues (88.9-35)', () => {
+  const SAVING = 'Saving…';
+
+  it('D10b (88.9): the Saving… caption shows only while the pick\'s request is in flight, on the pressed row only', async () => {
+    for (const ballot of [TIE_BREAK, FALLBACK_PICK]) {
+      const hold = deferred();
+      (ballotAPI.resolveTie as Mock).mockImplementationOnce(() => hold.promise);
+      const user = userEvent.setup();
+      renderBallot(ballot);
+      const catan = await screen.findByRole('button', { name: 'Catan' });
+      expect(screen.queryByText(SAVING)).toBeNull();
+
+      await user.click(catan);
+
+      const caption = within(catan).getByText(SAVING, { exact: true });
+      expect(caption).toHaveAttribute('aria-hidden', 'true');
+      expect(caption).toHaveClass('text-xs');
+      expect(caption).toHaveClass('text-content-secondary');
+      expect(screen.getAllByText(SAVING)).toHaveLength(1);
+      expect(within(screen.getByRole('button', { name: 'Wingspan' })).queryByText(SAVING)).toBeNull();
+      expect(catan).toHaveAccessibleName('Catan, saving');
+
+      await act(async () => {
+        hold.resolve({ winner: { game_id: 'g1', game_name: 'Catan' } });
+      });
+      await waitFor(() => expect(screen.queryByText(SAVING)).toBeNull());
+      cleanup();
+    }
+
+    const vote = deferred();
+    (ballotAPI.toggleVote as Mock).mockImplementationOnce(() => vote.promise);
+    const user = userEvent.setup();
+    renderBallot(OPEN_BALLOT);
+    const option = await screen.findByRole('button', { name: /Catan/ });
+    await user.click(option);
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByText(SAVING)).toBeNull();
+    await act(async () => {
+      vote.resolve({ voted: true });
+    });
+  });
+
+  it('R006–R008 (88.9): the three option cards take the host ground through hostGround — card by default, the page when passed', async () => {
+    for (const ballot of [TIE_BREAK, FALLBACK_PICK, OPEN_BALLOT]) {
+      renderBallot(ballot);
+      await screen.findByRole('heading', { name: 'Game Vote' });
+      const cards = Array.from(document.querySelectorAll('button'));
+      expect(cards.length).toBeGreaterThan(0);
+      for (const card of cards) {
+        expect(card.className, `${card.textContent} default halo`).toContain('focus-visible:ring-offset-surface-card');
+      }
+      cleanup();
+
+      renderBallot(ballot, { hostGround: 'page' });
+      await screen.findByRole('heading', { name: 'Game Vote' });
+      const paged = Array.from(document.querySelectorAll('button'));
+      expect(paged.length).toBeGreaterThan(0);
+      for (const card of paged) {
+        expect(card.className, `${card.textContent} page halo`).toContain('focus-visible:ring-offset-surface-page');
+        expect(card.className, `${card.textContent} keeps the card halo on a page host`).not.toContain('focus-visible:ring-offset-surface-card');
+        expect(card.className).toContain('focus-visible:ring-2');
+        expect(card.className).toContain('focus-visible:ring-offset-2');
+      }
+      cleanup();
+    }
   });
 });

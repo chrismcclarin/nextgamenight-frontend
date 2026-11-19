@@ -375,7 +375,7 @@ const FP_CMV_PAST_DATE_INK = anchorKey(
 );
 const FP_CMV_TODAY_GROUND = anchorKey(
   'app/components/CalendarMonthView.js',
-  "isCurrentDay ? 'bg-surface-muted border-line-accent' :",
+  "isCurrentDay ? 'bg-surface-muted border border-line-accent' :",
 );
 const FP_FIP_USERNAME_INK = anchorKey(
   'app/components/FriendInvitePanel.js',

@@ -177,7 +177,7 @@ export default function GroupLibrary({ groupId }) {
       <div className="mt-4">
         <FetchErrorBanner
           state={libraryErrorState}
-          title="We couldn't load this library"
+          thing="this library"
           reportContext="Group library (group home page)"
         />
       </div>
@@ -342,7 +342,7 @@ export default function GroupLibrary({ groupId }) {
               {/* Collapsed row */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : game.id)}
-                className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover active:opacity-75 transition-colors text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 p-3 hover:bg-surface-hover active:opacity-75 transition-colors text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                 style={{ minHeight: '56px' }}
               >
                 <SafeImage
@@ -350,16 +350,39 @@ export default function GroupLibrary({ groupId }) {
                   alt={game.name}
                   className="w-10 h-10 rounded-sm object-cover shrink-0"
                 />
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 max-w-full">
                   {/* §4.5 HIERARCHY outcome: 500 -> 700. This is the row's one primary string. It is a
                       `<p>`, not an `<hN>`, so the A1 heading-`truncate` ruling does not reach it
-                      and `truncate` stays — these are 40px-tall list rows, not cards. */}
-                  <p className="font-bold text-content-primary truncate text-sm">{game.name}</p>
+                      and `truncate` stays — these are 40px-tall list rows, not cards.
+                      AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the game name wraps in full, by
+                      whole words, with no line limit; truncate is REMOVED. The owner ruled that the
+                      no-cut rule reaches this line too, heading or not, and a list row gives way to
+                      it: text is not cut to keep a layout tidy, because enlarged text is the setting
+                      a cut defeats. The row may WRAP, the Friends-row form
+                      (src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot")):
+                      the words column's floor is its longest word (flex-1 with the automatic
+                      minimum, capped at the row by max-w-full) in place of min-w-0, and its
+                      NEIGHBOURS move first: the words drop under the 2.5rem picture, and the owner
+                      count, kept to the right (ml-auto) and on one line, drops under the words.
+                      The sum at 320 wide with text at 200%: the row's inside is 206px (320 - 64
+                      page - 2 - 48 row padding), the picture and its gap take 104 and the count
+                      with its gap about 130, which left the name nothing; Weekend at 28px bold is
+                      about 136px. Stacked, the name has the whole 206. REJECTED: wrap-anywhere or keeping min-w-0 (one
+                      letter per line, the owner's We/eke/nd W/arr/iors); a fixed rem floor (it
+                      stacks a short name at ordinary text); shrinking the picture; letting the
+                      count wrap inside itself. NOT DECIDED HERE, the owner's call: not drawing the
+                      picture at large text (his Play history ruling, R4 C3) in place of stacking.
+                      At ordinary text with an ordinary name nothing moves.
+                      The facts line below (players, minutes, weight) is the SECOND cut on this
+                      row, routed under the same ruling: it wraps in full too. It is the only
+                      place those facts are shown (the open row lists owners), so the cut hid
+                      facts, not decoration. */}
+                  <p className="font-bold text-content-primary wrap-break-word text-sm">{game.name}</p>
                   {metaParts.length > 0 && (
-                    <p className="text-xs text-content-muted truncate">{metaParts.join(' \u00B7 ')}</p>
+                    <p className="text-xs text-content-muted wrap-break-word">{metaParts.join(' \u00B7 ')}</p>
                   )}
                 </div>
-                <span className="text-xs text-content-muted shrink-0 whitespace-nowrap">
+                <span className="ml-auto text-xs text-content-muted shrink-0 whitespace-nowrap">
                   {ownerCount} {ownerCount === 1 ? 'owner' : 'owners'}
                 </span>
               </button>

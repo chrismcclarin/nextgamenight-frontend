@@ -3,7 +3,20 @@ import { resolve } from 'node:path';
 
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { scrubbedFetch } from './support/scrubbedFetch';
-import { assertTheme, forceLightMode, inkRatioThroughOpacity } from './support/contrast';
+import { advanceMonths, monthWithTrailingDays } from './support/calendarGrid';
+import { isGuestEvent } from '../src/lib/eventClassification';
+import {
+  assertTheme,
+  blend,
+  compositeGround,
+  contrastRatio,
+  describeRatio,
+  focusRingMeasurement,
+  forceLightMode,
+  haloGroundRatio,
+  inkRatioThroughOpacity,
+  probeElement,
+} from './support/contrast';
 
 /**
  * Phase 88.6-45 (R7 / AC-7 second half; 88.3 CR-01 inheritance; FSEC-03) — the image-backed
@@ -16,7 +29,8 @@ import { assertTheme, forceLightMode, inkRatioThroughOpacity } from './support/c
  * `88-RESIDUAL-CENSUS.md` row 5.4 handed the rendered confirmation to 88.6 unconditionally.
  * Scenario A below asserts everything a browser CAN assert about that (the declaration is live,
  * carries the intended value, and the validated `hasBackgroundImage` derivation resolved TRUE)
- * and captures the screenshot. Whether the text is LEGIBLE over an arbitrary image has no
+ * and captures the screenshot. [AMENDED Phase 88.9-60, X23a: the intended value is now the photo
+ * text set, read off the text in dark here and in light in the describe further down.] Whether the text is LEGIBLE over an arbitrary image has no
  * oracle — that is the owner's judgement, priced as a `checkpoint:human-verify` in the plan.
  * Scenario B is the other direction of the same allow-list (`safeBgImageStyle.ts`): a URL it
  * REJECTS paints no image and gets the plain-coloured treatment. That one has a real oracle.
@@ -76,20 +90,11 @@ test.skip(
 /** The FSEC-03 motivating case, verbatim from src/lib/safeBgImageStyle.ts ("still parses with protocol"). */
 const REJECTED_URL = 'javascript:alert(1)';
 
-/** The overlay src/app/components/CalendarMonthView.js ("rgba(255, 255, 255, 0.7)") paints ONLY when `hasValidBgImage` is true. */
-const IMAGE_OVERLAY_RGBA = 'rgba(255, 255, 255, 0.7)';
-
 /**
- * `colorUtils.js`'s `STROKE_DARK` is a module-private constant, so it is READ FROM THE SOURCE at
- * run time rather than transcribed — the value under test is the one the app ships, and a
- * future re-tune moves this expectation with it (the plan-47 "derived, not guessed" shape).
+ * The 70% white wash an image tile carried until X23a (88.9-60, owner pick page 10a). No tile may
+ * paint it any more: a picture tile shows the photo unwashed under the photo text set.
  */
-function strokeDarkFromSource(): string {
-  const src = readFileSync(resolve(__dirname, '../src/lib/colorUtils.js'), 'utf8');
-  const m = src.match(/const STROKE_DARK = '([^']+)'/);
-  if (!m) throw new Error('colorUtils.js no longer declares `const STROKE_DARK = \'…\'` — re-derive this spec');
-  return m[1];
-}
+const IMAGE_OVERLAY_RGBA = 'rgba(255, 255, 255, 0.7)';
 
 /**
  * `colorUtils.js`'s white-is-unset rule is module-private too, so its pattern is READ FROM THE
@@ -135,12 +140,12 @@ function viewerFromEventsUrl(url: string): string {
  * A real event a tile may be measured on or copy its shape from: a scheduled night, on an
  * uncoloured group, that the viewer does not join as a guest. The guest rule is the one the upcoming
  * list's Guest pill reads: the viewer's own participation, matched on User.id, with is_guest strictly
- * true. An unread viewer (empty) counts ANY guest row, so an unknown viewer never admits a guest night.
+ * true. An unread viewer (empty) admits NO night at all, so the picker's fixture error fires.
  */
 function isPlainScheduled(e: PlainCandidate, viewer: string): boolean {
   if (e.status !== 'scheduled' || !e.Group || !isUncolouredGroup(e.Group)) return false;
-  const participations = Array.isArray(e.EventParticipations) ? e.EventParticipations : [];
-  return !participations.some((p) => p.is_guest === true && (viewer === '' || p.user_id === viewer));
+  if (viewer === '') return false;
+  return !isGuestEvent(e, viewer);
 }
 
 // DECISION Phase 88.9 (quick 261110-ugi H-1): every synthetic tile below copies its shape from the
@@ -153,6 +158,10 @@ function isPlainScheduled(e: PlainCandidate, viewer: string): boolean {
 // exist yet, and both copies must stay textually identical so the phase merge is clean. Every
 // synthetic tile also sets its own EventParticipations (an empty list, unless it is a guest tile on
 // purpose), so a drift between the two rules can move only the real Scenario A/B target.
+// AMENDED Phase 88.9-57 (52-X3): the restatement is gone; isPlainScheduled calls the shared
+// isGuestEvent, chosen OVER keeping the copy, whose one reason (FE main lacked the module) ended
+// with PR #49 (b5adaed) merged into this branch (9b3d6bc). The empty-viewer arm stays local and
+// STRICTER: the shared rule admits a guest night with no viewer.
 function plainScheduledTemplate(real: unknown[], viewer: string): Record<string, unknown> | null {
   const found = (real as PlainCandidate[]).find((e) => isPlainScheduled(e, viewer));
   return (found as Record<string, unknown> | undefined) ?? null;
@@ -212,7 +221,8 @@ async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
     // renders), and none is a thrown fixture error, chosen OVER the old positional events[0]
     // fallback. Every seeded group stores background_color '#ffffff', so the old truthiness find
     // never matched and events[0], the NEWEST event, was measured whatever its colour; when BE PR 70
-    // made the newest event a green Strategy Squad night, Scenario B read a green tile's shadow.
+    // made the newest event a green Strategy Squad night,
+    // Scenario B read a green tile's stroke and shadow (red run 42981547899 stopped at the --t-stroke assertion).
     // Upcoming because tileFor walks forward only; the two-tile rule because the cell renders
     // dayEvents.slice(0, 2) in payload order (src/app/components/CalendarMonthView.js ("{dayEvents.slice(0, 2).map(event => {")).
     const nowMs = Date.now();
@@ -264,8 +274,12 @@ async function seedGroupImage(page: Page, url: string): Promise<() => Seeded> {
   };
 }
 
-/** Walk the month view to the month that holds `iso`, then return the tile for `event`. */
-async function tileFor(page: Page, event: FixtureEvent): Promise<Locator> {
+/**
+ * Walk the month view to the month that holds `iso`, then return the tile for `event`. `name`
+ * defaults to the exact label; the D5a/O18a guest tiles pass a pattern that also admits the
+ * ', Guest' name suffix plan 88.9-28 adds, so that pin reds at its edge read, not here.
+ */
+async function tileFor(page: Page, event: FixtureEvent, name?: RegExp): Promise<Locator> {
   const start = new Date(event.start_date);
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -282,7 +296,9 @@ async function tileFor(page: Page, event: FixtureEvent): Promise<Locator> {
   await expect(heading, `the month view did not reach ${wanted}`).toHaveText(wanted);
 
   const label = `${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Group'}`;
-  const tile = page.getByRole('button', { name: label, exact: true }).first();
+  const tile = name
+    ? page.getByRole('button', { name }).first()
+    : page.getByRole('button', { name: label, exact: true }).first();
   await expect(tile, `no FULL-variant tile labelled ${JSON.stringify(label)} is visible at 1280px`).toBeVisible();
   return tile;
 }
@@ -302,6 +318,40 @@ async function tileVars(tile: Locator): Promise<{ stroke: string; strokeL: strin
       bgImage: cs.backgroundImage,
     };
   });
+}
+
+/**
+ * X23a (88.9-60, owner pick page 10a): the game name over a tile photo wears the photo text set,
+ * the one the home card and group header wear (X7): white, a 2px black outline painted before the
+ * fill, 700, 0.03em (0.36px at the tile's 12px), no shadow. Read off the rendered text, because a
+ * custom property that never reaches a declaration proves nothing (the CR-01 class).
+ */
+async function expectPhotoRule(tile: Locator, event: FixtureEvent, label: string): Promise<void> {
+  const read = await gameName(tile, event).evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return {
+      color: cs.color,
+      strokeWidth: cs.getPropertyValue('-webkit-text-stroke-width'),
+      strokeColor: cs.getPropertyValue('-webkit-text-stroke-color'),
+      paintOrder: cs.getPropertyValue('paint-order'),
+      weight: cs.fontWeight,
+      letterSpacing: cs.letterSpacing,
+      fontSize: cs.fontSize,
+      shadow: cs.textShadow,
+    };
+  });
+  // eslint-disable-next-line no-console -- the measured tile text set is recorded from the CI log
+  console.log(`${label}: ${JSON.stringify(read)}`);
+  expect.soft(read.color, `${label}: the game name is not white`).toBe('rgb(255, 255, 255)');
+  expect.soft(read.strokeWidth, `${label}: the outline is not 2px`).toBe('2px');
+  expect.soft(read.strokeColor, `${label}: the outline is not black`).toBe('rgb(0, 0, 0)');
+  expect.soft(read.paintOrder, `${label}: the outline is not painted before the fill`).toMatch(/^stroke\b/);
+  expect.soft(read.weight, `${label}: the game name is not 700`).toBe('700');
+  expect.soft(read.fontSize, `${label}: the game name is not the tile's 12px`).toBe('12px');
+  expect
+    .soft(Math.abs(Number.parseFloat(read.letterSpacing) - 0.36) <= 0.01, `${label}: letter-spacing is ${JSON.stringify(read.letterSpacing)}, not 0.36px (0.03em at 12px)`)
+    .toBe(true);
+  expect.soft(read.shadow, `${label}: the game name still carries a text shadow`).toBe('none');
 }
 
 async function overlayCount(tile: Locator, rgba: string): Promise<number> {
@@ -327,10 +377,14 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
     expect(dialogsSeen, 'a browser dialog opened — a planted URL EXECUTED (FSEC-03)').toEqual([]);
   });
 
-  test('Scenario A — an ALLOWED image URL: the stroke pair is LIVE at STROKE_DARK, the validated flag resolved TRUE, and the tile is photographed', async ({ page, baseURL }) => {
-    // An app-origin asset, not a third-party host: the mechanical assertions do not depend on
-    // the bytes loading, and a CI run must not fail on someone else's CDN. `http(s):` is what the
-    // allow-list checks (src/lib/safeBgImageStyle.ts ("export const ALLOWED_IMAGE_PROTOCOLS")), and this is it.
+  // AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): this scenario used to pin the
+  // dark arm at STROKE_DARK under the 70% white wash (F7a kept it). A picture tile now wears the
+  // photo text set in both themes over an unwashed photo; this is the dark read, the light twin is
+  // in the light describe below.
+  test('Scenario A — X23a (88.9): an ALLOWED image URL paints an unwashed photo tile whose game name wears the photo rule in dark, and the tile is photographed', async ({ page, baseURL }) => {
+    // An app-origin asset, not a third-party host: a CI run must not fail on someone else's CDN,
+    // and since X6 the picture has to LOAD for the tile to stay on its photo arm. `http(s):` is what
+    // the allow-list checks (src/lib/safeBgImageStyle.ts ("export const ALLOWED_IMAGE_PROTOCOLS")), and this is it.
     const allowedUrl = new URL('/bgg-logo.png', baseURL ?? 'http://localhost:3000').href;
     const read = await seedGroupImage(page, allowedUrl);
 
@@ -340,25 +394,18 @@ test.describe('the image-backed FULL month tile at desktop width (88.6-45, AC-7 
     const { event } = read();
     const tile = await tileFor(page, event);
 
-    await test.step('the validated derivation resolved TRUE: the image is painted and the 0.7 white overlay is mounted', async () => {
+    await assertTheme(page, 'dark');
+
+    await test.step('the validated derivation resolved TRUE: the image is painted and NO white wash is mounted over it', async () => {
       const vars = await tileVars(tile);
-      expect(vars.bgImage, 'the tile paints no background-image — safeBgImageStyle rejected an allow-listed URL').toContain('bgg-logo.png');
-      expect(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'the image overlay (src/app/components/CalendarMonthView.js ("rgba(255, 255, 255, 0.7)")) is gated on hasValidBgImage and did not mount').toBe(1);
+      expect(vars.bgImage, 'the tile paints no background-image — safeBgImageStyle rejected an allow-listed URL, or the picture did not load').toContain('bgg-logo.png');
+      expect.soft(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'X23a: the 70% white wash is still mounted over the tile photo').toBe(0);
     });
 
-    await test.step('the --t-stroke pair carries STROKE_DARK on both theme arms, and the declaration is LIVE on the text', async () => {
-      const strokeDark = strokeDarkFromSource();
-      const vars = await tileVars(tile);
-      expect(vars.stroke, '--t-stroke (dark arm) is not colorUtils.js STROKE_DARK').toBe(strokeDark);
-      expect(vars.strokeL, '--t-stroke-l (light arm) is not colorUtils.js STROKE_DARK').toBe(strokeDark);
-      // The original CR-01 bug was a VALUE browsers discarded — so the computed style on the text,
+    await test.step('the game name wears the photo rule in dark, LIVE on the text', async () => {
+      // The original CR-01 bug was a VALUE browsers discarded, so the computed style on the text,
       // not the custom property, is the assertion that would have caught it.
-      const [width, colour] = await gameName(tile, event).evaluate((el) => {
-        const cs = getComputedStyle(el);
-        return [cs.getPropertyValue('-webkit-text-stroke-width'), cs.getPropertyValue('-webkit-text-stroke-color')];
-      });
-      expect(width, 'the text-stroke width did not resolve — the declaration was dropped again (the CR-01 class)').toBe('0.5px');
-      expect(colour).toBe('rgba(0, 0, 0, 0.9)');
+      await expectPhotoRule(tile, event, 'X23a image tile (dark)');
     });
 
     await test.step('screenshot — the verification record for the owner legibility judgement', async () => {
@@ -452,17 +499,15 @@ const O4B_FLOOR = 4.5;
 const O4B_GAME = 'E2E adjacent home';
 
 async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  // Since CS-05 the grid is whole weeks, 28, 35 or 42 cells:
+  // src/lib/calendarUtils.js ("while (cells.length % 7 !== 0) {")
+  // and a month ending on a Saturday has no trailing day, so the read happens in the first month
+  // from now whose grid ends with at least 3 next-month days (one for the synthetic tile, two more
+  // day numbers), its geometry taken from the app's own getDaysInMonth:
+  // e2e/support/calendarGrid.ts ("export async function advanceMonths")
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const nextYear = month === 11 ? year + 1 : year;
-  const nextMonth = month === 11 ? 0 : month + 1;
-  // The grid is always 42 cells (src/lib/calendarUtils.js ("while (cells.length < 42) {")): the
-  // leading days of the previous month, this month, then the trailing next-month days. The same
-  // arithmetic here, so the handler and the reads know which days trail.
-  const leading = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const trailing = 42 - leading - daysInMonth;
+  const target = monthWithTrailingDays(now, 3);
+  const { nextYear, nextMonth, trailing } = target;
   const syntheticId = crypto.randomUUID();
   let syntheticDay = 0;
   let seedError = '';
@@ -494,9 +539,10 @@ async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<voi
       const d = new Date(e.start_date);
       if (d.getFullYear() === nextYear && d.getMonth() === nextMonth) occupied.add(d.getDate());
     }
-    // DATE-PROOF: the CI seed puts events at +3 and +4 days, so on the last days of a month they land
-    // on trailing days and a fixed seed day would share its cell. The synthetic day is computed from
-    // THIS response — the FIRST trailing day it leaves empty — so no real event can share it.
+    // DATE-PROOF: the target month has at least 3 trailing days. The CI seed puts events at +3 and
+    // +4 days, so they occupy at most 2 of them (none when the target is a later month) and a fixed
+    // seed day could share its cell. The synthetic day is computed from THIS response — the FIRST
+    // trailing day it leaves empty — so no real event can share it.
     syntheticDay = 0;
     for (let d = 1; d <= trailing; d++) {
       if (!occupied.has(d)) { syntheticDay = d; break; }
@@ -535,26 +581,47 @@ async function adjacentHomeInk(page: Page, theme: 'light' | 'dark'): Promise<voi
   try {
     await page.goto('/');
     await assertTheme(page, theme);
-    const wanted = `${O4B_MONTHS[month]} ${year}`;
+    const current = `${O4B_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+    const wanted = target.label;
     const heading = page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ });
     await expect(heading, `O4b (${theme}): the home full grid's month heading is not visible`).toBeVisible({ timeout: 20_000 });
-    // A stored calendar preference can reopen another month; Go to Today brings the grid to the month
-    // the route handler built against.
-    if ((await heading.textContent())?.trim() !== wanted) {
-      await page.getByRole('button', { name: 'Go to Today', exact: true }).click();
+    // A stored calendar preference can reopen another month; the Today control brings the grid back
+    // to the current month, the walk's starting point. Plan 88.9-28 (N1) turns Go to Today into a
+    // "Today" pill, so both names are accepted.
+    if ((await heading.textContent())?.trim() !== current) {
+      const today = page.getByRole('button', { name: /^(Go to )?Today$/ });
+      await expect(today, `O4b (${theme}): expected exactly one Today control on the home grid`).toHaveCount(1);
+      await today.click();
     }
+    await expect(heading, `O4b (${theme}): the home full grid is not on the current month`).toHaveText(current);
+    // DECISION Phase 88.9-28 N1 (square read): the chevrons are measured square in the real cascade at 1280, chosen OVER trusting the class list — a 52x44 lozenge carries the same classes when the unlayered rule loses to .btn.
+    for (const name of ['Previous month', 'Next month']) {
+      const chevron = page.getByRole('button', { name, exact: true });
+      await expect(chevron, `N1 (${theme}): expected exactly one ${name} chevron on the home grid`).toHaveCount(1);
+      const box = await chevron.boundingBox();
+      expect(box, `N1 (${theme}): the ${name} chevron has no layout box`).not.toBeNull();
+      const { width, height } = box!;
+      expect(Math.round(width), `N1 (${theme}): the ${name} chevron is ${width}x${height}, not square`).toBe(Math.round(height));
+      expect(width, `N1 (${theme}): the ${name} chevron is ${width}x${height}, under 44 wide`).toBeGreaterThanOrEqual(44);
+      expect(height, `N1 (${theme}): the ${name} chevron is ${width}x${height}, under 44 tall`).toBeGreaterThanOrEqual(44);
+    }
+    await advanceMonths(page, { year: now.getFullYear(), month: now.getMonth() }, target.steps);
     await expect(heading, `O4b (${theme}): the home full grid is not on ${wanted}`).toHaveText(wanted);
     expect(seedError, `O4b (${theme}): ${seedError}`).toBe('');
     expect(rewrites, `O4b (${theme}): the route handler never answered the home events GET with an array`).toBeGreaterThan(0);
 
     // DECISION Phase 88.9-04 (O4b grid): the trailing cells are found by STRUCTURE — the one element
-    // under the month card with exactly 42 children (the calendarUtils grid) — chosen OVER a Tailwind
-    // class locator (SELECTOR POLICY above) and over day-number names alone: the home grid passes no
-    // onEmptyDayClick, so an empty or one-event day number has NO accessible name to find it by.
-    const card = heading.locator('xpath=ancestor::*[.//div[count(*)=42]][1]');
-    const grid = card.locator('xpath=.//div[count(*)=42]');
-    await expect(grid, `O4b (${theme}): no 42-cell month grid under the home calendar heading`).toHaveCount(1);
-    const cellOf = (day: number): Locator => grid.locator('xpath=./*').nth(42 - trailing + day - 1);
+    // under the month card with exactly the target month's cell count of children (28, 35 or 42; the
+    // calendarUtils grid) — chosen OVER a Tailwind class locator (SELECTOR POLICY above) and over
+    // day-number names alone: the home grid passes no onEmptyDayClick, so an empty or one-event day
+    // number has NO accessible name to find it by.
+    // AMENDED Phase 88.9-25 (owner ruling CS-05, chat 2026-11-07, P7a item P — no pick by design): the
+    // grid is found by its CS-05 cell count from getDaysInMonth, chosen OVER a fixed count of 42,
+    // which matches no grid in a five-week month (November 2026: 35).
+    const card = heading.locator(`xpath=ancestor::*[.//div[count(*)=${target.cellCount}]][1]`);
+    const grid = card.locator(`xpath=.//div[count(*)=${target.cellCount}]`);
+    await expect(grid, `O4b (${theme}): no ${target.cellCount}-cell month grid under the home calendar heading`).toHaveCount(1);
+    const cellOf = (day: number): Locator => grid.locator('xpath=./*').nth(target.cellCount - target.trailing + day - 1);
 
     // The tile, located by its role=button name, which begins with the fixed game name
     // (src/app/components/CalendarMonthView.js ("const tileLabel =")).
@@ -704,6 +771,489 @@ test.describe('the 16px group avatar fallback on the FULL month tile (88.9-CR d1
         i.x + i.width <= o.x + o.width + tol &&
         i.y + i.height <= o.y + o.height + tol;
       expect(inside, `d1: the fallback glyph overflows the 16px avatar box (${record}, tolerance ${tol}px)`).toBe(true);
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
+  });
+});
+
+/* =========================================================================================
+ * Phase 88.9-21 — D5a / O18a: the guest edge on the FULL month tile at 1280.
+ *
+ * The owner pick (UI-SPEC row R2-27) marks a tile the viewer joins as a GUEST with a dashed
+ * edge. The pin measures what renders: the edge colour, composited with its own alpha onto
+ * the tile's ground, against BOTH the tile's own ground and the cell just outside the tile,
+ * at 3:1 on the unrounded value, in dark and light, on an uncoloured (transparent) tile and a
+ * tinted one. A quoted number is never the oracle: O18a amber-600 is 3.19 on the old card-white
+ * cell but 2.5680 on the C3 tile ground (research Pitfall 10). A member tile carries no dash.
+ * The cue is decided by src/lib/eventClassification.ts ("export function isGuestEvent("), the rule
+ * isPlainScheduled above restates to keep every other synthetic tile and template a member one.
+ * ======================================================================================= */
+
+const D5A_FLOOR = 3;
+const D5A_GUEST_PLAIN = 'E2E Guest Plain';
+const D5A_GUEST_TINTED = 'E2E Guest Tinted';
+const D5A_MEMBER = 'E2E Member Control';
+
+interface GuestTiles {
+  plain: FixtureEvent;
+  tinted: FixtureEvent;
+  member: FixtureEvent;
+}
+
+function d5aLabel(event: FixtureEvent): string {
+  return `${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Group'}`;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// DECISION Phase 88.9-21 D5a/O18a: the guest tiles are synthetic events planted in the browser copy of the events response, chosen over a seeded guest participation — the seed holds none, a scratch insert is barred, and the plain + tinted pair is the outline's O18a measurement; the viewer id comes from the request path and is never printed.
+async function seedGuestTiles(page: Page): Promise<() => GuestTiles> {
+  const ids = { plain: crypto.randomUUID(), tinted: crypto.randomUUID(), member: crypto.randomUUID() };
+  const groupIds = { plain: crypto.randomUUID(), tinted: crypto.randomUUID(), member: crypto.randomUUID() };
+  let planted: GuestTiles | null = null;
+  let seedError = '';
+  let rewrites = 0;
+
+  // GET-only, the real response through scrubbedFetch (never a raw route fetch), three synthetic
+  // events appended in the browser copy. No write is made.
+  await page.route('**/api/events/user/**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const viewer = viewerFromEventsUrl(route.request().url());
+    const response = await scrubbedFetch(route);
+    let real: unknown;
+    try {
+      real = await response.json();
+    } catch {
+      await route.fulfill({ response });
+      return;
+    }
+    if (!Array.isArray(real) || real.length === 0 || viewer.length === 0) {
+      seedError = 'the events GET carried no array of real events (or no viewer segment) to copy a tile shape from';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    const now = new Date();
+    const year = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const month = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+    // DATE-PROOF (the 88.9-04 rule): the three days are computed from THIS response, bucketed by
+    // LOCAL date the way the grid does, so no real event shares a synthetic tile's cell.
+    const occupied = new Set<number>();
+    for (const e of real as { start_date?: string }[]) {
+      if (!e.start_date) continue;
+      const d = new Date(e.start_date);
+      if (d.getFullYear() === year && d.getMonth() === month) occupied.add(d.getDate());
+    }
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const free: number[] = [];
+    for (let d = 8; d <= daysInMonth && free.length < 3; d += 1) {
+      if (!occupied.has(d)) free.push(d);
+    }
+    if (free.length < 3) {
+      seedError = `fewer than three days at or after the 8th of next month hold no real event (${free.length} free)`;
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    // A plain scheduled template (plainScheduledTemplate): the colours are overridden per tile
+    // below, but the status is not, so a completed or cancelled template would be copied onto all three.
+    const template = plainScheduledTemplate(real, viewer);
+    if (!template) {
+      seedError = 'the events GET holds no scheduled event on an uncoloured group, not a guest night for the viewer, to copy a tile shape from';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    const group = template.Group as Record<string, unknown>;
+    const make = (
+      id: string,
+      day: number,
+      name: string,
+      groupId: string,
+      colours: { color_preset: string | null; background_color: string | null },
+      participations: { user_id: string; is_guest: boolean }[]
+    ): FixtureEvent => {
+      const start = new Date(year, month, day, 12); // LOCAL noon, never a UTC-midnight literal
+      return {
+        ...template,
+        id,
+        start_date: start.toISOString(),
+        ...('end_date' in template ? { end_date: new Date(start.getTime() + 2 * 3600_000).toISOString() } : {}),
+        Game: { ...((template.Game as object | null | undefined) ?? {}), name },
+        Group: {
+          ...group,
+          id: groupId,
+          name: `${name} Group`,
+          ...colours,
+          background_image_url: null,
+          profile_picture_url: null,
+        },
+        EventParticipations: participations,
+      } as FixtureEvent;
+    };
+    const plain = make(ids.plain, free[0], D5A_GUEST_PLAIN, groupIds.plain, { color_preset: null, background_color: null }, [{ user_id: viewer, is_guest: true }]);
+    // The coloured fixture's values, e2e/contrast.spec.ts ("background_color:'#172554'").
+    const tinted = make(ids.tinted, free[1], D5A_GUEST_TINTED, groupIds.tinted, { color_preset: 'blue', background_color: '#172554' }, [{ user_id: viewer, is_guest: true }]);
+    const member = make(ids.member, free[2], D5A_MEMBER, groupIds.member, { color_preset: null, background_color: null }, [{ user_id: viewer, is_guest: false }]);
+    planted = { plain, tinted, member };
+    rewrites += 1;
+    await route.fulfill({ response, json: [...real, plain, tinted, member] });
+  });
+
+  return () => {
+    if (rewrites === 0 || !planted) {
+      throw new Error(
+        `D5a/O18a fixture: the events intercept never planted the guest tiles (rewrites=${rewrites})` +
+          (seedError ? ` — ${seedError}` : ' — the month view did not fetch the events list') +
+          '; nothing below is measured'
+      );
+    }
+    return planted;
+  };
+}
+
+interface EdgeRead {
+  style: string;
+  width: number;
+  edge: string;
+  tileGround: string;
+  cellGround: string;
+  onTile: number;
+  onCell: number;
+}
+
+async function readGuestEdge(tile: Locator, label: string): Promise<EdgeRead> {
+  const [style, widthRaw] = await tile.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return [cs.getPropertyValue('border-top-style'), cs.getPropertyValue('border-top-width')];
+  });
+  const probe = await probeElement(tile, ['border-top-color']);
+  const edgeColour = probe.computed['border-top-color'];
+  const tileGround = compositeGround(probe, 0);
+  // The tinted tile paints its own opaque ground, so its walk stops at index 0 and
+  // compositeGround(probe, 1) is null: the cell is read from the parent's own walk, the
+  // haloGroundRatio move (e2e/support/contrast.ts ("const parent = await probeElement(anchor.locator('xpath=..'), []);")).
+  const cellGround = compositeGround(await probeElement(tile.locator('xpath=..'), []), 0);
+  if (tileGround === null || cellGround === null) {
+    throw new Error(
+      `${label}: fixture — no opaque ground (tile ${tileGround ?? 'null'}, cell ${cellGround ?? 'null'}); nothing is measured`
+    );
+  }
+  if (!edgeColour || edgeColour.css === null || edgeColour.alpha === null) {
+    throw new Error(`${label}: the edge colour did not normalise (raw ${JSON.stringify(edgeColour?.raw ?? '')})`);
+  }
+  const edge = blend(edgeColour.css, edgeColour.alpha, tileGround);
+  if (!edge) throw new Error(`${label}: could not blend the edge ${edgeColour.css} onto ${tileGround}`);
+  const onTile = contrastRatio(edge, tileGround);
+  const onCell = contrastRatio(edge, cellGround);
+  if (onTile === null || onCell === null) throw new Error(`${label}: could not compute a ratio for edge ${edge}`);
+  return { style, width: Number.parseFloat(widthRaw) || 0, edge, tileGround, cellGround, onTile, onCell };
+}
+
+async function measureGuestTiles(page: Page, read: () => GuestTiles, theme: 'light' | 'dark'): Promise<void> {
+  await page.goto('/');
+  await assertTheme(page, theme);
+  await expect(page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ })).toBeVisible({ timeout: 20_000 });
+  const { plain, tinted, member } = read();
+
+  for (const [kind, event] of [['plain', plain], ['tinted', tinted]] as const) {
+    const label = d5aLabel(event);
+    const tile = await tileFor(page, event, new RegExp(`^${escapeRegExp(label)}(, Guest)?$`));
+    const tag = `D5a/O18a (${theme}, ${kind} guest tile)`;
+    const m = await readGuestEdge(tile, tag);
+    const record = `edge ${m.edge} on tile ${m.tileGround} ${m.onTile.toFixed(3)}:1, on cell ${m.cellGround} ${m.onCell.toFixed(3)}:1`;
+    // eslint-disable-next-line no-console -- the measured edge is recorded from the CI log
+    console.log(`${tag}: style ${m.style}, width ${m.width}px, ${record}`);
+    expect(m.style, `${tag}: the guest tile's top edge is ${m.style}, not dashed`).toBe('dashed');
+    expect(m.width, `${tag}: the dashed edge is ${m.width}px wide, under 1px`).toBeGreaterThanOrEqual(1);
+    expect(m.onTile, `${tag}: ${record}; floor ${D5A_FLOOR}:1 against the tile`).toBeGreaterThanOrEqual(D5A_FLOOR);
+    expect(m.onCell, `${tag}: ${record}; floor ${D5A_FLOOR}:1 against the cell`).toBeGreaterThanOrEqual(D5A_FLOOR);
+    await expect(tile).toHaveAccessibleName(`${label}, Guest`);
+  }
+
+  const memberLabel = d5aLabel(member);
+  const memberTile = await tileFor(page, member);
+  await expect(memberTile).toHaveAccessibleName(memberLabel);
+  const memberStyle = await memberTile.evaluate((el) => getComputedStyle(el).getPropertyValue('border-top-style'));
+  expect(memberStyle, `D5a/O18a (${theme}): a member tile carries a dashed edge`).not.toBe('dashed');
+}
+
+test.describe('the guest edge on the FULL month tile at 1280 (88.9 D5a / O18a)', () => {
+  test('D5a/O18a (88.9): a guest event\'s full month tile carries a dashed edge that clears 3:1 against the tile and the cell, dark and light, plain and tinted', async ({ page }) => {
+    const read = await seedGuestTiles(page);
+    try {
+      await measureGuestTiles(page, read, 'dark');
+      await forceLightMode(page);
+      await measureGuestTiles(page, read, 'light');
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
+  });
+});
+
+// AMENDED Phase 88.9-60 (X23a, owner pick page 10a, 2026-11-14): F7a's light arm (dark ink, no
+// stroke, on the 70% white wash) is reversed. The light tile wears the same photo rule as dark.
+test.describe('the image-backed FULL month tile, light (88.9 X23a, was F7a)', () => {
+  // Both projects bake dark; colorScheme alone does not set the class (the O4b light idiom above).
+  test.use({ colorScheme: 'light' });
+  test.beforeEach(async ({ page }) => {
+    await forceLightMode(page);
+  });
+
+  test('X23a (88.9): an image tile\'s light arm wears the photo rule', async ({ page, baseURL }) => {
+    const allowedUrl = new URL('/bgg-logo.png', baseURL ?? 'http://localhost:3000').href;
+    const read = await seedGroupImage(page, allowedUrl);
+    try {
+      await page.goto('/');
+      await assertTheme(page, 'light');
+      await expect(page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ })).toBeVisible({ timeout: 20_000 });
+      const { event } = read();
+      const tile = await tileFor(page, event);
+
+      // Anti-vacuity: the image branch is the one under test.
+      const vars = await tileVars(tile);
+      expect(vars.bgImage, 'X23a: the tile paints no background-image — the image branch is not under test').toContain('bgg-logo.png');
+      expect.soft(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'X23a (light): the 70% white wash is still mounted over the tile photo').toBe(0);
+
+      await expectPhotoRule(tile, event, 'X23a image tile (light)');
+
+      // The frame the owner judges (the light tile is the arm X23a reverses).
+      const tilePath = test.info().outputPath('month-tile-desktop-x23a-light-tile.png');
+      await tile.screenshot({ path: tilePath });
+      await test.info().attach('month-tile-desktop-x23a-light-tile', { path: tilePath, contentType: 'image/png' });
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
+  });
+});
+
+/* =========================================================================================
+ * X6 (88.9-60, owner F1) — a group picture that FAILS TO LOAD on the FULL month tile at 1280.
+ *
+ * The URL is allow-listed (https), so the validator passes it and the tile first paints its photo
+ * arm; the route answers 404, the load probe records the failure, and the tile must then paint
+ * exactly what a tile with no picture paints: no background-image, no image overlay, the plain
+ * treatment. Scenario B above is the REJECTED-url twin; this is the allowed-but-dead one. The host
+ * is on the reserved .invalid TLD and every request to it is fulfilled by the route, so no remote
+ * host is reached. Assertions retry, because the flip follows the failed load.
+ * ======================================================================================= */
+
+const X6_FAILED_PHOTO_URL = 'https://e2e-x6.invalid/failed-photo.png';
+
+test.describe('a group picture that fails to load on the FULL month tile (88.9 X6)', () => {
+  test('X6 (88.9): an allowed picture URL that fails to load paints the no-picture tile — no image, no outline, the plain treatment', async ({ page }) => {
+    let photoRequests = 0;
+    await page.route('https://e2e-x6.invalid/**', async (route) => {
+      photoRequests += 1;
+      await route.fulfill({ status: 404, body: '' });
+    });
+    const read = await seedGroupImage(page, X6_FAILED_PHOTO_URL);
+    try {
+      await page.goto('/');
+      await expect(page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ })).toBeVisible({ timeout: 20_000 });
+      const { event } = read();
+      const tile = await tileFor(page, event);
+
+      // Anti-vacuity: the browser really asked for the picture and was told it is not there.
+      await expect
+        .poll(() => photoRequests, { message: 'X6: the dead picture was never requested, so its failure was never under test', timeout: 15_000 })
+        .toBeGreaterThanOrEqual(1);
+
+      await expect
+        .poll(async () => (await tileVars(tile)).bgImage, {
+          message: 'X6: a picture that failed to load is still set as the tile background-image (the tile kept its photo arm)',
+          timeout: 15_000,
+        })
+        .toBe('none');
+      expect(await overlayCount(tile, IMAGE_OVERLAY_RGBA), 'X6: the image overlay is mounted on a tile whose picture failed to load').toBe(0);
+
+      // The plain treatment of an uncoloured group (seedGroupImage picks one): no stroke, no shadow.
+      const vars = await tileVars(tile);
+      expect(vars.stroke, 'X6: the image-tuned stroke stayed on a tile whose picture failed to load').toBe('none');
+      expect(vars.strokeL, 'X6: the image-tuned light stroke stayed on a tile whose picture failed to load').toBe('none');
+      expect(vars.shadow, 'X6: the image-tuned shadow stayed on a tile whose picture failed to load').toBe('none');
+      const width = await gameName(tile, event).evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-text-stroke-width'));
+      expect(width, 'X6: the game name still carries an outline').toBe('0px');
+
+      // eslint-disable-next-line no-console -- the request count per dead picture URL is recorded from the CI log
+      console.log(`X6 failed picture: ${photoRequests} request(s) for the dead URL`);
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    }
+  });
+});
+
+/* =========================================================================================
+ * O-19 (88.9-50) — the accent Share Game QR ring on a TINTED day-modal row at 1280, both themes.
+ *
+ * The day modal opens only for a day with two or more events:
+ * src/app/components/EventCalendar.js ("setSelectedDay({ date, events: dayEvents });")
+ * So two synthetic upcoming nights are planted on one free day of next month in the browser copy
+ * of the events response (the D5a/O18a shape above):
+ * one on E2E_COLOURED_GROUP_ID with the coloured fixture's values, one uncoloured. The tinted row's
+ * Share Game QR is focused by keyboard and read: the ring against its halo, the ring against the
+ * tinted row ground, each at 3:1 on the unrounded value, and the halo equals the row ground (the
+ * G halo, plan 88.9-39). A read under 3:1 is an owner floor pick, never a lowered assertion.
+ * ======================================================================================= */
+
+const E2E_COLOURED_GROUP_ID = process.env.E2E_COLOURED_GROUP_ID ?? '1';
+const O19_FLOOR = 3;
+const O19_HALO_EQUAL = 1.01;
+const O19_TINTED = 'E2E O19 Tinted';
+const O19_PLAIN = 'E2E O19 Plain';
+
+interface O19Day {
+  tinted: FixtureEvent;
+  day: number;
+  year: number;
+  month: number;
+}
+
+// DECISION Phase 88.9-50 O-19: the tinted day is two synthetic events planted in the browser copy of the events response, chosen over a seeded second event on the coloured group — the seed holds no two-event day on E2E_COLOURED_GROUP_ID, a scratch insert is barred, and the D5a/O18a recipe above already plants tiles this way; no write is made and the viewer id is never printed.
+// AMENDED 2026-11-10 (quick 261110-ugi, item 52-X2): "the seed holds no two-event day" was unqualified and went stale when the BE seed put a cancelled and a completed Strategy Squad night on one day (+12). Still planted, because that day is on the green preset, not the coloured fixture's blue #172554 group this read measures, and its date moves with the seed; the free day is derived from the live response, so no seeded day can collide with it.
+async function seedTintedDay(page: Page): Promise<() => O19Day> {
+  const ids = { tinted: crypto.randomUUID(), plain: crypto.randomUUID() };
+  const plainGroupId = crypto.randomUUID();
+  let planted: O19Day | null = null;
+  let seedError = '';
+  let rewrites = 0;
+
+  await page.route('**/api/events/user/**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await scrubbedFetch(route);
+    let real: unknown;
+    try {
+      real = await response.json();
+    } catch {
+      await route.fulfill({ response });
+      return;
+    }
+    if (!Array.isArray(real) || real.length === 0) {
+      seedError = 'the events GET carried no array of real events to copy a row shape from';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    const now = new Date();
+    const year = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const month = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+    // DATE-PROOF: the day is computed from THIS response, bucketed by LOCAL date like the grid.
+    const occupied = new Set<number>();
+    for (const e of real as { start_date?: string }[]) {
+      if (!e.start_date) continue;
+      const d = new Date(e.start_date);
+      if (d.getFullYear() === year && d.getMonth() === month) occupied.add(d.getDate());
+    }
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let day = 0;
+    for (let d = 8; d <= daysInMonth && day === 0; d += 1) if (!occupied.has(d)) day = d;
+    if (day === 0) {
+      seedError = 'no day at or after the 8th of next month holds no real event';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    // A plain scheduled template (plainScheduledTemplate): both rows must read as upcoming nights,
+    // so a completed template's status must not ride along onto the day modal's status tag; both rows
+    // carry NO participations, so neither takes on a guest row the template held.
+    const template = plainScheduledTemplate(real, viewerFromEventsUrl(route.request().url()));
+    if (!template) {
+      seedError = 'the events GET holds no scheduled event on an uncoloured group, not a guest night for the viewer, to copy a row shape from';
+      await route.fulfill({ response, json: real });
+      return;
+    }
+    const group = template.Group as Record<string, unknown>;
+    const make = (
+      id: string,
+      hour: number,
+      name: string,
+      groupId: string,
+      colours: { color_preset: string | null; background_color: string | null }
+    ): FixtureEvent => {
+      const start = new Date(year, month, day, hour); // LOCAL time, never a UTC-midnight literal
+      return {
+        ...template,
+        id,
+        start_date: start.toISOString(),
+        ...('end_date' in template ? { end_date: new Date(start.getTime() + 2 * 3600_000).toISOString() } : {}),
+        Game: { ...((template.Game as object | null | undefined) ?? {}), name },
+        Group: {
+          ...group,
+          id: groupId,
+          name: `${name} Group`,
+          ...colours,
+          background_image_url: null,
+          profile_picture_url: null,
+        },
+        EventParticipations: [],
+      } as FixtureEvent;
+    };
+    // The coloured fixture's values, e2e/contrast.spec.ts ("background_color:'#172554'").
+    const tinted = make(ids.tinted, 18, O19_TINTED, E2E_COLOURED_GROUP_ID, { color_preset: 'blue', background_color: '#172554' });
+    const plain = make(ids.plain, 20, O19_PLAIN, plainGroupId, { color_preset: null, background_color: null });
+    planted = { tinted, day, year, month };
+    rewrites += 1;
+    await route.fulfill({ response, json: [...real, tinted, plain] });
+  });
+
+  return () => {
+    if (rewrites === 0 || !planted) {
+      throw new Error(
+        `O-19 fixture: the events intercept never planted the tinted day (rewrites=${rewrites})` +
+          (seedError ? ` — ${seedError}` : ' — the month view did not fetch the events list') +
+          '; nothing below is measured'
+      );
+    }
+    return planted;
+  };
+}
+
+async function measureDayModalQr(page: Page, read: () => O19Day, theme: 'light' | 'dark'): Promise<void> {
+  await page.goto('/');
+  await assertTheme(page, theme);
+  const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+  expect(isDark, `O-19 (${theme}): the html element's dark class is ${isDark} — the theme switch did not land`).toBe(theme === 'dark');
+  await expect(page.getByRole('heading', { level: 3, name: /^[A-Z][a-z]+ \d{4}$/ })).toBeVisible({ timeout: 20_000 });
+  const { tinted, day, month } = read();
+  await tileFor(page, tinted, new RegExp(`^${escapeRegExp(d5aLabel(tinted))}(, Guest)?$`));
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  // 88.9-52 (A-11): the day target's name starts with its weekday; matched by shape so the test holds in any year.
+  const dayTarget = page.getByRole('button', { name: new RegExp(`^[A-Z][a-z]+day, ${monthNames[month]} ${day}, 2 games\\. Open this day\\.$`) });
+  await expect(dayTarget, `O-19 (${theme}): the two-event day target is not on the grid`).toBeVisible();
+  await dayTarget.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog, `O-19 (${theme}): the day modal did not open`).toBeVisible({ timeout: 15_000 });
+  const row = dialog.locator('div.p-4.rounded-lg').filter({ hasText: O19_TINTED });
+  await expect(row, `O-19 (${theme}): exactly one tinted row`).toHaveCount(1);
+  const share = row.getByRole('button', { name: 'Share Game QR', exact: true });
+  await expect(share, `O-19 (${theme}): the tinted row's Share Game QR is not visible`).toBeVisible();
+
+  const label = `O-19 day-modal Share Game QR ring on the tinted row (${theme})`;
+  const m = await focusRingMeasurement(page, share, label);
+  const h = await haloGroundRatio(m, share);
+  const outside = contrastRatio(m.fg, h.behind);
+  if (outside === null) throw new Error(`${label}: could not compute the ring ${m.fg} against the row ground ${h.behind}`);
+  // eslint-disable-next-line no-console -- the measured ratios are recorded from the CI log
+  console.log(
+    `${label}: ring ${m.fg} vs halo ${m.ground} ${m.ratio.toFixed(2)}:1 (${m.ratio}); ring vs row ground ${h.behind} ` +
+      `${outside.toFixed(2)}:1 (${outside}); halo vs row ground ${h.ratio.toFixed(3)}:1`
+  );
+  expect.soft(m.ratio, describeRatio(`${label} — ring vs halo`, O19_FLOOR, m)).toBeGreaterThanOrEqual(O19_FLOOR);
+  expect.soft(outside, `${label}: the ring ${m.fg} on the tinted row ground ${h.behind} is ${outside.toFixed(2)}:1, floor ${O19_FLOOR}:1`).toBeGreaterThanOrEqual(O19_FLOOR);
+  expect.soft(h.ratio, `${label}: the halo ${h.halo} is ${h.ratio.toFixed(3)}:1 against the row ground ${h.behind}; the G halo must equal it (<= ${O19_HALO_EQUAL}:1)`).toBeLessThanOrEqual(O19_HALO_EQUAL);
+  await page.keyboard.press('Escape');
+  await expect(dialog, `O-19 (${theme}): the day modal did not close`).toBeHidden();
+}
+
+test.describe('the accent ring on a tinted day-modal row at 1280 (88.9-50 O-19)', () => {
+  test('O-19 day-modal Share Game QR ring', async ({ page }) => {
+    test.slow();
+    const read = await seedTintedDay(page);
+    try {
+      await measureDayModalQr(page, read, 'dark');
+      await forceLightMode(page);
+      await measureDayModalQr(page, read, 'light');
     } finally {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     }

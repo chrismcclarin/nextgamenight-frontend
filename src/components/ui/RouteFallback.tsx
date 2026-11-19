@@ -12,6 +12,14 @@
  * an explicit `aria-label`. The label is spelled out rather than inferred from the
  * text because `status` takes its name from the author, not from content — without
  * it a screen-reader user gets a nameless region while the route loads.
+ * AMENDED Phase 88.9-69 (X35, veto open): the label speaks through a settleOnMount region, not a labelled root, which serves R1-M18 (announced, not silent); a boundary resolving inside the dwell says nothing.
+ * Why: a status that MOUNTS already holding its words is not reliably announced (a screen reader
+ * speaks a change to a live region, not its arrival), so the labelled root named the region but
+ * did not speak it. The region inside mounts empty and takes the label after the house dwell.
+ * Chosen OVER keeping the labelled root beside it (two status regions for one line).
+ * AMENDED Phase 88.9-52 (A-53): swiping through this screen meets the words twice, the visible line
+ * and the region. That is the deliberate house two-node shape (W38: the visible row is not hidden
+ * from assistive technology), an accepted double swipe stop, chosen OVER hiding the visible line.
  *
  * What it deliberately does NOT do:
  * - **No per-route skeleton content (D-21).** `loading.tsx` unmounts as soon as the
@@ -25,6 +33,8 @@
 import * as React from 'react';
 
 import { cn } from '@/lib/cn';
+
+import { StatusRegion } from './StatusRegion';
 
 export interface RouteFallbackProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, 'children'> {
@@ -44,8 +54,6 @@ const RouteFallback = React.forwardRef<HTMLDivElement, RouteFallbackProps>(
   ({ label, className, ...props }, ref) => (
     <div
       ref={ref}
-      role="status"
-      aria-label={label}
       className={cn(
         'flex min-h-[60vh] flex-col items-center justify-center bg-surface-page text-center',
         className
@@ -57,6 +65,7 @@ const RouteFallback = React.forwardRef<HTMLDivElement, RouteFallbackProps>(
         className="h-12 w-12 animate-spin rounded-full border-b-2 border-accent"
       />
       <p className="mt-4 text-base text-content-secondary">{label}</p>
+      <StatusRegion settleOnMount className="sr-only" message={label} />
     </div>
   )
 );

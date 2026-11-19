@@ -194,19 +194,22 @@ describe('FeedbackButton — the pressed Submit (88.6.1-33, D-35, Req 4 and 5)',
   const LONG_ENOUGH = 'A message that is long enough.';
   const THANKS = 'Thanks! Your feedback has been submitted.';
 
-  it('G1a (R4 concurrency): while the send is pending, Submit reads Submitting..., is aria-disabled and NOT natively disabled, and stays so after a second press; it is released when the first send settles', async () => {
+  it('G1a rule 1 (88.9): Submit keeps its label + spinner while busy (R4 concurrency), is aria-disabled and NOT natively disabled, and stays so after a second press; it is released when the first send settles', async () => {
     const held = deferred<unknown>();
     writer().mockImplementationOnce(() => held.promise);
     const { user, dialog } = await openDialog();
     await user.type(textareaIn(dialog), LONG_ENOUGH);
     await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
 
-    const busy = within(dialog).getByRole('button', { name: 'Submitting...' });
+    // Rule 1 (88.9-45): the label stays, the house spinner joins it, the suffix is heard.
+    const busy = within(dialog).getByRole('button', { name: 'Submit, submitting' });
+    expect(busy).toHaveTextContent('Submit');
+    await waitFor(() => expect(busy.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(busy).toHaveAttribute('aria-disabled', 'true');
     expect(busy).not.toHaveAttribute('disabled');
 
     await user.click(busy);
-    const stillBusy = within(dialog).getByRole('button', { name: 'Submitting...' });
+    const stillBusy = within(dialog).getByRole('button', { name: 'Submit, submitting' });
     expect(stillBusy).toHaveAttribute('aria-disabled', 'true');
     expect(stillBusy).not.toHaveAttribute('disabled');
 
@@ -231,7 +234,7 @@ describe('FeedbackButton — the pressed Submit (88.6.1-33, D-35, Req 4 and 5)',
     const form = dialog.querySelector('form');
     expect(form).not.toBeNull();
     fireEvent.submit(form as HTMLFormElement);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Submitting...' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Submit, submitting' }));
     expect(writer()).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -259,7 +262,7 @@ describe('FeedbackButton — the pressed Submit (88.6.1-33, D-35, Req 4 and 5)',
     await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
 
     // Ordering: nothing moves before the outcome.
-    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Submitting...' }));
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Submit, submitting' }));
 
     await act(async () => {
       held.resolve({ success: true });
@@ -374,12 +377,12 @@ describe('FeedbackButton — the success timer and late outcomes (88.6.1-33, W01
       let dialog = await open();
       await user.type(textareaIn(dialog), FIRST);
       await user.click(within(dialog).getByRole('button', { name: 'Submit' }));
-      expect(within(dialog).getByRole('button', { name: 'Submitting...' })).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: 'Submit, submitting' })).toBeInTheDocument();
 
       await closeWithEscape();
       dialog = await open();
       // The old send is still held: the re-opened dialog must not claim to be sending it.
-      expect(within(dialog).queryByRole('button', { name: 'Submitting...' })).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: 'Submit, submitting' })).toBeNull();
       const submit = within(dialog).getByRole('button', { name: 'Submit' });
       expect(submit).not.toHaveAttribute('aria-disabled');
 
@@ -419,7 +422,7 @@ describe('FeedbackButton — the success timer and late outcomes (88.6.1-33, W01
 
       expect(writer()).toHaveBeenCalledTimes(2);
       expect((writer().mock.calls[1][0] as { text: string }).text).toBe(SECOND);
-      expect(within(dialog).getByRole('button', { name: 'Submitting...' })).toHaveAttribute(
+      expect(within(dialog).getByRole('button', { name: 'Submit, submitting' })).toHaveAttribute(
         'aria-disabled',
         'true'
       );
@@ -429,7 +432,7 @@ describe('FeedbackButton — the success timer and late outcomes (88.6.1-33, W01
         first.resolve({ success: true });
       });
       await act(async () => {});
-      expect(within(dialog).getByRole('button', { name: 'Submitting...' })).toHaveAttribute(
+      expect(within(dialog).getByRole('button', { name: 'Submit, submitting' })).toHaveAttribute(
         'aria-disabled',
         'true'
       );
@@ -469,5 +472,103 @@ describe('FeedbackButton — the success timer and late outcomes (88.6.1-33, W01
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// 88.9-52 R5 (owner 2026-11-17, pick Always): the floating button is a fixed 56px at every text
+// size and sits just above the footer's copyright line everywhere. jsdom performs no layout, so
+// these pin the class tokens the size and the position are made of; the rendered numbers are the
+// capture's (57px and 104px off the bottom in the mock, 8px above the copyright line).
+describe('R5 (88.9-52): the floating feedback button is a fixed size and is raised above the copyright line', () => {
+  const renderFab = () => {
+    render(
+      <FeedbackModalProvider>
+        <FeedbackButton label="Send feedback" onOpen={vi.fn()} />
+      </FeedbackModalProvider>
+    );
+    return screen.getByRole('button', { name: 'Send feedback' });
+  };
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+
+  it('R5 size: every size, floor and offset on the button is written in px, and its padding is the zero-padding square', () => {
+    const fab = renderFab();
+    const cls = tokens(fab);
+    for (const token of ['w-[56px]', 'h-[56px]', 'min-w-[56px]', 'min-h-[56px]', 'right-[24px]']) {
+      expect(cls, token).toContain(token);
+    }
+    // The unlayered zero-padding class: the 16px side padding .btn carries is in rem and would
+    // widen a 56px box to 64px at doubled text.
+    expect(cls).toContain('btn-icon-square');
+    // No size, floor or inset left on the rem scale (w-14 is 112px at doubled text).
+    const remSized = cls.filter((token) => /^(min-)?[wh]-\d/.test(token) || /^(bottom|right)-\d/.test(token));
+    expect(remSized).toEqual([]);
+    const icon = fab.querySelector('svg');
+    expect(tokens(icon as Element)).toEqual(['w-[24px]', 'h-[24px]']);
+    // Kept: the position model and the tier (DECISION Phase 87.8 D-09/D-10).
+    expect(cls).toContain('fixed');
+    expect(cls).toContain('z-30');
+  });
+
+  // 88.9-52 R4 C4 (owner 2026-11-18: "When it switches to the menu, we should just let the menu
+  // hold the feedback button and lose it on the main screen, like the phone does"). From md the
+  // header falls back to its phone-menu form while its strip is under 40rem (R4 S2 / B4 / D5), and
+  // while it does the floating button is not drawn; the menu's Send feedback row is the entry.
+  // The button cannot read the header's container (it is outside it), so it reads a container
+  // of its own that is the same width by construction: a zero-height box fixed across the bottom
+  // of the screen. jsdom resolves no container query, so this pins the tokens and holds the
+  // width to the header's; the rendered proof is e2e/touch-targets.spec.ts (the R21 and R5 tests).
+  it('R4 C4: from md the floating button is not drawn while the header is in its menu form: its own full-width container, switched at the header width', async () => {
+    const fab = renderFab();
+    const toggle = fab.parentElement as HTMLElement;
+    const container = toggle.parentElement as HTMLElement;
+    // The DEC-2 wrapper keeps its phone rule and gains the header's condition.
+    expect(tokens(toggle)).toEqual(['hidden', 'md:block', 'md:@max-[40rem]/fab:hidden']);
+    // The container: fixed across the bottom edge, no height, the button's own tier. Whether or
+    // not a browser makes a query container the containing block of a fixed descendant, the
+    // button lands in the same place (the box's bottom and right edges are the screen's).
+    expect(tokens(container).sort()).toEqual(['@container/fab', 'bottom-0', 'fixed', 'h-0', 'inset-x-0', 'z-30'].sort());
+    expect(container.children).toHaveLength(1);
+    // The button itself is unchanged (R5).
+    expect(tokens(fab)).toEqual(expect.arrayContaining(['fixed', 'z-30', 'right-[24px]', 'bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))]']));
+    // LOCKSTEP with the header: one width, the one every /header: token carries.
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const header = readFileSync(resolve(process.cwd(), 'src/app/Header.js'), 'utf8');
+    const headerWidths = new Set(
+      [...header.matchAll(/className=(?:"|\{`)[^"`]*?md:@(?:min|max)-\[([^\]]+)\]\/header:/g)].map((m) => m[1]),
+    );
+    expect(headerWidths.size, 'the header switches at more than one width, or none was found').toBe(1);
+    const fabWidth = /^md:@max-\[([^\]]+)\]\/fab:hidden$/.exec(tokens(toggle)[2])?.[1];
+    expect(fabWidth).toBe([...headerWidths][0]);
+    // The header strip is full width (the same width as a box fixed from edge to edge).
+    expect(header).toMatch(/className="w-full h-16 [^"]*@container\/header"/);
+  });
+
+  it('R5 position: the bottom offset is the footer copyright line top (3rem) plus an 8px gap plus the safe area', () => {
+    const fab = renderFab();
+    expect(tokens(fab)).toContain('bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))]');
+  });
+
+  it('R5 lockstep: the 3rem in the offset is the footer bottom padding, the centring of the line in the link row, and the line itself', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const footer = readFileSync(resolve(process.cwd(), 'src/app/components/Footer.js'), 'utf8');
+    // 1rem: the bottom padding of each footer's inner wrapper (two footers).
+    expect(footer.match(/className="max-w-\[100rem\] mx-auto px-4 py-4"/g)?.length).toBe(2);
+    // 2.75rem row (the 44px links) around a 1.25rem line (text-sm): (2.75 - 1.25) / 2 = 0.75rem
+    // under the line, then the 1.25rem line. 1 + 0.75 + 1.25 = 3rem.
+    expect(footer.match(/className="flex flex-col md:flex-row md:flex-wrap items-center justify-between gap-3 text-sm text-content-muted"/g)?.length).toBe(2);
+    expect(footer).toContain('className="min-h-11 inline-flex items-center');
+    expect(1 + (2.75 - 1.25) / 2 + 1.25).toBe(3);
+    // 88.9-52 R4 S1: the 3rem only holds while the copyright is ONE line, so from md it may not
+    // break (two footers). When the row breaks instead, the copyright group has the last line to
+    // itself: 1rem of padding, the 2.5rem group (the BGG mark's box), the 1.25rem line centred in
+    // it. That puts the line's top at 2.875rem, under the 3rem the offset is built on.
+    expect(footer.match(/className="flex items-center gap-3 md:ms-auto md:whitespace-nowrap"/g)?.length).toBe(2);
+    expect(1 + (2.5 - 1.25) / 2 + 1.25).toBeLessThanOrEqual(3);
+    // The link group stops 8px short of the button's box: 24px inset + 56px + 8px, less the
+    // footer's own 1rem side padding (two footers). 24 and 56 are the button's own px classes.
+    expect(footer.match(/md:max-w-\[calc\(100%_-_88px_\+_1rem\)\]/g)?.length).toBe(2);
+    expect(24 + 56 + 8).toBe(88);
   });
 });

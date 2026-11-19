@@ -26,5 +26,6 @@ test('user can create a group', async ({ page }) => {
   await page.getByRole('button', { name: /^create group$/i }).click();
 
   // The newly created group surfaces in the UI.
-  await expect(page.getByText(groupName)).toBeVisible();
+  // AMENDED Phase 88.9-55 (R-C8): a substring text locator also matched the post-create "(group name) is live — who's in?" heading once it mounted (strict-mode race, runs 42820091911 and 42853858764), so the card title is found by role and exact name; includeHidden because the auto-opened invite panel is a Radix modal that aria-hides the rest of the page.
+  await expect(page.getByRole('heading', { name: groupName, exact: true, includeHidden: true })).toBeVisible();
 });

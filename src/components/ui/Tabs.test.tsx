@@ -106,6 +106,36 @@ describe('Tabs', () => {
     expect(screen.getAllByRole('tab')[0].className).toMatch(/whitespace-nowrap/);
   });
 
+  // 88.9-68 (X54, owner at N37: a scroll bar on the strip that cannot scroll). A box that scrolls
+  // sideways scrolls vertically too, so the strip must hold nothing taller than itself: the
+  // baseline is drawn inside the list's own box and the triggers carry no negative margin. The
+  // same box clips an outset focus ring, so the trigger's ring is inset.
+  it("X54 (88.9-68): the strip draws its baseline inside the list, triggers carry no negative bottom margin, overflow-x-auto stays (scroll, never wrap), and the trigger's focus ring is inset", () => {
+    renderTabs();
+    const list = screen.getByRole('tablist');
+    const listClasses = list.className.split(/\s+/);
+    expect(listClasses).toContain('overflow-x-auto');
+    expect(list.className).not.toMatch(/flex-wrap/);
+    // No border of its own: the baseline is an inset shadow on the line token, never a raw value.
+    expect(listClasses.filter((c) => c === 'border-b' || c.startsWith('border-'))).toEqual([]);
+    const baseline = listClasses.filter((c) => c.startsWith('inset-shadow-'));
+    expect(baseline).toHaveLength(1);
+    expect(baseline[0]).toContain('var(--color-border)');
+    expect(baseline[0]).not.toMatch(/#[0-9a-fA-F]{3,8}|rgb/);
+
+    for (const tab of screen.getAllByRole('tab')) {
+      const classes = tab.className.split(/\s+/);
+      expect(classes).not.toContain('-mb-px');
+      expect(classes.filter((c) => /^-?m[tby]?-/.test(c))).toEqual([]);
+      expect(classes).toContain('border-b-2');
+      expect(classes).toContain('shrink-0');
+      expect(classes).toContain('whitespace-nowrap');
+      expect(classes).toContain('focus-visible:ring-2');
+      expect(classes).toContain('focus-visible:ring-inset');
+      expect(classes.filter((c) => c.startsWith('focus-visible:ring-offset-'))).toEqual([]);
+    }
+  });
+
   it('clears the 44px phone touch floor on every trigger', () => {
     renderTabs();
     for (const tab of screen.getAllByRole('tab')) {

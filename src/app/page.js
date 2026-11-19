@@ -9,6 +9,8 @@ import LandingPage from './components/LandingPage';
 import { groupsAPI, API_BASE_URL } from '../lib/api';
 import { useSelfIdentity } from '../lib/hooks/useSelfIdentity';
 import { logger, errCtx } from '@/lib/logger';
+import { useFetchErrorState } from '@/components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '@/components/ui/FetchErrorBanner';
 
 const HOME_LOADING_LABEL = 'Getting your groups...';
 function App(){
@@ -17,7 +19,16 @@ function App(){
   const [GroupList, setGroupList] = useState(null);
 
   // User information from Auth0
-  const { user, error, isLoading } = Auth();
+  const { user, error, isLoading, checkSession } = Auth();
+
+  // Plan 88.9-42 (K12): the useUser error as a fetch-error state, built unconditionally at the
+  // top level (hooks rule). Try again re-runs the SDK's session check; the error is not an
+  // ApiError, so the hook's `unknown` arm supplies the copy — never `error.message`.
+  const authErrorState = useFetchErrorState({
+    isError: Boolean(error),
+    error: error ?? null,
+    refetch: checkSession,
+  });
 
   // Resolve the caller's own Users.id UUID via the shared identity primitive.
   // getGroupList sends this instead of the Auth0 sub; it resolves ASYNC after
@@ -146,10 +157,16 @@ function App(){
     );
   }
 
+  // DECISION Phase 88.9-42 K12 (copy census K12): a useUser error shows the house banner, Try again
+  // re-running the Auth0 session check, chosen OVER the raw message line (its message is empty in
+  // the common case). The Header.js twin and the quiet groups failure stay with Phase 93
+  // (88.6-46 R102).
   if (error) {
     return (
       <div className="App flex items-center justify-center min-h-screen">
-        <div className="text-content-status-error">Error: {error.message}</div>
+        <div className="w-full max-w-xl px-4">
+          <FetchErrorBanner state={authErrorState} thing="this page" />
+        </div>
       </div>
     );
   }

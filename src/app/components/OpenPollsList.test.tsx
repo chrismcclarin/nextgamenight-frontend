@@ -48,7 +48,11 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import { promptAPI, ApiError } from '@/lib/api';
 import { promptKeys } from '@/lib/queryKeys/promptKeys';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import OpenPollsList from './OpenPollsList';
 // A namespace import, so a missing label export fails the LBL tests alone and the rest of the
 // file still runs (quick-261026-pi6).
@@ -97,12 +101,31 @@ function openKebab(trigger: HTMLElement) {
   return list as HTMLElement;
 }
 
+// F9b (88.9-23): the item is gated for CONFIRM_DELAY_MS after the first tap. The drives below
+// run on a fake clock that still advances with real time (installed once per test, before the
+// arming tap; the file-level afterEach restores real timers) and step past the gate.
+function installGateClock() {
+  if (!vi.isFakeTimers()) vi.useFakeTimers({ shouldAdvanceTime: true });
+}
+
+function passGate() {
+  act(() => {
+    vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+  });
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 // Two-tap "End check-in". The second tap goes to the confirm label when it appears; when the item
 // refuses the first tap (aria-disabled), the label never changes and the second tap goes to the
 // same item, so this drive works on both a fixed and an unfixed tree.
 function endCheckIn(trigger: HTMLElement) {
+  installGateClock();
   const list = openKebab(trigger);
   fireEvent.click(within(list).getByRole('button', { name: 'End check-in' }));
+  passGate();
   const confirm =
     within(list).queryByRole('button', { name: 'Tap again to end' }) ??
     within(list).getByRole('button', { name: 'End check-in' });
@@ -267,8 +290,10 @@ describe('OpenPollsList: ending a check-in (Req 4, D-24, R5)', () => {
     ));
     await screen.findByText('Started by Ana');
 
+    installGateClock();
     const list = openKebab(triggers()[0]);
     fireEvent.click(within(list).getByRole('button', { name: 'End check-in' }));
+    passGate();
     (document.activeElement as HTMLElement | null)?.blur();
     expect(document.activeElement).toBe(document.body);
     fireEvent.click(within(list).getByRole('button', { name: 'Tap again to end' }));
@@ -321,7 +346,7 @@ const RF1 = "Couldn't refresh. Showing what loaded earlier.";
 // so its polite region and the Retry's description say "Open polls: " first and the visible line
 // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
 const SPOKEN = "Open polls: Couldn't refresh. Showing what loaded earlier.";
-const FULL_TITLE = "We couldn't load the check-ins";
+const FULL_TITLE = "Couldn't load the check-ins";
 
 describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 notice (88.6.1-75, AC-29 / D-47)', () => {
   const key = promptKeys.openPolls('g1');
@@ -484,7 +509,7 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     const { client } = renderList();
     await failRefetchOverRows(client, e403);
 
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     expect(screen.queryByText('Started by Ana')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
 
@@ -492,7 +517,7 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     vi.mocked(promptAPI.getOpenPrompts).mockRejectedValue(later);
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
-    expect(await screen.findByText(getFetchErrorMessage(later))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(later)))).toBeInTheDocument();
     expect(screen.queryByText('Started by Ana')).toBeNull();
     expect(screen.queryByText('Started by Ben')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -526,7 +551,7 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     act(() => triggers()[0].focus());
     tabReturn();
 
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     await waitFor(() => expect(document.activeElement).toBe(expandControl()));
     expect(screen.queryByText('Started by Ana')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -565,14 +590,14 @@ describe('OpenPollsList — a failed refresh keeps the check-ins under the RF1 n
     await act(async () => {
       await client.refetchQueries({ queryKey: key });
     });
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
 
     const later = e500();
     vi.mocked(promptAPI.getOpenPrompts).mockRejectedValue(later);
     await act(async () => {
       await client.refetchQueries({ queryKey: key });
     });
-    expect(await screen.findByText(getFetchErrorMessage(later))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(later)))).toBeInTheDocument();
     expect(screen.queryByText('Started by Ana')).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
 
@@ -748,6 +773,38 @@ describe('OpenPollsList: the card body selects the poll (quick-261026-pi6, owner
     expect(screen.queryByText('Viewing')).toBeNull();
     // The card markup is the same in both modes: its text lines are block spans.
     expect(label.tagName).toBe('SPAN');
+  });
+
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room). The card's
+  // title (the poll's game name) was cut to one line beside the kebab. jsdom lays nothing out, so
+  // this holds the classes of the Friends-row form; the rendered widths are in
+  // e2e/check-ins-select-poll.spec.ts ("R4 D2 (88.9-52)").
+  // The marker is at src/app/components/OpenPollsList.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the title wraps").
+  it('R4 D2 (88.9-52): the card title is never cut, the body keeps its longest word, and the kebab drops under it at the right', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({
+      prompts: [checkIn('pa', 'Ana', { game_id: 'game-1' }), checkIn('pb', 'Ben', { game_id: 'game-1' })],
+    } as never);
+    renderList(undefined, {
+      onSelectPoll: vi.fn(),
+      selectedPollId: 'pb',
+      group: { id: 'g1', games: [{ id: 'game-1', name: 'Weekend Warriors' }] },
+    });
+    const titles = await screen.findAllByText('Weekend Warriors');
+    expect(titles).toHaveLength(2);
+    for (const title of titles) {
+      expect(title.className).not.toMatch(/(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere)(\s|$)/);
+      expect(title).toHaveClass('block', 'wrap-break-word', 'font-bold');
+      const body = title.parentElement as HTMLElement;
+      expect(body.tagName).toBe('BUTTON');
+      expect(body).toHaveClass('flex-1', 'max-w-full');
+      // min-w-0 or a clip on the body would let the kebab squeeze the title under one word.
+      expect(body.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
+      const row = body.closest('li') as HTMLElement;
+      expect(row).toHaveClass('flex', 'flex-wrap', 'items-start');
+      const kebabCell = row.lastElementChild as HTMLElement;
+      expect(kebabCell).not.toBe(body);
+      expect(kebabCell).toHaveClass('ml-auto', 'shrink-0');
+    }
   });
 });
 

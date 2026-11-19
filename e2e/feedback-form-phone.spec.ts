@@ -262,7 +262,9 @@ test.describe('Report Bug form at 375px (Phase 88.6.1-34)', () => {
     const dialog = await openReportBug(page);
     await dialog.getByPlaceholder(/Brief description/i).fill('Synthetic e2e subject');
     await dialog.getByPlaceholder(/provide as much detail/i).fill('Synthetic e2e description.');
-    const submit = dialog.getByRole('button', { name: /^(Submit|Submitting\.\.\.)$/ });
+    // Rule 1 (88.9-45): the label stays; the busy suffix joins the name while sending (Chromium
+    // may insert a space before the sr-only comma).
+    const submit = dialog.getByRole('button', { name: /^Submit( ?, submitting)?$/ });
     await guardResolved(submit, 'the Report Bug form Submit button');
 
     await submit.focus();
@@ -272,7 +274,9 @@ test.describe('Report Bug form at 375px (Phase 88.6.1-34)', () => {
     // In flight: busy, still focusable, still focused (D-35; the real-browser half of CT-3).
     await expect(submit, 'Submit must be aria-disabled while sending').toHaveAttribute('aria-disabled', 'true');
     await expect(submit, 'Submit must NOT be natively disabled while sending (rule of POSITION)').not.toHaveAttribute('disabled');
-    await expect(submit, 'Submit must read "Submitting..." while sending').toHaveText('Submitting...');
+    await expect(submit, 'Submit must keep its label while sending (rule 1)').toHaveText(/^Submit/);
+    await expect(submit, 'Submit must be named "Submit, submitting" while sending').toHaveAccessibleName(/^Submit ?, submitting$/);
+    await expect(submit.locator('[data-slot="spinner"]'), 'the busy Submit shows one house spinner').toHaveCount(1);
     await expect(submit, 'Submit must keep focus while sending').toBeFocused();
 
     // A second activation while pending sends nothing (Edge R4).

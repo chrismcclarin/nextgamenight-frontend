@@ -12,7 +12,7 @@ import { act, render, renderHook, screen, cleanup, waitFor } from '@testing-libr
 import userEvent from '@testing-library/user-event';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { Modal } from '@/app/components/Modal';
-import { useFetchErrorState, getFetchErrorMessage } from './useFetchErrorState';
+import { useFetchErrorState, getFetchErrorMessage, messageBesideRetry } from './useFetchErrorState';
 import { FetchErrorBanner, RETRY_OUTCOME_WINDOW_MS } from './FetchErrorBanner';
 import { REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { FeedbackModalProvider } from '@/app/components/FeedbackModalProvider';
@@ -291,8 +291,12 @@ describe('FetchErrorBanner — SPEC Edge Coverage (R1)', () => {
     expect(result.current.message).toBe(ratifiedUnknown);
 
     render(<FetchErrorBanner state={result.current} />);
-    const shown = screen.getByText(ratifiedUnknown);
-    expect(shown.textContent).toBe(ratifiedUnknown);
+    // AMENDED Phase 88.9-66 (X68): the hook's message is still the register line; the full banner
+    // shows Try again, so the line on screen is that line's beside-retry form.
+    const shownLine = messageBesideRetry(ratifiedUnknown);
+    expect(shownLine).not.toBe(ratifiedUnknown);
+    const shown = screen.getByText(shownLine);
+    expect(shown.textContent).toBe(shownLine);
     // The two failure shapes this row exists to catch, named rather than implied.
     expect(shown.textContent).not.toBe('');
     expect(shown.textContent).not.toBe('undefined');
@@ -817,7 +821,9 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     expect(retry, 'two presses in one tick issue exactly ONE retry').toHaveBeenCalledTimes(1);
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button, 'never the native gate: it would drop focus from the pressed control').not.toHaveAttribute('disabled');
-    expect(button).toHaveTextContent('Retrying…');
+    // rule 1 (88.9-46 B38): the label is kept; the busy name adds the heard suffix.
+    expect(button).toHaveAccessibleName('Try again, retrying');
+    expect(button).toHaveTextContent(/^Try again/);
 
     await act(async () => {
       d.resolve(undefined);
@@ -839,7 +845,9 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     expect(retry, 'two presses in one tick issue exactly ONE retry').toHaveBeenCalledTimes(1);
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).not.toHaveAttribute('disabled');
-    expect(button).toHaveTextContent('Retrying…');
+    // rule 1 (88.9-46 B37): the compact Retry keeps its label; the busy name adds the suffix.
+    expect(button).toHaveAccessibleName('Retry, retrying');
+    expect(button).toHaveTextContent(/^Retry/);
 
     await act(async () => {
       d.resolve(undefined);
@@ -873,7 +881,7 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     await act(async () => {
       d.resolve({ isError: false });
     });
-    expect(screen.queryByRole('button', { name: /^(Try again|Retrying…)$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Try again(, retrying)?$/ })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
@@ -887,7 +895,7 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     await act(async () => {
       d.resolve({ isError: false });
     });
-    expect(screen.queryByRole('button', { name: /^(Try again|Retrying…)$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Try again(, retrying)?$/ })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
@@ -901,7 +909,7 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     await act(async () => {
       d.resolve({ isError: false });
     });
-    expect(screen.queryByRole('button', { name: /^(Retry|Retrying…)$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Retry(, retrying)?$/ })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
@@ -915,7 +923,7 @@ describe('FetchErrorBanner — R123 retries and the success-retry focus floor (p
     await act(async () => {
       d.resolve({ isError: false });
     });
-    expect(screen.queryByRole('button', { name: /^(Retry|Retrying…)$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Retry(, retrying)?$/ })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
@@ -1221,7 +1229,7 @@ describe('FetchErrorBanner — compact failed-retry outcome B1 (plan 88.6.1-21, 
     await user.click(button);
     expect(region.textContent, 'the region is emptied from the press').toBe('');
     expect(visibleLine(region)?.textContent, 'no visible flash').toBe(FIRST_FAILURE_NOTICE);
-    expect(button).toHaveTextContent('Retrying…');
+    expect(button).toHaveAccessibleName('Retry, retrying');
 
     await act(async () => {
       pending[0].resolve({ isError: true });
@@ -1381,5 +1389,49 @@ describe('FetchErrorBanner — compact failed-retry outcome B1 (plan 88.6.1-21, 
     await waitFor(() => expect(region.textContent).toBe(FIRST_FAILURE_NOTICE));
     expect(visibleLine(region)?.textContent).toBe(FIRST_FAILURE_NOTICE);
     expect(screen.queryByText(B1_NOTICE)).toBeNull();
+  });
+});
+
+// Phase 88.9-66 (X68, owner ruled by chat 2026-11-14): beside a Try again or Retry control the
+// forbidden, validation and unknown lines give ONE remedy. The register itself is unchanged: a
+// screen with no retry keeps the refresh advice, and messageBesideRetry is what a caller that
+// renders a retry passes its line through.
+describe('messageBesideRetry (88.9-66: X68)', () => {
+  const lineOf = (code: FetchErrorCode, status: number) => getFetchErrorMessage(new ApiError('x', code, status));
+
+  it('X68 (88.9): beside a retry the forbidden, validation and unknown lines take their ratified forms; every other line, a caller\'s fallback or byCode line, and getFetchErrorMessage itself are unchanged', () => {
+    // The three ratified forms, from each code's register line.
+    expect(messageBesideRetry(lineOf('forbidden', 403))).toBe("You don't have access to this.");
+    expect(messageBesideRetry(lineOf('validation', 400))).toBe('Something looks off with that request.');
+    expect(messageBesideRetry(lineOf('unknown', 500))).toBe("Something went wrong. If trying again doesn't help, refresh the page.");
+    // A thrown non-ApiError and the proxy's CSRF 403 both resolve through the unknown line (D-24).
+    expect(messageBesideRetry(getFetchErrorMessage(new Error('boom')))).toBe("Something went wrong. If trying again doesn't help, refresh the page.");
+    expect(messageBesideRetry(getFetchErrorMessage(csrfRejection()))).toBe("Something went wrong. If trying again doesn't help, refresh the page.");
+
+    // getFetchErrorMessage itself still returns the full sentences (a screen with no retry).
+    expect(lineOf('forbidden', 403)).toBe("You don't have access to this. Refresh the page to try again.");
+    expect(lineOf('validation', 400)).toBe('Something looks off with that request. Refresh the page to try again.');
+    expect(lineOf('unknown', 500)).toBe('Something went wrong. Refresh the page to try again.');
+
+    // Every other code's line passes through unchanged.
+    const others: Array<[FetchErrorCode, number]> = [
+      ['unauthorized', 401], ['not_found', 404], ['rate_limited', 429], ['token_invalid', 400],
+      ['prompt_closed', 409], ['prompt_deadline_expired', 409], ['reminder_cooldown', 429],
+      ['owner_of_active_groups', 409], ['account_deleted', 410], ['not_provisioned', 404],
+      ['conflict', 409], ['already_member', 409], ['invite_pending', 409], ['already_restored', 409],
+      ['window_expired', 410], ['already_used', 410], ['invalid_token', 400], ['gone', 410],
+      ['unsupported_address', 400], ['internal', 500], ['config', 500], ['network', 0],
+    ];
+    for (const [code, status] of others) {
+      const line = lineOf(code, status);
+      expect(messageBesideRetry(line), code).toBe(line);
+    }
+
+    // A caller's own line is never rewritten: a fallback for an unknown failure, and a byCode line.
+    const fallback = getFetchErrorMessage(new ApiError('x', 'unknown', 500), { fallback: "We couldn't send that invite. Please try again." });
+    expect(messageBesideRetry(fallback)).toBe("We couldn't send that invite. Please try again.");
+    const byCode = getFetchErrorMessage(new ApiError('x', 'forbidden', 403), { byCode: { forbidden: 'Only an admin can do that.' } });
+    expect(messageBesideRetry(byCode)).toBe('Only an admin can do that.');
+    expect(messageBesideRetry('')).toBe('');
   });
 });

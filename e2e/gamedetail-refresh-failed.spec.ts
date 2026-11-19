@@ -1,6 +1,8 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 import { holdRequests, settleAnimations } from './support/inFlight';
 import { scrubbedFetch } from './support/scrubbedFetch';
+import { expectHeldInside, expectNeighbourWhole, expectWholeWords, readWordLines, setNarrowLargeText, TWO_WORD_NAME } from './support/wordLines';
+import { E2E_GAME, E2E_GAME_NAME, E2E_GAME_PATH, routeFakeGameSuccess } from './support/fakeGame';
 
 // Plan 88.6.1-74 — contract C8 (d) of plan 88.6.1-70 for the event / game page at 375px: a failed
 // REFRESH over content already on screen keeps the content and shows the shared RF1 notice
@@ -187,7 +189,7 @@ test('event page: a failed background refresh keeps the event and shows the noti
 
   // Part B — the refresh failure.
   // DIAGNOSTIC ONLY (wave 7 CI gate, run 39020174955): this arm withdrew the event to the full
-  // "We couldn't load this event" banner in both attempts, which the page does only on a different
+  // "Couldn't load this event" banner in both attempts, which the page does only on a different
   // entity key, an access answer, or a fresh mount, and the same sequence keeps the event under RF1
   // in jsdom. The trail below (request order and answers, main-frame navigations, page errors, and
   // the loader / h1 timeline after the release) is printed ONLY when the RF1 wait fails, so the
@@ -236,7 +238,9 @@ test('event page: a failed background refresh keeps the event and shows the noti
     w.__rf1Trail = trailInPage;
     const t0 = performance.now();
     const sample = () => {
-      const loader = Boolean(document.querySelector(`[role="status"][aria-label="${loaderLabel}"]`));
+      // 88.9-65 (X35): the loader is read by its VISIBLE line (a paragraph holding the passed
+      // words); its live region mounts empty and carries no label any more.
+      const loader = Array.from(document.querySelectorAll('p')).some((p) => p.textContent === loaderLabel);
       const h1 = Boolean(document.querySelector('main h1'));
       const state = `loader=${loader} h1=${h1}`;
       if (!trailInPage.length || !trailInPage[trailInPage.length - 1].endsWith(state)) {
@@ -257,11 +261,12 @@ test('event page: a failed background refresh keeps the event and shows the noti
     const inPage = await page
       .evaluate(() => (window as unknown as { __rf1Trail?: string[] }).__rf1Trail ?? ['no trail: a new document'])
       .catch(() => ['evaluate failed']);
+    // eslint-disable-next-line no-console -- the RF1 trail prints only on a red, for the CI log
     console.log(`[DIAG gamedetail-refresh-event] ${JSON.stringify({ trail, inPage })}`);
     throw error;
   }
 
-  await expect(page.getByText("We couldn't load this event")).toHaveCount(0);
+  await expect(page.getByText("Couldn't load this event")).toHaveCount(0);
   await expect(heading).toBeVisible();
   // Wave 9 gate: the notice is above the KEPT content — the RSVP group is still on the page.
   await expect(rsvpGroup).toBeVisible();
@@ -273,42 +278,107 @@ test('event page: a failed background refresh keeps the event and shows the noti
   await expect(page.locator(':focus')).toHaveText('Game Night');
 });
 
-// No game fixture exists in CI, so the game arm serves a CUSTOM game for a fixed fake id (the
-// custom branch renders the name and no image) and an empty review list; the group's events and
-// roster are real, on the real E2E_GROUP_ID.
-const E2E_FAKE_GAME_ID = '0e2e0000-0000-4000-8000-000000000074';
-const E2E_GAME_PATH = `/gameDetail?game_id=${E2E_FAKE_GAME_ID}&group_id=${E2E_GROUP_ID}`;
-const GAME_GET_PATH = new RegExp(`^/api/games/${E2E_FAKE_GAME_ID}$`);
-const REVIEWS_PREFIX = `/api/game-reviews/game/${E2E_FAKE_GAME_ID}/`;
-const E2E_GAME_NAME = 'E2E Custom Game';
-const E2E_GAME = {
-  id: E2E_FAKE_GAME_ID,
-  name: E2E_GAME_NAME,
-  is_custom: true,
-  bgg_id: null,
-  theme: null,
-  image_url: null,
-  min_players: 2,
-  max_players: 4,
-  playing_time: 45,
-};
+// 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room; his worry: a
+// long name broken up too much to read, We/eke/nd W/arr/iors). A Participants chip cut its name to
+// one line with an ellipsis; it now wraps by piece
+// (src/app/gameDetail/page.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the chip's name wraps")).
+// The event read is real; only its participant list is replaced in the browser, with one typed-in
+// name and one guest who has an account (nothing is written). Read at 320 wide with the root text
+// at 200%: each word of the name is on one line, the chip's pills are whole inside the chip, the
+// chip is inside its card, and an Invite button beside a chip (drawn only for an owner or admin) is
+// whole and at least 44px. The page's own sideways scroll at this size is recorded in the log: the
+// rest of the event page at 320 / 200% is not this test's subject.
+// SPLIT Phase 88.9-52 (scoped check 3, L3): one body, two tests. The ordinary-text test keeps the chips,
+// their pills and the whole-word read gated; only the 320 / 200% read is the known failure.
+async function participantChipProof(page: Page, large: boolean) {
+  const participants = [
+    { user_id: null, username: TWO_WORD_NAME, is_guest: true, is_custom: true },
+    { user_id: '8861a072-0000-4000-8000-0000000000e2', username: TWO_WORD_NAME, is_guest: true, is_custom: false },
+  ];
+  await page.route('**/api/events/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET' && EVENT_GET_PATH.test(new URL(request.url()).pathname)) {
+      const response = await scrubbedFetch(route);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        await route.fulfill({ response });
+        return;
+      }
+      if (body && typeof body === 'object' && !Array.isArray(body)) {
+        (body as { EventParticipations?: unknown }).EventParticipations = participants;
+      }
+      await route.fulfill({ response, json: body });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto(E2E_EVENT_DETAIL_PATH);
+  await expect(page.getByRole('heading', { level: 1, name: 'Game Night' })).toBeVisible();
+  const main = page.getByRole('main');
+  // The chip's name is the 600 span that holds the answered name; its parent is the bordered chip,
+  // and the chip's parent holds the Invite button when one is drawn.
+  const names = main.locator('span.font-semibold.wrap-break-word', { hasText: TWO_WORD_NAME });
+  await expect(names, 'R4 D2: the two answered participants never rendered as chips').toHaveCount(2, { timeout: 15_000 });
+  await settleAnimations(main);
+
+  if (large) await setNarrowLargeText(page, 'R4 D2 participant chip');
+  const at = large ? '320 / 200%' : 'ordinary text';
+  const expected = [
+    ['Weekend', 'Warriors', '(Guest)'],
+    ['Weekend', 'Warriors'],
+  ];
+  for (let i = 0; i < 2; i += 1) {
+    const name = names.nth(i);
+    const chip = name.locator('xpath=..');
+    const outer = chip.locator('xpath=..');
+    const strip = outer.locator('xpath=..');
+    // The strip is named: a word may break only once the name has the strip's whole width to itself.
+    const read = await readWordLines(name, strip);
+    // eslint-disable-next-line no-console -- the measured chip is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 participant chip ${i}] ${at}: ${JSON.stringify(read)}`);
+    expectWholeWords(read, expected[i], `R4 D2 chip ${i} at ${at}`, { pageSideways: false });
+    // The chip holds its pills, and the strip holds the chip and its Invite button.
+    await expectHeldInside(chip, `R4 D2 chip ${i}`);
+    await expectHeldInside(strip, `R4 D2 chip ${i}'s strip`);
+    const pieces = chip.locator(':scope > span');
+    expect(await pieces.count(), `R4 D2 chip ${i}: the chip has no piece after its name`).toBeGreaterThan(1);
+    const buttons = outer.getByRole('button');
+    const buttonCount = await buttons.count();
+    // eslint-disable-next-line no-console -- whether the fixture viewer is offered Invite is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 participant chip ${i}] buttons beside the chip: ${buttonCount}`);
+    for (let b = 0; b < buttonCount; b += 1) {
+      await expectNeighbourWhole(buttons.nth(b), `R4 D2 chip ${i}: the button beside the chip`, { button: true });
+    }
+  }
+}
+
+test('R4 D2 at ordinary text (88.9-52): a Participants chip shows a two-word name in whole words with its pills inside the chip', async ({ page }) => {
+  await participantChipProof(page, false);
+});
+
+test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each word of a two-word name whole and its pills inside the chip', async ({ page }) => {
+  // DECISION Phase 88.9-52 (owner 2026-11-18): this 320 wide / 200% text read is marked as an
+  // expected failure, kept running, over skipping it, deleting it or patching the screen. The
+  // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
+  // the large-text method and owns this read. When the screen is fixed this test reports an
+  // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
+  test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
+  await participantChipProof(page, true);
+});
+
+// No game fixture exists in CI, so the game arm serves the shared CUSTOM fake game and an empty
+// review list (e2e/support/fakeGame.ts ("export async function routeFakeGameSuccess(")); the group's
+// events and roster are real, on the real E2E_GROUP_ID.
 
 /** Routes the fake game and its reviews; `failNext()` answers the next game GET 500 once. */
 async function routeFakeGame(page: Page) {
   let failNext = false;
   let issued = 0;
   let answered = 0;
-  await page.route('**/api/game-reviews/**', async (route) => {
-    const request = route.request();
-    if (request.method() === 'GET' && new URL(request.url()).pathname.startsWith(REVIEWS_PREFIX)) {
-      await route.fulfill({ json: [] });
-      return;
-    }
-    await route.fallback();
-  });
-  await page.route('**/api/games/**', async (route) => {
-    const request = route.request();
-    if (request.method() === 'GET' && GAME_GET_PATH.test(new URL(request.url()).pathname)) {
+  await routeFakeGameSuccess(page, {
+    onGameGet: async (route) => {
       issued += 1;
       if (failNext) {
         failNext = false;
@@ -317,9 +387,8 @@ async function routeFakeGame(page: Page) {
         await route.fulfill({ json: E2E_GAME });
       }
       answered += 1;
-      return;
-    }
-    await route.fallback();
+      return true;
+    },
   });
   return {
     failNext: () => {
@@ -370,7 +439,7 @@ test('game page: a failed background refresh keeps the game and shows the notice
   const card = line.locator('xpath=../following-sibling::div[1]');
   await expect(card.getByRole('heading', { level: 1, name: E2E_GAME_NAME })).toBeVisible();
 
-  await expect(page.getByText("We couldn't load this game")).toHaveCount(0);
+  await expect(page.getByText("Couldn't load this game")).toHaveCount(0);
   await expect(heading).toBeVisible();
   await expectRf1Layout(page, card, reference, testInfo, 'game');
 

@@ -6,12 +6,19 @@ import { logger } from '../../lib/logger';
 import BrowseMoreModal from './BrowseMoreModal';
 import SafeImage from './SafeImage';
 import { usePaintGestureHold } from './heatmap/paintGestureActiveStore';
+import { StatusRegion } from '../../components/ui/StatusRegion';
+import { isFocusLost, focusElement, focusPageFloor } from '../../components/ui/focusPageFloor';
+import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
 
 /** Stable empty list, so the held slot descriptor compares by identity across commits. */
 const NO_SUGGESTIONS = [];
 
 /** Copy row H4 (88.6.1 D-30), ratified; the straight apostrophe per D-32 R8. Never interpolated. */
 const SUGGESTIONS_FAILED_LINE = "We couldn't load suggestions.";
+
+/** The empty-collection hint (88.6-39 D-18). One constant: the box shows it and, since 88.9-52
+ *  (A-23), a pressed retry that returns nothing says it. Never interpolated. */
+const EMPTY_COLLECTION_HINT = 'Add games to your collection to enable suggestions';
 
 /**
  * The failure this catch reports, reduced to what is safe to egress.
@@ -46,6 +53,10 @@ function reducedSuggestionsFetchError(err) {
  * AMENDED Phase 88.6.1-14 (D-28): the slot now has FOUR contents — chips, the in-flight bar, the
  * empty hint and the failed line. The failed line reuses the hint's box (same element, same
  * classes); only its words and its test id differ. See the DECISION at the shared box below.
+ * AMENDED Phase 88.9-43 (owner pick D13c): "one height" is now one height for three of the four —
+ * the failed state's box grows 40 -> 48px to hold the 44px Try again link (slot 44 -> 52), chosen
+ * OVER a sub-44 link inside the 44 slot; the chips, bar and empty hint keep 44. A successful retry
+ * shrinks it back — the one height change, owner-ruled on the rendered page.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * DECISION Phase 88.6-39 (D-18): `QuickSuggestions` renders ONE fixed-height slot for EVERY
@@ -78,6 +89,11 @@ function reducedSuggestionsFetchError(err) {
  * number to renegotiate. (The plan's former "62" was an ancestor-child open→settle DELTA from
  * `e2e/event-scheduler-touch.spec.ts`'s own note, and its former "24" was a box height including
  * margins: two conventions, never comparable.)
+ * AMENDED Phase 88.9-43 (owner pick D13c, 88.9-PICKS-B3.json item D13, 2026-11-06): the FAILED
+ * state is the one exception to the fixed height — its box grows 40 -> 48px to hold the 44px
+ * Try again link (`min-h-11`, the same floor token), so the slot reads 52 while the failure
+ * shows and 44 again once a retry succeeds. Chosen OVER a sub-44 link inside the 44 slot (a
+ * tap-floor failure) and OVER moving the link outside the slot (two rows for one failure).
  *
  * THE PLACEHOLDER BAR IS `aria-hidden` and the HINT BOX IS NOT. The bar is a decorative skeleton
  * conveying nothing, and the effect deps re-fire on every create-event form edit, so a live region
@@ -107,11 +123,32 @@ function reducedSuggestionsFetchError(err) {
  * edited to add a render guard — it is not this plan's file and containment here costs nothing
  * outside it.)
  */
-function QuickSuggestionsSlot({ desired, onSelectGame, onBrowseMore }) {
+function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, onRetry }) {
   const shown = usePaintGestureHold(desired);
+  const slotRef = useRef(null);
+  const prevKindRef = useRef(shown.kind);
+
+  /* DECISION Phase 88.9-43 D13c: when a retry settles and the Try again link unmounts under focus,
+     focus moves to the slot's first control (the first chip), else the shared floor — chosen OVER
+     leaving focus on body, and OVER a live region written by every fetch (the 88.6-39 reason: dep
+     re-fires while typing); a PRESSED retry that fails again says the H4 line once through a
+     press-only polite region in the outer component. Changing this is a decision, not a
+     cleanup.
+     AMENDED Phase 88.9-52 (A-23): a PRESSED retry that returns nothing now says the empty hint
+     once through the same press-only region. Focus is unchanged: with no control in the slot it
+     still goes to the shared floor (the dialog title), chosen OVER focusing the hint box, which
+     would override this marker and is the owner's call. */
+  useEffect(() => {
+    const previousKind = prevKindRef.current;
+    prevKindRef.current = shown.kind;
+    if (previousKind !== 'failed' || shown.kind === 'failed') return;
+    if (!isFocusLost()) return;
+    const firstControl = slotRef.current?.querySelector('button');
+    if (!focusElement(firstControl)) focusPageFloor(slotRef.current);
+  }, [shown.kind]);
 
   return (
-    <div data-testid="quick-suggestions-slot" className="flex items-stretch gap-2 min-h-11 pb-1">
+    <div ref={slotRef} data-testid="quick-suggestions-slot" className="flex items-stretch gap-2 min-h-11 pb-1">
       {shown.kind === 'chips' ? (
         <>
           <div className="flex items-center gap-2 overflow-x-auto flex-nowrap flex-1 min-w-0">
@@ -126,7 +163,7 @@ function QuickSuggestionsSlot({ desired, onSelectGame, onBrowseMore }) {
                    primary CTAs". `min-h-11` with `inline-flex items-center`; the content is
                    unchanged and just gains leading. This token is ALSO the slot's own floor
                    above, so raising it re-derives the slot and breaks no height constant. */
-                className="inline-flex items-center gap-1.5 min-h-11 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-hover transition-colors cursor-pointer shrink-0"
+                className="inline-flex items-center gap-1.5 min-h-11 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-hover transition-colors cursor-pointer shrink-0 max-w-full"
                 title={game.name}
               >
                 {/* DECISION Phase 88.6-39 (T-88.6-111): the BGG thumbnail moves to `SafeImage` —
@@ -166,7 +203,24 @@ function QuickSuggestionsSlot({ desired, onSelectGame, onBrowseMore }) {
                     imgClassName="object-cover"
                   />
                 </span>
-                <span className="text-sm text-content-primary truncate max-w-[120px]">
+                {/* DECISION Phase 88.9-52 (R4 D1, owner 2026-11-18): the game name shows IN FULL. The chips
+                    are kept and the cap is removed: the name was cut at 120px with an ellipsis
+                    (truncate max-w-[120px]), which hid most of a long name at any text size and more
+                    of it the larger the text. Now the name has no width cap and no cut. It sits on
+                    one line inside its chip, and the chip row already scrolls sideways inside itself,
+                    so a long name is read by scrolling the row, never lost. ONE exception, by the
+                    same ruling: a name wider than the ROW ITSELF wraps inside its chip, by whole
+                    words (a single word breaks only when that one word is wider than the row). How:
+                    the chip never shrinks (shrink-0) and is capped at the row (max-w-full), and the
+                    name may shrink inside it (min-w-0) and breaks by words (wrap-break-word), so a
+                    name wraps only once its chip has reached the row's full width. CHOSEN OVER the
+                    cut (the owner: never cap or cut text to make a layout fit) and OVER a larger cap
+                    (still a cut). The chip keeps its 44px floor; a wrapped name makes its chip, and
+                    so the slot (a floor, min-h-11, never a fixed height), taller for as long as that
+                    chip is shown. That is the one way this slot can now change height: a name wider
+                    than the whole row, about 30 letters on a phone. The title attribute stays (it
+                    was the only way to read a cut name; it is harmless now). */}
+                <span className="text-sm text-content-primary min-w-0 wrap-break-word">
                   {game.name}
                 </span>
                 {(game.min_players || game.max_players) && (
@@ -215,16 +269,55 @@ function QuickSuggestionsSlot({ desired, onSelectGame, onBrowseMore }) {
            Browse Games rule, D-41): this slot is one fixed-height row that cannot hold both
            without a look change, and the old chips were fetched for a different player count or
            duration, one tap from being written into the form. Changing this is a decision, not a
-           cleanup. */
+           cleanup.
+           AMENDED Phase 88.9-43 (owner pick D13c, 88.9-PICKS-B3.json item D13, 2026-11-06 9:39 AM
+           Pacific): the failed box now carries a Try again link right of the H4 line (12px / 700,
+           accent ink, underlined, min-h-11; pressing it bumps retryKey and re-runs the fetch in
+           place), chosen OVER the shipped line-only box and OVER D13a (the full FetchErrorBanner)
+           and D13b (a compact warning box); UI-SPEC 6.2 is amended for this fixed-height slot to
+           line + link; the no-live-region rule now covers automatic re-fires only; a pressed
+           retry's failure is announced (press-only region, existing H4 copy). `gap-2` sits on the
+           SHARED class string so the failed and empty boxes still compare equal (Q2). Link ink:
+           #92400e on #ffffff 7.09 light, #f59e0b on #232d3e 6.45 dark; the house raw-control ring
+           on the card key.
+           AMENDED Phase 88.9-52 (A-20, A-29): while a pressed retry runs the link shows the house
+           busy state (rule 1, 88.9-46) — label kept, aria-disabled, the heard ", retrying" suffix,
+           the gated muted ink and the delayed house Spinner right of the word; a press in flight
+           is refused. Same pattern as the retry controls in
+           src/components/ui/FetchErrorBanner.tsx ("DECISION Phase 88.9-46 (rule 1 B37/B38)"),
+           chosen OVER the shipped silent press (nothing on screen changed, and a retry that failed
+           again looked like no press at all) and OVER the native disabled attribute (it drops
+           focus from the pressed control). The line, the link and the 52px failed height stay
+           (W030: the last settled content is kept until the next settle).
+           AMENDED Phase 88.9-52 (A-20, CI on e2e2331): the heard suffix is an aria-label on the
+           busy link (Try again, retrying), chosen OVER the visually hidden suffix span the house
+           Button and the banner's retry controls render. That span is position: absolute, so it
+           is a block box, and Chromium computes the name with a space before the comma (Try
+           again , retrying): the exact-name locator found nothing in CI. The label is set only
+           while busy, starts with the visible words, and no child box (suffix or Spinner) can
+           change it; the Profile schedule Delete names its busy state the same way. Going back
+           to the span is a decision, not a cleanup. */
         <div
           data-testid={shown.kind === 'failed' ? 'quick-suggestions-failed' : 'quick-suggestions-empty'}
-          className="flex-1 min-w-0 flex items-center border-2 border-dashed border-line rounded-card px-2"
+          className="flex-1 min-w-0 flex items-center gap-2 border-2 border-dashed border-line rounded-card px-2"
         >
           <p className="text-xs text-content-muted italic">
             {shown.kind === 'failed'
               ? SUGGESTIONS_FAILED_LINE
-              : 'Add games to your collection to enable suggestions'}
+              : EMPTY_COLLECTION_HINT}
           </p>
+          {shown.kind === 'failed' ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              aria-disabled={retrying || undefined}
+              aria-label={retrying ? 'Try again, retrying' : undefined}
+              className="ml-auto shrink-0 inline-flex items-center min-h-11 text-xs font-bold text-content-accent aria-disabled:text-content-muted underline underline-offset-2 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+            >
+              Try again
+              <DelayedSpinner busy={retrying} className="ml-2 align-middle" />
+            </button>
+          ) : null}
         </div>
       )}
     </div>
@@ -239,6 +332,24 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
   const [failed, setFailed] = useState(false);
   const [hasSettled, setHasSettled] = useState(false);
   const [browseModalOpen, setBrowseModalOpen] = useState(false);
+  /* 88.9-43 D13c: the Try again link re-runs the fetch IN PLACE by bumping `retryKey`, a dep of the
+     fetch effect. `retryPressedRef` marks a run the person asked for: only ITS failure writes the
+     press-only polite region below (the existing H4 sentence). `lastRetryKeyRef` tells a dep-change
+     re-fire apart from a press at the top of the effect, so a typing-caused failure that supersedes
+     a pressed retry stays silent. The report latch is unchanged: a retry of the same key files no
+     second Sentry event. */
+  const [retryKey, setRetryKey] = useState(0);
+  const [retryAnnouncement, setRetryAnnouncement] = useState('');
+  const retryPressedRef = useRef(false);
+  const lastRetryKeyRef = useRef(0);
+  /* 88.9-52 (A-20): the pressed retry's busy state. The REF is the synchronous first-line latch
+     (two presses in one tick both read stale state — the house idiom,
+     src/components/ui/FetchErrorBanner.tsx ("DECISION Phase 88.6.1-21 (R123 / W064 / Req 5)"));
+     the STATE paints the look. Both end at the next settle of the CURRENT generation (success or
+     failure, pressed or automatic) and in the invalid-params branch, so a dep change that
+     supersedes the pressed run cannot leave the link busy. */
+  const [retrying, setRetrying] = useState(false);
+  const retryInFlightRef = useRef(false);
   const debounceRef = useRef(null);
   /* THE PHASE'S ONE STALENESS IDIOM — the cancelled-generation guard plan 88.6-27 shipped and
      plans 29/30/32 reuse. Bumped in the effect's CLEANUP, so both a dep change and unmount
@@ -267,12 +378,21 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
     // Clear previous debounce
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const generation = generationRef.current;
+    // 88.9-43 D13c: a run started by anything other than a NEW press is automatic — it may not
+    // announce its failure. (The same retryKey as last time means a dep change started this run.)
+    if (retryKey === lastRetryKeyRef.current) retryPressedRef.current = false;
+    lastRetryKeyRef.current = retryKey;
+    const endRetry = () => {
+      retryInFlightRef.current = false;
+      setRetrying(false);
+    };
 
     // Only fetch if we have a valid groupId and playerCount >= 1
     if (!paramsValid) {
       setSuggestions(NO_SUGGESTIONS);
       setPending(false);
       setFailed(false);
+      endRetry();
       return () => {
         generationRef.current += 1;
       };
@@ -296,6 +416,13 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
           const raw = Array.isArray(data) ? data : (data?.suggestions || []);
           setSuggestions(raw.slice(0, 5));
           setFailed(false);
+          // 88.9-52 (A-23): a PRESSED retry that returns nothing says the empty hint once (the
+          // link unmounts and focus goes to the D13c floor, so without this nothing said what
+          // happened). An automatic empty settle stays silent, as every automatic run does.
+          if (retryPressedRef.current && raw.length === 0) {
+            setRetryAnnouncement(EMPTY_COLLECTION_HINT);
+          }
+          retryPressedRef.current = false;
         } catch (err) {
           /* THE GENERATION GUARD IS CHECKED FIRST: a superseded run reports nothing. What follows
              is the AC-16 (a) escalation the owner ruled on 2026-09-09 — this path's only
@@ -310,8 +437,16 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
              AMENDED Phase 88.6.1-14 (D-28): the user-facing rendering is no longer silent in the
              false sense — the slot now shows the H4 line instead of the empty-collection hint,
              which stated something the app does not know. It is still announced by nothing: no
-             live region was added (see the slot's DECISION). The report below is unchanged. */
+             live region was added (see the slot's DECISION). The report below is unchanged.
+             AMENDED Phase 88.9-43 (D13c): a PRESSED retry that fails again is
+             announced once through the press-only region (the existing H4 line); automatic
+             re-fires stay silent. The same text re-announces because the press clears the
+             region and the fetch runs after the 500ms debounce, past REGION_EMPTY_DWELL_MS. */
           if (generation !== generationRef.current) return;
+          if (retryPressedRef.current) {
+            retryPressedRef.current = false;
+            setRetryAnnouncement(SUGGESTIONS_FAILED_LINE);
+          }
           const reportKey = `${groupId}|${playerCount}|${duration ?? ''}`;
           if (lastReportedKeyRef.current !== reportKey) {
             lastReportedKeyRef.current = reportKey;
@@ -326,6 +461,7 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
         if (generation !== generationRef.current) return;
         setPending(false);
         setHasSettled(true);
+        endRetry();
       };
       fetchSuggestions();
     }, 500);
@@ -333,7 +469,20 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
     return () => {
       generationRef.current += 1;
     };
-  }, [groupId, playerCount, duration, paramsValid]);
+  }, [groupId, playerCount, duration, paramsValid, retryKey]);
+
+  // 88.9-43 D13c: the Try again press — mark the run as asked-for, clear the region (clear-then-set,
+  // so a repeat failure is a real change), and re-run the effect in place.
+  const onRetry = () => {
+    // 88.9-52 (A-20): a press while a pressed retry is still running is refused — it used to
+    // restart the 500ms debounce (or start a second fetch) every time.
+    if (retryInFlightRef.current) return;
+    retryInFlightRef.current = true;
+    setRetrying(true);
+    retryPressedRef.current = true;
+    setRetryAnnouncement('');
+    setRetryKey((k) => k + 1);
+  };
 
   /* THE SLOT'S DESIRED CONTENT. Memoized so it compares by IDENTITY inside the finger-up hold —
      a fresh object every render would defeat the hold's bail-out and re-render the slot on every
@@ -369,12 +518,19 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
 
   return (
     <div className="mt-1 mb-1">
-      <div className="text-xs font-bold text-content-muted uppercase tracking-wide mb-1">Suggestions</div>
+      <div className="text-xs font-bold text-content-muted uppercase tracking-wider mb-1">Suggestions</div>
       <QuickSuggestionsSlot
         desired={desired}
+        retrying={retrying}
         onSelectGame={onSelectGame}
         onBrowseMore={() => setBrowseModalOpen(true)}
+        onRetry={onRetry}
       />
+      {/* 88.9-43 D13c: the press-only polite region — OUTSIDE the slot (which stays free of live
+          regions and keeps its height), always mounted and empty-first, written ONLY when a retry
+          the person pressed fails again. The host's own polite region in createEvent.js carries
+          participant-undo text and is not reused. */}
+      <StatusRegion politeness="polite" className="sr-only" message={retryAnnouncement} />
       <BrowseMoreModal
         open={browseModalOpen}
         onClose={() => setBrowseModalOpen(false)}

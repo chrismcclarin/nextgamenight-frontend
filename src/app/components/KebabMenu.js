@@ -1,10 +1,23 @@
 'use client';
 
-import { useState, useEffect, useRef, useId } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 
+import {
+  CONFIRM_DELAY_MS,
+  CONFIRM_LIVE_MS,
+  COUNTDOWN_LABELS,
+  countdownLabel,
+  countdownName,
+  useConfirmCountdown,
+} from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { DelayedSpinner } from '@/components/ui/DelayedSpinner';
+import { ReservedLabel } from '@/components/ui/ReservedLabel';
+import { DEFAULT_ARMED_LABEL, DEFAULT_ARMED_NAME } from '@/components/ui/useConfirmAction';
 import { useDismissal } from '@/components/ui/useDismissal';
+import { hostGroundHalo } from '@/components/ui/hostGround';
+import { cn } from '@/lib/cn';
 
 /**
  * KebabMenu — reusable ⋮ trigger + dropdown overlay.
@@ -14,16 +27,27 @@ import { useDismissal } from '@/components/ui/useDismissal';
  * event-actions kebab (Phase 65-02) for visual consistency.
  *
  * twoTap items follow the Phase 65-02 destructive-confirm pattern:
- *   - First tap: label flips to "Tap again to confirm" (or item.confirmLabel),
+ *   - First tap: label flips to "Tap again to confirm" (or item.confirmLabel; both superseded, see R13 below),
  *     3s revert timer arms, item highlights red.
  *   - Second tap on same item within 3s: invokes item.onClick + closes menu.
  *   - Timeout or another item tap reverts the armed state.
+ *   AMENDED Phase 88.9-23 (owner pick F9b, 88.9-PICKS-B5.json, 2026-11-07): the first tap reads
+ *   Tap again (3)…(1) and the second tap is refused for CONFIRM_DELAY_MS, then live for
+ *   CONFIRM_LIVE_MS (6 s armed), chosen OVER the shipped immediately-live 3 s window; a keepOpen
+ *   twoTap item stays open after its commit.
+ *   AMENDED Phase 88.9-67 (X69, owner 2026-11-14): the gated item reads Wait (3)…(1), named
+ *   <item>, wait n seconds; live words and the live-edge announcement unchanged.
+ *   AMENDED Phase 88.9-52 (R13, owner 2026-11-17): the live item SHOWS Tap again and is NAMED by
+ *   the full sentence (item.armedName, else the menu's armedName); see the R13 marker at the item.
  *
  * Dismissal (outside mousedown, container Escape, the non-null relatedTarget
  * `focusout` rule, and the guarded focus restore to the trigger) is owned by the
  * shared hook `src/components/ui/useDismissal.ts` since 88.6.1-05; this component
  * consumes it and owns only its open / armed / announcement state.
  */
+
+/* G4 (88.9-52): the clear space kept between an open menu and the edge of the box that clips it. */
+const MENU_EDGE_GAP_PX = 8;
 
 /* The sr-only copy emitted when an armed twoTap item reverts. It is NOT emitted
    on a successful commit — see the close-resets effect below. */
@@ -42,26 +66,35 @@ const REVERT_ANNOUNCEMENT = 'Confirmation cancelled.';
  * @property {() => void} onClick - Invoked on activation (twoTap: on the SECOND tap).
  * @property {boolean} [danger] - Destructive ink.
  * @property {boolean} [twoTap] - Phase 65-02 destructive-confirm tier.
- * @property {string} [confirmLabel] - Armed label for this item, overriding the menu default.
+ * @property {string} [armedName] - The SPOKEN name of this item while armed and live, a sentence
+ *   that starts with the visible Tap again ('Tap again to remove'); overrides the menu default.
+ *   The visible armed words are always Tap again (R13) and are not an item's to set.
  * @property {boolean} [disabled] - Native `disabled`. For a control NOBODY is standing on.
  * @property {boolean} [ariaDisabled] - `aria-disabled` + a handler refusal, never the native
  *   attribute. For the control being ACTED ON, whose label must stay readable and which must
  *   stay in the focus order.
- * @property {boolean} [keepOpen] - Suppress the close on the SINGLE-TAP path only. Inert on a
- *   twoTap item.
+ * @property {boolean} [busy] - In flight (rule 1, 88.9-46): the label is KEPT, the house Spinner
+ *   renders beside it and `busySuffix` is appended sr-only, so the item is named label plus
+ *   suffix. Never a refusal on its own — pass `ariaDisabled` beside it for the gate.
+ * @property {string} [busySuffix] - The sr-only words appended to the name while `busy`
+ *   (", cancelling", ", leaving", ...).
+ * @property {boolean} [keepOpen] - Suppress the close after activation — on the single-tap path
+ *   and on the twoTap commit.
  */
 
 /**
  * @param {Object} props
  * @param {string} [props.ariaLabel] - Accessible label for the trigger button.
  * @param {KebabMenuItem[]} [props.items] - Action items. An EMPTY array renders no trigger.
- * @param {string} [props.confirmLabel] - Default label for armed twoTap items.
- *                                        Each item can override via item.confirmLabel.
+ * @param {string} [props.armedName] - Default spoken name for armed, live twoTap items.
+ *                                     Each item can override via item.armedName.
+ * @param {import('@/components/ui/hostGround').HostGround} [props.hostGround='card'] - The ground the HOST paints under the trigger; selects its focus halo.
  */
 export default function KebabMenu({
   ariaLabel = 'Actions',
   items = [],
-  confirmLabel = 'Tap again to confirm',
+  armedName = DEFAULT_ARMED_NAME,
+  hostGround = 'card',
 }) {
   const [open, setOpen] = useState(false);
   const [armedIndex, setArmedIndex] = useState(null);
@@ -70,6 +103,22 @@ export default function KebabMenu({
   const triggerRef = useRef(null);
   const armedTimerRef = useRef(null);
   const listId = useId();
+
+  // F9b (88.9-23): the armed item's gate. The NC-1 arm text waits in a ref and is written at
+  // the live edge (see the AMENDED line on the announcement marker below); the index mirror
+  // lets the live-edge callback check the item is still armed.
+  const pendingAnnouncementRef = useRef('');
+  const armedIndexRef = useRef(null);
+  useEffect(() => {
+    armedIndexRef.current = armedIndex;
+  }, [armedIndex]);
+  const {
+    secondsLeft,
+    live: armedLive,
+    isLive,
+  } = useConfirmCountdown(armedIndex, () => {
+    if (armedIndexRef.current !== null) setAnnouncement(pendingAnnouncementRef.current);
+  });
 
   // PROP-TIME gate, never an on-arm mount: a live region created at the moment
   // of the announcement announces nothing, which is the whole reason for the
@@ -223,14 +272,119 @@ export default function KebabMenu({
     };
   }, []);
 
-  const handleItemClick = (item, index) => {
+  /* DECISION Phase 88.9-52 (G4, round 4, 2026-11-18): an open menu is FITTED to the box that clips
+     it, once, when it opens. The list is an absolute box hung from the right edge of its trigger,
+     as wide as its longest item up to 100vw - 2rem. That cap knows the screen, not the box the
+     menu sits in. Inside the Manage Members dialog (two of the six render sites) the clipping box
+     is the dialog's scrolling body, which starts 12px in from the screen and whose trigger sits
+     further in again from its right: at 200% the 311px menu started 24px off
+     the left of the screen with only part of each word showing, and at every text size the last
+     item was cut by the dialog's footer line because nothing scrolled the menu into view
+     (capture r3-m). Both predate round 3 (the menu has hung this way since it first rendered in
+     a dialog; X67 let it grow to the cap).
+     WHAT RUNS ON OPEN: find the nearest ancestor that clips (any overflow other than visible),
+     else the screen; cap the width to that box less 8px each side (kept under the class's own
+     cap by min()); if the menu still starts left of the box, move it right by the difference;
+     then scroll it into view by the nearest edge (the list's scroll-m-2 keeps 8px clear), which
+     scrolls the dialog body, or the page for a menu opened at the foot of the screen.
+     Chosen OVER portalling the menu out of the dialog (the dismissal hook and the focusout rule
+     reason about containment: the same settled question the aria-controls marker below refuses
+     to reopen); OVER the house floating engine (a rebuild of a six-site component, for a
+     fix); OVER a narrower fixed cap (it would wrap Transfer ownership to this member at normal
+     text, which X67 exists to prevent); and OVER opening upward (it trades the foot of the box
+     for the head of it). A layout effect, so the first paint is already fitted.
+     NOT DONE: it does not refit while open (a rotation or a text-size change with the menu open
+     closes nothing and moves nothing). With no layout to measure (a box of no width: a test
+     page) it touches nothing. Changing this is a decision, not a cleanup.
+     AMENDED Phase 88.9-52 (R4 B3, round 4, 2026-11-18; CI run 44381640391 and the re-shoot r4-m):
+     the fit above knew the clipping box's WIDTH only. At 200% text the Manage Members body is
+     262px tall on a 375 phone and 173px on a 320 one, and the member menu is 314 and 354px: the
+     reveal could show the top of the menu or the bottom of it, never both, and Transfer
+     ownership sat under the dialog's footer line where it cannot be tapped. Now a menu TALLER
+     than the room it has takes that room as its max height (the clipping box's height, or the
+     screen's, less 8px above and below; never under one item) and scrolls INSIDE ITSELF; the
+     reveal then puts the whole capped box in view. A menu that fits is not touched, so every
+     menu at ordinary text is exactly as it was.
+     CHOSEN OVER drawing the open list outside the clipping box (a portal or a fixed layer placed
+     by the trigger). Swept first: three markers in this file refuse that move, each for a
+     reason that still holds. (1) The dismissal hook reasons about CONTAINMENT (the outside
+     mousedown and the focusout rule ask whether the target is inside this wrapper; a portalled
+     list is outside it, so a tap on an item would read as a tap outside and a Tab into the list
+     as focus leaving). (2) The list is the next thing in the DOM after its trigger, which is
+     what gives the keyboard order trigger, item, item with no focus management of our own; a
+     portalled list sits at the end of the body and needs a focus trap or a roving order built
+     for it, on six sites. (3) Two of the six sites are inside the Radix dialog, which makes
+     everything outside its content inert and aria-hidden: a list portalled to the body there
+     cannot be focused or read at all, and one portalled into the dialog shell is still clipped
+     by the shell's own overflow-hidden. A list that scrolls inside itself changes none of
+     that: same element, same place, same order, so Escape, the focus return to the trigger, the
+     armed and busy states and keepOpen are untouched on all six sites, and a Tab to an item
+     below the fold scrolls it into view natively. Its cost is said plainly: at 320 with 200%
+     text the menu shows less than two of its three items at once and the rest is a scroll
+     away; the cut item at the fold is the cue.
+     The inline overflow replaces a one-item menu's own clip (overflow-hidden) only while
+     capped, and sideways it stays hidden, so the rounded corners still clip the band. */
+  const listRef = useRef(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    if (!list) return;
+    let left = 0;
+    let right = document.documentElement.clientWidth;
+    // Up and down: the screen, narrowed to the clipping box when that box clips up and down.
+    const screenHeight = document.documentElement.clientHeight;
+    let top = 0;
+    let bottom = screenHeight;
+    for (let el = list.parentElement; el && el !== document.body; el = el.parentElement) {
+      const style = window.getComputedStyle(el);
+      const clipsY = (style.overflowY || 'visible') !== 'visible';
+      if ((style.overflowX || 'visible') !== 'visible' || clipsY) {
+        const box = el.getBoundingClientRect();
+        left = box.left;
+        right = box.right;
+        if (clipsY) {
+          top = screenHeight > 0 ? Math.max(box.top, 0) : box.top;
+          bottom = screenHeight > 0 ? Math.min(box.bottom, screenHeight) : box.bottom;
+        }
+        break;
+      }
+    }
+    if (right - left <= 0) return;
+    const room = right - left - 2 * MENU_EDGE_GAP_PX;
+    if (room > 0) list.style.maxWidth = `min(calc(100vw - 2rem), ${Math.floor(room)}px)`;
+    // R4 B3: measured after the width cap (a narrower menu wraps its labels and grows taller) and
+    // with any earlier cap cleared, so this reads the menu's own height.
+    list.style.maxHeight = '';
+    list.style.overflowY = '';
+    list.style.overflowX = '';
+    const own = list.getBoundingClientRect();
+    const shift = left + MENU_EDGE_GAP_PX - own.left;
+    list.style.translate = shift > 0.5 ? `${Math.ceil(shift)}px 0` : '';
+    const roomY = bottom - top - 2 * MENU_EDGE_GAP_PX;
+    if (roomY > 0 && own.height > roomY + 0.5) {
+      const firstItem = list.querySelector('button');
+      const oneItem = firstItem ? Math.ceil(firstItem.getBoundingClientRect().height) : 0;
+      list.style.maxHeight = `${Math.max(Math.floor(roomY), oneItem)}px`;
+      list.style.overflowY = 'auto';
+      list.style.overflowX = 'hidden';
+    }
+    if (typeof list.scrollIntoView === 'function') list.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [open]);
+
+  // X13-7 (88.9-67): the keepOpen exits put focus on the item that was activated. A no-op when
+  // the press already focused it (a keyboard press, a Chromium click).
+  const focusActivatedItem = (target) => {
+    if (target && target.isConnected && document.activeElement !== target) target.focus();
+  };
+
+  const handleItemClick = (item, index, target) => {
     if (item.disabled) return;
     /* The `ariaDisabled` press is refused in the HANDLER, never by the platform —
        see the flag's DECISION marker at the item button below. */
     if (item.ariaDisabled) return;
 
     if (item.twoTap) {
-      // First tap on this item: arm the 3s revert timer.
+      // First tap on this item: arm the revert timer (gated + live window, F9b).
       if (armedIndex !== index) {
         if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
         setArmedIndex(index);
@@ -256,22 +410,37 @@ export default function KebabMenu({
            the row's subject so the message could match the hook's two-part shape —
            another field on a six-site shared component's items API, which every
            shipped call site would have to author correctly, for a re-announcement
-           the per-instance region already guarantees. */
-        setAnnouncement(`Press again to confirm: ${item.label}`);
+           the per-instance region already guarantees.
+           AMENDED Phase 88.9-23 (F9b): written at the live edge, not at arm — content rule
+           above unchanged. */
+        pendingAnnouncementRef.current = `Press again to confirm: ${item.label}`;
+        setAnnouncement('');
         armedTimerRef.current = setTimeout(() => {
           setArmedIndex(null);
           armedTimerRef.current = null;
           setAnnouncement(REVERT_ANNOUNCEMENT);
-        }, 3000);
+        }, CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
         return;
       }
-      // Second tap within 3s — clear timer + commit.
+      // Second tap while the gate still runs — refused (F9b): stay armed, announcement
+      // unchanged. Read from the countdown's ref, keyed by this item's index.
+      if (!isLive(index)) return;
+      // Second tap inside the live window — clear timer + commit.
       clearTimeout(armedTimerRef.current);
       armedTimerRef.current = null;
       setArmedIndex(null);
       // NOT the revert copy: a commit is not a cancellation.
       setAnnouncement('');
       item.onClick();
+      // F9b: a keepOpen twoTap item stays open, mounted and focused after its commit — the
+      // same promise the single-tap keep-open path makes (see that marker below).
+      // AMENDED Phase 88.9-67 (X13-7): a keepOpen exit focuses the activated item, so focus stays
+      // on it where a tap does not focus (WebKit) and a host's focus recovery can watch it, chosen
+      // OVER threading the element into item.onClick (an items-API change on six sites).
+      if (item.keepOpen) {
+        focusActivatedItem(target);
+        return;
+      }
       setOpen(false);
       restoreFocusToTrigger();
       return;
@@ -294,14 +463,28 @@ export default function KebabMenu({
        and `ManageMembers.js` (anchor `DECISION Phase 88 AR-DEC-3`) reason
        from the CURRENT auto-close and
        are unchanged by a per-item opt-out.
+       AMENDED Phase 88.9-67 (X13-7): ManageMembers' phone Remove is now twoTap + keepOpen;
+       AR-DEC-3's arming-tap reason is unchanged; the session Delete stays on the dialog tier.
 
        The flag opts an item out of one close TRIGGER, never out of dismissal:
        outside-mousedown, Escape and the focusout rule all behave exactly as they do
        without it. A keep-open activation closes nothing and unmounts nothing, so
        there is no focus to restore and none is stolen — focus stays on the item.
        That is true ONLY because an activated item's busy gate is `ariaDisabled` and
-       never the native disabled attribute (see the item button below). */
-    if (item.keepOpen) return;
+       never the native disabled attribute (see the item button below).
+       AMENDED Phase 88.9-23 (owner pick F9b, 88.9-PICKS-B5.json, 2026-11-07): keepOpen is now
+       also honoured on the twoTap commit, for gameDetail's Cancel event / Leave event, chosen
+       OVER the single-tap-only flag (which would have closed the menu and hidden Cancelling…,
+       D24 c). The Delete sentence above still stands: the session Delete stays on the dialog
+       tier.
+       AMENDED Phase 88.9-67 (X13-7): a keepOpen exit focuses the activated item, so focus stays
+       on it where a tap does not focus (WebKit) and a host's focus recovery can watch it, chosen
+       OVER threading the element into item.onClick (an items-API change on six sites). The
+       sentence above, that focus stays on the item, was untrue on WebKit until this. */
+    if (item.keepOpen) {
+      focusActivatedItem(target);
+      return;
+    }
 
     setOpen(false);
     restoreFocusToTrigger();
@@ -313,6 +496,9 @@ export default function KebabMenu({
      behaviour change on a component with 6 render sites. Every hook above runs
      first, so this early return never changes hook order. */
   if (items.length === 0) return null;
+
+  // 88.9-52 (R20): the band's shape follows the item COUNT (the marker is on the list below).
+  const soloItem = items.length === 1;
 
   return (
     <div
@@ -397,7 +583,19 @@ export default function KebabMenu({
         type="button"
         ref={triggerRef}
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+        /* DECISION Phase 88.9-35 R033 (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04): the trigger's
+           halo is the HOST's ground passed as a typed hostGround key
+           (src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO")), default card — every
+           live phone host is a card — merged
+           after the shipped literal with cn so the literal keeps its card key, chosen OVER round 1's
+           fixed card halo on every host. The tinted group-page host left with F5b; the groupPlanning
+           desktop arm (card on a phone, page from md) cannot be named by one key and is plan
+           88.9-50's. Changing this is a decision, not a cleanup.
+           AMENDED Phase 88.9-50 (plan review 2026-11-08): the groupPlanning desktop arm named above was a census false positive — OpenPollCard's li paints bg-surface-card at every width (src/app/components/OpenPollsList.js ("const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex flex-wrap items-start';")), so every live host is a card and the default key is right; no md companion on this trigger, chosen OVER one (it would paint a page-coloured gap on a card row from 768px, band 1.31 / 1.22). */
+        className={cn(
+          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+          hostGroundHalo(hostGround)
+        )}
         aria-expanded={open}
         /* DECISION Phase 88.6-16 (D-12): `aria-controls` is the HONEST replacement
            for the removed popup relationship — it says only what is true (this
@@ -436,15 +634,79 @@ export default function KebabMenu({
            compensates for the PREFLIGHT, not for a utility a reader could simply
            drop. The axe audit cannot see this (it does not model the Safari quirk) —
            `keyboardOperability.test.tsx` is the only gate on it. */
+        /* DECISION Phase 88.9-67 (X67): the menu sizes to its longest item (w-max) with the 160px
+           floor and a viewport cap, chosen OVER raising the floor (252px to unwrap Transfer
+           ownership to this member, widening every short menu) and OVER shortening labels (no
+           owner word). An absolute right-0 box in the 44px trigger wrapper shrank to 44px, so the
+           floor fixed every menu at 160px and the armed lines wrapped. Long labels still wrap at
+           the cap (E6). */
+        /* DECISION Phase 88.9-52 (R20, owner 2026-11-17, pick Rule; his words: "When it's by
+           itself, it should fill the box."): the band an item paints (the armed red, and the hover
+           fill) has ONE rule by item count. A menu with ONE item: the list drops its vertical
+           padding and clips to its own rounded corners, so the band fills the whole menu, 1px
+           inside the border. A menu with SEVERAL items: each row is inset 4px at the sides and
+           the item is rounded, which with the list's 4px vertical padding and 1px border is an
+           even 5px on every side of the band, the same on a first, middle or last item. The text
+           starts where it did (4px row + 8px item is the 12px the item carried alone), so no menu
+           changes width, and the shape is set by the COUNT, never by the armed state, so no menu
+           changes size when an item arms. A one-item menu is 8px shorter than it was (46px with
+           the 44px item), at rest and armed alike.
+           Chosen OVER the square band between two 5px strips of card that every menu had (W32,
+           the look half: in the one-item Event actions menu it read as a stripe in a box); OVER
+           filling to the corners in every menu (in the three-item member menu the owner preferred
+           the inset band); and OVER switching shape on arming (the menu would jump). Written as
+           whole class names on the count, not a parent-state selector: the count is known here.
+           The replica in e2e/touch-targets.spec.ts ("UI-SPEC §9.3 E6: the kebab popover stays inside 375px") follows these strings in lockstep.
+           Changing either shape is a decision, not a cleanup.
+           AMENDED Phase 88.9-52 (G3, round 4, 2026-11-18; the after-build capture r3-l rendered
+           the several-item menu):
+           - NEIGHBOURING BANDS ARE 2px APART (space-y-0.5 on the list; the gap is between ROWS,
+             so every item keeps its own 44px floor). As built two neighbours touched: an armed
+             band and a hovered band met with 0px between them, which is not an inset band on
+             that side. Chosen OVER 4px (nearer the 5px edges, but it moves further from the
+             picture the owner picked, where rows sat edge to edge) and OVER shrinking the item
+             inside its row (the tap height would drop under 44px). A several-item menu is 2px
+             taller per row after the first; the size still follows the COUNT, never the armed
+             state. A one-item menu takes none of it.
+           - AN ITEM HOVERS ON THE GHOST WASH (enabled-hover:bg-surface-ghost-hover, the owner's
+             R8c ruling: a visible hover fill), chosen OVER the shared hover wash it wore
+             (hover:bg-surface-hover: #faf8f5 on the white menu, 1.06, near invisible in both
+             shapes). Light #e3dad1: 1.38 off the menu, primary ink 13.02 and danger ink 6.02 on
+             it. Dark is the same colour as before (the token names the shared wash there): 1.23
+             off the menu, inks 10.64 and 5.94. The enabled-hover form also means a gated or
+             busy (aria-disabled) item no longer lights under the pointer, the house rule
+             (src/components/ui/Button.tsx ("/* DECISION Phase 88.6-06 (D10): the hover elevation above, and the ghost")). The trigger keeps its own wash. */
         <ul
           id={listId}
+          ref={listRef}
           role="list"
-          className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-theme-lg py-1"
+          className={`absolute right-0 top-full mt-1 z-20 scroll-m-2 w-max min-w-[160px] max-w-[calc(100vw-2rem)] bg-surface-card border border-line rounded-md shadow-theme-lg ${
+            soloItem ? 'py-0 overflow-hidden' : 'py-1 space-y-0.5'
+          }`}
         >
           {items.map((item, index) => {
             const isArmed = item.twoTap && armedIndex === index;
-            const label = isArmed ? (item.confirmLabel || confirmLabel) : item.label;
+            // F9b: an armed item counts down while gated, then reads its armed label.
+            const isGated = isArmed && !armedLive;
+            /* DECISION Phase 88.9-52 (R13): the live armed item SHOWS the house words Tap again
+               (src/components/ui/useConfirmAction.ts ("export const DEFAULT_ARMED_LABEL"), where the
+               ruling and its reasons are written) and is NAMED by the full sentence, the item's
+               armedName or the menu's; chosen OVER the sentence as the visible label (what shipped)
+               and OVER dropping the sentence from the name. The item field and the menu prop were
+               called confirmLabel while they WERE the visible label; they are armedName now, so the
+               name of the field says which string it holds. R20's band rule, W31 and W32 are
+               untouched: the shape still follows the item count and the reserve is still measured
+               at the armed weight. Showing the sentence again is a decision, not a cleanup. */
+            const isLiveArmed = isArmed && !isGated;
+            const label = isArmed
+              ? isGated
+                ? countdownLabel(secondsLeft)
+                : DEFAULT_ARMED_LABEL
+              : item.label;
             const danger = item.danger || isArmed;
+            // 88.9-52 (W31): which of the two spinner mounts below this item uses. A property of the
+            // item, never its busy flag, so neither mount unmounts when busy drops (the R-C3b hold).
+            const reservesLabel = Boolean(item.twoTap);
             return (
               /* DECISION Phase 88.6-16 (D-12/D24): the mapped root is keyed on
                  POSITION, over the label-derived key this map used to carry. NOT
@@ -468,10 +730,10 @@ export default function KebabMenu({
                  render sites passes one, so an `id ?? index` form is dead in every
                  branch. The documented Items API above is where explicit identity
                  would be added if a future render site ever needs it. */
-              <li key={index}>
+              <li key={index} className={soloItem ? undefined : 'px-1'}>
                 <button
                   type="button"
-                  onClick={() => handleItemClick(item, index)}
+                  onClick={(event) => handleItemClick(item, index, event.currentTarget)}
                   disabled={item.disabled}
                   /* DECISION Phase 88.6-16 (D-12): `aria-pressed` is present ONLY
                      while armed and ABSENT (never "false") at rest — the
@@ -511,19 +773,87 @@ export default function KebabMenu({
                      here, but it deletes the busy affordance that ships today and
                      leaves no programmatic busy state for assistive tech, making a
                      destructive item look fully live while a request is in flight. */
-                  {...(item.ariaDisabled ? { 'aria-disabled': true } : {})}
+                  /* F9b (88.9-23): an armed item inside its gate renders aria-disabled the same
+                     way; the refusal is the isLive check in handleItemClick. */
+                  {...(item.ariaDisabled || isGated ? { 'aria-disabled': true } : {})}
+                  /* X69 (88.9-67): only while gated the item carries a name of its own — its resting
+                     label, then the wait — because Wait (n) alone would not say what it does. */
+                  {...(isGated ? { 'aria-label': countdownName(item.label, secondsLeft) } : {})}
+                  /* R13 (88.9-52): live, the name is the full sentence; it starts with the visible
+                     Tap again (Label in Name). At rest the item is named by its own text. */
+                  {...(isLiveArmed ? { 'aria-label': item.armedName || armedName } : {})}
                   /* 88-CODE-REVIEW MED#13: min-h-11 — the 87.8-08 census FAIL row (~36px)
                      these items still carried after D-40 made this menu the SOLE phone
                      path to destructive row actions. The trigger was floored by 88-28;
                      the items behind it were not. The dropdown is an absolute overlay,
                      so taller rows reflow nothing outside it. */
-                  className={`w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                  /* DECISION Phase 88.9-23 O-17: the gated (aria-disabled) item changes INK
+                     (text-content-muted) over an opacity wash — src/app/tokenContrast.test.ts ("no aria-disabled rule uses opacity")
+                     forbids the dim, and the wash this item carried was that test's blind spot (a
+                     variant-prefixed utility). It also restyles the in-flight Cancelling… / Leaving…
+                     items. Owner confirm from one picture (88.9-23 task 3). */
+                  className={`w-full min-h-11 text-left ${soloItem ? 'px-3' : 'px-2 rounded-sm'} py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                     danger
-                      ? `text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}`
-                      : 'text-content-primary hover:bg-surface-hover'
+                      ? `text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'enabled-hover:bg-surface-ghost-hover'}`
+                      : 'text-content-primary enabled-hover:bg-surface-ghost-hover'
                   }`}
                 >
-                  {label}
+                  {/* X69 width (88.9-67): a twoTap item holds the widest of Wait (3), (2), (1) and its
+                       armed words from the moment the menu opens, so the item and the menu keep their
+                       size when it arms and when it goes live; a plain item renders its bare label. */}
+                  {/* AMENDED Phase 88.9-52 (W32, width half): the reserve is measured at the armed weight
+                       (font-semibold, the weight the gated and armed labels paint at, on the armed
+                       branch of this item's className), chosen OVER the resting weight it inherited: the
+                       Cancel event menu grew 1.4px (160 to 161.4, measured at 375) on the first tap. */}
+                  {/* DECISION Phase 88.9-52 (W31): a busy twoTap item's spinner is rendered INSIDE the
+                       label's cell, straight after the word, chosen OVER after the reserved cell, where
+                       it sat about 90px right of a short word (measured: the member menu's Remove,
+                       whose cell holds Tap again to remove). The cell is as wide as its widest
+                       occupant, so the word plus the spinner still fits the reserved width for every
+                       shipped label. A plain item has no reserved cell and keeps the spinner after its
+                       label. Moving it back out is a decision, not a cleanup.
+                       AMENDED Phase 88.9-52 (R13): the cell now holds the short Tap again, which no
+                       longer covers the resting word plus the spinner by itself, so that width is
+                       reserved by name: the item's own label with the spinner's room after it (pr-6 is
+                       the spinner's ml-2 plus its w-4), at the resting weight a busy item paints at.
+                       Chosen OVER leaving it to the short words, where a one-item menu at enlarged
+                       text would widen by the spinner when the request starts.
+                       AMENDED Phase 88.9-52 (G2, round 4, 2026-11-18): that resting weight is now NAMED
+                       on the reserve (font-normal), chosen OVER inheriting it. An armed item paints
+                       font-semibold on this button, the reserve inherited it, and the cell grew to
+                       the bold form of the item's own word: the one-item End check-in menu measured
+                       273.23px at rest and 277.34px at Wait (3) and Tap again at 200% text (capture
+                       r3-m). At normal text the 160px floor hid it; a menu whose longest item is a
+                       plain one (the member menu) never showed it. Every occupant of the cell now
+                       has one weight in every state, so the cell cannot change with arming. */}
+                  {reservesLabel ? (
+                    <ReservedLabel
+                      reserve={[...COUNTDOWN_LABELS, DEFAULT_ARMED_LABEL]}
+                      reserveClassName="font-semibold"
+                      reserveTrailing={{ text: item.label, className: 'pr-6 font-normal' }}
+                    >
+                      {label}
+                      <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />
+                    </ReservedLabel>
+                  ) : (
+                    label
+                  )}
+                  {/* DECISION Phase 88.9-46 (rule 1 kebab busy): a busy item keeps its label and
+                       shows the house spinner plus a heard suffix (the same sr-only span Button
+                       renders), chosen OVER the caller swapping the label string (the shipped
+                       gameDetail pattern — the in-flight word replaced the whole name) and OVER a
+                       native disabled item (the 88.6-18 D3 marker: a focused natively-disabled item
+                       blurs to body). The item is a block w-full button, not flex, so the spinner
+                       carries its own ml-2 (the raw-button composition of 88.9-45). busy is not a
+                       refusal: `item.ariaDisabled` stays the gate.
+                       AMENDED Phase 88.9-56 (R-C3b reach): the spinner is the delayed, held element, mounted
+                       beside the label outside the busy ternary (an element, not a hook, so it works inside
+                       items.map); the ternary keeps only the heard suffix. An item that navigates on success
+                       keeps busy until the page unmounts.
+                       AMENDED Phase 88.9-52 (W31): a twoTap item mounts that same element inside its
+                       label cell above; only a plain item mounts it here. */}
+                  {reservesLabel ? null : <DelayedSpinner busy={Boolean(item.busy)} className="ml-2 align-middle" />}
+                  {item.busy ? <span className="sr-only">{item.busySuffix}</span> : null}
                 </button>
               </li>
             );

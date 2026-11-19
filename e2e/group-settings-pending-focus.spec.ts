@@ -40,6 +40,10 @@ import { expectGatedPair, holdWrites, type WriteHold } from './support/inFlight'
 const DELETE_PATH = /\/groups\/[^/]+$/;
 const SETTINGS_PATH = /\/groups\/[^/]+\/settings$/;
 const DELETE_DIALOG = /^Delete .+\?$/;
+// AMENDED Phase 88.9-56 (R-C3a, CI runs 42942569549 / 42942575643 at cec87fd): the typed Delete confirm is
+// named 'Delete, deleting' while its write runs (the visible verb stays Delete); Chromium may put a space
+// before the comma (the Save Changes note below), so the space is optional.
+const DELETE_CONFIRM = /^Delete( ?, deleting)?$/;
 // The shipped names of the eight default icons, in reading order (GroupSettings.js,
 // DEFAULT_PROFILE_PICTURES).
 const ICON_NAMES = ['Dice', 'Cards', 'Trophy', 'Game', 'Puzzle', 'Star', 'Fire', 'Rocket'];
@@ -84,7 +88,7 @@ test.describe('Group settings — pressed controls keep focus and send one write
     await expect(input).toBeFocused();
     await expect(input).toHaveAttribute('readonly');
     await expect(input).toHaveAttribute('aria-disabled', 'true');
-    const confirm = dialog.getByRole('button', { name: 'Delete', exact: true });
+    const confirm = dialog.getByRole('button', { name: DELETE_CONFIRM }); // AMENDED Phase 88.9-56 (R-C3a): the pending name
     await expect(confirm).toHaveAttribute('aria-disabled', 'true');
     await expect(confirm).not.toHaveAttribute('disabled');
 
@@ -97,7 +101,7 @@ test.describe('Group settings — pressed controls keep focus and send one write
 
   test('Delete confirm, button path: it keeps focus, aria-disabled, painting the gated danger pair, and a second Enter sends nothing (R123 / AC-9)', async ({ page }) => {
     const { dialog } = await openDeleteConfirmAndType(page);
-    const confirm = dialog.getByRole('button', { name: 'Delete', exact: true });
+    const confirm = dialog.getByRole('button', { name: DELETE_CONFIRM }); // AMENDED Phase 88.9-56 (R-C3a): the same node at rest and pending
     await confirm.focus();
     await page.keyboard.press('Enter');
     await expect.poll(() => hold.count('DELETE', DELETE_PATH), { timeout: 15_000 }).toBe(1);
@@ -126,7 +130,10 @@ test.describe('Group settings — pressed controls keep focus and send one write
     await page.keyboard.press('Enter');
     await expect.poll(() => hold.count('PUT', SETTINGS_PATH), { timeout: 15_000 }).toBe(1);
 
-    const saving = page.getByRole('button', { name: 'Saving...', exact: true });
+    // Save-feedback rule 1 (88.9-24): the label stays and the name gains the sr-only ', saving'.
+    // AMENDED Phase 88.9-24 (CI 42677038697 at 4c66253): Chromium computes it with a space before the
+    // comma (flex-item label, out-of-flow sr-only suffix), so the space is optional here.
+    const saving = page.getByRole('button', { name: /^Save Changes ?, saving$/ });
     await expect(saving).toBeFocused();
     await expect(saving).toHaveAttribute('aria-disabled', 'true');
     await expect(saving).not.toHaveAttribute('disabled');
@@ -152,7 +159,9 @@ test.describe('Group settings — pressed controls keep focus and send one write
     await expect(page.getByRole('dialog', { name: DELETE_DIALOG })).toHaveCount(0);
 
     // DIAGNOSTIC (orchestrator, wave 5 gate, 2026-10-16): CI run 38972642726 found no button named
-    // "Deleting..." here although the gate keeps `pending` true and the jsdom pin PC7 passes. Measured
+    // "Deleting..." here although the gate keeps `pending` true and the jsdom pin PC7 passes. (Since
+    // rule 1, 88.9-45, the opener keeps "Delete Group" with the house spinner and is named
+    // "Delete Group, deleting" — the measured case below reads that name.) Measured
     // WITHOUT the accessibility tree so the locator cannot hide what it measures (plan 37's Test D shape).
     // The dump rides ONLY as the message of the focus assertion below (88.6.1 code review A-03
     // removed an always-true soft assertion that carried the same text and could never fail).
@@ -179,8 +188,10 @@ test.describe('Group settings — pressed controls keep focus and send one write
       }));
       return { buttons, dialogs, active: describe(document.activeElement), activeText: (document.activeElement?.textContent ?? '').trim().slice(0, 40) };
     });
-    const opener = page.getByRole('button', { name: 'Deleting...', exact: true });
+    const opener = page.getByRole('button', { name: /^Delete Group ?, deleting$/ });
     await expect(opener, `measured after Cancel: ${JSON.stringify(measured)}`).toBeFocused();
+    await expect(opener).toHaveText(/^Delete Group/);
+    await expect(opener.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(opener).toHaveAttribute('aria-disabled', 'true');
     await expect(opener).not.toHaveAttribute('disabled');
 

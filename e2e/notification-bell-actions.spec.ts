@@ -103,9 +103,12 @@ test.describe('notification bell actions — phone (375)', () => {
     await acceptAlpha.click();
     await accept.arrived;
 
-    // In flight: the same control, named by its visible N2 words, gated by aria-disabled and
-    // still focused; its sibling is natively disabled.
-    const pressed = region.getByRole('button', { name: 'Accepting...', exact: true });
+    // In flight: the same control keeps its Accept label with the house spinner and is named
+    // "Accept, accepting" (rule 1, 88.9-45; Chromium may insert a space before the sr-only comma),
+    // gated by aria-disabled and still focused; its sibling is natively disabled.
+    const pressed = region.getByRole('button', { name: /^Accept ?, accepting$/ });
+    await expect(pressed).toHaveText(/^Accept/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
     await expect(pressed).toBeFocused();
@@ -162,8 +165,11 @@ test.describe('notification bell actions — phone (375)', () => {
     await acceptAna.click();
     await accept.arrived;
 
-    // Plan 88.6.1-66: the row stays while the request runs, so the in-flight words paint.
-    const pressed = region.getByRole('button', { name: 'Accepting...', exact: true });
+    // Plan 88.6.1-66: the row stays while the request runs, so the busy state paints — the kept
+    // Accept label with the house spinner, named "Accept, accepting" (rule 1, 88.9-45).
+    const pressed = region.getByRole('button', { name: /^Accept ?, accepting$/ });
+    await expect(pressed).toHaveText(/^Accept/);
+    await expect(pressed.locator('[data-slot="spinner"]')).toHaveCount(1);
     await expect(pressed).toHaveAttribute('aria-disabled', 'true');
     await expect(pressed).not.toHaveAttribute('disabled');
     await expect(pressed).toBeFocused();

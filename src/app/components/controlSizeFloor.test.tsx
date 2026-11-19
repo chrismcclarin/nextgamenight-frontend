@@ -327,7 +327,7 @@ const D13_FLOOR_ROSTER: ExemptionRoster = {
   // handoff completes. Neither threshold was lowered and neither locator was re-anchored.
   //
   //  - `app/components/CalendarMonthView.js` carried `sites: 1` for the COMPACT month event tile
-  //    (`aria-label={tileLabel + rsvpLabel}`), which was `text-xs p-0.5 rounded-sm` with no
+  //    (`aria-label={compactName + rsvpLabel}`; `tileLabel + rsvpLabel` until 88.9-52 W14), which was `text-xs p-0.5 rounded-sm` with no
   //    minimum dimension (~20px: a 16px `text-xs` line box plus 2px `p-0.5` each side,
   //    arithmetic). It now DECLARES `min-h-6` at the site, with WCAG 2.2 SC 2.5.8 cited and 44
   //    recorded as REJECTED (it would deform a 7-column grid at 375px).
@@ -394,14 +394,21 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
      * LATENT AT HEAD, on purpose. No live `<Button>` wears `btn-compact`, and the two
      * `BrowseMoreModal` steppers that do are raw `.btn` and are declared exempt (D-36). The
      * value of this arm is that the hole stays closed while plans 17-39 migrate ~100 files.
+     *
+     * AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): shape (2) is history. The .btn-compact
+     * rule is retired (the two steppers are 44x44 squares, and nothing wears the class), so
+     * the class would do nothing today. The token check below is KEPT, chosen OVER deleting it:
+     * a className that still carries the retired name is either a leftover or the first half
+     * of someone bringing the opt-out back, and either is worth a red here. That the rule
+     * itself stays gone is pinned in src/app/cascadeOrder.test.ts ("Re-adding a sub-44 opt-out is a decision, not a cleanup.").
      */
     const offenders: string[] = [];
     for (const site of buttonSites) {
       for (const { raw, base } of tagTokens(site.tag)) {
         if (base === 'btn-compact') {
           offenders.push(
-            `${site.where} — carries \`${raw}\`, an UNLAYERED min-height:0 class that beats the ` +
-              '`Button` cva base\'s `min-h-11` utility at EVERY width (globals.css, `.btn-compact { min-height: 0 }`)',
+            `${site.where} — carries \`${raw}\`, the RETIRED opt-out class (88.9-52 R4 C2). While its rule existed it was an UNLAYERED min-height:0 that beat the ` +
+              '`Button` cva base\'s `min-h-11` utility at EVERY width; no control may go back under 44 through it',
           );
           continue;
         }
@@ -425,10 +432,11 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
    * stable handle:
    *
    *  - the compact month event tile: the unique element whose opening tag contains
-   *    `aria-label={tileLabel + rsvpLabel}`. Measured 2026-09-15, `grep -rn "tileLabel +
+   *    `aria-label={compactName + rsvpLabel}` (`tileLabel + rsvpLabel` until 88.9-52 W14 put the
+   *    guest word in the compact name). Measured 2026-11-16, `grep -rn "compactName +
    *    rsvpLabel" src` returns exactly ONE non-test hit
-   *    (src/app/components/CalendarMonthView.js ("aria-label={tileLabel + rsvpLabel}"), re-checked
-   *    2026-10-24), and it distinguishes the COMPACT tile from the full-variant twin below it,
+   *    (src/app/components/CalendarMonthView.js ("aria-label={compactName + rsvpLabel}")),
+   *    and it distinguishes the COMPACT tile from the full-variant twin below it,
    *    whose label is the bare `tileLabel`.
    *  - the home-card cog: the unique element whose opening tag contains
    *    `title={customizeGroupLabel(group.name)}`. Re-anchored by 88.6.1-54 for D-19 and D-52,
@@ -458,7 +466,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
   };
   const NAMED_SUBJECTS: Record<string, NamedSubject> = {
     compactMonthTile: {
-      anchor: 'aria-label={tileLabel + rsvpLabel}',
+      anchor: 'aria-label={compactName + rsvpLabel}',
       expectedFile: 'app/components/CalendarMonthView.js',
       expectedCount: 1,
       floor: MIN_TARGET_24,
@@ -768,7 +776,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       dimensions: ['min-w', 'w'],
       label: "create-event's Next week arrow, width (88.9 A9a; measured 24px wide)",
     },
-    // 88.9 A9a: the footer's Report bug text button, under 44 tall. No ring today (X1, a round-2 register row), so no halo.
+    // 88.9 A9a: the footer's Report bug text button, under 44 tall. Halo page since X1 B5a (plan 88.9-37): it added the house ring with the page halo; the round-1 note read no ring.
     footerReportBugHeight: {
       anchor: 'onClick={() => setShowFeedbackForm(true)}',
       expectedFile: 'app/components/Footer.js',
@@ -778,13 +786,49 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       label: "the footer's Report bug button, height (88.9 A9a)",
     },
     // 88.9 A9a: the month grid's Go to Today text link, under 44 tall. Keeps ring-offset-2 (the 88.3-17 marker); halo card (O3a).
+    // 88.9-28 N1: the control is now the Today pill (same raw button, same anchor); the row is relabelled, not moved.
     goToTodayHeight: {
       anchor: 'onClick={onGoToday}',
       expectedFile: 'app/components/CalendarMonthView.js',
       expectedCount: 1,
       floor: MIN_TARGET_44,
       dimensions: ['min-h', 'h'],
-      label: "the month grid's Go to Today link, height (88.9 A9a)",
+      label: "the month grid's Today pill, height (88.9 A9a + N1)",
+    },
+    // 88.9-28 N1: the two month-nav chevrons, square 44x44 through the Button primitive's iconSquare size key.
+    monthNavChevronHeight: {
+      anchor: 'size="iconSquare"',
+      expectedFile: 'app/components/CalendarMonthView.js',
+      expectedCount: 2,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: 'the month nav chevrons, height (88.9 N1)',
+    },
+    monthNavChevronWidth: {
+      anchor: 'size="iconSquare"',
+      expectedFile: 'app/components/CalendarMonthView.js',
+      expectedCount: 2,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-w', 'w'],
+      label: 'the month nav chevrons, width (88.9 N1)',
+    },
+    // 88.9-39 N1: the Month | List switch's two segments are raw buttons (no .btn), one JSX site, floored in the inline literal.
+    segmentedToggleHeight: {
+      anchor: 'aria-pressed={pressed}',
+      expectedFile: 'components/ui/SegmentedToggle.tsx',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the Month | List switch's segments, height (88.9 N1)",
+    },
+    // 88.9 D13c (owner pick, 88.9-PICKS-B3.json item D13, 2026-11-06): the suggestions slot's Try again link, a raw button floored in the inline literal (min-h-11).
+    quickSuggestionsRetryHeight: {
+      anchor: 'onClick={onRetry}',
+      expectedFile: 'app/components/QuickSuggestions.js',
+      expectedCount: 1,
+      floor: MIN_TARGET_44,
+      dimensions: ['min-h', 'h'],
+      label: "the suggestions slot's Try again link, height (88.9 D13c)",
     },
   };
 
@@ -860,8 +904,28 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
   // breakpoint half only. A max-* floor would red here too, the safe direction for a floor gate:
   // decide it as its own subject. Every subject was floored unprefixed when this was written.
   /** Does this tag declare an explicit, unprefixed dimension at or above `floor`, at phone width? */
+  // DECISION Phase 88.9-28 N1: a Button call site is floored through the primitive's own size map, chosen OVER repeating min-h-11 min-w-11 at the call site — the floor lives once, in the cva size key.
+  /**
+   * The class tokens a `<Button size="<key>">` call site gets from the primitive's size map, read
+   * from src/components/ui/Button.tsx's raw source (SOURCES already holds it). A tag that is not a
+   * `<Button` or carries no `size` literal contributes nothing. A key the map does not hold throws:
+   * a floor read through a size that does not exist would pass vacuously.
+   */
+  function primitiveSizeTokens(tag: string): { raw: string; base: string }[] {
+    if (!/^<Button(?=[\s/>])/.test(tag)) return [];
+    const size = /\ssize="([A-Za-z0-9]+)"/.exec(tag);
+    if (!size) return [];
+    const button = SOURCES.find((s) => s.rel === 'components/ui/Button.tsx');
+    if (!button) throw new Error('primitiveSizeTokens: components/ui/Button.tsx is not in the scanned source tree');
+    const entry = new RegExp(`\\b${size[1]}: '([^']*)'`).exec(button.raw);
+    if (!entry) {
+      throw new Error(`primitiveSizeTokens: the Button size map has no \`${size[1]}\` key (tag: ${tag.slice(0, 80)})`);
+    }
+    return tagTokens(entry[1]);
+  }
+
   function meetsFloor(tag: string, floor: number, dimensions: string[]): boolean {
-    return tagTokens(tag).some(({ raw, base }) => {
+    return [...tagTokens(tag), ...primitiveSizeTokens(tag)].some(({ raw, base }) => {
       if (gatesAboveThePhone(raw)) return false;
       if (raw.replace(/^!/, '') !== base) return false;
       const px = utilityPx(base, dimensions);

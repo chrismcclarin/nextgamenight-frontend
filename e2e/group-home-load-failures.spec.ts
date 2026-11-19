@@ -25,6 +25,12 @@
 // Their red halves are GL-1 and CL-1 in jsdom. Test 5 fails GETs only; test 6 holds the events
 // GETs in the browser and then continues them to the backend.
 //
+// Test 7 (88.9-52 P1, owner 2026-11-17: Banner): a failed FIRST read of the signed-in person's own
+// identity row shows the same "Couldn't load this group" banner with a reachable "Try again" that
+// recovers, never the "Loading group…" line with the small notice under it. Its red half is the
+// P1 pair in jsdom. It fails that GET only, in the browser; once released the read continues to the
+// backend exactly as on any page load.
+//
 // Shared-fixture rules: the seeded group is shared with other specs. Every write is held in the
 // browser by holdWrites (registered before navigation), and the afterEach fails the test if an
 // /api write reached that hold. Tests 1-2 fail GETs only, in the browser, with a synthetic 500.
@@ -52,6 +58,10 @@ const isMembersRead = (url: URL) => url.pathname.endsWith(`/groups/${E2E_GROUP_I
 const isEventsRead = (url: URL) => url.pathname.includes(`/events/group/${E2E_GROUP_ID}`);
 // 88.6.1-89: the group record itself, `GET /api/groups/<id>` (`groupsAPI.getGroup`).
 const isGroupRead = (url: URL) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}`);
+// 88.9-52 P1: the self-identity read, `GET /api/users/<one segment>` (`usersAPI.getUser`).
+const isIdentityRead = (url: URL) => /\/api\/users\/[^/]+$/.test(url.pathname);
+// The small notice P1 took off this page (the shared compact notice's sentence), written once here.
+const SMALL_NOTICE = 'Some personal controls are unavailable.';
 // The writes tests 3-4 fulfil: `PUT /api/groups/<id>/settings` and `POST /api/events`.
 const isSettingsWrite = (url: URL) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/settings`);
 const isEventsCollection = (url: URL) => url.pathname.endsWith('/events');
@@ -188,7 +198,10 @@ test.describe('group home load failures — phone', () => {
     const headingBox = await heading.boundingBox();
     const titleBox = await title.boundingBox();
     expect(headingBox!.y + headingBox!.height).toBeLessThanOrEqual(titleBox!.y);
-    const viewToggle = page.getByRole('button', { name: /^(List|Month) View$/ });
+    // AMENDED Phase 88.9-39 (owner pick N1): the loaded-calendar marker is the Month segment of
+    // the Month | List group (role=group 'Calendar view'), chosen OVER the retired List View /
+    // Month View Button by name. Absent while the banner shows, present once the calendar loads.
+    const viewToggle = page.getByRole('group', { name: 'Calendar view' }).getByRole('button', { name: 'Month', exact: true });
     await expect(viewToggle).toHaveCount(0);
     const tryAgain = page.getByRole('button', { name: 'Try again', exact: true });
     await expectReachable(page, tryAgain);
@@ -252,7 +265,9 @@ test.describe('group home load failures — phone', () => {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await expect(page.locator('html')).toHaveClass(/dark/);
     const heading = page.getByRole('heading', { level: 2, name: 'Calendar', exact: true });
-    const viewToggle = page.getByRole('button', { name: /^(List|Month) View$/ }).first();
+    // AMENDED Phase 88.9-39 (owner pick N1): the loaded-calendar marker is the Month segment of
+    // the Month | List group, chosen OVER the retired List View / Month View Button by name.
+    const viewToggle = page.getByRole('group', { name: 'Calendar view' }).getByRole('button', { name: 'Month', exact: true }).first();
     await expect(heading).toBeVisible({ timeout: 15_000 });
     await expect(viewToggle).toBeVisible();
 
@@ -305,6 +320,34 @@ test.describe('group home load failures — phone', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
+  test('identity first-load failure shows the group banner, never the loading line with the small notice (88.9-52 P1)', async ({ page }) => {
+    let mode: Mode = 'fail';
+    await failGets(page, isIdentityRead, () => mode, 'identity');
+
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await expect(page.locator('html')).toHaveClass(/dark/);
+
+    // The query client retries a 500 quietly before it reports the failure, so the wait is long.
+    await expect(page.getByText(GROUP_TITLE, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('Loading group…', { exact: true })).toHaveCount(0);
+    await expect(page.getByText(SMALL_NOTICE, { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Plan Game Session' })).toHaveCount(0);
+    // The banner-only screen keeps the page's one level-1 heading, for screen readers only.
+    await expect(page.locator('main').getByRole('heading', { level: 1, name: 'Group', exact: true })).toHaveCount(1);
+    const tryAgain = page.getByRole('button', { name: 'Try again', exact: true });
+    await expect(tryAgain).toHaveCount(1);
+    await expectReachable(page, tryAgain);
+    await expectTouchTarget(tryAgain, 'the group banner Try again (identity failure)');
+    await expectNoSidewaysScroll(page);
+
+    mode = 'pass';
+    await tryAgain.click();
+    await expect(page.getByRole('link', { name: 'Plan Game Session' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(GROUP_TITLE, { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Loading group…', { exact: true })).toHaveCount(0);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test('the calendar names its first load (88.6.1-89, P-80)', async ({ page }) => {
     // Every events GET that arrives before the release waits for it, then continues to the
     // backend; a GET after the release continues at once. Any other method falls back into the
@@ -337,7 +380,8 @@ test.describe('group home load failures — phone', () => {
       await expectNoSidewaysScroll(page);
 
       release();
-      await expect(page.getByRole('button', { name: /^(List|Month) View$/ }).first()).toBeVisible({ timeout: 15_000 });
+      // AMENDED Phase 88.9-39 (owner pick N1): the loaded calendar is marked by the Month segment.
+      await expect(page.getByRole('group', { name: 'Calendar view' }).getByRole('button', { name: 'Month', exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(loading).toHaveCount(0);
     } finally {
       release();

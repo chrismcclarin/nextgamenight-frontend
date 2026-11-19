@@ -25,7 +25,10 @@ import type { ComponentType } from 'react';
 import { formatDateTime } from '@/lib/datetime';
 import ResponseDashboardDefault from './ResponseDashboard';
 import { logger } from '@/lib/logger';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): a full banner shows Try again, so where a test
+// below reads the line a forbidden, validation or unknown failure shows in one, it reads the
+// beside-retry form (messageBesideRetry over the register line).
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 
 // `ResponseDashboard` is a JS component; its inferred prop type marks every prop required and
 // mis-widens the destructured defaults. Cast to a permissive type so the suite can render with
@@ -73,6 +76,11 @@ async function codedError(code: string, status: number, details?: unknown) {
 /** The register's copy for `forbidden` and for `unknown`, asserted as literals (see header). */
 const FORBIDDEN_COPY = "You don't have access to this. Refresh the page to try again.";
 const UNKNOWN_COPY = 'Something went wrong. Refresh the page to try again.';
+// AMENDED Phase 88.9-66 (X68, owner ruled 2026-11-14): the full banner shows Try again, so the
+// forbidden line ON THE BANNER is its beside-retry form; a toast has no retry beside it and keeps
+// FORBIDDEN_COPY. The unknown line's two forms are both read as absent where a coded line shows.
+const FORBIDDEN_BESIDE_RETRY = "You don't have access to this.";
+const UNKNOWN_BESIDE_RETRY = "Something went wrong. If trying again doesn't help, refresh the page.";
 
 beforeEach(() => {
   api.getRespondents.mockReset();
@@ -94,8 +102,9 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
     api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
     render(<ResponseDashboard {...baseProps} />);
 
-    expect(await screen.findByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(await screen.findByText(FORBIDDEN_BESIDE_RETRY)).toBeInTheDocument();
     expect(screen.queryByText(UNKNOWN_COPY)).toBeNull();
+    expect(screen.queryByText(UNKNOWN_BESIDE_RETRY)).toBeNull();
     // The raw upstream message must never reach the DOM (T-88.6-143 / ASVS V7).
     expect(screen.queryByText(/RAW UPSTREAM TEXT/)).toBeNull();
     // The retry affordance survives the swap onto FetchErrorBanner.
@@ -105,7 +114,7 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
   it('re-issues the fetch when the banner\'s Try again is activated', async () => {
     api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     expect(api.getRespondents).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -129,7 +138,7 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
     render(<ResponseDashboard {...baseProps} />);
     // POSITIVE settle signal first — an absence/persistence claim asserted off a bare
     // `waitFor(... toBeNull())` is satisfied on the first tick and observes nothing.
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     expect(screen.queryByTestId('response-dashboard-skeleton')).toBeNull();
 
     await act(async () => {
@@ -141,7 +150,7 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
     // WHILE THE RETRY IS PENDING: the banner is still mounted and the skeleton has NOT replaced
     // it. This is the pair — the fetch-start `setError(null)` being gone, and the error branch
     // being evaluated before the loading branch. Either half alone fails here.
-    expect(screen.getByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(screen.getByText(FORBIDDEN_BESIDE_RETRY)).toBeInTheDocument();
     expect(screen.queryByTestId('response-dashboard-skeleton')).toBeNull();
 
     await act(async () => { releaseSecond?.(); });
@@ -156,7 +165,7 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
       );
 
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
 
     for (let i = 0; i < 2; i += 1) {
       // eslint-disable-next-line no-await-in-loop
@@ -199,11 +208,11 @@ describe('ResponseDashboard — the load arm on the house synthetic-adapter cont
       .mockResolvedValue([{ user_id: 'u2', username: 'Fresh member', has_responded: true, slot_count: 1 }]);
 
     const view = render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
 
     view.rerender(<ResponseDashboard {...baseProps} promptId="prompt-2" />);
     await screen.findByText('Fresh member');
-    expect(screen.queryByText(FORBIDDEN_COPY)).toBeNull();
+    expect(screen.queryByText(FORBIDDEN_BESIDE_RETRY)).toBeNull();
   });
 });
 
@@ -277,12 +286,12 @@ describe('ResponseDashboard — the §6.3 title on the respondents-fetch banner 
     api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
     render(<ResponseDashboard {...baseProps} />);
 
-    expect(await screen.findByText("We couldn't load the respondents.")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load the respondents")).toBeInTheDocument();
     // The banner's own ratified default must NOT also render — one heading, not two.
     expect(screen.queryByText('Something went wrong')).toBeNull();
     // …and the BODY copy is still code-derived, untouched by the title: a named heading must
     // not become a second place upstream text could enter.
-    expect(screen.getByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(screen.getByText(FORBIDDEN_BESIDE_RETRY)).toBeInTheDocument();
     expect(screen.queryByText(/RAW UPSTREAM TEXT/)).toBeNull();
   });
 });
@@ -323,7 +332,7 @@ describe('ResponseDashboard — a superseded failure is still REPORTED (review r
     expect(errorCalls()[0][1]).toBe(failure);
     // Logged, but the generation guard still drops the STATE write: no banner for a poll the
     // user has moved away from.
-    expect(screen.queryByText("We couldn't load the respondents.")).toBeNull();
+    expect(screen.queryByText("Couldn't load the respondents")).toBeNull();
     expect(screen.getByText('Second prompt member')).toBeInTheDocument();
   });
 
@@ -346,7 +355,7 @@ describe('ResponseDashboard — a superseded failure is still REPORTED (review r
   it('a CURRENT failure is logged exactly once (the non-superseded baseline)', async () => {
     api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     expect(errorCalls()).toHaveLength(1);
   });
 });
@@ -379,7 +388,7 @@ describe('ResponseDashboard — W031: one Sentry event per failure episode, none
       .mockImplementationOnce(() => new Promise((_res, rej) => { rejectSecond = rej; }));
 
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     expect(respondentsCalls()).toHaveLength(1);
 
     await act(async () => {
@@ -394,7 +403,7 @@ describe('ResponseDashboard — W031: one Sentry event per failure episode, none
       await Promise.resolve();
     });
     // The banner is still the forbidden one, and the retry's failure filed nothing new.
-    expect(screen.getByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(screen.getByText(FORBIDDEN_BESIDE_RETRY)).toBeInTheDocument();
     expect(respondentsCalls()).toHaveLength(1);
     expect(respondentsCalls()[0][1]).toBe(first);
   });
@@ -408,7 +417,7 @@ describe('ResponseDashboard — W031: one Sentry event per failure episode, none
       .mockRejectedValueOnce(later);
 
     render(<ResponseDashboard {...baseProps} />);
-    await screen.findByText(FORBIDDEN_COPY);
+    await screen.findByText(FORBIDDEN_BESIDE_RETRY);
     await act(async () => {
       screen.getByRole('button', { name: /try again/i }).click();
     });
@@ -480,7 +489,7 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     return { promise, resolve, reject };
   }
 
-  it('AC-12: the pressed Remind carries aria-disabled (never native disabled), reads "Sending...", and a second press sends nothing', async () => {
+  it('AC-12 rule 1 (88.9): Remind keeps its label + spinner while busy; the pressed Remind carries aria-disabled (never native disabled), and a second press sends nothing', async () => {
     api.getRespondents.mockResolvedValue([memberA]);
     const d = deferred();
     api.sendReminder.mockImplementationOnce(() => d.promise);
@@ -492,7 +501,9 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await user.click(button);
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).not.toHaveAttribute('disabled');
-    expect(button).toHaveTextContent(/^Sending\.\.\.$/);
+    expect(button).toHaveAccessibleName('Remind, sending');
+    expect(button).toHaveTextContent(/^Remind/);
+    await waitFor(() => expect(button.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
     fireEvent.click(button);
     fireEvent.click(button);
     expect(api.sendReminder).toHaveBeenCalledTimes(1);
@@ -500,9 +511,12 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     expect(document.activeElement).toBe(button);
 
     await act(async () => { d.resolve({}); });
+    // A sent reminder replaces the button with its Reminded line: the spinner leaves with it.
+    expect(await within(rowOf('Member A')).findByText(/^Reminded \d+m ago$/)).toBeInTheDocument(); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
+    expect(button).not.toBeInTheDocument(); // AMENDED Phase 88.9-56 (R-C3b reach): ends with the host
   });
 
-  it('per row: two rows in flight each keep "Sending..." and aria-disabled, and settling one does not flip the other', async () => {
+  it('per row rule 1 (88.9): two rows in flight each keep "Remind, sending" and aria-disabled, and settling one does not flip the other', async () => {
     api.getRespondents.mockResolvedValue([memberA, memberB]);
     const dA = deferred();
     const dB = deferred();
@@ -516,7 +530,8 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await user.click(remindIn('Member A'));
     await user.click(remindIn('Member B'));
     for (const name of ['Member A', 'Member B']) {
-      expect(remindIn(name)).toHaveTextContent(/^Sending\.\.\.$/);
+      expect(remindIn(name)).toHaveAccessibleName('Remind, sending');
+      await waitFor(() => expect(remindIn(name).querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-56 (R-C3b reach): waits for the 200 ms appear
       expect(remindIn(name)).toHaveAttribute('aria-disabled', 'true');
     }
     expect(api.sendReminder).toHaveBeenCalledWith('prompt-1', 'uA');
@@ -525,7 +540,7 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await act(async () => { dA.resolve({}); });
     // POSITIVE signal: A settled into its "Reminded ..." text; B is still in flight.
     expect(await within(rowOf('Member A')).findByText(/^Reminded \d+m ago$/)).toBeInTheDocument();
-    expect(remindIn('Member B')).toHaveTextContent(/^Sending\.\.\.$/);
+    expect(remindIn('Member B')).toHaveAccessibleName('Remind, sending');
     expect(remindIn('Member B')).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => { dB.resolve({}); });
@@ -625,7 +640,8 @@ describe('ResponseDashboard — D-35 (the pressed Remind stays focusable, per-ro
     await screen.findByText('Member A');
 
     const tokens = remindIn('Member A').className.split(/\s+/);
-    for (const token of ['min-h-11', '-my-2', 'inline-flex', 'items-center', 'aria-disabled:opacity-50']) {
+    // AMENDED Phase 88.9-23 (O-17): the in-flight token is muted ink, not the opacity wash.
+    for (const token of ['min-h-11', '-my-2', 'inline-flex', 'items-center', 'aria-disabled:text-content-muted']) {
       expect(tokens).toContain(token);
     }
     expect(tokens).not.toContain('disabled:opacity-50');
@@ -684,7 +700,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
   // Copy row RF1 / D-47 (plan 70's REFRESH_FAILED_NOTICE), written once here (contract C7). It is
   // in the DOM twice while shown: the visible line and the polite region.
   const RF1 = "Couldn't refresh. Showing what loaded earlier.";
-  const LOAD_TITLE = "We couldn't load the respondents.";
+  const LOAD_TITLE = "Couldn't load the respondents";
   const THREE = [
     { user_id: 'm1', username: 'Member One', has_responded: true, slot_count: 2 },
     // Pending and never reminded, not the viewer: an admin sees a Remind button on this row.
@@ -707,6 +723,9 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     return { promise, resolve, reject };
   }
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // 52-X44 (88.9-57): one turn of the Refresh glyph as the component reads it under jsdom, which
+  // computes no animation-duration, so the component falls back to 1000 ms.
+  const ONE_TURN_MS = 1000;
   // The house idiom (useFetchErrorState.test.tsx, function fireVisibility): the hook's tab-return
   // re-attempt, the refresh nobody pressed.
   function fireVisibility(state: 'visible' | 'hidden') {
@@ -813,7 +832,8 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     await act(async () => {
       await sleep(150);
     });
-    expect(retry).toHaveTextContent('Retrying…');
+    // The notice's Retry is FetchErrorBanner's (rule 1, 88.9-46 B37): label kept, suffix heard.
+    expect(retry).toHaveAccessibleName('Retry, retrying');
     expect(retry).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(retry);
     expect(region.textContent, 'the region stays quiet while the joined run is out').toBe('');
@@ -842,13 +862,15 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     for (const name of THREE_NAMES) expect(screen.getByText(name)).toBeInTheDocument();
     expect(document.activeElement).toBe(button);
     const icon = button.querySelector('svg') as SVGElement;
-    expect(icon).toHaveClass('animate-spin');
+    expect(icon).toHaveClass('animate-spin'); // AMENDED Phase 88.9-57 (52-X44): the press-spin is there at once, read with no wait (it was the delayed spinner's 200 ms appear)
     expect(screen.getByRole('list')).toHaveAttribute('aria-busy', 'true');
 
     await act(async () => {
       held.resolve(THREE);
     });
-    await waitFor(() => expect(icon).not.toHaveClass('animate-spin'));
+    expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy');
+    expect(icon).toHaveClass('animate-spin'); // AMENDED Phase 88.9-57 (52-X44): the refresh landed inside the first turn, so the glyph is finishing that turn (it was the 500 ms hold)
+    await waitFor(() => expect(icon).not.toHaveClass('animate-spin'), { timeout: ONE_TURN_MS + 1500 }); // AMENDED Phase 88.9-57 (52-X44): it stops on the whole turn (jsdom reads no animation-duration, so one turn is the 1000 ms fallback)
     expect(screen.getByRole('list')).not.toHaveAttribute('aria-busy');
     expect(document.activeElement).toBe(button);
   });
@@ -864,6 +886,139 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     expect(found).toHaveLength(1);
     return found[0];
   };
+
+  // 52-X44 (owner ruling 2026-11-13 3:44 PM Pacific; plan 88.9-57): the Refresh glyph is the
+  // clockwise lucide arrows and EVERY press turns them at once, for at least one whole turn; they
+  // keep turning while the request is out and stop on a whole turn. Fake timers from the press on
+  // (Date included, which is what the component reads); the first load runs on real timers.
+  it('X44 (88.9-57): every Refresh press spins the clockwise arrows at once for at least one whole turn and stops on a whole turn after the refresh lands', async () => {
+    api.getRespondents.mockResolvedValueOnce(THREE);
+    renderInMain();
+    await screen.findByText('Member One');
+    const button = refreshButton();
+    const glyph = () => button.querySelector('svg') as SVGElement;
+    const region = refreshRegion(statusNodes());
+    const list = () => screen.getByRole('list');
+
+    vi.useFakeTimers();
+    try {
+      const advance = (ms: number) =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(ms);
+        });
+
+      // (1) press, GET held: the clockwise glyph is turning in the same tick as the click.
+      const held1 = deferred();
+      api.getRespondents.mockImplementationOnce(() => held1.promise);
+      fireEvent.click(button);
+      expect(glyph(), '(1) the glyph is the clockwise lucide arrows').toHaveClass('lucide-refresh-cw');
+      expect(glyph(), '(1) the spin starts with the press, no delay').toHaveClass('animate-spin');
+      // (5) the spoken line is unchanged: Refreshing while it runs.
+      expect(region.textContent).toBe(REFRESHING);
+      expect(list()).toHaveAttribute('aria-busy', 'true');
+
+      // (2) released at +600: the turn in progress is finished, so it stops at +1000.
+      await advance(600);
+      await act(async () => {
+        held1.resolve(THREE);
+      });
+      expect(list()).not.toHaveAttribute('aria-busy');
+      // (5) ... and Refreshed when it lands, while the glyph is still finishing its turn.
+      expect(region.textContent).toBe(REFRESHED);
+      expect(glyph(), '(2) the class never drops between the press and the stop').toHaveClass('animate-spin');
+      await advance(399);
+      expect(glyph(), '(2) still turning at +999').toHaveClass('animate-spin');
+      await advance(2);
+      expect(glyph(), '(2) stopped at +1001').not.toHaveClass('animate-spin');
+
+      // (3) press, GET answers at once: one whole turn all the same.
+      api.getRespondents.mockResolvedValueOnce(THREE);
+      fireEvent.click(button);
+      expect(glyph(), '(3) the spin starts with the press').toHaveClass('animate-spin');
+      await advance(0);
+      expect(list(), '(3) the refresh has already landed').not.toHaveAttribute('aria-busy');
+      expect(glyph(), '(3) a refresh that lands at once still turns').toHaveClass('animate-spin');
+      await advance(999);
+      expect(glyph(), '(3) still turning at +999').toHaveClass('animate-spin');
+      await advance(2);
+      expect(glyph(), '(3) stopped at +1001').not.toHaveClass('animate-spin');
+
+      // (4) held 1500, then released: it kept turning the whole time and stops at +2000.
+      const held4 = deferred();
+      api.getRespondents.mockImplementationOnce(() => held4.promise);
+      fireEvent.click(button);
+      await advance(1500);
+      expect(glyph(), '(4) still turning at +1500, the request is out').toHaveClass('animate-spin');
+      await act(async () => {
+        held4.resolve(THREE);
+      });
+      await advance(499);
+      expect(glyph(), '(4) still turning at +1999').toHaveClass('animate-spin');
+      await advance(2);
+      expect(glyph(), '(4) stopped at +2001').not.toHaveClass('animate-spin');
+
+      // (6) a second press while the first is finishing its turn cancels that stop: the glyph
+      // keeps turning for the new request and stops on a whole turn of the SAME spin.
+      const held6a = deferred();
+      api.getRespondents.mockImplementationOnce(() => held6a.promise);
+      fireEvent.click(button);
+      await advance(300);
+      await act(async () => {
+        held6a.resolve(THREE);
+      });
+      const held6b = deferred();
+      api.getRespondents.mockImplementationOnce(() => held6b.promise);
+      await advance(300);
+      fireEvent.click(button);
+      await advance(500);
+      expect(glyph(), '(6) the first press\'s stop (due at +1000) was cancelled by the second press').toHaveClass('animate-spin');
+      await advance(600);
+      await act(async () => {
+        held6b.resolve(THREE);
+      });
+      expect(glyph(), '(6) finishing the turn at +1700').toHaveClass('animate-spin');
+      await advance(299);
+      expect(glyph(), '(6) still turning at +1999').toHaveClass('animate-spin');
+      await advance(2);
+      expect(glyph(), '(6) stopped at +2001').not.toHaveClass('animate-spin');
+      expect(region.textContent).toBe(REFRESHED);
+
+      // (7) a READABLE duration is the turn, in seconds or in ms. Every arm above ran on the
+      // 1000 ms fallback (jsdom computes no animation-duration); a browser always reports one, and
+      // under reduced motion the stylesheet makes it 1.5 s. Only the glyph's style is stubbed.
+      const realGetComputedStyle = window.getComputedStyle.bind(window);
+      let reported = '1.5s';
+      const styleSpy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) =>
+        el === glyph() ? ({ animationDuration: reported } as CSSStyleDeclaration) : realGetComputedStyle(el, pseudo)
+      );
+      try {
+        const held7 = deferred();
+        api.getRespondents.mockImplementationOnce(() => held7.promise);
+        fireEvent.click(button);
+        await advance(600);
+        await act(async () => {
+          held7.resolve(THREE);
+        });
+        await advance(899);
+        expect(glyph(), '(7) a 1.5 s turn: still turning at +1499').toHaveClass('animate-spin');
+        await advance(2);
+        expect(glyph(), '(7) a 1.5 s turn: stopped at +1501').not.toHaveClass('animate-spin');
+
+        reported = '250ms';
+        api.getRespondents.mockResolvedValueOnce(THREE);
+        fireEvent.click(button);
+        await advance(0);
+        await advance(249);
+        expect(glyph(), '(7) a 250 ms turn: still turning at +249').toHaveClass('animate-spin');
+        await advance(2);
+        expect(glyph(), '(7) a 250 ms turn: stopped at +251').not.toHaveClass('animate-spin');
+      } finally {
+        styleSpy.mockRestore();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('RD-RF-5b. a pressed Refresh announces Refreshing, then Refreshed, from the region present before the press; a repeat press re-announces', async () => {
     const user = userEvent.setup();
@@ -1046,7 +1201,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     const e403 = await codedError('forbidden', 403);
     await loadThenFailRefresh(user, e403);
 
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     expect(screen.getByText(LOAD_TITLE)).toBeInTheDocument();
     for (const name of THREE_NAMES) expect(screen.queryByText(name)).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -1056,7 +1211,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     const callsBefore = api.getRespondents.mock.calls.length;
     await user.click(screen.getByRole('button', { name: /try again/i }));
     await waitFor(() => expect(api.getRespondents).toHaveBeenCalledTimes(callsBefore + 1));
-    expect(await screen.findByText(getFetchErrorMessage(e500))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e500)))).toBeInTheDocument();
     // The hook keeps the access answer until a success: still withdrawn, still no RF1.
     for (const name of THREE_NAMES) expect(screen.queryByText(name)).toBeNull();
     expect(screen.queryAllByText(RF1)).toHaveLength(0);
@@ -1091,7 +1246,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
     await act(async () => {
       fireVisibility('visible');
     });
-    expect(await screen.findByText(getFetchErrorMessage(e403))).toBeInTheDocument();
+    expect(await screen.findByText(messageBesideRetry(getFetchErrorMessage(e403)))).toBeInTheDocument();
     for (const name of THREE_NAMES) expect(screen.queryByText(name)).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(planningH1()));
     expect(document.activeElement).not.toBe(document.body);
@@ -1134,7 +1289,7 @@ describe('RF1 — a failed refresh keeps the roster (plan 88.6.1-73)', () => {
 describe('ResponseDashboard — the first load names what is loading (88.6.1-86, close ruling P-14)', () => {
   // Copy row P14 (AC-33), written once here: three ASCII dots, byte for byte.
   const LOADING_RESPONSES = 'Loading responses...';
-  const LOAD_TITLE = "We couldn't load the respondents.";
+  const LOAD_TITLE = "Couldn't load the respondents";
   const THREE = [
     { user_id: 'm1', username: 'Member One', has_responded: true, slot_count: 2 },
     { user_id: 'm2', username: 'Member Two', has_responded: false, last_reminded_at: null },

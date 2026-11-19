@@ -7,6 +7,8 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL, ApiError } from '../../lib/api';
 import { isUuid } from '../../lib/isUuid';
 import { collapseBlankLines } from '../../lib/collapseBlankLines';
+import { hasStarted } from '../../lib/upcomingEvents';
+import { formatScore } from '../../lib/formatScore';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
@@ -14,9 +16,8 @@ import BringGamePicker from '../components/BringGamePicker';
 import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import QRCodeModal from '../components/QRCodeModal';
-import { SHARE_GAME_QR_LOADING_LABEL } from '../components/shareGameQrCopy';
 import { Modal } from '../components/Modal';
-import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate } from '../../lib/datetime';
+import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate, dateOnlyDayStart, dateOnlyDayEnd } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import TimezoneNudgeBanner from '../components/TimezoneNudgeBanner';
 import SafeImage from '../components/SafeImage';
@@ -28,6 +29,7 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { logger, errCtx } from '../../lib/logger';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { useSignInRedirect } from '@/lib/hooks/useSignInRedirect';
 import {
     FetchErrorBanner,
     RefreshFailedNotice,
@@ -37,6 +39,7 @@ import {
     isAccessOrGoneError,
 } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
+import { ReservedLabel } from '../../components/ui/ReservedLabel';
 import { Heading } from '../../components/ui/Heading';
 import { Input, Textarea, SelectControl } from '../../components/ui/Input';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -55,30 +58,48 @@ import { toast } from 'sonner';
 // `#232d3e` in dark mode, i.e. already broken there. Warning is how every other surface in the app
 // renders an RSVP maybe (RsvpSection's statusConfig, rsvp/[token]'s config map). Reverting `maybe`
 // to raw amber is a decision, not a cleanup.
-function RsvpStatusPill({ status }) {
+// AMENDED Phase 88.9-63 (X17a + owner ruling Q1 A1, 2026-11-14): yes, no and maybe take the pill
+// family. Maybe LEAVES the warning family on this pill only, onto the amber pair it shares with
+// Guest, because the warning fill stands 1.30 off the dark card (family floor 1.50: the pill
+// blended into the card, 52-X17), chosen OVER keeping the pill on warning with the X21b box.
+// 'Warning is how every other surface in the app renders an RSVP maybe' still holds everywhere
+// else: the selected Maybe RSVP button (rsvpStatusConfig activeBg) and RsvpCount stay on warning,
+// so this pill and that button are two different yellows, and a person who is both Maybe and
+// Guest shows two same-coloured pills — both accepted by the owner. Putting this pill back on
+// warning is a decision, not a cleanup.
+/* DECISION Phase 88.9-52 (W26, fixer's reading of the look item, veto open): once the night has
+   started a person with no reply shows NO pill, chosen OVER the shipped "No reply" on every chip
+   of a finished night (RSVP closes at the start, so the pill described nothing anyone could act
+   on) and OVER dropping every RSVP pill after the start (Going / Maybe / No are a record of what
+   was said). The same hasStarted clock as the Share Game QR gate (X42). Bringing the pill back on
+   a started night is a decision, not a cleanup. */
+function RsvpStatusPill({ status, nightStarted = false }) {
     const map = {
-        yes: { label: 'Going', cls: 'bg-status-success-subtle text-content-status-success' },
-        maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-content-status-warning' },
+        yes: { label: 'Going', cls: 'bg-surface-pill-green text-content-pill-green' },
+        maybe: { label: 'Maybe', cls: 'bg-surface-pill-amber text-content-pill-amber' },
         // D-15 (88.6-18): `text-content-muted` on `bg-surface-muted` measures 4.3725, below AA.
         // `text-content-secondary` measures 6.9620 on the same ground.
-        no: { label: 'No', cls: 'bg-surface-muted text-content-secondary' },
+        // AMENDED Phase 88.9-63 (X17a): No reads the neutral pair, 7.35 / 6.96.
+        no: { label: 'No', cls: 'bg-surface-pill-neutral text-content-pill-neutral' },
     };
     /* `whitespace-nowrap` below is a D-01 FOLD MITIGATION, not decoration. MEASURED in Chromium
        at 375px over the compiled stylesheet: at 10px "NO REPLY" fitted one line inside the
        width-capped chip; folded up to 12px it wrapped mid-phrase and took the chip from 27.33px
        to 46px tall. D-01 names a 375px screenshot check as a GATE on this fold, and this is what
        that gate found. The two-word badges — this one and "New Player" — are the only ones that
-       can wrap; every other badge on this surface is a single word. */
+       can wrap; every other badge on this surface is a single word.
+       AMENDED Phase 88.9-63 (X16): sentence case; nowrap kept; 375 re-measure at the capture. */
     if (!status) {
+        if (nightStarted) return null;
         return (
-            <span className="text-xs whitespace-nowrap uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-secondary">
+            <span className="text-xs whitespace-nowrap px-1.5 py-0.5 rounded-sm bg-surface-pill-neutral text-content-pill-neutral">
                 No reply
             </span>
         );
     }
     const m = map[status] || map.no;
     return (
-        <span className={`text-xs uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${m.cls}`}>
+        <span className={`text-xs px-1.5 py-0.5 rounded-sm ${m.cls}`}>
             {m.label}
         </span>
     );
@@ -116,11 +137,33 @@ function canInviteGuest(participant, viewerRole) {
 // Phase 88-20 (Req 15): `canInvite` / `groupId` carry the guest-invite affordance
 // onto the chip. The gate is computed by `canInviteGuest` at the call site rather
 // than re-derived here, so the chip and the See-all row cannot disagree.
-function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId, rsvpUnavailable = false }) {
+// AMENDED Phase 88.9-65 (X63): the invite sits beside the chip, not inside it; its rest label is Invite and its name adds the person; Retry's name adds inviting <name> to the group (owner 2026-11-14, Q7 B).
+function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId, rsvpUnavailable = false, nightStarted = false }) {
     const isCustom = !!participant.is_custom;
     return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
-            <span className="text-content-primary truncate">
+        /* DECISION Phase 88.9-65 (X63, owner at N43: the chip grows too thick): the invite sits beside its chip, as at its other two sites, chosen OVER a sub-44 button inside it (the .btn phone floor is unlayered; .btn-compact is closed) and OVER a 44px box in a slim chip (its ring would cross the chip edge, as in X19). Heard name owner-ratified 2026-11-14. The error arm keeps the visible word Retry and its name adds inviting <name> to the group (owner 2026-11-14 Q7 B), chosen OVER a bare Retry (it does not say what is retried or for whom) and OVER Retry, invite <name> to the group. */
+        <span className="inline-flex flex-wrap items-center gap-1.5 max-w-full">
+        <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
+            {/* 88.9-63 (X16 / X17a): the name is 600 and the pills below are sentence case on the pill
+                family; the marker is at the See-all row's name.
+                AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the chip's name wraps in full, by
+                whole words, with no line limit, and the chip wraps BY PIECE, the session chip's
+                form on this page (this file ("DECISION Phase 88.9-65 (X47): the chip wraps by piece")).
+                The name's floor is its longest word (the automatic minimum of a flex item, capped
+                at the chip by max-w-full; wrap-break-word breaks inside a word only when that one
+                word is wider than the whole chip), and its NEIGHBOURS move first: the reply pill,
+                the Owner / Admin / Guest pills and the die drop to the chip's next line, and the
+                Invite button drops under the chip. REPLACES truncate on the name with min-w-0 on
+                the chip: together they let the pills squeeze a name down to an ellipsis, and with
+                the cut alone removed they would squeeze it to one letter per line (the owner's
+                We/eke/nd W/arr/iors). REJECTED: a fixed rem floor (wider than a short name needs,
+                and still under a long word); flex-1 on the name (the pills would hang beside a
+                two-line name, which the X47 form already turned down for the session chip); a
+                line clamp (still a cut). The sum at 320 wide with text at 200%: the strip is 222px
+                (320 - 48 page - 48 card - 2), the chip's sides take 34, and Weekend at 28px is
+                about 121px, so the name has its line and the pills sit under it. At ordinary text
+                a chip whose pieces fit on one line is unchanged. */}
+            <span className="text-content-primary max-w-full wrap-break-word font-semibold">
                 {isCustom ? (
                     <>{participant.username || 'Guest'}<span className="text-content-muted ml-1">(Guest)</span></>
                 ) : (
@@ -129,32 +172,34 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             </span>
             {/* 88.6.1-74 (owner ruling D8-r2, E17): no pill while the RSVP list never loaded, so no
                 chip says "No reply" for a list that failed. */}
-            {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} />}
+            {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} nightStarted={nightStarted} />}
+            {/* 88.9-52 (W27, height half): every pill in this chip takes the See-all row's box, px-1.5 py-0.5. Owner and Admin had no vertical padding and measured 16px beside the 20px No reply and Maybe pills; Guest takes the same sides so the chip has one pill box (orchestrator decision). The Friend indicator is not part of this. */}
             {role === 'owner' && (
-                <span className="text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
+                <span className="text-xs bg-surface-pill-violet text-content-pill-violet px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
             )}
             {role === 'admin' && (
-                <span className="text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded-sm font-bold">Admin</span>
+                <span className="text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
             )}
             {participant.is_guest && viewerScope === 'group-member' && (
                 <span
-                    className="text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
+                    className="text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber px-1.5 py-0.5"
                     title="Joined via game-invite QR (not a group member)"
                 >
                     Guest
                 </span>
             )}
             {isBringing && (
-                <span title="Bringing a game" aria-label="Bringing a game">🎲</span>
+                <span role="img" title="Bringing a game" aria-label="Bringing a game">🎲</span>
             )}
+        </span>
             {canInvite && (
-                <GuestInviteButton groupId={groupId} userId={participant.user_id} />
+                <GuestInviteButton groupId={groupId} userId={participant.user_id} guestName={participant.username} />
             )}
         </span>
     );
 }
 
-function GuestInviteButton({ groupId, userId }) {
+function GuestInviteButton({ groupId, userId, guestName }) {
     // null | 'sending' | 'sent' | 'pending' | 'member' | 'already' | 'error'
     const [status, setStatus] = useState(null);
     const settled = status === 'sent' || status === 'pending' || status === 'member' || status === 'already';
@@ -185,6 +230,16 @@ function GuestInviteButton({ groupId, userId }) {
        2026-09-14 amendment the in-flight gate is `aria-disabled`, which does not stop the browser
        firing this handler. The attribute without this latch is a re-sendable invite button. */
     const sendingRef = useRef(false);
+    /* DECISION Phase 88.9-46 (rule 1 B26): the invite keeps the label the user PRESSED while
+       sending — Invite to group from rest, Retry after an error — held in this ref at the press,
+       chosen OVER showing the rest label during a retry, which would change the text under the
+       user's finger, and OVER the shipped swap to an in-flight word (the whole name changed). The
+       house Spinner and the heard ", sending" suffix ride Button's busy prop.
+       AMENDED Phase 88.9-65 (X63): the rest label is Invite (was the longer three-word label) and the name adds the person from an sr-only span inside the button; Retry's name adds inviting <name> to the group (owner 2026-11-14, Q7 B). The kept-label rule is unchanged. */
+    const pressedLabelRef = useRef('Invite');
+    // 88.9-65 (X63): who the name says. The same fallback at every arm.
+    // DECISION Phase 88.9-65 (X63, P-09): the prop is guestName, chosen OVER name. Sentry builds an element selector from the id, name, type, class and test-id attributes, and the P-09 invariant (the Sentry scrub suite) reads every such attribute expression in source, per line, without telling a component prop from a DOM attribute; a prop spelled name that carries a username reds it. This prop never reaches the DOM. Renaming it back is a decision, not a cleanup.
+    const who = guestName || 'this guest';
     // 88.6.1-47 (D-06): the settled chip's node, and the shared focus-recovery instance that
     // lands focus on it. Above the settled early return below (hooks order).
     const chipRef = useRef(null);
@@ -208,6 +263,7 @@ function GuestInviteButton({ groupId, userId }) {
     const handleInvite = async (event) => {
         if (sendingRef.current || status === 'sending' || settled) return;
         const settle = inviteFocus.arm({ preferred: () => chipRef.current, from: event.currentTarget });
+        pressedLabelRef.current = status === 'error' ? 'Retry' : 'Invite';
         sendingRef.current = true;
         setStatus('sending');
         try {
@@ -337,8 +393,9 @@ function GuestInviteButton({ groupId, userId }) {
        `aria-disabled={isFlight`; `src/app/components/EmailAddressSection.tsx` states the split
        outright at `the control being ACTED ON gets` — the control being acted on gets
        `aria-disabled`, a control nobody is standing on may be natively disabled). COST, disclosed: the `.btn:disabled` wash no longer renders while
-       sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is the shipped
-       "Sending..." label swap plus the house `aria-disabled` treatment already in globals.css
+       sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is rule 1's
+       kept label with the house spinner (Phase 88.9-46 B26, Button busy — the label swap it
+       replaced is retired) plus the house `aria-disabled` treatment already in globals.css
        (`cursor: not-allowed`) and on ghost (`aria-disabled:text-content-muted`, which beats this
        call site's `text-content-link` on specificity). Do NOT add a `disabled:opacity-*` utility
        here: it keys on the native attribute this control no longer carries and is dead on a
@@ -363,6 +420,9 @@ function GuestInviteButton({ groupId, userId }) {
         );
     }
 
+    // 88.9-65 (X63): the visible word. While sending it is the word the user pressed (rule 1 B26).
+    const shownWord = status === 'sending' ? pressedLabelRef.current : status === 'error' ? 'Retry' : 'Invite';
+
     return (
         <>
         <StatusRegion className="sr-only" message={outcomeMessage} />
@@ -381,7 +441,8 @@ function GuestInviteButton({ groupId, userId }) {
                `inline-flex items-center`, `transition-colors`, and `min-h-11` (now on the cva
                base at every viewport, 88.6-06 D-09).
                The idle branch's `hover:bg-surface-hover` is DELETED rather than carried: the
-               ghost variant already supplies the byte-equal `enabled-hover:bg-surface-hover`,
+               ghost variant already supplies its own gated hover (`enabled-hover:bg-surface-hover`
+               when this was written; since 88.9-52 R8c it is `enabled-hover:bg-surface-ghost-hover`),
                and a BARE `hover:` would re-light the control while it is `aria-disabled`
                mid-send, which is the exact failure `enabled-hover` exists to prevent
                (`Button.tsx`'s D10 marker). The `error` branch's hover is spelled
@@ -389,10 +450,21 @@ function GuestInviteButton({ groupId, userId }) {
                conflicting with the base token instead of stacking a second background. */
             className={`border border-line ${branchInk}`}
             title={title}
+            busy={status === 'sending'}
+            busySuffix=", sending"
         >
-            {status === 'sending' && 'Sending...'}
-            {status === 'error' && 'Retry'}
-            {!status && 'Invite to group'}
+            {/* 88.9-65 (X63): the visible word, then the rest of the NAME in an sr-only span inside
+                the button itself (never on a wrapper, never its own stop: the iOS VoiceOver record).
+                Heard: Invite <name> to the group; Retry inviting <name> to the group; Button
+                appends the sending suffix after these children. The word break is written twice on
+                purpose, once as the button's own text and once inside the span: a name computed
+                without layout (the unit tests' library) trims an inline child's text, a browser
+                does not, and both must hear two words. */}
+            {shownWord === 'Retry' ? (
+                <>Retry{' '}<span className="sr-only"> inviting {who} to the group</span></>
+            ) : (
+                <>Invite{' '}<span className="sr-only"> {who} to the group</span></>
+            )}
         </Button>
         </>
     );
@@ -404,50 +476,17 @@ function GuestInviteButton({ groupId, userId }) {
 const EVENT_NOT_FOUND_TITLE = 'Event not found';
 const EVENT_NOT_FOUND_DETAIL = 'This event no longer exists or has been cancelled.';
 const PAGE_LOADING_LABEL = 'Loading game night...';
+// DECISION Phase 88.9-65 (X35 heard words): the loader region speaks copy row E4's words with ONE U+2026, chosen OVER PAGE_LOADING_LABEL's three ASCII dots (VoiceOver reads them aloud, VO-P2-7, quick-261020-tz3) and OVER changing E4's visible glyph (E4, E4b and the route fallback share it; not this row). Same words, not new copy.
+const PAGE_LOADING_HEARD = 'Loading game night…';
 // Copy rows E1, E2 and E3 (88.6.1-COPY-TABLE.html, ratified 2026-10-04, D-30), shipped with the
-// straight apostrophe (D-32 R8).
+// straight apostrophe (D-32 R8). AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): E3 now composes Couldn't load this event through thing, chosen OVER the ratified We couldn't load this event (D-30, 2026-10-04).
 const EVENT_NO_ACCESS_TITLE = "You don't have access to this event";
 const EVENT_NO_ACCESS_DETAIL = "You may be signed in with a different account, or you haven't been invited yet.";
-const EVENT_LOAD_FAILED_TITLE = "We couldn't load this event";
+const EVENT_LOAD_FAILED_THING = 'this event';
 
-// 88.6.1-25 (D-01): the per-event sign-in latch. The key follows the in-repo `ng<feature>:<purpose>`
-// convention (src/app/page.js, 'nggroups:refresh'). Every helper is FAIL-CLOSED: a storage call that
-// throws reads as "latch already set" (banner, never a redirect) and a write that throws reports
-// failure, so blocked storage can never produce a redirect loop (RESEARCH P-4). None of them logs.
-const SIGN_IN_LATCH_PREFIX = 'ngevent:signinRedirect:';
-
-function readSignInLatch(eventId) {
-    try {
-        return window.sessionStorage.getItem(SIGN_IN_LATCH_PREFIX + eventId) !== null;
-    } catch {
-        return true;
-    }
-}
-
-function writeSignInLatch(eventId) {
-    try {
-        window.sessionStorage.setItem(SIGN_IN_LATCH_PREFIX + eventId, '1');
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-function clearSignInLatch(eventId) {
-    try {
-        window.sessionStorage.removeItem(SIGN_IN_LATCH_PREFIX + eventId);
-    } catch {
-        // Nothing to do: a latch that cannot be removed only means one more banner, never a loop.
-    }
-}
-
-// The return address is built from this page's own location (path + search + hash) and NEVER read
-// from the query string (SPEC Constraint, V5.1.5); the Auth0 SDK's same-origin check is the
-// server-side control. The hash rides inside returnTo because a fragment never reaches a server.
-function buildSignInUrl() {
-    const { pathname, search, hash } = window.location;
-    return `/api/auth/login?returnTo=${encodeURIComponent(pathname + search + hash)}`;
-}
+// 88.9-40 (SESSION-01): the per-event sign-in latch and the sign-in URL builder that lived here
+// (88.6.1-25 D-01) moved into the shared guard, src/lib/hooks/useSignInRedirect.ts, and into
+// src/lib/signIn.ts; the AMENDED D-01 marker on the event view's effect records the move.
 
 // 88.6.1-47 (D-44): the id of the Game Sessions filter panel, named by the "Show Filters & Sort"
 // disclosure's aria-controls while the panel is mounted.
@@ -530,6 +569,9 @@ export default function GameDetailPage() {
 
     const [game, setGame] = useState(null);
     const [events, setEvents] = useState([]);
+    // 88.9-52 (W35): the group's name on the GAME view, taken from the group-nights answer (every
+    // night carries its Group); null until a night names it. See the marker at the breadcrumb.
+    const [gameViewGroupName, setGameViewGroupName] = useState(null);
     const [reviews, setReviews] = useState([]);
     const [userReview, setUserReview] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -565,7 +607,13 @@ export default function GameDetailPage() {
     // 'idle' (none decided), 'redirecting' (replace called), 'declined' (the latch was already set or
     // storage failed, so the 401 renders the banner instead).
     const [eventError, setEventError] = useState(null);
-    const [signInRedirect, setSignInRedirect] = useState('idle');
+    // 88.9-40 (SESSION-01): the shared sign-in guard. The event view decides in its own
+    // generation-gated effect below (signIn.requestSignIn()); the game view hands its primary 401
+    // to the hook's answer arm. No signed-out arm on this page — the AMENDED D-01 marker says why.
+    const signIn = useSignInRedirect({
+        authLoading,
+        unauthorized: Boolean(game_id) && gameError instanceof ApiError && gameError.code === 'unauthorized',
+    });
     // 88.6.1-25 (D-02, review r2 #31): true from the moment a 410 `account_deleted` from the event
     // fetch starts the identity recheck until that recheck settles. Set in the SAME batch as the
     // error (the query's own fetching flag is still false in that render, so the banner would flash).
@@ -671,7 +719,14 @@ export default function GameDetailPage() {
     // Desktop (md: ≥768px) renders untouched via `md:line-clamp-none` overrides;
     // a media-query check inside the title onClick keeps the BGG <a> link
     // navigating on touch-laptops at desktop widths.
-    const [titleExpanded, setTitleExpanded] = useState(false);
+    // AMENDED Phase 88.9-52 (R4 C1, accessibility once-over A2, owner 2026-11-18): the TITLE
+    // half is gone. The page's own h1 now wraps in full at every width, CHOSEN OVER (a) the
+    // two-line clamp with tap-to-expand kept (REJECTED: with text at 200% the h1 is 60px, two
+    // lines at 375 hold about 16 to 20 characters, and the only sign that more exists was an
+    // ellipsis) and (b) a visible expand button like the description's (REJECTED: a page
+    // title is the one line that says where you are; nobody should have to ask for it).
+    // The titleExpanded / titleOverflows state, the title's overflow observer and its
+    // media-query onClick went with it. The DESCRIPTION half below is unchanged.
     const [descExpanded, setDescExpanded] = useState(false);
 
     // 88-33 Task 9 (UAT row 326): the expand affordances render only when the
@@ -685,10 +740,10 @@ export default function GameDetailPage() {
     // so a plain ref object would be null at the only dep-driven effect re-run
     // and the affordance would never appear — a real mount-timing bug the test
     // suite caught. Node-in-state makes node attachment itself a dependency.
+    // AMENDED Phase 88.9-52 (R4 C1): this now serves the description only; the title's twin
+    // node, flag and observer were removed with its clamp (see the amended EVT-09 marker above).
     const [descNode, setDescNode] = useState(null);
-    const [titleNode, setTitleNode] = useState(null);
     const [descOverflows, setDescOverflows] = useState(false);
-    const [titleOverflows, setTitleOverflows] = useState(false);
 
     useEffect(() => {
         if (!descNode || descExpanded) return;
@@ -702,19 +757,6 @@ export default function GameDetailPage() {
         ro.observe(descNode);
         return () => ro.disconnect();
     }, [descNode, descExpanded, game?.description]);
-
-    useEffect(() => {
-        if (!titleNode || titleExpanded) return;
-        const measure = () => {
-            const overflows = titleNode.scrollHeight > titleNode.clientHeight;
-            setTitleOverflows(prev => (prev === overflows ? prev : overflows));
-        };
-        measure();
-        if (typeof ResizeObserver === 'undefined') return;
-        const ro = new ResizeObserver(measure);
-        ro.observe(titleNode);
-        return () => ro.disconnect();
-    }, [titleNode, titleExpanded, game?.name]);
 
     // 88-33 Task 9 (UAT row 334): Esc collapses the expanded description on the
     // MAIN page. Bail conditions (r1/r3 triage): a dialog is open (the modal
@@ -1002,7 +1044,7 @@ export default function GameDetailPage() {
     // the C10 drop. Side reads no longer overwrite on failure, so without it a new event would
     // inherit the previous one's side data, and an event whose access returns would show the
     // pre-drop roster, RSVP pills and brings as current. It never touches `eventError`,
-    // `signInRedirect` (plan 25's per-code dispatch owns them), `effectiveGroupId` or the
+    // the sign-in decision (plan 25's per-code dispatch owns them), `effectiveGroupId` or the
     // suggestions (the suggestions effect does not re-run on the same key).
     const clearEventKeyData = () => {
         setUserRole(null);
@@ -1044,7 +1086,9 @@ export default function GameDetailPage() {
             setSingleEvent(null);
             setLoadedFor(null);
             setEventError(null);
-            setSignInRedirect('idle');
+            // 88.9-40: the decision resets with the entity; the latch is NEVER touched here (this block
+            // runs on every first load, so clearing it would delete the latch before the 401 — T-88.9-136).
+            signIn.resetDecision();
             clearEventKeyData();
             // DECISION Phase 88.6.1-25 (retention rule, amended by the wave 4 CI gate, run 38878098281):
             // Recommended Games is cleared only when the EVENT ID changes, NOT on every run that reaches
@@ -1090,7 +1134,7 @@ export default function GameDetailPage() {
                 // An answer the backend sends only to an AUTHENTICATED caller proves the session, so it
                 // clears the sign-in latch (review r2 #305). Never a 401, network, 5xx, 429 or unknown.
                 if (code === 'forbidden' || code === 'not_found' || code === 'account_deleted') {
-                    clearSignInLatch(event_id);
+                    signIn.clearLatch();
                 }
                 // D-02: re-check identity so useSelfIdentity's own effect routes to the goodbye
                 // logout, even from a tab whose self row was cached before the deletion.
@@ -1109,8 +1153,7 @@ export default function GameDetailPage() {
             // 88.6.1-74 (C2): a FIRST run clears the error on the primary success; a refresh clears
             // it at its clean end, so the notice never disappears and reappears inside one Retry.
             if (!isRefresh) setEventError(null);
-            setSignInRedirect('idle');
-            clearSignInLatch(event_id);
+            signIn.markSessionProven();
             setSingleEvent(eventData);
             setLoadedFor(entityKey);
             // DECISION Phase 88.6.1-74 (wave 8 CI gate, run 39026336968): the event view stamps the
@@ -1395,8 +1438,9 @@ export default function GameDetailPage() {
     // handleShowGameQR pattern (loading state + error swallow).
     /* DECISION Phase 88.6.1-47 (D-35): CHOSEN — the pressed control stays focusable
        (`aria-disabled`) and a synchronous ref latch (`qrLoadingRef`) refuses a second press,
-       released beside the loading reset in the `finally`; the in-flight label is copy row E6, read
-       from the one constant in `shareGameQrCopy.ts`. REJECTED — (a) the native attribute: it drops
+       released beside the loading reset in the `finally`; the in-flight cue is rule 1's kept label
+       with the house spinner, heard as the ", loading" busy suffix (Phase 88.9-46 B29; copy row E6
+       and its constant module retired). REJECTED — (a) the native attribute: it drops
        focus off the control the user just pressed, and the QR dialog then records no opener to
        return focus to (W014 case 1); (b) a state-only guard: a second press in the same tick reads
        the previous render's `false` and sends a second request. The look follows the owner's
@@ -1413,7 +1457,8 @@ export default function GameDetailPage() {
             setGameInviteUrl(data.invite_url);
             setShowGameQR(true);
         } catch (err) {
-            logger.info('Failed to get game invite token:', errCtx(err));
+            // AMENDED Phase 88.9-65 (X34): warn, matching its Home twin (owner F1, 2026-11-07); was info.
+            logger.warn('Failed to get game invite token:', errCtx(err));
             toast.error(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't build the share code. Please try again.",
@@ -1440,11 +1485,14 @@ export default function GameDetailPage() {
        subsequent QR re-join is silent (no welcome email) per EVT-08."
        Re-hand-rolling this, or promoting it to a ConfirmDialog, is a decision, not a
        cleanup. */
-    const performRemoveParticipation = async (targetUserDbId) => {
+    const performRemoveParticipation = async (targetUserDbId, opts) => {
         // targetUserDbId is User.id (UUID) post-flatten — the value the DELETE
         // endpoint expects. Custom participants have user_id === null and the
         // Remove button is hidden for them at render time.
         if (!targetUserDbId) return;
+        // Runs synchronously inside the committing tap, so this arms before the await (X36a).
+        const settle = participantRemoveFocus.arm({ from: opts?.from ?? null });
+        setRemovingParticipantId(targetUserDbId);
         try {
             await eventsAPI.removeParticipation(singleEvent.id, targetUserDbId);
             // Optimistically drop the row. No toast (per CONTEXT decision).
@@ -1457,18 +1505,24 @@ export default function GameDetailPage() {
                     byCode: { forbidden: 'Only group owners and admins can remove someone.' },
                 })
             );
+        } finally {
+            setRemovingParticipantId(null);
+            settle();
         }
     };
 
     // Two-tap tier (fork 7): persistent inline row button, so D-07's auto-closing-menu
     // limit does not bite. Dialog-tier copy authored anyway (superset config) so a
     // retier stays the one-word edit.
+    /* DECISION Phase 88.9-65 (X36a, once-over R3, veto open): a committing Remove takes Button busy (gated ink, delayed held spinner) and its name gains , removing, chosen OVER no in-flight sign and OVER a label swap; the 65-02 EVT-08 two-tap is unchanged. Focus recovery is armed with the pressed Remove (from, 88.6.1 A-74) as the Friends Remove, landing on the dialog title, chosen OVER no arm (WebKit drops focus to body) and OVER a copy of the Friends neighbour resolver (duplication) and OVER landing on the next row's control through a shared helper lifted from the Friends page (owner 2026-11-14, Q6 A). */
+    const [removingParticipantId, setRemovingParticipantId] = useState(null);
+    const participantRemoveFocus = useFocusRecovery();
     const removeParticipantGate = useConfirmAction({
         tier: 'two-tap',
         title: 'Remove this participant?',
         body: 'They are removed from this event for everyone. A QR re-join is silent.',
         confirmLabel: 'Remove',
-        onConfirm: (targetUserDbId) => performRemoveParticipation(targetUserDbId),
+        onConfirm: (targetUserDbId, ctx) => performRemoveParticipation(targetUserDbId, ctx),
     });
 
     // 88.6.1-74 (contract C3): the game view's per-key reset — every value a game key owns, back to
@@ -1479,6 +1533,7 @@ export default function GameDetailPage() {
     const clearGameKeyData = () => {
         setGame(null);
         setEvents([]);
+        setGameViewGroupName(null);
         setEventRsvpStatuses({});
         setReviews([]);
         setUserReview(null);
@@ -1495,6 +1550,7 @@ export default function GameDetailPage() {
     // would clear the game. DECISION Phase 88.6.1-74 (C1, side reads).
     const withdrawGroupContent = () => {
         setEvents([]);
+        setGameViewGroupName(null);
         setEventRsvpStatuses({});
         setReviews([]);
         setUserReview(null);
@@ -1530,7 +1586,23 @@ export default function GameDetailPage() {
         if (loadedEntityKeyRef.current !== entityKey) {
             setLoading(true);
             clearGameKeyData();
+            // 88.9-40 (SESSION-01): C3's clean slate now covers the sign-in decision too.
+            signIn.resetDecision();
         }
+        /* DECISION Phase 88.9-52 (A-31): a run proves the session (clears this path's sign-in latch)
+           only when its game read answered AND no group read answered 401, decided in the finally
+           below — chosen OVER clearing the latch at the game read's own success (88.9-40: a later
+           group read's 401 in the same run then found the latch clear and redirected again, on
+           every return, with no bound) and OVER moving the call beside the last clean write (that
+           misses the two clean early returns — a group read's 403 that withdraws the group content,
+           and a failed refresh — where the game read did prove the session and a kept latch would
+           turn the person's next real expiry into a banner instead of sign-in). Review r2 #311 is
+           kept: a group read's 401 still takes the primary-401 path; with the latch set that path
+           is the sign-in banner, never a second redirect. The event view does not loop (its roster
+           401 is a side failure, review r3 M-01) and is unchanged. Changing this is a decision, not
+           a cleanup. */
+        let gameReadAnswered = false;
+        let sawUnauthorized = false;
         try {
             // Fetch game details using gamesAPI which includes proper API URL and auth
             let gameData;
@@ -1580,6 +1652,10 @@ export default function GameDetailPage() {
             }
             if (!isCurrentRun()) return undefined;
             setGame(gameData);
+            // 88.9-40 (SESSION-01): a game read that succeeded proves the session (clears this path's latch).
+            // AMENDED Phase 88.9-52 (A-31): only once the run ends with no 401 from a group read — the
+            // call now sits in the finally (see the DECISION above the try).
+            gameReadAnswered = true;
             setLoadedFor(entityKey);
             // A first run (or a full banner's Try again) gives way to the content at once.
             if (!isRefresh) setGameError(null);
@@ -1599,6 +1675,7 @@ export default function GameDetailPage() {
             const answerGroupRead = (error) => {
                 const code = error instanceof ApiError ? error.code : 'unknown';
                 if (code === 'unauthorized') {
+                    sawUnauthorized = true;
                     clearGameKeyData();
                     setGameError(error);
                     return { isError: true };
@@ -1619,7 +1696,8 @@ export default function GameDetailPage() {
                 try {
                     eventsData = await eventsAPI.getGroupEvents(group_id);
                 } catch (error) {
-                    logger.info('Error fetching events:', errCtx(error));
+                    // AMENDED Phase 88.9-65 (X34): warn, matching its Home twin (owner F1, 2026-11-07); was info.
+                    logger.warn('Error fetching events:', errCtx(error));
                     if (!isCurrentRun()) return undefined;
                     // DECISION Phase 88.6.1-74 (C1, side reads): no empty-list write; the access
                     // answer first, then the failure is recorded and the fan-out skipped.
@@ -1643,13 +1721,19 @@ export default function GameDetailPage() {
                            Level is `logger.info` and NOT `logger.warn` for the reason AC-2's owner
                            amendment of 2026-09-13 records: `logger.warn` is `Sentry.captureMessage`,
                            an EVENT, and under `replaysOnErrorSampleRate: 1.0` an event flushes the
-                           Session Replay buffer. The severity lives in the message, not the channel. */
+                           Session Replay buffer. The severity lives in the message, not the channel.
+                           AMENDED Phase 88.9-65 (X34, from the owner's F1 ruling, veto open): the 1.0 premise is stale, the rate is 0.1 (sentry.client.config.js ("replaysOnErrorSampleRate: 0.1,")). This shape line stays info; the share-code and group-nights catches warn like their Home twins, chosen OVER breadcrumbs that reach Sentry only beside a later event. */
                         logger.info('Events data is not an array:', { received: eventsData === null ? 'null' : typeof eventsData });
                         eventsData = [];
                     }
 
                     const gameEvents = eventsData.filter(event => event.game_id === game_id);
                     setEvents(gameEvents);
+                    // 88.9-52 (W35): any night of THIS group names it (not only this game's nights).
+                    const namedNight = eventsData.find(
+                        (event) => event?.Group?.id === group_id && typeof event.Group.name === 'string' && event.Group.name
+                    );
+                    setGameViewGroupName(namedNight ? namedNight.Group.name : null);
                     stampRead('groupEvents');
 
                     // Fetch RSVP statuses for each event (for BallotSection).
@@ -1805,6 +1889,8 @@ export default function GameDetailPage() {
                 loadedEntityKeyRef.current = entityKey;
                 setGameAnsweredFor(entityKey);
                 setLoading(false);
+                // 88.9-52 (A-31): the newest run only, and only when no group read answered 401 (a fan-out read's 401 is a side failure and does not count).
+                if (gameReadAnswered && !sawUnauthorized) signIn.markSessionProven();
             }
         }
     };
@@ -1832,9 +1918,11 @@ export default function GameDetailPage() {
     const gameRetained = useRetainedContent(loadedFor === entityKey, gameErrorState);
     // 88.6.1-74: ONE composed ref for both game titles — RF1's focus target and the title-overflow
     // observer's node.
+    // AMENDED Phase 88.9-52 (R4 C1): the overflow observer is gone with the title clamp, so this
+    // is RF1's focus target only. The callback is kept (not swapped for the bare ref object) so
+    // both title arms keep one stable ref identity.
     const attachGameTitle = useCallback((node) => {
         gameTitleRef.current = node;
-        setTitleNode(node);
     }, []);
 
     // 88.6.1-25 (AC-5): the event view's adapter, copied from the game view's above (the same ref hop,
@@ -1855,7 +1943,7 @@ export default function GameDetailPage() {
     const eventErrorArmed =
         Boolean(eventError) &&
         eventErrorArmedCode !== 'not_found' &&
-        !(eventErrorArmedCode === 'unauthorized' && signInRedirect !== 'declined');
+        !(eventErrorArmedCode === 'unauthorized' && signIn.decision !== 'declined');
     const eventErrorState = useFetchErrorState({
         // 88.6.1-74: plan 25's armed predicate over `eventError`, OR a side-read failure of a read
         // that had loaded (code-less, P-2). Plan 25's gates read `eventError` itself for the access
@@ -1919,20 +2007,29 @@ export default function GameDetailPage() {
     // clears it -> a later 401 redirects once more -> a 401 on return finds the latch and gets the
     // banner. Only an answer that proves the session clears the latch; a 401 never does.
     // Removing the latch or the auth-settled gate is a decision, not a cleanup.
+    // AMENDED Phase 88.9-40 (owner ruling SESSION-01, register page 9 / 88.9-PICKS-B9.json, 2026-11-07):
+    // the latch, its fail-closed storage and the sign-in URL now live in the shared guard —
+    // src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling") and
+    // src/lib/signIn.ts — keyed per path + search under the ngauth prefix (one key per event link, as
+    // before), chosen OVER the per-event key in this file (one rule for every protected page).
+    // REJECTED (b) re-tested at the width SESSION-01 now IS: the latch is still chosen OVER
+    // withPageAuthRequired, which redirects only a visitor with no user (a live cookie with a rejected
+    // token would 401 here with no way out), uses location.assign (REJECTED (c)'s Back trap) and has
+    // no latch. The game view now takes the same answer arm: a 401 from the game read redirects once.
+    // No signed-out arm on this page: a signed-out visitor's read 401s through the proxy, and
+    // e2e/event-link-signed-out.spec.ts pins that a bad id, a 403 and a 500 render their own screens
+    // with no sign-in request. The per-event clean slate (88.6.1-25 retention rule) is kept: a new
+    // event or game resets the decision with resetDecision(), which never touches the latch.
     useEffect(() => {
         if (authLoading || !event_id) return;
         if (!(eventError instanceof ApiError) || eventError.code !== 'unauthorized') return;
         // A newer run is in flight: its answer, not this one, decides.
         if (eventErrorGenRef.current !== eventFetchGenRef.current) return;
-        if (signInRedirect !== 'idle') return;
-        if (readSignInLatch(event_id) || !writeSignInLatch(event_id)) {
-            // Already redirected once for this event (or storage failed): the banner, never a loop.
-            setSignInRedirect('declined');
-            return;
-        }
-        setSignInRedirect('redirecting');
-        window.location.replace(buildSignInUrl());
-    }, [eventError, authLoading, event_id, signInRedirect]);
+        if (signIn.decision !== 'idle') return;
+        // The shared guard reads and writes the latch fail-closed, then replaces — or declines to the
+        // banner when the latch is already set (back from sign-in) or storage failed.
+        signIn.requestSignIn();
+    }, [eventError, authLoading, event_id, signIn.decision, signIn.requestSignIn]);
 
     /* DECISION Phase 88.6.1-47 (H6 / D-04 / D-05): CHOSEN — arm the shared `useFocusRecovery`
        hook (plan 88.6.1-04) at the confirmed delete. The dialog's own restore returns focus to the
@@ -1990,11 +2087,17 @@ export default function GameDetailPage() {
        ("does it need explaining?") therefore puts it on a dialog. The kebab additionally
        cannot host two-tap at all (D-07: the menu unmounts the armed trigger). Retiering this
        is a one-word edit by design — but it is a decision, not a simplification. */
+    // DECISION Phase 88.9-56 (owner ruling R-C3a, 88.9-RULINGS.md, 2026-11-10, 'hear'): every confirm dialog's pending
+    // confirm carries the house spinner and a heard verb derived from its own confirmLabel (Q6(b)), chosen OVER the
+    // default-off that left this gate silent while its write ran (ConfirmDialog's busy is pending AND a suffix; plan
+    // 88.9-45 converted only the two gates whose swap words were ratified copy rows). The visible verb never changes;
+    // the verb is heard only; the spinner leaves with the dialog on success (the close is the completion feedback).
     const deleteSessionGate = useConfirmAction({
         tier: 'dialog',
         title: 'Delete this session?',
         body: 'The play record, scores and who was there are deleted for everyone.',
         confirmLabel: 'Delete',
+        busySuffix: ', deleting',
         onConfirm: (event_id) => performDeleteEvent(event_id),
     });
 
@@ -2080,12 +2183,15 @@ export default function GameDetailPage() {
     };
 
 
+    // R-C5 (88.9-56): ratings are stored on a 0-5 scale. drawnRating is the half-star value the
+    // glyphs draw (3.7 draws 3.5); the stars and their spoken label both read it, so they agree.
+    const clampRating = (rating) => Math.max(0, Math.min(5, Number(rating) || 0));
+    const drawnRating = (rating) => Math.floor(clampRating(rating) * 2) / 2;
+
     const renderStars = (rating) => {
-        // Ratings are stored on a 0-5 scale, display directly
-        const ratingValue = Number(rating) || 0;
-        const validRating = Math.max(0, Math.min(5, ratingValue));
-        const fullStars = Math.floor(validRating);
-        const hasHalfStar = validRating % 1 >= 0.5;
+        const drawn = drawnRating(rating);
+        const fullStars = Math.floor(drawn);
+        const hasHalfStar = drawn % 1 === 0.5;
         const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
         return '★'.repeat(fullStars) + (hasHalfStar ? '½' : '') + '☆'.repeat(emptyStars);
     };
@@ -2125,13 +2231,20 @@ export default function GameDetailPage() {
         let filtered = [...historyEvents];
         
         // Date range filter
-        if (filters.dateFrom) {
-            const fromDate = new Date(filters.dateFrom);
+        /* DECISION Phase 88.9-52 (R4-A2): From and To are CALENDAR DAYS in the viewer's zone, the zone
+           each session card prints its date in, bounded by the house date-only helpers, chosen OVER
+           new Date(value) (UTC midnight) with a browser-local setHours end: west of UTC that ended
+           the To day at 07:59 UTC of the day itself, so the filter dropped the To date's own
+           sessions (the Profile override printed a day early for the same reason). A value that is
+           not a YYYY-MM-DD day (a five-digit year) bounds nothing, where the old parse bounded
+           by whatever the engine made of it. The zone is a dependency of this effect. Going back to new Date on these two strings is
+           a decision, not a cleanup. */
+        const fromDate = dateOnlyDayStart(filters.dateFrom, timezone);
+        if (fromDate) {
             filtered = filtered.filter(event => new Date(event.start_date) >= fromDate);
         }
-        if (filters.dateTo) {
-            const toDate = new Date(filters.dateTo);
-            toDate.setHours(23, 59, 59, 999); // Include entire end date
+        const toDate = dateOnlyDayEnd(filters.dateTo, timezone); // the whole To day is included
+        if (toDate) {
             filtered = filtered.filter(event => new Date(event.start_date) <= toDate);
         }
         
@@ -2216,7 +2329,7 @@ export default function GameDetailPage() {
         
         setFilteredEvents(filtered);
         setVisibleSessions(3); // Reset visible count when filters change
-    }, [historyEvents, filters]);
+    }, [historyEvents, filters, timezone]);
 
     const handleFilterChange = (key, value) => {
         setFilters(prev => ({ ...prev, [key]: value }));
@@ -2353,7 +2466,8 @@ export default function GameDetailPage() {
                                                 />
                                             </div>
                                             {/* Desktop: still visible, demoted to ghost so they stop
-                                                outranking the plain-text content they act on (F-6c). */}
+                                                outranking the plain-text content they act on (F-6c).
+                                                AMENDED Phase 88.9-65 (X49, owner 2026-11-13): Delete takes the danger ink, as its phone twin (the kebab item) already paints it; the ghost weight F-6c gave both is kept (no fill), through Button's ghost-danger variant, chosen OVER a per-site colour class. */}
                                             <div className="hidden md:flex gap-2 shrink-0">
                                                 {/* 88.6-18 (AC-3): `px-3 py-1 text-sm` DELETED from
                                                     both — every one of the three is dead against the
@@ -2371,7 +2485,7 @@ export default function GameDetailPage() {
                                                     Edit
                                                 </Button>
                                                 <Button
-                                                    variant="ghost"
+                                                    variant="ghostDanger"
                                                     onClick={() => handleDeleteEvent(event.id)}
                                                     title="Delete this session"
                                                 >
@@ -2384,11 +2498,16 @@ export default function GameDetailPage() {
                                 {event.EventParticipations && event.EventParticipations.length > 0 && (
                                     <div className="text-sm mt-3 pt-2 border-t border-line">
                                         <p className="font-bold mb-2 text-content-primary">Participants:</p>
-                                        <div className="space-y-2">
+                                        {/* 88.9-52 (W35): one chip per line on a phone (the X47 look, as shipped); from md
+                                            the chips sit side by side and wrap, where one per line left a wide card
+                                            mostly empty. Same 8px gap both ways. */}
+                                        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
                                             {event.EventParticipations.map((participation, idx) => (
                                                 <div key={idx} className="flex items-center gap-2 flex-wrap">
-                                                    <span className="bg-surface-muted text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
-                                                        <span>
+                                                    {/* DECISION Phase 88.9-65 (X47): the chip wraps by piece on the card ground, chosen OVER the one-line row (a squeezed piece wrapped inside itself and kept its width: the gap the owner saw) and OVER the muted ground; no new colour.
+                                                        Pills are the 88.9-63 family (Guest amber, New Player neutral, faction violet), measured on the card with src/lib/wcag.ts, word on fill / fill against the card: amber 5.6360 / 1.2580 light, 5.6471 / 1.9692 dark; violet 5.9744 / 1.4596, 7.7691 / 1.5107; neutral 7.3453 / 1.4261, 6.9642 / 1.5231. The name is 600 like the two names 63 moved, wraps and is never cut; Score and placement never break. */}
+                                                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 max-w-full px-3 py-1 rounded-sm border border-line bg-surface-card text-content-primary">
+                                                        <span className="inline-flex items-center gap-1 min-w-0 font-semibold break-words">
                                                             {participation.is_custom ? (
                                                                 <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-secondary ml-1">(Guest)</span></>
                                                             ) : (
@@ -2404,7 +2523,7 @@ export default function GameDetailPage() {
                                                             )}
                                                         </span>
                                                         {participation.is_guest && (
-                                                            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-bold">
+                                                            <span className="text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber px-1.5 py-0.5">
                                                                 Guest
                                                             </span>
                                                         )}
@@ -2412,30 +2531,34 @@ export default function GameDetailPage() {
                                                             measures 3.9909, below AA. As a BADGE the "New Player" chip
                                                             below takes `text-content-accent` (4.7121) rather than
                                                             `text-content-secondary` — D-16 distinguishes the two badges
-                                                            from its four other sites on exactly that basis. */}
+                                                            from its four other sites on exactly that basis.
+                                                            AMENDED Phase 88.9-65 (X47 + 63 hand-off b): on the card ground New Player takes the neutral pill pair; the accent ink was priced on the muted ground, where the X17a family melts. */}
                                                         {participation.is_new_player && (
-                                                            <span className="text-xs whitespace-nowrap bg-surface-muted text-content-accent px-1.5 py-0.5 rounded-sm font-bold">
+                                                            <span className="text-xs whitespace-nowrap bg-surface-pill-neutral text-content-pill-neutral px-1.5 py-0.5 rounded-sm font-bold">
                                                                 New Player
                                                             </span>
                                                         )}
                                                         {participation.faction && (
-                                                            <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">
+                                                            <span className="text-xs bg-surface-pill-violet text-content-pill-violet px-1.5 py-0.5 rounded-sm">
                                                                 {participation.faction}
                                                             </span>
                                                         )}
-                                                        {participation.score !== null && (
-                                                            <span className="text-xs text-content-secondary">
-                                                                Score: {participation.score}
+                                                        {/* 88.9-65 (X50): one formatter prints the score (57, not 57.00), and a
+                                                            participant with no score shows no Score piece (an absent score
+                                                            printed a bare label before). */}
+                                                        {formatScore(participation.score) !== null && (
+                                                            <span className="text-xs text-content-secondary whitespace-nowrap">
+                                                                Score: {formatScore(participation.score)}
                                                             </span>
                                                         )}
                                                         {participation.placement && (
-                                                            <span className="text-xs text-content-secondary">
+                                                            <span className="text-xs text-content-secondary whitespace-nowrap">
                                                                 #{participation.placement}
                                                             </span>
                                                         )}
                                                     </span>
                                                     {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.user_id && (
-                                                        <GuestInviteButton groupId={group_id} userId={participation.user_id} />
+                                                        <GuestInviteButton groupId={group_id} userId={participation.user_id} guestName={participation.username} />
                                                     )}
                                                 </div>
                                             ))}
@@ -2644,8 +2767,9 @@ export default function GameDetailPage() {
                the deferral happened to cite by line number would have made the phone gutter
                depend on whether the URL carried a game_id, which nobody would read as
                intentional. This is also the branch `/gameDetail?event_id=…&group_id=…`
-               actually renders, so it is the one the padding-budget e2e loads. */
-            <div className="p-3 md:p-6 max-w-6xl mx-auto">
+               actually renders, so it is the one the padding-budget e2e loads.
+               NAV-01 (88.9-36): capped together with the game view — see this file ("DECISION Phase 88.9-36 NAV-01"). */
+            <div className="p-3 md:p-6 max-w-7xl mx-auto">
                 {/* DECISION Phase 88.6.1-52 (D-46 / R7-M7): this breadcrumb and the game view's below
                     reach the house standard. CHOSEN (a): the house focus ring on both links, per
                     site (`DECISION Phase 88.3-17`, which chose per-site OVER a global
@@ -2709,7 +2833,7 @@ export default function GameDetailPage() {
                     Participants/RSVP surface (userScope defaults to 'none' when
                     selfUuid can't resolve, hiding those sections) so the failure
                     surfaces loudly-but-small instead of silently. */}
-                <FetchErrorBanner state={selfIdentityErrorState} compact />
+                <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
 
                 {/* DECISION Phase 88.6.1-74 (AC-29 / RF1, event view): CHOSEN — plan 70's shared
                     RefreshFailedNotice, mounted unconditionally here, beside the event it qualifies and
@@ -2813,26 +2937,45 @@ export default function GameDetailPage() {
                             is in flight.
                             Neither item is `twoTap`: single-tap commit is the Phase 65-02 decision
                             recorded above — the kebab PLACEMENT is the friction — and adding a
-                            confirm here would be a behaviour change, not a hardening. */}
+                            confirm here would be a behaviour change, not a hardening.
+                            AMENDED Phase 88.9-23 (owner pick F9b, 88.9-PICKS-B5.json, 2026-11-07): both
+                            items are now twoTap + keepOpen with the delayed enable, chosen OVER the
+                            single-tap commit above — one capture tap on Cancel event hard-deleted the
+                            walk DB's ballot night with every RSVP, vote and option (2026-11-07 ~12:03 AM
+                            Pacific). D24 c holds: the menu stays open and Cancelling… / Leaving… stays
+                            readable after the commit.
+                            AMENDED Phase 88.9-46 (owner pick O16a + Q3, 88.9-PICKS-B9.json, 2026-11-08): rule 1
+                            ends the in-flight WORD on both items — the label stays Cancel event / Leave
+                            event with the house spinner (KebabMenu's per-item busy flag) and the in-flight
+                            word moves into the heard name (Cancel event, cancelling / Leave event, leaving),
+                            chosen OVER the shipped swap to the in-flight word (D24 c, 2026-09-09: the items
+                            read Cancelling… / Leaving…); keepOpen and the D3 ariaDisabled rule are kept, so
+                            the menu still stays open and focused for the whole request. */}
                         {((userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')) || userScope === 'game-only') && (
                             <KebabMenu
                                 ariaLabel="Event actions"
                                 items={[
                                     ...(userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')
                                         ? [{
-                                            label: cancellingEvent ? 'Cancelling…' : 'Cancel event',
+                                            label: 'Cancel event',
                                             onClick: handleCancelEvent,
                                             ariaDisabled: cancellingEvent,
+                                            busy: cancellingEvent,
+                                            busySuffix: ', cancelling',
                                             danger: true,
+                                            twoTap: true,
                                             keepOpen: true,
                                         }]
                                         : []),
                                     ...(userScope === 'game-only'
                                         ? [{
-                                            label: leavingEvent ? 'Leaving…' : 'Leave event',
+                                            label: 'Leave event',
                                             onClick: handleLeaveEvent,
                                             ariaDisabled: leavingEvent,
+                                            busy: leavingEvent,
+                                            busySuffix: ', leaving',
                                             danger: true,
+                                            twoTap: true,
                                             keepOpen: true,
                                         }]
                                         : []),
@@ -2864,14 +3007,15 @@ export default function GameDetailPage() {
                     modal with the full list and the Remove control (admins
                     only). The Share Game QR button stays group-member-only
                     per CONTEXT (admin/owner-initiated invites only — not
-                    surfaced to game-only callers). */}
+                    surfaced to game-only callers).
+                    AMENDED Phase 88.9-65 (X42, orchestrator decision, veto open): Share Game QR only before the night starts (hasStarted, as the calendar popup and RSVP controls), chosen OVER an ungated button reachable from an old link; a started night shows heading and chips. */}
                 {(userScope === 'group-member' || userScope === 'game-only') && userRole !== 'pending' && participants.length > 0 && (
                     <div className="card p-3 md:p-6 mb-6">
                         <div className="flex items-center justify-between gap-3 mb-3">
                             <Heading level={2} size="heading" className="text-content-primary">
                                 Participants ({participants.length})
                             </Heading>
-                            {userScope === 'group-member' && (
+                            {userScope === 'group-member' && !hasStarted(singleEvent, Date.now()) && (
                                 <Button
                                     variant="accent"
                                     onClick={handleShowGameQR}
@@ -2911,14 +3055,18 @@ export default function GameDetailPage() {
                                        prop and took the count to 2. [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).] */
                                     className="shrink-0"
                                     title="Share Game QR"
+                                    busy={qrLoading}
+                                    busySuffix=", loading"
                                 >
                                     {/* Decorative — the visible label names the button. Same pair
-                                        as the twin's decorative `<svg` in `EventDayModal.js`. */}
+                                        as the twin's decorative `<svg` in `EventDayModal.js`. While the
+                                        code loads the label is kept and the name reads ", loading"
+                                        (rule 1, 88.9-46 B29 — the same word 88.9-45 gave the twin). */}
                                     <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                                     </svg>
-                                    {qrLoading ? SHARE_GAME_QR_LOADING_LABEL : 'Share Game QR'}
+                                    Share Game QR
                                 </Button>
                             )}
                         </div>
@@ -2944,6 +3092,7 @@ export default function GameDetailPage() {
                                         participant={p}
                                         rsvpStatus={status}
                                         rsvpUnavailable={repliesLoadState.showError}
+                                        nightStarted={hasStarted(singleEvent, Date.now())}
                                         role={role}
                                         isBringing={isBringing}
                                         viewerScope={userScope}
@@ -2988,6 +3137,8 @@ export default function GameDetailPage() {
                 <div className="space-y-4">
                     <RsvpSection
                         key={`rsvp-${rsvpRefreshKey}`}
+                        /* DECISION Phase 88.9-35 (B1a): see the BallotSection mount below — the single-event host passes its page ground. */
+                        hostGround="page"
                         eventId={singleEvent.id}
                         self={self}
                         eventDate={singleEvent.start_date}
@@ -3022,6 +3173,8 @@ export default function GameDetailPage() {
                     {!repliesLoadState.showError && (
                         <BallotSection
                             key={ballotRefreshKey}
+                            /* DECISION Phase 88.9-35 (B1a): the single-event view mounts RSVP and the ballot on the PAGE ground, so this host passes page; the list mounts sit inside event cards and keep the card default — passing page there is a decision, not a cleanup. */
+                            hostGround="page"
                             eventId={singleEvent.id}
                             eventDate={singleEvent.start_date}
                             userRole={userRole}
@@ -3173,12 +3326,42 @@ export default function GameDetailPage() {
                             //               (ClickableMemberName already renders plain <span> for self, so
                             //               the short-circuit is byte-equivalent and avoids a context lookup).
                             //   accepted  → 'Friend' pill on DESKTOP ONLY (hidden md:inline-flex) + keep
-                            //               name rendering through ClickableMemberName so the existing
-                            //               'md:hidden ✓ Friend' mobile inline indicator stays preserved.
+                            //               name rendering through ClickableMemberName, which draws the
+                            //               phone's md:hidden Friend pill right after the name.
+                            //               AMENDED Phase 88.9-52 (R19, owner 2026-11-17: A, and "friend
+                            //               should come first"): the phone indicator is the same green pill
+                            //               (was ticked text) and on BOTH widths Friend comes BEFORE the
+                            //               RSVP pill (the desktop pill sat after it), chosen OVER the
+                            //               SOCL-06 split. One pill shows per width, so Friend is said once.
                             //   pending_* → unchanged. ClickableMemberName provides desktop hover popover +
                             //               mobile inline indicator.
                             //   none      → unchanged. ClickableMemberName provides 'Add friend' on hover.
-                            const friendStatus = memberUuid ? getFriendshipStatus(memberUuid) : 'unknown';
+                            /* DECISION Phase 88.9-52 (R4-A1, round-3 capture): the friendship read keys on the
+                               roster id, else on the participant row's own user id (the flat Users.id the
+                               event read sends), so a GUEST who is an accepted friend shows the Friend pill
+                               here as on the game page's session rows, chosen OVER the roster id alone (a
+                               guest is not on the roster, so the row read 'unknown' and showed no Friend
+                               beside rows that did) and OVER routing the guest's name through
+                               ClickableMemberName (that would also put the + add-friend control and its
+                               popover on every non-roster row, a new action nobody ruled; the name stays the
+                               plain text the fallback below draws). A typed-in name has no account and stays
+                               'unknown'. Because no ClickableMemberName draws a phone pill on such a row, its
+                               one Friend pill below shows at every width. Keying this back on the roster
+                               alone is a decision, not a cleanup.
+                               AMENDED Phase 88.9-52 (R4 D3, owner 2026-11-18): same controls as elsewhere, his words. The
+                               route this marker REJECTED is now CHOSEN, by the owner: every named person on
+                               this list who has an account (the roster member, and the guest, by the same
+                               friendUuid) goes through ClickableMemberName, the control the session rows
+                               use, so a guest who is not yet a friend gets the add-friend control here too,
+                               exactly as on the session rows. It supersedes the plain-text guest name and
+                               the page pill shown at every width: the name control now draws the phone's
+                               Friend pill on a guest row as it does on a member row (4px after the name),
+                               so the page's own pill below is the desktop twin on EVERY row and R4 B5's 2px
+                               phone pull is dead and removed. Still plain text: a typed-in name (no
+                               account, nobody to befriend), the viewer's own row, and a row with no user
+                               id at all. The friendship read still keys on friendUuid (unchanged). */
+                            const friendUuid = memberUuid || (!p.is_custom && p.user_id) || null;
+                            const friendStatus = friendUuid ? getFriendshipStatus(friendUuid) : 'unknown';
                             const isSelfRow = friendStatus === 'self' || isCurrentUser;
                             return (
                                 <div
@@ -3196,7 +3379,16 @@ export default function GameDetailPage() {
                                         name like text; the name wraps IN FULL — display never
                                         truncates a person's name (fork 2's agreed direction). */}
                                     <div className="min-w-0 flex-1 basis-48 space-x-1.5 break-words">
-                                        <span className="text-content-primary">
+                                        {/* DECISION Phase 88.9-63 (X16, owner at N04, 2026-11-11: D): sentence-case
+                                            pills, no letter-spacing, and 600 names, chosen OVER C (smaller pills);
+                                            600 is an owner-ruled exception to UI-SPEC §4.5. It covers every person,
+                                            role and RSVP pill on this page (RsvpStatusPill, the Participants chip and
+                                            this row) and the two participant name spans; the pill weights are kept.
+                                            The fills are the X17a pill family (the marker is in globals.css at the
+                                            pill tokens), so no pill here carries a raw palette step, a dark arm of
+                                            its own or an edge. Bringing capitals back on one pill is a decision,
+                                            not a cleanup. */}
+                                        <span className="text-content-primary font-semibold">
                                             {p.is_custom ? (
                                                 <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                             ) : isSelfRow ? (
@@ -3205,22 +3397,59 @@ export default function GameDetailPage() {
                                                 // status === 'self' (no popover, no indicator) so this
                                                 // short-circuit is byte-equivalent on both mobile + desktop.
                                                 <span>{p.username || 'Unknown'}</span>
-                                            ) : memberUuid ? (
+                                            ) : friendUuid ? (
+                                                // R4 D3 (88.9-52): keyed on friendUuid, so a guest with an
+                                                // account takes this arm too (it was memberUuid: roster only).
                                                 // Stranger / pending / accepted all route through
-                                                // ClickableMemberName. For accepted on mobile this preserves
-                                                // the existing md:hidden ✓ Friend indicator (pre-phase
-                                                // affordance). For accepted on desktop ClickableMemberName
+                                                // ClickableMemberName. For accepted on mobile it draws the
+                                                // md:hidden green Friend pill (R19, 88.9-52; ticked text
+                                                // before that). For accepted on desktop ClickableMemberName
                                                 // renders only the plain name — the desktop-only 'Friend'
                                                 // pill below gives desktop its read-only indicator.
-                                                <ClickableMemberName userId={memberUuid} username={p.username || 'Unknown'} />
+                                                <ClickableMemberName userId={friendUuid} username={p.username || 'Unknown'} />
                                             ) : (
-                                                // memberUuid couldn't be resolved through groupMembersByUserId
-                                                // (game-only viewer or missing-from-group edge case).
+                                                // No user id at all on the row. (Until 88.9-52 R4 D3 this arm
+                                                // also took every person not on the roster: a guest, or any
+                                                // row seen by a game-only viewer. Those have an id and now
+                                                // take the arm above.)
                                                 // Render plain text — same fallback as before.
                                                 <span>{p.username || 'Unknown'}</span>
                                             )}
                                         </span>
-                                        {!repliesLoadState.showError && <RsvpStatusPill status={status} />}
+                                        {!isSelfRow && friendStatus === 'accepted' && (
+                                            // Phase 76 SOCL-06: "Friend" pill — DESKTOP ONLY
+                                            // (hidden md:inline-flex). The phone's twin is the md:hidden
+                                            // Friend pill ClickableMemberName draws after the name above.
+                                            // R19 (88.9-52, owner 2026-11-17): it sits BEFORE the RSVP pill,
+                                            // the phone's order; the marker is at the per-state list above.
+                                            // History: emerald was picked to echo the
+                                            // text-status-success used by that mobile inline indicator for
+                                            // continuity; that indicator was the ticked text R19 replaced.
+                                            // AMENDED Phase 88.9-52 (R4-A1): desktop only on a ROSTER row. A row
+                                            // with no roster member (a guest) has a plain-text name and no phone
+                                            // twin, so there this pill shows at every width (marker at friendUuid
+                                            // above); Friend is still drawn, and said, once per row.
+                                            // Both display arms are whole class names (Tailwind v4 emits nothing
+                                            // for a built one); the pill's look is written once.
+                                            // AMENDED Phase 88.9-52 (R4 B5, the round-4 re-shoot: at 375 the pill
+                                            // sat 6px after a guest's name and 4px after a member's): below md the
+                                            // guest arm pulls 2px back (max-md:-ms-0.5), so it sits 4px after the
+                                            // name, where ClickableMemberName puts a member's phone pill (its ml-1).
+                                            // The 6px is this line's own item spacing (space-x-1.5). From md every
+                                            // row draws THIS pill, 6px after the name, so the pull is phone only.
+                                            // Chosen OVER moving the member pill to 6px (R19's picked look, and
+                                            // the component's gap on every other surface).
+                                            // AMENDED Phase 88.9-52 (R4 D3, owner 2026-11-18): both lines above
+                                            // (R4-A1's every-width arm and R4 B5's pull) are SUPERSEDED. A guest's
+                                            // name now goes through the name control like a member's, which draws
+                                            // the phone pill 4px after the name itself, so this pill is the
+                                            // desktop twin on every row: one class string, no guest arm, no pull.
+                                            // One Friend per row at every width.
+                                            <span className="hidden md:inline-flex items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold">
+                                                Friend
+                                            </span>
+                                        )}
+                                        {!repliesLoadState.showError && <RsvpStatusPill status={status} nightStarted={hasStarted(singleEvent, Date.now())} />}
                                         {isSelfRow && (
                                             // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
                                             // CONTEXT D-SOCL-06: "visible on both mobile and desktop, not
@@ -3228,27 +3457,15 @@ export default function GameDetailPage() {
                                             // (Owner=purple, Admin=blue) while staying distinguishable from
                                             // Owner's purple. Self is a viewer-perspective indicator, not a
                                             // role, but the visual family is the closest existing pattern.
-                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
+                                            <span className="align-middle text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">
                                                 You
                                             </span>
                                         )}
-                                        {!isSelfRow && friendStatus === 'accepted' && (
-                                            // Phase 76 SOCL-06: "Friend" pill — DESKTOP ONLY
-                                            // (hidden md:inline-flex) per CONTEXT: "SOCL-06 is desktop-only".
-                                            // Mobile already shows the existing md:hidden ✓ Friend indicator
-                                            // from ClickableMemberName, preserved by routing accepted rows
-                                            // through ClickableMemberName above. Emerald color echoes the
-                                            // text-status-success used by that mobile inline indicator for
-                                            // visual continuity across viewports.
-                                            <span className="hidden md:inline-flex items-center align-middle text-xs uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
-                                                Friend
-                                            </span>
-                                        )}
                                         {role === 'owner' && (
-                                            <span className="align-middle text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
+                                            <span className="align-middle text-xs bg-surface-pill-violet text-content-pill-violet px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
                                         )}
                                         {role === 'admin' && (
-                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
+                                            <span className="align-middle text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
                                         )}
                                         {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                             when viewer is a full group member. Skips render for game-only
@@ -3258,14 +3475,14 @@ export default function GameDetailPage() {
                                             can decide who to onboard via admin-initiated invite. */}
                                         {p.is_guest && userScope === 'group-member' && (
                                             <span
-                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber"
                                                 title="Joined via game-invite QR (not a group member)"
                                             >
                                                 Guest
                                             </span>
                                         )}
                                         {isBringing && (
-                                            <span title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
+                                            <span role="img" title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
                                         )}
                                     </div>
                                     {(canInvite || canRemove) && (
@@ -3278,7 +3495,7 @@ export default function GameDetailPage() {
                                             it — swapping them puts "Remove" under the thumb
                                             that was reaching for "Invite". */}
                                         {canInvite && (
-                                            <GuestInviteButton groupId={effectiveGroupId} userId={p.user_id} />
+                                            <GuestInviteButton groupId={effectiveGroupId} userId={p.user_id} guestName={p.username} />
                                         )}
                                         {canRemove && (
                                             /* 88-33 Task 5 (fork 7): converged onto the gate —
@@ -3321,13 +3538,28 @@ export default function GameDetailPage() {
                                                     p.username || 'this participant',
                                                     `Remove ${p.username || 'this participant'} from this event`
                                                 )}
+                                                /* 88.9-65 (X36a): while the DELETE is out the name keeps the
+                                                   person and gains the removing suffix (owner ratified
+                                                   2026-11-14). The aria-label above overrides Button's
+                                                   sr-only suffix, so the suffix is spelled here too. */
+                                                {...(removingParticipantId === p.user_id
+                                                    ? { 'aria-label': `Remove ${p.username || 'this participant'} from this event, removing` }
+                                                    : {})}
+                                                busy={removingParticipantId === p.user_id}
+                                                busySuffix=", removing"
                                                 className={`border shrink-0 ${
                                                     isConfirming
                                                         ? 'bg-status-error-subtle border-status-error text-content-status-error font-semibold'
                                                         : 'border-status-error text-content-status-error enabled-hover:bg-status-error-subtle'
                                                 }`}
                                             >
-                                                {removeParticipantGate.labelFor(p.user_id, 'Remove')}
+                                                {/* X69 width (88.9-67): from the arm the label holds the widest of
+                                                    Wait (3), (2), (1) and Tap again (R13, 88.9-52: the short visible words,
+                                                    so at 375 the armed control stays on the name's line); at rest nothing
+                                                    is reserved. */}
+                                                <ReservedLabel reserve={removeParticipantGate.reserveFor(p.user_id)}>
+                                                    {removeParticipantGate.labelFor(p.user_id, 'Remove')}
+                                                </ReservedLabel>
                                             </Button>
                                         )}
                                     </div>
@@ -3339,10 +3571,11 @@ export default function GameDetailPage() {
                             disclosure of the removal boundary — the 65-02 Remove works only
                             on member rows; guests (no DB user) and your own row go through
                             Edit Event. The remove-any-participant CAPABILITY is a recorded
-                            backlog item (needs a new BE delete path), not this phase. */}
+                            backlog item (needs a new BE delete path), not this phase.
+                            AMENDED Phase 88.9-52 (W24, owner ruling R14): the sentence opens Names added by hand, OVER Guests: a guest who has an account does show Remove (only a typed-in name and your own row do not), so the old word contradicted the list above it. */}
                         {(userRole === 'owner' || userRole === 'admin') && (
                             <p className="text-content-muted text-sm">
-                                Guests and your own row are removed via Edit Event.
+                                Names added by hand and your own row are removed via Edit Event.
                             </p>
                         )}
                         {/* 88-33 Task 5: the armed-state live region MUST live INSIDE this
@@ -3405,7 +3638,7 @@ export default function GameDetailPage() {
     // "Event not found" never paints for a frame before navigation (RESEARCH P-5); only a declined
     // redirect (latch already set, or storage failed) falls through to the banner.
     const holdEventLoader =
-        !game_id && eventErrorCode === 'unauthorized' && signInRedirect !== 'declined';
+        !game_id && eventErrorCode === 'unauthorized' && signIn.decision !== 'declined';
     // (i) D-02: a 410 holds the loader ONLY while the recheck this run started is in flight, or while
     // the identity query itself reports the deleted account (its effect is routing to goodbye). Any
     // other settled outcome falls through to the banner, so the loader is never a dead end (r2 #31).
@@ -3416,14 +3649,23 @@ export default function GameDetailPage() {
 
     // The shared loader (both views) reads copy row E4 and is a labelled status, RouteFallback's
     // contract (role="status" + aria-label), so the loader that holds the redirect is announced.
+    // AMENDED Phase 88.9-65 (X35): a status mounted holding its words is not announced; the region below speaks them. AMENDED Phase 88.9-69 (X35): RouteFallback no longer carries that contract either.
     // 88.6.1-74 (review r3 L-02, M2-01): the loader also covers a game key whose game read has not
     // answered in this visit's run, so an in-page key change never paints "Game not found" or a
     // stale game view for one commit. See the AMENDED line on the DECISION Phase 88-25 gate below.
     const gameKeyUnanswered = Boolean(game_id) && gameAnsweredFor !== entityKey;
-    if (loading || holdEventLoader || holdAccountDeletedLoader || gameKeyUnanswered) {
+    // 88.9-40: `signIn.holding` is the game view's redirect frame (the event view's is holdEventLoader).
+    // 88.9-52 (A-40): the hook's hold is armed only once the session read has settled, and the game
+    // fetch does not wait for it, so a game read that answered 401 FIRST painted the load-failed
+    // banner for the frames before the loader and the redirect. The loader holds through that gap;
+    // once the session settles the hook decides (redirect, or the banner when the latch is set).
+    const holdGameLoader =
+        Boolean(game_id) && authLoading && gameError instanceof ApiError && gameError.code === 'unauthorized';
+    if (loading || holdEventLoader || holdAccountDeletedLoader || gameKeyUnanswered || signIn.holding || holdGameLoader) {
         return (
-            <div className="flex items-center justify-center min-h-screen" role="status" aria-label={PAGE_LOADING_LABEL}>
+            <div className="flex items-center justify-center min-h-screen">
                 <p className="text-content-secondary">{PAGE_LOADING_LABEL}</p>
+                <StatusRegion settleOnMount className="sr-only" message={PAGE_LOADING_HEARD} />
                 {retainedFocusGuards}
             </div>
         );
@@ -3444,7 +3686,7 @@ export default function GameDetailPage() {
                 <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
                     <FetchErrorBanner
                         state={eventErrorState}
-                        title={EVENT_LOAD_FAILED_TITLE}
+                        thing={EVENT_LOAD_FAILED_THING}
                         // A quoted literal on purpose: loggerCtxShape.test.ts (test 5) gates every reportContext.
                         reportContext="Game detail page — event fetch"
                     />
@@ -3484,7 +3726,7 @@ export default function GameDetailPage() {
                 <div ref={withdrawalTitleRef} className="w-full max-w-md px-6">
                     <FetchErrorBanner
                         state={gameErrorState}
-                        title="We couldn't load this game"
+                        thing="this game"
                         reportContext="Game detail page — game/session fetch"
                     />
                 </div>
@@ -3523,8 +3765,18 @@ export default function GameDetailPage() {
            gameDetail URL renders a 24px gutter and another a 12px one.
 
            Restoring `p-6` is a DECISION (it re-tightens the budget to ~72/75 and re-splits the
-           two branches), not a cleanup. */
-        <div className="p-3 md:p-6 max-w-6xl mx-auto">
+           two branches), not a cleanup.
+
+           DECISION Phase 88.9-36 NAV-01 (owner ruling (a), chat 2026-11-07 1:08 PM Pacific): this
+           root and the event-view root cap at 7xl (1280px), centred, which WAS the same box as the header nav
+           (the nav is now src/app/Header.js ("w-full max-w-[100rem] mx-auto px-4 h-full"), see X5c below), chosen OVER the shipped 6xl
+           (1152px) cap, which stopped 64px inside the header and footer box on each side at wide
+           screens. Narrowing it again is a decision, not a cleanup.
+           DECISION Phase 88.9-59 (X5c, owner at the 88.9-51 glance 2026-11-11: it looks better at 1280; it should look
+           fine if the header is at 1600 and the page is 1280): this body stays max-w-7xl (1280) under the 1600 header and
+           footer, chosen OVER matching the header's 1600: a single-column page reads better at 1280. Widening it is a
+           decision, not a cleanup. Orchestrator default; the owner may overrule from the 1600 picture. */
+        <div className="p-3 md:p-6 max-w-7xl mx-auto">
             {/* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): the group-content guard. */}
             <RetainedContentFocusGuard retained={groupContentRetained} focusTarget={gameTitleRef} />
             {/* Breadcrumbs */}
@@ -3538,9 +3790,14 @@ export default function GameDetailPage() {
                             /* Group-context (game_id present) view: group-members
                                see the link with the group name (or generic "Group"
                                while loading — graceful, not load-bearing for the
-                               game-only flow). */
+                               game-only flow).
+                               DECISION Phase 88.9-52 (W35): on this view the name comes from the
+                               group-nights answer this view already reads (each night carries its
+                               Group), chosen OVER the shipped singleEvent read alone (always empty
+                               here, so the crumb always said "Group") and OVER a new group read
+                               for one word. A group with no night at all still reads "Group". */
                             <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">
-                                {singleEvent?.Group?.name || 'Group'}
+                                {singleEvent?.Group?.name || gameViewGroupName || 'Group'}
                             </Link>
                         ) : singleEvent?.Group?.name ? (
                             /* Phase 71.1 GAMP-11 + Blocker 2 fix: render the
@@ -3585,7 +3842,21 @@ export default function GameDetailPage() {
                             button gives keyboard users the same expand (the tap was
                             pointer-only; role="button" on an h1 wrapping a link is invalid).
                             The ONE-SHOT semantics (expand only, no re-collapse) are Phase 76's
-                            recorded design and are preserved. */}
+                            recorded design and are preserved.
+                            AMENDED Phase 88.9-52 (R4 C1, accessibility once-over A2, owner
+                            2026-11-18: large text exists because small text blurs together for
+                            some people, so cutting text to keep a layout tidy defeats the
+                            setting): BOTH of the above are superseded. The title wraps in full
+                            at every width; there is no clamp, no tap-to-expand and no button.
+                            CHOSEN OVER keeping the two-line clamp (REJECTED: at 200% text two
+                            lines at 375 hold about 16 to 20 characters, and the expand was a
+                            tap nothing on screen announced plus a button that only showed on
+                            keyboard focus) and OVER a visible expand button (REJECTED: a page
+                            title should not need asking for). A word longer than the line
+                            breaks only when it cannot fit, by the Heading primitive's own
+                            overflow-wrap token, so nothing scrolls sideways at 320 / 200%.
+                            Every tap on a linked title now goes straight to the BGG link.
+                            Re-adding a clamp here is a decision, not a cleanup. */}
                         {/* RESEARCH §C.5 corrects D-04: this is NOT a size-less heading. It is
                             an h1 already at `text-3xl`, i.e. already at Display 30, so the
                             migration is a SPELLING move with no size change. Treating it as the
@@ -3597,13 +3868,7 @@ export default function GameDetailPage() {
                             ref={attachGameTitle}
                             id="game-title"
                             tabIndex={-1}
-                            onClick={(e) => {
-                                if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded && titleOverflows) {
-                                    e.preventDefault();
-                                    setTitleExpanded(true);
-                                }
-                            }}
-                            className={`text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
+                            className="text-content-primary mb-2"
                         >
                             {game.bgg_id ? (
                                 <a
@@ -3618,23 +3883,6 @@ export default function GameDetailPage() {
                                 game.name
                             )}
                         </Heading>
-                        {!titleExpanded && titleOverflows && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setTitleExpanded(true);
-                                    /* Wave-12 review LOW #22: this one-shot button unmounts on
-                                       activation — move focus to the now-expanded title
-                                       (tabIndex -1) instead of dropping it to body. */
-                                    document.getElementById('game-title')?.focus();
-                                }}
-                                aria-expanded={false}
-                                aria-controls="game-title"
-                                className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link"
-                            >
-                                Show full title
-                            </button>
-                        )}
                         {game.theme && (
                             <p className="text-content-secondary mb-2">Theme: {game.theme}</p>
                         )}
@@ -3657,7 +3905,11 @@ export default function GameDetailPage() {
                                 First mobile tap expands; subsequent taps fall through to
                                 the BGG <a>. Desktop renders full text + native link click.
                                 88-33 Task 9: overflow-gated + keyboard path — see the
-                                custom-branch twin's comment above; same treatment. */}
+                                custom-branch twin's comment above; same treatment.
+                                AMENDED Phase 88.9-52 (R4 C1, owner 2026-11-18): superseded, as
+                                in the custom-branch twin above: the title wraps in full, with
+                                no clamp, no tap-to-expand and no button (the clamp and a
+                                visible expand button were both REJECTED there, with the why). */}
                             {/* RESEARCH §C.5, same correction as the custom-game twin above:
                                 already an h1 at Display 30, so no size change. */}
                             <Heading
@@ -3666,13 +3918,7 @@ export default function GameDetailPage() {
                                 ref={attachGameTitle}
                                 id="game-title"
                                 tabIndex={-1}
-                                onClick={(e) => {
-                                    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded && titleOverflows) {
-                                        e.preventDefault();
-                                        setTitleExpanded(true);
-                                    }
-                                }}
-                                className={`text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
+                                className="text-content-primary mb-2"
                             >
                                 {game.bgg_id ? (
                                     <a
@@ -3687,23 +3933,6 @@ export default function GameDetailPage() {
                                     game.name
                                 )}
                             </Heading>
-                            {!titleExpanded && titleOverflows && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTitleExpanded(true);
-                                        /* Wave-12 review LOW #22: this one-shot button unmounts on
-                                           activation — move focus to the now-expanded title
-                                           (tabIndex -1) instead of dropping it to body. */
-                                        document.getElementById('game-title')?.focus();
-                                    }}
-                                    aria-expanded={false}
-                                    aria-controls="game-title"
-                                    className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link"
-                                >
-                                    Show full title
-                                </button>
-                            )}
                             {game.year_published && (
                                 <p className="text-content-secondary mb-2">Published: {game.year_published}</p>
                             )}
@@ -3813,7 +4042,9 @@ export default function GameDetailPage() {
                     converged it, so both headers are now 20/700 — the marker there records the
                     reopening. This marker's OWN subject (the conditional count and the stacking)
                     is untouched by that ruling and still stands. */}
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                <div className={showFilters
+                    ? "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-0 sm:mb-4"
+                    : "flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4"}>
                     <Heading ref={sessionsHeadingRef} level={2} size="heading" className="w-full text-content-primary">
                         {/* Post-split (Task 7 step 1b): counts key on the HISTORY partition —
                             keying on raw `events` would show "3 of 5" with no filter active
@@ -3835,13 +4066,27 @@ export default function GameDetailPage() {
                         always and toggling `hidden` (KebabMenu's recorded rejected alternative: it
                         changes what the card contains while closed). The visible label swap stays:
                         those are existing words (D-31). Size unchanged (`min-h-11` from the cva
-                        base, D-21's delta here is 0). */}
+                        base, D-21's delta here is 0).
+
+                        DECISION Phase 88.9-36 G2a (owner pick G2a, 88.9-PICKS-B6.json item G2): below
+                        640px, while the panel is open, the toggle sheds its bottom corners
+                        (src/app/globals.css (".btn-fuse-bottom {")), this row drops its 16px bottom
+                        margin and the panel drops its top edge and top radius, so the toggle reads as
+                        the panel's header — chosen OVER the house bottom sheet G2b (my read) and
+                        chips G2c. From 640px the shipped detached shape stays, chosen OVER fusing at
+                        every width: there the toggle is auto-width at the row's right end, so a panel
+                        without its top edge would stand open beside it (the pick was rendered at 375
+                        only; the owner confirms the wide shape at the 88.9-51 glance). Closed, nothing
+                        changes. */}
                     <Button
                         variant="secondary"
                         onClick={() => setShowFilters(!showFilters)}
                         aria-expanded={showFilters}
                         {...(showFilters ? { 'aria-controls': SESSION_FILTERS_PANEL_ID } : {})}
-                        className="w-full sm:w-auto"
+                        /* 88.9-52 (W33): sm:shrink-0 + sm:whitespace-nowrap — the heading beside it is
+                           w-full, so from 640 the auto-width toggle was shrunk until "Show Filters &
+                           Sort" broke in two with the row half empty. Below 640 it is full width. */
+                        className={showFilters ? "w-full sm:w-auto sm:shrink-0 sm:whitespace-nowrap btn-fuse-bottom" : "w-full sm:w-auto sm:shrink-0 sm:whitespace-nowrap"}
                     >
                         {showFilters ? (
                             <>
@@ -3859,7 +4104,7 @@ export default function GameDetailPage() {
                 
                 {/* Filters and Sorting */}
                 {showFilters && (
-                <div id={SESSION_FILTERS_PANEL_ID} className="mb-6 p-4 bg-surface-page rounded-lg border border-line">
+                <div id={SESSION_FILTERS_PANEL_ID} className="mb-6 p-4 bg-surface-page rounded-b-lg rounded-t-none sm:rounded-t-lg border border-line border-t-0 sm:border-t">
                     <div className="flex justify-between items-center mb-3">
                         {/* DECISION Phase 88-24 (Req 2 / UI-SPEC §4.1): 16/700, NOT the
                             20/700 Heading role — chosen OVER the literal reading of Task 3's
@@ -4195,8 +4440,17 @@ export default function GameDetailPage() {
                                 </p>
                             </div>
                             <div className="text-right">
-                                <p className="text-yellow-500 text-xl">
-                                    {renderStars(userReview.rating)}
+                                {/* DECISION Phase 88.9-56 (owner ruling R-C5, 2026-11-10; the DEC-2 / R-P2 ink of plan 88.9-44), for this star
+                                    paragraph and the other reviews' one below: the rating ink is yellow-800 in light and yellow-500 in dark —
+                                    written here in prose, never as the class pair, so the miniPicks count of the class literal stays exact
+                                    (6.85 light / 7.22 dark on the card, 88.9-RULINGS.md Q7 ADDENDUM), chosen OVER the shipped raw yellow
+                                    (2.94 light at rest on the same ground, plan 44's measurement) and OVER waiting for a consistency phase
+                                    (Phase 91 is a backend phase); the star glyphs are ONE role img leaf labelled Rated n out of 5 on the
+                                    half-star value they draw, chosen OVER five star characters read aloud and OVER an sr-only sibling (iOS
+                                    VoiceOver speaks a labelled leaf; a hidden sibling is a separate swipe stop or nothing, measured
+                                    2026-10-20). Changing the pair or the leaf is a decision, not a cleanup. */}
+                                <p className="text-yellow-800 dark:text-yellow-500 text-xl">
+                                    <span role="img" aria-label={`Rated ${drawnRating(userReview.rating)} out of 5`}>{renderStars(userReview.rating)}</span>
                                 </p>
                                 {userReview.is_recommended && (
                                     <p className="text-sm text-content-status-success">✓ Recommended</p>
@@ -4253,8 +4507,8 @@ export default function GameDetailPage() {
                                                 </p>
                                             </div>
                                             <div className="text-right">
-                                                <p className="text-yellow-500 text-xl">
-                                                    {renderStars(review.rating)}
+                                                <p className="text-yellow-800 dark:text-yellow-500 text-xl">
+                                                    <span role="img" aria-label={`Rated ${drawnRating(review.rating)} out of 5`}>{renderStars(review.rating)}</span>
                                                 </p>
                                                 {review.is_recommended && (
                                                     <p className="text-sm text-content-status-success">✓ Recommended</p>

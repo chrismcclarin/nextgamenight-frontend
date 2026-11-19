@@ -128,7 +128,7 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
       {!loading && failedWithNothingCached && (
         <FetchErrorBanner
           state={settingsErrorState}
-          title="We couldn't load your schedules"
+          thing="your schedules"
           reportContext="Recurring check-ins summary (group settings)"
         />
       )}

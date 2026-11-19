@@ -152,17 +152,50 @@ describe('UpcomingEventsCard — branch precedence (DECISION Phase 88-18)', () =
     // failed to load. Ordering is load-bearing, not stylistic.
     renderCard({ events: [], errorState });
 
-    expect(screen.getByText("We couldn't load your upcoming events")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load your upcoming events")).toBeInTheDocument();
     expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
     expect(screen.queryByText(/Nothing scheduled in the next 7 days/)).not.toBeInTheDocument();
+  });
+
+  it('X35 (88.9-69): the card\'s loading words arrive in a polite region that mounts empty and says Loading your upcoming events after the dwell; the visible line carries no role', () => {
+    // 88.9-69 (52-X35, once-over R13; routed here by 88.9-65 hand-off a and 88.9-66 hand-off c).
+    // A status that MOUNTS already holding its words is not announced: a screen reader speaks a
+    // change to a live region, not its arrival. So the visible line is a plain paragraph and the
+    // words are spoken by a visually hidden region beside it that starts empty.
+    vi.useFakeTimers();
+    try {
+      renderCard({ events: [], loading: true });
+
+      const line = screen.getByText('Loading your upcoming events...');
+      expect(line.tagName).toBe('P');
+      expect(line, 'the visible loading line is still a status').not.toHaveAttribute('role');
+      expect(line).not.toHaveAttribute('aria-label');
+
+      const regions = screen.getAllByRole('status');
+      expect(regions).toHaveLength(1);
+      const region = regions[0];
+      expect(region).not.toBe(line);
+      expect(region).toHaveAttribute('aria-live', 'polite');
+      expect(region).toHaveClass('sr-only');
+      expect(region.textContent, 'the region mounted already holding its words').toBe('');
+
+      act(() => {
+        vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+      });
+      expect(screen.getByRole('status')).toBe(region);
+      expect(region.textContent).toBe('Loading your upcoming events');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps the loading branch ahead of the error branch', () => {
     renderCard({ events: [], errorState, loading: true });
 
-    const status = screen.getByRole('status', { name: /loading your upcoming events/i });
-    expect(within(status).getByText(/Loading your upcoming events/)).toBeInTheDocument();
-    expect(screen.queryByText("We couldn't load your upcoming events")).not.toBeInTheDocument();
+    // AMENDED Phase 88.9-69 (X35): the loading line is read by its text; it is no longer a named
+    // status (the X35 test above owns the region).
+    expect(screen.getByText('Loading your upcoming events...')).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your upcoming events")).not.toBeInTheDocument();
     expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
   });
 });
@@ -205,7 +238,7 @@ describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
   // so its polite region and the Retry's description say "Upcoming game nights: " first and the visible line
   // holds RF1 alone — RF1 by exact text is found ONCE, the region holds SPOKEN.
   const SPOKEN = "Upcoming game nights: Couldn't refresh. Showing what loaded earlier.";
-  const LOAD_TITLE = "We couldn't load your upcoming events";
+  const LOAD_TITLE = "Couldn't load your upcoming events";
   const failed = {
     showError: true,
     message: 'Something went wrong on our end. Please try again.',
@@ -346,5 +379,52 @@ describe('a refresh keeps the rows (88.6.1-62, D-09a / D-41, RF1)', () => {
     expect(document.activeElement).toBe(toggle);
     expect(toggle).toHaveAccessibleName('+ 2 more');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+// Phase 88.9-25 (the D5a / R2-27 lift): the guest derivation moved out of this card into
+// src/lib/eventClassification.ts ("export function isGuestEvent"). This pins what the user sees
+// across that refactor: a guest row keeps its dashed edge and its Guest pill, a member row has
+// neither, and with no viewer id nothing is a guest row. Green before and after the lift by design;
+// its detection power was shown by a mutation (the card call forced to false fails it).
+describe('UpcomingEventsCard — guest rows (Phase 71.1 GAMP-09, 88.9-25 lift)', () => {
+  const VIEWER = 'u-viewer';
+  const GUEST_AND_MEMBER = [
+    { ...ev('guest', '2026-08-23T23:00:00.000Z', 'Guest Night Game'), EventParticipations: [{ user_id: VIEWER, is_guest: true }] },
+    { ...ev('member', '2026-08-24T23:00:00.000Z', 'Member Night Game'), EventParticipations: [{ user_id: VIEWER, is_guest: false }] },
+  ];
+
+  // AMENDED Phase 88.9-63 (X27, owner at N41, 2026-11-12: yes, wrap the whole row): the guest row's
+  // left-only edge and its extra left padding became a 1px dashed outline on all four sides, and a
+  // member row carries a transparent border of the same width so the outline moves no text.
+  it('GAMP-09 / X27 (88.9): a guest row carries the dashed outline and the Guest pill, a member row a transparent edge of the same width, a viewer-less render neither cue', () => {
+    renderCard({ events: GUEST_AND_MEMBER, viewerDbUserId: VIEWER });
+    const guestRow = screen.getByRole('button', { name: /^Guest Night Game/ });
+    const memberRow = screen.getByRole('button', { name: /^Member Night Game/ });
+    const guestClasses = guestRow.className.split(/\s+/);
+    const memberClasses = memberRow.className.split(/\s+/);
+    for (const token of ['border', 'border-dashed', 'border-amber-700', 'dark:border-amber-500/70']) {
+      expect(guestClasses, `the guest row carries the outline token ${token}`).toContain(token);
+    }
+    expect(guestClasses, 'the outline wraps the row: no left-only width').not.toContain('border-l-2');
+    expect(guestClasses, 'the outline needs no extra left padding').not.toContain('pl-3');
+    expect(guestClasses, 'the guest arm is exclusive: no transparent edge under the outline').not.toContain('border-transparent');
+    expect(within(guestRow).queryByText('Guest'), 'the guest row carries the Guest pill').not.toBeNull();
+
+    expect(memberClasses, 'the member row carries no dashed edge').not.toContain('border-dashed');
+    expect(memberClasses, 'the member row carries a 1px border, so a guest row is the same size').toContain('border');
+    expect(memberClasses, 'the member row border is transparent').toContain('border-transparent');
+    expect(memberClasses, 'no extra left padding on a member row either').not.toContain('pl-3');
+    expect(within(memberRow).queryByText('Guest'), 'the member row carries no Guest pill').toBeNull();
+
+    cleanup();
+    renderCard({ events: GUEST_AND_MEMBER, viewerDbUserId: null });
+    for (const name of [/^Guest Night Game/, /^Member Night Game/]) {
+      const row = screen.getByRole('button', { name });
+      const classes = row.className.split(/\s+/);
+      expect(classes, 'no viewer id: no dashed edge').not.toContain('border-dashed');
+      expect(classes, 'no viewer id: the transparent edge of every non-guest row').toContain('border-transparent');
+      expect(within(row).queryByText('Guest'), 'no viewer id: no Guest pill').toBeNull();
+    }
   });
 });

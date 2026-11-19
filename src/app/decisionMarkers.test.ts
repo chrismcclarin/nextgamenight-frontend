@@ -128,12 +128,36 @@ describe('D-36 — the eight rejected-floor markers are amended, never deleted',
     expect(lost.map((m) => m.file)).toEqual([]);
   });
 
+  // AMENDED Phase 88.9-52 (R4 C2, accessibility once-over A3, owner 2026-11-18): this test read
+  // "the phone floor and its opt-out really are shipped". The floor still is. The opt-out is
+  // RETIRED: its only two wearers, the BrowseMoreModal player-count steppers, are 44x44 squares
+  // now (32x32 REJECTED: two small targets 4px apart; the marker family only ever weighed a 32x44
+  // lozenge against it, never a 44 square). The title is kept word for word because
+  // e2e/touch-targets.spec.ts cites it.
   it('5. the phone floor and its opt-out really are shipped, so the markers are not lying', () => {
     const css = fs.readFileSync(path.join(__dirname, 'globals.css'), 'utf8');
     expect(css).toMatch(/@media\s*\(\s*width\s*<\s*48rem\s*\)[\s\S]*?\.btn\s*\{[\s\S]*?min-height:\s*2\.75rem/);
-    expect(css).toMatch(/\.btn-compact\s*\{[\s\S]*?min-height:\s*0/);
+    // No rule: every remaining mention in the stylesheet is marker prose inside a comment.
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(rules).not.toMatch(/\.btn-compact/);
     const stepper = fs.readFileSync(path.join(SRC, 'app/components/BrowseMoreModal.js'), 'utf8');
-    expect([...stepper.matchAll(/btn-compact/g)].length).toBeGreaterThanOrEqual(2);
+    const stepperClasses = [...stepper.matchAll(/className="(btn [^"]*)"/g)].map((m) => m[1]);
+    expect(stepperClasses).toHaveLength(2);
+    for (const cls of stepperClasses) {
+      const tokens = cls.split(/\s+/);
+      expect(tokens).not.toContain('btn-compact');
+      expect(tokens).toContain('w-11');
+      expect(tokens).toContain('h-11');
+    }
+  });
+
+  it('5b. every one of the eight records that the opt-out it names was retired (88.9-52 R4 C2)', () => {
+    // Each marker's phase-88 amendment says the split was "a phone floor WITH a .btn-compact
+    // opt-out". Left alone, that sentence would now describe a class that does nothing.
+    const missing = markers.filter(
+      (m) => !/AMENDED Phase 88\.9-52 \(R4 C2/.test(m.text) || !/RETIRED/.test(m.text) || !/44x44/.test(m.text),
+    );
+    expect(missing.map((m) => m.file)).toEqual([]);
   });
 
   // 21-23 — PHASE 88.6 (D-09), the SECOND answer to this marker family's parked question.

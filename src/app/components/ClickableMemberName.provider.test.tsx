@@ -101,7 +101,7 @@ describe('ClickableMemberName under the real FriendshipStatusProvider (Phase 88.
     const plus = await screen.findByRole('button', { name: plusName });
     plus.focus();
     fireEvent.click(plus);
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByText('✓ Friend')));
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector('[data-friend-indicator]')));
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByText(X3)).toBeNull();
   });

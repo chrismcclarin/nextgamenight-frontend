@@ -9,6 +9,9 @@
 //      (a remounted live region is silently never announced)
 //   4. The 3s window, its auto-revert, and its unmount cleanup are the SHIPPED
 //      `KebabMenu.js` semantics, absorbed rather than reinvented
+//      AMENDED Phase 88.9-23 (F9b): the window is now gated CONFIRM_DELAY_MS, then live
+//      CONFIRM_LIVE_MS (TWO_TAP_WINDOW_MS = 6000); "3s" in the titles below is the historical
+//      name. Every commit below advances CONFIRM_DELAY_MS first (confirmed inside the gate).
 //   5. Pending: a slow `onConfirm` cannot be double-fired
 //   6. Typed tier compares with `!==` string equality, never a built pattern
 import * as React from 'react';
@@ -25,10 +28,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { ConfirmDialog, isDismissableTier } from './ConfirmDialog';
+import { CONFIRM_DELAY_MS } from './confirmDelay';
+import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from './useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the delay / hold budgets
 import {
   useConfirmAction,
   TWO_TAP_WINDOW_MS,
   DEFAULT_ARMED_LABEL,
+  DEFAULT_ARMED_NAME,
   type UseConfirmActionConfig,
 } from './useConfirmAction';
 
@@ -132,6 +138,16 @@ function deferred<T = void>() {
 }
 
 describe('useConfirmAction — dialog tier', () => {
+  // F9b (88.9-23): confirm() is refused for CONFIRM_DELAY_MS after open, so the commits
+  // below advance the (fake) clock past the gate first.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('does not call onConfirm when the gate is merely opened', () => {
     const onConfirm = vi.fn();
     render(<DialogHarness onConfirm={onConfirm} />);
@@ -158,6 +174,9 @@ describe('useConfirmAction — dialog tier', () => {
     render(<DialogHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       fireEvent.click(screen.getByTestId('confirm'));
     });
@@ -172,6 +191,9 @@ describe('useConfirmAction — dialog tier', () => {
     render(<DialogHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       fireEvent.click(screen.getByTestId('confirm'));
     });
@@ -265,6 +287,12 @@ describe('useConfirmAction — two-tap tier', () => {
 
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('armed')).toHaveTextContent('alex');
+    // F9b: the armed label counts down first, then reads the live label.
+    expect(screen.getByTestId('trigger-alex')).toHaveTextContent('Wait (3)');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('trigger-alex')).toHaveTextContent(DEFAULT_ARMED_LABEL);
     expect(screen.getByTestId('trigger-bo')).toHaveTextContent('Remove Bo');
   });
@@ -294,6 +322,9 @@ describe('useConfirmAction — two-tap tier', () => {
     const trigger = screen.getByTestId('trigger-bo');
     (document.activeElement as HTMLElement | null)?.blur();
     fireEvent.click(trigger);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       fireEvent.click(trigger);
     });
@@ -308,6 +339,10 @@ describe('useConfirmAction — two-tap tier', () => {
     render(<TwoTapHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    // F9b: the arm text is written at the live edge.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(screen.getByRole('status')).toHaveTextContent('Alex');
 
     act(() => {
@@ -317,6 +352,12 @@ describe('useConfirmAction — two-tap tier', () => {
 
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('armed')).toHaveTextContent('bo');
+    // B starts its own gate: A's live state is never inherited by B.
+    expect(screen.getByTestId('trigger-bo')).toHaveTextContent('Wait (3)');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('trigger-bo')).toHaveTextContent(DEFAULT_ARMED_LABEL);
     expect(screen.getByTestId('trigger-alex')).toHaveTextContent('Remove Alex');
     // The announcement names the NEW target — a guaranteed text change, hence a
@@ -330,11 +371,13 @@ describe('useConfirmAction — two-tap tier', () => {
     render(<TwoTapHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    // AMENDED Phase 88.9-23 (F9b): re-arm B 1000ms before A's window ends (it was 2000 of the
+    // old 3000ms window), so the check below still lands after A's original revert time.
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(TWO_TAP_WINDOW_MS - 1000);
     });
     fireEvent.click(screen.getByTestId('trigger-bo'));
-    // A's original timer would have fired at 3000ms (i.e. 1000ms from here).
+    // A's original timer would have fired at TWO_TAP_WINDOW_MS (i.e. 1000ms from here).
     act(() => {
       vi.advanceTimersByTime(1200);
     });
@@ -364,7 +407,8 @@ describe('useConfirmAction — two-tap tier', () => {
     const { unmount } = render(<TwoTapHarness onConfirm={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
-    expect(vi.getTimerCount()).toBe(1);
+    // F9b: two timers while gated — the arm revert and the countdown tick.
+    expect(vi.getTimerCount()).toBe(2);
 
     unmount();
     expect(vi.getTimerCount()).toBe(0);
@@ -376,6 +420,9 @@ describe('useConfirmAction — two-tap tier', () => {
     render(<TwoTapHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     await act(async () => {
       fireEvent.click(screen.getByTestId('trigger-alex'));
     });
@@ -424,6 +471,10 @@ describe('useConfirmAction — the always-mounted announcement region', () => {
 
     const node = screen.getByRole('status');
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    // F9b: the arm text lands at the live edge — the same node, updated in place.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
 
     expect(screen.getByRole('status')).toBe(node);
     expect(node).toHaveTextContent('Alex');
@@ -446,6 +497,9 @@ describe('useConfirmAction — the always-mounted announcement region', () => {
     render(<TwoTapHarness onConfirm={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     expect(screen.getByRole('status')).toHaveTextContent('Alex');
     await act(async () => {
       fireEvent.click(screen.getByTestId('trigger-alex'));
@@ -472,10 +526,24 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
 
     fireEvent.click(alex);
 
-    // Visible label and accessible name agree — a static aria-label over a
-    // changed visible label is the 2.5.3 failure this pin forbids.
+    // A static aria-label over a changed visible label is the 2.5.3 failure this pin
+    // forbids. X69 (88.9-67): while the gate runs the name is the resting name, then the
+    // wait — it holds the visible word and the number (W3C Understanding 2.5.3: case and
+    // punctuation are not relevant, parenthetical text may count as a description) and it
+    // changes with every step. At the live label the name is the visible label again.
+    expect(alex).toHaveTextContent('Wait (3)');
+    expect(alex).toHaveAttribute('aria-label', 'Remove Alex, wait 3 seconds');
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(alex).toHaveTextContent('Wait (1)');
+    expect(alex).toHaveAttribute('aria-label', 'Remove Alex, wait 1 second');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS - 2000);
+    });
     expect(alex).toHaveTextContent(DEFAULT_ARMED_LABEL);
-    expect(alex).toHaveAttribute('aria-label', DEFAULT_ARMED_LABEL);
+    // R13 (88.9-52): the visible words are the short label; the name is the full sentence.
+    expect(alex).toHaveAttribute('aria-label', DEFAULT_ARMED_NAME);
     expect(alex).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -492,7 +560,7 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
     expect(alex).toHaveAttribute('aria-label', 'Remove Alex');
   });
 
-  it('omits aria-label entirely when the caller supplies none (visible text wins)', () => {
+  it('names the action while it waits, and the full sentence once live, when the caller supplies no name', () => {
     function NoAriaLabelHarness() {
       const confirm = useConfirmAction({
         tier: 'two-tap',
@@ -510,8 +578,17 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
 
     expect(screen.getByTestId('trigger')).not.toHaveAttribute('aria-label');
     fireEvent.click(screen.getByTestId('trigger'));
-    expect(screen.getByTestId('trigger')).not.toHaveAttribute('aria-label');
-    expect(screen.getByTestId('trigger')).toHaveTextContent(DEFAULT_ARMED_LABEL);
+    // X69 (88.9-67): the one window in which the hook names a control itself — Wait (3) alone
+    // would not say what the button does, so the name is confirmLabel, then the wait.
+    expect(screen.getByTestId('trigger')).toHaveTextContent('Wait (3)');
+    expect(screen.getByTestId('trigger')).toHaveAttribute('aria-label', 'Remove, wait 3 seconds');
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    // R13 (88.9-52): live, the hook names this control too. Its visible words are the short
+    // Tap again, which alone would not say what the second tap does.
+    expect(screen.getByTestId('trigger')).toHaveAttribute('aria-label', DEFAULT_ARMED_NAME);
+    expect(screen.getByTestId('trigger').textContent).toBe(DEFAULT_ARMED_LABEL);
   });
 });
 
@@ -562,6 +639,33 @@ describe('ConfirmDialog — dialog tier', () => {
     const confirmButton = screen.getByRole('button', { name: 'Delete' });
     expect(confirmButton).toHaveClass('btn', 'btn-danger');
     expect(screen.queryByRole('button', { name: /^(OK|Yes)$/ })).not.toBeInTheDocument();
+  });
+
+  // 88.9-52 R6 (owner 2026-11-17): a confirm that is not destructive can ask for the Admin blue.
+  it('confirmVariant="admin" paints the confirm btn-admin, never btn-danger, live and while it waits (R6)', () => {
+    const { rerender } = renderConfirmDialog({ confirmLabel: 'Make admin', confirmVariant: 'admin' });
+    const live = screen.getByRole('button', { name: 'Make admin' });
+    expect(live).toHaveClass('btn', 'btn-admin');
+    expect(live).not.toHaveClass('btn-danger');
+    rerender(
+      <ConfirmDialog
+        tier="dialog"
+        open
+        title="Make Target an admin?"
+        confirmLabel="Make admin"
+        confirmVariant="admin"
+        confirmDelay
+        onCancel={() => {}}
+        onConfirm={() => {}}
+        confirmDisabled={() => false}
+      />
+    );
+    const waiting = screen.getByRole('button', { name: /^Make admin/ });
+    expect(waiting).toHaveClass('btn', 'btn-admin');
+    expect(waiting).not.toHaveClass('btn-danger');
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(cancel).toHaveClass('btn-secondary');
+    expect(cancel).not.toHaveClass('btn-admin');
   });
 
   it('focuses Cancel on open, not the confirm or the close affordance', async () => {
@@ -617,21 +721,26 @@ describe('ConfirmDialog — dialog tier', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19): an optional `pendingLabel`
-  // replaces the confirm's visible text while pending — the label swap the page controls use —
-  // so a screen reader on the focused confirm hears that the commit is running. Default-off.
-  it('with pendingLabel, the pending confirm shows the pending text and stays focusable (CR-5 / A-75)', () => {
-    renderConfirmDialog({ pending: true, pendingLabel: 'Deleting\u2026', confirmDisabled: () => true });
-    const confirmButton = screen.getByRole('button', { name: 'Deleting\u2026' });
+  // 88.6.1 code review CR-5 / A-75 (owner ratified 2026-10-19) re-shaped by rule 1 (88.9-45): an
+  // optional busySuffix is the sr-only words appended to the confirm's NAME while pending — the
+  // visible text keeps confirmLabel and the house spinner joins it — so a screen reader on the
+  // focused confirm still hears that the commit is running. Default-off.
+  it('rule 1 (88.9): the pending confirm keeps confirmLabel + spinner and is named "<confirmLabel><busySuffix>" (CR-5 / A-75 re-shaped)', async () => {
+    renderConfirmDialog({ pending: true, busySuffix: ', deleting', confirmDisabled: () => true });
+    const confirmButton = screen.getByRole('button', { name: 'Delete, deleting' });
+    expect(confirmButton).toHaveTextContent('Delete');
+    expect(confirmButton.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0); // AMENDED Phase 88.9-54 (R-C3b): nothing at 0 ms
+    await waitFor(() => expect(confirmButton.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(confirmButton).toHaveAttribute('aria-disabled', 'true');
     expect(confirmButton).not.toHaveAttribute('disabled');
     expect(confirmButton).toHaveClass('btn-danger');
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
-  it('pendingLabel is inert while not pending, and no pendingLabel keeps the verb while pending (CR-5 / A-75)', () => {
-    const { rerender, onCancel, onConfirm } = renderConfirmDialog({ pendingLabel: 'Deleting\u2026' });
+  it('rule 1 (88.9): busySuffix is inert while not pending, and no busySuffix keeps the verb with no spinner while pending (default-off)', async () => {
+    const { rerender, onCancel, onConfirm } = renderConfirmDialog({ busySuffix: ', deleting' });
     expect(screen.getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
     rerender(
       <ConfirmDialog
         tier="dialog"
@@ -645,6 +754,8 @@ describe('ConfirmDialog — dialog tier', () => {
       />
     );
     expect(screen.getByRole('button', { name: 'Delete' })).toHaveAttribute('aria-disabled', 'true');
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, SPINNER_DELAY_MS + 300))); // AMENDED Phase 88.9-54 (R-C3b): read after the appear window (real timers, no pressed sibling to wait on)
+    expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
   });
 
   it('passes an axe audit on the OPEN dialog', async () => {
@@ -883,17 +994,17 @@ describe('ConfirmDialog — typed tier', () => {
 // ConfirmDialog — so the in-flight refusal is exercised end to end, not by a stub.
 function PendingDialogHarness({
   onConfirm,
-  pendingLabel,
+  busySuffix,
 }: {
   onConfirm: UseConfirmActionConfig['onConfirm'];
-  pendingLabel?: string;
+  busySuffix?: string;
 }) {
   const confirm = useConfirmAction({
     tier: 'dialog',
     title: 'Delete this session?',
     body: 'The play record, scores and who was there are deleted for everyone.',
     confirmLabel: 'Delete',
-    pendingLabel,
+    busySuffix,
     onConfirm,
   });
   return (
@@ -907,12 +1018,25 @@ function PendingDialogHarness({
 }
 
 describe('ConfirmDialog — a pending commit through the real hook (AC-9, R123 / D-39)', () => {
+  // F9b (88.9-23): the dialog-tier confirm is gated for CONFIRM_DELAY_MS from open; the
+  // presses below are made after the gate. shouldAdvanceTime keeps waitFor working.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('two synchronous presses reach onConfirm once; the confirm stays aria-disabled and focused until it settles', async () => {
     const gate = deferred();
     const onConfirm = vi.fn(() => gate.promise);
     render(<PendingDialogHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     const confirmButton = screen.getByRole('button', { name: 'Delete' });
     confirmButton.focus();
 
@@ -948,15 +1072,27 @@ describe('ConfirmDialog — a pending commit through the real hook (AC-9, R123 /
   });
 });
 
-describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', () => {
-  it('the pressed confirm swaps to the pending text in place, keeps focus, and returns to the verb on a failed commit', async () => {
+describe('ConfirmDialog — busySuffix through the real hook (CR-5 / A-75, rule 1 88.9-45)', () => {
+  // F9b (88.9-23): as above, the press is made after the CONFIRM_DELAY_MS gate.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rule 1 (88.9): the pressed confirm keeps its verb + spinner in place, named "Delete, deleting", keeps focus, and returns to the bare verb on a failed commit', async () => {
     const gate = deferred();
     const onConfirm = vi.fn(() => gate.promise.then(() => {
       throw new Error('commit failed');
     }));
-    render(<PendingDialogHarness onConfirm={onConfirm} pendingLabel={'Deleting\u2026'} />);
+    render(<PendingDialogHarness onConfirm={onConfirm} busySuffix=", deleting" />);
 
     fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
     const confirmButton = screen.getByRole('button', { name: 'Delete' });
     confirmButton.focus();
 
@@ -964,8 +1100,10 @@ describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', (
       fireEvent.click(confirmButton);
     });
 
-    const pendingConfirm = screen.getByRole('button', { name: 'Deleting\u2026' });
+    const pendingConfirm = screen.getByRole('button', { name: 'Delete, deleting' });
     expect(pendingConfirm).toBe(confirmButton);
+    expect(pendingConfirm).toHaveTextContent('Delete');
+    await waitFor(() => expect(pendingConfirm.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(pendingConfirm).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).toBe(pendingConfirm);
 
@@ -976,7 +1114,105 @@ describe('ConfirmDialog — pendingLabel through the real hook (CR-5 / A-75)', (
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled')
     );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' }).querySelectorAll('[data-slot="spinner"]')).toHaveLength(0), { timeout: SPINNER_MIN_MS + 1500 }); // AMENDED Phase 88.9-54 (R-C3b): waits for the 500 ms hold
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+});
+
+// F9b (88.9-23, owner pick F9b, 88.9-PICKS-B5.json item F9): the dialog tier is gated for
+// CONFIRM_DELAY_MS from OPEN. The gate is aria-disabled (the .btn-danger colour pair), never
+// native disabled, and the countdown is in the confirm's own label, so a screen reader that
+// reaches the confirm hears its current state (88.9-RULINGS.md R-F2).
+describe('ConfirmDialog — F9b delayed enable through the real hook (88.9-23)', () => {
+  // shouldAdvanceTime: user-event's keyboard waits on a timeout of its own, which a fully
+  // frozen clock never fires; the countdown steps are still driven by advanceTimersByTime.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('F9b (88.9): the dialog-tier confirm is aria-disabled with a countdown label for 3 s', async () => {
+    const onConfirm = vi.fn();
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    render(<PendingDialogHarness onConfirm={onConfirm} />);
+
+    fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    const gated = screen.getByRole('button', { name: 'Delete, wait 3 seconds' });
+    expect(gated).toHaveTextContent('Wait (3)');
+    expect(gated).toHaveAttribute('aria-disabled', 'true');
+    expect(gated).not.toHaveAttribute('disabled');
+    expect(gated).toHaveClass('btn-danger');
+    // Opening focus is unchanged: Cancel, on the button-only tiers.
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(gated).toHaveAccessibleName('Delete, wait 1 second');
+    expect(gated).toHaveTextContent('Wait (1)');
+    // Pointer and keyboard are both refused inside the gate.
+    fireEvent.click(gated);
+    gated.focus();
+    await user.keyboard('{Enter}');
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS - 2000);
+    });
+    const live = screen.getByRole('button', { name: 'Delete' });
+    expect(live).toBe(gated);
+    expect(live).toHaveTextContent('Delete');
+    expect(live).not.toHaveAttribute('aria-label');
+    expect(live).not.toHaveAttribute('aria-disabled');
+    await act(async () => {
+      fireEvent.click(live);
+    });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  // X69 width (88.9-67): the confirm holds the widest of its countdown labels and its action, so
+  // the button keeps one width when Wait (1) gives way to the action. The reserve is attribute
+  // text painted by a pseudo-element (src/components/ui/ReservedLabel.tsx ("DECISION Phase 88.9-67 (X69 width)")),
+  // so the button's text is the visible label alone. Rendered widths: the e2e title
+  // "X69 (88.9): the Make admin confirm reads Wait (3), (2), (1) then Make admin at one width at 375, named Make admin, wait N seconds while it waits".
+  it('X69 (88.9): a gated dialog confirm reserves Wait (3), (2), (1) and its action; the typed tier renders the bare label', () => {
+    const { unmount } = render(<PendingDialogHarness onConfirm={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('open'));
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    const confirm = screen.getByRole('button', { name: 'Delete, wait 3 seconds' });
+    const reserved = () =>
+      Array.from(confirm.querySelectorAll('[data-reserve]')).map((span) => span.getAttribute('data-reserve'));
+    expect(reserved()).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Delete']);
+    expect(confirm.textContent).toBe('Wait (3)');
+
+    // Live: the same reserve, so the width cannot change at the edge.
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(confirm.textContent).toBe('Delete');
+    expect(reserved()).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Delete']);
+    unmount();
+
+    // The typed tier has no countdown: its confirm renders the bare label, no wrapper.
+    renderConfirmDialog({
+      tier: 'typed',
+      title: 'Delete Tuesday Crew?',
+      confirmLabel: 'Delete group',
+      expectedPhrase: 'Tuesday Crew',
+      confirmDisabled: () => true,
+    });
+    const typed = screen.getByRole('button', { name: 'Delete group' });
+    expect(typed.querySelectorAll('[data-reserve]')).toHaveLength(0);
+    expect(typed.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+    expect(typed.firstChild?.textContent).toBe('Delete group');
   });
 });
 

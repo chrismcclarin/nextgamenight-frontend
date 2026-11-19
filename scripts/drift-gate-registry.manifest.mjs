@@ -30,8 +30,8 @@ export const helpers = ['src/test-utils/sourceScan.ts'];
 
 export const gates = [
   { file: 'src/app/components/controlSizeFloor.test.tsx', min: 11, why: 'Phase 88 Req 1 — the 16px control floor' },
-  { file: 'src/app/cardPaddingIdiom.test.ts', min: 4, why: 'Phase 88 Req 2 — the card padding idiom' },
-  { file: 'src/app/typeScaleTouchedSurfaces.test.ts', min: 23, why: 'Phase 88 CD-006 — the heading type scale' },
+  { file: 'src/app/cardPaddingIdiom.test.ts', min: 5, why: 'Phase 88 Req 2 — the card padding idiom' },
+  { file: 'src/app/typeScaleTouchedSurfaces.test.ts', min: 24, why: 'Phase 88 CD-006 — the heading type scale; 88.9 K7 — one uppercase-label tracking' },
   { file: 'src/app/borderExplicitness.test.ts', min: 12, why: 'Phase 88 Req 16 — explicit border colours' },
   { file: 'src/app/tintTreatment.test.ts', min: 10, why: 'Phase 88 Req 17 — opaque tints' },
   { file: 'src/app/fetchErrorTreatment.test.ts', min: 15, why: 'Phase 88 Req 14 — the fetch-error treatment' },
@@ -40,15 +40,17 @@ export const gates = [
   { file: 'src/app/components/availabilityGridColumns.test.ts', min: 6, why: 'Phase 88 Req 4 phone geometry — the six aligned AvailabilityGrid column widths stay in lockstep' },
   { file: 'src/app/decisionMarkers.test.ts', min: 23, why: 'Phase 88 D-36 / D-37 — the decision markers Phase 88 overrode say so, in place' },
   { file: 'src/app/rawColorValues.test.ts', min: 7, why: 'Phase 88 Req 2 — no raw hex or black shadows' },
-  { file: 'src/app/tokenContrast.test.ts', min: 67, why: 'Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
-  { file: 'src/app/miniPicks.test.ts', min: 5, why: '88.9 RULING A mini-page picks' },
+  { file: 'src/app/tokenContrast.test.ts', min: 100, why: '88.9-52 round 3 raised 96 -> 100 (R6 admin button, R8c ghost hover, N1b dark Preferred, N1c stripe, W45); 88.9-52 PIX-8 raised 95 -> 96 (active Friends tab ink); 88.9-52 fix batch raised 87 -> 95 (W28 W30 W4+W5 W20 W29 W36 W45 W3); Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
+  { file: 'src/app/pillFamily.test.ts', min: 3, why: 'Phase 88.9-63 X16 / X17a — one pill family, sentence case, names 600' },
+  { file: 'src/app/miniPicks.test.ts', min: 9, why: '88.9-52 fix batch raised 8 -> 9 (W40 Toaster pin); 88.9 RULING A mini-page picks; 88.9-56 R-C5 rating ink (floor raised to the count); 88.9-56 R-C3b guard scan' },
+  { file: 'src/app/strictModeMountFlag.test.tsx', min: 3, why: '88.9-52 W12 / MOUNT — the StrictMode mount-flag guard: detector self-check, source scan, render under StrictMode' },
   { file: 'src/app/surfaceHoverSweep.test.ts', min: 12, why: 'Phase 88.3 Req 1 / D-02 — the hover and sunken sweep' },
   { file: 'src/app/darkChromeLegibility.test.ts', min: 8, why: 'Phase 88.3 Req 7/8 — dark-chrome ring, muted-label corrections, mobile-panel inert guard' },
   { file: 'src/app/accentSweep.test.ts', min: 7, why: 'Phase 88.3 Req 4/5 — the text-safe accent sweep, incl. the today number' },
   { file: 'src/app/statusTextSweep.test.ts', min: 6, why: 'Phase 88.3 Req 6 / OI-1 — the status text sweep' },
   { file: 'src/app/legacyOverlayClass.test.ts', min: 5, why: 'Phase 88 Req 9 — the legacy overlay class stays gone' },
   { file: 'src/app/nativeDialogs.test.ts', min: 8, why: 'Phase 88 Req 11 — no native browser dialogs' },
-  { file: 'src/app/groupColourRendering.test.ts', min: 35, why: 'Phase 88.3 Req 9 / D-09 — group-colour rendering; the tint never reaches the save path' },
+  { file: 'src/app/groupColourRendering.test.ts', min: 36, why: 'Phase 88.3 Req 9 / D-09 — group-colour rendering; the tint never reaches the save path' },
 
   // AMENDMENT Z — Phase 88.3.1 plan 01 (M21, owner-ruled 2026-08-29). Two rows added:
   // `src/lib/colourDistance.test.ts` and `src/lib/groupColourPresets.test.ts`. The first
@@ -122,7 +124,10 @@ export const gates = [
   // durable guard: unregistered, deleting it would have re-opened the stale-replica hole with a green build.
   // Floors since raised to live counts (Phase 88.6.2-26, C-10).
   { file: 'src/components/ui/Button.e2eReplica.test.ts', min: 5, why: 'Phase 88.6-58 H1 — the E10 planted-replica lockstep, its only durable guard' },
-  { file: 'src/app/components/CalendarListView.emptyStates.test.tsx', min: 1, why: 'Phase 88.6-60 — the desktop No events and loading arms of CalendarListView' },
+  // AMENDED Phase 88.9-61 (X25a + X29 A): emptyStates 1 -> 2 (the past-only empty case on every arm); the sections suite is new at 6, then 7 with the sticky / scroll-padding / inset-ring class pin.
+  { file: 'src/app/components/CalendarListView.emptyStates.test.tsx', min: 2, why: 'Phase 88.6-60 — the desktop No events and loading arms of CalendarListView' },
+  // AMENDED Phase 88.9-63 (X27): sections 7 -> 8 (the guest outline on every list arm).
+  { file: 'src/app/components/CalendarListView.sections.test.tsx', min: 12, why: '88.9-52 round 3 raised 11 -> 12 (R7b the guest picture row gap; PIX-4 rewritten as R23); 88.9-52 PIX-4 raised 10 -> 11 (fallback die centring); 88.9-52 fix batch raised 8 -> 10 (A-17, W9); Phase 88.9-61 X25a / X29 — the two-section Calendar list on every arm; 88.9-63 X27 — the guest outline on every arm' },
 
   // AMENDMENT — Phase 88.6 gap plan 61 (review round 2 #18 + H-1, owner-ruled 2026-09-29 R2-FIXNOW-SET-RULING).
   // Two rows added — the guards on the magic-link Sentry egress fixes:
@@ -135,9 +140,9 @@ export const gates = [
   { file: 'src/lib/sentryClientReplayGate.test.ts', min: 13, why: 'Phase 88.6 R-7 + 88.6-61 H-1 — Sentry init is handed the replay and tracing gates' },
   { file: 'src/lib/sentry.scrub.test.ts', min: 61, why: 'Phase 84 T-84-01 + 88.6-61 H-1 — the Sentry scrub functions' },
   { file: 'src/app/breadcrumbNavOverflow.test.ts', min: 12, why: 'Phase 88.6 UAT3-D1 — breadcrumb pills cap at their container; a tree walk over src' },
-  { file: 'src/app/cascadeOrder.test.ts', min: 12, why: 'Phase 88.6-05/06 — cascade order and the focus-ring home; a ring census over src; Phase 88.9-15 test 12, the halo contract' },
+  { file: 'src/app/cascadeOrder.test.ts', min: 13, why: 'Phase 88.6-05/06 — cascade order and the focus-ring home; a ring census over src; Phase 88.9-15 test 12, the halo contract' },
   { file: 'src/app/haloCensus.test.ts', min: 4, why: 'Phase 88.9-15 SPEC R4 — every resolved non-card Button call site keeps its census halo, per JSX element, against scripts/baselines/button-halos.json' },
-  { file: 'src/app/copyTable886_1.test.ts', min: 8, why: 'Phase 88.6.1-64 AC-33 — the owner-ratified copy table; a roster and sweep over src' },
+  { file: 'src/app/copyTable886_1.test.ts', min: 9, why: 'Phase 88.6.1-64 AC-33 — the owner-ratified copy table; a roster and sweep over src; 88.9-49 +1 BANNER-01 census guard' },
   { file: 'src/app/loggerCtxShape.test.ts', min: 10, why: 'Phase 88.6.1 ACCEPT 14 — the one logger-context scanner (T-84-01); every file under src' },
   { file: 'src/app/rawStatusPalette.test.ts', min: 3, why: 'Phase 88.6 Top Fix 1 — no raw red palette on error ink; a scan over src (SPEC R6)' },
   { file: 'src/app/reactBigCalendarRemoval.test.ts', min: 6, why: 'Phase 88.1 Req 9 — react-big-calendar stays gone; its own walk with withoutComments' },
@@ -150,7 +155,7 @@ export const gates = [
   { file: 'src/test-utils/scrubSessionHeaders.test.ts', min: 5, why: 'Phase 88.6.2-20 R8 — the e2e fetch-error session scrub, with a walk of e2e' },
   { file: 'src/test-utils/readHoldGuard.test.ts', min: 3, why: 'Phase 88.6.2-11 / code review C-ML3 — releaseToNetwork never hands a write hold to the network' },
   { file: 'src/test-utils/viewerRsvp.test.ts', min: 4, why: 'Phase 88.6.2-22 / code review C-ML2 — the injected viewer Yes keeps the backend row shape, summary and yes-maybe-no order' },
-  { file: 'src/lib/ci-grep-gate.fixture.test.ts', min: 72, why: 'Phase 88-29 / 88.6.2-26 — the registry lockstep itself (the 88-32 turtle); 88.6.2-27 added the age-ciphertext pairing and P3 tests; the 88.6.2 code review (B-ML1/B-ML3) added the encrypt self-test step pin' },
+  { file: 'src/lib/ci-grep-gate.fixture.test.ts', min: 73, why: 'Phase 88-29 / 88.6.2-26 — the registry lockstep itself (the 88-32 turtle); 88.6.2-27 added the age-ciphertext pairing and P3 tests; the 88.6.2 code review (B-ML1/B-ML3) added the encrypt self-test step pin; 88.9-57 52-X1 pin' },
 ];
 
 export const helperOnly = [
@@ -159,6 +164,7 @@ export const helperOnly = [
   { file: 'src/app/components/heatmap/usePaintGesture.test.ts', why: 'withoutComments over paintGestureActiveStore.ts only; no tree scan' },
   { file: 'src/app/goodbye/page.test.tsx', why: 'withoutComments over two named files; no tree scan' },
   { file: 'src/app/groupHomePage/groupHomePage.identity.test.tsx', why: 'readOpeningTag and withoutComments over its own page.js; no tree scan' },
+  { file: 'src/app/pageWidth.test.ts', why: 'withoutComments over seven named files (X5 page width, 88.9-59); no tree scan' },
   { file: 'src/components/ui/Button.test.tsx', why: 'withoutComments over Button.tsx only; no tree scan' },
   { file: 'src/lib/api.test.ts', why: 'withoutComments over the proxy route file only; no tree scan' },
   { file: 'src/lib/schemas/identity.contract.test.ts', why: 'withoutComments over three named schema files; no tree scan' },

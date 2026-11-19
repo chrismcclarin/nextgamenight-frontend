@@ -6,7 +6,9 @@ import { ApiError, rsvpPublicAPI } from '@/lib/api';
 import { logger, errCtx } from '@/lib/logger';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
+import { Icon } from '@/components/ui/Icon';
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 /**
  * Page states for the RSVP magic link flow
@@ -26,6 +28,9 @@ const PAGE_STATES = {
   // Plan 88.6.1-87 (close ruling P-77): the backend's own 404, carrying its token, after the
   // link was used. Entered on an ApiError with code `not_found`.
   EVENT_GONE: 'event_gone',
+  // Phase 88.9-52 (Q69): the rate limiter's 429. See the DECISION Phase 88.9-52 (Q69) marker
+  // above RATE_LIMITED_DETAIL.
+  RATE_LIMITED: 'rate_limited',
 };
 
 /**
@@ -63,10 +68,45 @@ const UNCONFIRMED_NETWORK_DETAIL =
   "We couldn't confirm your RSVP — the connection timed out. Sign in and open the event to check your answer.";
 const UNCONFIRMED_INTERNAL_DETAIL =
   "We couldn't confirm your RSVP. Sign in and open the event to check your answer.";
+/* DECISION Phase 88.9-52 (Q69, orchestrator-ruled defect inside the owner's "approve all",
+   2026-11-16): a rate-limited answer gets its OWN state on the error card, with the register's
+   rate-limit sentence, chosen OVER the shipped fallthrough to ERROR_DETAIL, which told a person
+   who was only asked to slow down to tap the link from their email again. The limiter answers
+   before the route runs (backend:Sonnet/server.js, the apiLimiter mount on /api/), so the
+   single-use token is unspent and "try again" is true.
+   THE MECHANISM: the 429 is under 500, so respondViaToken RESOLVES its parsed body, and that
+   body is the backend envelope with code rate_limited
+   (backend:Sonnet/middleware/rateLimiter.js, anchor "const rateLimitedBody = (message) =>").
+   The page reads that ONE code off the resolved body. This is NOT the D62 conversion: the four
+   result.error discriminants below are untouched (their bodies carry no code), the roster count
+   in src/app/errorEnvelopeReads.test.ts stays 4, and any other code-only body still falls to
+   ERROR (pinned in page.test.tsx).
+   REJECTED (a): having respondViaToken reject a 429 (src/lib/api.ts, another plan's file; a
+   third scoped exception to its no-throw rule for something one page read settles). The catch
+   below maps a rejected rate_limited to this state anyway, so that route stays open.
+   REJECTED (b): rendering the body's message (R1: upstream prose is never the display string).
+   REJECTED (c): a literal copy of the register line here (two sources that can drift); the
+   sentence is read from the register by its code.
+   A 429 whose body is not the envelope (an edge or proxy limiter) carries no code and stays on
+   ERROR; the resolved body has no status to read. */
+const RATE_LIMITED_DETAIL = getFetchErrorMessage(new ApiError('rate limited', 'rate_limited', 429));
 const UNCONFIRMED_DETAIL_BY_STATE = {
   [PAGE_STATES.UNCONFIRMED_NETWORK]: UNCONFIRMED_NETWORK_DETAIL,
   [PAGE_STATES.UNCONFIRMED_INTERNAL]: UNCONFIRMED_INTERNAL_DETAIL,
+  [PAGE_STATES.RATE_LIMITED]: RATE_LIMITED_DETAIL,
 };
+/* DECISION Phase 88.9-52 (Q69-1/-2, owner 2026-11-16 "approve all"): the error card draws the X
+   (the group invite page's glyph) in place of the warning triangle, and its colour follows the
+   cause. Amber (warning ink on the warning circle, 5.50 light / 4.95 dark): the three states
+   below, where trying again or checking the event may work. Red: PAGE_STATES.ERROR, a link that
+   is malformed or was tampered with. Chosen OVER the triangle on red for every cause. The amber
+   cards with their own glyphs (used link, account, cancelled, already happened) are not this
+   card and are unchanged (Q69-4). */
+const AMBER_ERROR_STATES = new Set([
+  PAGE_STATES.UNCONFIRMED_NETWORK,
+  PAGE_STATES.UNCONFIRMED_INTERNAL,
+  PAGE_STATES.RATE_LIMITED,
+]);
 
 /* Plan 88.6-58 task 7 (review MEDLOW-16; `ITEM-16-COPY-RULING: ratified`, owner 2026-09-29,
    UI-SPEC §6.3). Before this, a second tap on a used link — or a link for an account the backend
@@ -115,26 +155,20 @@ const STATUS_CONFIG = {
   yes: {
     heading: "You're in!",
     messageTemplate: (name, date) => `See you at ${name} on ${date}.`,
-    accent: 'bg-status-success-subtle text-content-status-success',
-    border: 'border-status-success',
     iconBg: 'bg-status-success-subtle',
     iconColor: 'text-content-status-success',
   },
   maybe: {
     heading: 'Got it!',
     messageTemplate: (name, date) => `You're a maybe for ${name} on ${date}.`,
-    accent: 'bg-status-warning-subtle text-content-status-warning',
-    border: 'border-status-warning',
     iconBg: 'bg-status-warning-subtle',
     iconColor: 'text-content-status-warning',
   },
   no: {
     heading: 'Got it!',
     messageTemplate: (name, date) => `We'll miss you at ${name} on ${date}.`,
-    accent: 'bg-surface-elevated text-content-secondary',
-    border: 'border-line',
-    iconBg: 'bg-surface-elevated',
-    iconColor: 'text-content-muted',
+    iconBg: 'bg-surface-muted', // DECISION Phase 88.9-52 (W3): the muted circle with the secondary ink, chosen OVER the elevated surface (it IS the card in light, 1.00, so the X had no circle; muted reads 1.50 there, and in dark both are purple-800) and OVER the muted ink on it (forbidden on the muted ground). Glyph 6.96 light, 7.07 dark.
+    iconColor: 'text-content-secondary',
   },
 };
 
@@ -155,6 +189,14 @@ export default function RsvpPage() {
   const [pageState, setPageState] = useState(PAGE_STATES.LOADING);
   const [responseData, setResponseData] = useState(null);
   const [errorInfo, setErrorInfo] = useState(null);
+
+  /* DECISION Phase 88.9-43 O06c: the event link carries event_id alone, chosen OVER appending the
+     SUCCESS body's group_id — one href for both states (the 403 bodies carry none) on the route
+     plan 88.6.1-25 verified; encodeURIComponent keeps the e parameter from injecting query keys
+     (T-88.9-G47). Rendered on SUCCESS and EXPIRED_LINK only (the owner pick, 88.9-PICKS-B8B.json,
+     2026-11-07 4:37 PM Pacific); ACCOUNT_NOT_FOUND has no account to open the event with. */
+  const linkEventId = searchParams.get('e');
+  const eventHref = linkEventId ? `/gameDetail?event_id=${encodeURIComponent(linkEventId)}` : null;
 
   /* AC-13 (owner ruling 2026-09-09, option 1): the per-effect-run cancellation flag, copied
      from the shipped idiom at `invite/game/[token]/page.js` (its `let cancelled = false`
@@ -273,6 +315,10 @@ export default function RsvpPage() {
           setPageState(PAGE_STATES.EXPIRED_LINK);
         } else if (result.error === 'account_not_found') {
           setPageState(PAGE_STATES.ACCOUNT_NOT_FOUND);
+        } else if (result.code === 'rate_limited') {
+          // Q69 (88.9-52): the limiter's envelope, the one code this page reads. See the marker
+          // above RATE_LIMITED_DETAIL.
+          setPageState(PAGE_STATES.RATE_LIMITED);
         } else {
           setPageState(PAGE_STATES.ERROR);
         }
@@ -319,6 +365,12 @@ export default function RsvpPage() {
            88.6.1-87 — owner-ruled 2026-10-18 ("amber"), shown at 375px: the deleted-event state
            (EVENT_GONE) draws the LINK_STATE_COPY branch; UNCONFIRMED_NETWORK and
            UNCONFIRMED_INTERNAL stay on the ERROR branch, where this rejection still holds.
+           AMENDED Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): Q69 is the Phase 88.9
+           look change this rejection deferred. The two UNCONFIRMED states STAY on the ERROR
+           branch (its headline, their own details, Go to Home) and that branch now draws the X
+           on the amber warning pair for them, chosen OVER moving them to LINK_STATE_COPY (still
+           rejected: the clock is that branch's glyph, and Q69-4 keeps it there) and OVER the
+           triangle on red. See AMBER_ERROR_STATES.
            REJECTED (b): ONE unconfirmed state plus a second state value (or an `errorInfo`
            field) holding the cause — two writes per failure that must agree, and the detail
            would no longer follow from `pageState`.
@@ -353,6 +405,10 @@ export default function RsvpPage() {
           setPageState(PAGE_STATES.UNCONFIRMED_NETWORK);
         } else if (err instanceof ApiError && err.code === 'internal') {
           setPageState(PAGE_STATES.UNCONFIRMED_INTERNAL);
+        } else if (err instanceof ApiError && err.code === 'rate_limited') {
+          // Q69 (88.9-52): unreachable today (a 429 resolves); kept so a helper that starts
+          // rejecting it lands on the same card.
+          setPageState(PAGE_STATES.RATE_LIMITED);
         } else {
           setPageState(PAGE_STATES.ERROR);
         }
@@ -365,8 +421,9 @@ export default function RsvpPage() {
 
   /* The SUCCESS branch's display config, hoisted above the branch dispatch so the live
      announcement below can compose the heading and message this page already renders. The
-     `|| STATUS_CONFIG.yes` fallback is the shipped one, moved verbatim — `borderExplicitness`
-     relies on it for the card's `border-t-4` colour. */
+     `|| STATUS_CONFIG.yes` fallback is the shipped one, moved verbatim. Since plan 88.9-69 (X59b)
+     no border reads this config: the card's coloured top line is gone and the page has left the
+     border-explicitness exemption list. */
   const successConfig = responseData
     ? STATUS_CONFIG[responseData.status] || STATUS_CONFIG.yes
     : null;
@@ -399,7 +456,9 @@ export default function RsvpPage() {
      this page composes both halves. Reverting to heading-only is a decision, not a cleanup. */
   // Plan 88.6.1-36 (D-25): the ERROR branch's detail — R3 or R9 for the two UNCONFIRMED states,
   // `ERROR_DETAIL` otherwise. ONE value read by the branch's `<p>` AND the announcement.
+  // Q69 (88.9-52): the rate-limited state reads the register's rate-limit line from the same map.
   const errorDetail = UNCONFIRMED_DETAIL_BY_STATE[pageState] ?? ERROR_DETAIL;
+  const errorIsTemporary = AMBER_ERROR_STATES.has(pageState);
   const announcement =
     pageState === PAGE_STATES.LOADING
       ? ''
@@ -429,7 +488,10 @@ export default function RsvpPage() {
 
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
-        <div className={`max-w-md w-full bg-surface-card rounded-card shadow-theme-lg overflow-hidden border-t-4 ${config.border}`}>
+        {/* DECISION Phase 88.9-69 (X59b, owner pick Ta): no coloured line on the card top, chosen
+            OVER the shipped stripe (it repeated icon and heading). Pick page 10b, 2026-11-14; the
+            status config's line colour and its unread accent pair left with it. */}
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg overflow-hidden">
           <div className="p-8 text-center">
             {/* Icon — r2 #180: all three status glyphs are decorative duplicates of the heading
                 beside them and carry `aria-hidden="true" focusable="false"`, the live house idiom
@@ -474,6 +536,28 @@ export default function RsvpPage() {
 
             {/* Divider and links */}
             <div className="border-t border-line pt-4">
+              {/* O06c (88.9-43): the way to the event this page confirms — a centred row above the
+                  close-this-tab line, primary. */}
+              {/* DECISION Phase 88.9-69 (X13-5, owner at N35): Go to Home, the page's own label,
+                  under Go to the event, chosen OVER the event link alone and OVER side by side
+                  (279px at 375). The same pair, in the same order and variants, as the used-link
+                  card below; with no event in the link Go to Home stands alone as the primary. */}
+              {eventHref ? (
+                <div className="flex flex-col items-center mb-3">
+                  <Button asChild variant="primary" size="default">
+                    <a href={eventHref}>Go to the event</a>
+                  </Button>
+                  <Button asChild variant="secondary" size="default" className="mt-3">
+                    <a href="/">Go to Home</a>
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex justify-center mb-3">
+                  <Button asChild variant="primary" size="default">
+                    <a href="/">Go to Home</a>
+                  </Button>
+                </div>
+              )}
               {/* §4.3: a one-line descriptor, stays at 14 — the same string plan 88.6-23 kept at
                   14 on the sibling availability-form confirmation. */}
               <p className="text-sm text-content-muted mb-2">
@@ -533,15 +617,30 @@ export default function RsvpPage() {
     // "Go to Home" (the ERROR branch's own string) rather than a NEW label such as "Open the
     // event" — the ruling ratified the two headline/detail pairs and nothing else (P1). Minting
     // an event-link label is an owner copy decision, not a cleanup.
+    // AMENDED Phase 88.9-43 (owner pick O06c, 88.9-PICKS-B8B.json, 2026-11-07 4:37 PM Pacific):
+    // EXPIRED_LINK now leads with a primary Go to the event link (the event_id-only route
+    // 88.6.1-25 verified) and Go to Home steps to secondary, chosen OVER the shipped Go to Home
+    // alone; ACCOUNT_NOT_FOUND keeps Go to Home alone (no account to open the event with; the pick
+    // rendered EXPIRED_LINK and SUCCESS only). The label "Go to the event" is ratified round-2 copy.
     const copy = LINK_STATE_COPY[pageState];
+    const leadsToEvent = pageState === PAGE_STATES.EXPIRED_LINK && eventHref;
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
           <div className="w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4">
             {/* Decorative — see the success branch. */}
-            <svg className="w-8 h-8 text-content-status-warning" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            {/* DECISION Phase 88.9-69 (X59a, owner pick Ga): link-2-off on the used-link card,
+                chosen OVER the clock and Gb's tick; EXPIRED_LINK only (P-77 rules the cancelled
+                clock); Icon OVER copied path data. 5.50 / 4.95. Those two numbers are the glyph
+                ink on the warning circle, light then dark; the account and cancelled-night cards
+                keep the clock below byte for byte. */}
+            {pageState === PAGE_STATES.EXPIRED_LINK ? (
+              <Icon name="Link2Off" size={32} strokeWidth={2} className="w-8 h-8 text-content-status-warning" />
+            ) : (
+              <svg className="w-8 h-8 text-content-status-warning" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
           </div>
           <Heading level={1} size="heading" className="text-content-primary mb-2">
             {copy.headline}
@@ -549,11 +648,24 @@ export default function RsvpPage() {
           <p className="text-content-secondary mb-6">
             {copy.detail}
           </p>
-          <Button asChild variant="primary" size="default">
-            <a href="/">
-              Go to Home
-            </a>
-          </Button>
+          {leadsToEvent ? (
+            <div className="flex flex-col items-center">
+              <Button asChild variant="primary" size="default">
+                <a href={eventHref}>Go to the event</a>
+              </Button>
+              <Button asChild variant="secondary" size="default" className="mt-3">
+                <a href="/">
+                  Go to Home
+                </a>
+              </Button>
+            </div>
+          ) : (
+            <Button asChild variant="primary" size="default">
+              <a href="/">
+                Go to Home
+              </a>
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -562,10 +674,18 @@ export default function RsvpPage() {
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
-          <div className="w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4">
+          {/* Q69 (88.9-52): the X, amber or red by cause. See AMBER_ERROR_STATES. One literal
+              class string per arm (a class built from pieces emits nothing). */}
+          <div
+            className={
+              errorIsTemporary
+                ? 'w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4'
+                : 'w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4'
+            }
+          >
             {/* Decorative — see the success branch. */}
-            <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            <svg className={errorIsTemporary ? 'w-8 h-8 text-content-status-warning' : 'w-8 h-8 text-content-status-error'} aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
           <Heading level={1} size="heading" className="text-content-primary mb-2">
@@ -615,7 +735,8 @@ export default function RsvpPage() {
      that rule excludes every branch here. Adding a focus move is a decision, not a cleanup.
 
      [AMENDED Phase 88.6.1-36 (W053 / IN-405): "THIS page has no control at all on any branch"
-     was false — the settled branches render a link ("Go to Group", "Go to Home"). What holds is
+     was false — the settled branches render a link ("Go to Group", "Go to Home", and since
+     88.9-43 "Go to the event"). What holds is
      that no branch removes a control the user was operating, because the submit runs on mount,
      so the availability-form rule still excludes every branch, both UNCONFIRMED states
      included.] */

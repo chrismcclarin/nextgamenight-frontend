@@ -12,6 +12,9 @@
  * - It never touches a `tabindex` attribute an element already carried.
  * - It adds no class and no inline style. Any focus ring after keyboard use is the browser's
  *   (P-11), and a look question for Phase 88.9, not this module's.
+ *   AMENDED Phase 88.9-58 (X20, owner 2026-11-11: yes hide it): answered. The main element hides
+ *   the browser outline itself, at src/app/layout.js ("DECISION Phase 88.9-58 (X20"); heading
+ *   floors keep the browser ring; this module still adds no class.
  */
 
 /** Both dialog roles. Radix DialogContent renders `role="dialog"`; an alert dialog counts too. */

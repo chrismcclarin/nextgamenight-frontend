@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { eventsAPI } from '../../../../lib/api';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
-import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 
@@ -55,6 +55,41 @@ function GameInvitePage() {
   // Bumped by handleRetry to re-fire both preview AND join effects when the
   // backend was unreachable on first attempt.
   const [retryKey, setRetryKey] = useState(0);
+  /* DECISION Phase 88.9-52 (Q69-3, owner 2026-11-16 "approve all"): a JOIN 401 (the session
+     expired) stays on the transient card but swaps Retry for the sign-in round trip, the restore
+     page's sign-in recovery (restore/group/[token]/page.tsx, its Sign in to try again link) with
+     this page's own returnTo, chosen OVER the shipped Retry: Retry re-sent the join with the same
+     dead session and could never work. Keyed on the HTTP status alone, like isPermanent below.
+     The connection hint under the line is left out on this arm (the remedy is not the
+     connection); the register's session line and the restore page's link words are reused, no
+     new string. Putting Retry back on a 401 is a decision, not a cleanup.
+     AMENDED Phase 88.9-52 (PIX-5): the connection hint is now left out for every cause but a
+     network failure; see the PIX-5 marker below.
+     AMENDED Phase 88.9-52 (P3, owner 2026-11-17 "Drop"): the hint is gone for every cause. */
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  /* DECISION Phase 88.9-52 (PIX-5, picture pass, the Q69 as-is note): the small line under the
+     failure sentence (Check your connection and try again.) shows ONLY when the failure is a
+     network failure, read from ApiError.code (network), chosen OVER the shipped form, where it
+     sat under every retryable failure: a 5xx card then gave two causes, "our end" in the
+     register sentence and "your connection" in the small line. Every other retryable cause (5xx,
+     429, the CSRF refusal, an unreadable 2xx, a raw transport error that carries no code) shows
+     the register sentence and Retry alone. Keyed on the code, never on the message text (the
+     classifier's rule below). No string was added or changed. Showing the line for another cause
+     is a decision, not a cleanup.
+     AMENDED Phase 88.9-52 (P3, owner 2026-11-17 "Drop"): the small line is REMOVED for a network
+     failure too, and with it the connectionHint state this marker sat on and the line's string.
+     Chosen OVER PIX-5's network-only form: on a network failure the register sentence above it
+     already ends with the same words, so the card said them twice. The transient card is now the
+     register sentence and Retry for every cause. Bringing the small line back, for any cause, is
+     a decision, not a cleanup. */
+  /* DECISION Phase 88.9-52 (R27, owner 2026-11-17 "Yes"): a join answered 410 with the envelope
+     code account_deleted lands on the red X permanent card with the register's own sentence for
+     that code (getFetchErrorMessage) and WITHOUT the contact-the-group-owner line, chosen OVER
+     the grey passed-game-night card the status alone selected (untrue for this person) and OVER
+     keeping the contact line (a new invite link cannot help a deleted account). This flag is
+     what leaves that line out; it is set in the join catch only (the preview is public and has
+     no account). Showing the contact line on this card is a decision, not a cleanup. */
+  const [accountDeleted, setAccountDeleted] = useState(false);
 
   // Classify a thrown error as transient (retryable) or permanent. Used by
   // both the preview fetch catch and the join POST catch so backend-down /
@@ -95,7 +130,15 @@ function GameInvitePage() {
        REJECTED: the review's gated shape (keep the text arms, run them only when there is no
        HTTP status). Without a status `isPermanent` is already false, so the gated arms could
        never change the answer — dead code defended by a comment.
-       Re-adding a message-text test to this classifier is a decision, not a cleanup. */
+       Re-adding a message-text test to this classifier is a decision, not a cleanup.
+
+       AMENDED Phase 88.9-52 (R27, owner 2026-11-17): this classifier still decides on the status
+       alone, and a 410 account_deleted is permanent by it. What changed is the EXPIRED arm in the
+       join catch below: it no longer keys on the 410 status alone, because the measurement above
+       missed a second 410 on the join route, the auth layer's tombstone refusal
+       (backend:Sonnet/middleware/auth0.js, sendError account_deleted, on every signed-in route).
+       That arm now reads the envelope code, the remedy the 88.6-23 and 88.6-58 markers named;
+       REJECTED again: matching the backend prose. */
     const isPermanent = httpStatus === 404 || httpStatus === 410;
     // Ambiguous → treat as transient. findOrCreate makes retry idempotent.
     return isPermanent ? 'permanent' : 'transient';
@@ -139,7 +182,11 @@ function GameInvitePage() {
            so 410 on this call means "passed" and nothing else. If a second 410 is ever added
            to that route, this branch needs an envelope `code` — it does not need the prose
            back. Pinned by `page.test.tsx`, whose 410/404 arms are built with the
-           POST-alias-drop message shape so a green run proves the branch is alias-independent. */
+           POST-alias-drop message shape so a green run proves the branch is alias-independent.
+           AMENDED Phase 88.9-52 (R27, owner 2026-11-17): unchanged HERE, and still status-only:
+           the preview is public (no auth layer in front of it), so its one 410 is still the
+           has-passed gate. The JOIN catch below now reads the envelope code, because its route
+           does have a second 410 (account_deleted). */
         if (err?.status === 410) {
           setStatus('expired');
           return;
@@ -151,7 +198,9 @@ function GameInvitePage() {
         const kind = classifyError(err);
         if (kind === 'transient') {
           setStatus('error-transient');
-          setError(getFetchErrorMessage(err));
+          // X68 (88.9-66, owner ruled 2026-11-14): the transient branch renders Retry, so its line
+          // is the register line's beside-retry form.
+          setError(messageBesideRetry(getFetchErrorMessage(err)));
         } else {
           setStatus('error-permanent');
           setError('This invite link is no longer valid.');
@@ -216,12 +265,32 @@ function GameInvitePage() {
         // 2026-09-28). Chosen OVER rendering the backend `message` (R1: never upstream text)
         // and OVER the register's generic 410 line (wrong copy for a known, authored state).
         // A second 410 on that route would need an envelope `code`, not prose.
-        if (err?.status === 410) {
+        // AMENDED Phase 88.9-52 (R27, owner 2026-11-17): the join route HAS a second 410. The
+        // auth layer in front of every signed-in route answers a deleted account 410 with the
+        // envelope code account_deleted, so "the join handler's only 410" above is true of the
+        // handler and false of the route. Chosen: the expired arm skips that code, which then
+        // falls to the permanent card below with the register's account_deleted sentence;
+        // superseded: selecting expired on the 410 status alone (88.6-58, and the 88.6-23
+        // precondition it copied). Rejected: the passed-game-night card for a deleted account
+        // (the owner saw it and ruled it untrue), and matching prose. The has-passed 410 carries
+        // no envelope code and still lands on expired.
+        if (err?.status === 410 && err?.code !== 'account_deleted') {
           setStatus('expired');
           return;
         }
-        setError(getFetchErrorMessage(err));
-        setStatus(classifyError(err) === 'permanent' ? 'error-permanent' : 'error-transient');
+        // R27 (88.9-52): the permanent card leaves its contact line out for a deleted account.
+        setAccountDeleted(err?.code === 'account_deleted');
+        // X68 (88.9-66): Retry shows on the transient branch only, so only that branch takes the
+        // beside-retry form; the permanent branch keeps the register line.
+        const permanent = classifyError(err) === 'permanent';
+        // Q69-3 (88.9-52): a 401 renders the sign-in link in place of Retry, so it keeps the full
+        // register line too.
+        const signIn = err?.status === 401;
+        setNeedsSignIn(signIn);
+        setError(
+          permanent || signIn ? getFetchErrorMessage(err) : messageBesideRetry(getFetchErrorMessage(err))
+        );
+        setStatus(permanent ? 'error-permanent' : 'error-transient');
       });
     // NOTE: `status` deliberately omitted from deps — its inclusion was the
     // root cause of the parallel-POST flicker bug.
@@ -259,6 +328,7 @@ function GameInvitePage() {
       setRegionDwell(false);
     }, REGION_EMPTY_DWELL_MS);
     joiningRef.current = false;
+    setNeedsSignIn(false);
     setError(null);
     setStatus('loading');
     setEventInfo(null);
@@ -503,29 +573,54 @@ function GameInvitePage() {
         )}
 
         {/* Transient error — D-INVITE-LANDING-03 transient branch: inline
-            error + Retry button. Network failures, 5xx, ambiguous errors. */}
+            error + Retry button. Network failures, 5xx, ambiguous errors.
+            AMENDED Phase 88.9-52 (PIX-5): the small connection line under the error shows for a
+            network failure only (the PIX-5 marker above); without it the error
+            line carries the 24px gap to Retry, as the sign-in arm's does.
+            AMENDED Phase 88.9-52 (P3, owner 2026-11-17 "Drop"): the small line never shows now,
+            so the error line always carries the 24px gap to Retry. */}
+        {/* DECISION Phase 88.9-52 (Q69-2 / Q69-3, owner 2026-11-16 "approve all"): this card draws
+            the X on the amber warning pair (the group invite page's amber arm: warning ink on the
+            warning circle, 5.50 light / 4.95 dark), chosen OVER the shipped warning triangle on
+            the red pair. Amber X says trying again may work; the red X below says the link is
+            dead; the grey clock on the passed game night is untouched (Q69-4). */}
         {status === 'error-transient' && (
           <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            <div className="mx-auto mb-4 w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-content-status-warning" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
             <Heading level={1} size="heading" className="text-content-primary mb-2" ref={settledHeadingRef}>
               {TRANSIENT_HEADLINE}
             </Heading>
-            <p className="text-content-secondary mb-2">{error}</p>
-            <p className="text-xs text-content-muted mb-6">
-              Check your connection and try again.
-            </p>
-            <Button
-              variant="primary"
-              size="default"
-              onClick={handleRetry}
-              className="w-full text-center mb-2"
-            >
-              Retry
-            </Button>
+            {needsSignIn ? (
+              <>
+                <p className="text-content-secondary mb-6">{error}</p>
+                {/* Stays an <a>: the Auth0 handoff needs a hard navigation, and the href is the
+                    preview branch's own returnTo, so signing in lands back here and the join
+                    runs again with a live session. */}
+                <Button asChild variant="primary" size="default" className="w-full text-center mb-2">
+                  <a
+                    href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/game/${token}`)}`}
+                  >
+                    Sign in to try again
+                  </a>
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-content-secondary mb-6">{error}</p>
+                <Button
+                  variant="primary"
+                  size="default"
+                  onClick={handleRetry}
+                  className="w-full text-center mb-2"
+                >
+                  Retry
+                </Button>
+              </>
+            )}
             <Link
               href="/"
               className="block w-full text-center text-sm text-content-muted hover:text-content-secondary mt-2"
@@ -549,9 +644,12 @@ function GameInvitePage() {
               {PERMANENT_HEADLINE}
             </Heading>
             <p className="text-content-secondary mb-6">{error}</p>
-            <p className="text-sm text-content-muted mb-6">
-              Contact the group owner for a new invite link.
-            </p>
+            {/* R27 (88.9-52): left out for a deleted account; see the marker on accountDeleted. */}
+            {!accountDeleted && (
+              <p className="text-sm text-content-muted mb-6">
+                Contact the group owner for a new invite link.
+              </p>
+            )}
             <Button asChild variant="primary" size="default" className="w-full text-center">
               <Link href="/">
                 Go Home

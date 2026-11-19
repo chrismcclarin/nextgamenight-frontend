@@ -118,7 +118,7 @@ import {
   assertRosterShape,
   type ExemptionRoster,
 } from '../test-utils/exemption';
-import { lineAt, sourceFiles, withoutComments } from '../test-utils/sourceScan';
+import { lineAt, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -188,10 +188,10 @@ const NAMED_SURFACES = [
  * §4.1's working set, as Tailwind utilities: 14 / 16 / 20 / 30.
  *
  * DO NOT ADD `xs` HERE. These assertions are HEADING-scoped, and admitting `text-xs`
- * would re-legalize the two text-xs h4s plan 88.6-27 retired — now
- * src/app/components/CalendarListView.js ("id={thisWeekId}") and
- * src/app/components/CalendarListView.js ("id={laterId}"), both Heading level 4 size label at
- * 14 — the exact sites UI-SPEC §1.2 row V-5
+ * would re-legalize the two text-xs h4s plan 88.6-27 retired (the Calendar sheet's This-week
+ * and Later subheaders, each a Heading level 4 size label at 14; the first left the sheet with
+ * 88.9-39 D6c and the second with 88.9-61 X11, so neither is in the tree today) — the exact
+ * sites UI-SPEC §1.2 row V-5
  * (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 1.2 The sanctioned visible deltas"),
  * "h4 12px → 14px") exists to move UP. 12px is the tree-wide FLOOR (task 2's sub-12px
  * arbitrary-value fold enforces it) and the `caption` rung lives on NON-heading elements only —
@@ -311,7 +311,9 @@ const PROP_SEAM_LITERAL =
  * (src/app/components/CalendarListView.js ("isSheet = false, headingLevel = 'h5' }")) would record
  * an h5 while BOTH real call sites (the This week and Later DateGroup calls) pass
  * rowHeadingLevel h6 — a level the DOM never renders, double-counted onto a chain whose two
- * ends are already counted.
+ * ends are already counted. (AMENDED Phase 88.9-61, X11: both of those call sites have left, so
+ * no caller passes a literal today and the default h5 is what renders; the skip rule stands,
+ * because the seam is still an expression with no representable level.)
  *
  * Do not "improve" this into a resolver. Skipped sites are enumerated and asserted, so a
  * new one is visible rather than silent.
@@ -571,7 +573,12 @@ const REVIEWS_HEADING = (h: Heading) =>
  * The five LITERAL prop seams, enumerated so one appearing or disappearing is visible.
  * Re-measured at this plan's commit.
  */
-const EXPECTED_PROP_SEAMS = 5;
+// AMENDED Phase 88.9-39 (owner pick D6c): 5 -> 3. The THIS WEEK DateGroup call site left
+// CalendarListView.js with its headingLevel="h5" / rowHeadingLevel="h6" pair (the next-7-day rows
+// fold into the default-level upcoming list); the Later pair and the EventRow seam remain.
+// AMENDED Phase 88.9-61 (X11): the Later h4 and its h5/h6 pair left. 3 -> 1: the Later DateGroup
+// call site left CalendarListView.js with its literal pair; no caller demotes any more.
+const EXPECTED_PROP_SEAMS = 1;
 
 /**
  * The `heading-primitive` floor, asserted SEPARATELY from `prop-seam` so neither can be
@@ -777,7 +784,22 @@ const EXPECTED_PROP_SEAMS = 5;
 // DECISION Phase 88.6.2-15 (EMP): compared EXACTLY (toBe) over the >= floor this constant was, and over deriving it from the other rosters (a number derived from the scan it pins can never disagree with it). Measured at FE 995023d: 136 heading-primitive call sites against a floor of 131 — five migrations landed without a raise and the >= stayed green. A sweep that adds OR removes a primitive now reds until this number moves in the same commit. The RAISED history above, and its ">=" sentences, describe the floor before 88.6.2-15.
 // Re-measured at execution (FE de26524, 88.6.2-15 task 2): 136, by this suite's own failure
 // message — "expected 137 to be 131" with a one-site plant present, then the plant deleted.
-const EXPECTED_PRIMITIVES = 136;
+// AMENDED Phase 88.9-39 (owner pick D6c): 136 -> 135. The THIS WEEK `<Heading level={4}>` left
+// CalendarListView.js's sheet arm (its rows fold into the default-level upcoming list); measured by
+// this suite's own failure message, "expected 135 to be 136".
+// AMENDED Phase 88.9-61 (X11): the Later h4 and its h5/h6 pair left. 135 -> 134: the Later
+// Heading level 4 left CalendarListView.js's sheet arm.
+// AMENDED Phase 88.9-66 (X70b, owner 2026-11-14): 134 -> 133. The Friends page's signed-out prompt
+// left with its h1 (the declined return is the shared banner, whose title is not a heading);
+// measured by this suite's own failure message, "expected 133 to be 134".
+// AMENDED Phase 88.9-68 (X58, owner R2: "It has no title"): 133 -> 134. The Profile BGG search
+// panel takes a level-3 title on the body rung (Search BoardGameGeek), beside the import box's;
+// measured by this suite's own failure message, "expected 134 to be 133".
+// AMENDED Phase 88.9-52 (A-04 / A-38): 134 -> 135. The shared centred frame renders ONE level-1
+// heading for screen readers only (the page's name) when a page passes srHeading; it is one
+// primitive in src/components/ui/CentredPageFrame.tsx, not one per page. Measured by this suite's
+// own failure message, "expected 135 to be 134".
+const EXPECTED_PRIMITIVES = 135;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -1335,9 +1357,15 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // `ErrorFallback.tsx`'s `<Heading level={1}>` is literal and IS counted; this one is not.
       // Raising the floor by two would have RED the floor assertion, which is the honest outcome — do
       // not "fix" that by resolving the expression (see `PROP_SEAM_EXPRESSION`).
+      // AMENDED Phase 88.9-22 (owner pick F4b): the EmptyState entry moved 179 -> 182 because 88.9-22 added a three-line F4b AMENDED comment above the same Heading; the skipped element is unchanged.
+      // AMENDED Phase 88.9-39 (owner picks F2c / D5a / D6c; then the 88.9-25 hand-off 4 heights marker): the CalendarListView entry (DateGroup's `<DayHeading`) moved 1069 -> 1071 -> 1082 because 88.9-39's OWNER RULING 2a sentence, the D6c fold and the heights DECISION block sit above it; the skipped element is unchanged.
+      // AMENDED Phase 88.9-60 (X6): the CalendarListView entry moved 1082 -> 1083 because 88.9-60 added the one-line useBgImageFailed import at the top of that file; the skipped element (DateGroup's DayHeading) is unchanged.
+      // AMENDED Phase 88.9-61 (X11): the CalendarListView entry moved 1083 -> 1077 because the Later section, its heading id and the this-week bucket left that file and the X11 / X26 amendment sentences were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
+      // AMENDED Phase 88.9-61 (X25a + X29 A): the CalendarListView entry moved 1077 -> 1027 because the desktop feed, the Today delineator and the mount-time centre-scroll left that file and the SectionHeader component and the X29 amendment sentences were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
+      // AMENDED Phase 88.9-61 (X25a sticky): the CalendarListView entry moved 1027 -> 1072 because the fold-scroll layout effect, the isomorphic layout-effect const and the two X25a DECISION markers were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
     ).toEqual([
-      'app/components/CalendarListView.js:1069',
-      'components/ui/EmptyState.tsx:179',
+      'app/components/CalendarListView.js:1100',
+      'components/ui/EmptyState.tsx:182',
     ]);
   });
 
@@ -1619,7 +1647,8 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
  *    `rowHeadingLevel="h6"`. The number would be wrong in this map's own units. Nothing is
  *    lost by skipping it — BOTH of its ends (the This week and Later DateGroup calls) are
  *    counted as seams — so the
- *    gap is scoped, not open-ended.
+ *    gap is scoped, not open-ended. (AMENDED Phase 88.9-61, X11: both call sites left; every
+ *    DateGroup now renders the defaults named in gap 1, h4 and h5.)
  *
  * 3. A MULTISET-PRESERVING LEVEL SWAP. This is a per-file per-level COUNT, so any edit that
  *    preserves the multiset is invisible to it. Swapping an `<h2>` and an `<h3>` inside one
@@ -1646,7 +1675,12 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/components/BallotOptionsEditor.js': { 3: 1 },
   'app/components/BallotSection.js': { 3: 6 },
   'app/components/BringSummary.js': { 3: 1 },
-  'app/components/CalendarListView.js': { 3: 2, 4: 2, 5: 2, 6: 2 },
+  // AMENDED Phase 88.9-39 (owner pick D6c): { 3: 2, 4: 2, 5: 2, 6: 2 } -> one level-4 `Heading` (the
+  // THIS WEEK subheader left the sheet) and one h5 / h6 seam pair (Later's; the next-7-day rows
+  // render at the default levels). Not an R7 outline violation: a level LEFT, none moved.
+  // AMENDED Phase 88.9-61 (X11): the Later h4 and its h5/h6 pair left. { 3: 2, 4: 1, 5: 1, 6: 1 }
+  // -> { 3: 2 }: the two Upcoming events headings (loaded and loading) are the only literal levels.
+  'app/components/CalendarListView.js': { 3: 2 },
   'app/components/CalendarMonthView.js': { 3: 1 },
   'app/components/DangerZoneDeleteAccount.tsx': { 2: 1 },
   'app/components/EmailAddressSection.tsx': { 2: 3 },
@@ -1679,7 +1713,10 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/components/tutorial/WelcomeSlide.js': { 1: 1 },
   'app/components/tutorial/simulated/AvailabilityPromptDemo.js': { 3: 1 },
   'app/components/tutorial/simulated/ProblemSlide.js': { 2: 1 },
-  'app/friends/page.js': { 1: 4, 2: 1 },
+  // LOWERED { 1: 4, 2: 1 } -> { 1: 3, 2: 1 } by plan 88.9-66 (X70b, owner 2026-11-14): no level
+  // moved. The signed-out prompt's own h1 left with the prompt (the declined return is the shared
+  // banner); the three h1s that remain are the page title on the two error screens and the page.
+  'app/friends/page.js': { 1: 3, 2: 1 },
   // RAISED { 1: 3, 2: 5, 3: 1 } -> { 1: 3, 2: 6, 3: 1 } by plan 88.6.1-25 task 2 (2026-10-16,
   // review r2 #180): the event view's message-screen title ("Event not found" and the no-access
   // title share ONE render helper) is now a `<Heading level={2} size="heading">` instead of a
@@ -1712,7 +1749,15 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   // row) renders its own `<Heading level={1} size="display">` with the session name in place of the
   // healthy one. Mutually exclusive with the healthy heading, so the page still renders exactly ONE
   // h1 at a time; no existing heading moved level or size. Not an R7 heading-order finding.
-  'app/userProfile/page.js': { 1: 2, 2: 7, 3: 4, 4: 2 },
+  // RAISED { ..., 3: 4, ... } -> { ..., 3: 5, ... } by plan 88.9-68 task 4 (2026-11-15, X58, owner R2:
+  // "It has no title"): the BGG search panel takes a level-3 title on the body rung, Search
+  // BoardGameGeek, the same level and rung as the import box's title beside it under the card's h2.
+  // No existing heading moved level or size. Not an R7 heading-order finding.
+  'app/userProfile/page.js': { 1: 2, 2: 7, 3: 5, 4: 2 },
+  // ADDED by 88.9-52 (A-04 / A-38): the frame's screen-reader-only page heading (srHeading). A
+  // page that is replaced by one banner had no level-1 heading at all; this is that heading, so
+  // each such screen renders exactly ONE h1. No existing heading moved level or size.
+  'components/ui/CentredPageFrame.tsx': { 1: 1 },
   'components/ui/ErrorFallback.tsx': { 1: 1 },
 };
 
@@ -2121,7 +2166,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // own outcome LEAD was right: EMPHASIS, utility DELETED, the colour token doing the work. It is
   // §4.5's own named precedent shape — a link-styled button already carrying
   // `text-content-link underline`, exactly like the primitive's three link-buttons, the compact
-  // src/components/ui/FetchErrorBanner.tsx ("{retrying ? 'Retrying…' : 'Retry'}") and the full
+  // src/components/ui/FetchErrorBanner.tsx ("aria-describedby={textId}") and the full
   // branch's Try again and Report this beside it — so the weight
   // was a third redundant signal beside the colour and the underline. Its `text-sm` STAYS and is
   // LIVE (a bare `<button>`, not a `.btn`, so the size utility is not dead), and its `min-h-11`
@@ -2240,7 +2285,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     jump on top would be an unsanctioned visible delta with no V-row.
   //   - the group-transfer link's `font-semibold`: the same case as the primitive's own
   //     link-buttons, the compact
-  //     src/components/ui/FetchErrorBanner.tsx ("{retrying ? 'Retrying…' : 'Retry'}") and the
+  //     src/components/ui/FetchErrorBanner.tsx ("aria-describedby={textId}") and the
   //     full branch's Try again and Report this — `text-content-link` does the work.
   //   - the confirm field's `<label>`: stays Label 14, weight only.
   //   - the FIFTH was deleted one commit earlier, by task 2's in-place conversion of the
@@ -2339,7 +2384,8 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     `<Heading>`), and the date-group EYEBROW at `:446` — `text-sm font-semibold uppercase
   //     tracking-wide` -> `text-xs font-bold`, the ratified Eyebrow role of the Caption rung
   //     (§4.5 row 1, matching
-  //     src/app/components/CalendarListView.js ("rounded-full text-xs font-bold uppercase tracking-wide")).
+  //     planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("### 4.5 Weights");
+  //     AMENDED Phase 88.9-61: this cited the Calendar list's Today chip, deleted with the Today delineator under X29 A).
   //     BOTH its size and its weight moved;
   //     it stays a `<div>`, because an eyebrow is not a heading.
   //   - EMPHASIS -> 400 + a colour token: the play-count span at `:44` (no colour of its own,
@@ -2370,10 +2416,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // The mobile tone keeps everything else that distinguishes it — more padding, `ring-1 ring-line`
   // and the wider `max-w`. Both tones' `text-base` is Body 16 and already on the scale. Visible
   // delta 500 -> 400, covered by V-6. Entry DELETED, not zeroed.
+  // AMENDED Phase 88.9-52 (W32, width half): FLOORED at 2. The second 600 is the invisible reserve
+  // of a twoTap item's label (reserveClassName on its ReservedLabel), a width MEASUREMENT of the
+  // armed and gated words at the weight they paint at, not emphasis; without it the menu grew
+  // 1.4px on the first tap. The same shape as the collection x reserve carried for userProfile.
   'app/components/KebabMenu.js': {
-    sites: 1,
+    sites: 2,
     why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. 1 of these is a PERMANENT armed-state 600 (see ARMED_STATE_600_ROSTER), so this entry floors at 1 rather than at zero. Owning plans: 88.6-11, 88.6-12, 88.6-16, 88.6-17, 88.6-18, 88.6-31.',
+      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. 1 of these is a PERMANENT armed-state 600 (see ARMED_STATE_600_ROSTER) and 1 is the invisible armed-label reserve measured at that same weight (88.9-52 W32), so this entry floors at 2 rather than at zero. Owning plans: 88.6-11, 88.6-12, 88.6-16, 88.6-17, 88.6-18, 88.6-31.',
     owner: { kind: 'decision', marker: 'DECISION Phase 65-02 EVT-08' },
   },
   // OUTCOME LEAD CORRECTED, NOT ABSORBED, by plan 88.6-35 task 1 (wave 7, 2026-09-16). This
@@ -2750,9 +2800,19 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     // control is a Button, so .btn already renders 600 at rest and armed alike, and this utility
     // is DEAD — it carries no armed cue. Counted in ARMED_STATE_600_ROSTER too; its deletion is
     // routed to Phase 92 (DECISION Phase 88.6.2-15 (PC-2), at that roster's entry).
-    sites: 1,
+    // AMENDED Phase 88.9-63 (X16, owner at N04, 2026-11-11: D): 1 -> 3. The two new sites are the
+    // participant NAME spans, one on the Participants chip and one on the See-all row, which the
+    // owner ruled take 600 so a name outweighs the pill beside it (pills are 12px sentence case
+    // from this plan). An owner-ruled exception to UI-SPEC §4.5's two weights, chosen OVER 700
+    // (as heavy as the Owner pill, so the name would not lead) and OVER C (smaller pills). The
+    // font loads with no weight list, so 600 renders from it as it does on every .btn. The dead
+    // armed-state site and its Phase 92 routing are unchanged; this entry floors at 3 until then.
+    // AMENDED Phase 88.9-65 (X47, 88.9-63 hand-off b): 3 -> 4. The fourth site is the participant
+    // NAME on the past-session chip, which takes the same owner-ruled 600 as the two names 63
+    // moved (one name weight on this page), chosen OVER leaving it at 400 beside 12px pills.
+    sites: 4,
     why:
-      '1 off-scale weight site: the font-semibold on the ARMED branch of the two-tap participant Remove. It is DEAD: the control is a Button and .btn sets the weight unlayered, so rest and armed both render 600 and the weight carries no armed cue. Counted in ARMED_STATE_600_ROSTER too (88.6.2-15, W049); deleting it is a className edit routed to Phase 92, and that commit deletes both entries together. Owning plans: 88.6-18 (swept), 88.6-46 (closeout), 88.6.2-15 (W049).',
+      '4 off-scale weight sites (the fourth, 88.9-65 X47: the 600 participant name on the past-session chip, the same owner-ruled weight as the two names below). One is the font-semibold on the ARMED branch of the two-tap participant Remove. It is DEAD: the control is a Button and .btn sets the weight unlayered, so rest and armed both render 600 and the weight carries no armed cue. Counted in ARMED_STATE_600_ROSTER too (88.6.2-15, W049); deleting it is a className edit routed to Phase 92, and that commit deletes the armed entry and lowers this one to 2. The other two are LIVE and stay: the 600 participant names on the Participants chip and the See-all row (88.9-63 X16, owner ruling D at N04, 2026-11-11), an owner-ruled exception to the two-weight rule. Owning plans: 88.6-18 (swept), 88.6-46 (closeout), 88.6.2-15 (W049), 88.9-63 (X16).',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6.2-15 (PC-2)' },
   },
   // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 (wave 7, 2026-09-16), all seven sites:
@@ -2817,10 +2877,13 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // `removeGameGate.isArmed(...)` call four lines above it — so it is counted HERE, which is why
   // this entry floors at FIVE and the armed roster at FOUR. The site carries its own
   // `DECISION Phase 88.6-17` marker stating all of the above.
+  // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): FOUR. The collection x became a worded Remove
+  // button; its sizer (the fifth 600, a measurement) went with the slot around the x, and the
+  // reserve inside the button needs no weight class of its own (the armed button is 600).
   'app/userProfile/page.js': {
-    sites: 5,
+    sites: 4,
     why:
-      'FLOORED at 5, not pending. Four are the armed-state 600s on this file\'s two-tap destructive gates (see ARMED_STATE_600_ROSTER) and the fifth is the invisible armed-label sizer span in the collection Remove control, whose 600 is a width MEASUREMENT of the armed label rather than emphasis — see the `DECISION Phase 88.6-17` marker at that site. The other 30 were converted by plan 88.6-17: emphasis sites to 400 plus a colour token, form labels and matrix header cells to the Label rung\'s 400, the theme toggles\' 600 deleted as dead on a `.btn`, and the TCPA disclosure dispositioned span by span.',
+      'FLOORED at 4 since 88.9-52 R4 D4 (5 before it), not pending. Four are the armed-state 600s on this file\'s two-tap destructive gates (see ARMED_STATE_600_ROSTER) and the fifth is the invisible armed-label sizer span in the collection Remove control, whose 600 is a width MEASUREMENT of the armed label rather than emphasis — see the `DECISION Phase 88.6-17` marker at that site. The other 30 were converted by plan 88.6-17: emphasis sites to 400 plus a colour token, form labels and matrix header cells to the Label rung\'s 400, the theme toggles\' 600 deleted as dead on a `.btn`, and the TCPA disclosure dispositioned span by span. AMENDED Phase 88.9-68 (X53): the fifth 600 is still that measurement, now on the slot AROUND the collection x (the reserve that wraps the button, holding the armed box\'s width from rest), no longer inside the visible box. AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): that fifth 600 is GONE with the x and its slot; the four that remain are the armed-state 600s, the collection one now on the worded Remove button itself.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6-17' },
   },
   // DELETED by plan 88.6-36 task 3 (wave 7, 2026-09-16): `components/ui/Banner.tsx` carried
@@ -2909,7 +2972,7 @@ const ARMED_STATE_600_ROSTER: ExemptionRoster = {
   'app/userProfile/page.js': {
     sites: 4,
     why:
-      'four armed-state 600s, each the ARMED cue of a two-tap DESTRUCTIVE gate: the hand-rolled D-PHONE-01 Remove-phone control (not a useConfirmAction consumer — it is owned by no primitive), the two deletePatternGate triggers, and the collection removeGameGate trigger. Legitimate 600 under D-03, not §4.5 debt. A FIFTH permanent 600 in this file — the invisible armed-label sizer span — is outside this predicate\'s reach and is carried in WEIGHT_ROSTER instead.',
+      'four armed-state 600s, each the ARMED cue of a two-tap DESTRUCTIVE gate: the D-PHONE-01 Remove-phone control (AMENDED Phase 88.9-68, X36b: a useConfirmAction consumer now, removePhoneGate, and still a raw button so the 600 renders), the two deletePatternGate triggers, and the collection removeGameGate trigger (AMENDED Phase 88.9-68, X53: the 600 sits on its armed box inside the 44px button; AMENDED Phase 88.9-52, R4 D4: on the worded Remove button itself, the box is gone). Legitimate 600 under D-03, not §4.5 debt. A FIFTH permanent 600 in this file — the armed-label reserve on the slot around the collection x — was outside this predicate\'s reach and was carried in WEIGHT_ROSTER instead until 88.9-52 R4 D4 removed it.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88-27 (D-32 bucket D)' },
   },
   'app/components/KebabMenu.js': {
@@ -3112,5 +3175,109 @@ describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx
       'an off-scale weight sitting on a heading must be rostered by the weight rule as well ' +
         'as by the heading rule',
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// K7 (88.9) / C3b: one tracking spelling for uppercase labels (UI-SPEC rows R2-13 / R2-20)
+// ---------------------------------------------------------------------------------------
+//
+// DECISION Phase 88.9-47 (K7 / owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): an uppercase
+// label that carries a letter-spacing utility carries exactly tracking-wider (0.05em). The
+// scan keys on a string chunk holding BOTH the uppercase class and any tracking utility,
+// chosen OVER the R2-13 census command keyed on text-xs, which misses the 14px Heading size
+// label sites (the day heading, the FriendInvitePanel section headings; the Later heading named
+// here first left with 88.9-61 X11). The tutorial
+// exemption is a counted roster entry by file name, chosen OVER a directory glob, so a new
+// tutorial site still has to be counted and the tutorial rewrite deletes the entry.
+//
+// The classifier reads ONE string chunk (stringChunks crosses newlines, recurses into
+// template interpolations and drops comments, so a marker that quotes the old spelling is
+// never a site). 'none' = not a letter-spaced uppercase label (no uppercase token, or no
+// tracking token); 'on' = exactly one tracking utility and it is tracking-wider; 'off' =
+// any other letter-spaced uppercase label (an old spelling, an arbitrary value, or two
+// tracking utilities at once).
+
+const K7_UPPERCASE_TOKEN = /(?:^|[\s:])uppercase(?=\s|$)/;
+const K7_TRACKING_TOKEN = /(?:^|[\s:])(tracking-[^\s'"\x60]+)/g;
+
+function k7Classify(text: string): 'off' | 'on' | 'none' {
+  if (!K7_UPPERCASE_TOKEN.test(text)) return 'none';
+  const tracking: string[] = [];
+  K7_TRACKING_TOKEN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = K7_TRACKING_TOKEN.exec(text)) !== null) tracking.push(m[1]);
+  if (tracking.length === 0) return 'none';
+  return tracking.length === 1 && tracking[0] === 'tracking-wider' ? 'on' : 'off';
+}
+
+// Exempt BY NAME, with an exact count. Kind 'owner', not 'decision': the K7 ruling of
+// 2026-11-07, not the file's own 88.6-35 weight marker, is the decision that exempts it.
+const K7_TRACKING_EXEMPTIONS: ExemptionRoster = {
+  'app/components/tutorial/simulated/CheckInDemo.js': {
+    sites: 2,
+    why:
+      'the two simulated tutorial eyebrows (Members set their own availability / Or send them ' +
+      'a check-in) keep the tutorial file\'s own 0.025em step; the UI-SPEC routes every tutorial ' +
+      'look item to the v2.1 tutorial phase, which deletes this entry when it converges them',
+    owner: {
+      kind: 'owner',
+      date: '2026-11-07',
+      ruling:
+        'K7 (orchestrator ruling on the COPY-CENSUS corrections, 2026-11-07): every UPPERCASE ' +
+        'label that carries a letter-spacing utility takes the ONE spelling tracking-wider; ' +
+        'tutorial files exempt by name (CheckInDemo.js keeps tracking-wide, its own keep their ' +
+        'own call; the UI-SPEC routes every tutorial look item to the v2.1 tutorial phase)',
+    },
+  },
+};
+
+describe('K7 (88.9) / C3b: one tracking spelling for uppercase labels', () => {
+  it('K7 (88.9): every uppercase letter-spaced label uses tracking-wider; tutorial files exempt by name', () => {
+    // Controls first, so a scan that has gone blind fails here and not only on the floor.
+    expect(k7Classify('text-xs uppercase tracking-wide'), 'the former majority step').toBe('off');
+    expect(k7Classify('uppercase tracking-[0.08em]'), 'the former hero step').toBe('off');
+    expect(k7Classify('uppercase tracking-wider tracking-wide'), 'two utilities at once').toBe('off');
+    expect(k7Classify('text-xs font-bold uppercase tracking-wider'), 'the C3b spelling').toBe('on');
+    expect(k7Classify('uppercase shadow-theme-sm'), 'uppercase with no tracking').toBe('none');
+    expect(k7Classify('w-32 text-center tracking-widest'), 'tracking with no uppercase').toBe('none');
+
+    // BUILD ONCE (AC-11, owner 2026-09-09): iterate the module-scope FILES, no second walk.
+    const measured: Record<string, number> = {};
+    const offSites: string[] = [];
+    let total = 0;
+    for (const f of FILES) {
+      for (const chunk of stringChunks(f.stripped)) {
+        const verdict = k7Classify(chunk.text);
+        if (verdict === 'none') continue;
+        total += 1;
+        if (verdict === 'off') {
+          measured[f.key] = (measured[f.key] ?? 0) + 1;
+          offSites.push(`${f.key}:${lineAt(f.stripped, chunk.offset)}`);
+        }
+      }
+    }
+
+    expect(assertRosterShape(K7_TRACKING_EXEMPTIONS)).toEqual([]);
+    expect(assertExactCounts(K7_TRACKING_EXEMPTIONS, measured), offSites.join('\n')).toEqual([]);
+    // AMENDED Phase 88.9-63 (X16, owner at N04, 2026-11-11: D): the floor moves 28 -> 18. The ten
+    // chunks that leave are the game page's person, role and RSVP pills, which read sentence case
+    // with no letter-spacing from this plan: No reply and the Going / Maybe / No template in
+    // RsvpStatusPill (2), the chip's Owner, Admin and Guest (3), and the See-all row's You,
+    // Friend, Owner, Admin and Guest (5). A pill is not a label, so it leaves this census; the
+    // rule above (one spelling for every letter-spaced uppercase LABEL) is unchanged.
+    // Then 18 -> 15 in the same plan's Task 2: the ClickableMemberName pair (the popover's Friend
+    // and You pills) and the shared Guest pill in GuestPill.tsx leave the same way. What is left
+    // is labels only.
+    expect(
+      total,
+      'the census floor: letter-spaced uppercase chunks tree-wide, on OR off (30 measured at ' +
+        'plan 88.9-47, 2026-11-10: 28 on tracking-wider + the 2 exempt tutorial eyebrows; 28 ' +
+        'in all after 88.9-61, by its own count; 18 after 88.9-63 took the ' +
+        'ten game-page pills to sentence case: RsvpStatusPill 2, the chip Owner / Admin / Guest 3, ' +
+        'the See-all You / Friend / Owner / Admin / Guest 5; 15 after its Task 2 did the same for ' +
+        'the ClickableMemberName pair, Friend and You, and the Guest pill in GuestPill.tsx). ' +
+        'A total under the floor means the scan has gone blind, not that the tree got tidier.',
+    ).toBeGreaterThanOrEqual(15);
   });
 });

@@ -41,12 +41,18 @@ declare global {
  *      themes (UI-SPEC section 12 item 14). Both are render-and-geometry claims jsdom cannot
  *      make: a pill that must be VISIBLE inside a button that must STILL measure 44x44 with
  *      it, and a hero that must sit ABOVE the first list row.
- *   4. RE-POINTED — every "event row heading" locator. Plan 88.5-08 demotes the This-week and
- *      Later rows to `<h6>` titles under `<h5>` day headers (src/app/components/CalendarListView.js ("{thisWeekGroups.map((group) => (")),
+ *   4. RE-POINTED — every "event row heading" locator. Plan 88.5-08 demoted the This-week and
+ *      Later rows to `<h6>` titles under `<h5>` day headers (since 88.9-39 D6c only Later does;
+ *      the folded upcoming list is src/app/components/CalendarListView.js ("{upcomingGroups.map((group) => (")),
  *      so the old `level: 5` locator now resolves DAY HEADERS as well as row titles and would
  *      have measured a 14px date string in the readable-game-text case. Rows are located by
  *      STRUCTURE instead — a heading inside a row `role="button"` — which is level-agnostic
  *      and cannot drift with the outline again.
+ *      AMENDED Phase 88.9-61 (X11): the Later subheader left the sheet too, so no row demotes
+ *      any more: every day header is an h4 and every row title an h5, and the sheet has no h6.
+ *      The structural locator stands unchanged. X25a (88.9): the two section headers are h3
+ *      headings that WRAP their folding button (the heading is outside the button), so a
+ *      heading inside a button is still a row title and nothing else.
  *
  * WHY THIS FILE IS THE GATE AND THE VITEST PINS ARE NOT: `UserHomePage.phone.test.tsx` and
  * `UserHomePage.calendarSheet.test.tsx` pin every branch jsdom can see — count integrity,
@@ -67,7 +73,8 @@ declare global {
  *   2. the sheet LEADS WITH THE HERO — the "Next game night" eyebrow precedes the first list
  *      row in the DOM and sits above it on screen — and both hero RSVP controls are visible
  *      and hit-testable
- *   3. the sheet's "This week" subheader carries a pill whose digits equal the button's count
+ *   3. the sheet renders NO "This week" subheader, pill or sr-only count (D6c, 88.9-39) — the
+ *      button alone carries the number; the next-7-day rows sit directly under Upcoming events
  *   4. 1-3 are asserted in BOTH themes (UI-SPEC section 12 item 14)
  *   5. the calendar sheet's rows show READABLE game text — 16px, unclipped
  *   6. tapping an event navigates AND leaves no sheet behind (the close-before-navigate
@@ -481,8 +488,8 @@ async function assertNoCalendarLabelFlip(page: Page): Promise<void> {
  * SPEC Req 2, at 375px: the pill is VISIBLE inside the Calendar button, the button still
  * clears 44x44 WITH it, and the count reaches assistive tech through the button's name.
  *
- * Run in both themes — the pill FORKS by theme (amber-700/white in light, amber-500/warm-900
- * in dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-500)]")), so a single-theme pass would leave one of the two
+ * Run in both themes — the pill FORKS by theme (amber-700/white in light, amber-400/warm-900
+ * in dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-400)]")), so a single-theme pass would leave one of the two
  * shipped arms unrendered by any gate.
  */
 async function assertCountedCalendarButton(page: Page): Promise<number> {
@@ -581,22 +588,20 @@ async function assertHeroLeadsTheSheet(page: Page, count: number): Promise<void>
     await locator.click({ trial: true, timeout: 5000 });
   }
 
-  // SPEC Req 2, the sheet twin: the "This week" subheader carries the SAME number as the
-  // button. One selector value feeds both (`selectUpcomingWithin7Days`), so a disagreement
-  // here means two definitions of "this week" have appeared.
-  // Prefix match, not anchored: the subheader's accessible name carries an sr-only
-  // count clause (", N upcoming this week" — ML15/ML0, 2026-09-01) whenever the pill
-  // renders, and this probe only runs when count >= 1, so `/^this week$/` could NEVER
-  // match here. Mirrors the jsdom suite's subSection() helper.
-  const thisWeek = calendarSheet(page).getByRole('heading', { name: /^this week\b/i });
-  await guardResolved(
-    thisWeek,
-    `the sheet's "This week" subheader — the button announces ${count} upcoming games this week, so the section those events belong to must render (locator, FIXTURE or partition failure; fixture owned by ${FIXTURE_OWNER})`,
-  );
+  // D6c (88.9-39, owner by chat 2026-11-06 "drop the this week and the pill"): the THIS WEEK
+  // subheader, its twin pill and the sr-only count clause LEFT the sheet; the next-7-day rows sit
+  // directly under Upcoming events. The Calendar button still announces the count (asserted by
+  // the caller), so the number now lives in exactly one place. `count` stays a parameter so the
+  // callers' one-render read is unchanged.
+  const sheet = calendarSheet(page);
   await expect(
-    thisWeek.getByText(String(count), { exact: true }),
-    `the "This week" subheader does not carry a "${count}" pill while the Calendar button announces ${count} — the twin pills are fed by ONE count from ONE selector call, so a mismatch means a second definition of "this week" has appeared somewhere between the button and the sheet.`,
-  ).toBeVisible();
+    sheet.getByRole('heading', { name: /^this week\b/i }),
+    `the sheet still renders a "This week" subheader while the button announces ${count} — D6c (88.9-39) removed the subheader and its pill`,
+  ).toHaveCount(0);
+  await expect(
+    sheet.getByText(/upcoming this week/i),
+    'the sheet still carries the sr-only ", N upcoming this week" clause — D6c (88.9-39) removed it with the subheader',
+  ).toHaveCount(0);
 }
 
 test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discovery, DARK (phone project)', () => {
@@ -617,7 +622,7 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
     await expect(calendarSheet(page)).toBeVisible();
   });
 
-  test('SPEC Req 3: the sheet leads with the NEXT GAME NIGHT hero and a counted This week subheader', async ({
+  test('SPEC Req 3: the sheet leads with the NEXT GAME NIGHT hero and no This week subheader (D6c)', async ({
     page,
   }) => {
     await installCalendarLabelRecorder(page);
@@ -736,6 +741,31 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
     // requirement, not a nice-to-have — the control is full-width, so height is the
     // dimension actually at risk.
     await assertMin44(disclosure, 'the Past events disclosure');
+
+    // X25a (88.9), owner pick page 10a: Upcoming and Past are two EQUAL folding headers. The
+    // Upcoming one is a real button named exactly "Upcoming events", open on arrival, and holds
+    // the same 44px floor as the Past one; each button sits inside a level-3 heading, so the
+    // outline still carries both section names.
+    const upcomingHeader = calendarSheet(page).getByRole('button', { name: 'Upcoming events', exact: true });
+    await guardResolved(upcomingHeader, 'the "Upcoming events" folding header button (X25a)');
+    await expect(upcomingHeader).toHaveAttribute('aria-expanded', 'true');
+    await assertMin44(upcomingHeader, 'the Upcoming events header button');
+    // AMENDED Phase 88.9-61 (after CI run 43727692149 at FE bf7220d): the inner locator of a
+    // has-filter is resolved INSIDE each candidate heading, so it must not start at the dialog
+    // (a dialog is never inside an h3, and the first form of this read matched nothing on a
+    // correct build). The two buttons are named again here, rooted at the page.
+    await expect(
+      calendarSheet(page)
+        .getByRole('heading', { level: 3 })
+        .filter({ has: page.getByRole('button', { name: /^past events \(\d+\)$/i }) }),
+      'the Past events disclosure does not sit inside a level-3 heading (X25a: two equal headers)',
+    ).toHaveCount(1);
+    await expect(
+      calendarSheet(page)
+        .getByRole('heading', { level: 3 })
+        .filter({ has: page.getByRole('button', { name: 'Upcoming events', exact: true }) }),
+      'the Upcoming events header button does not sit inside a level-3 heading',
+    ).toHaveCount(1);
   });
 
   test('Req 12: expanding Past events reveals rows and reports itself expanded', async ({
@@ -859,6 +889,24 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
      * Playwright's (visual-viewport-SCALED) `boundingBox()` and probing afterwards would mix
      * two coordinate systems on an emulated phone.
      */
+    // Plan 88.9-46 (the flake recorded in the phase's deferred-items.md — seen on f5c02e1 and once
+    // more, flaky-passed, on 273f8cc): the page can grow by a hair AFTER scrollToSettledBottom
+    // lands, leaving the link's centre ~1px past the fold, where elementFromPoint returns null and
+    // the probe names a phantom occluder. So the LINK is scrolled into view immediately before the
+    // read, and an under-scroll is asserted by name first (its centre inside the viewport) — never
+    // reported as an occlusion. Not a waitForTimeout: the same observable-gate reasoning as the
+    // helper's block.
+    await privacy.first().evaluate((link) => link.scrollIntoView({ block: 'nearest' }));
+    const inViewport = await privacy.first().evaluate((link) => {
+      const r = link.getBoundingClientRect();
+      const centreY = Math.round((r.top + r.height / 2) * 100) / 100;
+      return { centreY, innerHeight: window.innerHeight, inside: centreY >= 0 && centreY < window.innerHeight };
+    });
+    expect(
+      inViewport.inside,
+      `the /Privacy link's centre (y ${inViewport.centreY}) is outside the ${inViewport.innerHeight}px viewport after the scroll — an under-scroll, not an occluder; the occlusion probe below would read a phantom hit`,
+    ).toBe(true);
+
     const probe = await privacy.first().evaluate((link) => {
       const r = link.getBoundingClientRect();
       const hit = (x: number, y: number) => {
@@ -921,9 +969,11 @@ test.describe('Phase 88.1 Req 11/12 + Phase 88.5 Req 2/3 — phone event discove
 test.describe('Phase 88.5 Req 2/3 — the counted button and the hero, LIGHT (phone project)', () => {
   test.skip(({ isMobile }) => !isMobile, 'phone-tenet requirements — phone project only');
 
-  // UI-SPEC section 12 item 14: the hero and BOTH pills are asserted in both themes. The
-  // pill's colour genuinely forks (amber-700 on white in light, amber-500 on warm-900 in
-  // dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-500)]")) and so does the chip/card treatment beneath the
+  // UI-SPEC section 12 item 14: the hero and the Calendar-button pill are asserted in both themes;
+  // the sheet's This-week pill is asserted ABSENT (D6c, 88.9-39 removed it; this comment said BOTH
+  // pills until 88.9-52 A-08). The
+  // pill's colour genuinely forks (amber-700 on white in light, amber-400 on warm-900 in
+  // dark, src/app/components/UpcomingCountPill.tsx ("dark:[background-color:var(--amber-400)]")) and so does the chip/card treatment beneath the
   // hero, so a dark-only pass leaves one shipped arm rendered by nothing.
   //
   // BOTH halves of the theme mechanism, exactly as e2e/contrast.spec.ts ("is ORTHOGONAL to the theme class") records:
@@ -936,7 +986,7 @@ test.describe('Phase 88.5 Req 2/3 — the counted button and the hero, LIGHT (ph
     await forceLightMode(page);
   });
 
-  test('SPEC Req 2/3 in LIGHT: the counted button, the NEXT GAME NIGHT hero and the This week pill', async ({
+  test('SPEC Req 2/3 in LIGHT: the counted button, the NEXT GAME NIGHT hero and no This week subheader (D6c)', async ({
     page,
   }) => {
     await installCalendarLabelRecorder(page);

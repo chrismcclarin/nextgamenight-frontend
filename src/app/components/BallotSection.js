@@ -8,6 +8,8 @@ import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger, errCtx } from '@/lib/logger';
+import { cn } from '../../lib/cn';
+import { hostGroundHalo } from '../../components/ui/hostGround';
 
 /**
  * BallotSection - Game voting ballot for an event
@@ -17,12 +19,35 @@ import { logger, errCtx } from '@/lib/logger';
 // owner 2026-10-05, WORDING BATCH 3 item J; manifest key E15, recorded as D-47), hoisted so each
 // ratified string lives in ONE source line for the AC-33 scan. E12, E13 and E15 ship with the
 // straight apostrophe (D-32 R8). E13 serves both pick lists. E14 is heard only: the pick's
-// accessible name while it saves. E15 is the load-failure banner's title.
+// accessible name while it saves. E15's object is the load-failure banner's thing; the banner
+// composes the title (BANNER-01).
 const VOTE_SAVE_FAILED_MESSAGE = "We couldn't save your vote. Please try again.";
 const WINNER_SAVE_FAILED_MESSAGE = "We couldn't set the winner. Please try again.";
-const BALLOT_LOAD_FAILED_TITLE = "Couldn't load the game vote";
+const BALLOT_LOAD_FAILED_THING = "the game vote";
 function savingPickLabel(gameName) {
   return `${gameName}, saving`;
+}
+// Copy row R2-37 (UI-SPEC round-2 copy table), declared once; a visible caption, never part of the name.
+const SAVING_CAPTION = 'Saving…';
+
+/* DECISION Phase 88.9-35 D10b (owner pick D10b, 88.9-PICKS-B3.json, 2026-11-05): while a pick saves,
+   a 12px secondary-ink Saving… caption sits at the pressed pick's row end, chosen OVER D10a (the
+   vote-toggle dim + house spinner, my read) — the owner chose words. aria-hidden because the heard
+   {game}, saving name already carries it (no double announcement). Organizer pick lists only: the
+   open-ballot vote toggle keeps its opacity-70 dim, it is not the list the ruling names.
+   Save-feedback rule 1 governs save controls; a pick in a list shows completion by becoming
+   selected (register 51.4) — not a conflict. Changing this is a decision, not a cleanup. */
+function PickContent({ name, saving }) {
+  return (
+    <span className="flex items-center justify-between gap-2">
+      <span className="min-w-0">{name}</span>
+      {saving && (
+        <span aria-hidden="true" className="shrink-0 whitespace-nowrap text-xs text-content-secondary">
+          {SAVING_CAPTION}
+        </span>
+      )}
+    </span>
+  );
 }
 
 // The ballot with one option's `user_voted` set: flipped when `voted` is omitted (the
@@ -89,7 +114,15 @@ function toggleOptionVote(ballot, optionId, voted) {
    the next sibling, is not what this build emits). Each region's containing block was checked
    for the plan 06 caveat: its static position is ABOVE the picks inside the card body, so the
    1px `sr-only` box can never extend the page's scrollable overflow. */
-export default function BallotSection({ eventId, eventDate, userRole, userRsvpStatus }) {
+/**
+ * @param {object} props
+ * @param {string} [props.eventId]
+ * @param {string} [props.eventDate]
+ * @param {string} [props.userRole]
+ * @param {string | null} [props.userRsvpStatus]
+ * @param {import('../../components/ui/hostGround').HostGround} [props.hostGround='card'] the ground the HOST paints under the option cards; selects their focus halo
+ */
+export default function BallotSection({ eventId, eventDate, userRole, userRsvpStatus, hostGround = 'card' }) {
   const [ballot, setBallot] = useState(null);
   // Loading only with a real event id: fetchBallot returns before its finally when there is none, so a
   // true here would never clear (88.6.1 code review IN-06; the reset below follows the same rule).
@@ -393,7 +426,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   }
 
   /* DECISION Phase 88.6.1-31 (E15 / Req 9): a failed load for the current event renders the
-     house full banner titled `BALLOT_LOAD_FAILED_TITLE` (copy row E15, owner ruling 2026-10-05),
+     house full banner named by its `thing`, `BALLOT_LOAD_FAILED_THING` (copy row E15, owner ruling 2026-10-05),
      with the register line the hook derives from the error's code and its own Try again, IN PLACE
      of the card, inside a `mt-4` wrapper (the card's own top gap; the same slot the first-load
      loader takes above).
@@ -430,13 +463,14 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
      session's vote failed, each Try again retries that vote, and N is small. REJECTED: (B) one
      list-level report — new words, and it loses the per-session retry; (C) the compact notice —
      its fixed text is not E15. LF-10 pins two regions for two failing instances.
-     Collapsing these into one report is a decision, not a cleanup. */
+     Collapsing these into one report is a decision, not a cleanup.
+     AMENDED Phase 88.9-48 (owner ruling BANNER-01 "short", 2026-11-07): the banner composes Couldn't load the game vote from the thing, chosen OVER the hoisted whole-sentence title (the same words, typed at the site). The reader sees no change. */
   if (showLoadFailure) {
     return (
       <div className="mt-4">
         <FetchErrorBanner
           state={loadErrorState}
-          title={BALLOT_LOAD_FAILED_TITLE}
+          thing={BALLOT_LOAD_FAILED_THING}
           reportContext="Game detail page — game vote fetch"
           focusTarget={gameVoteHeadingRef}
         />
@@ -529,7 +563,11 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   "Saving" label, because E14 is ratified heard-only (the missing visible cue is
                   routed to Phase 88.9); (c) `aria-busy`, which is not a name.
                   The fallback pick list below takes the same three attributes for the same
-                  reasons. Changing this is a decision, not a cleanup. */}
+                  reasons. Changing this is a decision, not a cleanup.
+                  AMENDED Phase 88.9-35 (owner pick D10b, 88.9-PICKS-B3.json, 2026-11-05): the visible cue
+                  routed to 88.9 is built — an aria-hidden Saving… caption at the pressed pick's row end;
+                  the heard name stays this template, so arm (b)'s reason (the NAME stays heard-only)
+                  still holds. */}
               {(tied_options || []).map(opt => (
                 <button
                   key={opt.id}
@@ -544,10 +582,18 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                      warning-subtle fill (the halo is the ground OUTSIDE the card, not under it) and OVER the page
                      halo the game-detail host would give: the card is the majority host ground and its halo clears
                      3:1 against the ring in both themes (census, halo-approximate; the page band belongs to plan
-                     88.9-16). Swapping it for the fill or the page ground is a decision, not a cleanup. */
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                     88.9-16). Swapping it for the fill or the page ground is a decision, not a cleanup.
+                     AMENDED Phase 88.9-35 (owner pick B1a, 88.9-PICKS-B1.json, 2026-11-04): the three option cards take
+                     the HOST's ground through hostGround (src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO")),
+                     default card, the shipped literal kept and the host key merged after it by cn, chosen OVER round 1's
+                     fixed card halo (band 1.31 / 1.22 on the game page's two page paths; the page host now reads
+                     5.97 / 10.13, band 1.00). */
+                  className={cn(
+                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+                    hostGroundHalo(hostGround)
+                  )}
                 >
-                  {opt.game_name}
+                  <PickContent name={opt.game_name} saving={resolvingOptionId === opt.id} />
                 </button>
               ))}
             </div>
@@ -600,9 +646,12 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   aria-disabled={resolvingOptionId === opt.id ? 'true' : undefined}
                   aria-label={resolvingOptionId === opt.id ? savingPickLabel(opt.game_name) : undefined}
                   aria-describedby={error ? 'ballot-fallback-error' : undefined}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                  className={cn(
+                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+                    hostGroundHalo(hostGround)
+                  )}
                 >
-                  {opt.game_name}
+                  <PickContent name={opt.game_name} saving={resolvingOptionId === opt.id} />
                 </button>
               ))}
             </div>
@@ -683,7 +732,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   disabled={!!votingOptionId && !isToggling}
                   aria-disabled={isToggling ? 'true' : undefined}
                   aria-describedby={error ? 'ballot-vote-error' : undefined}
-                  className={`w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card
+                  className={`${cn('w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card', hostGroundHalo(hostGround))}
                     ${isVoted
                       ? 'border-accent bg-surface-accent-subtle text-content-primary'
                       : 'border-line bg-surface-card text-content-primary hover:bg-surface-hover hover:border-line-strong'

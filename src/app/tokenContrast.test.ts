@@ -39,7 +39,7 @@
  * ------------------------
  * That the app RENDERS these values. It claims the token layer DECLARES them. Gate B
  * (plans 06-11) covers the call sites and Gate C (plan 12) measures the rendered pixels.
- * `88.3-UI-SPEC.md` §5.11 row 50 (the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") ground over the hero) is
+ * `88.3-UI-SPEC.md` §5.11 row 50 (the src/app/components/LandingPage.js ("dark:bg-white/20 dark:hover:bg-white/30") ground over the hero) is
  * not computable from tokens at all and stays open until plan 12 measures it (OI-7).
  */
 import fs from 'node:fs';
@@ -50,7 +50,9 @@ import { describe, expect, it } from 'vitest';
 import { FORBIDDEN_INK_ON_MUTED, MUTED_GROUND_TOKEN } from '../test-utils/inkRules';
 import { withoutComments } from '../test-utils/sourceScan';
 import { CALENDAR_WASH_RAMP } from '../lib/availabilityColor';
+import { GROUP_COLOUR_PRESETS } from '../lib/groupColourPresets';
 import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../lib/wcag';
+import { GUEST_ROW_EDGE } from './components/GuestPill';
 
 const GLOBALS = path.join(__dirname, 'globals.css');
 
@@ -287,7 +289,7 @@ function resolveShadow(theme: Theme, prop: string): string {
  * A translucent token composited over an opaque ground, so a scrim can be measured.
  *
  * These are the ONLY composited rows Gate A can compute, and `88.3-UI-SPEC.md` §5.11 marks
- * them. The `groupHomePage` 15% black dim (§5.10.3) and the src/app/components/LandingPage.js ("bg-white/20 hover:bg-white/30") ground
+ * them. The `groupHomePage` 15% black dim (§5.10.3) and the src/app/components/LandingPage.js ("dark:bg-white/20 dark:hover:bg-white/30") ground
  * over the hero (row 50, OI-7) are NOT computable here — the first needs a group colour
  * from the database (plan 11), the second needs an in-browser measurement (plan 12).
  */
@@ -334,7 +336,7 @@ function lStarOf(hex: string, what: string): number {
  *
  * Assertions here compare against FLOORS, never against a hex, so a future re-tint that
  * still clears its floor does not churn this file (e2e/tailwind-v4-styles.spec.ts ("every assertion pins WHICH PROPERTY is")).
- * The three deliberate exceptions are marked at their sites.
+ * The ten deliberate exceptions are marked at their sites.
  */
 function expectRatio(theme: Theme, ink: string, ground: string, floor: number, req: string): number {
   const inkHex = resolve(theme, ink);
@@ -465,7 +467,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // ruling 1c took warm-200 for the PAGE, so leaving it would make this row's `!= page`
     // assertion AND its L* ordering both false, and would be a real render defect at
     // src/app/components/GroupLibrary.js ("bg-surface-page rounded-card animate-pulse") (card-hover skeleton bars inside a bg-surface-page parent) and
-    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :") (today's cell would be byte-identical to an empty one).
+    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border border-line-accent' :") (today's cell would be byte-identical to an empty one).
     // The rejected alternative warm-300 measures accent-text 4.4440 on it, an AA failure.
     expect(
       lStarOf(cardHover, 'card-hover'),
@@ -657,19 +659,26 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(resolveShadow('light', '--shadow-lg'), 'Req 3 — light --shadow-lg must be byte-identical to its pre-phase text').toBe('0 10px 15px rgba(120, 80, 40, 0.10)');
   });
 
-  it('11. Req 3 / OI-2 + D-02 — the legacy `@utility card` rests on -sm and hovers to bg-hover', () => {
-    // The 43rd hover site and the only one that lives in CSS rather than a `className`,
-    // so the plan-06 JSX sweep can never reach it. Parsed from the MASKED source, so the
-    // `-md` mentioned inside the block's own DECISION marker is not read as code.
+  it('11. Req 3 / OI-2 + X14 — the legacy card utility rests on -sm and carries NO hover rule', () => {
+    // AMENDED Phase 88.9-58 (X14, owner at N13, 2026-11-11: yes, remove the hover from non-clickable
+    // cards). This test used to REQUIRE the utility's hover wash (the 43rd hover site, D-02); the
+    // wash is removed, so it now requires its absence. A card that reacts to the mouse but does
+    // nothing when pressed is a false affordance, and in dark the wash equalled the secondary
+    // button fill, which swallowed the Filters button and the month chevrons (52-X48, 52-X13).
+    // Whole-card controls carry their own hover utility at the call site; the pin for that is
+    // src/app/cardPaddingIdiom.test.ts ("X14 (88.9): a static card carries no hover utility").
+    // Parsed from the MASKED source, so the hover the block's own history marker describes is
+    // not read as code. A hover rule back in the utility is a decision, not a cleanup.
     const card = utilityCardBlock();
-    expect(card, 'Req 3 / OI-2 — `@utility card` must rest on var(--shadow-sm)').toMatch(/box-shadow:\s*var\(--shadow-sm\)/);
-    expect(card, 'Req 3 / OI-2 — `@utility card` must NOT rest on var(--shadow-md); that re-splits the two card idioms').not.toMatch(/box-shadow:\s*var\(--shadow-md\)/);
-    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must use var(--color-bg-hover)').toMatch(/background-color:\s*var\(--color-bg-hover\)/);
-    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): the message below quotes the PRE-ruling figures.
-    // `--color-bg-card-hover` is now the minted `--warm-250`, so pointing the legacy `.card` hover
-    // back at it would be a ΔL* 15.6274 wash from the white card (was 10.4) — a HEAVIER pill-weight
-    // jump, same rejection. `--color-bg-hover` (warm-50) gives ΔL* 2.35, the "S3 press" look chosen.
-    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must NOT use var(--color-bg-muted); after D-01 that is warm-200 and after 88.3-18 the minted warm-250 — a pill-weight ΔL* 15.63 wash from the card').not.toMatch(/background-color:\s*var\(--color-bg-muted\)/);
+    expect(card, 'Req 3 / OI-2 — the card utility must rest on var(--shadow-sm)').toMatch(/box-shadow:\s*var\(--shadow-sm\)/);
+    expect(card, 'Req 3 / OI-2 — the card utility must NOT rest on var(--shadow-md); that re-splits the two card idioms').not.toMatch(/box-shadow:\s*var\(--shadow-md\)/);
+    expect(card, 'X14 (88.9) — the card utility must keep its own card fill').toMatch(/background-color:\s*var\(--color-bg-card\)/);
+    expect(
+      card,
+      'X14 (88.9) — the card utility must carry NO hover rule (owner 2026-11-11). A static card that washes under the mouse ' +
+        'promises a press that does nothing; a whole-card link or button takes hover:bg-surface-hover at its call site instead.',
+    ).not.toMatch(/:hover/);
+    expect(card, 'X14 (88.9) — the card utility must not paint the hover token at all').not.toMatch(/var\(--color-bg-hover\)/);
   });
 
   // ===================================================================================
@@ -738,6 +747,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // RESTING colour would have made hover LESS readable than rest.
     // AMENDED 88.3-18 (ruling 1c): light amber-900 now reads 9.0722 on the card (unchanged) and
     // 6.9489 on the new warm-200 page (was 8.0072). Both clear with room.
+    // AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): dark --color-accent-hover is amber-300 now (light stays amber-400), so the dark hover reads ABOVE rest, not equal to it.
     for (const theme of ['light', 'dark'] as const) {
       expectRatio(theme, '--color-accent-text-hover', '--color-bg-card', 4.5, 'Req 4 / §5.11 rows 17-18');
       expectRatio(theme, '--color-accent-text-hover', '--color-bg-page', 4.5, 'Req 4 / §5.11 rows 17-18');
@@ -798,6 +808,37 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // assertion into test 20 and close the deferral in the same commit.
     expectRatioBelow('dark', '--color-status-success-text', '--color-status-success-subtle-hover', 4.5, 'Req 6 / OI-3 (deferred)');
     expectRatioBelow('dark', '--color-status-warning-text', '--color-status-warning-subtle-hover', 4.5, 'Req 6 / OI-3 (deferred)');
+  });
+
+  it('X21b (88.9): the light warning fill is amber-200 #fde68a and its hover amber-300 #fcd34d; the ink clears 4.5 on both, the hover is a real step, and dark is untouched', () => {
+    // DECISION Phase 88.9-58 (X21b, owner pick page 10a, 2026-11-14; hover Eh1, pick page 11,
+    // 2026-11-14). The owner on the shipped pale peach: "could be a little more warning colors.
+    // It's pretty similar to background". The pair is pinned as the PICKED hexes (D-03: a token
+    // that differs from the pick is a defect), and every WCAG floor on it is pinned beside them
+    // (D-07): the warning ink on the fill (5.5012) and on the hover (4.7514) at 4.5, and the
+    // focus ring on the fill, which is the halo of the controls that sit in a warning box
+    // (6.2589, floor 3.0). The hover must be a visible step of the same hue: 1.1578 from rest,
+    // where the old peach hover read 1.0438 from the new fill. Light only: the dark pair is
+    // pinned as untouched, and test 21 keeps the recorded dark hover deferral.
+    const rest = resolve('light', '--color-status-warning-subtle');
+    const hover = resolve('light', '--color-status-warning-subtle-hover');
+    expect(rest, 'X21b (88.9) — the light warning fill must be the picked amber-200').toBe('#fde68a');
+    expect(hover, 'X21b (88.9) — the light warning hover must be the picked Eh1, amber-300').toBe('#fcd34d');
+    expect(rest, 'X21b (88.9) — #fde68a is the palette step amber-200').toBe(resolve('light', '--amber-200'));
+    expect(hover, 'X21b (88.9) — #fcd34d is the palette step amber-300').toBe(resolve('light', '--amber-300'));
+
+    expectRatio('light', '--color-status-warning-text', '--color-status-warning-subtle', 4.5, 'X21b (88.9) ink on the fill');
+    expectRatio('light', '--color-status-warning-text', '--color-status-warning-subtle-hover', 4.5, 'X21b (88.9) ink on the hover');
+    expectRatio('light', '--color-focus-ring', '--color-status-warning-subtle', 3.0, 'X21b (88.9) focus ring on the box halo');
+
+    const step = ratioHex(hover, rest, 'X21b (88.9) hover vs rest');
+    expect(
+      step,
+      `X21b (88.9) — the light warning hover (${hover}) measures ${step.toFixed(4)}:1 from the fill (${rest}); a hover under 1.10 is not a step anyone sees`,
+    ).toBeGreaterThanOrEqual(1.1);
+
+    expect(resolve('dark', '--color-status-warning-subtle'), 'X21b (88.9) is light only — the dark warning fill must not move').toBe('#423e36');
+    expect(resolve('dark', '--color-status-warning-subtle-hover'), 'X21b (88.9) is light only — the dark warning hover must not move').toBe('#554832');
   });
 
   it('22. Req 6 / OI-4 — light status text does not recreate the accent hex collision', () => {
@@ -1019,6 +1060,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // PAGE, NOT THE HEX — and ruling 1c moved `--color-bg-page` to warm-200, vacating warm-100. The
     // page-side cue is preserved bit-for-bit at 1.1523. THIS ROW IS THE THING THAT STILL GUARDS IT.
     // Restoring warm-200 here would red this row, because warm-200 IS the page now.
+    // AMENDED Phase 88.9-58 (X60 Sb): the fill is the owner-picked #e3dad1 now (pinned in the X60
+    // test below). It is still neither the page nor the card, which is all this row asserts.
     const fill = resolve('light', '--color-btn-secondary-bg');
     const page = resolve('light', '--color-bg-page');
     const card = resolve('light', '--color-bg-card');
@@ -1054,7 +1097,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     const cardHover = resolve('light', '--color-bg-muted');
     expect(fill, `88.3-18 ruling 1c — the CLOSED third ground: light --color-btn-secondary-bg (${fill}) must NO LONGER be byte-equal to --color-bg-muted (${cardHover}); the 88.3-14 disclosure is dissolved, not deleted`).not.toBe(cardHover);
     // The fill must actually carry that ground now, not merely differ from it.
-    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-muted', 1.05, '88.3-18 ruling 1c / the fill now reads on the third ground (1.3280)');
+    // AMENDED Phase 88.9-58 (X60 Sb): re-measured at the #e3dad1 fill, 1.0902 against bg-muted
+    // (was 1.3280 at warm-100). The fill is still the lighter of the two and the 1.05 floor holds,
+    // with 0.04 of room; the button's own edge reads 1.5350 on this ground and carries it too.
+    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-muted', 1.05, '88.3-18 ruling 1c / the fill still reads on the third ground (1.0902 at the X60 Sb fill; was 1.3280)');
   });
 
   it('34. 88.3-14 / ruling 2 — the fill sits inside the shipped fill-vs-ground band', () => {
@@ -1071,6 +1117,12 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // slide, so the obvious one-step-down warm-300 measures 1.5954 here and would red this row.
     // Raising the ceiling to fit it is a band change that leaves the surveyed range entirely, and
     // this row's own comment reserves that for a named decision with a fresh survey.
+    //
+    // AMENDED Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14: "I would prefer it doesn't
+    // match the background"). The BAND IS UNCHANGED and the picked fill sits inside it on both
+    // grounds: 1.0572 against the page (0.007 over the floor, shown to the owner as the price of
+    // the pick) and 1.3802 against the white card (was 1.1330). The fill moved DOWN after all,
+    // by owner ruling, to the minted step the 88.3-18 marker had rejected on its margin rule.
     expectRatio('light', '--color-btn-secondary-bg', '--color-bg-page', 1.05, '88.3-14 ruling 2 / fill band');
     expectRatioBelow('light', '--color-btn-secondary-bg', '--color-bg-page', 1.4, '88.3-14 ruling 2 / fill band');
     expectRatio('light', '--color-btn-secondary-bg', '--color-bg-card', 1.05, '88.3-14 ruling 2 / fill band');
@@ -1089,8 +1141,21 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // HELD). Only the fill beneath it moved, so the ring now reads 1.4081 on it (was 1.2220) —
     // mid-band rather than at the floor, i.e. this pairing got BETTER. warm-500 on the new fill
     // would read 3.36, still far above the ceiling, so the rejection above is unaffected.
-    expectRatio('light', '--color-border-control', '--color-btn-secondary-bg', 1.2, '88.3-14 ruling 2 / ring band');
-    expectRatioBelow('light', '--color-border-control', '--color-btn-secondary-bg', 1.6, '88.3-14 ruling 2 / ring band (upper bound is deliberate)');
+    //
+    // AMENDED Phase 88.9-58 (X60 De3, owner pick page 11, votes-b11, 2026-11-14; the owner on the
+    // lighter options: "I would like the line to be bolder/heavier than the options presented to
+    // me"). This row now judges the secondary button's OWN edge token, and its ceiling moves
+    // 1.60 -> 1.70 for that edge by that ruling: warm-400 on the X60 Sb fill measures 1.6734. The
+    // ceiling is a DESIGN band from the 13-system survey, not a WCAG floor, and the owner chose
+    // the heavier line on a rendering. The floor stays 1.20. The rejection above still holds:
+    // warm-500 reads 2.9793 on the new fill, far over 1.70. The shared control edge is judged in
+    // test 36, under its old bands.
+    expect(
+      lookup('light', '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — the secondary button must have its own edge token, light --color-btn-secondary-border',
+    ).not.toBeNull();
+    expectRatio('light', '--color-btn-secondary-border', '--color-btn-secondary-bg', 1.2, 'X60 De3 (88.9) / own edge on the fill, floor');
+    expectRatioBelow('light', '--color-btn-secondary-border', '--color-btn-secondary-bg', 1.7, 'X60 De3 (88.9) / own edge on the fill (1.6734; the upper bound is deliberate, amended 1.60 -> 1.70 by owner ruling De3)');
   });
 
   it('36. 88.3-14 / ruling 2 — the ring reads on BOTH grounds the button sits on', () => {
@@ -1110,6 +1175,23 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expectRatioBelow('light', '--color-border-control', '--color-bg-page', 2.0, '88.3-14 ruling 2 / ring vs page');
     expectRatio('light', '--color-border-control', '--color-bg-card', 1.2, '88.3-14 ruling 2 / ring vs card');
     expectRatioBelow('light', '--color-border-control', '--color-bg-card', 2.0, '88.3-14 ruling 2 / ring vs card');
+
+    // AMENDED Phase 88.9-58 (X60 De3, owner pick page 11, votes-b11, 2026-11-14: "I would like the
+    // line to be bolder/heavier than the options presented to me"). The four rows above are
+    // UNCHANGED and still bind the shared control edge (warm-300: 1.2220 on the page, 1.5954 on
+    // the card), so every other control stays inside 1.20-2.00. The secondary button's OWN edge
+    // (warm-400) is judged here on the same two grounds: the page in the unchanged 1.20-2.00
+    // (1.7690), and the card with the ceiling amended 2.00 -> 2.40 for this edge by that ruling
+    // (2.3096, the figure the hold above names as over the old cap). A design band, not a WCAG
+    // floor; warm-500 on the card reads 4.1120 and still reds.
+    expect(
+      lookup('light', '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — the secondary button must have its own edge token, light --color-btn-secondary-border',
+    ).not.toBeNull();
+    expectRatio('light', '--color-btn-secondary-border', '--color-bg-page', 1.2, 'X60 De3 (88.9) / own edge vs page');
+    expectRatioBelow('light', '--color-btn-secondary-border', '--color-bg-page', 2.0, 'X60 De3 (88.9) / own edge vs page (1.7690)');
+    expectRatio('light', '--color-btn-secondary-border', '--color-bg-card', 1.2, 'X60 De3 (88.9) / own edge vs card');
+    expectRatioBelow('light', '--color-btn-secondary-border', '--color-bg-card', 2.4, 'X60 De3 (88.9) / own edge vs card (2.3096; ceiling amended 2.00 -> 2.40 by owner ruling De3)');
   });
 
   it('37. 88.3-14 / ruling 2 — the label still clears 4.5:1 on the darker fill', () => {
@@ -1117,6 +1199,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // measures 11.51, so there is enormous headroom — but the assertion is what keeps it true.
     // AMENDED 88.3-18 (ruling 1c): the fill is warm-100 now and warm-800 on it measures 13.2669 —
     // more headroom, same assertion. The row earns its keep precisely because the fill moved twice.
+    // AMENDED Phase 88.9-58 (X60 Sb): a third move. warm-800 on #e3dad1 measures 10.8910, and on
+    // the hover fill #cdc1b4 8.5056.
     expectRatio('light', '--color-btn-secondary-text', '--color-btn-secondary-bg', 4.5, '88.3-14 ruling 2 / label on fill');
   });
 
@@ -1124,7 +1208,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     const fill = resolve('light', '--color-btn-secondary-bg');
     const hover = resolve('light', '--color-btn-secondary-hover');
     expect(hover, `88.3-14 ruling 2 — light --color-btn-secondary-hover (${hover}) must differ from the resting fill (${fill}); leaving hover at warm-200 after the fill moved there would make hover indistinguishable from rest`).not.toBe(fill);
+    // AMENDED Phase 88.9-58 (X60 Sb + De3): the hover edge token is unchanged (warm-400, the same
+    // step as the new rest edge), so on hover only the fill steps: #cdc1b4, 1.2805 from rest.
+    // The hover edge on the hover fill measures 1.3069.
     expectRatio('light', '--color-border-control-hover', '--color-btn-secondary-hover', 1.2, '88.3-14 ruling 2 / hover ring on hover fill');
+    expectRatio('light', '--color-btn-secondary-text', '--color-btn-secondary-hover', 4.5, 'X60 Sb (88.9) / label on the hover fill (8.5056)');
   });
 
   it('39. 88.3-14 / ruling 2 — dark is INERT: both control-edge tokens are `transparent` and the dark trio is byte-unchanged', () => {
@@ -1136,6 +1224,13 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       const raw = resolveRaw('dark', prop);
       expect(raw, `88.3-14 ruling 2 — dark ${prop} is "${raw}"; ruling 2 is LIGHT-ONLY, so dark must stay transparent. Declared rather than omitted so the 1px border is unconditional and the theme toggle shifts no layout`).toBe('transparent');
     }
+    // AMENDED Phase 88.9-58 (X60 De3): the secondary button's own edge token joins the
+    // dark-transparent list. Read from the dark block itself, so a missing dark line cannot pass
+    // by falling back to the light warm-400.
+    expect(
+      declIn(blockOf('dark'), '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — dark --color-btn-secondary-border must be declared transparent in the dark block; the De3 edge is LIGHT-ONLY',
+    ).toBe('transparent');
     // ...and the dark `.btn-secondary` trio did not move while the light one did.
     expect(resolve('dark', '--color-btn-secondary-bg'), '88.3-14 — dark --color-btn-secondary-bg must still be purple-800').toBe(resolve('dark', '--purple-800'));
     expect(resolve('dark', '--color-btn-secondary-hover'), '88.3-14 — dark --color-btn-secondary-hover must still be purple-700').toBe(resolve('dark', '--purple-700'));
@@ -1151,6 +1246,9 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     for (const key of [
       '--color-line-control',
       '--color-line-control-hover',
+      // AMENDED Phase 88.9-58 (X60 De3): a fifth key, the bridge for the secondary button's own
+      // edge (the landing Google light arm and the home-card gear take it as a border utility).
+      '--color-line-btn-secondary',
       '--color-surface-accent-subtle-strong',
       '--color-content-accent-strong',
     ]) {
@@ -1158,6 +1256,87 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
         new RegExp(`${key}[ \\t]*:`),
       );
     }
+  });
+
+  it('X60 Sb (88.9): the light secondary fill is #e3dad1 with hover #cdc1b4, its own edge is warm-400 (De3), the gated fill follows the rest and its gated edge is warm-300, darker than that fill, the .btn-secondary rule reads the new edge, and the page-fill token is the card in light and the secondary fill in dark', () => {
+    // DECISION Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14: "I would prefer it doesn't
+    // match the background"; edge De3, pick page 11, votes-b11, 2026-11-14: "I would like the line
+    // to be bolder/heavier than the options presented to me"; Calendar button, owner by chat
+    // 2026-11-14: "Make the calendar button White like the dialog's and the cards"). The picked
+    // hexes are pinned as hexes (D-03: a token that differs from the pick is a defect). The bands
+    // these values sit in are tests 34 to 38; the WCAG floors are test 37 (label), 51 (count
+    // pill), 53 (gated ink) and 67 (pressed segment).
+    const rest = resolve('light', '--color-btn-secondary-bg');
+    const hover = resolve('light', '--color-btn-secondary-hover');
+    expect(rest, 'X60 Sb (88.9) — the light secondary fill must be the picked #e3dad1').toBe('#e3dad1');
+    expect(hover, 'X60 Sb (88.9) — the light secondary hover must be the picked #cdc1b4').toBe('#cdc1b4');
+
+    // The button's own edge (De3): warm-400 in light, transparent in dark.
+    expect(
+      lookup('light', '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — light --color-btn-secondary-border must be declared as the warm-400 palette step',
+    ).toBe('var(--warm-400)');
+    expect(
+      declIn(blockOf('dark'), '--color-btn-secondary-border'),
+      'X60 De3 (88.9) — dark --color-btn-secondary-border must be transparent (the edge is light-only)',
+    ).toBe('transparent');
+
+    // The gated fill follows the rest: ink recedes, fill stays (the 88.8 HIGH-A shape).
+    expect(
+      lookup('light', '--color-btn-secondary-gated-bg'),
+      'X60 Sb (88.9) — the light gated fill must point at the resting fill token, so the two cannot drift apart',
+    ).toBe('var(--color-btn-secondary-bg)');
+    expect(resolve('light', '--color-btn-secondary-gated-bg'), 'X60 Sb (88.9) — the light gated fill must equal the resting fill').toBe(rest);
+
+    // The gated edge. Design record, not a WCAG floor: owner Q9 A (Picks 12, 2026-11-14) carries
+    // the 88.8 HIGH-A shape, the gated edge one step lighter than the rest edge (warm-400 rest,
+    // warm-300 gated); 1.4.11 is not claimed here, as for the 1.67 rest edge, and the inactive
+    // exemption is not the reason, because DR-C keeps aria-disabled controls active.
+    const gatedEdge = resolve('light', '--color-btn-secondary-gated-border');
+    const gatedFill = resolve('light', '--color-btn-secondary-gated-bg');
+    expect(gatedEdge, 'X60 gated edge (88.9, owner Q9 A) — the light gated edge must be warm-300 #d6cbc0').toBe('#d6cbc0');
+    expect(gatedEdge, 'X60 gated edge (88.9) — #d6cbc0 is the palette step warm-300').toBe(resolve('light', '--warm-300'));
+    const edgeL = lStarOf(gatedEdge, 'X60 gated edge');
+    const fillL = lStarOf(gatedFill, 'X60 gated fill');
+    expect(
+      edgeL,
+      `X60 gated edge (88.9, owner Q9 A) — the light gated edge (${gatedEdge}, L* ${edgeL.toFixed(2)}) must be DARKER than the gated fill (${gatedFill}, L* ${fillL.toFixed(2)}); an edge lighter than its fill is the warm-200 state this ruling replaced`,
+    ).toBeLessThan(fillL);
+    expect(
+      resolveRaw('dark', '--color-btn-secondary-gated-border'),
+      'X60 gated edge (88.9) is light only — the dark gated edge must stay transparent',
+    ).toBe('transparent');
+
+    // The rule itself reads the new edge (comment-masked source, so marker prose cannot satisfy it).
+    const rule = braceBlock(uniqueMatch(/^\.btn-secondary[ \t]*\{/gm, '.btn-secondary {'), '.btn-secondary rule');
+    expect(
+      rule,
+      'X60 De3 (88.9) — the secondary button rule must take its border from --color-btn-secondary-border, not from the shared control edge',
+    ).toMatch(/border:[ \t]*1px solid var\(--color-btn-secondary-border\);/);
+    expect(rule, 'X60 De3 (88.9) — the secondary button rule must no longer read the shared control edge').not.toMatch(/--color-border-control\b/);
+
+    // The page-fill token: a secondary on the page ground fills with the card in light and with
+    // the dark secondary fill in dark (dark unchanged).
+    expect(
+      lookup('light', '--color-btn-secondary-page-bg'),
+      'X60 (88.9) — light --color-btn-secondary-page-bg must point at the card token',
+    ).toBe('var(--color-bg-card)');
+    expect(
+      resolve('dark', '--color-btn-secondary-page-bg'),
+      'X60 (88.9) — dark --color-btn-secondary-page-bg must equal the dark secondary fill (dark is unchanged)',
+    ).toBe(resolve('dark', '--color-btn-secondary-bg'));
+    expectRatio('light', '--color-btn-secondary-page-bg', '--color-bg-page', 1.05, 'X60 (88.9) / page-fill vs page, band floor (1.3056)');
+    expectRatioBelow('light', '--color-btn-secondary-page-bg', '--color-bg-page', 1.4, 'X60 (88.9) / page-fill vs page, band ceiling (1.3056)');
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-btn-secondary-text', '--color-btn-secondary-page-bg', 4.5, 'X60 (88.9) / label on the page-fill');
+      expectRatio(theme, '--color-btn-secondary-gated-text', '--color-btn-secondary-page-bg', 4.5, 'X60 (88.9) / gated ink on the page-fill');
+    }
+
+    // The shared control edge did not move: every other control keeps warm-300.
+    expect(
+      resolve('light', '--color-border-control'),
+      'X60 De3 (88.9) — the SHARED control edge must stay warm-300; only the secondary button took the heavier line',
+    ).toBe(resolve('light', '--warm-300'));
   });
 
   it('41. 88.3-14 / ruling 3 — the accent-circle-strong pair clears its floors in light and is byte-identical in dark', () => {
@@ -1211,7 +1390,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // future re-tint inside the feasible window (t ∈ [0.60, 0.92]) does not churn this row — but a
     // collapse back onto either neighbour does red it. warm-200 IS the page (byte-equality, a real
     // render defect at src/app/components/GroupLibrary.js ("bg-surface-page rounded-card animate-pulse") and
-    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border-line-accent' :")); warm-300 drops
+    // src/app/components/CalendarMonthView.js ("isCurrentDay ? 'bg-surface-muted border border-line-accent' :")); warm-300 drops
     // accent-text to 4.4440 and reds test 14's row 13.
     const mint = resolve('light', '--warm-250');
     expect(mint, '88.3-18 ruling 1c — `--warm-250` must be declared in the palette').toMatch(/^#[0-9a-f]{6}$/i);
@@ -1233,10 +1412,15 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // side reds instead of silently splitting them, and so a "deduplicate these" pass has to be a
     // named decision. `--color-btn-secondary-bg` == `--color-badge-member-bg` (both warm-100) and
     // `--color-text-secondary` == `--color-badge-member-text` (both warm-700).
+    //
+    // AMENDED Phase 88.9-58 (X60 Sb, owner pick page 10b, 2026-11-14): the FIRST pair is DISSOLVED.
+    // The secondary fill moved to its own hex and the member badge stays warm-100, so the two names
+    // no longer share a value. The row now asserts the split, so a later edit that puts the fill
+    // back on the badge's hex reds here and has to be a named decision. The second pair stands.
     expect(
       resolve('light', '--color-btn-secondary-bg'),
-      '88.3-18 ruling 1c — DISCLOSED: light --color-btn-secondary-bg and --color-badge-member-bg are both warm-100 on purpose. If this reds, one of them moved — decide, do not deduplicate',
-    ).toBe(resolve('light', '--color-badge-member-bg'));
+      'X60 Sb (88.9) — light --color-btn-secondary-bg must NOT equal --color-badge-member-bg any more: the 88.3-18 duplication is dissolved by the owner-picked fill. If this reds, the fill went back to warm-100',
+    ).not.toBe(resolve('light', '--color-badge-member-bg'));
     expect(
       resolve('light', '--color-text-secondary'),
       '88.3-18 ruling 1c — DISCLOSED: light --color-text-secondary and --color-badge-member-text are both warm-700 on purpose. If this reds, one of them moved — decide, do not deduplicate',
@@ -1255,7 +1439,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     //
     // NOTE Phase 88.5 (owner ruling 2026-08-31) — a deliberate dark FORK now exists in
     // `components/UpcomingCountPill.tsx` and DOES NOT CONTRADICT this equality. The pill forks at
-    // its USE SITE (`dark:[background-color:var(--amber-500)]` + `dark:[color:var(--warm-900)]`),
+    // its USE SITE (`dark:[background-color:var(--amber-400)]` + `dark:[color:var(--warm-900)]`),
     // reading a different token family in dark rather than re-pointing this one; that is why it
     // could not be spelled `.btn-accent`. This row therefore stays green and stays the guard on
     // the accent CTA family. Tests 51-52 below own the pill's own floors and its fork.
@@ -1306,8 +1490,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // survived every gate. Both files are read.
     //
     // ⚠️ THE NEGATIVE ASSERTIONS ARE SCOPED TO THE BUTTON'S SLICE ON PURPOSE — a file-level version
-    // reds on day one. src/app/components/EventDayModal.js ("hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'") already carries
-    // `backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'` — the
+    // reds on day one. EventDayModal.js already carried, on the event row, an inline
+    // backgroundColor keyed on hasBgImage (a 0.85 white wash, or transparent) — the
+    // [AMENDED Phase 88.9-60, X23a: that wash and its element were removed with the dark-ink
+    // treatment it rescued, so the former cite to it is gone. The slice scoping below stands on its
+    // own: it keeps this pin about the button, whatever else the row's markup carries.]
     // (RE-DERIVED plan 88.6-41: the cite read `:239` and the gate was spelled `groupBgImage`.
     // W49 moved that wash onto the VALIDATED flag and the line drifted. Same wash, same
     // rationale, same out-of-scope-ness for this button's slice — only the record was stale.)
@@ -1397,7 +1584,15 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       if (legacy) {
         expect(slice, `88.3-18 — the Share Game QR button in ${rel} still wears the legacy \`btn btn-accent\` string, so it must carry the house focus-visible ring string, like the Create-Event button it copies`).toContain('focus-visible:ring-focus-ring');
       } else {
-        expect(slice, `88.3-18 / A-2 — the Share Game QR button in ${rel} is now a \`<Button>\`, so it must NOT carry a per-site \`focus-visible:ring\` string; the ring lives once in \`Button.tsx\`'s cva base and a second copy paints nothing extra but re-splits the decision`).not.toContain('focus-visible:ring');
+        // AMENDED Phase 88.9-39 (owner pick B2a, R014 / B025): the per-site HALO override
+        // `focus-visible:ring-offset-surface-group-halo` on EventDayModal's Share Game QR is the
+        // 88.9-05 sanctioned call-site form (Button.tsx's A-2 amendment: a call site on another
+        // ground overrides the halo through cn() with the same focus-visible: prefix), not a second
+        // ring string. The negative now reads the RING STRING PROPER — `ring-2`, `ring-focus-ring`,
+        // `ring-offset-2` — and leaves a `focus-visible:ring-offset-<surface>` colour alone, so the
+        // A-2 decision (one ring, in the primitive) is still pinned and the halo decision is not.
+        const ringProper = slice.match(/focus-visible:ring-(?!offset-[a-z])[\w-]+/g) ?? [];
+        expect(ringProper, `88.3-18 / A-2 — the Share Game QR button in ${rel} is now a \`<Button>\`, so it must NOT carry a per-site focus-visible ring string (width, ring colour or offset width); the ring lives once in \`Button.tsx\`'s cva base and a second copy paints nothing extra but re-splits the decision. Found: ${ringProper.join(' ') || '(none)'}`).toEqual([]);
       }
 
       expect(slice, `88.3-18 — the Share Game QR button's decorative icon in ${rel} must be hidden from AT; the visible label already names the control`).toContain('aria-hidden="true"');
@@ -1594,15 +1789,24 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // ratio. Recorded because the sentence used to say "semibold" and a stale one here would
     // read as a pin on something this file cannot see.
     expectRatio('light', '--color-btn-accent-text', '--color-btn-accent-bg', 4.5, '88.5 Req 2 / LIGHT arm — white on amber-700 (5.0216)');
-    expectRatio('dark', '--warm-900', '--amber-500', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-500 (8.3660). White here is 2.1477, an AA failure: the ink MUST fork with the fill');
+    // AMENDED Phase 88.9-22 (owner pick F4b, 88.9-PICKS-B8A.json, 2026-11-07): the dark rows measure the amber-400 fill the pill now paints (were amber-500: 8.3660 / 5.2506 / 6.4483).
+    expectRatio('dark', '--warm-900', '--amber-400', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-400 (10.7630, F4b). White here is 1.6694, an AA failure: the ink MUST fork with the fill');
 
     // Fill vs ground, use site 1 — the home Calendar button (3.0, WCAG 1.4.11 non-text).
-    expectRatio('light', '--color-btn-accent-bg', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / LIGHT pill on the Calendar button fill (4.4321)');
-    expectRatio('dark', '--amber-500', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / DARK pill on the Calendar button fill (5.2506). amber-700 here is 2.2456 — this is the number the fork exists to fix');
+    // AMENDED Phase 88.9-58 (X60, owner 2026-11-14: "Make the calendar button White like the
+    // dialog's and the cards"): the phone Calendar button is the one secondary on the page ground
+    // and is card-white in light through the page-fill token, so both rows read that token. Light
+    // 5.0216 (was 4.4321 on the warm-100 fill); dark is the dark secondary fill, unchanged, 6.7549.
+    expect(
+      lookup('light', '--color-btn-secondary-page-bg'),
+      'X60 (88.9) — the page-fill token --color-btn-secondary-page-bg must be declared; the Calendar button fills with it',
+    ).not.toBeNull();
+    expectRatio('light', '--color-btn-accent-bg', '--color-btn-secondary-page-bg', 3.0, '88.5 Req 2 / LIGHT pill on the card-white Calendar button (5.0216; X60, 88.9-58)');
+    expectRatio('dark', '--amber-400', '--color-btn-secondary-page-bg', 3.0, '88.5 Req 2 / DARK pill on the Calendar button fill (6.7549, F4b). amber-700 here is 2.2456 — this is the number the fork exists to fix');
 
     // Fill vs ground, use site 2 — the sheet's "This week" subheader on `bg-surface-card`.
     expectRatio('light', '--color-btn-accent-bg', '--color-bg-card', 3.0, '88.5 Req 2 / LIGHT twin pill on the sheet card (5.0216)');
-    expectRatio('dark', '--amber-500', '--color-bg-card', 3.0, '88.5 Req 2 / DARK twin pill on the sheet card (6.4483). amber-700 here is 2.7578');
+    expectRatio('dark', '--amber-400', '--color-bg-card', 3.0, '88.5 Req 2 / DARK twin pill on the sheet card (8.2958, F4b). amber-700 here is 2.7578');
   });
 
   it('52. 88.5 — the pill\'s two theme arms are DIFFERENT ON PURPOSE (a theme-equal pill is a regression)', () => {
@@ -1615,18 +1819,18 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     //
     // Asserted in the DARK block, because that is the theme where the `dark:` variant wins and
     // therefore the theme where the two spellings must disagree.
-    const darkForkFill = resolve('dark', '--amber-500');
+    const darkForkFill = resolve('dark', '--amber-400');
     const lightArmFill = resolve('dark', '--color-btn-accent-bg');
     expect(
       darkForkFill,
-      `88.5 (owner ruling 2026-08-31) — the pill's DARK fill --amber-500 (${darkForkFill}) must NOT be byte-equal to the light arm's --color-btn-accent-bg (${lightArmFill}). A theme-equal pill is a REGRESSION, not a simplification: amber-700 measures 2.2456:1 on the dark button fill and 2.7578:1 on the dark sheet, under SPEC Req 2's 3:1 acceptance — which the owner KEPT rather than relax. Re-unifying the arms is a decision, not a cleanup`,
+      `88.5 (owner ruling 2026-08-31) — the pill's DARK fill --amber-400 (${darkForkFill}) must NOT be byte-equal to the light arm's --color-btn-accent-bg (${lightArmFill}). A theme-equal pill is a REGRESSION, not a simplification: amber-700 measures 2.2456:1 on the dark button fill and 2.7578:1 on the dark sheet, under SPEC Req 2's 3:1 acceptance — which the owner KEPT rather than relax. Re-unifying the arms is a decision, not a cleanup`,
     ).not.toBe(lightArmFill);
 
     const darkForkInk = resolve('dark', '--warm-900');
     const lightArmInk = resolve('dark', '--color-btn-accent-text');
     expect(
       darkForkInk,
-      `88.5 (owner ruling 2026-08-31) — the pill's DARK ink --warm-900 (${darkForkInk}) must NOT be byte-equal to the light arm's --color-btn-accent-text (${lightArmInk}). The ink forks WITH the fill by necessity: white on amber-500 is 2.1477:1, an AA failure`,
+      `88.5 (owner ruling 2026-08-31) — the pill's DARK ink --warm-900 (${darkForkInk}) must NOT be byte-equal to the light arm's --color-btn-accent-text (${lightArmInk}). The ink forks WITH the fill by necessity: white on amber-400 is 1.6694:1, an AA failure`,
     ).not.toBe(lightArmInk);
 
     // Anti-vacuity: all four resolve to real hexes, so the two inequalities above cannot be
@@ -1933,6 +2137,1157 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(failures, `88.9 A5a — ${failures.join(' | ')}`).toEqual([]);
     expect(measured, '88.9 A5a — anti-vacuity: expected 4 measured pairs (2 sites x 2 themes)').toBe(4);
   });
+
+  it('56. E7a (88.9): dark error box ground #450a0a, ink ≥ 4.5', () => {
+    // Deliberate hex exception (the fourth): SPEC R4 token pin — the shipped dark resting error ground IS the owner pick E7a (88.9-PICKS-B4.json, 2026-11-06), red-950; the shipped wine ground measured 6.41:1 under the same ink and read pink (UAT3-J1).
+    const darkGround = resolve('dark', '--color-status-error-subtle');
+    expect(
+      darkGround,
+      `88.9 E7a — dark --color-status-error-subtle resolves ${darkGround}; the owner pick E7a (88.9-PICKS-B4.json) is red-950 #450a0a`,
+    ).toBe('#450a0a');
+    expectRatio('dark', '--color-status-error-text', '--color-status-error-subtle', 4.5, '88.9 E7a');
+    const lightGround = resolve('light', '--color-status-error-subtle');
+    expect(
+      lightGround,
+      `88.9 E7a — light --color-status-error-subtle resolves ${lightGround}; E7a is a dark-only pick, the light ground must not move from #fadede`,
+    ).toBe('#fadede');
+  });
+
+  it('57. O23b (88.9): dark error-chip hover #5c1d1d', () => {
+    // Deliberate hex exception (the fifth): SPEC R4 token pin — the hover twin of E7a IS the owner pick O23b (88.9-PICKS-B8B.json, 2026-11-07); the shipped wine hover measured 5.76:1.
+    const darkHover = resolve('dark', '--color-status-error-subtle-hover');
+    expect(
+      darkHover,
+      `88.9 O23b — dark --color-status-error-subtle-hover resolves ${darkHover}; the owner pick O23b (88.9-PICKS-B8B.json) is #5c1d1d`,
+    ).toBe('#5c1d1d');
+    expectRatio('dark', '--color-status-error-text', '--color-status-error-subtle-hover', 4.5, '88.9 O23b');
+    const darkResting = resolve('dark', '--color-status-error-subtle');
+    expect(
+      darkHover,
+      `88.9 O23b — the dark error hover (${darkHover}) must stay distinct from the dark resting ground (${darkResting}), or hover paints no change`,
+    ).not.toBe(darkResting);
+  });
+  it('58. C3 (88.9): the plain, today and next-month day-number inks clear 4.5:1 on their tile grounds in both themes', () => {
+    // Deliberate hex exception (the sixth): SPEC R4 token pin — the tiles ARE owner pick C3 (88.9-PICKS-B7A.json); tile vs card 1.24 light / 1.12 dark is a fill, not a control boundary, so no 3:1 row.
+    // The tile is 55% and the past tile 28% of the muted fill over the card, written as literal hexes per theme. The blend check below holds that derivation, so a hand-nudged hex reds here.
+    const PICK = { light: { tile: '#ebe6e0', past: '#f5f2ef' }, dark: { tile: '#2a3548', past: '#263143' } } as const;
+    for (const theme of ['light', 'dark'] as const) {
+      const tile = resolve(theme, '--color-bg-tile');
+      const past = resolve(theme, '--color-bg-tile-past');
+      expect(tile, `88.9 C3 — [${theme}] --color-bg-tile resolves ${tile}; the owner pick C3 is ${PICK[theme].tile}`).toBe(PICK[theme].tile);
+      expect(past, `88.9 C3 — [${theme}] --color-bg-tile-past resolves ${past}; the owner pick C3 is ${PICK[theme].past}`).toBe(PICK[theme].past);
+      const muted = resolve(theme, '--color-bg-muted');
+      const card = resolve(theme, '--color-bg-card');
+      expect(blend(muted, 0.55, card), `88.9 C3 — [${theme}] the tile must be 55% of the muted fill (${muted}) over the card (${card})`).toBe(tile);
+      expect(blend(muted, 0.28, card), `88.9 C3 — [${theme}] the past tile must be 28% of the muted fill (${muted}) over the card (${card})`).toBe(past);
+      expectRatio(theme, '--color-text-primary', '--color-bg-tile', 4.5, '88.9 C3 plain day number');
+      expectRatio(theme, '--color-text-primary', '--color-bg-tile-past', 4.5, '88.9 C3 past day number');
+      expectRatio(theme, '--color-text-muted', '--color-bg-tile-past', 4.5, '88.9 C3 past muted ink');
+      expectRatio(theme, '--color-accent-text', '--color-bg-muted', 4.5, '88.9 C3 today');
+      expectRatio(theme, '--color-text-muted', '--color-bg-page', 4.5, '88.9 C3 next month');
+    }
+    const themeBlock = blockOf('theme');
+    expect(declIn(themeBlock, '--color-surface-tile'), '88.9 C3 — the @theme inline key --color-surface-tile must read var(--color-bg-tile)').toBe('var(--color-bg-tile)');
+    expect(declIn(themeBlock, '--color-surface-tile-past'), '88.9 C3 — the @theme inline key --color-surface-tile-past must read var(--color-bg-tile-past)').toBe('var(--color-bg-tile-past)');
+  });
+
+  it('59. D1b (88.9): white clears 4.5:1 on each of the eight chip fills in both themes', () => {
+    // Deliberate hex exception (the seventh): SPEC R4 token pin — the eight fills ARE owner pick D1b (votes-b3 v12), theme-identical, in this order. The minimum is green-700 (research 5.0156).
+    const D1B = ['#b91c1c', '#c2410c', '#b45309', '#15803d', '#0f766e', '#0369a1', '#6d28d9', '#be185d'] as const;
+    const themeBlock = blockOf('theme');
+    let min = Infinity;
+    D1B.forEach((hex, i) => {
+      const n = i + 1;
+      for (const theme of ['light', 'dark'] as const) {
+        const fill = resolve(theme, `--color-member-chip-${n}`);
+        expect(fill, `88.9 D1b — [${theme}] --color-member-chip-${n} resolves ${fill}; the owner pick D1b slot ${n} is ${hex}`).toBe(hex);
+        const value = ratioHex('#ffffff', fill, `88.9 D1b white on chip ${n}`);
+        min = Math.min(min, value);
+        expect(value, `88.9 D1b — [${theme}] white on --color-member-chip-${n} (${fill}) measures ${value.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(declIn(themeBlock, `--color-chip-${n}`), `88.9 D1b — the @theme inline key --color-chip-${n} must read var(--color-member-chip-${n})`).toBe(`var(--color-member-chip-${n})`);
+    });
+    expect(min, `88.9 D1b — the weakest white-on-fill pair (green-700) measures ${min.toFixed(4)}:1`).toBeGreaterThanOrEqual(5.0);
+  });
+
+  it('60. D3c (88.9): the chip rim is purple-800 light and purple-950 dark, a separation edge with no floor', () => {
+    // Deliberate hex exception (the eighth): SPEC R4 token pin — the rim IS owner pick D3c (votes-b3a v2). It is a separation edge between stacked chips, not text or a control boundary, so it carries no floor (light rim vs card 11.28).
+    const light = resolve('light', '--color-member-chip-rim');
+    const dark = resolve('dark', '--color-member-chip-rim');
+    expect(light, `88.9 D3c — light --color-member-chip-rim resolves ${light}; the owner pick D3c is purple-800 #2f3b50`).toBe('#2f3b50');
+    expect(dark, `88.9 D3c — dark --color-member-chip-rim resolves ${dark}; the owner pick D3c is purple-950 #161d29`).toBe('#161d29');
+    expect(declIn(blockOf('theme'), '--color-chip-rim'), '88.9 D3c — the @theme inline key --color-chip-rim must read var(--color-member-chip-rim)').toBe('var(--color-member-chip-rim)');
+  });
+
+  it('61. R2-36 + B2a (88.9): the overlay and group-halo surface keys are declared in @theme inline', () => {
+    // Deliberate hex exception (the ninth): the scrim is pinned VERBATIM (rgba, not flattened) because the key below only points at it; its alpha is the dialog's dim in each theme.
+    // The group-halo key falls back to the card: an unset --group-halo would otherwise invalidate the ring shadow and the focus ring would vanish.
+    const themeBlock = blockOf('theme');
+    expect(declIn(themeBlock, '--color-surface-overlay'), '88.9 R2-36 C2a — the @theme inline key --color-surface-overlay must read var(--color-bg-overlay) (CR2-14)').toBe('var(--color-bg-overlay)');
+    expect(declIn(themeBlock, '--color-surface-group-halo'), '88.9 B2a — the @theme inline key --color-surface-group-halo must read the host --group-halo with a card fallback').toBe('var(--group-halo, var(--color-bg-card))');
+    expect(resolve('light', '--color-bg-overlay'), '88.9 R2-36 — the light scrim').toBe('rgba(0, 0, 0, 0.5)');
+    expect(resolve('dark', '--color-bg-overlay'), '88.9 R2-36 — the dark scrim').toBe('rgba(0, 0, 0, 0.7)');
+  });
+
+  it('62. O20c (88.9): the Sonner error override exists once, unlayered, and reads the status-error family', () => {
+    // Sonner's theme rule is 0,2,0 and Sonner injects its sheet at runtime, unlayered, so a rule inside any @layer loses to it whatever its specificity. Ours is 0,3,0 and sits at brace depth 0.
+    // Comments are masked before counting, so the DECISION marker that names this selector in prose does not count.
+    const hits = [...MASKED.matchAll(/:root \[data-sonner-toaster\]\[data-sonner-theme\][ \t]*\{/g)];
+    expect(hits.length, `88.9 O20c — expected exactly ONE Sonner error override rule in globals.css (comments stripped), found ${hits.length}`).toBe(1);
+    const before = MASKED.slice(0, hits[0].index);
+    const depth = (before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length;
+    expect(depth, `88.9 O20c — the Sonner override is nested at brace depth ${depth}; it MUST be unlayered (depth 0)`).toBe(0);
+    const body = RAW.slice(hits[0].index, RAW.indexOf('}', hits[0].index));
+    for (const decl of [
+      '--error-bg: var(--color-status-error-subtle);',
+      '--error-border: var(--color-status-error-border);',
+      '--error-text: var(--color-status-error-text);',
+    ]) {
+      expect(body, `88.9 O20c — the Sonner override must declare ${decl}`).toContain(decl);
+    }
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-status-error-text', '--color-status-error-subtle', 4.5, '88.9 O20c toast ink');
+    }
+  });
+  it('63. F4b (88.9): every dark accent role is amber-400 and the dark hovers step to amber-300', () => {
+    // Deliberate hex exception (the tenth): SPEC R4 token pin — owner pick F4b (88.9-PICKS-B8A.json); the dark ring is also amber-400, so it reads 1.00 against an accent fill and the offset halo carries it.
+    for (const prop of ['--color-accent', '--color-accent-text', '--color-accent-text-strong', '--color-border-accent']) {
+      const value = resolve('dark', prop);
+      expect(value, `88.9 F4b — dark ${prop} resolves ${value}; the owner pick F4b puts every dark accent role on amber-400 #fbbf24`).toBe('#fbbf24');
+    }
+    for (const prop of ['--color-accent-hover', '--color-accent-text-hover']) {
+      const value = resolve('dark', prop);
+      expect(value, `88.9 F4b — dark ${prop} resolves ${value}; the dark hover steps to amber-300 #fcd34d`).toBe('#fcd34d');
+    }
+    expect(resolve('dark', '--color-accent-hover'), '88.9 F4b — the dark accent hover must differ from the resting accent, or hover paints no change').not.toBe(resolve('dark', '--color-accent'));
+    expect(resolve('dark', '--color-accent-text-hover'), '88.9 F4b — the dark accent-text hover must differ from the resting accent-text').not.toBe(resolve('dark', '--color-accent-text'));
+    for (const ground of ['--color-bg-card', '--color-bg-page', '--color-bg-elevated']) {
+      expectRatio('dark', '--color-accent-text', ground, 4.5, '88.9 F4b dark accent ink');
+    }
+    for (const ground of ['--color-bg-card', '--color-bg-page']) {
+      expectRatio('dark', '--color-accent-text-hover', ground, 4.5, '88.9 F4b dark accent hover ink');
+    }
+    expectRatio('dark', '--color-on-accent', '--color-accent', 4.5, '88.9 F4b on-accent ink on the dark accent fill');
+    // The light theme does not move: every light accent role is pinned at its shipped value.
+    const LIGHT = {
+      '--color-accent': '#f59e0b',
+      '--color-accent-hover': '#fbbf24',
+      '--color-accent-text': '#92400e',
+      '--color-accent-text-hover': '#78350f',
+      '--color-accent-text-strong': '#78350f',
+      '--color-border-accent': '#d97706',
+    } as const;
+    for (const [prop, hex] of Object.entries(LIGHT)) {
+      const value = resolve('light', prop);
+      expect(value, `88.9 F4b — light ${prop} resolves ${value}; F4b is dark only, the light value must stay ${hex}`).toBe(hex);
+    }
+  });
+
+  it('64. E4a (88.9): the pressed theme-toggle border clears 3:1 on the card and its accent ink 4.5:1 on the muted fill in both themes', () => {
+    // CONFIRM-ONLY (88.9-22): green on ccec7cc by design — it holds the pair 88.9-32's E4a toggles consume.
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-border-accent', '--color-bg-card', 3.0, '88.9 E4a pressed-toggle border');
+      expectRatio(theme, '--color-accent-text', '--color-bg-muted', 4.5, '88.9 E4a pressed-toggle ink');
+    }
+  });
+
+  it('65. E6a (88.9): muted label ink clears 4.5:1 on the card in both themes', () => {
+    // CONFIRM-ONLY (88.9-22): green on ccec7cc by design — it holds the pair 88.9-34's ScheduleList labels consume.
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-text-muted', '--color-bg-card', 4.5, '88.9 E6a muted label ink');
+    }
+  });
+
+  it('66. D1b cue (88.9): the friend and pending outline clear 3:1 against their inner neighbour, both themes', () => {
+    // CONFIRM-ONLY (88.9-30): green on ccec7cc by design — it holds the inner-band pair the D1b status cue now sits on (owner pick R-P1); the RED-first proof is MemberChipStack test 7.
+    // inset-ring-surface-card resolves to --color-bg-card (globals.css surface-card key); the
+    // outline-status-success / -warning theme keys resolve to the two border roles read here
+    // (the theme-inline bridge sits outside this parser's four blocks).
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-status-success-border', '--color-bg-card', 3.0, '88.9 D1b friend cue vs inner band');
+      expectRatio(theme, '--color-status-warning-border', '--color-bg-card', 3.0, '88.9 D1b pending cue vs inner band');
+    }
+  });
+
+  it('67. 88.9 N1 / MED-78 — the Month | List pressed segment clears 3:1 against the unpressed segment and the card, and its ink clears 4.5:1, in BOTH themes', () => {
+    // 88.9-39 (88.9-RULINGS.md R-P3b, 2026-11-08, option A): the pressed segment paints the
+    // toggle-on pair. Light points at the btn-primary values (5.00 vs the unpressed warm-100
+    // segment, 5.66 vs the card, ink 5.66); dark has its own arm, purple-400 fill / warm-900 ink
+    // (4.02 vs the unpressed purple-800 segment, 4.93 vs the purple-900 card, ink 6.40), replacing
+    // the 1.99 / 2.45 the dark primary fill measured. WCAG 1.4.11: the fill is the only pressed cue.
+    // AMENDED Phase 88.9-58 (X60 Sb): the light unpressed segment is #e3dad1 now, so the light
+    // pressed segment reads 4.1021 against it (was 5.00 against warm-100). The 3.0 floor holds.
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-toggle-pressed-bg', '--color-btn-secondary-bg', 3.0, '88.9 N1 / MED-78 pressed segment vs unpressed segment');
+      expectRatio(theme, '--color-toggle-pressed-bg', '--color-bg-card', 3.0, '88.9 N1 / MED-78 pressed segment vs card');
+      expectRatio(theme, '--color-toggle-pressed-text', '--color-toggle-pressed-bg', 4.5, '88.9 N1 / MED-78 pressed ink');
+      measured += 3;
+    }
+    expect(measured, 'anti-vacuity: 3 pairs x 2 themes').toBe(6);
+    // The utilities bg-toggle-on / text-toggle-on-text / hover:bg-toggle-on-hover exist only through
+    // the @theme inline keys, so the keys are part of the requirement (the test-14 idiom).
+    const theme = blockOf('theme');
+    expect(declIn(theme, '--color-toggle-on'), '@theme inline must expose --color-toggle-on').toBe('var(--color-toggle-pressed-bg)');
+    expect(declIn(theme, '--color-toggle-on-text'), '@theme inline must expose --color-toggle-on-text').toBe('var(--color-toggle-pressed-text)');
+    expect(declIn(theme, '--color-toggle-on-hover'), '@theme inline must expose --color-toggle-on-hover').toBe('var(--color-toggle-pressed-hover)');
+  });
+
+  it('X8 G2 (88.9): the home gear fill is purple-700 in both themes, its hover purple-800 light and purple-650 dark, the white icon clears 3:1 on fill and hover, and the ring clears 3:1 on the card and every preset halo', () => {
+    // 88.9-59 (owner pick G2, 2026-11-11): the home-card gear is Invite Member's blue one step darker,
+    // with a white icon. Values are pinned by PALETTE KEY, never by a colour literal, so the pick is
+    // the pin: light takes Invite's hover step, dark the same step (Invite's blue with a fifth of black
+    // lands on it), and each hover moves the way Invite's does in that theme. The floors: the icon is a
+    // non-text glyph (3:1, WCAG 1.4.11), the hover must be a visible step (1.10), the gear must read as
+    // darker than Invite beside it (1.20), and the focus ring must clear 3:1 on the card and on each of
+    // the eight preset halos a tinted card hands the gear.
+    const themeBlock = blockOf('theme');
+    expect(declIn(themeBlock, '--color-btn-gear'), 'X8 G2 — @theme inline must expose --color-btn-gear').toBe('var(--color-gear-bg)');
+    expect(declIn(themeBlock, '--color-btn-gear-hover'), 'X8 G2 — @theme inline must expose --color-btn-gear-hover').toBe('var(--color-gear-hover)');
+
+    const hoverKey = { light: '--purple-800', dark: '--purple-650' } as const;
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expect(resolve(theme, '--color-gear-bg'), `X8 G2 — [${theme}] the gear fill is the purple-700 step`).toBe(resolve(theme, '--purple-700'));
+      expect(resolve(theme, '--color-gear-hover'), `X8 G2 — [${theme}] the gear hover is ${hoverKey[theme]}`).toBe(resolve(theme, hoverKey[theme]));
+
+      expectRatio(theme, '--color-btn-primary-text', '--color-gear-bg', 3.0, 'X8 G2 icon on the gear fill');
+      expectRatio(theme, '--color-btn-primary-text', '--color-gear-hover', 3.0, 'X8 G2 icon on the gear hover');
+      expectRatio(theme, '--color-gear-hover', '--color-gear-bg', 1.1, 'X8 G2 hover against rest');
+      expectRatio(theme, '--color-gear-bg', '--color-btn-primary-bg', 1.2, 'X8 G2 gear against Invite');
+      expectRatio(theme, '--color-focus-ring', '--color-bg-card', 3.0, 'X8 G2 ring on the card');
+      measured += 5;
+
+      const ring = resolve(theme, '--color-focus-ring');
+      for (const preset of GROUP_COLOUR_PRESETS) {
+        const halo = preset[theme];
+        const value = ratioHex(ring, halo, `X8 G2 ring on the ${preset.name} halo`);
+        expect(
+          value,
+          `X8 G2 — [${theme}] the focus ring (${ring}) on the ${preset.name} halo (${halo}) measures ${value.toFixed(4)}:1, floor 3.00:1`,
+        ).toBeGreaterThanOrEqual(3.0);
+        measured += 1;
+      }
+    }
+    expect(measured, 'anti-vacuity: (5 pairs + 8 preset halos) x 2 themes').toBe(26);
+  });
+
+  it('X17a (88.9): six pill families resolve to the picked pairs in both themes, words clear 4.5, and fills stand off the card, Maybe included on the amber pair', () => {
+    // 88.9-63 (X17a, owner pick page 10a, 2026-11-14): one pill family per hue. Each fill is the
+    // hue's 500 step mixed 30% into the light card and 35% into the dark card; each ink is the
+    // hue's own dark (light theme) or pale (dark theme) step. The pairs are pinned as the PICKED
+    // hexes (deliberate hex exception: a pill value other than the pick is a defect, P3), and the
+    // two floors beside them (D-07): the word on its own fill at 4.5, and the fill against the
+    // card at 1.25 in light and 1.50 in dark, which is what makes a pill read as a pill and not
+    // as the card (the 52-X17 complaint about No reply melting into the dark card).
+    // Emerald (Friend) is the same recipe; it was not on the pick page and is named as derived.
+    // Maybe has NO token of its own: the game-page Maybe pill reuses the amber pair, which is
+    // also Guest's (owner ruling Q1 A1, 2026-11-14), so amber is measured once here, on the same
+    // floors as every other family, and there is no warning-pair row in this test.
+    const PICKED = {
+      light: {
+        green: ['#bdeecf', '#166534'],
+        neutral: ['#ddd7d2', '#4a3d32'],
+        violet: ['#e5ccfd', '#6b21a8'],
+        blue: ['#c4dafc', '#1e40af'],
+        amber: ['#fce2b6', '#92400e'],
+        emerald: ['#b7ead9', '#065f46'],
+      },
+      dark: {
+        green: ['#236249', '#bbf7d0'],
+        neutral: ['#48484d', '#e8e0d8'],
+        violet: ['#523b7f', '#f3e8ff'],
+        blue: ['#2b4b7e', '#dbeafe'],
+        amber: ['#6d552c', '#fde68a'],
+        emerald: ['#1c5e55', '#a7f3d0'],
+      },
+    } as const;
+    const FILL_FLOOR = { light: 1.25, dark: 1.5 } as const;
+    const FAMILIES = ['green', 'neutral', 'violet', 'blue', 'amber', 'emerald'] as const;
+
+    const themeBlock = blockOf('theme');
+    let measured = 0;
+    for (const family of FAMILIES) {
+      expect(
+        declIn(themeBlock, `--color-surface-pill-${family}`),
+        `X17a (88.9) — @theme inline must expose --color-surface-pill-${family}, pointing at the runtime fill`,
+      ).toBe(`var(--color-pill-${family}-bg)`);
+      expect(
+        declIn(themeBlock, `--color-content-pill-${family}`),
+        `X17a (88.9) — @theme inline must expose --color-content-pill-${family}, pointing at the runtime ink`,
+      ).toBe(`var(--color-pill-${family}-text)`);
+
+      for (const theme of ['light', 'dark'] as const) {
+        const [fill, ink] = PICKED[theme][family];
+        expect(resolve(theme, `--color-pill-${family}-bg`), `X17a (88.9) — [${theme}] the ${family} pill fill is the picked value`).toBe(fill);
+        expect(resolve(theme, `--color-pill-${family}-text`), `X17a (88.9) — [${theme}] the ${family} pill ink is the picked value`).toBe(ink);
+        expectRatio(theme, `--color-pill-${family}-text`, `--color-pill-${family}-bg`, 4.5, `X17a (88.9) ${family} word on its fill`);
+        expectRatio(theme, `--color-pill-${family}-bg`, '--color-bg-card', FILL_FLOOR[theme], `X17a (88.9) ${family} fill against the card`);
+        measured += 2;
+      }
+    }
+    expect(measured, 'anti-vacuity: 6 families x 2 themes x (word + fill)').toBe(24);
+  });
+
+  it('X27 (88.9): the guest edge is one dashed amber outline that clears 3:1 against the card, its hover and every preset tint in both themes', () => {
+    // 88.9-63 (X27, owner at N41, 2026-11-12: "yes, wrap the whole row"). One export draws the
+    // guest outline on every list row, the upcoming card and the month tile, so it is measured
+    // here on every ground one of those rows can have: the card, the upcoming card's hover and
+    // the eight preset tints, in both themes (20 grounds), plus the two extremes of a picture
+    // row's card side (2). The colours are READ FROM THE EXPORTED CLASS STRING and resolved
+    // through the stock palette in globals.css, so a change to the export moves the numbers
+    // measured here; nothing in this test restates the colour.
+    //
+    // Non-text floor 3:1 (WCAG 1.4.11): the outline is how a guest night differs from a member
+    // night at a glance. In light the edge is opaque. In dark it carries an alpha, so each row is
+    // the edge COMPOSITED over that row's own fill (the row's background paints under its border
+    // box), measured against that fill (the inner side) and against the dark card (the outer
+    // side).
+    //
+    // PICTURE ROWS: since 88.9-60 (X23a) a list row with a picture has no wash, so the inner side
+    // of the outline meets the raw photo. An arbitrary photo has no ratio to measure, so the
+    // inner side is NOT asserted here and no number is quoted for it; it is an owner look in the
+    // after-build pictures, and the Guest pill's word carries the meaning. What IS floored is
+    // the outer side against the card: the dark composite over the darkest and the lightest
+    // pixel a photo can hold (the light edge is opaque, so its card ratio is the card row above).
+    const stockTheme = braceBlock(uniqueMatch(/^@theme[ \t]*\{/gm, '@theme {'), 'stock theme');
+    const tokens = GUEST_ROW_EDGE.split(/\s+/);
+    const readEdge = (pattern: RegExp, what: string): { hex: string; alpha: number; step: string } => {
+      const hits = tokens.map((t) => pattern.exec(t)).filter((m): m is RegExpExecArray => m !== null);
+      if (hits.length !== 1) throw new TokenContrastParseError(`GUEST_ROW_EDGE holds ${hits.length} ${what} edge colours, expected 1: "${GUEST_ROW_EDGE}"`);
+      const step = `amber-${hits[0][1]}`;
+      const literal = declIn(stockTheme, `--color-${step}`);
+      const rgb = literal === null ? null : parseHex(literal);
+      if (!rgb) throw new TokenContrastParseError(`--color-${step} is not a hex in the stock @theme block (${String(literal)})`);
+      return { hex: toHex6(rgb), alpha: hits[0][2] === undefined ? 1 : Number(hits[0][2]) / 100, step };
+    };
+    const edge = {
+      light: readEdge(/^border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'light'),
+      dark: readEdge(/^dark:border-amber-(\d{2,3})(?:\/(\d{1,3}))?$/, 'dark'),
+    } as const;
+
+    const failures: string[] = [];
+    let measured = 0;
+    const judge = (theme: Theme, ground: string, fill: string, against: string, side: string): void => {
+      const painted = blend(edge[theme].hex, edge[theme].alpha, fill);
+      if (painted === null) throw new TokenContrastParseError(`could not composite the ${theme} guest edge over ${fill}`);
+      const value = ratioHex(painted, against, `X27 guest edge on ${ground}`);
+      measured += 1;
+      if (value < 3.0) {
+        failures.push(
+          `[${theme}] the guest edge (${edge[theme].step}${edge[theme].alpha < 1 ? ` at ${edge[theme].alpha}` : ''}, painted ${painted}) on ${ground} measures ${value.toFixed(4)}:1 against ${side} (${against}), floor 3.00:1`,
+        );
+      }
+    };
+
+    for (const theme of ['light', 'dark'] as const) {
+      const card = resolve(theme, '--color-bg-card');
+      const grounds: { name: string; fill: string }[] = [
+        { name: 'the card', fill: card },
+        { name: 'the upcoming-card hover', fill: resolve(theme, '--color-bg-hover') },
+        ...GROUP_COLOUR_PRESETS.map((preset) => ({ name: `the ${preset.name} tint`, fill: preset[theme] })),
+      ];
+      for (const ground of grounds) {
+        judge(theme, ground.name, ground.fill, ground.fill, 'its own fill');
+        // The outer side: every one of these rows sits on the card.
+        if (ground.fill !== card) judge(theme, ground.name, ground.fill, card, 'the card outside the row');
+      }
+    }
+    const darkCard = resolve('dark', '--color-bg-card');
+    judge('dark', 'a picture row, darkest pixel', '#000000', darkCard, 'the card outside the row');
+    judge('dark', 'a picture row, lightest pixel', '#ffffff', darkCard, 'the card outside the row');
+
+    expect(failures, `X27 (88.9) — the guest edge must clear 3:1 on every ground:\n${failures.join('\n')}`).toEqual([]);
+    // 2 themes x (10 own-fill rows + 9 card-side rows) + 2 picture-row card sides.
+    expect(measured, 'anti-vacuity: 22 grounds, 40 measurements').toBe(40);
+
+    // D-03: the export IS the month tile's recipe (owner pick D5a / O18a), on all four sides.
+    // AMENDED 88.9-52 (W14 follow-up 2): the two MONTH tiles no longer read this export in dark.
+    // On a day cell (today's cell, a hovered cell) the 70% edge measured 2.9844 for the blue tint,
+    // so the tiles carry amber-500 at full strength from their own literal, measured in
+    // src/app/components/CalendarMonthView.test.tsx ("W14 follow-up (88.9-52): the full guest tile edge clears 3:1").
+    // The rows this test measures (on the card) keep the export at 70%.
+    expect(GUEST_ROW_EDGE, 'X27 (88.9) — the one guest edge is the tile recipe: a 1px dashed outline, amber-700 in light and amber-500 at 70% in dark').toBe(
+      'border border-dashed border-amber-700 dark:border-amber-500/70',
+    );
+  });
+
+  it('X30 (88.9): Manage Members\' hover is a visible step on every header arm — ΔL* at least 4.0 from rest, label at least 4.5 at rest and hover, hover at least 1.20 from a flat header ground', () => {
+    // 88.9-64 (owner at the 88.9-52 glance, 2026-11-12: "we made that modification to Manage
+    // members button and now it doesn't darken on hover on light mode, works fine on dark mode";
+    // direction ruling the same day: "We should just let manage members darken or lighten as
+    // needed"; X9, ruled solid 2026-11-11: over a photo the button is opaque).
+    //
+    // THE CLASSES ARE READ FROM THE CALL SITE, not restated here: the button's className expression
+    // in the group page source is split at its picture test into the shared part, the photo arm and
+    // the no-photo arm, and each fill, hover and label class is resolved through the @theme inline
+    // key it names to that theme's token. So this test measures what the page ships: editing a
+    // class there moves the numbers here. A hover the call site does not name is the ghost
+    // variant's (the surface-hover key), which is what painted before this plan.
+    //
+    // 20 ARMS: a photo header in each theme (2), and a header with no photo over the uncoloured
+    // ground and each of the eight preset grounds in each theme (18). Three floors:
+    //   - the hover moves the fill by at least 4.0 in L*, the ladder step test 1 above pins as the
+    //     smallest visible surface step (no UI-SPEC row names a rest-to-hover number);
+    //   - the label clears 4.5:1 on the fill at rest and hovered (WCAG 1.4.3);
+    //   - with no photo, the hovered fill stands at least 1.20 off the flat header ground (test 36's
+    //     edge-against-ground floor), so a hovered button never sinks into a tint.
+    // On a photo there is no flat ground to measure against; there the resting fill must be opaque
+    // instead, because a translucent fill over an arbitrary picture has no ratio at all.
+    // Measured at 88.9-64 with src/lib/wcag.ts: the smallest step is 7.6246 (dark, green ground),
+    // the lowest label 6.1414 (dark, no colour, hovered), the lowest hover-against-ground 1.3049
+    // (light, orange ground).
+    const pageSrc = withoutComments(fs.readFileSync(path.join(__dirname, 'groupHomePage', 'page.js'), 'utf8'));
+    const opener = 'onClick={() => setMemberModal(true)}';
+    const at = pageSrc.indexOf(opener);
+    if (at < 0 || pageSrc.indexOf(opener, at + opener.length) >= 0) {
+      throw new TokenContrastParseError('the Manage Members opener is not in the group page source exactly once');
+    }
+    const end = pageSrc.indexOf('Manage Members', at);
+    if (end < 0) throw new TokenContrastParseError('the Manage Members label does not follow its opener');
+    const site = pageSrc.slice(at, end);
+    const fork = /hasHeaderImage\s*\?\s*'([^']*)'\s*:/.exec(site);
+    if (!fork) throw new TokenContrastParseError('the Manage Members className no longer forks on the header picture flag with a literal photo arm');
+    const literals = (text: string): string[] =>
+      [...text.matchAll(/'([^']*)'/g)].flatMap((m) => m[1].split(/\s+/)).filter((token) => token.length > 0);
+    const shared = literals(site.slice(0, fork.index));
+    const armTokens = {
+      photo: [...shared, ...fork[1].split(/\s+/).filter((token) => token.length > 0)],
+      // Every preset ground and the uncoloured one take the dark-ground branch of the no-photo arm,
+      // so all of its literals apply.
+      plain: [...shared, ...literals(site.slice(fork.index + fork[0].length))],
+    } as const;
+
+    type Paint = { key: string; alpha: number };
+    const SHAPE = /^(dark:)?(enabled-hover:)?(bg|text)-([a-z0-9-]+?)(?:\/(\d{1,3}))?$/;
+    const pick = (tokens: readonly string[], theme: Theme, util: 'bg' | 'text', hover: boolean): Paint | null => {
+      let light: Paint | null = null;
+      let dark: Paint | null = null;
+      for (const token of tokens) {
+        const m = SHAPE.exec(token);
+        if (!m || m[3] !== util || (m[2] !== undefined) !== hover) continue;
+        const paint = { key: m[4], alpha: m[5] === undefined ? 1 : Number(m[5]) / 100 };
+        if (m[1] !== undefined) dark = paint;
+        else light = paint;
+      }
+      return theme === 'dark' ? (dark ?? light) : light;
+    };
+    const themeBlock = blockOf('theme');
+    const colourOf = (theme: Theme, key: string): string => {
+      if (key === 'white') return '#ffffff';
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour, so the Manage Members class that carries it cannot be measured`);
+      return resolve(theme, ref[1]);
+    };
+    const GHOST_HOVER: Paint = { key: 'surface-hover', alpha: 1 };
+
+    const failures: string[] = [];
+    let measured = 0;
+    const judge = (theme: Theme, arm: 'photo' | 'plain', groundName: string, ground: string | null): void => {
+      const tokens = armTokens[arm];
+      const name = `[${theme}] ${arm === 'photo' ? 'photo header' : `no photo, ${groundName}`}`;
+      const rest = pick(tokens, theme, 'bg', false);
+      const hover = pick(tokens, theme, 'bg', true) ?? GHOST_HOVER;
+      const label = pick(tokens, theme, 'text', false);
+      if (!rest || !label) throw new TokenContrastParseError(`${name}: the call site names no ${rest ? 'label' : 'fill'} class`);
+      measured += 1;
+      if (ground === null && (rest.alpha < 1 || hover.alpha < 1)) {
+        failures.push(`${name}: over a photo the fill must be opaque at rest and hovered; the call site ships ${rest.key} at ${rest.alpha} and ${hover.key} at ${hover.alpha}`);
+        return;
+      }
+      const over = ground ?? '#000000';
+      const restHex = blend(colourOf(theme, rest.key), rest.alpha, over);
+      const hoverHex = blend(colourOf(theme, hover.key), hover.alpha, over);
+      if (restHex === null || hoverHex === null) throw new TokenContrastParseError(`${name}: could not composite the fill`);
+      const labelHex = colourOf(theme, label.key);
+      const step = deltaHex(restHex, hoverHex, `${name} rest to hover`);
+      if (step < 4.0) failures.push(`${name}: the hover moves the fill ${restHex} to ${hoverHex}, ΔL* ${step.toFixed(4)}, floor 4.00`);
+      for (const [state, fill] of [['at rest', restHex], ['hovered', hoverHex]] as const) {
+        const ratio = ratioHex(labelHex, fill, `${name} label ${state}`);
+        if (ratio < 4.5) failures.push(`${name}: the label (${labelHex}) on the fill ${state} (${fill}) measures ${ratio.toFixed(4)}:1, floor 4.50:1`);
+      }
+      if (ground !== null) {
+        const off = ratioHex(hoverHex, ground, `${name} hover against the ground`);
+        if (off < 1.2) failures.push(`${name}: the hovered fill (${hoverHex}) against the header ground (${ground}) measures ${off.toFixed(4)}:1, floor 1.20:1`);
+      }
+    };
+
+    for (const theme of ['light', 'dark'] as const) {
+      judge(theme, 'photo', 'a photo', null);
+      judge(theme, 'plain', 'no colour', resolve(theme, '--color-bg-elevated'));
+      for (const preset of GROUP_COLOUR_PRESETS) judge(theme, 'plain', `the ${preset.name} ground`, preset[theme]);
+    }
+
+    expect(failures, `X30 (88.9) — Manage Members must visibly react to the pointer on every header arm:\n${failures.join('\n')}`).toEqual([]);
+    expect(measured, 'anti-vacuity: 2 themes x (1 photo arm + the uncoloured ground + 8 preset grounds)').toBe(20);
+  });
+
+  it('Gear hover (88.9-69): the group settings gear\'s hover is a visible step on every header arm — delta L* at least 4.0 from rest, the icon at least 3.0 at rest and on hover, hover at least 1.20 from a flat header ground', () => {
+    // 88.9-69, from the 88.9-64 hand-off (d): "the group-page settings gear's hover is invisible
+    // the same way", under the owner's direction for Manage Members (2026-11-12: "We should just
+    // let manage members darken or lighten as needed").
+    //
+    // THE CLASSES ARE READ FROM THE CALL SITE, as the X30 test above reads its button: the gear's
+    // className expression in the group page source forks on the tinted flag into two whole
+    // literals, and each literal's fill, hover fill and ink class is resolved through the @theme
+    // inline key it names to that theme's token. Editing a class there moves the numbers here.
+    //
+    // 18 ARMS: in each theme the untinted literal on the uncoloured header ground (1) and the
+    // tinted literal on each of the eight preset grounds (8). The gear's fill is opaque, so the
+    // rest-to-hover step is the same on every ground; what changes per ground is how far the
+    // hovered fill stands off it. Three floors:
+    //   - the hover moves the fill by at least 4.0 in L* (test 1's smallest visible surface step);
+    //   - the icon, a graphic, clears 3.0:1 on the fill at rest and hovered (WCAG 1.4.11);
+    //   - the hovered fill stands at least 1.20 off the flat header ground (test 36's floor).
+    // Over a photo there is no flat ground to measure against, so that arm is not judged here (the
+    // step and the icon floors do not depend on the ground and are covered by the 18).
+    // Measured at 88.9-69 with src/lib/wcag.ts: the step is 21.2973 in light and 10.2688 in dark,
+    // the lowest icon ratio 7.3532 (dark, hovered), the lowest hover-against-ground 1.3049 (light,
+    // orange ground). Before this plan the step was 2.3473 in light and 0 in dark.
+    const pageSrc = withoutComments(fs.readFileSync(path.join(__dirname, 'groupHomePage', 'page.js'), 'utf8'));
+    const opener = 'onClick={() => setShowGroupSettings(true)}';
+    const at = pageSrc.indexOf(opener);
+    if (at < 0 || pageSrc.indexOf(opener, at + opener.length) >= 0) {
+      throw new TokenContrastParseError('the Group settings opener is not in the group page source exactly once');
+    }
+    const end = pageSrc.indexOf('<Icon name="Settings"', at);
+    if (end < 0) throw new TokenContrastParseError('the gear icon does not follow the Group settings opener');
+    const fork = /tinted\s*\?\s*'([^']*)'\s*:\s*'([^']*)'/.exec(pageSrc.slice(at, end));
+    if (!fork) throw new TokenContrastParseError('the gear className no longer forks on the tinted flag into two whole literals');
+    const armTokens = {
+      tinted: fork[1].split(/\s+/).filter((token) => token.length > 0),
+      plain: fork[2].split(/\s+/).filter((token) => token.length > 0),
+    } as const;
+
+    const SHAPE = /^(hover:)?(bg|text)-([a-z0-9-]+)$/;
+    const pick = (tokens: readonly string[], util: 'bg' | 'text', hover: boolean): string | null => {
+      const keys = tokens.flatMap((token) => {
+        const m = SHAPE.exec(token);
+        return m && m[2] === util && (m[1] !== undefined) === hover ? [m[3]] : [];
+      });
+      if (keys.length > 1) throw new TokenContrastParseError(`the gear literal names ${keys.length} ${hover ? 'hover ' : ''}${util} classes (${keys.join(', ')}); one is measurable`);
+      return keys[0] ?? null;
+    };
+    const themeBlock = blockOf('theme');
+    const colourOf = (theme: Theme, key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour, so the gear class that carries it cannot be measured`);
+      return resolve(theme, ref[1]);
+    };
+
+    const failures: string[] = [];
+    let measured = 0;
+    const judge = (theme: Theme, arm: 'tinted' | 'plain', groundName: string, ground: string): void => {
+      const tokens = armTokens[arm];
+      const name = `[${theme}] ${groundName}`;
+      const restKey = pick(tokens, 'bg', false);
+      const hoverKey = pick(tokens, 'bg', true);
+      const inkKey = pick(tokens, 'text', false);
+      if (!restKey || !inkKey) throw new TokenContrastParseError(`${name}: the gear literal names no ${restKey ? 'ink' : 'fill'} class`);
+      measured += 1;
+      if (!hoverKey) {
+        failures.push(`${name}: the gear literal names no hover fill at all`);
+        return;
+      }
+      const restHex = colourOf(theme, restKey);
+      const hoverHex = colourOf(theme, hoverKey);
+      const inkHex = colourOf(theme, inkKey);
+      const step = deltaHex(restHex, hoverHex, `${name} rest to hover`);
+      if (step < 4.0) failures.push(`${name}: the hover moves the fill ${restHex} to ${hoverHex}, delta L* ${step.toFixed(4)}, floor 4.00`);
+      for (const [state, fill] of [['at rest', restHex], ['hovered', hoverHex]] as const) {
+        const ratio = ratioHex(inkHex, fill, `${name} icon ${state}`);
+        if (ratio < 3.0) failures.push(`${name}: the icon (${inkHex}) on the fill ${state} (${fill}) measures ${ratio.toFixed(4)}:1, floor 3.00:1`);
+      }
+      const off = ratioHex(hoverHex, ground, `${name} hover against the ground`);
+      if (off < 1.2) failures.push(`${name}: the hovered fill (${hoverHex}) against the header ground (${ground}) measures ${off.toFixed(4)}:1, floor 1.20:1`);
+    };
+
+    for (const theme of ['light', 'dark'] as const) {
+      judge(theme, 'plain', 'no colour', resolve(theme, '--color-bg-elevated'));
+      for (const preset of GROUP_COLOUR_PRESETS) judge(theme, 'tinted', `the ${preset.name} ground`, preset[theme]);
+    }
+
+    expect(failures, `Gear hover (88.9-69) — the group settings gear must visibly react to the pointer on every header arm:\n${failures.join('\n')}`).toEqual([]);
+    expect(measured, 'anti-vacuity: 2 themes x (the uncoloured ground + 8 preset grounds)').toBe(18);
+  });
+
+  it('X49 (88.9-65): the ghostDanger ink clears 4.5 on the card and on the hover wash in both themes', () => {
+    // Owner 2026-11-13, on the desktop session Delete ("Do you think there is an issue that on the
+    // phone the delete in the kebab menu is red, but on the pc it isn't red?", then "Yes, That is
+    // fine."): Button gains a ghost-weight variant with the danger ink.
+    //
+    // THE CLASSES ARE READ FROM THE VARIANT STRING in Button.tsx (comments stripped, the way test
+    // 53 reads ghost's): the ink utility and the hover utility are each resolved through the
+    // @theme inline key they name, so editing the variant moves the numbers here. The resting
+    // ground is the card (a ghost paints no fill of its own); the hovered ground is the wash.
+    // Measured with src/lib/wcag.ts: light 8.3101 on the card and 7.8393 on the wash; dark 7.2966
+    // and 5.9413.
+    const buttonSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, '..', 'components', 'ui', 'Button.tsx'), 'utf8'),
+    );
+    const variant = /ghostDanger:\s*'([^']*)'/.exec(buttonSrc);
+    expect(variant, 'LOCATOR: no ghostDanger variant string in Button.tsx').not.toBeNull();
+    const tokens = variant![1].split(/\s+/).filter((token) => token.length > 0);
+    const inkKey = tokens.map((token) => /^text-([a-z0-9-]+)$/.exec(token)?.[1]).find((key) => key !== undefined);
+    const washKey = tokens.map((token) => /^enabled-hover:bg-([a-z0-9-]+)$/.exec(token)?.[1]).find((key) => key !== undefined);
+    expect(inkKey, 'the variant names an ink utility').toBe('content-status-error');
+    // AMENDED Phase 88.9-52 (R8c, owner 2026-11-17): the wash is the ghost family's own key; its
+    // light value is the secondary fill (row R8c below), so the light numbers above moved: the
+    // danger ink on the hover fill is 6.0210 (was 7.8393). Dark is unchanged (5.9413).
+    expect(washKey, 'the variant names an enabled-hover wash utility').toBe('surface-ghost-hover');
+    expect(tokens, 'a ghost paints no fill at rest').toContain('bg-transparent');
+
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    const ink = runtimeProp(inkKey as string);
+    const wash = runtimeProp(washKey as string);
+    const card = runtimeProp('surface-card');
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, ink, card, 4.5, 'the ghostDanger ink on the card');
+      expectRatio(theme, ink, wash, 4.5, 'the ghostDanger ink on the hover wash');
+      measured += 2;
+    }
+    expect(measured, 'anti-vacuity: 2 themes x (card + wash)').toBe(4);
+  });
+
+  it('W28 (88.9-52): the schedule Pause and Resume words clear 4.5 on their hover fills in both themes, through a hover ink the row itself names', () => {
+    // After-build look page W28: dark Pause hovered measured 4.1447 (amber-500 #f59e0b on the
+    // hover fill #554832); the same row's Resume measured 3.9378 (#22c55e on #235146). Test 21
+    // keeps the RESTING ink on those two hover fills pinned as failing (the token-wide OI-3
+    // deferral); this row pins what the one control that paints a status word on a status hover
+    // fill actually paints: a hover ink, read from the class string, so editing the row moves the
+    // numbers here. Measured with src/lib/wcag.ts: dark warning 5.3319, dark success 5.1568;
+    // light is the resting ink unchanged (4.7514 and the success pair).
+    const rowSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'ScheduleList.js'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    let measured = 0;
+    for (const hue of ['warning', 'success'] as const) {
+      const arm = new RegExp(
+        `'bg-status-${hue}-subtle text-content-status-${hue} enabled-hover:bg-([a-z0-9-]+) enabled-hover:text-([a-z0-9-]+)'`,
+      ).exec(rowSrc);
+      expect(arm, `LOCATOR: the ${hue} arm of the Pause/Resume button names a hover fill and a hover ink`).not.toBeNull();
+      const fill = runtimeProp(arm![1]);
+      const ink = runtimeProp(arm![2]);
+      for (const theme of ['light', 'dark'] as const) {
+        expectRatio(theme, ink, fill, 4.5, `W28 (88.9-52) the ${hue} hover word on its hover fill`);
+        expectRatio(theme, `--color-status-${hue}-text`, `--color-status-${hue}-subtle`, 4.5, `W28 (88.9-52) the ${hue} resting word on its resting fill`);
+        measured += 2;
+      }
+      // Light does not move: the hover ink is the resting ink there.
+      expect(resolve('light', ink), `W28 (88.9-52) — the light ${hue} hover ink is the resting ink`).toBe(
+        resolve('light', `--color-status-${hue}-text`),
+      );
+    }
+    expect(measured, 'anti-vacuity: 2 hues x 2 themes x (hover + rest)').toBe(8);
+  });
+
+  it('W30 (88.9-52): a gated Clear All is fainter than the live one in both themes — no fill of its own, a word that drops at least 2.5 in ratio and still clears 4.5, and an edge that drops at least 0.4', () => {
+    // Owner ruling W30 A (2026-11-16): "Clear All when it cannot be pressed is clearly fainter
+    // than the live button in both themes." Built: the O09a gated FILL is gone (it was DARKER
+    // than the live button in light and LIGHTER in dark), the word keeps the house gated ink, and
+    // the edge steps down to its own gated token (a palette step per theme; never a /N opacity
+    // modifier, which src/app/tintTreatment.test.ts ("no source file re-adds a") forbids). The
+    // control stays active (it takes focus and answers a press), so the word keeps the 4.5 text
+    // floor: no inactive-component exemption. Measured with src/lib/wcag.ts on the card, live /
+    // gated: word light 10.4818 / 6.5793, dark 8.6797 / 5.9963; edge light 2.3096 / 1.5954, dark
+    // 1.7767 / 1.2281.
+    const gridSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'AvailabilityGrid.js'), 'utf8'),
+    );
+    const cls = /className="(border border-line text-content-secondary bg-surface-card[^"]*)"/.exec(gridSrc);
+    expect(cls, 'LOCATOR: the Clear All class string').not.toBeNull();
+    const tokens = cls![1].split(/\s+/).filter((token) => token.length > 0);
+    const gated = tokens.filter((token) => token.startsWith('aria-disabled:'));
+    expect(gated.sort(), 'the gated arm is exactly an ink and the gated edge: no fill').toEqual([
+      'aria-disabled:border-line-gated',
+      'aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]',
+    ]);
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      const card = resolve(theme, '--color-bg-card');
+      const liveWord = expectRatio(theme, '--color-text-secondary', '--color-bg-card', 4.5, 'W30 the live word on the card');
+      const gatedWord = expectRatio(theme, '--color-btn-secondary-gated-text', '--color-bg-card', 4.5, 'W30 the gated word on the card');
+      expect(liveWord - gatedWord, `W30 — [${theme}] the gated word (${gatedWord.toFixed(4)}) must sit at least 2.5 under the live word (${liveWord.toFixed(4)})`).toBeGreaterThanOrEqual(2.5);
+      const liveEdgeHex = resolve(theme, '--color-border');
+      const liveEdge = ratioHex(liveEdgeHex, card, 'W30 live edge on the card');
+      const half = resolve(theme, '--color-border-gated');
+      const gatedEdge = ratioHex(half, card, 'W30 gated edge on the card');
+      expect(liveEdge - gatedEdge, `W30 — [${theme}] the gated edge (${half}, ${gatedEdge.toFixed(4)}) must sit at least 0.4 under the live edge (${liveEdge.toFixed(4)})`).toBeGreaterThanOrEqual(0.4);
+      expect(gatedEdge, `W30 — [${theme}] the gated edge is still painted (over 1.2 on the card)`).toBeGreaterThan(1.2);
+      measured += 4;
+    }
+    expect(measured, 'anti-vacuity: 2 themes x 4 checks').toBe(8);
+    expect(declIn(blockOf('theme'), '--color-line-gated'), 'W30 — @theme inline must expose --color-line-gated').toBe('var(--color-border-gated)');
+    expect(resolve('light', '--color-border-gated'), 'W30 — the light gated edge is the warm-300 step').toBe(resolve('light', '--warm-300'));
+    expect(resolve('dark', '--color-border-gated'), 'W30 — the dark gated edge is the purple-800 step').toBe(resolve('dark', '--purple-800'));
+  });
+
+  it('W4 + W5 (88.9-52): in dark both gears carry a painted edge that stands at least 1.40 off every ground they sit on, and further off it than the gear fill alone', () => {
+    // After-build look page W4: on a hovered dark home card the gear fill (purple-700) stood 1.4467
+    // off the hovered card, so its box nearly vanished. W5: on the plain dark group header the gear
+    // fill IS the header (1.0000; 1.0016 on the green header) and its edge token is transparent in
+    // dark, so only a bare cog showed. Both gears now name a dark edge class on both arms; the class
+    // is read from the call site and resolved through @theme inline, so editing it moves the
+    // numbers here. The cog (over 6:1 on every fill) is what identifies the control for WCAG
+    // 1.4.11; this is a box band, not a 3:1 claim (the strong line stays rejected for the cog:
+    // src/app/groupColourRendering.test.ts ("was pointed at the rejected >= 3:1 border token")).
+    // Measured with src/lib/wcag.ts. Home edge #536889: 2.4455 on the card, 1.9917 on the hovered
+    // card, 1.9954-2.7208 on the eight preset grounds. Group edge #42536e: 1.4467 on the plain
+    // header, 1.4494-1.9763 on the eight preset grounds.
+    const themeBlock = blockOf('theme');
+    const darkOf = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return resolve('dark', ref[1]);
+    };
+    const armsOf = (file: string[], opener: string): string[] => {
+      const src = withoutComments(fs.readFileSync(path.join(__dirname, ...file), 'utf8'));
+      const end = src.indexOf(opener);
+      if (end < 0 || src.indexOf(opener, end + opener.length) >= 0) {
+        throw new TokenContrastParseError(`${file.join('/')}: the gear anchor is not in the source exactly once`);
+      }
+      const forks = [...src.slice(0, end).matchAll(/tinted\s*\?\s*'([^']*)'\s*:\s*'([^']*)'/g)];
+      const fork = forks[forks.length - 1];
+      if (!fork) throw new TokenContrastParseError(`${file.join('/')}: no tinted fork precedes the gear anchor`);
+      return [fork[1], fork[2]];
+    };
+    const key = (tokens: string[], re: RegExp, what: string): string => {
+      const hits = tokens.flatMap((token) => { const m = re.exec(token); return m ? [m[1]] : []; });
+      if (hits.length !== 1) throw new TokenContrastParseError(`the gear literal names ${hits.length} ${what} classes; one is measurable`);
+      return hits[0];
+    };
+    const presets = GROUP_COLOUR_PRESETS.map((preset) => preset.dark);
+    const gears = [
+      {
+        name: 'home',
+        arms: armsOf(['components', 'grouplist.js'], 'title={customizeGroupLabel(group.name)}'),
+        // tinted arm: the eight preset grounds; plain arm: the card and the hovered card
+        grounds: [presets, [resolve('dark', '--color-bg-card'), resolve('dark', '--color-bg-hover')]],
+      },
+      {
+        name: 'group page',
+        arms: armsOf(['groupHomePage', 'page.js'], '<Icon name="Settings" size={20} />'),
+        grounds: [presets, [resolve('dark', '--color-bg-elevated')]],
+      },
+    ];
+    let measured = 0;
+    for (const gear of gears) {
+      gear.arms.forEach((arm, index) => {
+        const tokens = arm.split(/\s+/).filter((token) => token.length > 0);
+        const edge = darkOf(key(tokens, /^dark:border-([a-z0-9-]+)$/, 'dark edge'));
+        const fill = darkOf(key(tokens, /^bg-([a-z0-9-]+)$/, 'fill'));
+        for (const ground of gear.grounds[index]) {
+          const edgeOff = ratioHex(edge, ground, `${gear.name} gear edge on ${ground}`);
+          const fillOff = ratioHex(fill, ground, `${gear.name} gear fill on ${ground}`);
+          expect(edgeOff, `W4 + W5 — the dark ${gear.name} gear edge (${edge}) on ${ground} measures ${edgeOff.toFixed(4)}:1, floor 1.40:1`).toBeGreaterThanOrEqual(1.4);
+          expect(edgeOff, `W4 + W5 — the dark ${gear.name} gear edge (${edge}) must stand further off ${ground} than the fill alone (${fill}, ${fillOff.toFixed(4)})`).toBeGreaterThan(fillOff);
+          measured += 1;
+        }
+      });
+    }
+    expect(measured, 'anti-vacuity: home (8 presets + card + hovered card) + group page (8 presets + plain header)').toBe(19);
+  });
+
+  it('W20 (88.9-52): the Powered by BGG mark sits on a white plate in dark, where its navy wordmark reads over 4.5; on the dark page ground alone it reads under 2', () => {
+    // After-build look page W20: the mark is BoardGameGeek's own artwork (public/bgg-logo.png), a
+    // navy wordmark (#3e3a5f, 3782 of its 6490 painted pixels, counted from the file 2026-11-16)
+    // beside an orange shield, on a transparent ground. On the dark page it read 1.59. The mark is
+    // a third party's brand, so it is not recoloured or inverted: it gets a plate. The plate is
+    // dark-only; light keeps the page ground (8.14 there); on the plate 10.63.
+    const WORDMARK = '#3e3a5f';
+    const logoSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'BGGLogo.js'), 'utf8'),
+    );
+    const link = /className="([^"]*hover:opacity-80[^"]*)"/.exec(logoSrc);
+    expect(link, 'LOCATOR: the BGG link class string').not.toBeNull();
+    const tokens = link![1].split(/\s+/).filter((token) => token.length > 0);
+    expect(tokens, 'the mark has a dark-only white plate').toContain('dark:bg-white');
+    expect(tokens.filter((token) => /^bg-/.test(token)), 'light paints no plate').toEqual([]);
+    const onPlate = ratioHex(WORDMARK, '#ffffff', 'W20 wordmark on the plate');
+    expect(onPlate, `W20 — the wordmark on the white plate measures ${onPlate.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
+    const bare = ratioHex(WORDMARK, resolve('dark', '--color-bg-page'), 'W20 wordmark on the dark page');
+    expect(bare, `W20 — without the plate the wordmark on the dark page measures ${bare.toFixed(4)}:1; if this ever clears 4.5 the plate is no longer needed`).toBeLessThan(2);
+    const light = ratioHex(WORDMARK, resolve('light', '--color-bg-page'), 'W20 wordmark on the light page');
+    expect(light, `W20 — the wordmark on the light page measures ${light.toFixed(4)}:1, floor 4.50:1`).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('W29 (88.9-52): in dark the paint-mode toggle wears the green / amber pill pair (word 4.5 on its fill, edge 3.0 on the card and on the fill), light keeps its raw pair, and the day boxes tick in the pressed-toggle fill, 3.0 on the card in both themes', () => {
+    // After-build look page W29: in dark the toggle kept its light-theme mint box (green-100 with
+    // green-800 words), the brightest thing on the page, and the ticked day boxes painted the
+    // raw blue-600 accent (now the pressed-toggle fill: 5.6617 light, 4.9264 dark on the card). The dark arm is built from the X17a pill pairs and the status edges,
+    // read from the class string. Measured with src/lib/wcag.ts, dark: green word 5.9404 on its
+    // fill, edge 6.0823 on the card and 3.1628 on the fill; amber word 5.6462, edge 6.4458 and
+    // 3.2738. Light is the DECISION Phase 88.6-25 raw pair, unchanged.
+    const gridSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'AvailabilityGrid.js'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const darkOf = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return resolve('dark', ref[1]);
+    };
+    const card = resolve('dark', '--color-bg-card');
+    let measured = 0;
+    for (const [raw, hue] of [['green', 'green'], ['yellow', 'amber']] as const) {
+      const arm = new RegExp(`'(border bg-${raw}-100 enabled-hover:bg-${raw}-100 border-${raw}-400 text-${raw}-800[^']*)'`).exec(gridSrc);
+      expect(arm, `LOCATOR: the ${raw} arm of the paint-mode toggle keeps its light raw pair`).not.toBeNull();
+      const tokens = arm![1].split(/\s+/).filter((token) => token.length > 0);
+      const one = (re: RegExp, what: string): string => {
+        const hits = tokens.flatMap((token) => { const m = re.exec(token); return m ? [m[1]] : []; });
+        if (hits.length !== 1) throw new TokenContrastParseError(`the ${raw} arm names ${hits.length} ${what} classes; one is measurable`);
+        return hits[0];
+      };
+      const fillKey = one(/^dark:bg-([a-z0-9-]+)$/, 'dark fill');
+      expect(fillKey, 'the dark fill is the pill family of the same hue').toBe(`surface-pill-${hue}`);
+      // The hover pin must follow the fill, or the ghost hover (or the light pin) repaints it.
+      expect(one(/^dark:enabled-hover:bg-([a-z0-9-]+)$/, 'dark hover pin'), 'the dark hover pin is the dark fill').toBe(fillKey);
+      const fill = darkOf(fillKey);
+      const word = darkOf(one(/^dark:text-([a-z0-9-]+)$/, 'dark word'));
+      const edge = darkOf(one(/^dark:border-([a-z0-9-]+)$/, 'dark edge'));
+      for (const [ink, ground, floor, what] of [
+        [word, fill, 4.5, 'word on the fill'],
+        [edge, card, 3.0, 'edge on the card'],
+        [edge, fill, 3.0, 'edge on the fill'],
+      ] as const) {
+        const ratio = ratioHex(ink, ground, `W29 ${raw} ${what}`);
+        expect(ratio, `W29 — [dark] the ${raw} arm's ${what} (${ink} on ${ground}) measures ${ratio.toFixed(4)}:1, floor ${floor.toFixed(2)}:1`).toBeGreaterThanOrEqual(floor);
+        measured += 1;
+      }
+    }
+    expect(measured, 'anti-vacuity: 2 arms x 3 pairs').toBe(6);
+    expect(gridSrc.match(/accent-blue-600/g) ?? [], 'no day box ticks in raw blue').toHaveLength(0);
+    expect(gridSrc.match(/[" ]accent-toggle-on[" ]/g) ?? [], 'the All box and the day boxes tick in the pressed-toggle fill').toHaveLength(2);
+    expect(declIn(themeBlock, '--color-toggle-on'), 'accent-toggle-on reads the pressed-toggle fill').toBe('var(--color-toggle-pressed-bg)');
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-toggle-pressed-bg', '--color-bg-card', 3.0, 'W29 the ticked box on the card');
+    }
+  });
+
+  it('W36 (88.9-52): the phone add-friend plus clears 3.0 on its round fill in both themes', () => {
+    // After-build look page W36: in dark the plus was the primary fill colour (purple-600) on the
+    // muted circle, 1.9917, so the control was nearly invisible. The glyph is a graphic (WCAG
+    // 1.4.11, 3:1). Both classes are read from the call site. Measured with src/lib/wcag.ts on
+    // the muted circle: light 3.7615 (unchanged), dark 4.0237 (was 1.9917).
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'ClickableMemberName.js'), 'utf8'),
+    );
+    // AMENDED 88.9-52 R4 C5: the plus is a drawn icon now, so the two text-only classes that
+    // closed this locator are gone from the call site; cursor-pointer is the next token. The
+    // icon strokes in the button's own colour, so the pair read here is still what is painted.
+    const cls = /rounded-full bg-([a-z0-9-]+) text-([a-z0-9-]+) cursor-pointer/.exec(src);
+    expect(cls, 'LOCATOR: the round add-friend button names a fill and a glyph colour').not.toBeNull();
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, runtimeProp(cls![2]), runtimeProp(cls![1]), 3.0, 'W36 the plus on its round fill');
+    }
+  });
+
+  it('R15c lock (88.9-52 R4 D9): the lock on the read-only participant name box clears 3.0 on the box fill in both themes', () => {
+    // Owner pick Lock (an interim, 2026-11-18). The lock is a graphic (WCAG 1.4.11, 3:1), drawn in
+    // the muted ink on the box's own input fill. The capture's mock measured 6.58 light and 4.88
+    // dark. Both classes are read from the call site.
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'ParticipantRow.js'), 'utf8'),
+    );
+    const box = /className="relative p-2 pr-8 border border-input rounded-btn bg-([a-z0-9-]+) /.exec(src);
+    expect(box, 'LOCATOR: the read-only name box names its fill').not.toBeNull();
+    const icon = /<Icon name="Lock" className="[^"]*\btext-([a-z0-9-]+)\b[^"]*"/.exec(src);
+    expect(icon, 'LOCATOR: the lock names its colour').not.toBeNull();
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, runtimeProp(icon![1]), runtimeProp(box![1]), 3.0, 'R15c the lock on the read-only name box');
+    }
+  });
+
+  it('X52d (88.9-68; W45 re-pointed 88.9-52): the collection bar is at least 1.20 from the section card in both themes, its top rule 1.20 from it, its words 4.5 on it', () => {
+    // Owner ruling X52d (pick page 10c): the bar reads as a bar against the section card it closes,
+    // floor 1.20 (the same floor e2e/profile-look-fixes.spec.ts ("X52d dark bar against the card ground") holds
+    // in the browser). The W45 fix of this batch gave the dark bar the sunken fill to part it from
+    // the game cards; that read 1.1251 against the section card and broke this floor in CI, so it
+    // was reverted and this row now pins the ruled floor at the token layer. W45 itself (the dark
+    // bar equals the game cards, 1.0000) is OPEN with the owner; see the marker at the call site.
+    // The bar's fill (and a dark: fill, if one is ever named), its rule and its ink are read from
+    // the call site. Measured with src/lib/wcag.ts: light bar 1.5046, rule 1.5350, words 11.94;
+    // dark bar 1.2281, rule 1.4467, words 10.64.
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'userProfile', 'page.js'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const propOf = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    // AMENDED 88.9-52 (W45, owner 2026-11-17: the lighter bar, picture-page pick B): W45 is no longer
+    // open. In dark the bar is purple-700 with a purple-500 top rule, so it also parts from the game
+    // cards. Dark now measures bar 1.7767 against the section card, 1.4467 against the game cards,
+    // rule 1.9263, words 7.3532; light is unchanged. The locator reads an optional dark: rule too.
+    const bars = [...src.matchAll(/rounded-b-card overflow-hidden border-t border-([a-z0-9-]+)(?: dark:border-([a-z0-9-]+))? bg-([a-z0-9-]+)(?: dark:bg-([a-z0-9-]+))?'/g)];
+    expect(bars, 'LOCATOR: both arms of the collection bar wrapper name a rule and a fill').toHaveLength(2);
+    const ink = /flex w-full min-h-12 items-center justify-center gap-2 text-sm text-([a-z0-9-]+) /.exec(src);
+    expect(ink, 'LOCATOR: the bar button names its ink').not.toBeNull();
+    let measured = 0;
+    for (const bar of bars) {
+      for (const theme of ['light', 'dark'] as const) {
+        const fill = propOf(theme === 'dark' && bar[4] ? bar[4] : bar[3]);
+        const barHex = resolve(theme, fill);
+        const groundHex = resolve(theme, propOf('surface-card'));
+        const apart = ratioHex(barHex, groundHex, 'X52d bar against the section card');
+        expect(apart, `X52d — [${theme}] the bar (${barHex}) against the section card (${groundHex}) measures ${apart.toFixed(4)}:1, floor 1.20:1`).toBeGreaterThanOrEqual(1.2);
+        const rule = ratioHex(resolve(theme, propOf(theme === 'dark' && bar[2] ? bar[2] : bar[1])), barHex, 'X52d top rule against the bar');
+        if (theme === 'dark') {
+          const cardsHex = resolve(theme, propOf('surface-elevated'));
+          const fromCards = ratioHex(barHex, cardsHex, 'W45 dark bar against the game cards');
+          expect(fromCards, `W45 — [dark] the bar (${barHex}) against the game cards (${cardsHex}) measures ${fromCards.toFixed(4)}:1, floor 1.20:1`).toBeGreaterThanOrEqual(1.2);
+        }
+        expect(rule, `X52d — [${theme}] the top rule against the bar (${barHex}) measures ${rule.toFixed(4)}:1, floor 1.20:1`).toBeGreaterThanOrEqual(1.2);
+        expectRatio(theme, propOf(ink![1]), fill, 4.5, 'X52d the bar words');
+        measured += 3;
+      }
+    }
+    expect(measured, 'anti-vacuity: 2 bar arms x 2 themes x (ground, rule, words)').toBe(12);
+  });
+
+  it('W3 (88.9-52): all three RSVP answer cards paint a circle behind the glyph — the fill at least 1.15 off the card and the glyph at least 3.0 on it, both themes', () => {
+    // After-build look page W3: the No card's circle was the elevated surface, which IS the card
+    // in light (1.0000), so its X stood on the bare card while Yes and Maybe sat on a coloured
+    // circle. The three fills and glyph inks are read from the status config. Measured with
+    // src/lib/wcag.ts for No, on the muted circle: fill against the card 1.4993 light / 1.2281
+    // dark (dark unchanged), glyph 6.9561 light / 7.0661 dark. The floor is set under the faintest
+    // shipped circle, Yes in light (1.1834, a hue step more than a lightness one).
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'rsvp', '[token]', 'page.js'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    const arms = [...src.matchAll(/iconBg: 'bg-([a-z0-9-]+)',\s*iconColor: 'text-([a-z0-9-]+)',/g)];
+    expect(arms, 'LOCATOR: the yes, maybe and no arms of the status config').toHaveLength(3);
+    let measured = 0;
+    for (const arm of arms) {
+      for (const theme of ['light', 'dark'] as const) {
+        expectRatio(theme, runtimeProp(arm[1]), '--color-bg-card', 1.15, `W3 the ${arm[1]} circle on the card`);
+        expectRatio(theme, runtimeProp(arm[2]), runtimeProp(arm[1]), 3.0, `W3 the ${arm[2]} glyph on its circle`);
+        measured += 2;
+      }
+    }
+    expect(measured, 'anti-vacuity: 3 answers x 2 themes x (circle + glyph)').toBe(12);
+  });
+
+  it('R6 (88.9-52): the Make admin confirm is a flat Admin blue — the picked fills and inks in both themes, words 4.5 at rest, hovered, pressed and waiting, the live fill 3.0 off the dialog, no edge', () => {
+    // Owner pick R6 "D + D2" (2026-11-17, "Red is the wrong color"): live light #1e40af with white
+    // words, live dark #60a5fa with #10151d words; waiting is the Admin pill pair. The hover and
+    // pressed fills are derived the way the danger family derives its own (a stepped fill at
+    // opacity 1): light steps darker under white words, dark steps lighter under dark words.
+    // Measured with src/lib/wcag.ts, light / dark: live fill on the dialog 8.7224 / 5.4471, words
+    // 8.7224 / 7.2010, hovered words 10.3580 / 10.1526, pressed words 14.6948 / 12.8845, waiting
+    // words 6.1395 / 7.1408, waiting fill on the dialog 1.4207 / 1.5896, ring on the 2px gap
+    // 7.7948 / 8.2958.
+    const PICK = {
+      light: { bg: '#1e40af', text: '#ffffff', gatedBg: '#c4dafc', gatedText: '#1e40af' },
+      dark: { bg: '#60a5fa', text: '#10151d', gatedBg: '#2b4b7e', gatedText: '#dbeafe' },
+    } as const;
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expect(resolve(theme, '--color-btn-admin-bg'), `R6 [${theme}] live fill`).toBe(PICK[theme].bg);
+      expect(resolve(theme, '--color-btn-admin-text'), `R6 [${theme}] live words`).toBe(PICK[theme].text);
+      expect(resolve(theme, '--color-btn-admin-gated-bg'), `R6 [${theme}] waiting fill`).toBe(PICK[theme].gatedBg);
+      expect(resolve(theme, '--color-btn-admin-gated-text'), `R6 [${theme}] waiting words`).toBe(PICK[theme].gatedText);
+      // The waiting pair IS the Admin pill pair, by reference, so the two cannot drift.
+      expect(resolveRaw(theme, '--color-btn-admin-gated-bg')).toBe(resolveRaw(theme, '--color-pill-blue-bg'));
+      expect(resolveRaw(theme, '--color-btn-admin-gated-text')).toBe(resolveRaw(theme, '--color-pill-blue-text'));
+
+      expectRatio(theme, '--color-btn-admin-text', '--color-btn-admin-bg', 4.5, 'R6 live words');
+      expectRatio(theme, '--color-btn-admin-text', '--color-btn-admin-hover', 4.5, 'R6 hovered words');
+      expectRatio(theme, '--color-btn-admin-text', '--color-btn-admin-active', 4.5, 'R6 pressed words');
+      expectRatio(theme, '--color-btn-admin-gated-text', '--color-btn-admin-gated-bg', 4.5, 'R6 waiting words');
+      // Flat, no edge: the live fill itself is what stands off the dialog (the card ground).
+      expectRatio(theme, '--color-btn-admin-bg', '--color-bg-card', 3.0, 'R6 live fill on the dialog');
+      // Each state is a visible step from the one before it.
+      expectRatio(theme, '--color-btn-admin-hover', '--color-btn-admin-bg', 1.15, 'R6 hover against rest');
+      expectRatio(theme, '--color-btn-admin-active', '--color-btn-admin-hover', 1.15, 'R6 pressed against hover');
+      expectDelta(theme, '--color-btn-admin-gated-bg', '--color-btn-admin-bg', 8, 'R6 waiting fill vs live fill');
+      // The ring sits on a 2px gap in the dialog colour.
+      expectRatio(theme, '--color-focus-ring', '--color-bg-card', 3.0, 'R6 ring on the gap');
+      measured += 9;
+    }
+    expect(measured, 'anti-vacuity: 9 pairs x 2 themes').toBe(18);
+
+    // The four rules, read from the comment-masked stylesheet: each exists once and reads its token.
+    const ruleBody = (selector: string): string => {
+      const needle = `\n${selector} {`;
+      const first = MASKED.indexOf(needle);
+      if (first < 0) throw new TokenContrastParseError(`R6: no rule \`${selector} {\` in globals.css`);
+      if (MASKED.indexOf(needle, first + 1) >= 0) throw new TokenContrastParseError(`R6: two rules \`${selector} {\``);
+      return braceBlock(first + 1, selector);
+    };
+    const rest = ruleBody('.btn-admin');
+    expect(rest).toContain('background-color: var(--color-btn-admin-bg);');
+    expect(rest).toContain('color: var(--color-btn-admin-text);');
+    expect(rest, 'R6: flat, no edge of its own').not.toMatch(/border|box-shadow|outline/);
+    expect(ruleBody(".btn-admin:hover:not(:disabled):not([aria-disabled='true'])")).toContain('background-color: var(--color-btn-admin-hover);');
+    const pressed = ruleBody(".btn-admin:active:not(:disabled):not([aria-disabled='true'])");
+    expect(pressed).toContain('background-color: var(--color-btn-admin-active);');
+    // The pressed step is a fill at full opacity, never the shared .75 dim (it would composite the words).
+    expect(pressed).toMatch(/opacity:\s*1;/);
+    const waiting = ruleBody(".btn-admin[aria-disabled='true']");
+    expect(waiting).toContain('background-color: var(--color-btn-admin-gated-bg);');
+    expect(waiting).toContain('color: var(--color-btn-admin-gated-text);');
+    expect(waiting, 'R6: the waiting state is colour, never opacity').not.toMatch(/opacity/);
+
+    // The variant emits the class and nothing else, and the one consumer asks for it.
+    const buttonSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, '..', 'components', 'ui', 'Button.tsx'), 'utf8'),
+    );
+    expect(/\badmin:\s*'([^']*)'/.exec(buttonSrc)?.[1], 'R6: the admin variant emits the class').toBe('btn-admin');
+    const membersSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'ManageMembers.js'), 'utf8'),
+    );
+    expect(
+      membersSrc.match(/<ConfirmDialog \{\.\.\.promoteAdminGate\.dialogProps\}[^>]*confirmVariant="admin"/g) ?? [],
+      'R6: the Make admin confirm asks for the admin variant',
+    ).toHaveLength(1);
+  });
+
+  it('R8c (88.9-52): a hovered ghost button fills with the secondary fill in light (1.30 or more off the card), dark keeps the hover wash, and both ghost inks clear 4.5 on it in both themes', () => {
+    // Owner pick R8c "Fill" (2026-11-17): the light ghost hover was the near-white wash (warm-50,
+    // 1.0601 off the white card: "very hard to see"); it takes the visible secondary fill.
+    // Measured with src/lib/wcag.ts: light fill on the card 1.3802, ghost ink on it 7.5898, danger
+    // ink 6.0210; dark unchanged, wash on the card 1.2281, inks 7.0680 and 5.9413.
+    const buttonSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, '..', 'components', 'ui', 'Button.tsx'), 'utf8'),
+    );
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    expect(runtimeProp('surface-ghost-hover')).toBe('--color-btn-ghost-hover');
+    // By reference, so the hover cannot drift from the fill it was ruled to be, nor dark from its wash.
+    expect(resolveRaw('light', '--color-btn-ghost-hover')).toBe(resolveRaw('light', '--color-btn-secondary-bg'));
+    expect(resolve('light', '--color-btn-ghost-hover')).toBe('#e3dad1');
+    expect(declIn(blockOf('dark'), '--color-btn-ghost-hover'), 'dark keeps the shared hover wash').toBe('var(--color-bg-hover)');
+    expectRatio('light', '--color-btn-ghost-hover', '--color-bg-card', 1.3, 'R8c the light hover fill on the card');
+    expectRatioBelow('light', '--color-bg-hover', '--color-bg-card', 1.1, 'R8c the retired light wash on the card');
+
+    let measured = 0;
+    for (const name of ['ghost', 'ghostDanger'] as const) {
+      const variant = new RegExp(`\\b${name}:\\s*'([^']*)'`).exec(buttonSrc);
+      expect(variant, `LOCATOR: no ${name} variant string in Button.tsx`).not.toBeNull();
+      const tokens = variant![1].split(/\s+/).filter((token) => token.length > 0);
+      expect(tokens, `${name} hovers on the ghost fill`).toContain('enabled-hover:bg-surface-ghost-hover');
+      expect(tokens, `${name} no longer names the shared wash`).not.toContain('enabled-hover:bg-surface-hover');
+      const inkKey = tokens.map((token) => /^text-([a-z0-9-]+)$/.exec(token)?.[1]).find((key) => key !== undefined);
+      expect(inkKey, `${name} names an ink utility`).toBeDefined();
+      for (const theme of ['light', 'dark'] as const) {
+        expectRatio(theme, runtimeProp(inkKey as string), '--color-btn-ghost-hover', 4.5, `R8c the ${name} ink on the hover fill`);
+        measured += 1;
+      }
+    }
+    expect(measured, 'anti-vacuity: 2 variants x 2 themes').toBe(4);
+  });
+
+  it('N1b (88.9-52): dark painted availability cells are the mid green and ochre — 2.0 or more off an empty cell, under 3.5 so they do not glow, light the unchanged palette steps, cells and legend on the same tokens', () => {
+    // Owner pick N1b "Mid" (2026-11-17): in dark the painted cells kept the light theme's mint and
+    // yellow (8.03 and 8.55 against an empty cell, "the loudest thing on the dark card"). Measured
+    // with src/lib/wcag.ts, dark: Preferred #288758 2.5220 against an empty cell and 3.0973 against
+    // the card; If Need Be #9c712a 2.5823 and 3.1714; the grid line on them 1.7433 and 1.7850. The
+    // two fills are 1.0239 apart: hue alone tells them apart, which row N1c answers.
+    const PICK = { preferred: '#288758', 'if-need-be': '#9c712a' } as const;
+    const paletteStep = (step: string): string => {
+      const hits = [...MASKED.matchAll(new RegExp(`^[ \\t]*--color-${step}:[ \\t]*(#[0-9a-f]{6});`, 'gm'))];
+      if (hits.length !== 1) throw new TokenContrastParseError(`N1b: expected one --color-${step} palette declaration, found ${hits.length}`);
+      return hits[0][1];
+    };
+    const LIGHT = { preferred: paletteStep('green-300'), 'if-need-be': paletteStep('yellow-300') } as const;
+    const themeBlock = blockOf('theme');
+    const gridSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'AvailabilityGrid.js'), 'utf8'),
+    );
+    let measured = 0;
+    for (const state of ['preferred', 'if-need-be'] as const) {
+      const token = `--color-avail-${state}-bg`;
+      expect(declIn(themeBlock, `--color-surface-avail-${state}`), `N1b: the ${state} fill is bridged`).toBe(`var(${token})`);
+      expect(resolve('dark', token), `N1b [dark] ${state}`).toBe(PICK[state]);
+      // Light is unchanged: the token names the palette step the light class already paints.
+      expect(resolve('light', token), `N1b [light] ${state}`).toBe(LIGHT[state]);
+      expectRatio('dark', token, '--color-bg-elevated', 2.0, `N1b the dark ${state} cell against an empty cell`);
+      expectRatioBelow('dark', token, '--color-bg-elevated', 3.5, `N1b the dark ${state} cell must not glow`);
+      measured += 2;
+      // One cell constant and one legend swatch name the dark class, each beside the light step.
+      const darkClass = `dark:bg-surface-avail-${state}`;
+      expect(gridSrc.split(darkClass).length - 1, `N1b: ${darkClass} on the cells and on the legend`).toBe(2);
+    }
+    expect(measured, 'anti-vacuity: 2 states x 2 bounds').toBe(4);
+    // The raw light steps this row replaces in dark were far over the ceiling.
+    for (const hex of [LIGHT.preferred, LIGHT['if-need-be']]) {
+      expect(ratioHex(hex, resolve('dark', '--color-bg-elevated'), 'N1b the retired dark look')).toBeGreaterThan(8);
+    }
+    expect(gridSrc, 'N1b: the legend keeps its light steps').toContain('w-4 h-4 bg-green-300 dark:bg-surface-avail-preferred');
+  });
+
+  it('N1c (88.9-52): If Need Be carries a fine diagonal stripe in both themes — the stripe 1.30 or more off its own fill, one utility reading one token, on the If Need Be cell and swatch only', () => {
+    // Owner pick N1c "Stripe" (2026-11-17): Preferred and If Need Be were told apart by hue alone
+    // (their fills are 1.0651 apart in light and 1.0239 in dark, so a greyscale copy shows one
+    // grey). The stripe is the cue that needs no colour: a 2px line every 6px at 45 degrees, in a
+    // darker step of the cell's own hue. Measured with src/lib/wcag.ts, stripe on its fill: light
+    // #cfb83a on #fde047 1.5070, dark #805d22 on #9c712a 1.3714. A pattern, not text and not a
+    // control edge, so the floor here records the picked look and is no WCAG number.
+    const PICK = { light: '#cfb83a', dark: '#805d22' } as const;
+    expect(declIn(blockOf('theme'), '--color-surface-avail-if-need-be-stripe'), 'N1c: the stripe colour is bridged').toBe('var(--color-avail-if-need-be-stripe)');
+    let measured = 0;
+    for (const theme of ['light', 'dark'] as const) {
+      expect(resolve(theme, '--color-avail-if-need-be-stripe'), `N1c [${theme}] stripe`).toBe(PICK[theme]);
+      expectRatio(theme, '--color-avail-if-need-be-stripe', '--color-avail-if-need-be-bg', 1.3, 'N1c the stripe on the If Need Be fill');
+      // Without the stripe the two states are one grey: the reason the cue exists.
+      expectRatioBelow(theme, '--color-avail-preferred-bg', '--color-avail-if-need-be-bg', 1.1, 'N1c Preferred against If Need Be, fill alone');
+      measured += 2;
+    }
+    expect(measured, 'anti-vacuity: 2 themes x 2 pairs').toBe(4);
+
+    const body = braceBlock(
+      uniqueMatch(/^@utility avail-if-need-be-stripe[ \t]*\{/gm, '@utility avail-if-need-be-stripe {'),
+      'utility avail-if-need-be-stripe',
+    ).replace(/\s+/g, ' ').trim();
+    expect(body).toBe(
+      'background-image: repeating-linear-gradient( 45deg, var(--color-avail-if-need-be-stripe) 0 2px, transparent 2px 6px );',
+    );
+
+    const gridSrc = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'AvailabilityGrid.js'), 'utf8'),
+    );
+    // One cell constant and one legend swatch, each beside the If Need Be fill; never beside Preferred.
+    expect(gridSrc.split('avail-if-need-be-stripe').length - 1, 'N1c: the stripe class on the cells and on the legend').toBe(2);
+    expect(gridSrc.split('dark:bg-surface-avail-if-need-be avail-if-need-be-stripe').length - 1).toBe(2);
+    expect(gridSrc).not.toMatch(/avail-preferred[^'"\n]*avail-if-need-be-stripe/);
+  });
 });
 
 // =====================================================================================
@@ -2002,5 +3357,45 @@ describe('Phase 88.6-02 (D-15) — the retired card-hover property names are ABS
     expect(resolve('light', '--muted')).toMatch(/^#[0-9a-f]{6}$/i);
     expect(resolve('dark', '--muted')).toMatch(/^#[0-9a-f]{6}$/i);
     expect(declIn(themeInlineBlock(), '--color-muted')).toBe('var(--muted)');
+  });
+});
+
+// ===================================================================================
+// Phase 88.9-52 PIX-8 (picture pass): the Friends page tab labels sit on the PAGE ground.
+// The active label was text-btn-primary, the primary button FILL used as ink: 4.3366 on the light
+// page and 2.9867 on the dark page, both under the 4.5 text floor (in dark it read as a dim slate
+// blue). The ink the page uses is read from its source here, so a later re-ink of the active tab
+// to a token that fails on the page turns this row red.
+// ===================================================================================
+describe('PIX-8 — Friends tab labels on the page ground (Phase 88.9-52)', () => {
+  // The utility a tab arm may carry as its ink, and the token each one paints.
+  const INK_TOKEN: Record<string, string> = {
+    'text-content-primary': '--color-text-primary',
+    'text-content-secondary': '--color-text-secondary',
+    'text-btn-primary': '--color-btn-primary-bg',
+    'text-content-link': '--color-text-link',
+  };
+  const source = withoutComments(fs.readFileSync(path.join(__dirname, 'friends', 'page.js'), 'utf8'));
+  const inkOf = (arm: string): string => {
+    const inks = arm.split(/\s+/).filter((t) => /^text-(content|btn)-/.test(t));
+    expect(inks, `PIX-8 — one ink utility expected in the tab arm "${arm}"`).toHaveLength(1);
+    expect(INK_TOKEN[inks[0]], `PIX-8 — no token is mapped for ${inks[0]}`).toBeDefined();
+    return INK_TOKEN[inks[0]];
+  };
+
+  it('PIX-8 (88.9-52): the Friends tab labels on the page are 4.5 or better in both themes, and the retired button-fill ink is recorded under it', () => {
+    const arms = source.match(/activeTab === key\s*\?\s*'([^']+)'\s*:\s*'([^']+)'/);
+    expect(arms, 'PIX-8 — the Friends tab class ternary was not found in src/app/friends/page.js').not.toBeNull();
+    const [, activeArm, inactiveArm] = arms as RegExpMatchArray;
+    // The active tab is told apart by more than colour: it carries the 2px underline, the inactive arm none.
+    expect(activeArm.split(/\s+/)).toContain('border-b-2');
+    expect(inactiveArm.split(/\s+/)).not.toContain('border-b-2');
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, inkOf(activeArm), '--color-bg-page', 4.5, 'PIX-8 / Friends ACTIVE tab label on the page');
+      expectRatio(theme, inkOf(inactiveArm), '--color-bg-page', 4.5, 'PIX-8 / Friends inactive tab label on the page');
+      // Recorded failure: the ink this row replaced. If the button fill is ever re-tuned to pass as
+      // text on the page, this says so and the choice can be looked at again.
+      expectRatioBelow(theme, '--color-btn-primary-bg', '--color-bg-page', 4.5, 'PIX-8 / the retired button-fill ink on the page');
+    }
   });
 });

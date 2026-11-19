@@ -6,7 +6,10 @@ import { useTimezone } from '../components/TimezoneProvider';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Heading } from '../../components/ui/Heading';
 import { FetchErrorBanner, RefreshFailedNotice } from '../../components/ui/FetchErrorBanner';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import { selectUpcomingWithin7Days } from '../../lib/upcomingEvents';
+import { isGuestEvent } from '../../lib/eventClassification';
+import GuestPill, { GUEST_ROW_EDGE } from './GuestPill';
 
 // DECISION 88.6.1 code review CR-6 / A-22 (owner ratified 2026-10-19): this section's RF1 notice
 // passes the spoken-only `sectionName` (close ruling P-78's prop, FetchErrorBanner.tsx), so the
@@ -203,14 +206,17 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
         /* 88-33 Task 1 (M1's in-page-spinner class, walk row "In-page loading states name
            what is loading"): a named status, not a bare "Loading..." — the accessible name
            is what a screen-reader user gets, and the walk's "empty main" readings came from
-           accessibility trees with nothing in them. */
-        <p
-          role="status"
-          aria-label="Loading your upcoming events"
-          className="text-sm text-content-muted mt-2"
-        >
-          Loading your upcoming events...
-        </p>
+           accessibility trees with nothing in them.
+           AMENDED Phase 88.9-69 (X35): a status mounted holding its words is not announced; the region beside it speaks them.
+           The visible line is a plain paragraph now, and the visually hidden region mounts empty
+           and takes the same words (the old label, no dots) after the house dwell, chosen OVER the
+           labelled paragraph. Veto open: the owner judges it by ear (listen LS-69). */
+        <>
+          <p className="text-sm text-content-muted mt-2">
+            Loading your upcoming events...
+          </p>
+          <StatusRegion settleOnMount className="sr-only" message="Loading your upcoming events" />
+        </>
       ) : errorState?.showError && !retained ? (
         /* DECISION Phase 88-18 (Req 6 / T-88-18-01): a failed events fetch renders the shared
            error treatment here, checked BEFORE the empty branch. The parent used to swallow the
@@ -228,7 +234,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
         <div className="mt-2">
           <FetchErrorBanner
             state={errorState}
-            title="We couldn't load your upcoming events"
+            thing="your upcoming events"
             reportContext="Upcoming events card (home page)"
           />
         </div>
@@ -273,11 +279,10 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                 // joined as a guest (EventParticipation.is_guest=true). Match on
                 // User.id UUID — not Auth0 string, not email. The previous fragile
                 // email heuristic is gone.
-                const isGuestEvent = (() => {
-                  if (!viewerDbUserId) return false;
-                  const eps = Array.isArray(event.EventParticipations) ? event.EventParticipations : [];
-                  return eps.some(p => p.user_id === viewerDbUserId && p.is_guest === true);
-                })();
+                // The derivation now lives in one predicate (the 88.9-25 D5a / R2-27 lift), shared
+                // with the calendar list and the month grid:
+                // src/lib/eventClassification.ts ("export function isGuestEvent(")
+                const guest = isGuestEvent(event, viewerDbUserId);
 
                 return (
                   /* `block w-full text-left` restores the div's layout — a button is inline-block
@@ -312,12 +317,17 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                      is a bare `<button>` carrying no `.btn`, so the utility lands normally; a pin
                      in `UpcomingEventsCard.test.tsx` asserts that stays true.
                      Precedent for phone-scoped floors generally: `DECISION Phase 88-01 (D-36)` at
-                     `globals.css:1142-1160`. */
+                     `globals.css:1142-1160`.
+
+                     DECISION Phase 88.9-63 (X27): member rows carry a transparent 1px border so a guest
+                     row's outline moves no text, chosen OVER a guest-only border (1px jog, 2px taller
+                     row) and OVER the shipped extra left padding. Both arms are whole literal class
+                     strings (the guest arm is the one export in GuestPill.tsx). */
                   <button
                     key={event.id}
                     type="button"
                     onClick={() => handleEventClick(event)}
-                    className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
+                    className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${guest ? GUEST_ROW_EDGE : 'border border-transparent'}`}
                   >
                     {/* DECISION Phase 88.6-28 (R2 / UI-SPEC §4.3): every span in this row STAYS at
                         Label 14 (`text-sm`), chosen OVER promoting `{gameName}` to Body 16 under
@@ -347,7 +357,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                         <span className="text-sm text-content-secondary">{groupName}</span>
                       </>
                     )}
-                    {isGuestEvent && (
+                    {guest && (
                       /* DECISION Phase 88.6-28 (D-01, UI-SPEC §4.2 "12px is the floor", V-7): the
                          Guest pill folds UP `text-[10px]` -> `text-xs` (12). An arbitrary value is
                          off the closed rung set by definition, and 10px is under the app's floor.
@@ -360,12 +370,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                          that has no height constraint (`min-h-11 md:min-h-0` is a FLOOR), so the
                          +2px grows the pill and, at worst, wraps it to the row's next line the way
                          a long game name already can. No fixed box is crossed. */
-                      <span
-                        className="inline-flex items-center px-1.5 py-0.5 ml-2 text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
-                        title="You joined this event as a guest (not a group member)"
-                      >
-                        Guest
-                      </span>
+                      <GuestPill />
                     )}
                   </button>
                 );

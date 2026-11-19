@@ -8,6 +8,7 @@ import ManageMembers from '../components/ManageMembers';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
 import {
     getTextStyle,
     getSubtitleStyle,
@@ -23,7 +24,7 @@ import EventCalendar from '../components/EventCalendar';
 import { CalendarLoadingCard } from '../components/CalendarLoadingCard';
 import PendingMemberBanner from '../components/PendingMemberBanner';
 import GroupLibrary from '../components/GroupLibrary';
-import KebabMenu from '../components/KebabMenu';
+import { Icon } from '../../components/ui/Icon';
 import GroupSettings from '../components/GroupSettings';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
@@ -32,6 +33,10 @@ import { FetchErrorBanner, RefreshFailedNotice, RetainedContentFocusGuard, useRe
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
+import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
+import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 
 // The resolved outcome of one games load: the shape plan 88.6.1-21's banner reads
 // (`classifyRetryResult`) to announce a failed retry, and the shape plan 88.6.1-71 reuses for the
@@ -43,16 +48,22 @@ const LOAD_FAILED = Object.freeze({ isError: true });
 // Copy rows G7 / G8, ratified by the owner on 2026-10-05 (revision lap 3, recorded as D-47): one
 // constant per string, so a copy scan finds each byte for byte. CALENDAR_TITLE is the calendar's
 // existing title, hoisted so the calendar and the events failure arm's heading cannot drift apart.
-const GROUP_LOAD_FAILED_TITLE = "Couldn't load this group";
-const GROUP_EVENTS_LOAD_FAILED_TITLE = "Couldn't load this group's events";
+// AMENDED Phase 88.9-49 (owner ruling BANNER-01 short, register 51.13, 2026-11-07): each constant holds the thing and FetchErrorBanner composes the title, chosen OVER one whole-title constant per string; the copy rows pin the noun plus the thing attribute.
+const GROUP_LOAD_FAILED_THING = 'this group';
+// DECISION Phase 88.9-52 (R3, owner 2026-11-16: we have to remember to update the hidden headings if we modify the title): the page's name is ONE constant, read by the screen-reader-only heading on the banner-only screens (the frame's srHeading; marker at src/components/ui/CentredPageFrame.tsx ("DECISION Phase 88.9-52 (A-04 / A-38)")) and by the word the visible level-1 title and the breadcrumb crumb show when the group's own name has not arrived (with a name, both show the name), chosen OVER the same word typed at each site, which drifts silently. Renaming the page is one edit here.
+const GROUP_PAGE_NAME = 'Group';
+const GROUP_EVENTS_LOAD_FAILED_THING = "this group's events";
 const CALENDAR_TITLE = "Calendar";
 // Copy row P78c (close ruling P-78, owner 2026-10-17): the members notice's spoken section name — the member list has no heading of its own.
 const MEMBERS_SECTION_NAME = 'Members';
 
 // A groups home page
 function GroupHomePage(){
-    const { user } = Auth();
+    const { user, error: authError, isLoading: authLoading } = Auth();
     const router = useRouter();
+    // X6 (88.9-60): the shared picture-load probe. Called here, above every early return (a hook
+    // cannot follow one); the header asks it where the validated style is computed, far below.
+    const bgImageFailed = useBgImageFailed();
     // Phase 87.3-05 (PR-B): resolve the caller's own Users.id UUID via the
     // shared identity primitive. The membership/removal gate keys on the nested
     // member.id (UUID) vs selfUuid. CRITICAL: selfUuid resolves ASYNC, so the
@@ -61,7 +72,12 @@ function GroupHomePage(){
     // own group. Identity-unresolved is a LOADING state, never "removed".
     const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
     // AC-29 (88.6.1-63): an identity failure counts only with no row held; an access answer over a held row is told by this view's own data requests instead, deliberately; the rule and its reasons live in selfIdentityErrorSource.ts.
-    const selfIdentityErrorState = useFetchErrorState(selfIdentityErrorSource(selfIdentityQuery, selfUuid));
+    // AMENDED Phase 88.9-52 (P1, owner 2026-11-17): the rule's source is read as three plain values and joins the page-load state below (this file ("DECISION Phase 88.9-52 (P1, owner 2026-11-17: Banner)")); the page keeps no error state of its own for the identity read, because the small notice that state fed is gone from this page.
+    const {
+        isError: selfIdentityFailed,
+        error: selfIdentityFailure,
+        refetch: refetchSelfIdentity,
+    } = selfIdentityErrorSource(selfIdentityQuery, selfUuid);
     const [Group, setGroup] = useState(null);
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
@@ -129,7 +145,7 @@ function GroupHomePage(){
     // react-big-calendar's; the rebuilt scheduler's week and day arms are the same code
     // path parameterized by `days` (7 vs 1) — SPEC Req 2 — so 'day view' is now a prop
     // value on one component, not a second library view.)
-    // The "Add New Game Event" header button leaves this at 'week'.
+    // The "Create Event" header button leaves this at 'week'.
     const [calendarEntryMode, setCalendarEntryMode] = useState('week');
     // Defensive cache-bust key — bumped after a fresh fetch so EventCalendar
     // re-renders even if React batches/dedupes the state update by accident.
@@ -264,8 +280,8 @@ function GroupHomePage(){
 
     /* DECISION Phase 88.6.1-71 (Req 9, members load failure — owner ruling 2026-10-05): CHOSEN — a
        members request that fails for any reason but removal, or answers with something that is not
-       a list, is TRACKED; on the first load the gate shows the full banner titled
-       GROUP_LOAD_FAILED_TITLE with Try again, checked BEFORE the group loading line; on a refresh
+       a list, is TRACKED; on the first load the gate shows the full banner titled from
+       GROUP_LOAD_FAILED_THING with Try again, checked BEFORE the group loading line; on a refresh
        the member list is kept (the refresh notice says so).
        REJECTED (a) — emptying the member list and moving on (what shipped): the first load sat on
        the group loading line forever because nothing ever opened the gate, and a failed refresh
@@ -384,7 +400,7 @@ function GroupHomePage(){
 
     /* DECISION Phase 88.6.1-71 (Req 9, events load failure — owner ruling 2026-10-05): CHOSEN — a
        failed events request is TRACKED; on this group's first load the calendar's place shows its
-       section heading and the full banner titled GROUP_EVENTS_LOAD_FAILED_TITLE, checked BEFORE
+       section heading and the full banner titled from GROUP_EVENTS_LOAD_FAILED_THING, checked BEFORE
        the calendar because a failed request also has zero events — the same heading-plus-banner
        shape as the games section below; on a refresh the events already shown are kept
        (`eventsRetained`, from plan 88.6.1-70's `useRetainedContent` over `eventsLoadedFor`) — an
@@ -630,11 +646,41 @@ function GroupHomePage(){
     // unchanged and still drives the members notice and `membersRetained`.
     const membersBlocking = membersErrorState.showError && !membersRetained;
     const groupBlocking = groupErrorState.showError && !groupRetained;
+    /* DECISION Phase 88.9-52 (P1, owner 2026-11-17: Banner): an identity read that failed with NO row
+       held, before the membership check has passed, is a THIRD load of the ONE page-load state: the
+       page shows its full banner (copy row G7, Try again) because the membership check can never
+       run without the row, so nothing of the group can be shown. CHOSEN OVER the small notice under
+       the loading line (D-08, what shipped: the line still claimed loading and the notice said only
+       that some personal controls were unavailable, when the whole page was) and OVER a banner of
+       its own for the identity read (the marker on getGroup, REJECTED (a): two banners can swap
+       under a focused Try again, and an outage that failed two loads would need two presses).
+       ORDER: members, then the group record, then identity. Identity is LAST on purpose: a kept
+       group failure holds its banner through the press (its error stays until its newest run
+       succeeds), where the identity query reports pending from the press to its answer
+       (node_modules:@tanstack/query-core/build/modern/query.js ("...data === void 0 && {")), so
+       with identity first the banner's sentence would change under the pressed control. Members
+       and identity cannot both block: the members read is never sent without the row.
+       WHILE THE RETRY IS OUT, with identity the only failing load, the page-load state shows
+       nothing and the paint gate's loading frame is on screen and heard (A-45); a second failure
+       brings the banner back (inserted with its words, so said once), a row lets the membership
+       effect run. Focus at the press is caught by the banner's own recovery (the floor), the
+       recorded limit for a caller that swaps its banner out for the retry
+       (src/components/ui/FetchErrorBanner.tsx ("LIMIT, named honestly: where the CALLER swaps the banner out for the retry")).
+       GATED on the membership check: a row that is held never fails by the no-row rule, and a
+       page that has painted is not withdrawn by this arm.
+       A 401 on the identity read is the page-load state's 401: the sign-in guard below reads it.
+       No new words: the title, the register line and the controls are the banner's own.
+       Changing any of this is a decision, not a cleanup. */
+    const identityBlocking = selfIdentityFailed && !membershipChecked;
     const membersBlockingRef = useRef(false);
     const groupBlockingRef = useRef(false);
+    const identityBlockingRef = useRef(false);
+    const refetchSelfIdentityRef = useRef(refetchSelfIdentity);
     useEffect(() => {
         membersBlockingRef.current = membersBlocking;
         groupBlockingRef.current = groupBlocking;
+        identityBlockingRef.current = identityBlocking;
+        refetchSelfIdentityRef.current = refetchSelfIdentity;
     });
     const retryPageLoad = useCallback(async () => {
         // Both retries start in this synchronous turn, before the first await, so each joins a
@@ -642,18 +688,37 @@ function GroupHomePage(){
         const runs = [];
         if (membersBlockingRef.current) runs.push(retryMembers());
         if (groupBlockingRef.current) runs.push(retryGroup());
+        // P1: the identity read's own refetch (what the small notice's Retry called). TanStack's
+        // refetch resolves a result carrying `isError`, the shape the two lines below read.
+        if (identityBlockingRef.current) runs.push(refetchSelfIdentityRef.current());
         if (runs.length === 0) return undefined;
         const results = await Promise.all(runs);
         if (results.some((result) => result?.isError === true)) return LOAD_FAILED;
         if (results.every((result) => result?.isError === false)) return LOAD_OK;
         return undefined;
     }, [retryMembers, retryGroup]);
-    const pageLoadError = membersBlocking ? membersError : groupBlocking ? groupError : null;
+    const pageLoadError = membersBlocking ? membersError : groupBlocking ? groupError : identityBlocking ? selfIdentityFailure : null;
     const pageLoadErrorState = useFetchErrorState({
         isError: Boolean(pageLoadError),
         error: pageLoadError,
         refetch: retryPageLoad,
     });
+    // DECISION Phase 88.9-40 (SESSION-01 / SESSION-03, K10): a signed-out visitor is sent to sign-in
+    // the moment useUser settles, chosen OVER the shipped paint gate that waited on fetches gated on
+    // user?.sub and so showed Loading group… forever; a 401 on the group's first load (the page-load
+    // state) does the same, and a return with the latch set gets the page-load banner with Sign in,
+    // never a second redirect. See src/lib/hooks/useSignInRedirect.ts ("DECISION Phase 88.9-40 (SESSION-01, owner ruling").
+    // A useUser() error shows ErrorFallback with Reload — never a redirect, never Loading group….
+    const signIn = useSignInRedirect({
+        authLoading,
+        signedOut: !user,
+        authError,
+        unauthorized: pageLoadErrorState.showError && pageLoadErrorState.code === 'unauthorized',
+        sessionProven: membershipChecked && groupLoadedFor === Router && !pageLoadErrorState.showError,
+    });
+    // The page-load gate reads the signed-out banner state when the guard declined for a visitor
+    // with no session, else the page-load state as before.
+    const pageGateState = signIn.signedOutErrorState.showError ? signIn.signedOutErrorState : pageLoadErrorState;
     /* DECISION Phase 88.6.1-71 (C12, focus when content leaves): CHOSEN — plan 88.6.1-70's shared
        guard, one per `retained` value. The members guard is the SECOND child of a fragment in
        every markup return of this component, so ONE instance survives the switch from the page
@@ -744,14 +809,53 @@ function GroupHomePage(){
     // AMENDED 88.6.1-89 (close ruling P-79): the gate reads the page-load state — the members load
     // OR the group record's load failing with nothing retained, members first — so one banner and
     // one Try again cover both (the marker on getGroup, REJECTED (a)).
-    if (pageLoadErrorState.showError) {
+    // AMENDED Phase 88.9-52 (P1, owner 2026-11-17): the page-load state also holds an identity read
+    // that failed with no row (the P1 marker beside identityBlocking, above).
+    // DECISION Phase 88.9-52 (A-45): the three waiting frames below (the redirect hold, the paint gate,
+    // Loading games) are HEARD. Each keeps ONE visually hidden polite region as the FIRST child of its
+    // wrapper, mounted empty and fed the frame's own visible words after the house dwell (the X35
+    // two-node shape, src/app/friends/page.js ("DECISION Phase 88.9-66 (X35, once-over R13)")), chosen
+    // OVER a status role on the visible line (a region that mounts holding its words is not announced)
+    // and OVER new spoken wording (none was ruled): the words are the visible ones, with one real
+    // ellipsis character where the visible line has three dots. The region sits at the same place in
+    // all three wrappers ON PURPOSE: React keeps the one region across the frames, so the hold handing
+    // over to the paint gate says nothing twice, and Loading games is a change, which is spoken. It is
+    // inside the wrapper, so both focus guards stay the 2nd and 3rd children (the C12 position rule).
+    // 88.9-40 (SESSION-01 / SESSION-03): the redirect frame. The paint gate's own wrapper and copy,
+    // both guards as the 2nd and 3rd children (the 88.6.1-71 C12 position rule). It holds BOTH arms,
+    // because the paint gate below opens on a first-load 401 once membership has settled (its
+    // `!groupError` clause) and would paint the banner for a frame before the browser navigates.
+    if (signIn.holding) {
         return (
             <>
                 <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
-                    <div className="w-full max-w-xl">
-                        <FetchErrorBanner state={pageLoadErrorState} title={GROUP_LOAD_FAILED_TITLE} reportContext="Group home page — group and members fetch" />
-                    </div>
+                    <StatusRegion settleOnMount className="sr-only" message="Loading group…" />
+                    <p className="text-content-secondary">Loading group…</p>
                 </div>
+                {membersFocusGuard}
+                {groupFocusGuard}
+            </>
+        );
+    }
+    // 88.9-40: useUser() itself failed (offline, or /api/auth/me answered 5xx). Not signed out — the
+    // login route is as unreachable as the page — so Reload, never a redirect. The title is the
+    // page's banner title written as a literal (plan 88.9-49 renames the constant and counts its uses).
+    if (signIn.sessionError) {
+        return (
+            <>
+                <ErrorFallback title="Couldn't load this group" body="Your session didn't come back. Reload the page, and sign in again if it keeps happening." />
+                {membersFocusGuard}
+                {groupFocusGuard}
+            </>
+        );
+    }
+    if (pageGateState.showError) {
+        return (
+            <>
+                {/* 88.9-66 (X64 / X70): the shared frame; its marker is in src/components/ui/CentredPageFrame.tsx ("ONE frame for a page-replacing banner"). */}
+                <CentredPageFrame srHeading={GROUP_PAGE_NAME}>
+                    <FetchErrorBanner state={pageGateState} thing={GROUP_LOAD_FAILED_THING} reportContext="Group home page — group and members fetch" />
+                </CentredPageFrame>
                 {membersFocusGuard}
                 {groupFocusGuard}
             </>
@@ -770,11 +874,12 @@ function GroupHomePage(){
         return (
             <>
                 <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
+                    <StatusRegion settleOnMount className="sr-only" message="Loading group…" />
                     <p className="text-content-secondary">Loading group…</p>
                     {/* D-08: if identity resolution permanently fails, the membership
                         check can never complete — surface a compact, non-blocking
-                        degrade notice instead of an indefinite silent spinner (D-11). */}
-                    <FetchErrorBanner state={selfIdentityErrorState} compact />
+                        degrade notice instead of an indefinite silent spinner (D-11).
+                        AMENDED Phase 88.9-52 (P1, owner 2026-11-17): a failed identity read with no row now shows the page's FULL banner (copy row G7 with Try again, through the page-load gate above this one), chosen OVER the compact notice this comment describes, which is REJECTED here and no longer mounted in this frame: the whole page is blocked, not some personal controls, and the line above it still claimed loading. This frame is now only ever a real wait (identity pending, the membership check, the group's first load). The silent-spinner rule D-08 / D-11 set still holds: the failure is told, by the banner. Putting the notice back is a decision, not a cleanup. */}
                 </div>
                 {membersFocusGuard}
                 {groupFocusGuard}
@@ -786,6 +891,7 @@ function GroupHomePage(){
         return (
             <>
                 <div className="p-6 flex items-center justify-center min-h-screen">
+                    <StatusRegion settleOnMount className="sr-only" message="Loading games…" />
                     <p className="text-content-secondary">Loading games...</p>
                 </div>
                 {membersFocusGuard}
@@ -882,9 +988,11 @@ function GroupHomePage(){
      * (stored colour, no image -> transparent in light, 0.15 in dark, via the
      * class). The half that ARRIVES is `dark:`-only, which is why the rendered
      * check for it has to observe dark mode. A decision, not a cleanup.
+     *
+     * AMENDED Phase 88.9-60 (X6, owner F1): also false when the picture fails to load (src/lib/hooks/useBgImageFailed.ts); derivation unchanged.
      */
     const headerBgImageStyle = safeBgImageStyle(Group?.background_image_url);
-    const hasHeaderImage = !!headerBgImageStyle;
+    const hasHeaderImage = !!headerBgImageStyle && !bgImageFailed(headerBgImageStyle);
 
     /*
      * `darkArm` — the ground-brightness half of the three header controls' fork.
@@ -973,7 +1081,11 @@ function GroupHomePage(){
         // (the C12 DECISION block at `membersFocusGuard`); the page's markup is not re-indented.
         // The group focus guard is its THIRD child, in every return (88.6.1-89).
         <>
-        <div className="p-4 md:p-6">
+        <div className="p-4 md:p-6 max-w-7xl mx-auto">
+            {/* DECISION Phase 88.9-59 (X5c, owner at the 88.9-51 glance 2026-11-11: it looks better at 1280; it should look
+                fine if the header is at 1600 and the page is 1280): this body stays max-w-7xl (1280) under the 1600 header and
+                footer, chosen OVER matching the header's 1600: a single-column page reads better at 1280. Widening it is a
+                decision, not a cleanup. Owner-ruled. */}
             {/* Breadcrumbs.
                 DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
                 the Home link gains the project focus ring, the same string the tab
@@ -1000,7 +1112,10 @@ function GroupHomePage(){
                     so 400 + a colour token is exactly what it becomes, with no delta to look at.
                   - the CURRENT PAGE span KEEPS its weight (600 -> 700 under D-03) AND GAINS
                     `aria-current="page"` (T-88.6-138), matching plans 17 and 18's three
-                    breadcrumbs so the five behave alike. Without the attribute, "you are here" is
+                    breadcrumbs on aria-current. AMENDED Phase 88.9-31 (owner pick C4a,
+                    88.9-PICKS-B2.json): the five crumbs did NOT match on weight (the Profile crumb
+                    shipped at 400); C4a puts all five at 700, the Profile crumb moved in plan
+                    88.9-32. Without the attribute, "you are here" is
                     carried by WEIGHT alone — nothing a screen reader exposes — and R2 #171 is the
                     rule that a weight may not be the sole carrier of information. The weight stays
                     because it is also the sighted cue; the attribute is an addition, not a swap. */}
@@ -1010,7 +1125,8 @@ function GroupHomePage(){
                 (an uncapped inline-block grows to fit the word, so the crumb's `wrap-break-word`
                 below was inert — the owner's name ran off a 375px screen). `wrap-break-word` sits on
                 the nav because overflow-wrap inherits (groupPlanning's group link additionally
-                carries `max-w-[200px] truncate`, so it truncates rather than wraps — by design).
+                carries `max-w-[200px] truncate`, so it truncates rather than wraps — by design;
+                AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): no longer, it wraps in full like this one).
                 `min-w-0` is on the nav and KEPT on purpose: it is inert today, because no breadcrumb
                 nav is a flex item (every parent is a block div), and it is there so a future flex
                 parent cannot let `min-width: auto` beat `max-w-full` and re-open UAT3-D1. Pinned on
@@ -1029,7 +1145,7 @@ function GroupHomePage(){
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
-                <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || 'Group'}</span>
+                <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || GROUP_PAGE_NAME}</span>
             </nav>
 
             {/* Header — Phase 69-04 layout: ALWAYS stack title row above
@@ -1063,7 +1179,7 @@ function GroupHomePage(){
                     // light mode. The inline `style` background this replaces hid
                     // that, because an inline style beats any class.
                     tinted
-                        ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]'
+                        ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]'
                         : 'bg-surface-elevated',
                 )}
                 style={{
@@ -1107,12 +1223,19 @@ function GroupHomePage(){
                      * file, and it needs its own look at 375px; registered in
                      * `.planning/deferred/phase-88.6.md`. The channel is wired here so
                      * that change is a className edit, not a re-plumb.
+                     *
+                     * AMENDED Phase 88.9-27 (owner pick O02d1, 88.9-PICKS-B9.json,
+                     * 2026-11-07): on the image arm the h1 and stats line fall back to
+                     * the --t-* channel's O02d1 values (white, 1.5px black outline
+                     * painted first via --t-paint, no shadow), chosen OVER the heavy
+                     * blurred shadow + 0.5px stroke; the ink stays off on an image.
+                     * AMENDED Phase 88.9-60 (X7): the image arm is T11 (2px, 700, 0.03em).
                      */
                     ...groupInkVars(headerGroundPair, {
                         surface: 'card',
                         hasBackgroundImage: hasHeaderImage,
                     }),
-                    ...headerBgImageStyle,
+                    ...(hasHeaderImage ? headerBgImageStyle : null),
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     minHeight: '120px',
@@ -1163,6 +1286,14 @@ function GroupHomePage(){
                     // the rendered check reads the class in dark mode too.
                     // The class-vs-inline split is PRESERVED exactly: the 0.15
                     // stays a `dark:` class and is never an inline value.
+                    //
+                    // AMENDED Phase 88.9-27 (owner ruling O21b, chat 2026-11-07 6:18 PM
+                    // Pacific, UI-SPEC round-2 (d) O-21; with pick O02d1,
+                    // 88.9-PICKS-B9.json): case (1) paints NO dim, chosen OVER the
+                    // shipped 0.4 black in both themes - the photo shows at full
+                    // strength and the title + stats carry their own outline (2px since 88.9-60 X7).
+                    // Cases (2) and (3) are unchanged; the 0.15 stays a dark-only class
+                    // and is never inline.
                     className={
                         tinted && !hasHeaderImage
                             ? 'dark:bg-[rgb(0_0_0/0.15)]'
@@ -1176,9 +1307,6 @@ function GroupHomePage(){
                         bottom: 0,
                         zIndex: 0,
                         borderRadius: 'inherit',
-                        ...(hasHeaderImage && {
-                            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-                        }),
                     }}
                 />
                 {/* z-30, not z-10: this row hosts the kebab dropdown, and its z-index
@@ -1223,13 +1351,13 @@ function GroupHomePage(){
                                later one wins. `wrap-break-word` is dropped for the primitive's
                                own `wrap-anywhere`, the same trade plans 17-19 made on every
                                migrated heading. */
-                            className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                            className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                             style={headerTitleVars}
                         >
-                            {Group?.name || 'Group'}
+                            {Group?.name || GROUP_PAGE_NAME}
                         </Heading>
                         <p
-                            className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                            className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
                             style={headerSubtitleVars}
                         >
                             {gamesList.length} {gamesList.length === 1 ? 'game' : 'games'} played
@@ -1283,15 +1411,43 @@ function GroupHomePage(){
                         (owner ruling 2026-10-03, TIDY). The wrapper stays, because dropping it too
                         would lean on KebabMenu's zero-items rule, which this marker refuses to treat
                         as a gate. REJECTED: leaving the dead arm in place (the 88.6 review's "none
-                        needed") — it read as a half-finished refactor. */}
+                        needed") — it read as a half-finished refactor.
+
+                        AMENDED Phase 88.9-31 (owner pick F5b, 88.9-PICKS-B5.json, 2026-11-07 1:08 AM
+                        Pacific): the swappable trigger is now the gear button below, chosen OVER the
+                        one-item kebab; the wrapper and everything this block says about it stand. */}
+                    {/* DECISION Phase 88.9-31 F5b (owner pick F5b, 88.9-PICKS-B5.json): a raw bordered
+                        button gear (lucide Settings 20px, aria-label Group settings, 44x44,
+                        bg-surface-elevated fill and border-line-control edge) chosen OVER the one-item
+                        KebabMenu (a menu for one action) and OVER Button variant secondary size icon (on a
+                        .btn the border utility and the elevated fill both lose to the unlayered .btn and
+                        .btn-secondary rules, Pitfall 2); the home cog is the same raw-button idiom, so both
+                        gears are one look. The canEditGroup wrapper stays the gate, per the leaked-action
+                        rule in src/app/gameDetail/page.js ("gate not written into the array is a LEAKED action").
+                        Changing either is a decision, not a cleanup.
+                        AMENDED Phase 88.9-69 (gear hover, 88.9-64 hand-off d): the hover is the secondary pair (light darkens to #cdc1b4, dark lightens to purple-700) by 64's rule, chosen OVER the surface-hover wash (2.35 light, 0 dark). The rest look stands; since 59 X8 the gears share shape, not colour.
+                        The two numbers are the old hover's step from rest in L*; the new step is 21.30
+                        in light and 10.27 in dark, the icon stays over 7:1 on the hovered fill, and the
+                        hovered fill stands at least 1.30 off every preset header ground (the token
+                        contrast suite's Gear hover test holds all 18 arms).
+                        AMENDED Phase 88.9-52 (W5): in DARK the edge is the card line (purple-700), chosen OVER the control edge, which is transparent there (on the plain header the fill IS the header, 1.00, and on the green header 1.00, so the gear showed as a bare cog) and OVER the strong line (rejected for the home cog as a 3:1 neutral border). 1.45 on the plain header, 1.45-1.98 on the eight preset grounds; the light control edge reads 1.60 and does not move. On hover the fill reaches the edge colour, so the box fills in. */}
                     {canEditGroup && (
                         <div className="shrink-0 relative z-20">
-                            <KebabMenu
-                                ariaLabel="Group actions"
-                                items={[
-                                    { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
-                                ]}
-                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowGroupSettings(true)}
+                                aria-label="Group settings"
+                                // One FULL literal per arm (the 88.9 halo fleet rule cascadeOrder test 12 reads):
+                                // the tinted arm's halo is the host's --group-halo, the untinted arm's the elevated
+                                // header it sits on.
+                                className={
+                                    tinted
+                                        ? 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
+                                        : 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated'
+                                }
+                            >
+                                <Icon name="Settings" size={20} />
+                            </button>
                         </div>
                     )}
                 </div>
@@ -1391,7 +1547,7 @@ function GroupHomePage(){
                     this is a corrected premise and not an open defect.
 
                     Any of this is a decision, not a cleanup. */}
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full shrink-0 items-stretch sm:items-center md:justify-end">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full shrink-0 items-stretch sm:items-center sm:justify-end">
                     {userRole && userRole !== 'pending' && (
                         /* DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27):
                            the LIGHT arm of this control now carries an 80% WHITE WASH plus a 1px
@@ -1427,6 +1583,8 @@ function GroupHomePage(){
                            `@media (hover: hover)`, so it is desktop-only and INERT on the phone lane
                            — it cannot affect the Req 12 phone re-check. If the wash should ever
                            persist under the pointer, the recorded step is `hover:bg-white/90`.
+                           AMENDED Phase 88.9-64 (X30): the owner was asked (52-X30, 2026-11-12); light
+                           arms now take the secondary hover.
 
                            REJECTED, and each matters:
                              - a >= 3:1 NEUTRAL BORDER (`border-line-strong` / warm-500). This is the
@@ -1466,6 +1624,7 @@ function GroupHomePage(){
                                header, not 1.31 — i.e. a WEAKER opaque cue than when this bullet was
                                written. That makes the ring this control actually ships more
                                defensible, not less. Nothing here changed in code.
+                               AMENDED Phase 88.9-64 (X9): TAKEN on the image arm only.
 
                            Phase 88.6's `Button` migration still owns the real border/ring MODEL;
                            this is an interim per-site edge. Changing it is a decision, not a
@@ -1495,6 +1654,11 @@ function GroupHomePage(){
                                 spelling had to change: `enabled-hover` excludes `:disabled` and
                                 `[aria-disabled]`, and a bare `hover:` left beside it would not
                                 de-dupe under tailwind-merge, so both would survive.
+                                AMENDED Phase 88.9-64 (X30): the call site sets the hover;
+                                tailwind-merge drops the ghost one. Item 2 stands.
+                                AMENDED Phase 88.9-52 (R8c, owner 2026-11-17): the ghost variant's hover is no longer the class named in this item. It is `enabled-hover:bg-surface-ghost-hover`, the ghost family's own key:
+                                src/components/ui/Button.tsx ("the hover fill is the ghost family's")
+                                Nothing changes on this control: its call-site hover (X30, above and at the className below) is kept by that recorded decision and still replaces the ghost one in the merge. The X30 marker's ghost-hover numbers measured the former shared wash.
                              2. `dark:hover:bg-white/20` becomes `dark:enabled-hover:bg-white/20`,
                                 and this one is LOAD-BEARING rather than tidy. `enabled-hover`
                                 compiles to `&:not(:disabled):not([aria-disabled='true']):hover`
@@ -1536,22 +1700,55 @@ function GroupHomePage(){
                                 // group-colour halo — the ground is a runtime user hex with no token, and the
                                 // card halo clears 3:1 against the ring in both themes (census, halo-approximate).
                                 // Adding the elevated halo to the tinted arm too is a decision, not a cleanup.
-                                (tinted ? '' : ' focus-visible:ring-offset-surface-elevated') +
+                                // AMENDED Phase 88.9-31 (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04): the tinted
+                                // arm now takes the group halo (the host's --group-halo is the light tint in light,
+                                // the stored ground in dark, through the @theme key surface-group-halo), chosen OVER
+                                // the Button default card halo (band against the tint, UI-SPEC R2-66); the untinted
+                                // elevated arm is unchanged.
+                                (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
                                 // The 10% white wash moves from an inline `style` to
                                 // `dark:bg-white/10`, because an inline declaration cannot
                                 // be forked by a `dark:` class. On a light ground it was
                                 // invisible, and it is what made this control disappear.
                                 // `backdrop-blur-xs` comes with it: it only ever did
                                 // visible work over that translucent wash or an image.
-                                (darkArm
-                                    ? ' dark:text-white dark:bg-white/10 dark:enabled-hover:bg-white/20 dark:backdrop-blur-xs'
-                                    : '')
+                                // DECISION Phase 88.9-27 (owner ruling 88.9-RULINGS.md R-P4, 2026-11-08; MED-66
+                                // option A): on the IMAGE arm Manage Members takes the opaque elevated surface in
+                                // dark, chosen OVER the translucent 10% white wash and blur, which over a white
+                                // photo leaves white ink at 1.00:1 now that O21b removed the photo dim; warm-50 on
+                                // purple-800 is 10.64:1 on any photo. REJECTED: a scrim behind the row (a black
+                                // wash drops the light-mode ink it sits under). The image arm is tested BEFORE the
+                                // D-10 darkArm fork, which still decides every no-image header. No-image arms keep
+                                // the owner-ruled wash byte for byte. Changing this is a decision, not a cleanup.
+                                // AMENDED Phase 88.9-64 (X9, owner RULED solid 2026-11-11): the image arm is opaque in
+                                // BOTH themes, the secondary button's fill, hover and own edge (dark rest unchanged),
+                                // chosen OVER the 80% white wash (on a white photo the ring was the only cue) and OVER
+                                // elevated white in light (no token gives it a visible hover). A failed picture is the
+                                // no-image arm (88.9-60). No-image arms keep the D-10 / 88.3-16 wash and ring (X31b
+                                // dropped).
+                                // HOW the image arm wins: its fill, hover and ring-colour classes come after the shared
+                                // string above, so tailwind-merge keeps them and drops the wash and the shared ring
+                                // colour; the shared string itself is not edited. The dark elevated-surface class is
+                                // gone from this arm because the secondary fill is that same purple-800 in dark.
+                                // DECISION Phase 88.9-64 (X30 + X31 direction, owner 2026-11-12: let manage members darken
+                                // or lighten as needed): every arm hovers by ΔL* at least 4.0 (tokenContrast test 1's
+                                // ladder step, pinned X30 (88.9)), label at least 4.5. Light arms DARKEN to the secondary
+                                // hover (lightening has at most ΔL* 2.56 of room); dark arms LIGHTEN (photo purple-800 to
+                                // purple-700; no photo the D-10 wash, unchanged). Chosen OVER one direction for all arms
+                                // and OVER the ghost hover (ΔL* 2.35 or less; 0 on the dark photo arm). This control
+                                // becomes the Members tab in Phase 88.9.1 (UI-SPEC R2-79): polish it there. Changing a
+                                // direction is a decision, not a cleanup.
+                                (hasHeaderImage
+                                    ? ' bg-btn-secondary enabled-hover:bg-btn-secondary-hover ring-line-btn-secondary'
+                                    : ' enabled-hover:bg-btn-secondary-hover' + (darkArm
+                                        ? ' dark:text-white dark:bg-white/10 dark:enabled-hover:bg-white/20 dark:backdrop-blur-xs'
+                                        : ''))
                             }
                         >
                             Manage Members
                         </Button>
                     )}
-                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css`, the `.btn { min-height: 2.75rem; }` rule inside it, reasoning in the D-36 marker above it), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
+                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css`, the `.btn { min-height: 2.75rem; }` rule inside it, reasoning in the D-36 marker above it), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. ——— AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18), everything above KEPT AS HISTORY: the `.btn-compact` opt-out this marker names is RETIRED (src/app/globals.css ("the stepper opt-out is RETIRED")). Its only two wearers, the BrowseMoreModal player-count steppers, are 44x44 squares now, chosen OVER keeping them at 32x32 (REJECTED: two small targets 4px apart; this marker family only ever weighed a 32x44 lozenge, never a 44 square). NOTHING about THIS control changes: the phone floor on `.btn` stands, the all-viewport floor on the `.btn` class stays rejected as recorded (its "would distort compact sites" reason no longer has a subject, and re-asking it is a decision nobody has made), and this control keeps the height it had. */}
                     {/* DECISION Phase 88.6-21 (task 2, UI-SPEC §3.2 asChild row / §13 correction 4):
                         this is the PURPLE `btn btn-primary` CTA, not the amber one — the SPEC's
                         own §13 correction 4 exists because an earlier reading swapped the two. It
@@ -1594,7 +1791,7 @@ function GroupHomePage(){
                         className={
                             'shadow-theme-lg enabled-hover:shadow-theme-lg ' +
                             'whitespace-nowrap text-center' +
-                            (tinted ? '' : ' focus-visible:ring-offset-surface-elevated') +
+                            (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
                             (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                         }
                     >
@@ -1640,7 +1837,16 @@ function GroupHomePage(){
                            rule today, so the base's `enabled-hover:shadow-theme-md` would have
                            SHRUNK it. The spelling is plan 05's `enabled-hover` variant, never a
                            bare `hover:` — plan 12's hover-pin gate rejects the bare form because it
-                           re-lifts the gated controls the variant exists to exclude. */
+                           re-lifts the gated controls the variant exists to exclude.
+
+                           DECISION Phase 88.9-64 (X32A, owner 2026-11-13: Create event.): the label
+                           matches its dialog's title and submit, chosen OVER the shipped four-word
+                           label (N14: it read like Plan Game Session) and OVER GH-02 / T1's New event
+                           (superseded; copy row amended by 88.9-52). X31a, owner-accepted 2026-11-12:
+                           in dark this button darkens on hover (amber-700 to amber-800, white 7.09)
+                           while its neighbours lighten, chosen OVER lightening with them: white on
+                           amber-600 is 3.19:1, failing WCAG 1.4.3. Making it lighten is a decision,
+                           not a cleanup. */
                         <Button
                             variant="accent"
                             onClick={toggleEventModal}
@@ -1650,11 +1856,11 @@ function GroupHomePage(){
                             className={
                                 'whitespace-nowrap ' +
                                 'shadow-theme-lg enabled-hover:shadow-theme-lg' +
-                                (tinted ? '' : ' focus-visible:ring-offset-surface-elevated') +
+                                (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
                                 (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                             }
                         >
-                            Add New Game Event
+                            Create Event
                         </Button>
                     )}
                 </div>
@@ -1712,14 +1918,22 @@ function GroupHomePage(){
                 strip, which is a look change (P6). AMENDED Phase 88.9-10 (owner picks A7a + O3a):
                 the 44px floor arrives by min-h-11 min-w-11 on these buttons; migrating them onto
                 Button stays REJECTED. They wear no `.btn` today and no census counts
-                them. */}
+                them. AMENDED Phase 88.9-31 (owner pick T1, 88.9-PICKS-B7B.json, 2026-11-07): the
+                active tab's radius moves to its two top corners (rounded-t-btn) so its flat bottom
+                fuses with the strip line, chosen OVER the shipped four-corner 8px pill; the Button /
+                Tabs migration and the ARIA tabs pattern stay REJECTED; the five-tab row is Phase
+                88.9.1's. AMENDED Phase 88.9-64 (X37, owner at N18, 2026-11-13: a brief flash of dark
+                corners on the tabs): the top radius sits on BOTH arms, so the tab being left keeps its
+                corners while its fill fades, chosen OVER dropping the fade (the switch would snap). An
+                inactive tab paints no fill, so its radius shows only mid-fade and on its inset focus
+                ring (now rounded like the active one's). Moving it back is a decision, not a cleanup. */}
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
                     aria-current={activeTab === 'home' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 rounded-t-btn ${
                         activeTab === 'home'
-                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
+                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary'
                             : 'text-content-secondary hover:text-content-primary'
                     }`}
                 >
@@ -1728,9 +1942,9 @@ function GroupHomePage(){
                 <button
                     onClick={() => setActiveTab('library')}
                     aria-current={activeTab === 'library' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 rounded-t-btn ${
                         activeTab === 'library'
-                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
+                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary'
                             : 'text-content-secondary hover:text-content-primary'
                     }`}
                 >
@@ -1758,7 +1972,13 @@ function GroupHomePage(){
                     EventCalendar.js (this page's suite stubs that whole module, so the page could
                     not render the real card under test); the card alone without the section
                     heading (the section would vanish from the outline while it loads).
-                    Changing any of these is a decision, not a cleanup. */}
+                    Changing any of these is a decision, not a cleanup.
+                    AMENDED Phase 88.9-31 (owner pick N1 / CS-01, 88.9-PICKS-B7A.json, 2026-11-07 12:35 PM
+                    Pacific; narrowed by owner ruling R-W5, 88.9-RULINGS.md, 2026-11-08): the first-load
+                    arm's Calendar heading is sr-only, chosen OVER a visible heading; it stays the focus
+                    target and the outline entry, shown while it holds keyboard focus, so the REJECTED
+                    card-alone case stays rejected. The events-failure arm's heading stays VISIBLE over
+                    its banner, chosen OVER sr-only, matching EventCalendar's own error-branch headings. */}
                 {eventsErrorState.showError && !eventsRetained ? (
                     <div>
                         <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-4">
@@ -1766,14 +1986,14 @@ function GroupHomePage(){
                         </Heading>
                         <FetchErrorBanner
                             state={eventsErrorState}
-                            title={GROUP_EVENTS_LOAD_FAILED_TITLE}
+                            thing={GROUP_EVENTS_LOAD_FAILED_THING}
                             reportContext="Group home page — events fetch"
                             focusTarget={calendarHeadingRef}
                         />
                     </div>
                 ) : eventsLoadedFor !== Router ? (
                     <div>
-                        <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-4">
+                        <Heading ref={calendarHeadingRef} level={2} size="heading" className="sr-only focus-visible:not-sr-only">
                             {CALENDAR_TITLE}
                         </Heading>
                         <CalendarLoadingCard />
@@ -1810,7 +2030,20 @@ function GroupHomePage(){
                 {/* After the slot, never before it: see DECISION Phase 88.6.1-71 (C12, focus when content leaves). */}
                 <RetainedContentFocusGuard retained={eventsRetained} focusTarget={calendarHeadingRef} />
 
-                {/* Group Games Section */}
+                {/* Play history section (GroupGamesList) */}
+                {/* DECISION Phase 88.9-52 (R4-A3, round-3 capture): the list sits in ONE wrap-break-word
+                    box, chosen OVER leaving its lines to the default wrap. At 320px with text at 200%
+                    the card's words column is about 46px wide (the 4rem picture and the rem gaps and
+                    paddings double with the text), a word such as reviews) is wider than that, and it
+                    ran past the card and the page edge: the page scrolled sideways by 14px. overflow-wrap
+                    inherits, so the box reaches every line of every card, the breadcrumb nav's recorded
+                    pattern above; a word breaks only where it would otherwise overflow, so nothing
+                    changes at any size where the words fit. REJECTED: the token on this page's root (it
+                    would also reach the calendar, where a count that is too wide for its cell would
+                    break in two); clipping the page with overflow-x (it hides the words). The box holds
+                    the list alone and adds no margin, padding or role. Removing it is a decision, not a
+                    cleanup. */}
+                <div className="wrap-break-word">
                 <GroupGamesList
                     games={gamesList}
                     groupId={Router}
@@ -1821,6 +2054,7 @@ function GroupHomePage(){
                     retained={gamesRetained}
                     focusRef={gamesFocusRef}
                 />
+                </div>
                 {/* After the list, never before it: see DECISION Phase 88.6.1-56 (C3 + C10, games). */}
                 <RetainedContentFocusGuard retained={gamesRetained} focusTarget={gamesFocusRef} />
               </>
@@ -1850,6 +2084,12 @@ function GroupHomePage(){
                 group_id={Router}
                 user={user}
                 modal={memberModal}
+                // X41 (88.9-64): the role this page already holds, for the dialog's first paint only; the
+                // dialog's own members read decides once it answers (the X41 marker in ManageMembers.js).
+                // The role above is written only for a viewer whose roster row carries a membership, and
+                // the loading return above unmounts this dialog until membership is checked for the
+                // current group, so another group's role never seeds it.
+                viewerRole={userRole}
                 /* DECISION Phase 88.6.1-71 (RF1 after the Manage Members dialog closes): CHOSEN — the
                    close re-presents NOTHING; the members notice keeps its one region across the
                    close. Five of this dialog's six member updates refresh the list while it is
@@ -1863,7 +2103,22 @@ function GroupHomePage(){
                    premise was that the region sits under aria-hidden): the region is exposed, so a
                    remount would make a screen reader hear the same sentence twice (plant N).
                    If the dialog ever gains aria-modal or a hide that covers live regions, this
-                   choice must be revisited. Changing it is a decision, not a cleanup. */
+                   choice must be revisited. Changing it is a decision, not a cleanup.
+                   AMENDED Phase 88.9-52 (A-47): the sentence above that the dialog sets no
+                   aria-modal is FALSE and is withdrawn. This dialog is the house Modal, which sets
+                   aria-modal true on its content
+                   (src/app/components/Modal.tsx ("This Radix build does not emit aria-modal on Content; set it")).
+                   What RF-8 measured still holds (the region is not under aria-hidden). What is NOT
+                   measured is whether iOS VoiceOver speaks a live region that sits outside an
+                   aria-modal dialog, so "that fill IS heard" is unproven on a phone.
+                   DEVICE RESULT 2026-11-16 (owner's iPhone, VoiceOver, production): a polite region
+                   outside this open dialog (the root announcer, Role updated) was NOT spoken. So on
+                   an iPhone this notice's fill behind the dialog is most likely not heard while the
+                   dialog is open (same mechanism; the notice itself was not measured). The dialog's
+                   own save outcomes now land inside the dialog
+                   (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
+                   Whether the notice must be re-presented on close is OPEN: this marker's own
+                   revisit condition is met. No behaviour changed with this note. */
                 modaltoggle={() => setMemberModal(false)}
                 onMembersUpdated={getGroupMembers}
                 group_name={Group?.name || 'this group'}

@@ -215,7 +215,7 @@ describe('Phase 88.6.1-44 — the bell over the REAL friendship and unread provi
     const acceptAna = within(rowFor('Ana')).getByRole('button', { name: 'Accept friend request from Ana' });
     press(acceptAna);
     expect(rowFor('Ana')).toBeInTheDocument();
-    expect(acceptAna).toHaveAccessibleName('Accepting...');
+    expect(acceptAna).toHaveAccessibleName('Accept, accepting');
 
     // Resolved OUTSIDE act, on the line directly before the wait (see the header).
     dA.resolve({});

@@ -44,6 +44,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
 import { StatusRegion, REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { isFocusLost, focusElement, focusPageFloor } from '@/components/ui/focusPageFloor';
 import { formatLongDate } from '@/lib/datetime';
 
@@ -102,6 +103,8 @@ const CHECKING_LINK = 'Checking your restore link...';
  * constrain a page module's named exports. The test re-declares the literal.
  */
 const PAGE_STATUS_TESTID = 'restore-page-status';
+/** The first-load loading region's test handle (plan 88.9-69, X35). Not exported, as above. */
+const LOADING_STATUS_TESTID = 'restore-loading-status';
 
 // Strings this page already rendered before plan 88.6.1-36, hoisted so each branch's markup and the
 // screen-reader announcement read ONE source and cannot drift apart (no new words, D-31).
@@ -498,8 +501,25 @@ function RestoreGroupPage() {
           // Split by CAUSE, not by status. Three different codes land on 410
           // and only one of them means the group is gone; the fallback is
           // always the weaker message, never the destructive claim.
+          //
+          // DECISION Phase 88.9-52 (R28, owner 2026-11-17 "Yes"): a FOURTH code lands on 410
+          // here, account_deleted, sent by the auth layer in front of every signed-in route
+          // (backend:Sonnet/middleware/auth0.js, sendError account_deleted), not by the
+          // take-over handler. It shows the register's own sentence for that code
+          // (getFetchErrorMessage, read by CODE, never the caught message), chosen OVER the
+          // LINK_DEAD fallback it used to take: the link is fine, the account is not. Same red
+          // X card, still terminal and latched, no way back offered. REJECTED: a literal copy
+          // of the sentence on this page (one register, one wording). Every other unknown code
+          // still falls to LINK_DEAD. Folding this code back into the fallback is a decision,
+          // not a cleanup.
           setStatus('error');
-          setError(err.code === 'window_expired' ? WINDOW_EXPIRED : LINK_DEAD);
+          setError(
+            err.code === 'window_expired'
+              ? WINDOW_EXPIRED
+              : err.code === 'account_deleted'
+                ? getFetchErrorMessage(err)
+                : LINK_DEAD
+          );
           return;
         }
       }
@@ -552,7 +572,8 @@ function RestoreGroupPage() {
   // the pressed button takes focus and focus speaks it, so the region saying it too would be heard
   // twice; the '' between two settled outcomes is also what lets an identical outcome re-announce.
   // The already-restored hand-off line is left out: it changes mid-read (R-7). Every part is a
-  // string this page already renders; a caught error's message is never read.
+  // string this page already renders; a caught error's message is never read. (R28, 88.9-52: the
+  // deleted-account line comes from the shared register by the error's CODE, the same rule.)
   let announcement = '';
   if (regionDwell) {
     announcement = '';
@@ -578,15 +599,22 @@ function RestoreGroupPage() {
     // DECISION Phase 88.6.1-36 (L2): the spinner's label and the visible line come from ONE
     // constant, so the two cannot drift. The accepting spinner is not named by it (its own
     // R3-A29 verdict, plan 88.6.1-36).
+    // AMENDED Phase 88.9-69 (X35): the spinner carries no label now. The one constant feeds the
+    // visible line and the first-load region below it; see the two amendments at the fragment.
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-6 sm:p-8 max-w-md w-full mx-4 text-center">
           <div
-            role="status"
-            aria-label={CHECKING_LINK}
+            aria-hidden="true"
             className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4"
           />
           <p ref={inFlightLineRef} className="text-content-secondary">{CHECKING_LINK}</p>
+          <StatusRegion
+            settleOnMount
+            className="sr-only"
+            data-testid={LOADING_STATUS_TESTID}
+            message={attempt === 0 ? CHECKING_LINK : ''}
+          />
         </div>
       </div>
     );
@@ -742,8 +770,21 @@ function RestoreGroupPage() {
           {/* Terminal error */}
           {status === 'error' && (
             <div className="text-center">
-              <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-content-status-error" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              {/* DECISION Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the X colour
+                  follows the cause, read from the recovery state this card already offers, chosen
+                  OVER one red X for every failure. Amber (warning ink on the warning circle, 5.50
+                  light / 4.95 dark) when a way back is offered: Try again after a failed check or
+                  take-over, or Sign in to try again after an expired session. Red when recovery
+                  is null: the link is dead, the window closed, or the visitor is not a member.
+                  One literal class string per arm (a class built from pieces emits nothing). */}
+              <div
+                className={
+                  recovery
+                    ? 'mx-auto mb-4 w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center'
+                    : 'mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center'
+                }
+              >
+                <svg className={recovery ? 'w-8 h-8 text-content-status-warning' : 'w-8 h-8 text-content-status-error'} aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
@@ -838,7 +879,12 @@ function RestoreGroupPage() {
      ACCEPTING spinner is CONVERTED: it mounts only after a tap, so its polite region was not
      reliably announced, and its "Loading" named nothing; it is now `aria-hidden`, and the
      accepting line beside it speaks by taking focus. Changing either verdict, or moving the
-     region into a branch, is a decision, not a cleanup. */
+     region into a branch, is a decision, not a cleanup.
+
+     AMENDED Phase 88.9-69 (X35, veto open): on FIRST load (attempt 0) the loading view hosts a second, settleOnMount region; REJECTED (1)'s reason does not reach it (it mounts empty). Chosen OVER settleOnMount on slot 0 (it would hold back outcomes landing in the first 100 ms). After a Try again it stays empty; focus speaks.
+     The slot-0 region is unchanged and still carries every outcome.
+     AMENDED Phase 88.9-69 (X35): the LOADING spinner is aria-hidden too; KEPT rested on 'present from the first paint', which EMPTY-FIRST says is not reliably announced.
+     EMPTY-FIRST is the rule in src/components/ui/StatusRegion.tsx ("EMPTY-FIRST: the live container is always mounted"). */
   return (
     <>
       <StatusRegion

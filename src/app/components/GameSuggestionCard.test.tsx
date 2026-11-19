@@ -11,7 +11,7 @@
 // Line comments only in this file: a block comment holding a backtick or a closing token makes
 // vitest collect ZERO tests here while reporting green (FE-TESTING-CONVENTIONS CF-9).
 import * as React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -115,6 +115,30 @@ describe('GameSuggestionCard — keyboard operable, one name (Req 2 / AC-8, D-26
     ]) {
       expect(button.classList.contains(token), `class list lacks ${token}`).toBe(true);
     }
+  });
+
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room). The card's
+  // title and its Owned by line were each cut to one line beside the 64px picture. jsdom lays
+  // nothing out, so this holds the classes of the Friends-row form; the rendered widths are in
+  // e2e/game-suggestion-card.spec.ts ("R4 D2 (88.9-52)").
+  // The marker is at src/app/components/GameSuggestionCard.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the title wraps").
+  it('R4 D2 (88.9-52): the title and the Owned by line are never cut, the words column keeps its longest word, and the card may wrap', () => {
+    renderCard({ ...CATAN, name: 'Weekend Warriors' });
+    const button = screen.getByRole('button', { name: 'Weekend Warriors' });
+    expect(button).toHaveClass('flex', 'flex-wrap');
+    const cut = /(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere)(\s|$)/;
+    const title = within(button).getByText('Weekend Warriors');
+    expect(title.className).not.toMatch(cut);
+    expect(title).toHaveClass('block', 'wrap-break-word', 'font-bold');
+    const owners = within(button).getByText('Owned by Alice, Bob');
+    expect(owners.className).not.toMatch(cut);
+    expect(owners).toHaveClass('block', 'wrap-break-word');
+    const column = title.parentElement as HTMLElement;
+    expect(column).toHaveClass('flex-1', 'max-w-full');
+    // min-w-0 or a clip on the words column would let the picture squeeze the title under one word.
+    expect(column.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
+    // The picture keeps its size; it takes a line of its own instead of shrinking.
+    expect(button.firstElementChild).toHaveClass('shrink-0');
   });
 
   it('F. holds phrasing content only: no paragraph, and no div outside a hidden wrapper', () => {

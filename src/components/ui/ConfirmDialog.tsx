@@ -17,6 +17,8 @@
  * Visual contract (UI-SPEC §8.7): title 20px/700 (`Modal.Header`), body 16px/400
  * `content-secondary`, confirm on the `danger` Button variant labelled with the
  * VERB ALONE, Cancel on `secondary`, 12px radius inherited from `.modal-content`.
+ * AMENDED Phase 88.9-52 (R6, owner 2026-11-17): a confirm that is not destructive may ask for
+ * the Admin blue through `confirmVariant`; danger stays the default.
  * Opening focus: Cancel on button-only tiers; the TYPED tier focuses its
  * type-to-confirm input instead (88-33 Task 4, walk rows 431/439 — see the
  * DECISION marker at the Modal mount below).
@@ -41,7 +43,9 @@ import * as React from 'react';
 
 import { Modal } from '@/app/components/Modal';
 import { Button } from '@/components/ui/Button';
+import { COUNTDOWN_LABELS, countdownLabel, countdownName, useConfirmCountdown } from '@/components/ui/confirmDelay';
 import { Input } from '@/components/ui/Input';
+import { ReservedLabel } from '@/components/ui/ReservedLabel';
 import { cn } from '@/lib/cn';
 import type { ConfirmTier } from '@/components/ui/useConfirmAction';
 
@@ -104,14 +108,34 @@ export interface ConfirmDialogProps {
   /** The verb alone: "Remove", "Delete", "Disconnect". Never "OK"/"Yes". */
   confirmLabel: string;
   /**
-   * Optional, default-off: the confirm's visible text WHILE `pending` ("Disconnecting…"),
-   * replacing `confirmLabel` until the commit settles — the label swap the page controls use,
-   * so a screen reader on the focused confirm hears the commit is running (88.6.1 code review
-   * CR-5 / A-75). Omitted, the confirm keeps `confirmLabel` throughout. Owner-ratified copy only.
+   * Optional, default-off: the sr-only words appended to the confirm's accessible name while
+   * `pending` — save-feedback rule 1 (88.9-45). The visible text stays `confirmLabel`, the house
+   * Spinner joins it, and the name reads "<confirmLabel><busySuffix>" ("Disconnect, disconnecting"),
+   * so a screen reader on the focused confirm hears the commit is running (the 88.6.1 code review
+   * CR-5 / A-75 cue, re-shaped). Omitted, the confirm keeps `confirmLabel` with no spinner throughout.
    */
-  pendingLabel?: string;
+  busySuffix?: string;
+  /**
+   * The confirm's Button variant. `danger` (the default) is the destructive red; `admin` is the
+   * flat Admin blue for a confirm that grants a role and deletes nothing (88.9-52 R6). The hook's
+   * `dialogProps` does not carry it: the mount passes it, so a gate's tier stays a one-word edit.
+   * @default 'danger'
+   */
+  confirmVariant?: 'danger' | 'admin';
   /** @default 'Cancel' */
   cancelLabel?: string;
+  /**
+   * F9b (88.9-23): gate the confirm for CONFIRM_DELAY_MS from open — aria-disabled while it
+   * counts down, then live until the dialog closes. The hook's `dialogProps` sets it for the
+   * `dialog` tier only. Default false, so a standalone mount is unchanged.
+   * AMENDED Phase 88.9-67 (X69, owner 2026-11-14): the gated confirm reads Wait (3), (2), (1) and
+   * is named `<confirmLabel>, wait n seconds`, then reads `confirmLabel` with no name override,
+   * chosen OVER the shipped `<confirmLabel> (n)` (pressing it did nothing and it read as the action).
+   * AMENDED Phase 88.9-67 (X69 width): a gated confirm holds the widest of Wait (3), (2), (1) and
+   * `confirmLabel` through the shared label reserve, so it keeps one width at the live edge; with
+   * this prop false the confirm renders the bare label, as before.
+   */
+  confirmDelay?: boolean;
   /** `typed` tier: the phrase that must be entered exactly. */
   expectedPhrase?: string;
   /**
@@ -144,8 +168,10 @@ export function ConfirmDialog({
   title,
   body,
   confirmLabel,
-  pendingLabel,
+  busySuffix,
+  confirmVariant = 'danger',
   cancelLabel = 'Cancel',
+  confirmDelay = false,
   expectedPhrase,
   blockerPanel,
   blocked = false,
@@ -194,6 +220,12 @@ export function ConfirmDialog({
       inputRef.current?.focus();
     }
   }, [pending, open, typedInputRendered]);
+
+  // F9b (88.9-23): this dialog's own countdown — the per-second state re-renders the dialog
+  // only, never the host page (the AMENDED line on the R2-M16 marker in useConfirmAction.ts).
+  // Called above the early return below (rules of hooks).
+  const { secondsLeft } = useConfirmCountdown(open && confirmDelay ? 'open' : null);
+  const gated = secondsLeft > 0;
 
   if (tier === 'two-tap' || !open) return null;
 
@@ -305,21 +337,49 @@ export function ConfirmDialog({
              confirm shows the gated danger pair instead of the 50% wash.
              AMENDED 2026-10-19 (88.6.1 code review CR-5 / A-75, owner ratified): aria-disabled
              alone is announced inconsistently (VoiceOver iOS often says nothing), so while pending
-             the confirm's TEXT may swap to an optional `pendingLabel` — the same node, still
+             the confirm's TEXT may swap to an optional pending text (the prop later renamed busySuffix) — the same node, still
              focused, so the name change is what a screen reader hears. Chosen OVER a status
              region inside the dialog (a second idiom; the page controls already speak in-flight
-             by a label swap). Default-off: a gate that passes no `pendingLabel` keeps
-             `confirmLabel` while pending, byte-identical to before. */
+             by a label swap). Default-off: a gate that passes no pending text keeps
+             `confirmLabel` while pending, byte-identical to before.
+             AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1, Q3 scope B):
+             the pending confirm keeps confirmLabel and shows the house spinner; the CR-5 cue that
+             aria-disabled alone does not give is now the sr-only busy suffix (the name changes, as the
+             swap's did), chosen OVER swapping the visible text. Default-off unchanged: a gate with no
+             suffix keeps confirmLabel and no spinner. */
+          /* DECISION Phase 88.9-23 F9b: the dialog tier is gated for CONFIRM_DELAY_MS from OPEN and
+             then stays live until the dialog closes, over reverting after a live window — the open
+             dialog IS the arm, and an auto-revert would yank a decision the user is still reading.
+             The gate is aria-disabled (the .btn-danger colour pair, tokenContrast test 53), never
+             native disabled and never opacity, per DECISION Phase 88.6.1-22 (R123 / D-39) and
+             O-17. */
+          /* AMENDED Phase 88.9-52 (R6, owner pick "D + D2", 2026-11-17, "Red is the wrong color"):
+             the confirm's variant is a prop, danger by default; the Make admin confirm passes
+             admin (flat Admin blue live, the Admin pill pair while it waits or commits). Chosen
+             OVER a className override at the mount (colour utilities lose to the unlayered
+             btn-danger fill) and OVER re-pointing every dialog-tier confirm (the other gates
+             delete or remove something, and stay red). Where the notes above say the
+             btn-danger pair, read: the pair of whichever variant the confirm wears; both
+             families gate by colour, never opacity. */
           <Button
-            variant="danger"
+            variant={confirmVariant}
             onClick={() => {
-              if (pending) return;
+              if (gated || pending) return;
               onConfirm(committedValue);
             }}
             disabled={!pending && confirmDisabled(committedValue)}
-            aria-disabled={pending || undefined}
+            aria-disabled={pending || gated || undefined}
+            {...(gated ? { 'aria-label': countdownName(confirmLabel, secondsLeft) } : {})}
+            busy={pending && busySuffix !== undefined}
+            busySuffix={busySuffix}
           >
-            {pending && pendingLabel ? pendingLabel : confirmLabel}
+            {confirmDelay ? (
+              <ReservedLabel reserve={[...COUNTDOWN_LABELS, confirmLabel]}>
+                {gated ? countdownLabel(secondsLeft) : confirmLabel}
+              </ReservedLabel>
+            ) : (
+              confirmLabel
+            )}
           </Button>
         ) : null}
       </Modal.Footer>

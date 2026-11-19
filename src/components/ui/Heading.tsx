@@ -15,7 +15,12 @@
  *
  * What it deliberately does NOT do:
  * - **No `eyebrow` variant.** That would mint a fifth type role. Uppercase,
- *   tracking and colour ride on `className`.
+ *   tracking and colour ride on `className`. DECISION Phase 88.9-47 (K7, owner pick C3b):
+ *   an uppercase label's tracking is ONE spelling, tracking-wider (0.05em), still on
+ *   className, chosen OVER an eyebrow size or variant on this primitive (the fifth-role
+ *   rejection above stands);
+ *   src/app/typeScaleTouchedSurfaces.test.ts ("K7 (88.9): every uppercase letter-spaced label uses tracking-wider")
+ *   enforces it.
  * - **No `caption` size.** After UI-SPEC §4.4 no heading renders at 12px.
  * - **No barrel export.** There is no `src/components/ui/index.ts` and this phase
  *   does not add one; import from `@/components/ui/Heading`.

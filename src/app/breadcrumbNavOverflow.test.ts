@@ -11,7 +11,9 @@
  * off the right edge of a 375px screen. The fix is `max-w-full` on the pill (now the box is capped
  * and the word must break) plus `wrap-break-word` on the nav itself (overflow-wrap inherits, so
  * every crumb and link inside is covered — groupPlanning's group link ALSO carries
- * `max-w-[200px] truncate`, so it truncates rather than wraps, by design).
+ * `max-w-[200px] truncate`, so it truncates rather than wraps, by design; AMENDED Phase 88.9-52
+ * (R4 D2, owner 2026-11-18): that cut is gone, the link wraps in full, and the R4 D2 test at the
+ * foot of this file keeps every breadcrumb free of a cut or a px cap).
  *
  * DETECTION RULE (code review round 6, 2026-09-30): EVERY `<nav` opening tag in non-test source is
  * read whole (`readOpeningTag`, quote- and brace-aware), and is a breadcrumb when its `aria-label`
@@ -462,5 +464,29 @@ describe('breadcrumb pills cap at their container (UAT3-D1, 2026-09-30)', () => 
       expect(found).toHaveLength(1);
       expect(spreadFailures(found)).toEqual([]);
     }
+  });
+});
+
+// 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, never cut a name to make a layout fit). The
+// planning page's breadcrumb cut its group name at 200px with an ellipsis. It now wraps like the
+// group page's own crumb (UAT3-D1, the house form): inline text inside the capped pill, broken
+// between words, and inside a word only when that one word is longer than the line. No crumb in
+// any breadcrumb may carry a cut or a px cap again.
+// The marker is at src/app/groupPlanning/page.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the group name in this breadcrumb wraps").
+describe('R4 D2 (88.9-52) — no breadcrumb crumb is cut or capped', () => {
+  it('R4 D2 (88.9-52): inside every breadcrumb nav no element carries truncate, a line clamp, a px max width or nowrap', () => {
+    const offenders: string[] = [];
+    let navs = 0;
+    for (const file of sourceFiles(SRC)) {
+      const source = withoutComments(fs.readFileSync(file, 'utf8'));
+      for (const match of source.matchAll(/<nav\b[^>]*aria-label=(?:"Breadcrumb"|'Breadcrumb'|\{'Breadcrumb'\})[\s\S]*?<\/nav>/g)) {
+        navs += 1;
+        for (const token of match[0].match(/(?:^|[\s"'`])(truncate|line-clamp-[\w-]+|max-w-\[[^\]]+\]|whitespace-nowrap|text-ellipsis|overflow-hidden)(?=[\s"'`])/g) ?? []) {
+          offenders.push(path.relative(SRC, file) + ': ' + token.trim());
+        }
+      }
+    }
+    expect(navs, 'no breadcrumb nav was read: the locator is broken').toBeGreaterThanOrEqual(5);
+    expect(offenders).toEqual([]);
   });
 });

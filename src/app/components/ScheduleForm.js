@@ -558,13 +558,10 @@ export default function ScheduleForm({
                 `handleAppSubmit`, which refuses a second submit before react-hook-form runs, so
                 `isSubmitting` holds `Saving...` and `aria-disabled` until the first save settles;
                 `submitInFlightRef` stays as a second, local line. The attribute choice itself
-                (`aria-disabled` over native `disabled`) is unchanged. */}
-            <Button variant="primary" size="default" type="submit" aria-disabled={isSubmitting ? 'true' : undefined}>
-              {isSubmitting
-                ? 'Saving...'
-                : isEditMode
-                  ? 'Update Schedule'
-                  : 'Create Schedule'}
+                (`aria-disabled` over native `disabled`) is unchanged.
+                AMENDED Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1): the label no longer swaps while saving — busy keeps it, adds the house Spinner and the sr-only suffix (name "<label>, saving"), chosen OVER the shipped in-flight word swap (it replaced the whole name with a progress word and narrowed the button). The aria-disabled gate and this site's refusal latch are unchanged. */}
+            <Button variant="primary" size="default" type="submit" aria-disabled={isSubmitting ? 'true' : undefined} busy={isSubmitting}>
+              {isEditMode ? 'Update Schedule' : 'Create Schedule'}
             </Button>
           </div>
         </form>

@@ -14,13 +14,16 @@ import path from 'node:path';
 import * as React from 'react';
 import { act, render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { withoutComments } from '../../test-utils/sourceScan';
 import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 import { Combobox, type ComboboxItem } from '../../components/ui/Combobox';
 import { DialogTitle } from '../../components/ui/dialog';
+import { announceStatus } from '../../components/ui/announcer';
+import { RootAnnouncer } from '../../components/ui/RootAnnouncer';
+import { REGION_EMPTY_DWELL_MS } from '../../components/ui/StatusRegion';
 import { Modal, preventNonDismissableClose } from './Modal';
 
 afterEach(cleanup);
@@ -901,8 +904,24 @@ describe('Modal padding scale (fork 6)', () => {
     const close = screen.getByRole('button', { name: 'Close' });
     expect(close.className).toContain('min-h-11');
     expect(close.className).toContain('min-w-11');
-    // Optical centering of the glyph inside the taller box.
-    expect(close.className).toContain('leading-none');
+  });
+
+  // R4 B3 (88.9-52, the round-4 re-shoot: in Manage Members at 320 with 200% text the close
+  // button's focus box ran past the dialog's right edge). The title could not shrink below its
+  // longest word, so title plus the 88px close box were wider than the header and the close box
+  // was pushed out. The title may now shrink and breaks inside a word only when that word cannot
+  // fit; the close box never shrinks and keeps a gap from the title.
+  // The marker is at src/app/components/Modal.tsx ("AMENDED Phase 88.9-52 (R4 B3, round 4").
+  it('R4 B3 (88.9-52): the header title may shrink and break, and the close box never shrinks', () => {
+    renderModal();
+    const header = headerEl();
+    expect(header.className.split(/\s+/)).toContain('gap-2');
+    const title = header.querySelector('h2') as HTMLElement;
+    expect(title, 'the header holds the dialog title').not.toBeNull();
+    for (const t of ['min-w-0', 'wrap-break-word']) expect(title.className.split(/\s+/), `the title lacks ${t}`).toContain(t);
+    const close = screen.getByRole('button', { name: 'Close' });
+    expect(close.parentElement).toBe(header);
+    expect(close.className.split(/\s+/)).toContain('shrink-0');
   });
 
   it('88.6.1 code review A-44: the header close carries the stable `data-modal-close` hook (consumers never match its label text)', () => {
@@ -910,5 +929,468 @@ describe('Modal padding scale (fork 6)', () => {
     const close = screen.getByRole('button', { name: 'Close' });
     expect(close).toHaveAttribute('data-modal-close');
     expect(document.querySelectorAll('[data-modal-close]')).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.9 round 2 (plan 88.9-29) — the dialog fleet reads the same: ONE title
+// rung (C6a, UI-SPEC R2-15), ONE close icon (E8b, R2-75) and ONE scrim token
+// (C2a, R2-36). Every pin reads a real render's class tokens or attributes.
+// ---------------------------------------------------------------------------
+describe('Phase 88.9 round 2 — dialog fleet (C6a, E8b, C2a)', () => {
+  function tokens(el: Element): string[] {
+    return (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  }
+
+  it('C6a (88.9): DialogTitle 20/700 leading-tight, no stacked override', () => {
+    renderModal();
+    const title = screen.getByRole('heading', { level: 2, name: 'Start a check-in' });
+    const t = tokens(title);
+    for (const token of ['text-xl', 'font-bold', 'leading-tight', 'text-content-primary']) {
+      expect(t, `title carries ${token}`).toContain(token);
+    }
+    expect(t, 'no leading-none on the title').not.toContain('leading-none');
+    expect(t, 'no tracking-tight on the title').not.toContain('tracking-tight');
+    // The header passes ink only: re-passing a text size makes tailwind-merge drop the base's leading.
+    // AMENDED Phase 88.9-52 (R4 B3): ink plus the two tokens that let a long title shrink and break
+    // (the test R4 B3 below); still no text size.
+    expect(MODAL_SRC).toContain('<DialogTitle className="min-w-0 wrap-break-word text-content-primary">');
+  });
+
+  it('E8b: header close is the stroked SVG, label Close, 44 box', () => {
+    renderModal();
+    const close = screen.getByRole('button', { name: 'Close' });
+    const svgs = close.querySelectorAll('svg');
+    expect(svgs).toHaveLength(1);
+    const svg = svgs[0];
+    expect(svg.getAttribute('width')).toBe('20');
+    expect(svg.getAttribute('height')).toBe('20');
+    expect(svg.getAttribute('stroke-width')).toBe('2');
+    expect(svg.getAttribute('aria-hidden')).toBe('true');
+    expect((close.textContent ?? '').trim()).toBe('');
+    const t = tokens(close);
+    expect(t).toContain('min-h-11');
+    expect(t).toContain('min-w-11');
+    expect(t).not.toContain('text-2xl');
+    expect(t).not.toContain('leading-none');
+  });
+
+  it('C2a: fleet overlay is bg-surface-overlay', () => {
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    const overlays = Array.from(document.querySelectorAll('[data-state="open"]')).filter(
+      (el) => el !== dialog && el.getAttribute('role') !== 'dialog' && tokens(el).includes('fixed') && tokens(el).includes('inset-0')
+    );
+    expect(overlays).toHaveLength(1);
+    const t = tokens(overlays[0]);
+    expect(t).toContain('bg-surface-overlay');
+    expect(t.filter((c) => c.startsWith('bg-black'))).toEqual([]);
+  });
+});
+
+// 88.9-52 (A-47). MEASURED 2026-11-16 on the owner's iPhone with VoiceOver, on production: Role
+// updated was not spoken while Manage Members stayed open. The root announcer's region sits
+// outside the open aria-modal dialog. Each house Modal now mounts its own polite region inside
+// the dialog and the announcer store routes the words to the top open one
+// (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")). jsdom shows only WHERE the
+// words are; whether VoiceOver speaks them is the owner's device check.
+describe('88.9-52 (A-47): an announcement made while a Modal is open lands inside that dialog', () => {
+  const rootRegion = () => document.querySelector('[data-announcer="root"]') as HTMLElement;
+  const dialogRegion = (dialog: HTMLElement) =>
+    dialog.querySelector('[data-announcer="dialog"]') as HTMLElement;
+  const land = () =>
+    act(() => {
+      vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    // Run the store's clear timer while the tree is still mounted, so it ends each test empty.
+    act(() => {
+      vi.runAllTimers();
+    });
+    cleanup();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  function Stage({ children }: { children?: React.ReactNode }) {
+    return (
+      <>
+        <RootAnnouncer />
+        {children}
+      </>
+    );
+  }
+
+  function OneModal({ open = true, onClose = () => {}, title = 'Manage Group Members', children }: {
+    open?: boolean;
+    onClose?: () => void;
+    title?: string;
+    children?: React.ReactNode;
+  }) {
+    return (
+      <Modal open={open} onClose={onClose}>
+        <Modal.Header>{title}</Modal.Header>
+        <Modal.Body>{children}</Modal.Body>
+        <Modal.Footer>
+          <Modal.Action variant="secondary">Done</Modal.Action>
+        </Modal.Footer>
+      </Modal>
+    );
+  }
+
+  it('an open Modal carries ONE empty polite region, last in the dialog, hidden from sight and from focus', () => {
+    render(<Stage><OneModal /></Stage>);
+    const dialog = screen.getByRole('dialog', { name: 'Manage Group Members' });
+    const regions = dialog.querySelectorAll('[data-announcer="dialog"]');
+    expect(regions).toHaveLength(1);
+    const region = regions[0] as HTMLElement;
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveAttribute('aria-atomic', 'true');
+    expect(region).toHaveClass('sr-only');
+    expect(region).toBeEmptyDOMElement();
+    expect(region).not.toHaveAttribute('tabindex');
+    expect(region).not.toHaveAttribute('id');
+    // A direct child of the dialog content, after everything the consumer rendered.
+    expect(dialog.lastElementChild).toBe(region);
+    // The dialog's name and description wiring is untouched.
+    expect(dialog).toHaveAccessibleName('Manage Group Members');
+    expect(dialog).not.toHaveAttribute('aria-describedby');
+    // The root region is still its own, separate node outside the dialog.
+    expect(rootRegion()).not.toBeNull();
+    expect(dialog.contains(rootRegion())).toBe(false);
+  });
+
+  it('the region is never a Tab stop: Tab from the last control wraps to the first', async () => {
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    render(<Stage><OneModal /></Stage>);
+    const dialog = screen.getByRole('dialog');
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+    const done = within(dialog).getByRole('button', { name: 'Done' });
+    done.focus();
+    await user.tab();
+    expect(document.activeElement).toBe(close);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(done);
+    vi.useFakeTimers();
+  });
+
+  it('with a Modal open the words land in the dialog region and never in the root region', () => {
+    render(<Stage><OneModal /></Stage>);
+    const dialog = screen.getByRole('dialog');
+    const rootLog: string[] = [];
+    const observer = new MutationObserver(() => rootLog.push(rootRegion().textContent ?? ''));
+    observer.observe(rootRegion(), { childList: true, characterData: true, subtree: true });
+
+    act(() => announceStatus('Role updated'));
+    // Empty first: the region is registered before the words arrive.
+    expect(dialogRegion(dialog)).toBeEmptyDOMElement();
+    land();
+    expect(dialogRegion(dialog)).toHaveTextContent(/^Role updated$/);
+    expect(within(dialog).getByText('Role updated')).toBe(dialogRegion(dialog));
+    expect(rootRegion()).toBeEmptyDOMElement();
+    // One region on the whole page holds the words.
+    expect(screen.getAllByText('Role updated')).toHaveLength(1);
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(dialogRegion(dialog)).toBeEmptyDOMElement();
+    observer.disconnect();
+    expect(rootLog).not.toContain('Role updated');
+  });
+
+  it('with no Modal open the words land in the root region, as before', () => {
+    render(<Stage><OneModal open={false} /></Stage>);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    act(() => announceStatus('Settings saved'));
+    land();
+    expect(rootRegion()).toHaveTextContent(/^Settings saved$/);
+    expect(document.querySelector('[data-announcer="dialog"]')).toBeNull();
+  });
+
+  it('stacked Modals: the top dialog takes the words; closing it restores the dialog beneath, then the root', () => {
+    function Stack({ upper, lower }: { upper: boolean; lower: boolean }) {
+      return (
+        <Stage>
+          <OneModal open={lower} title="Manage Group Members" />
+          <OneModal open={upper} title="Remove Target?" />
+        </Stage>
+      );
+    }
+    // Opened one after the other, the way a confirm opens over Manage Members.
+    const { rerender } = render(<Stack lower upper={false} />);
+    const beneath = screen.getByRole('dialog', { name: 'Manage Group Members' });
+    rerender(<Stack lower upper />);
+    const upper = screen.getByRole('dialog', { name: 'Remove Target?' });
+    expect(upper).not.toBe(beneath);
+    expect(beneath.isConnected).toBe(true);
+
+    act(() => announceStatus('First'));
+    land();
+    expect(dialogRegion(upper)).toHaveTextContent(/^First$/);
+    expect(dialogRegion(beneath)).toBeEmptyDOMElement();
+    expect(rootRegion()).toBeEmptyDOMElement();
+
+    rerender(<Stack lower upper={false} />);
+    act(() => announceStatus('Second'));
+    land();
+    expect(dialogRegion(beneath)).toHaveTextContent(/^Second$/);
+    expect(rootRegion()).toBeEmptyDOMElement();
+
+    rerender(<Stack lower={false} upper={false} />);
+    act(() => announceStatus('Third'));
+    land();
+    expect(rootRegion()).toHaveTextContent(/^Third$/);
+  });
+
+  // Radix keeps a closed dialog's content mounted until its exit animation ends. jsdom runs no
+  // animation, so these two tests give the dialog one (a different animation name once
+  // data-state is closed) and end it by hand, the way the browser's animationend would.
+  function plantExitAnimation() {
+    const realGetComputedStyle = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const styles = realGetComputedStyle(element, pseudo);
+      if (!(element instanceof Element) || element.getAttribute('role') !== 'dialog') return styles;
+      return new Proxy(styles, {
+        get(target, property) {
+          if (property === 'animationName') {
+            return element.getAttribute('data-state') === 'closed' ? 'exit' : 'enter';
+          }
+          const value = Reflect.get(target, property);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    });
+  }
+  function endExitAnimation(dialog: HTMLElement) {
+    const ended = new Event('animationend', { bubbles: true });
+    Object.defineProperty(ended, 'animationName', { value: 'exit' });
+    act(() => {
+      dialog.dispatchEvent(ended);
+    });
+  }
+
+  it('a Modal that closes in the same tick as the announce: the words wait out its exit animation, then land in the root', () => {
+    plantExitAnimation();
+    function SaveAndClose() {
+      const [open, setOpen] = React.useState(true);
+      return (
+        <Stage>
+          <OneModal open={open} title="Disconnect Google Calendar?">
+            <button
+              type="button"
+              onClick={() => {
+                announceStatus('Google Calendar disconnected');
+                setOpen(false);
+              }}
+            >
+              Disconnect
+            </button>
+          </OneModal>
+        </Stage>
+      );
+    }
+    render(<SaveAndClose />);
+    const dialog = screen.getByRole('dialog', { name: 'Disconnect Google Calendar?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
+    // Still mounted, closing: the planted exit animation has not ended.
+    expect(dialog.isConnected).toBe(true);
+    expect(dialog).toHaveAttribute('data-state', 'closed');
+    // The dwell passes during the exit: the words are in NO region yet. Not the closing
+    // dialog's (it is going), not the root's (the closing dialog still holds focus).
+    land();
+    expect(screen.queryByText('Google Calendar disconnected')).toBeNull();
+    expect(dialogRegion(dialog)).toBeEmptyDOMElement();
+    expect(rootRegion()).toBeEmptyDOMElement();
+
+    endExitAnimation(dialog);
+    expect(dialog.isConnected).toBe(false);
+    expect(rootRegion()).toBeEmptyDOMElement();
+    // One more dwell after the dialog left, then the root has the words, once.
+    land();
+    expect(rootRegion()).toHaveTextContent(/^Google Calendar disconnected$/);
+    expect(screen.getAllByText('Google Calendar disconnected')).toHaveLength(1);
+  });
+
+  it('a confirm that closes over an open Modal in the same tick as the announce: the words wait out its exit, then land in the dialog beneath', () => {
+    plantExitAnimation();
+    function MembersWithConfirm() {
+      const [confirmOpen, setConfirmOpen] = React.useState(false);
+      return (
+        <Stage>
+          <OneModal open title="Manage Group Members">
+            <button type="button" onClick={() => setConfirmOpen(true)}>
+              Remove
+            </button>
+          </OneModal>
+          <OneModal open={confirmOpen} title="Remove Target?">
+            <button
+              type="button"
+              onClick={() => {
+                announceStatus('Member removed');
+                setConfirmOpen(false);
+              }}
+            >
+              Confirm remove
+            </button>
+          </OneModal>
+        </Stage>
+      );
+    }
+    render(<MembersWithConfirm />);
+    const members = screen.getByRole('dialog', { name: 'Manage Group Members' });
+    fireEvent.click(within(members).getByRole('button', { name: 'Remove' }));
+    const confirm = screen.getByRole('dialog', { name: 'Remove Target?' });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Confirm remove' }));
+    expect(confirm.isConnected).toBe(true);
+    expect(confirm).toHaveAttribute('data-state', 'closed');
+
+    land();
+    expect(screen.queryByText('Member removed')).toBeNull();
+
+    endExitAnimation(confirm);
+    expect(confirm.isConnected).toBe(false);
+    land();
+    expect(dialogRegion(members)).toHaveTextContent(/^Member removed$/);
+    expect(rootRegion()).toBeEmptyDOMElement();
+    expect(screen.getAllByText('Member removed')).toHaveLength(1);
+  });
+
+  it('a Modal that unmounts outright on close (no exit animation) hands the words to the root after the one dwell', () => {
+    function SaveAndUnmount() {
+      const [shown, setShown] = React.useState(true);
+      return (
+        <Stage>
+          {shown && (
+            <OneModal open title="Create Event">
+              <button
+                type="button"
+                onClick={() => {
+                  announceStatus('Event created');
+                  setShown(false);
+                }}
+              >
+                Create Event
+              </button>
+            </OneModal>
+          )}
+        </Stage>
+      );
+    }
+    render(<SaveAndUnmount />);
+    const dialog = screen.getByRole('dialog', { name: 'Create Event' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Event' }));
+    expect(dialog.isConnected).toBe(false);
+    expect(rootRegion()).toBeEmptyDOMElement();
+    land();
+    expect(rootRegion()).toHaveTextContent(/^Event created$/);
+  });
+
+  it('a Modal that closes while its region holds the words takes them with it: the root never repeats them', () => {
+    function Closable({ open }: { open: boolean }) {
+      return <Stage><OneModal open={open} /></Stage>;
+    }
+    const { rerender } = render(<Closable open />);
+    const dialog = screen.getByRole('dialog');
+    act(() => announceStatus('Role updated'));
+    land();
+    expect(dialogRegion(dialog)).toHaveTextContent(/^Role updated$/);
+    rerender(<Closable open={false} />);
+    expect(rootRegion()).toBeEmptyDOMElement();
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(rootRegion()).toBeEmptyDOMElement();
+    expect(screen.queryByText('Role updated')).toBeNull();
+  });
+});
+
+// R4 L3 (88.9-52 round 4): the fleet form of G5. A screen-reader-only box is position absolute, and
+// an absolute box is laid out against its nearest POSITIONED ancestor. While Modal.Body scrolled but
+// was not positioned, every such box a consumer put in a Body was laid out against the dialog shell:
+// it did not scroll with the Body's content, it sat where the unscrolled content put it, and in a
+// dialog taller than its cap that is below the shell's foot, which made the clipping shell
+// scrollable. Anything that scrolls an ancestor to reach a field (a focus on a clipped control, a
+// find-in-page, a scrollIntoView) could then slide the shell up by its header and leave a blank
+// band at its foot. The rule pinned here is the one G5 pinned for the event dialog,
+// src/app/components/createEvent.participants.test.tsx ("G5: every sr-only or absolute box under the dialog Body is held by a positioned ancestor inside it"),
+// moved to the primitive: walking up from an absolute box, a positioned ancestor comes before, or
+// is, the first scrolling box. jsdom lays nothing out, so this reads class tokens; the rendered
+// proof is e2e/event-dialog-reopen.spec.ts ("R4 L4 (88.9-52)").
+describe('88.9-52 (R4 L3): Modal.Body holds the absolute boxes a consumer puts in it', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  const POSITIONED = new Set(['relative', 'absolute', 'fixed', 'sticky']);
+  const isPositioned = (el: Element) => tokens(el).some((t) => POSITIONED.has(t));
+  const scrolls = (el: Element) => tokens(el).some((t) => /^overflow(-[xy])?-(auto|scroll)$/.test(t));
+
+  // Every sr-only or absolute box in the dialog whose first deciding ancestor is a scrolling box
+  // that is not positioned (escaped), instead of a positioned one (held).
+  const escapes = (dialog: HTMLElement): string[] => {
+    const out: string[] = [];
+    for (const el of Array.from(dialog.querySelectorAll('*'))) {
+      if (!tokens(el).some((t) => t === 'sr-only' || t === 'absolute')) continue;
+      for (let up = el.parentElement; up && up !== dialog; up = up.parentElement) {
+        if (isPositioned(up)) break;
+        if (scrolls(up)) {
+          out.push(`${el.tagName.toLowerCase()}.${tokens(el).join('.')} escapes ${up.tagName.toLowerCase()}.${tokens(up).join('.')}`);
+          break;
+        }
+      }
+    }
+    return out;
+  };
+
+  function renderWithBody(bodyClassName?: string) {
+    render(
+      <Modal open onClose={() => {}}>
+        <Modal.Header>Send feedback</Modal.Header>
+        <Modal.Body className={bodyClassName}>
+          <span className="sr-only" data-testid="straight-in-body">, saving</span>
+          <div>
+            <input type="file" aria-label="Screenshot" className="sr-only peer" />
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Modal.Action>Send</Modal.Action>
+        </Modal.Footer>
+      </Modal>
+    );
+    const dialog = screen.getByRole('dialog');
+    const body = screen.getByTestId('straight-in-body').parentElement as HTMLElement;
+    return { dialog, body };
+  }
+
+  it('L3: an sr-only box straight in the Body, and one nested in it, are held by the Body', () => {
+    const { dialog, body } = renderWithBody();
+    // Guard: the Body is the scrolling box and it does hold such boxes, so the empty list below
+    // is not empty by having nothing to check.
+    expect(scrolls(body)).toBe(true);
+    expect(body.querySelectorAll('.sr-only')).toHaveLength(2);
+    expect(escapes(dialog)).toEqual([]);
+    expect(tokens(body)).toEqual(expect.arrayContaining(['relative', 'flex-1', 'overflow-y-auto']));
+  });
+
+  it('L3: a consumer padding or layout override on the Body keeps it positioned', () => {
+    for (const override of ['p-0 md:p-0', 'flex flex-col p-0 md:p-0', 'pt-4 md:pt-4', 'space-y-2']) {
+      const { dialog, body } = renderWithBody(override);
+      expect(tokens(body), override).toContain('relative');
+      expect(escapes(dialog), override).toEqual([]);
+      cleanup();
+    }
+  });
+
+  it('L3: the shell still clips and the Body is still the only scrolling box of the three parts', () => {
+    const { dialog, body } = renderWithBody();
+    expect(tokens(dialog)).toContain('overflow-hidden');
+    expect(scrolls(dialog)).toBe(false);
+    const parts = Array.from(dialog.children).filter((el) => el !== dialog.lastElementChild);
+    expect(parts.filter(scrolls)).toEqual([body]);
   });
 });

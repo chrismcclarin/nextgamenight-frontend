@@ -37,7 +37,7 @@ import ScheduleDemo from './simulated/ScheduleDemo';
  *     Skip is mid-row, near the action — not buried in a corner.
  *
  * Visual fidelity: AvailabilityPromptDemo uses bg-green-300 (matching the
- * real AvailabilityGrid's "Preferred" preference). HeatmapDemo uses
+ * real AvailabilityGrid's "Preferred" preference; in dark, its mid green since 88.9-52 N1b). HeatmapDemo uses
  * bg-green-100..500 (matching the canonical availability ramp exactly — `mergedCellColor` in
  * `lib/availabilityColor.ts`. This used to name MergedHeatmap's LEGEND_ITEMS; that component was
  * DELETED by plan 88.1-16 and its legend was the same ramp, so the anchor moved to the ramp
@@ -226,7 +226,13 @@ export default function TutorialOverlay({ onComplete }) {
        the raw `bg-black/85` that 87.7 stripped from here. A raw literal is not theme-aware and
        would have made the tutorial the one modal whose scrim ignores the theme. Referenced as an
        arbitrary value rather than a new theme key because D-32 says bucket D mints NO token.
-       Until now this modal has had no scrim at all — that is the visible change. */
+       Until now this modal has had no scrim at all — that is the visible change.
+       AMENDED Phase 88.9-29 (owner pick C2a, 88.9-PICKS-B2.json, 2026-11-05): the premise above is
+       stale — the fleet was Radix on black at 0.8, not this token; since 88.9-29 every dialog and
+       sheet paints this same token through the bg-surface-overlay key
+       (src/components/ui/dialog.tsx ("const DialogOverlay = React.forwardRef<")), so the token is
+       the ONE scrim, chosen OVER the black 0.8 fleet scrim. This line keeps its arbitrary-value
+       spelling, unchanged. */
     <div className="fixed inset-0 z-60 bg-[var(--color-bg-overlay)] flex items-center justify-center p-4">
       <div className="bg-surface-page rounded-card shadow-theme-lg max-w-3xl w-full max-h-[92vh] flex flex-col border border-line">
         {/* Header — step indicator */}

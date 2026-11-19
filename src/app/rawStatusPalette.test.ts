@@ -41,23 +41,23 @@ const RAW_STATUS_RED = /(?:^|[\s"'`:])(?:hover:|dark:)?(?:text|bg|border)-red-(?
 // literal is bounded by the scanner's own boundary set, with no slash in the trailing
 // lookahead, so an opacity variant of the class is not exempted with it (R5-M2).
 // DECISION Phase 88.6.2-17 (R5-M4): the shared exemption schema, keyed by file and checked per entry by assertRosterShape + assertExactCounts, over the hand-rolled file+literal array with a total-count check — a total lets one entry's surplus hide another's fossil, and a provenance written only in a comment cannot be checked (R5-M4; 88.6 D-19).
-const RECORDED_EXCEPTIONS: Record<string, Exemption & { literal: RegExp }> = {
-  'app/components/GroupSettings.js': {
-    literal: /(?:^|[\s"'`:])border-t border-red-200(?=$|[\s"'`])/,
-    sites: 1,
-    why: 'the Danger Zone 1px decorative divider: outside WCAG 1.4.11, kept as a look call by plan 88.6-20',
-    owner: { kind: 'decision', marker: 'DECISION Phase 88.6-20 (§4.4 + P6)' },
-  },
-};
+// AMENDED Phase 88.9-34 (owner pick O14a, 88.9-PICKS-B8B.json, 2026-11-07): the roster's only entry, the Danger Zone divider, moved onto border-status-error, so the record is empty; the R5-M4 schema is kept OVER deleting it, so a future owner-approved exception needs no new machinery.
+const RECORDED_EXCEPTIONS: Record<string, Exemption & { literal: RegExp }> = {};
 
 // The exemption is scoped to the excepted CLASS, not to the string it sits in: strip each
 // recorded literal out of the chunk first (counting it), then test what is left. Skipping
 // the whole chunk instead let a new raw red class added to the same className pass silently
 // (code review round 4, M1 — demonstrated at c6d0e50 with `text-red-600` on the divider).
-function chunkVerdict(rel: string, text: string): { hit: boolean; seen: number } {
+// The roster is a parameter so test 3 can prove the strip mechanism on a fixture roster now
+// that the real one is empty; the scan calls it with two arguments and reads the real roster.
+function chunkVerdict(
+  rel: string,
+  text: string,
+  roster: Record<string, Exemption & { literal: RegExp }> = RECORDED_EXCEPTIONS,
+): { hit: boolean; seen: number } {
   let residual = text;
   let seen = 0;
-  const e = RECORDED_EXCEPTIONS[rel];
+  const e = roster[rel];
   if (e && e.literal.test(residual)) {
     seen = 1;
     residual = residual.replace(e.literal, ' ');
@@ -99,25 +99,49 @@ describe('raw red palette on status ink (UI review 2026-09-30, Top Fix 1)', () =
     expect(assertExactCounts(RECORDED_EXCEPTIONS, scan.exceptionsSeen)).toEqual([]);
   });
 
-  it('chunkVerdict strips only the recorded literal, only in its file, and tests what is left (R5-M1/M3, R5-M2)', () => {
-    const exempt = 'app/components/GroupSettings.js';
+  it('O14a (88.9): the Danger Zone divider is no longer an exception — the raw red step is a hit in GroupSettings.js like everywhere else', () => {
+    // AMENDED Phase 88.9-34 (owner pick O14a): this test used to prove the strip mechanism on the
+    // real divider entry. That entry is retired, so the mechanism is proven on a one-entry fixture
+    // roster below, and the real divider is asserted to be an ordinary hit.
+    const groupSettings = 'app/components/GroupSettings.js';
     const divider = 'mb-6 pt-6 border-t border-red-200';
-    // (a) a new raw red class added beside the excepted divider is still a hit (R5-M1).
-    expect(chunkVerdict(exempt, `${divider} text-red-600`)).toEqual({ hit: true, seen: 1 });
-    // (b) the bare divider is the one accepted shape.
-    expect(chunkVerdict(exempt, divider)).toEqual({ hit: false, seen: 1 });
-    // (c) the exemption is scoped to its file: the same divider anywhere else is a hit.
-    expect(chunkVerdict('app/components/Other.js', divider)).toEqual({ hit: true, seen: 0 });
+    const fixtureKey = 'app/components/__FixtureExempt.js';
+    const FIXTURE_ROSTER: Record<string, Exemption & { literal: RegExp }> = {
+      [fixtureKey]: {
+        literal: /(?:^|[\s"'`:])border-t border-red-200(?=$|[\s"'`])/,
+        sites: 1,
+        why: 'synthetic fixture entry: proves the strip mechanism now that the real roster is empty',
+        owner: { kind: 'decision', marker: 'DECISION fixture (rawStatusPalette test 3, 88.9-34)' },
+      },
+    };
+    expect(assertRosterShape(FIXTURE_ROSTER)).toEqual([]);
+
+    // The strip mechanism, on the fixture roster (R5-M1/M3, R5-M2).
+    // (a) a new raw red class added beside the excepted literal is still a hit (R5-M1).
+    expect(chunkVerdict(fixtureKey, `${divider} text-red-600`, FIXTURE_ROSTER)).toEqual({ hit: true, seen: 1 });
+    // (b) the bare literal is the one accepted shape.
+    expect(chunkVerdict(fixtureKey, divider, FIXTURE_ROSTER)).toEqual({ hit: false, seen: 1 });
+    // (c) the exemption is scoped to its file: the same literal anywhere else is a hit.
+    expect(chunkVerdict('app/components/Other.js', divider, FIXTURE_ROSTER)).toEqual({ hit: true, seen: 0 });
     // (d) one strip per chunk: a second copy of the literal is left behind and caught.
-    expect(chunkVerdict(exempt, 'border-t border-red-200 border-t border-red-200')).toEqual({
-      hit: true,
-      seen: 1,
-    });
+    expect(
+      chunkVerdict(fixtureKey, 'border-t border-red-200 border-t border-red-200', FIXTURE_ROSTER),
+    ).toEqual({ hit: true, seen: 1 });
     // (e) an opacity variant is a different class, which the scanner's own lookahead catches,
     // so the literal is bounded by the scanner's boundary set and does not exempt it (R5-M2).
-    expect(chunkVerdict(exempt, `${divider}/60`)).toEqual({ hit: true, seen: 0 });
+    expect(chunkVerdict(fixtureKey, `${divider}/60`, FIXTURE_ROSTER)).toEqual({ hit: true, seen: 0 });
     // No roster literal carries the g flag: test() would carry lastIndex across chunks, and
     // replace() would strip every copy while seen counts one.
-    expect(Object.values(RECORDED_EXCEPTIONS).every((e) => !e.literal.global)).toBe(true);
+    expect(
+      [...Object.values(RECORDED_EXCEPTIONS), ...Object.values(FIXTURE_ROSTER)].every((e) => !e.literal.global),
+    ).toBe(true);
+
+    // O14a, against the real (empty) roster: the shipped divider is now an ordinary hit in
+    // GroupSettings.js, and the new divider on the status-error border is not.
+    expect(RECORDED_EXCEPTIONS).toEqual({});
+    expect(chunkVerdict(groupSettings, divider)).toEqual({ hit: true, seen: 0 });
+    expect(chunkVerdict(groupSettings, 'mb-6 pt-6 border-t border-status-error')).toEqual({ hit: false, seen: 0 });
+    expect(chunkVerdict('app/components/Other.js', divider)).toEqual({ hit: true, seen: 0 });
+    expect(chunkVerdict(groupSettings, `${divider}/60`)).toEqual({ hit: true, seen: 0 });
   });
 });

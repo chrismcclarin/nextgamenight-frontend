@@ -65,11 +65,17 @@ export default function CheckInDemo({ stage }) {
           </div>
         </div>
         {/* Tiny grid hint — three colored cells suggest the paint UI without
-            re-rendering the full grid (that's Step 3). */}
+            re-rendering the full grid (that's Step 3).
+            DECISION Phase 88.9-52 (N1b, owner pick Mid, 2026-11-17): the three painted cells take
+            the real grid's dark Preferred fill (src/app/components/AvailabilityGrid.js ("const CELL_PREFERRED_CLASS =")),
+            chosen OVER the bare light colour, which showed bright mint in dark. Light is unchanged.
+            AMENDED Phase 88.9-52 (R4 S4, the round-3 capture): in dark their edge is the plain
+            line too, in place of the light mint edge they kept (#4ade80, a glowing rim the real
+            grid does not have). Reasoning at src/app/components/tutorial/simulated/AvailabilityPromptDemo.js ("AMENDED Phase 88.9-52 (R4 S4, the round-3 capture): in dark the cell"). */}
         <div className="px-4 py-2 flex items-center gap-1.5">
-          <div className="w-6 h-3 rounded-xs bg-green-300 border border-green-400" />
-          <div className="w-6 h-3 rounded-xs bg-green-300 border border-green-400" />
-          <div className="w-6 h-3 rounded-xs bg-green-300 border border-green-400" />
+          <div className="w-6 h-3 rounded-xs bg-green-300 dark:bg-surface-avail-preferred border border-green-400 dark:border-line" />
+          <div className="w-6 h-3 rounded-xs bg-green-300 dark:bg-surface-avail-preferred border border-green-400 dark:border-line" />
+          <div className="w-6 h-3 rounded-xs bg-green-300 dark:bg-surface-avail-preferred border border-green-400 dark:border-line" />
           <div className="w-6 h-3 rounded-xs bg-surface-elevated border border-line" />
           <div className="w-6 h-3 rounded-xs bg-surface-elevated border border-line" />
           <span className="text-xs text-content-muted ml-2">in the app, anytime</span>

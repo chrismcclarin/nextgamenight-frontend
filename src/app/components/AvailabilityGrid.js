@@ -71,6 +71,31 @@ function selectionSummaryText(selection) {
   );
 }
 
+// DECISION Phase 88.9-52 (N1b, owner pick "Mid", 2026-11-17): a painted cell gets a DARK fill of
+// its own state (mid green for Preferred, ochre for If Need Be), added HERE as a dark: class
+// after the shared write-cell colour, chosen OVER changing the shared colour function
+// (src/lib/availabilityColor.ts ("if (preference === 'preferred') return 'bg-green-300';")): its strings are pinned byte-identical and it also
+// feeds the week grid's write arm, which the owner's picture did not show. Light is unchanged:
+// the shared colour still paints it and a dark: utility does nothing there. The legend swatches
+// below carry the same two classes. A disabled grid (the unavailable week) takes neither: the
+// shared function returns one disabled look for every cell. Values and ratios:
+// src/app/globals.css ("the check-in grid's painted cells"). Whole class names, never built by interpolation
+// (Tailwind would emit nothing).
+const CELL_BASE_CLASS = 'transition-colors duration-75';
+const CELL_PREFERRED_CLASS = 'transition-colors duration-75 dark:bg-surface-avail-preferred';
+// AMENDED Phase 88.9-52 (N1c, owner pick "Stripe", 2026-11-17): the If Need Be cell also carries a
+// fine diagonal stripe in both themes (the avail-if-need-be-stripe utility), so the two states
+// differ without colour; chosen OVER a centre dot and a corner mark, both pictured. Preferred has
+// none. The legend's If Need Be swatch carries it too. Marker with the measurements:
+// src/app/globals.css ("an If Need Be cell, and its").
+const CELL_IF_NEED_BE_CLASS = 'transition-colors duration-75 dark:bg-surface-avail-if-need-be avail-if-need-be-stripe';
+function writeCellClass(preference, disabled) {
+  if (disabled) return CELL_BASE_CLASS;
+  if (preference === 'preferred') return CELL_PREFERRED_CLASS;
+  if (preference === 'if-need-be') return CELL_IF_NEED_BE_CLASS;
+  return CELL_BASE_CLASS;
+}
+
 /**
  * AvailabilityGrid - Paint-to-select availability grid component
  *
@@ -842,9 +867,10 @@ export default function AvailabilityGrid({
               yellow twin.
 
               WHY THE HOVER IS PINNED AT THE CALL SITE. Button's ghost variant emits
-              bg-transparent text-content-secondary enabled-hover:bg-surface-hover (Button.tsx).
+              bg-transparent text-content-secondary enabled-hover:bg-surface-ghost-hover (Button.tsx;
+              the wash was enabled-hover:bg-surface-hover until 88.9-52 R8c, the reasoning is unchanged).
               Under tailwind-merge the call site's own bg-* beats bg-transparent, but with no
-              call-site hover the variant's enabled-hover:bg-surface-hover SURVIVES and repaints
+              call-site hover the variant's enabled-hover:bg-surface-ghost-hover SURVIVES and repaints
               this toggle neutral on hover — erasing the mode colour exactly when the user is
               reaching for it (T-88.6-71). So each arm pins its own enabled-hover:bg-* to the same
               value it rests at, and the hover CUE is enabled-hover:opacity-80, which is what the
@@ -858,15 +884,27 @@ export default function AvailabilityGrid({
               — and active:opacity-75 is .btn:active:not(:disabled)'s job now. The native
               `disabled` STAYS: it is a MODE gate (the whole grid is disabled while "I'm
               unavailable" is checked), not an in-flight gate on a control the user is operating,
-              which is the rule-of-kind split plans 17-24 record. */}
+              which is the rule-of-kind split plans 17-24 record.
+
+              AMENDED Phase 88.9-52 (W29): each arm gains a DARK arm, the X17a pill pair of its hue
+              (green, amber) with the status edge, chosen OVER the light raw pair in dark (a pale
+              mint box, the brightest thing on the dark page) and OVER moving light onto the pill
+              pair too (the light pair above is this marker's pick and is not on the look list).
+              Dark, measured: green word 5.94 on its fill, edge 6.08 on the card; amber word 5.65,
+              edge 6.45. The hue still names the legend swatch. The dark hover pin follows the dark
+              fill for the T-88.6-71 reason above: without it the light pin repaints the fill mint
+              under the pointer. The All box and the day boxes below tick in the pressed-toggle
+              fill (accent-toggle-on: 5.66 on the light card, 4.93 on the dark card), chosen OVER
+              the raw blue-600 accent they carried and OVER the primary fill in both themes (2.45
+              on the dark card). The browser picks the tick colour itself. */}
           <Button
             variant="ghost"
             onClick={togglePaintMode}
             disabled={disabled}
             className={
               paintMode === 'preferred'
-                ? 'border bg-green-100 enabled-hover:bg-green-100 border-green-400 text-green-800 enabled-hover:opacity-80'
-                : 'border bg-yellow-100 enabled-hover:bg-yellow-100 border-yellow-400 text-yellow-800 enabled-hover:opacity-80'
+                ? 'border bg-green-100 enabled-hover:bg-green-100 border-green-400 text-green-800 dark:bg-surface-pill-green dark:enabled-hover:bg-surface-pill-green dark:border-status-success dark:text-content-pill-green enabled-hover:opacity-80'
+                : 'border bg-yellow-100 enabled-hover:bg-yellow-100 border-yellow-400 text-yellow-800 dark:bg-surface-pill-amber dark:enabled-hover:bg-surface-pill-amber dark:border-status-warning dark:text-content-pill-amber enabled-hover:opacity-80'
             }
           >
             {paintMode === 'preferred' ? 'Adding: Preferred' : 'Adding: If Need Be'}
@@ -882,16 +920,51 @@ export default function AvailabilityGrid({
               natively-disabled focused control ALSO blurs to <body> (the house split,
               `KebabMenu.js` DECISION Phase 88.6-16 D-12: the control being ACTED ON gets
               `aria-disabled`). Native `disabled={disabled}` STAYS, but only as the unavailable-week
-              MODE gate — the 88.6-25 rule of kind recorded on the paint-mode toggle above. LOOK
-              NOTE for /gsd-ui-review: Clear All is now visible on an empty grid at 375px, gated in
-              the ghost variant's muted ink. Restoring the conditional mount is a decision, not a
-              cleanup. */}
+              MODE gate — the 88.6-25 rule of kind recorded on the paint-mode toggle above.
+              LOOK NOTE AMENDED Phase 88.9-41 (owner pick O09a, 88.9-PICKS-B8B.json, 2026-11-07
+              4:37 PM Pacific): gated Clear All wears the house secondary GATED fill + ink (5.81
+              light / 4.88 dark on its own fill), chosen OVER the ghost variant's muted ink on an
+              unchanged card fill (8.68 dark, ink colour the only difference — register 46.3).
+              Restoring the conditional mount is a decision, not a cleanup.
+              LOOK NOTE AMENDED Phase 88.9-58 (X60 Sb; orchestrator ruling 2026-11-15 on the O09a
+              pick): this button reads the house gated tokens by class, so when X60 moved the
+              light gated fill to follow the new secondary fill, gated Clear All moved with it.
+              Following the house token IS the O09a pick; pinning it to the old warm-100 would be
+              the departure. Light, measured 2026-11-15 with src/lib/wcag.ts: gated fill against
+              its card 1.3802 (was 1.1330), gated ink on the gated fill 4.7668 (was 5.81; the 4.5
+              floor holds), the border-line edge 1.6734 on the gated fill and 2.3096 on the card.
+              Dark unchanged (4.88). The ENABLED state stays card-white, so in light the button
+              darkens when it gates; that step was not ruled on a rendering and is on the owner's
+              after-build look list.
+
+              DECISION Phase 88.9-41 O09a: ghost Button + two call-site aria-disabled utilities on
+              the --color-btn-secondary-gated-* tokens, over variant="secondary" (it repaints the
+              ENABLED button — warm-200 / purple-800 fill, warm-800 ink — which page 8b did not
+              render, P3) and over a new unlayered gated rule in globals.css (a fifth per-variant
+              rule for one call site). The globals.css rejection of ghost aria-disabled bg
+              utilities guards an unlayered rule that sets background on this element; none exists
+              today (.btn sets no background or color, .btn[aria-disabled] only the cursor) and the
+              O09a test pins the className. The edge stays border-line, as page 8b rendered. The
+              `color:` type hint on the text utility is what makes tailwind-merge read it as a text
+              COLOUR and drop the ghost's own gated ink, so ONE gated ink rule exists.
+
+              AMENDED Phase 88.9-52 (W30, owner ruling A, 2026-11-16: Clear All when it cannot be
+              pressed is clearly fainter than the live button in both themes): the gated FILL is
+              removed and the gated EDGE steps down to its own token (border-line-gated: light
+              warm-300, dark purple-800; never an opacity modifier, which the tint sweep
+              forbids); the gated ink stays the house gated ink. The fill was the fault: darker than the live button in light (1.38) and
+              lighter in dark (1.23). Chosen OVER keeping the O09a fill in one theme (the two
+              themes would gate in opposite directions again) and OVER ink alone (the look O09a
+              rejected: the edge is the second cue now). The button stays active, so the word
+              keeps the 4.5 floor. On the card, live / gated: word light 10.48 / 6.58, dark
+              8.68 / 6.00; edge light 2.31 / 1.60, dark 1.78 / 1.23 (Gate A row W30). The O09a
+              fill sentences above are history. */}
           <Button
             variant="ghost"
             onClick={handleClearAll}
             disabled={disabled}
             aria-disabled={value.length === 0 ? 'true' : undefined}
-            className="border border-line text-content-secondary bg-surface-card"
+            className="border border-line text-content-secondary bg-surface-card aria-disabled:border-line-gated aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]"
           >
             Clear All
           </Button>
@@ -901,11 +974,11 @@ export default function AvailabilityGrid({
       {/* Legend */}
       <div className="flex items-center gap-4 mb-3 text-sm">
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-green-300 border border-line rounded-xs" />
+          <div className="w-4 h-4 bg-green-300 dark:bg-surface-avail-preferred border border-line rounded-xs" />
           <span className="text-content-secondary">Preferred</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-yellow-300 border border-line rounded-xs" />
+          <div className="w-4 h-4 bg-yellow-300 dark:bg-surface-avail-if-need-be avail-if-need-be-stripe border border-line rounded-xs" />
           <span className="text-content-secondary">If Need Be</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -986,7 +1059,7 @@ export default function AvailabilityGrid({
                   checked={allChecked}
                   onChange={toggleSelectAll}
                   disabled={disabled}
-                  className="w-3.5 h-3.5 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+                  className="w-3.5 h-3.5 accent-toggle-on cursor-pointer disabled:cursor-not-allowed"
                 />
                 <span className="text-xs text-content-muted">All</span>
               </label>
@@ -1039,7 +1112,7 @@ export default function AvailabilityGrid({
                   checked={!!dayFull[index]}
                   onChange={() => toggleDayCheck(index)}
                   disabled={disabled}
-                  className="w-4 h-4 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+                  className="w-4 h-4 accent-toggle-on cursor-pointer disabled:cursor-not-allowed"
                 />
               </label>
             ))}
@@ -1089,7 +1162,7 @@ export default function AvailabilityGrid({
                       onPointerDown={handlePointerDown}
                       onPointerEnter={handlePointerEnter}
                       cellRef={getCellRef(key)}
-                      className="transition-colors duration-75"
+                      className={writeCellClass(preference, disabled)}
                     />
                   </div>
                 );

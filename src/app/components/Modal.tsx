@@ -28,7 +28,8 @@
 
 import * as React from 'react';
 
-import { Button } from '@/components/ui/Button';
+import { Button, type ButtonProps } from '@/components/ui/Button';
+import { Icon } from '@/components/ui/Icon';
 import {
   Dialog,
   DialogClose,
@@ -38,6 +39,7 @@ import {
   recordDialogOpener,
 } from '@/components/ui/dialog';
 import { DIALOG_ROLE_SELECTOR } from '@/components/ui/focusPageFloor';
+import { DialogAnnouncer } from '@/components/ui/RootAnnouncer';
 import { cn } from '@/lib/cn';
 
 export type ModalSize = 'sm' | 'default' | 'lg';
@@ -403,6 +405,20 @@ function ModalRoot({
         )}
       >
         {children}
+        {/* DECISION Phase 88.9-52 (A-47): every house Modal carries its own announcer region, the
+            LAST child of the dialog content, chosen OVER leaving save outcomes to the root
+            announcer alone. MEASURED 2026-11-16 on the owner's iPhone with VoiceOver, on
+            production: Role updated was not spoken while Manage Members stayed open (the root
+            region sits outside this aria-modal dialog). The region is empty until the announcer
+            store hands it words, and it takes them only while this dialog is the top open one;
+            the routing and what was rejected are in
+            src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open"). It sits here, a
+            sibling of Header / Body / Footer and outside the scrolling Body, so its 1px sr-only
+            box can never scroll the Body to a blank spot, and LAST so the header stays the first
+            child and the Close control the first Tab stop. It is not focusable and has no id, so
+            the focus trap and the aria-labelledby wiring never see it. Removing it, or moving it
+            out of the dialog content, is a decision, not a cleanup. */}
+        <DialogAnnouncer open={open} />
       </DialogContent>
     </Dialog>
   );
@@ -427,8 +443,8 @@ export interface ModalHeaderProps {
    */
   closeDisabled?: boolean;
   /**
-   * PRESENTATION ONLY (88-33 Task 9): extra classes merged onto the close `×`
-   * button. Exists for consumers whose × carries a deliberate accent (createGroup's
+   * PRESENTATION ONLY (88-33 Task 9): extra classes merged onto the close (X icon)
+   * button; the icon strokes in currentColor, so a text colour here colours it. Exists for consumers whose × carries a deliberate accent (createGroup's
    * error-red ×, UAT row 283 — the owner's replacement for its removed red Close
    * button). Never grows behavior.
    */
@@ -457,13 +473,26 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
          sets the header's floor (88-CODE-REVIEW D1, see the marker below), so the old 20px was
          pure dead space at phone width. Measured header height at 375px: 85px -> 61px (44px box
          + 2x8px padding + the 1px rule); desktop 85px -> 69px. Growing these back re-opens both
-         the alignment step and the phone-height budget. */
+         the alignment step and the phone-height budget.
+
+         AMENDED Phase 88.9-52 (R4 B3, round 4, 2026-11-18; the re-shoot r4-m: in Manage Members at
+         320 with 200% text the close button's focus box ran past the dialog's right edge). The
+         title is a flex item that could not shrink below its longest word, so that word plus the
+         88px close box were wider than the 224px the header has there, and the close box was
+         pushed out to the right, under the shell's clip. Now the title may shrink (min-w-0) and
+         breaks inside a word only when that one word cannot fit (wrap-break-word), the close box
+         never shrinks (shrink-0), and the two keep 8px apart (gap-2). CHOSEN OVER wrap-anywhere
+         on the title (it would let a title break mid-word wherever the line ends) and OVER
+         letting the close box shrink (it is the 44px floor of 88-CODE-REVIEW D1). A title whose
+         words fit beside the close box, every title at ordinary text, is laid out as before.
+         Arithmetic on the class sizes; the rendered proof is
+         e2e/manage-members-refresh.spec.ts ("G4 (88.9-52): the member menu is whole"). */
       className={cn(
-        'flex items-center justify-between border-b border-border px-3 py-2 md:px-6 md:py-3',
+        'flex items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-6 md:py-3',
         className
       )}
     >
-      <DialogTitle className="text-xl font-bold text-content-primary">
+      <DialogTitle className="min-w-0 wrap-break-word text-content-primary">
         {children}
       </DialogTitle>
       {/* 88-CODE-REVIEW D1 (2026-08-06): 44px REAL box (min-h-11/min-w-11, the KebabMenu/88-28
@@ -472,7 +501,10 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
           that spec's own "WHY NOT `boundingBox()`" note). The bare glyph measured ~15x24px,
           below even WCAG 2.5.8's 24px, on all 19 `Modal.Header` call sites in 16 files (the
           same grep as the header marker above, measured 2026-10-15). Header grows ~68px ->
-          ~84px. */}
+          ~84px.
+          DECISION Phase 88.9-29 E8b: a stroked 20px X icon over the 24px text glyph (owner pick
+          E8b, 88.9-PICKS-B4.json, 2026-11-06) — one close icon on every dialog; the 44px box is
+          unchanged. */}
       {/* 88.6.1 code review A-44: `data-modal-close` is the STABLE hook a consumer uses to ask "is
           focus still on the header close?" (createEvent.js's late initial focus), so no consumer
           matches the label text, which a rename or translation would silently break. Removing it is
@@ -482,7 +514,7 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
         aria-label="Close"
         aria-disabled={closeDisabled || undefined}
         className={cn(
-          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
+          'inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
           // Unavailable presentation only — stays focusable (a real `disabled`
           // would drop keyboard focus mid-interaction); the consumer's onClose
           // guard is what makes the click inert. See `closeDisabled` doc above.
@@ -495,7 +527,7 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
           closeClassName
         )}
       >
-        &times;
+        <Icon name="X" size={20} strokeWidth={2} />
       </DialogClose>
     </div>
   );
@@ -506,7 +538,7 @@ export interface ModalBodyProps {
   className?: string;
 }
 
-/** Body: `p-3 md:p-6`, flex:1, scroll-y (the only scrolling region). */
+/** Body: `p-3 md:p-6`, flex:1, scroll-y (the only scrolling region), positioned (R4 L3). */
 function ModalBody({ children, className }: ModalBodyProps) {
   return (
     /* DECISION Phase 88-32 ruling 6 (DEF-88-30-03): Body defaults to `p-3 md:p-6` —
@@ -519,7 +551,38 @@ function ModalBody({ children, className }: ModalBodyProps) {
        padding overrides must cover BOTH buckets — twMerge collapses per-modifier, so a
        bare `p-0` removes `p-3` but leaves `md:p-6` winning at desktop. Zero-padding
        consumers write `p-0 md:p-0`; longhand overrides write both too (`pt-4 md:pt-4`). */
-    <div className={cn('flex-1 overflow-y-auto p-3 md:p-6', className)}>{children}</div>
+    /* DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18): the Body is POSITIONED (`relative`),
+       chosen OVER `overflow-clip` on the shell and OVER one `relative` per consumer.
+       THE DEFECT (the fleet form of G5): a screen-reader-only box is position absolute, and an
+       absolute box is laid out against its nearest positioned ancestor. The Body scrolled but
+       was not positioned, so every such box a consumer rendered in it (a busy button's spoken
+       suffix, an `sr-only` status region, the feedback form's `sr-only` file input) was laid
+       out against the SHELL: it did not scroll with the Body's content, and in a dialog taller
+       than the 90dvh cap it sat below the shell's foot, which made the clipping shell
+       scrollable. A focus on such a box, a find-in-page or a scrollIntoView could then slide
+       the shell up by its header and leave a blank band at its foot (measured on the event
+       dialog by the after-build capture; G5 fixed that one dialog locally).
+       WHY `relative` HERE: the boxes now belong to the Body's scrolled content, so they travel
+       with the words they describe, the shell has nothing below its foot to scroll to, and a
+       focus on a clipped control scrolls the BODY to it, which is what the person needs.
+       WHY NOT `overflow-clip` ON THE SHELL: it stops the shell scrolling but leaves every box
+       where the unscrolled content put it, so a focused `sr-only` control still would not
+       bring its visible label into view; and it changes what kind of box the shell is (no
+       longer a scroll container), which three markers and two cites describe as
+       `overflow-hidden` (the D-30 marker above, EventScheduler's edge-scroll note,
+       usePaintGesture's). WHY NOT PER CONSUMER: one per dialog, and the next box added
+       escapes again (G5's own reason).
+       WHAT CANNOT CHANGE BY THIS (census 2026-11-18, by reading, not rendered): `relative`
+       with no offset moves nothing and makes no stacking context. Every absolute box WITH an
+       offset under a Body already had a positioned ancestor of its own inside the Body (the
+       kebab list, the combobox list and clear control, the star picker, the name counter in
+       createGroup, the scheduler overlay; QRCodeModal already passed `relative` to its Body),
+       so none re-anchors. Sticky bars inside a Body stick to the scrolling box, positioned or
+       not. The kebab's fit-on-open reads overflow, not position. Focus rings were clipped by
+       the Body before and are clipped by it now.
+       Pinned by this dialog's own test, "L3: an sr-only box straight in the Body, and one
+       nested in it, are held by the Body". Removing `relative` is a decision, not a cleanup. */
+    <div className={cn('relative flex-1 overflow-y-auto p-3 md:p-6', className)}>{children}</div>
   );
 }
 
@@ -618,7 +681,8 @@ export type ModalActionVariant = 'primary' | 'secondary' | 'danger';
    Re-pointing this back at a bare `<button>` with a local variant map is a decision, not a
    cleanup. */
 export interface ModalActionProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    Pick<ButtonProps, 'busy' | 'busySuffix'> {
   /** Visual intent. @default 'primary' */
   variant?: ModalActionVariant;
 }

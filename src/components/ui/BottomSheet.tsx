@@ -24,7 +24,9 @@
  *   - Content: pinned to the bottom edge, full width, `rounded-t-[12px]`
  *     (`--radius-card: 12px`; the design reference's 16px modal radius never
  *     shipped), bottom-slide in/out, `duration-200 ease-out`
- *   - Header:  title 20px/700 + a 44x44 close control, 1px bottom rule
+ *   - Header:  title on the DialogTitle rung (20px/700, leading-tight) or, through
+ *              {@link BottomSheetProps.titleSize}, the display rung (30px/700) + a
+ *              44x44 close control, 1px bottom rule
  *   - Body:    16px padding, `flex-1`, the only scrolling region
  *
  * Height is caller-supplied via {@link BottomSheetProps.height} — see
@@ -66,9 +68,13 @@ import {
   handleDialogCloseAutoFocus,
   recordDialogOpener,
 } from '@/components/ui/dialog';
+import { DialogAnnouncer } from '@/components/ui/RootAnnouncer';
 import { cn } from '@/lib/cn';
 
 export type BottomSheetHeight = 'content' | 'full';
+
+/** Title rung — see {@link TITLE_SIZE_CLASS}. */
+export type BottomSheetTitleSize = 'heading' | 'display';
 
 /* DECISION Phase 88.1 (D-06 / C13): `dvh` chosen OVER `vh`, which WAS the dialog family's
    existing unit — `Modal.tsx:186` (the line number as it stood then, kept as the historical
@@ -108,6 +114,18 @@ const HEIGHT_CLASS: Record<BottomSheetHeight, string> = {
   full: 'h-[85dvh]',
 };
 
+/* DECISION Phase 88.9-29 D6c: a per-sheet titleSize prop (heading = the DialogTitle rung, 20/700;
+   display = the Heading primitive's display rung, 30/700) chosen OVER a global rung change to
+   every sheet title — only the Calendar sheet asked for 30 (owner pick D6c, votes-b3b v4; passed
+   by 88.9-42). The display string re-states leading-tight AFTER text-3xl on purpose:
+   tailwind-merge drops the base's leading when a size is merged
+   (src/components/ui/dialog.tsx ("DECISION Phase 88.9-29 C6a")). Merging these is a decision,
+   not a cleanup. */
+const TITLE_SIZE_CLASS: Record<BottomSheetTitleSize, string> = {
+  heading: 'text-content-primary',
+  display: 'text-3xl leading-tight text-content-primary',
+};
+
 export interface BottomSheetProps {
   /** Controlled open state. */
   open: boolean;
@@ -123,6 +141,13 @@ export interface BottomSheetProps {
   title: React.ReactNode;
   /** Height preset — see {@link HEIGHT_CLASS}. @default 'content' */
   height?: BottomSheetHeight;
+  /**
+   * Title rung — see {@link TITLE_SIZE_CLASS}. `'heading'` is the DialogTitle rung every
+   * dialog shares (20px/700, leading-tight); `'display'` is the Heading primitive's display
+   * rung (30px/700, leading-tight), for the Calendar sheet only (owner pick D6c).
+   * @default 'heading'
+   */
+  titleSize?: BottomSheetTitleSize;
   /**
    * Radix close-autofocus pass-through, matching `Modal.tsx`'s prop of the
    * same name: a caller that wants focus somewhere OTHER than the element that
@@ -166,6 +191,7 @@ const BottomSheet = React.forwardRef<
     onClose,
     title,
     height = 'content',
+    titleSize = 'heading',
     onCloseAutoFocus,
     className,
     bodyClassName,
@@ -262,10 +288,11 @@ const BottomSheet = React.forwardRef<
             className
           )}
         >
-          {/* Header: the 20px/700 heading contract (`Modal.Header`'s title classes) on the
+          {/* Header: the DialogTitle rung (20px/700, leading-tight, the same rung
+              `Modal.Header`'s title takes) or the titleSize pass-through's display rung, on the
               body's horizontal scale, plus the close control. */}
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-2">
-            <DialogTitle className="text-xl font-bold text-content-primary">
+            <DialogTitle className={TITLE_SIZE_CLASS[titleSize]}>
               {title}
             </DialogTitle>
             {/* 44x44 via Button's `icon` size (its size map in `Button.tsx`) rather than a
@@ -280,12 +307,25 @@ const BottomSheet = React.forwardRef<
           </div>
 
           {/* Body: the only scrolling region. `min-h-0` is what lets it actually
-              shrink inside the flex column instead of overflowing the sheet. */}
+              shrink inside the flex column instead of overflowing the sheet.
+              DECISION Phase 88.9-52 (R4 L3b, round 4, 2026-11-18): the body is POSITIONED
+              (relative), chosen OVER leaving each consumer to position its own content. A
+              screen-reader-only box is position absolute; with no positioned ancestor inside
+              the body it is laid out against the sheet, does not travel with the scrolled
+              content, and can give the clipping sheet something to scroll to. Same rule and
+              reasons as src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18)").
+              Removing it is a decision, not a cleanup. */}
           <div
-            className={cn('min-h-0 flex-1 overflow-y-auto p-4', bodyClassName)}
+            className={cn('relative min-h-0 flex-1 overflow-y-auto p-4', bodyClassName)}
           >
             {children}
           </div>
+          {/* 88.9-52 (A-47): the sheet's own announcer region, last in the sheet and outside the
+              scrolling body, the same as Modal's. Why every aria-modal dialog carries one:
+              src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open"). No caller
+              announces while a sheet is open today; without this the first one to do so would
+              not be heard on an iPhone. Removing it is a decision, not a cleanup. */}
+          <DialogAnnouncer open={open} />
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>

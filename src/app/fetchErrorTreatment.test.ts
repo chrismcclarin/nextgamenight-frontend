@@ -208,7 +208,7 @@ const AD_HOC_FAILURE_COPY = /['"`][^'"`]*\bFailed to \w+/i;
 //     CHANGES CHANNEL must not change its exemption status, or a correct conversion reds
 //     a gate it never touched. Three sites are known to cross while this gate is live:
 //     src/app/components/grouplist.js ("logger.info('Error fetching groups:'") (plan 21, wave 7) and
-//     src/app/gameDetail/page.js ("logger.info('Failed to get game invite token:'") with its
+//     src/app/gameDetail/page.js ("logger.warn('Failed to get game invite token:'") with its
 //     remove-participant sibling (plan 18,
 //     wave 7). This is test-local and has no runtime reach — measured 2026-09-15,
 //     `grep -rn DEVELOPER_LOG src/` returns 5 hits, ALL in this file, zero production
@@ -424,25 +424,6 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string } & Exemption
       'R102). [CORRECTED 2026-09-29, plan 88.6-60, review R2: this entry used to claim the ' +
       'message is empty in every case and to route to a plan-34 home; plan 34 ran and ' +
       'declined it.]',
-  },
-  {
-    file: 'app/page.js',
-    contains: '<div className="text-content-status-error">Error: {error.message}</div>',
-    sites: 1,
-    owner: { kind: 'owner', date: '2026-09-09', ruling: 'AC-22 routing (88.6-46 R102): the measured-empty Auth0 useUser() render stays allow-listed and is routed to Phase 93' },
-    why:
-      'MEASURED-EMPTY IN THE COMMON CASE, not control flow. Same Auth0 `useUser()` error as ' +
-      'src/app/Header.js ("if (error) return <div>{error.message}</div>;")' + ", with the same two cases: (a) `RequestError` → `.message` is '', so this " +
-      'paints the literal `Error: ` with nothing after it; (b) a non-JSON 200 → the ' +
-      '`SyntaxError` message IS painted after `Error: `. Neither is disclosing. Listed ' +
-      'EXPLICITLY rather than excluding the file, because the same file carries a developer ' +
-      "log (`getGroupList`'s catch, anchor `logger.info('Error fetching groups:'` — cited " +
-      'as `:40` until 88.6-60, since drifted) and any file-level rule would hide this live ' +
-      'render behind it. ' +
-      'Routed with its sibling to Phase 93 (.planning/deferred/phase-93.md, the same ' +
-      '"signed-in surfaces fail QUIETLY" heading; owner-ruled, 88.6-46 R102). [CORRECTED ' +
-      '2026-09-29, plan 88.6-60, review R2: the empty-in-every-case claim and the plan-34 ' +
-      'home are superseded.]',
   },
 ];
 
@@ -1087,7 +1068,7 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
     //    FOLLOWING line, which is why the sink guard is line-based and why `errCtx` exists.
     //    Verbatim from the pre-conversion tree (the console.* lines that became
     //    src/app/components/grouplist.js ("logger.info('Error fetching groups:'") and
-    //    src/app/gameDetail/page.js ("logger.info('Failed to get game invite token:'") with its
+    //    src/app/gameDetail/page.js ("logger.warn('Failed to get game invite token:'") with its
     //    remove-participant sibling), then the converted form.
     const channelChangers: Array<[string, string]> = [
       [
@@ -1133,8 +1114,8 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
       `      setThingError(error.message);`,
       // 88.6-13: a JSX RENDER arm. Every planted negative above goes through a call
       // expression, so the whole set would still pass with the scan blind to the shape
-      // src/app/Header.js ("if (error) return <div>{error.message}</div>;") and
-      // src/app/page.js ("Error: {error.message}</div>") actually ship — a bare interpolation into
+      // src/app/Header.js ("if (error) return <div>{error.message}</div>;") actually ships
+      // (app/page.js shipped the same shape until plan 88.9-42) — a bare interpolation into
       // markup, with no sink token anywhere on the line.
       `      <div>{error.message}</div>`,
     ];

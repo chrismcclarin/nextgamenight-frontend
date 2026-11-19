@@ -13,6 +13,13 @@
  * (Plan 62-01). Renders nothing when the profile TZ is set — banner is
  * a nudge, not a permanent badge.
  *
+ * AMENDED Phase 88.9-52 (W46): it also reads `isProfileTimezoneKnown` and renders nothing until
+ * the profile zone is KNOWN (the self row has been read). The sentence is a claim about that row,
+ * so a pending or failed account read shows no nudge, chosen OVER drawing it whenever
+ * `isProfileTimezoneSet` is false, which drew it over accounts whose zone is set when the read
+ * failed (and for a moment on every load, before the row landed). The decision is recorded at
+ * src/app/components/TimezoneProvider.js ("DECISION Phase 88.9-52 (W46)").
+ *
  * Mounted on:
  *   - createEvent.js (edit/create form) — most important nudge surface
  *     because that's where the silent fallback will actually corrupt data.
@@ -54,7 +61,11 @@ import { usePaintGestureHold } from './heatmap/paintGestureActiveStore';
 import { useTimezone } from './TimezoneProvider';
 
 export default function TimezoneNudgeBanner() {
-  const { isProfileTimezoneSet, browserTimezone } = useTimezone();
+  const { isProfileTimezoneSet, isProfileTimezoneKnown, browserTimezone } = useTimezone();
+  // W46 (88.9-52): hidden unless the row was read AND holds no zone. The HELD value is this one
+  // answer, so a late change in either direction (the row landing unset mid-paint, which now
+  // mounts the box, or a zone being saved, which unmounts it) waits for finger-up the same way.
+  const nudgeHidden = isProfileTimezoneKnown !== true || Boolean(isProfileTimezoneSet);
   // Held only while a paint gesture is ACTIVE. With no gesture running it returns the current value
   // from the first PAINTED frame after a change, so the mounts paint exactly what they painted
   // before the hold existed. A gesture can be running under a non-scheduler mount: gameDetail's
@@ -66,9 +77,9 @@ export default function TimezoneNudgeBanner() {
   // the layout-effect correction chosen at
   // src/app/components/heatmap/paintGestureActiveStore.ts ("DECISION Phase 88.6-63 (review round 2 #14)")
   // Pinned by src/app/components/heatmap/usePaintGesture.test.ts ("a no-gesture value change renders exactly twice")
-  const heldIsProfileTimezoneSet = usePaintGestureHold(isProfileTimezoneSet);
+  const heldNudgeHidden = usePaintGestureHold(nudgeHidden);
 
-  if (heldIsProfileTimezoneSet) return null;
+  if (heldNudgeHidden) return null;
 
   // Friendly form of the browser TZ identifier ("America/Denver" → "America/Denver";
   // we leave the IANA string verbatim — users seeing it usually recognize it,
@@ -78,10 +89,10 @@ export default function TimezoneNudgeBanner() {
   return (
     <div
       role="status"
-      className="bg-amber-50 border border-amber-200 rounded-card p-3 mb-4 flex items-start gap-3"
+      className="bg-status-warning-subtle border border-status-warning rounded-card p-3 mb-4 flex items-start gap-3"
     >
       <svg
-        className="w-5 h-5 text-amber-600 shrink-0 mt-0.5"
+        className="w-5 h-5 text-content-status-warning shrink-0 mt-0.5"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -97,7 +108,7 @@ export default function TimezoneNudgeBanner() {
       {/* DECISION Phase 88.6-26 (UI-SPEC 4.3 vs the shipped Banner family): the body STAYS at 14,
           chosen OVER the 16 a mechanical read of 4.3's "<p> running prose -> Body 16" row gives.
           On the merits 16 is the wrong answer HERE: the shipped Banner primitive's own cva base is
-          text-sm (src/components/ui/Banner.tsx ("px-4 py-3 text-sm bg-surface-elevated")) and three banners render through it, src/app/components/PendingMemberBanner.js ("text-content-secondary text-sm") —
+          text-sm (src/components/ui/Banner.tsx ("rounded-card border border-line border-l-4 px-4 py-3")) and three banners render through it, src/app/components/PendingMemberBanner.js ("text-content-secondary text-sm") —
           the sibling this file's docblock says it matches "for visual cohesion" — is text-sm, and
           two plans in this same phase already answered this exact question the same way (88.6-17
           kept the SMS-disabled banner at 14 "because Banner.tsx's own copy is 14"; 88.6-19 kept a
@@ -105,16 +116,30 @@ export default function TimezoneNudgeBanner() {
           Raising this one banner would make it the only 16px banner in the app and, MEASURED in
           Chromium at 375px, would grow it 110px -> 150px inside the create-event modal — a visible
           delta with no V-row, on the phone-primary surface, in exchange for LESS consistency.
-          Moving the whole family to 16 is a decision for a plan that owns the primitive. */}
-      <div className="flex-1 text-sm text-amber-900">
+          Moving the whole family to 16 is a decision for a plan that owns the primitive.
+          AMENDED Phase 88.9-26 (owner pick C7a, 88.9-PICKS-B2.json, 2026-11-05): the Banner
+          primitive's body moved 14 → 16, so the first premise above no longer holds; this banner's
+          own text-sm is NOT changed here — its rung is ruled with its B3a status-warning move in
+          plan 88.9-42, chosen OVER silently re-pointing the cite.
+          AMENDED Phase 88.9-42 (K8, B3a status-warning family; the rung plan 88.9-26 handed here): the box,
+          icon, body and link moved to the status-warning tokens in both themes; the body STAYS 14
+          (text-sm), chosen OVER 16 — the Banner primitive moved to 16 (C7a), but this box's two
+          warning-family siblings, src/app/components/PendingMemberBanner.js ("text-content-secondary text-sm")
+          and the SMS-disabled notice (plan 88.9-32), stay 14, and 16 grows this banner by about 40px
+          inside the phone create-event modal (measured 110 to 150px at 375 when this marker was
+          written). Owner glance at 88.9-51. */}
+      <div className="flex-1 text-sm text-content-status-warning">
         <p className="mb-1">
           Your timezone isn&apos;t set. We&apos;re showing times in{' '}
           <span className="font-bold">{displayTz}</span>.
         </p>
-        <p className="text-amber-800">
+        <p>
+          {/* A-30 (88.9-52): the house ring, halo keyed to this box (the Dismiss key on the removed
+              notice, src/app/userHome/UserHomePage.js ("focus-visible:ring-offset-status-warning-subtle (ring vs halo 6.65 light / 6.37 dark, band 1.00)"));
+              ring vs the box 6.26 light / 6.37 dark. It showed the browser's own outline. */}
           <Link
             href="/userProfile#timezone"
-            className="underline hover:text-amber-950"
+            className="underline hover:text-content-primary rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
           >
             Set your timezone
           </Link>

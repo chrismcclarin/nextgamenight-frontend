@@ -79,7 +79,10 @@ test.describe('phone: feedback submit (88.6.1-33)', () => {
     await dialog.getByPlaceholder("Tell us what's on your mind...").fill(DRAFT);
     await dialog.getByRole('button', { name: 'Submit' }).click();
 
-    const busy = dialog.getByRole('button', { name: 'Submitting...' });
+    // Rule 1 (88.9-45): the label stays; the busy suffix joins the name (Chromium's optional space).
+    const busy = dialog.getByRole('button', { name: /^Submit ?, submitting$/ });
+    await expect(busy, 'Submit must keep its label while sending (rule 1)').toHaveText(/^Submit/);
+    await expect(busy.locator('[data-slot="spinner"]'), 'the busy Submit shows one house spinner').toHaveCount(1);
     await expect(busy, 'Submit must be aria-disabled while sending').toHaveAttribute('aria-disabled', 'true');
     await expect(busy, 'Submit must NOT be natively disabled while sending (rule of POSITION)').not.toHaveAttribute(
       'disabled',

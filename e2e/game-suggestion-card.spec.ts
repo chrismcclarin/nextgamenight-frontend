@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 import { focusRingMeasurement } from './support/contrast';
+import { expectHeldInside, expectWholeWords, readWordLines, setNarrowLargeText, TWO_WORD_NAME } from './support/wordLines';
 
 /**
  * Phase 88.6.1-03 — Req 2 / AC-8: the suggestion card is a native button, at 375px.
@@ -53,7 +54,9 @@ const GAME_A = {
   review_count: 3,
 };
 
-// An 80-character unbroken name: it must truncate inside the card, never widen the page.
+// An 80-character unbroken name: it must stay inside the card, never widen the page.
+// AMENDED 88.9-52 R4 D2 (owner 2026-11-18): it used to be cut to one line with an ellipsis; it is
+// now shown in full, broken inside the word because that one word is wider than the whole card.
 const GAME_B = {
   ...GAME_A,
   id: '9e2d3c4b-5a6f-4e7d-9c8b-a0b1c2d3e4f5',
@@ -142,7 +145,7 @@ test.describe('GameSuggestionCard on the event page at 375px (88.6.1-03)', () =>
     ).toBeLessThanOrEqual(1);
     expect(m.tileHasDice, 'the dice fallback icon is not drawn in the tile').toBe(true);
 
-    // (vi) the 80-character name truncates inside its own card.
+    // (vi) the 80-character name is shown in full inside its own card (88.9-52 R4 D2: no cut).
     const longCard = page.getByRole('button', { name: GAME_B.name, exact: true });
     await longCard.scrollIntoViewIfNeeded();
     const t = await longCard.evaluate((el) => {
@@ -155,11 +158,11 @@ test.describe('GameSuggestionCard on the event page at 375px (88.6.1-03)', () =>
         cardRight: el.getBoundingClientRect().right,
       };
     });
-    expect(t.textOverflow, `title text-overflow ${t.textOverflow}`).toBe('ellipsis');
+    expect(t.textOverflow, `title text-overflow ${t.textOverflow} (the title is still cut)`).not.toBe('ellipsis');
     expect(
       t.scrollWidth,
-      `title scrollWidth ${t.scrollWidth} vs clientWidth ${t.clientWidth} (not truncating)`,
-    ).toBeGreaterThan(t.clientWidth);
+      `title scrollWidth ${t.scrollWidth} vs clientWidth ${t.clientWidth} (part of the name is outside its box)`,
+    ).toBeLessThanOrEqual(t.clientWidth);
     expect(t.titleRight, `title right ${t.titleRight} vs card right ${t.cardRight}`).toBeLessThanOrEqual(t.cardRight);
 
     // (vii) no page-level horizontal scroll.
@@ -171,6 +174,76 @@ test.describe('GameSuggestionCard on the event page at 375px (88.6.1-03)', () =>
       doc.scrollWidth,
       `document scrollWidth ${doc.scrollWidth} vs innerWidth ${doc.innerWidth}`,
     ).toBeLessThanOrEqual(doc.innerWidth);
+  });
+
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room; his worry: a
+  // long name broken up too much to read, We/eke/nd W/arr/iors). The card cut its title and its
+  // Owned by line to one line each beside the picture; both now wrap by whole words and the words
+  // drop under the picture when they cannot share its line
+  // (src/app/components/GameSuggestionCard.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the title wraps")).
+  // The suggestions read is answered in the browser with one two-word game. At 375 with ordinary
+  // text the words sit beside the picture. At 320 wide with the root text at 200% each word of the
+  // title and of the Owned by line is on one line (or, for a word wider than the whole card, broken
+  // only after the words have the card's full width), the picture keeps its 4rem square, and the
+  // card holds everything. The page's own sideways scroll at this size is recorded in the log: the
+  // rest of the event page at 320 / 200% is not this test's subject.
+  test('R4 D2 (88.9-52): at 320 wide with 200% text the card keeps each word of a two-word title and of its Owned by line whole, with the picture whole', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname.startsWith('/api/suggestions/event/'),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({ json: { suggestions: [{ ...GAME_A, id: '7d3e4f5a-6b7c-4d8e-9f0a-b1c2d3e4f5a6', name: TWO_WORD_NAME }], player_count: 4 } });
+      },
+    );
+    await page.goto(E2E_EVENT_DETAIL_PATH);
+    const card = page.getByRole('button', { name: TWO_WORD_NAME, exact: true });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await card.scrollIntoViewIfNeeded();
+    const title = card.locator('span.font-bold', { hasText: TWO_WORD_NAME });
+    const owners = card.locator('span', { hasText: /^Owned by / });
+    const tile = () =>
+      card.evaluate((el) => {
+        const box = (node: Element) => {
+          const r = node.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+        };
+        const wrapper = el.firstElementChild as HTMLElement;
+        const titleEl = document.getElementById(el.getAttribute('aria-labelledby') ?? '') as HTMLElement;
+        return {
+          card: box(el),
+          tile: box(wrapper.firstElementChild as Element),
+          title: box(titleEl),
+          rem: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+        };
+      });
+
+    // Ordinary text at 375: the words are beside the picture, as before.
+    const before = await tile();
+    const beforeLine = JSON.stringify(before);
+    expect(
+      before.title.left >= before.tile.right && before.title.top < before.tile.bottom,
+      `R4 D2: at ordinary text the title no longer sits beside the picture (${beforeLine})`,
+    ).toBe(true);
+    expectWholeWords(await readWordLines(title, card), ['Weekend', 'Warriors'], 'R4 D2 card title at ordinary text', { pageSideways: false });
+
+    await setNarrowLargeText(page, 'R4 D2 suggestion card');
+    // The card is named as the row: a word may break only once the words have the card's whole width.
+    const titleRead = await readWordLines(title, card);
+    const ownersRead = await readWordLines(owners, card);
+    const after = await tile();
+    const afterLine = JSON.stringify(after);
+    // eslint-disable-next-line no-console -- the measured card is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 suggestion card] 320 / 200%: ${JSON.stringify(titleRead)} ${JSON.stringify(ownersRead)} ${afterLine}`);
+    expectWholeWords(titleRead, ['Weekend', 'Warriors'], 'R4 D2 card title at 320 / 200%', { pageSideways: false });
+    expectWholeWords(ownersRead, ['Owned', 'by', 'Alice,', 'Bob'], 'R4 D2 Owned by line at 320 / 200%', { pageSideways: false });
+    await expectHeldInside(card, 'R4 D2 suggestion card');
+    // The picture moved, it did not shrink: still a 4rem square.
+    expect(Math.abs(after.tile.width - 4 * after.rem), `R4 D2: the picture is not 4rem wide (${afterLine})`).toBeLessThanOrEqual(1);
+    expect(Math.abs(after.tile.height - 4 * after.rem), `R4 D2: the picture is not 4rem tall (${afterLine})`).toBeLessThanOrEqual(1);
+    expect(after.card.height, `R4 D2: the card is shorter than 44px (${afterLine})`).toBeGreaterThanOrEqual(44);
   });
 
   test('Recommended Games card — reached by keyboard it shows a focus ring, and Enter opens that game (88.6.1-03)', async ({ page }) => {

@@ -13,6 +13,7 @@ import ThemeProvider from './components/ThemeProvider'
 import FriendshipStatusProvider from './components/FriendshipStatusProvider'
 import UnreadNotificationProvider from './components/UnreadNotificationProvider'
 import FeedbackModalProvider from './components/FeedbackModalProvider'
+import { RootAnnouncer } from '../components/ui/RootAnnouncer'
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -35,7 +36,30 @@ export default function RootLayout({ children }) {
           {/* GUARD-02 (Plan 86-08, D-08): exactly ONE sonner <Toaster/> mounted
               at the root layout (NOT per-route — the G2 check) providing the
               transient failure-visibility substrate. Has built-in aria-live. */}
-          <Toaster position="top-right" richColors closeButton theme="system" />
+          {/* DECISION Phase 88.9-24 (owner ruling 88.9-RULINGS.md R-F1 (2026-11-08)): ONE
+              always-mounted sr-only polite region, fed by the module store in
+              src/components/ui/announcer.ts, speaks the outcomes that rule 2 no longer toasts —
+              chosen OVER a React context (this layout is a server component and this region sits
+              outside the children and every provider) and OVER a per-component region (createEvent
+              and GroupSettings unmount on close). It preserves a behaviour that already ships (the
+              Toaster's live region spoke these words), not a new capability (P4). Changing this is
+              a decision, not a cleanup.
+              AMENDED Phase 88.9-52 (A-47): this root region is not heard on an iPhone while a house
+              dialog is open (measured 2026-11-16), so while one is open the same store hands the
+              words to a region inside that dialog and this one stays empty
+              (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
+              The mount here is unchanged. */}
+          {/* DECISION Phase 88.9-52 (W40, owner at the after-build look page: the error toast lies
+              over the header and its close x overlaps the logo on a phone): on a phone (Sonner's
+              600px and under) the toast starts 72px from the top, the 64px header strip plus an
+              8px gap, chosen OVER Sonner's default 16px (inside the sticky strip, with the close
+              button on the logo) and OVER moving phone toasts to the bottom (the phone bottom bar
+              and the keyboard live there). Only the top is given, so the 16px side gutters stay
+              Sonner's own. The desktop position is unchanged. The number follows the strip's
+              height at src/app/Header.js ("w-full h-16 bg-surface-header border-b border-line-strong"); pinned by
+              src/app/miniPicks.test.ts ("8. 88.9-52 W40"). */}
+          <Toaster position="top-right" richColors closeButton theme="system" mobileOffset={{ top: 72 }} />
+          <RootAnnouncer />
           {/* PRIM-07 (Plan 84-04): TanStack Query provider mounted at the app
               root via the server-fresh / browser-singleton getQueryClient()
               factory. Must sit ABOVE any component that calls useQuery. */}
@@ -85,7 +109,13 @@ export default function RootLayout({ children }) {
                           overlay or FAB (the D-09 constraint above). */}
                       <div className="min-h-screen flex flex-col">
                         <Header />
-                        <main className="flex-1">
+                        {/* DECISION Phase 88.9-58 (X20, owner at N09, 2026-11-11: yes hide it): main hides the
+                            browser outline because it is only a programmatic focus target (the page floor),
+                            never a Tab stop (2.4.7 reading in 88.9-58-SUMMARY; GOV.UK ships the same). Chosen
+                            OVER the frame round the page and OVER a global reset (heading floors keep their
+                            ring); outline-hidden over outline none for forced-colors. If main becomes a Tab
+                            stop, this must go. */}
+                        <main className="flex-1 focus:outline-hidden">
                           {children}
                         </main>
                         <Footer />

@@ -14,7 +14,9 @@
 // `.tsx` is mandatory: `vitest.config.mts:67` collects `src/**/*.{test,spec}.{ts,tsx}` only,
 // so a `.js` sibling would be silently never run.
 import * as React from 'react';
-import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { join as join_path } from 'node:path';
+import { render, screen, cleanup, act, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -480,5 +482,274 @@ describe('invite/game/[token] — R8 page announcement and Retry focus (plan 88.
     await waitFor(() => expect(region.textContent).toBe(T));
     expect(performance.now() - pressedAt).toBeGreaterThanOrEqual(100);
     expect(screen.getByTestId(PAGE_STATUS_TESTID)).toBe(region);
+  });
+});
+
+// Phase 88.9-66 (X68, owner ruled by chat 2026-11-14): a transient failure shows Retry, so the
+// unknown line gives one remedy there; the same holds for a transient JOIN failure.
+describe('invite/game/[token] — the line beside Retry (88.9-66: X68)', () => {
+  it('X68 (88.9): a transient failure shows the ratified unknown line beside Retry', async () => {
+    const RULED = "Something went wrong. If trying again doesn't help, refresh the page.";
+    // The preview fails with a code-less 500.
+    preview().mockRejectedValue(new ApiError('HTTP error! status: 500', 'unknown', 500, { error: 'boom' }));
+    render(<GameInvitePage />);
+    expect(await screen.findByText(RULED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.queryByText(/Refresh the page to try again/)).toBeNull();
+    cleanup();
+
+    // A signed-in person whose JOIN fails with a code-less 500: the same line beside Retry.
+    preview().mockReset();
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue({ game_name: 'Wingspan', event_date: '2030-01-01T00:00:00Z' });
+    join().mockRejectedValue(new ApiError('HTTP error! status: 500', 'unknown', 500, { error: 'boom' }));
+    render(<GameInvitePage />);
+    expect(await screen.findByText(RULED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.queryByText(/Refresh the page to try again/)).toBeNull();
+  });
+});
+
+// Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"). Amber X: could not load or join, trying
+// again may work. Red X: the link is dead. The grey clock on the passed game night is untouched.
+describe('invite/game/[token] — Q69 the failure glyph by cause (88.9-52)', () => {
+  const X_PATH = 'M6 18L18 6M6 6l12 12';
+  const expectTone = (container: HTMLElement, tone: 'amber' | 'red', label: string) => {
+    const path = container.querySelector(`path[d="${X_PATH}"]`);
+    expect(path, `${label}: the failure card draws no X`).not.toBeNull();
+    const svg = path!.closest('svg')!;
+    const circle = svg.parentElement!;
+    const on = tone === 'amber' ? 'warning' : 'error';
+    const off = tone === 'amber' ? 'error' : 'warning';
+    expect(circle, `${label}: the circle is not the ${on} fill`).toHaveClass(`bg-status-${on}-subtle`);
+    expect(circle, label).not.toHaveClass(`bg-status-${off}-subtle`);
+    expect(svg, `${label}: the X is not the ${on} ink`).toHaveClass(`text-content-status-${on}`);
+    expect(svg, label).not.toHaveClass(`text-content-status-${off}`);
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelectorAll('svg'), `${label}: one glyph on the card`).toHaveLength(1);
+  };
+  const EVENT = { game_name: 'Wingspan', event_date: '2030-01-01T00:00:00Z' };
+
+  it('Q69-2: a preview that could not load draws the X on amber (network, 5xx, 429); a preview 404 draws it on red', async () => {
+    const temporary: ApiError[] = [
+      new ApiError('Network error: Could not connect to the server.', 'network', 0),
+      new ApiError('HTTP error! status: 500', 'internal', 500),
+      new ApiError('HTTP error! status: 429', 'rate_limited', 429),
+    ];
+    for (const err of temporary) {
+      preview().mockReset();
+      preview().mockRejectedValue(err);
+      const { container } = render(<GameInvitePage />);
+      await screen.findByRole('heading', { name: "Couldn't join game night" });
+      expectTone(container, 'amber', `preview ${err.code}`);
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+      cleanup();
+    }
+    preview().mockReset();
+    preview().mockRejectedValue(postAliasDropError(404, 'not_found'));
+    const { container } = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'This invite is no longer valid' });
+    expectTone(container, 'red', 'preview 404');
+  });
+
+  it('Q69-2: a join that could not complete draws the X on amber (network, 5xx, 429, CSRF, a bad 2xx); a join 404 draws it on red', async () => {
+    const temporary: Array<[string, ApiError]> = [
+      ['network', new ApiError('Network error: Could not connect to the server.', 'network', 0)],
+      ['5xx', new ApiError('HTTP error! status: 500', 'internal', 500)],
+      ['429', new ApiError('HTTP error! status: 429', 'rate_limited', 429)],
+      ['CSRF 403', new ApiError('HTTP error! status: 403', 'forbidden', 403, { csrf_rejected: true })],
+    ];
+    for (const [label, err] of temporary) {
+      preview().mockReset();
+      join().mockReset();
+      authState.user = { sub: 'auth0|abc' };
+      preview().mockResolvedValue(EVENT);
+      join().mockRejectedValue(err);
+      const { container } = render(<GameInvitePage />);
+      await screen.findByRole('heading', { name: "Couldn't join game night" });
+      expectTone(container, 'amber', `join ${label}`);
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+      cleanup();
+    }
+
+    // A 2xx the page cannot read is not a refusal either.
+    preview().mockReset();
+    join().mockReset();
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(EVENT);
+    join().mockResolvedValue({});
+    let view = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't join game night" });
+    expectTone(view.container, 'amber', 'join bad 2xx');
+    cleanup();
+
+    preview().mockReset();
+    join().mockReset();
+    preview().mockResolvedValue(EVENT);
+    join().mockRejectedValue(postAliasDropError(404, 'not_found'));
+    view = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'This invite is no longer valid' });
+    expectTone(view.container, 'red', 'join 404');
+  });
+
+  it('Q69-4: the passed game night keeps its grey clock, no X', async () => {
+    preview().mockRejectedValue(postAliasDropError(410, 'gone'));
+    const { container } = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'Game Night Has Passed' });
+    expect(container.querySelector(`path[d="${X_PATH}"]`)).toBeNull();
+    const svg = container.querySelector('svg')!;
+    expect(svg).toHaveClass('text-content-muted');
+    expect(svg.parentElement!).toHaveClass('bg-surface-elevated');
+  });
+
+  it('Q69-3: an expired session on the join is amber and offers the sign-in round trip, not a Retry that re-sends the dead session', async () => {
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(EVENT);
+    join().mockRejectedValue(new ApiError('HTTP error! status: 401', 'unauthorized', 401));
+    const { container } = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't join game night" });
+    expectTone(container, 'amber', 'join 401');
+    expect(screen.getByText('Your session may have expired. Sign in again to continue.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    const signIn = screen.getByRole('link', { name: 'Sign in to try again' });
+    expect(signIn).toHaveAttribute(
+      'href',
+      `/api/auth/login?returnTo=${encodeURIComponent(`/invite/game/${TOKEN}`)}`
+    );
+    // The connection hint belongs to the Retry form of the card.
+    expect(screen.queryByText('Check your connection and try again.')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go Home' })).toHaveAttribute('href', '/');
+    expect(join()).toHaveBeenCalledTimes(1);
+  });
+
+  // Phase 88.9-52 (R27, owner 2026-11-17 "Yes"): the auth layer answers every signed-in route 410
+  // account_deleted for a deleted account, so the join has TWO 410s. The status alone sent this one
+  // to the passed-game-night card, which is untrue for this person.
+  it('R27 (88.9-52): a join 410 account_deleted draws the red X card with the register sentence, not the passed game night, and no contact line', async () => {
+    const CONTACT = 'Contact the group owner for a new invite link.';
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(EVENT);
+    join().mockRejectedValue(new ApiError('HTTP error! status: 410', 'account_deleted', 410));
+    const { container } = render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'This invite is no longer valid' });
+    expectTone(container, 'red', 'join 410 account_deleted');
+    expect(screen.queryByRole('heading', { name: 'Game Night Has Passed' })).toBeNull();
+    expect(screen.getByText('This account has already been deleted.')).toBeInTheDocument();
+    expect(screen.queryByText(CONTACT), 'a new invite link cannot help a deleted account').toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go Home' })).toHaveAttribute('href', '/');
+    expect(screen.getByTestId('game-invite-page-status').textContent).toBe(
+      'This invite is no longer valid This account has already been deleted.'
+    );
+    expect(join()).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    // The other permanent card keeps its contact line: a dead link is what a new link fixes.
+    preview().mockReset();
+    join().mockReset();
+    preview().mockResolvedValue(EVENT);
+    join().mockRejectedValue(postAliasDropError(404, 'not_found'));
+    render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: 'This invite is no longer valid' });
+    expect(screen.getByText(CONTACT)).toBeInTheDocument();
+    cleanup();
+
+    // The sentence is the register's, read by code: the page file holds no copy of it.
+    const source = readFileSync(join_path(process.cwd(), 'src/app/invite/game/[token]/page.js'), 'utf8');
+    expect(source).not.toContain('already been deleted');
+  });
+});
+
+// Phase 88.9-52 (PIX-5, picture pass, the Q69 as-is note): the small line under the failure sentence,
+// Check your connection and try again., named the connection as the cause on EVERY retryable failure,
+// so a 5xx card said "our end" in one sentence and "your connection" in the next. It now shows only
+// when the failure IS a network failure (ApiError code network). No string changed.
+// AMENDED Phase 88.9-52 (P3, owner 2026-11-17 "Drop"): the small line is gone for a network failure
+// too. The register sentence above it already ends with the same words, so the card said it twice.
+// The causes below now all expect NO small line, and the sentence always carries the gap to Retry.
+describe('invite/game/[token] — the connection hint by cause (88.9-52: PIX-5, P3)', () => {
+  const HINT = 'Check your connection and try again.';
+  const EVENT = { game_name: 'Wingspan', event_date: '2030-01-01T00:00:00Z' };
+  const CAUSES: Array<[string, unknown, boolean]> = [
+    ['network', new ApiError('Network error: Could not connect to the server.', 'network', 0), false],
+    ['5xx', new ApiError('HTTP error! status: 500', 'internal', 500), false],
+    ['code-less 500', new ApiError('HTTP error! status: 500', 'unknown', 500, { error: 'boom' }), false],
+    ['429', new ApiError('HTTP error! status: 429', 'rate_limited', 429), false],
+    ['CSRF 403', new ApiError('HTTP error! status: 403', 'forbidden', 403, { csrf_rejected: true }), false],
+    // A transport error rethrown raw carries no code, so the page cannot call it a network failure.
+    ['raw TypeError', new TypeError('Load failed'), false],
+  ];
+  const expectCard = (label: string, hinted: boolean) => {
+    expect(screen.getByRole('button', { name: 'Retry' }), `${label}: no Retry`).toBeInTheDocument();
+    const hint = screen.queryByText(HINT);
+    const sentence = screen.getByRole('heading', { name: "Couldn't join game night" }).nextElementSibling as HTMLElement;
+    expect(sentence.tagName, `${label}: the failure sentence`).toBe('P');
+    if (hinted) {
+      expect(hint, `${label}: the connection hint is missing on a network failure`).not.toBeNull();
+      // The sentence keeps its small gap to the hint, and the hint carries the gap to Retry.
+      expect(sentence).toHaveClass('mb-2');
+      expect(hint).toHaveClass('mb-6');
+    } else {
+      expect(hint, `${label}: the card blames the connection for a failure that is not one`).toBeNull();
+      // With no hint the sentence carries the gap to Retry itself.
+      expect(sentence).toHaveClass('mb-6');
+      expect(sentence).not.toHaveClass('mb-2');
+    }
+  };
+
+  it('P3 (88.9-52): a preview failure never shows the small connection line, a network failure included', async () => {
+    for (const [label, err, hinted] of CAUSES) {
+      preview().mockReset();
+      preview().mockRejectedValue(err);
+      render(<GameInvitePage />);
+      await screen.findByRole('heading', { name: "Couldn't join game night" });
+      expectCard(`preview ${label}`, hinted);
+      cleanup();
+    }
+  });
+
+  it('P3 (88.9-52): a join failure never shows the small connection line, before or after a Retry', async () => {
+    for (const [label, err, hinted] of CAUSES) {
+      preview().mockReset();
+      join().mockReset();
+      authState.user = { sub: 'auth0|abc' };
+      preview().mockResolvedValue(EVENT);
+      join().mockRejectedValue(err);
+      render(<GameInvitePage />);
+      await screen.findByRole('heading', { name: "Couldn't join game night" });
+      expectCard(`join ${label}`, hinted);
+      cleanup();
+    }
+
+    // A 2xx the page cannot read is not a network failure.
+    preview().mockReset();
+    join().mockReset();
+    authState.user = { sub: 'auth0|abc' };
+    preview().mockResolvedValue(EVENT);
+    join().mockResolvedValue({});
+    render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't join game night" });
+    expectCard('join bad 2xx', false);
+    cleanup();
+
+    // Network first, then Retry answers 500: no small line on either card, and the network card
+    // still says the connection sentence ONCE, in the register line.
+    preview().mockReset();
+    join().mockReset();
+    authState.user = undefined;
+    preview()
+      .mockRejectedValueOnce(new ApiError('Network error: Could not connect to the server.', 'network', 0))
+      .mockRejectedValueOnce(new ApiError('HTTP error! status: 500', 'internal', 500));
+    render(<GameInvitePage />);
+    await screen.findByRole('heading', { name: "Couldn't join game night" });
+    expectCard('first load, network', false);
+    // Visible paragraphs only (the sr-only page region repeats the sentence for screen readers).
+    expect(screen.getAllByText(/Check your connection and try again\./, { selector: 'p' })).toHaveLength(1);
+    expect(
+      screen.getByText("We couldn't reach the server. Check your connection and try again.", { selector: 'p' })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('Something went wrong on our end. Please try again shortly.');
+    expectCard('after Retry, 5xx', false);
   });
 });

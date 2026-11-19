@@ -378,6 +378,30 @@ describe('88.6-63 (review round 2 #23) — Clear All keeps focus; the summary an
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  // 88.9 O09a (owner pick, 88.9-PICKS-B8B.json): enabled vs gated Clear All must differ by more than ink colour; page 8b printed 5.81 light / 4.88 dark for the gated pair.
+  // AMENDED Phase 88.9-52 (W30, owner ruling A): the second cue is now the EDGE (its own gated token), not a fill; the gated fill made the button darker than live in light and lighter in dark.
+  it('O09a + W30 (88.9): a gated Clear All wears the house gated ink and the gated edge with no fill of its own, the enabled one is unchanged', () => {
+    renderHarness(2);
+
+    const clear = screen.getByRole('button', { name: 'Clear All' });
+    expect(clear).toHaveAttribute('aria-disabled', 'true');
+    expect(clear).not.toBeDisabled();
+    // The gated pair: ink AND edge, as call-site utilities on the ghost Button (whole literals); no gated fill.
+    expect(clear).not.toHaveClass('aria-disabled:bg-[var(--color-btn-secondary-gated-bg)]');
+    expect(clear).toHaveClass('aria-disabled:border-line-gated');
+    expect(clear).toHaveClass('aria-disabled:text-[color:var(--color-btn-secondary-gated-text)]');
+    // ONE gated ink rule: cn()'s merge drops the ghost default, so no cascade-order bet is made.
+    expect(clear).not.toHaveClass('aria-disabled:text-content-muted');
+    // The ENABLED look is byte-identical to the shipped one, and the variant is still ghost.
+    expect(clear).toHaveClass('border-line');
+    expect(clear).toHaveClass('text-content-secondary');
+    expect(clear).toHaveClass('bg-surface-card');
+    expect(clear).not.toHaveClass('btn-secondary');
+
+    fireEvent.pointerDown(cellsByLabel()[0]); // paint one slot
+    expect(screen.getByRole('button', { name: 'Clear All' })).not.toHaveAttribute('aria-disabled');
+  });
+
   it('the visible line is plain text; the ONE status region is the sr-only summary, empty at mount (rewritten by 88.6.1-39, D-45)', () => {
     renderHarness(2);
 
@@ -787,6 +811,84 @@ describe('88.6.1-39 (D-16 / D-33 rows 11 and 17, copy rows A1 / A3 / A4) — wha
     } finally {
       media.restore();
       vi.useRealTimers();
+    }
+  });
+});
+
+// 88.9-52 N1b / N1c (owner picks "Mid" and "Stripe", 2026-11-17). jsdom paints nothing, so these
+// read the class tokens the cells and the legend ship; the values those tokens resolve to, and
+// the ratios, are pinned in the token contrast suite (rows N1b and N1c).
+describe('88.9-52 N1b / N1c — painted cells and the legend', () => {
+  const PREFERRED_DARK = 'dark:bg-surface-avail-preferred';
+  const IF_NEED_BE_DARK = 'dark:bg-surface-avail-if-need-be';
+  const tokensOf = (el: Element) => el.className.toString().split(/\s+/);
+  const swatchOf = (label: string) => screen.getByText(label).previousElementSibling as HTMLElement;
+
+  // Cell 0 painted Preferred, cell 1 painted If Need Be, cell 2 left empty.
+  function paintOneOfEach() {
+    const onChange = renderHarness(1);
+    mouseTap(slotCellsAt(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Adding: Preferred' }));
+    mouseTap(slotCellsAt(1));
+    expect(slotCellsAt(0)).toHaveAccessibleName(/, preferred$/);
+    expect(slotCellsAt(1)).toHaveAccessibleName(/, if need be$/);
+    expect(slotCellsAt(2)).toHaveAccessibleName(/, not selected$/);
+    return onChange;
+  }
+
+  it('N1b: a painted cell carries the dark fill of its own state beside its light fill, the legend swatches match, and an empty cell carries neither', () => {
+    paintOneOfEach();
+    const preferred = tokensOf(slotCellsAt(0));
+    const ifNeedBe = tokensOf(slotCellsAt(1));
+    const empty = tokensOf(slotCellsAt(2));
+    // Light is unchanged: the shared write-cell colour still leads the class string.
+    expect(preferred).toContain('bg-green-300');
+    expect(preferred).toContain(PREFERRED_DARK);
+    expect(preferred).not.toContain(IF_NEED_BE_DARK);
+    expect(ifNeedBe).toContain('bg-yellow-300');
+    expect(ifNeedBe).toContain(IF_NEED_BE_DARK);
+    expect(ifNeedBe).not.toContain(PREFERRED_DARK);
+    expect(empty).not.toContain(PREFERRED_DARK);
+    expect(empty).not.toContain(IF_NEED_BE_DARK);
+    for (const cell of [preferred, ifNeedBe, empty]) expect(cell).toContain('transition-colors');
+
+    const preferredSwatch = tokensOf(swatchOf('Preferred'));
+    const ifNeedBeSwatch = tokensOf(swatchOf('If Need Be'));
+    expect(preferredSwatch).toEqual(expect.arrayContaining(['bg-green-300', PREFERRED_DARK]));
+    expect(ifNeedBeSwatch).toEqual(expect.arrayContaining(['bg-yellow-300', IF_NEED_BE_DARK]));
+    const notAvailable = tokensOf(swatchOf('Not Available'));
+    expect(notAvailable).not.toContain(PREFERRED_DARK);
+    expect(notAvailable).not.toContain(IF_NEED_BE_DARK);
+  });
+
+  it('N1c: an If Need Be cell and its legend swatch carry the stripe; Preferred, empty and Not Available never do', () => {
+    paintOneOfEach();
+    const STRIPE = 'avail-if-need-be-stripe';
+    expect(tokensOf(slotCellsAt(1))).toContain(STRIPE);
+    expect(tokensOf(swatchOf('If Need Be'))).toContain(STRIPE);
+    for (const plain of [slotCellsAt(0), slotCellsAt(2), swatchOf('Preferred'), swatchOf('Not Available')]) {
+      expect(tokensOf(plain)).not.toContain(STRIPE);
+    }
+    // Un-painting the cell (If Need Be mode, tap again) takes the stripe off with the fill.
+    mouseTap(slotCellsAt(1));
+    expect(slotCellsAt(1)).toHaveAccessibleName(/, not selected$/);
+    expect(tokensOf(slotCellsAt(1))).not.toContain(STRIPE);
+  });
+
+  it('N1b: in the unavailable-week mode a painted cell keeps the disabled look and takes no state fill', () => {
+    const onChange = paintOneOfEach();
+    const value = lastEmitted(onChange);
+    expect(value).toHaveLength(2);
+    cleanup();
+    render(
+      <Grid value={value} onChange={() => {}} numDays={1} weekStartDate={WEEK_START} timezone={PROFILE_TZ} disabled />
+    );
+    for (const i of [0, 1]) {
+      const cell = tokensOf(slotCellsAt(i));
+      expect(cell).toContain('opacity-50');
+      expect(cell).not.toContain(PREFERRED_DARK);
+      expect(cell).not.toContain(IF_NEED_BE_DARK);
+      expect(cell).not.toContain('avail-if-need-be-stripe');
     }
   });
 });
