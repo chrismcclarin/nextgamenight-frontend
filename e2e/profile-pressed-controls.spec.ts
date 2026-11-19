@@ -1295,12 +1295,13 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     const refresh = await holdUntilReleased(page, 'GET', OWNED_GAMES_PATH);
 
     // AMENDED Phase 88.9-68 (X36a): while its DELETE runs the x is named with the removing suffix.
-    const remove = page.getByRole('button', { name: /^(Remove E2E Meeple One(, removing)?|Remove)$/ });
+    const remove = page.getByRole('button', { name: /^(Remove E2E Meeple One(, removing)?|Tap again to remove)$/ });
     await focusByKeyboard(page, remove);
     await page.keyboard.press('Enter'); // arms
     // F9b (88.9-23): the second press is refused for 3 s after arming (the label counts
     // Wait (3)…(1), X69 88.9-67); wait for the live name (the 5 s expect timeout covers the gate).
-    await expect(remove).toHaveAccessibleName('Remove');
+    // AMENDED Phase 88.9-52 (R4 D4): live, the worded Remove is named Tap again to remove.
+    await expect(remove).toHaveAccessibleName('Tap again to remove');
     await page.keyboard.press('Enter'); // commits
     await del.arrived;
     await expect(remove).toBeFocused();
@@ -1387,7 +1388,12 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
   // 44px button, so the ONE width is now held in two places: by the slot around the button from
   // rest to live (which is what keeps the title still), and by the armed box through its four
   // labels. The resting button is narrower than the armed one by design.
-  test('X69 (88.9): the collection x reads Wait (3), (2), (1) then Remove in a box that never changes width, and sends nothing', async ({ page }, testInfo) => {
+  // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the x is a worded Remove button now
+  // (src/app/userProfile/page.js ("AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): REPLACED.")). It reads Remove, Wait (3), (2), (1),
+  // then Tap again, named Tap again to remove. There is no slot around it: its ONE width is held
+  // from the arm through its four armed labels (the phone Remove's form), it is right-anchored, and
+  // its right edge does not move from rest to live.
+  test('X69 (88.9): the collection Remove reads Wait (3), (2), (1) then Tap again in one armed width, and sends nothing', async ({ page }, testInfo) => {
     // One press only (it arms): nothing is removed, and afterEach fails the test on any write.
     backstop = await holdWrites(page, {
       answerGet: (url) => (OWNED_GAMES_PATH.test(url.pathname) ? [ONE, TWO] : undefined),
@@ -1395,46 +1401,45 @@ test.describe('Profile game collection (plan 88.6.1-67)', () => {
     await page.goto('/userProfile');
     const collection = collectionCard(page);
     const remove = collection.getByRole('button', { name: 'Remove E2E Meeple One', exact: true });
-    await expect(remove, 'X69: the routed collection never rendered its x').toBeVisible({ timeout: 15_000 });
+    await expect(remove, 'X69: the routed collection never rendered its Remove').toBeVisible({ timeout: 15_000 });
     if (testInfo.project.name === 'phone') {
       expect(page.viewportSize()?.width).toBe(375);
     }
-    const slotWidth = () =>
+    // The button's right edge, measured from its card's right edge (focusing may scroll the page).
+    const rightInset = () =>
       collection
         .getByRole('heading', { level: 3, name: 'E2E Meeple One', exact: true })
         .locator('xpath=../..')
-        .locator('span.inline-grid')
+        .getByRole('button')
         .first()
-        .evaluate((el) => parseFloat(getComputedStyle(el).width));
-    const slotAtRest = await slotWidth();
+        .evaluate((el) => (el.parentElement as HTMLElement).getBoundingClientRect().right - el.getBoundingClientRect().right);
+    const insetAtRest = await rightInset();
     await focusByKeyboard(page, remove);
     await recordLabel(remove);
     await page.keyboard.press('Enter'); // arms
-    // The live label, after the 3 s gate: the x arms to Remove (fork 7) and is named by it.
-    await expect(collection.getByRole('button', { name: 'Remove', exact: true })).toBeVisible({ timeout: 10_000 });
-    const slotLive = await slotWidth();
+    // The live label, after the 3 s gate: Tap again, named with the full sentence.
+    await expect(collection.getByRole('button', { name: 'Tap again to remove', exact: true })).toBeVisible({ timeout: 10_000 });
+    const insetLive = await rightInset();
     const samples = await stopLabelRecorder(page);
 
-    const ARMED_STATES = ['Wait (3)', 'Wait (2)', 'Wait (1)', 'Remove'];
-    const EVERY_STATE = ['', ...ARMED_STATES];
+    const ARMED_STATES = ['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again'];
+    const EVERY_STATE = ['Remove', ...ARMED_STATES];
     const trace = describeSamples(samples);
     // eslint-disable-next-line no-console -- the measured widths are recorded from the CI log (plan 88.9-67)
-    console.log(`[88.9-67 X69 collection x] ${testInfo.project.name}: ${trace}`);
-    expect(paintedTexts(samples), `X69: the x did not run x, Wait (3), (2), (1), Remove (${trace})`).toEqual(EVERY_STATE);
+    console.log(`[88.9-67 X69 collection Remove] ${testInfo.project.name}: ${trace}`);
+    expect(paintedTexts(samples), `X69: the control did not run Remove, Wait (3), (2), (1), Tap again (${trace})`).toEqual(EVERY_STATE);
     expect(valuesAt(samples, 'Wait (3)', 'name')).toEqual(['Remove E2E Meeple One, wait 3 seconds']);
     expect(valuesAt(samples, 'Wait (2)', 'name')).toEqual(['Remove E2E Meeple One, wait 2 seconds']);
     expect(valuesAt(samples, 'Wait (1)', 'name')).toEqual(['Remove E2E Meeple One, wait 1 second']);
-    expect(valuesAt(samples, 'Remove', 'name')).toEqual(['Remove']);
+    expect(valuesAt(samples, 'Tap again', 'name')).toEqual(['Tap again to remove']);
     const jump = spread(samples, ARMED_STATES, 'width');
-    expect(jump, `X69: the armed x changed width by ${jump}px between its labels (${trace})`).toBeLessThanOrEqual(0.5);
+    expect(jump, `X69: the armed Remove changed width by ${jump}px between its labels (${trace})`).toBeLessThanOrEqual(0.5);
     expect(
-      Math.abs(slotLive - slotAtRest),
-      `X69: the slot around the x changed width between rest (${slotAtRest}) and its live label (${slotLive}) (${trace})`,
+      Math.abs(insetLive - insetAtRest),
+      `X69: the button's right edge moved between rest (${insetAtRest}px in) and its live label (${insetLive}px in) (${trace})`,
     ).toBeLessThanOrEqual(0.5);
-    // The slot is the armed width from rest: never narrower than the armed button it holds.
-    const armedWidths = valuesAt(samples, 'Remove', 'width');
-    expect(armedWidths.length, `X69: the live x was never sampled (${trace})`).toBeGreaterThan(0);
-    expect(slotAtRest, `X69: the resting slot (${slotAtRest}) is narrower than the armed x (${trace})`).toBeGreaterThanOrEqual(Math.max(...armedWidths) - 0.5);
+    const armedWidths = valuesAt(samples, 'Tap again', 'width');
+    expect(armedWidths.length, `X69: the live Remove was never sampled (${trace})`).toBeGreaterThan(0);
   });
 
   test('Add to Collection keeps its label with the spinner (rule 1), refuses a second press, then lands on + Add from BGG', async ({ page }) => {

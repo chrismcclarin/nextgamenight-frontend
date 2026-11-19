@@ -1959,8 +1959,18 @@ function Profile(){
            unsure what the armed state would do. Applies where the resting label is a
            bare ×; controls whose resting label is already 'Remove' keep the default
            armed copy (gameDetail see-all). Reverting to the default here re-opens walk
-           row 381; that is a decision, not a consistency cleanup. */
-        armedLabel: 'Remove',
+           row 381; that is a decision, not a consistency cleanup.
+           AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): REPLACED. The resting control is no
+           longer a bare x: it is a worded Remove button, and it arms to the house Tap again
+           like every other R13 row, so the armedLabel this marker defended is gone and the
+           hook's default applies. The owner's reason, in his words: "the x works better for
+           quick removal of things, but the fact that we aren't allowing quick removal, I'm not
+           sure if the x is warranted here." CHOSEN OVER keeping the glyph that arms into Remove
+           (this ruling of 2026-08-17). Walk row 381's worry (what will the armed state do?) is
+           answered by the resting word itself. The spoken name once live is the sentence the
+           phone Remove and the member Remove already use. The look is at the card
+           (this file ("DECISION Phase 88.9-52 (R4 D4, owner 2026-11-18): the collection remove is a worded Remove button")). */
+        armedName: 'Tap again to remove',
         onConfirm: (gameId, ctx) => removeGameFromCollection(gameId, ctx),
     });
     // PIX-1 / A-49 (88.9-52): ONE press handler for every collection card, the same function on every render, so
@@ -4796,7 +4806,6 @@ function Profile(){
                                         titleRef={firstRevealedTitleRef}
                                         armed={removeGameGate.isArmed(game.id)}
                                         label={removeGameGate.labelFor(game.id, 'Remove')}
-                                        slotReserve={removeGameGate.reserveFor(game.id, { atRest: true })}
                                         labelReserve={removeGameGate.reserveFor(game.id)}
                                         ariaLabel={removeTrigger['aria-label']}
                                         ariaPressed={removeTrigger['aria-pressed']}
@@ -4907,7 +4916,7 @@ export default Profile;
 
 /* DECISION Phase 88.9-52 (PIX-1 / A-49, owner condition met: the picture pass measured a 467 ms frame gap with 120 games while one Remove counted down):
    one collection card is a MEMOISED component and takes only values that stay the same for a card at rest (the game, its
-   place flags, the resting name, the two reserve lists, one press handler that never changes), chosen OVER the cards
+   place flags, the resting name, the reserve list (two until 88.9-52 R4 D4 retired the slot around the x), one press handler that never changes), chosen OVER the cards
    rendered inline in the page's map, where every countdown tick re-rendered every mounted card (30 of 30, four times per
    arm). The page still renders on each tick, because the gate's countdown lives in the host:
    src/components/ui/useConfirmAction.ts ("AMENDED Phase 88.9-23 (F9b): the dialog-tier countdown lives in ConfirmDialog").
@@ -4924,7 +4933,6 @@ const CollectionCard = memo(function CollectionCard({
     titleRef,
     armed,
     label,
-    slotReserve,
     labelReserve,
     ariaLabel,
     ariaPressed,
@@ -4955,8 +4963,27 @@ const CollectionCard = memo(function CollectionCard({
         inert={isPeek ? '' : undefined}
         aria-hidden={isPeek ? 'true' : undefined}
     >
-        <div className="flex justify-between items-start mb-2">
-            <div className="flex-1">
+        {/* DECISION Phase 88.9-52 (R4 D4, owner 2026-11-18): the collection remove is a worded Remove button
+            in the look of this page's other list removes (the schedule Delete, the phone Remove: a
+            bare red word in a 44px-tall box, error-subtle on hover, 600 while armed, no border in
+            any state), arming through Wait (3), (2), (1) to Tap again. CHOSEN OVER the bare x in a
+            32px bordered box that armed into Remove (fork 7, 88-33 Task 5, then X53 and PIX-2): the
+            owner's words are at the gate's config above. Everything the x needed and the word does
+            not is gone with it: the icon, the box, the slot that reserved the armed width around
+            the button at rest, the right-anchor padding. Their markers are kept below, each closed
+            with an AMENDED line.
+            ROOM (the D2 form): this line may wrap. The title column asks for 8rem before it shares
+            the line (flex 1 1 8rem), so the title is never squeezed under 8rem by the button; when
+            the two no longer fit (large text on a narrow card: at 200% the title's 256px and the
+            button's roughly 150px do not fit a phone card) the button drops under the title, kept
+            to the right (ml-auto). At ordinary text 128 + 8 + 67 (78 while armed) fits any card
+            from 214px inside, so nothing drops at 375 or 320. The title still wraps in full and
+            breaks inside a word only when that word cannot fit its line (the Heading's own rule).
+            The busy spinner LEADS the word (W38: a right-anchored control grows to the left). The
+            width is held from the arm, nothing at rest (X69, the phone Remove's form), so the
+            button grows once, to the left, when it is armed. */}
+        <div className="flex flex-wrap justify-between items-start gap-x-2 mb-2">
+            <div className="flex-[1_1_8rem] min-w-0">
                 <Heading
                     ref={isFirstRevealed ? titleRef : undefined}
                     tabIndex={isFirstRevealed ? -1 : undefined}
@@ -5003,7 +5030,10 @@ const CollectionCard = memo(function CollectionCard({
                 Wait (3), (2), (1) and Remove (X69, 88.9-67).
                 AMENDED Phase 88.9-52 (PIX-2): the side padding is 5px now (20 + 10 + 2 = 32,
                 the minimum exactly) and the resting button anchors the box 6px inside its
-                right edge; see the PIX-2 line on the X36a marker below. */}
+                right edge; see the PIX-2 line on the X36a marker below.
+                AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): SUPERSEDED. There is no x, no box
+                and no slot now; the control is a worded Remove button (the marker on this line's
+                wrapper above). The accessible name still names the action and the object. */}
             {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
                     `font-semibold` STAYS, and it is deliberately NOT one of
                     the 600s the weight sweep converted. It is not emphasis —
@@ -5027,12 +5057,8 @@ const CollectionCard = memo(function CollectionCard({
                     AMENDED Phase 88.9-23 (F9b): the sizer reserves the countdown label, the widest armed state.
                     AMENDED Phase 88.9-67 (X69): the sizer reserves Remove, wider than Wait (n), until Task 2's shared reserve.
                     AMENDED Phase 88.9-67 (X69 width): the x reserves through ReservedLabel.
-                    AMENDED Phase 88.9-68 (X53, owner at N37, 2026-11-13: a very large box and a very small x … Make it similar to the dialog boxes x): the sizer reserves the armed width on the slot around the button, not inside the visible box, chosen OVER the reservation inside the box (the large resting box); weight 600 and the measurement stand. */}
-            <ReservedLabel
-                className="justify-items-end"
-                reserve={slotReserve}
-                reserveClassName="font-semibold whitespace-nowrap border border-transparent px-2 text-sm"
-            >
+                    AMENDED Phase 88.9-68 (X53, owner at N37, 2026-11-13: a very large box and a very small x … Make it similar to the dialog boxes x): the sizer reserves the armed width on the slot around the button, not inside the visible box, chosen OVER the reservation inside the box (the large resting box); weight 600 and the measurement stand.
+                    AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the sizer around the button is GONE with the x. The reserve is now inside the button and exists only from the arm (the phone Remove's form), where the button itself is 600, so the reserve is measured at the armed weight without a class of its own. */}
                 <button
                     type="button"
                     onClick={(event) => onRemovePress(game, event)}
@@ -5045,33 +5071,19 @@ const CollectionCard = memo(function CollectionCard({
                     // disarmed while the DELETE runs, so the spinner joins the RESTING box.
                     // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): (1) armed keeps the RESTING bordered box and adds only the 600 weight, as the schedule Delete adds only its weight, chosen OVER the error-subtle FILL the armed box gained (fork 7, 88-33 Task 5: the pink pill of W38); the border stays in every state because an icon button needs its box (X53). Armed word on the card ground: 8.31 light, 5.94 on the dark raised fill (floor 4.5). (2) the busy spinner LEADS the X, so the right-anchored X holds its place while the box grows left, chosen OVER the trailing spinner (the X moved about 18px left).
                     // AMENDED Phase 88.9-52 (PIX-2, W38 one look, picture pass): claim (2) was not true as built. Rendered at 375 the X moved 7px RIGHT while busy (left edge 302 to 309): the 32px box was CENTRED in the 44px button at rest (6px each side), and once the spinner made the box 50px, wider than the button, it sat flush with the button's right edge (6px), with the 2px of centring slack round the X gone as well (1px). Now, at rest and while busy, the button anchors the box 6px inside its right edge (justify-end, pr-1.5: 44 - 6 - 32 leaves the same 6px on the left at rest) and the box pads 5px a side (px-1.25: 20 + 10 + 2 = 32, no slack), so the X's right edge is 12px inside the button's right edge in both states and the box grows left only (52px box, 58px button, inside the slot's reserve). Chosen OVER a spinner slot reserved at rest (a 52px box for good, X53 rejected the large resting box) and OVER an absolutely placed spinner (it would sit outside the border, and an icon button's busy sign belongs in its box). The ARMED button keeps the centred, unpadded string: its box is the slot's whole reserve, and 6px of padding would widen the slot on arming and push the title (walk row 573). Arithmetic at the default text size only, not rendered: with enlarged text the box's rem minimum is larger than the 20px icon needs, the slack returns and the X can still shift while busy.
+                    // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the box and the x the two lines above describe are gone; the button is the schedule Delete's class string plus ml-auto and shrink-0 (the Friends Remove's form), 600 while armed, and the spinner still leads.
                     {...(removing ? { 'aria-disabled': 'true', 'aria-label': `Remove ${game.name}, removing` } : {})}
-                    className={
-                        armed
-                            ? 'group inline-flex min-h-11 min-w-11 items-center justify-center whitespace-nowrap rounded-btn text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring'
-                            : 'group inline-flex min-h-11 min-w-11 items-center justify-end pr-1.5 whitespace-nowrap rounded-btn text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring'
-                    }
+                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring${
+                        armed ? ' font-semibold' : ''
+                    }`}
                 >
-                    <span
-                        className={
-                            armed
-                                ? 'font-semibold inline-flex min-h-8 items-center justify-center gap-1 rounded-btn border border-status-error px-2 group-hover:bg-status-error-subtle'
-                                : 'inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-status-error px-1.25 group-hover:bg-status-error-subtle'
-                        }
-                    >
-                        {/* W38 (88.9-52): the spinner leads, and it is mounted OUTSIDE the armed ternary so
-                            arming never unmounts it mid-hold (R-C3b reach). */}
-                        <DelayedSpinner busy={removing} />
-                        {armed ? (
-                            <ReservedLabel reserve={labelReserve}>
-                                {label}
-                            </ReservedLabel>
-                        ) : (
-                            <Icon name="X" size={20} strokeWidth={2} />
-                        )}
-                    </span>
+                    {/* W38 (88.9-52): the spinner leads, and it is mounted beside the label, never inside
+                        an armed-only branch, so arming never unmounts it mid-hold (R-C3b reach). */}
+                    <DelayedSpinner busy={removing} className="mr-2" />
+                    <ReservedLabel className="justify-items-end" reserve={labelReserve}>
+                        {label}
+                    </ReservedLabel>
                 </button>
-            </ReservedLabel>
         </div>
         <SafeImage
             src={game.image_url}

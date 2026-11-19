@@ -75,22 +75,29 @@ interface Box {
   height: number;
 }
 
+// AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the collection x is a worded Remove button now
+// (src/app/userProfile/page.js ("DECISION Phase 88.9-52 (R4 D4, owner 2026-11-18): the collection remove is a worded Remove button")),
+// so this read no longer looks for a bordered box, an X icon or a slot around the button.
 interface XRead {
   button: Box;
-  /** The one visible bordered box inside the button, or null when the button has no element child. */
-  box: (Box & { scrollWidth: number; clientWidth: number; edge: string }) | null;
-  /** The X icon inside the box, or null. */
-  icon: { width: number; height: number } | null;
-  /** The slot around the button (the grid that holds the armed width), or null. */
-  slot: Box | null;
-  /** The game's title beside the x. */
+  /** The words the button shows. */
+  text: string;
+  /** How many svg icons that are not the spinner the button holds (none since R4 D4). */
+  icons: number;
+  /** The button's own border widths, top and left (none: a bare word). */
+  edges: string[];
+  /** A span.inline-grid ancestor of the button, the slot the x used to sit in (none since R4 D4). */
+  hasSlot: boolean;
+  /** The game's title beside the button. */
   title: Box | null;
   /** The spinner's untransformed box (it rotates, so its centre and layout size are read), or null. */
   spinner: Box | null;
+  /** The first painted word's box inside the button (the label), or null. */
+  word: Box | null;
 }
 
-// Every box of one x, read in ONE evaluate so they belong to one layout. Every edge is measured
-// from the game card's own top left corner, never from the viewport: focusing the x scrolls it
+// Every box of one Remove, read in ONE evaluate so they belong to one layout. Every edge is measured
+// from the game card's own top left corner, never from the viewport: focusing the button scrolls it
 // into view, so two reads of one unmoved title differ by the scroll when read from the viewport
 // (runs 43798941226 and 43798948160: the title's top read 2813.5 at rest and 337.5 armed, with
 // its left and right edges unchanged).
@@ -98,20 +105,14 @@ function readX(remove: Locator): Promise<XRead> {
   return remove.evaluate((el) => {
     const cardEl = el.parentElement?.closest('div.border') ?? null;
     const origin = cardEl ? cardEl.getBoundingClientRect() : { left: 0, top: 0 };
-    const rect = (node: Element) => {
-      const r = node.getBoundingClientRect();
-      return {
-        left: r.left - origin.left,
-        top: r.top - origin.top,
-        right: r.right - origin.left,
-        bottom: r.bottom - origin.top,
-        width: r.width,
-        height: r.height,
-      };
-    };
-    const boxEl = el.firstElementChild as HTMLElement | null;
-    const iconEl = boxEl?.querySelector('svg') ?? null;
-    const slotEl = el.closest('span.inline-grid');
+    const rect = (r: DOMRect) => ({
+      left: r.left - origin.left,
+      top: r.top - origin.top,
+      right: r.right - origin.left,
+      bottom: r.bottom - origin.top,
+      width: r.width,
+      height: r.height,
+    });
     const titleEl = cardEl?.querySelector('h3') ?? null;
     const spinEl = el.querySelector<HTMLElement>('[data-slot="spinner"]');
     let spinner = null;
@@ -123,20 +124,26 @@ function readX(remove: Locator): Promise<XRead> {
       const h = spinEl.offsetHeight;
       spinner = { left: cx - w / 2, top: cy - h / 2, right: cx + w / 2, bottom: cy + h / 2, width: w, height: h };
     }
+    // The label: the first text node with words in it.
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let word = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if ((node.textContent ?? '').trim() === '') continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      word = rect(range.getBoundingClientRect());
+      break;
+    }
+    const cs = getComputedStyle(el);
     return {
-      button: rect(el),
-      box: boxEl
-        ? {
-            ...rect(boxEl),
-            scrollWidth: boxEl.scrollWidth,
-            clientWidth: boxEl.clientWidth,
-            edge: getComputedStyle(boxEl).borderTopWidth,
-          }
-        : null,
-      icon: iconEl ? { width: iconEl.getBoundingClientRect().width, height: iconEl.getBoundingClientRect().height } : null,
-      slot: slotEl && !el.contains(slotEl) ? rect(slotEl) : null,
-      title: titleEl ? rect(titleEl) : null,
+      button: rect(el.getBoundingClientRect()),
+      text: (el.textContent ?? '').trim(),
+      icons: Array.from(el.querySelectorAll('svg')).filter((svg) => !svg.closest('[data-slot="spinner"]') && svg.getAttribute('data-slot') !== 'spinner').length,
+      edges: [cs.borderTopWidth, cs.borderLeftWidth],
+      hasSlot: Boolean(el.parentElement?.closest('span.inline-grid')),
+      title: titleEl ? rect(titleEl.getBoundingClientRect()) : null,
       spinner,
+      word,
     };
   });
 }
@@ -257,55 +264,69 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
     expect(fits, 'X52d: horizontal overflow on the collection card').toBe(true);
   });
 
-  // X53 (owner at N37): the x was a large box with a small glyph. Now the BUTTON is the 44px hit
-  // area and holds one small bordered box with the dialog's 20px X; the armed width is reserved on
-  // a slot around the button, so the title beside it never moves. Then X36a: with the removal held,
-  // the spinner sits inside that box. The DELETE is held in the browser and answered in the browser
-  // in finally (a held request is sent on when the routes are removed).
-  test('X53 (88.9-68): at rest the x is a small box with a 20px X in a 44px hit area, and arming it leaves the game title where it was', async ({ page }, testInfo) => {
+  // X53 (owner at N37): the x was a large box with a small glyph; it became a small bordered box
+  // with the dialog's X in a 44px hit area, its armed width reserved on a slot around the button.
+  // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18: "the x works better for quick removal of things,
+  // but the fact that we aren't allowing quick removal, I'm not sure if the x is warranted here."):
+  // the control is a worded Remove button in the look of the page's other list removes, arming to
+  // Tap again. Read here: at rest a bare word, at least 44 by 44, no icon, no border, no slot,
+  // beside the title; armed, the button has grown to the LEFT only (its right edge has not moved)
+  // and the title's top left corner has not moved; live it reads Tap again; with the removal held
+  // (X36a) the spinner LEADS the word, inside the button, and the word's right edge has not moved.
+  // The DELETE is held in the browser and answered in the browser in finally (a held request is
+  // sent on when the routes are removed).
+  test('R4 D4 (88.9-52; X53 superseded): the collection remove is a worded Remove button of at least 44 by 44 that arms to Tap again and grows to the left only', async ({ page }, testInfo) => {
     backstop = await openProfileWithEightGames(page);
     const del = await holdUntilReleased(page, 'DELETE', /\/user-games\/user\/[^/]+\/game\/e2e-shelf-a$/);
     try {
       if (testInfo.project.name === 'phone') expect(page.viewportSize()?.width).toBe(375);
       const remove = removeIn(page, NAMES[0]);
-      await expect(remove, 'X53: the first game card never rendered its x').toBeVisible({ timeout: 15_000 });
+      await expect(remove, 'R4 D4: the first game card never rendered its Remove').toBeVisible({ timeout: 15_000 });
       await expect(remove).toHaveAccessibleName(`Remove ${NAMES[0]}`);
 
       // At rest.
       const rest = await readX(remove);
       const restRead = JSON.stringify(rest);
-      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
-      console.log(`[88.9-68 X53] ${testInfo.project.name} rest: ${restRead}`);
-      expect(rest.button.width, `X53: the hit area is under 44px wide (${restRead})`).toBeGreaterThanOrEqual(44);
-      expect(rest.button.height, `X53: the hit area is under 44px tall (${restRead})`).toBeGreaterThanOrEqual(44);
-      expect(rest.icon, `X53: the x holds no X icon (${restRead})`).not.toBeNull();
-      expect(rest.icon?.width, `X53: the X icon is not 20px wide (${restRead})`).toBe(20);
-      expect(rest.icon?.height, `X53: the X icon is not 20px tall (${restRead})`).toBe(20);
-      expect(rest.box, `X53: the x holds no visible box (${restRead})`).not.toBeNull();
-      expect(rest.box?.edge, `X53: the box has no 1px border (${restRead})`).toBe('1px');
-      expect(rest.box?.width ?? 99, `X53: the resting box is wider than 32px (${restRead})`).toBeLessThanOrEqual(32.5);
-      expect(rest.box?.height ?? 99, `X53: the resting box is taller than 32px (${restRead})`).toBeLessThanOrEqual(32.5);
-      expect(rest.slot, `X53: no slot around the button holds the armed width (${restRead})`).not.toBeNull();
-      if (rest.slot) {
-        expect(Math.abs(rest.slot.right - rest.button.right), `X53: the button is not at its slot's right edge (${restRead})`).toBeLessThanOrEqual(1);
-      }
+      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (88.9-52 R4 D4)
+      console.log(`[88.9-52 R4 D4] ${testInfo.project.name} rest: ${restRead}`);
+      expect(rest.text, `R4 D4: the resting control does not read Remove (${restRead})`).toBe('Remove');
+      expect(rest.icons, `R4 D4: the control still holds an icon (${restRead})`).toBe(0);
+      expect(rest.edges, `R4 D4: the control has a border (${restRead})`).toEqual(['0px', '0px']);
+      expect(rest.hasSlot, `R4 D4: the control still sits in a slot (${restRead})`).toBe(false);
+      expect(rest.button.width, `R4 D4: the button is under 44px wide (${restRead})`).toBeGreaterThanOrEqual(44);
+      expect(rest.button.height, `R4 D4: the button is under 44px tall (${restRead})`).toBeGreaterThanOrEqual(44);
+      if (!rest.title || !rest.word) throw new Error(`R4 D4: the title or the word could not be read (${restRead})`);
+      // Beside the title at ordinary text: the two share a line, the title first, 8px or more apart.
+      expect(rest.button.top, `R4 D4: at ordinary text the button dropped under the title (${restRead})`).toBeLessThan(rest.title.bottom);
+      expect(rest.button.left - rest.title.right, `R4 D4: the button is under 8px from the title (${restRead})`).toBeGreaterThanOrEqual(7.5);
+      // The title keeps its room: at least 8rem.
+      expect(rest.title.width, `R4 D4: the title has ${rest.title.width}px, under 8rem (${restRead})`).toBeGreaterThanOrEqual(128);
 
-      // One press arms it: the title stays where it was, and nothing is sent.
+      // One press arms it: the button grows to the left only, the title's corner stays, nothing is sent.
       await focusByKeyboard(page, remove);
       await page.keyboard.press('Enter');
       await expect(remove).toHaveAttribute('aria-pressed', 'true');
       const armed = await readX(remove);
-      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
-      console.log(`[88.9-68 X53] ${testInfo.project.name} armed: ${JSON.stringify(armed)}`);
-      expectSameBox(armed.title, rest.title, 'X53: the game title after arming');
-      expectSameBox(armed.slot, rest.slot, 'X53: the slot after arming');
+      const armedRead = JSON.stringify(armed);
+      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (88.9-52 R4 D4)
+      console.log(`[88.9-52 R4 D4] ${testInfo.project.name} armed: ${armedRead}`);
+      if (!armed.title) throw new Error(`R4 D4: the title could not be read while armed (${armedRead})`);
+      expect(Math.abs(armed.button.right - rest.button.right), `R4 D4: arming moved the button's right edge (${restRead} then ${armedRead})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(armed.title.left - rest.title.left), `R4 D4: arming moved the title's left edge (${restRead} then ${armedRead})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(armed.title.top - rest.title.top), `R4 D4: arming moved the title's top edge (${restRead} then ${armedRead})`).toBeLessThanOrEqual(0.5);
+      expect(armed.title.width, `R4 D4: armed, the title has under 8rem (${armedRead})`).toBeGreaterThanOrEqual(128);
       // A-06 (88.9-52): an ABSENCE check has no positive signal to wait for, so wait a fixed 500ms
       // (the house idiom; well inside the 3 s gate) before reading that nothing was sent.
       await page.waitForTimeout(500);
-      expect(del.count(), 'X53: one press sent a removal').toBe(0);
+      expect(del.count(), 'R4 D4: one press sent a removal').toBe(0);
 
-      // The second live press commits; the DELETE is held. X36a: the spinner shows inside the box.
-      await expect(remove, 'X53: the armed x never went live').toHaveAccessibleName('Remove', { timeout: 10_000 });
+      // Live: Tap again, spoken as the sentence, in the width it has held since the arm.
+      await expect(remove, 'R4 D4: the armed Remove never went live').toHaveAccessibleName('Tap again to remove', { timeout: 10_000 });
+      const live = await readX(remove);
+      expect(live.text, 'R4 D4: the live control does not read Tap again').toBe('Tap again');
+      expect(Math.abs(live.button.width - armed.button.width), `R4 D4: the button changed width between Wait and Tap again (${armedRead} then ${JSON.stringify(live)})`).toBeLessThanOrEqual(0.5);
+
+      // The second live press commits; the DELETE is held. X36a: the spinner leads the word.
       await page.keyboard.press('Enter');
       await del.arrived;
       await expect(remove.locator('[data-slot="spinner"]'), 'X36a: no spinner showed while the removal was held').toBeVisible({ timeout: 5_000 });
@@ -313,22 +334,20 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
       await expect(remove).toHaveAccessibleName(`Remove ${NAMES[0]}, removing`);
       const held = await readX(remove);
       const heldRead = JSON.stringify(held);
-      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (plan 88.9-68)
-      console.log(`[88.9-68 X36a] ${testInfo.project.name} held: ${heldRead}`);
-      expect(held.box && held.spinner, `X36a: the held x has no box or no spinner (${heldRead})`).toBeTruthy();
-      if (held.box && held.spinner) {
-        expect(held.spinner.left, `X36a: the spinner starts left of the box (${heldRead})`).toBeGreaterThanOrEqual(held.box.left - 0.5);
-        expect(held.spinner.right, `X36a: the spinner ends right of the box (${heldRead})`).toBeLessThanOrEqual(held.box.right + 0.5);
-        expect(held.spinner.top, `X36a: the spinner starts above the box (${heldRead})`).toBeGreaterThanOrEqual(held.box.top - 0.5);
-        expect(held.spinner.bottom, `X36a: the spinner ends below the box (${heldRead})`).toBeLessThanOrEqual(held.box.bottom + 0.5);
-        expect(held.box.scrollWidth, `X36a: the box's content overflows it (${heldRead})`).toBeLessThanOrEqual(held.box.clientWidth);
-      }
-      expectSameBox(held.title, rest.title, 'X36a: the game title while the removal is held');
-      expectSameBox(held.slot, rest.slot, 'X36a: the slot while the removal is held');
+      // eslint-disable-next-line no-console -- the measured boxes are recorded from the CI log (88.9-52 R4 D4)
+      console.log(`[88.9-52 R4 D4 X36a] ${testInfo.project.name} held: ${heldRead}`);
+      expect(held.text, `X36a: the held control does not read Remove (${heldRead})`).toBe('Remove');
+      if (!held.spinner || !held.word) throw new Error(`X36a: the held Remove has no spinner or no word (${heldRead})`);
+      expect(held.spinner.left, `X36a: the spinner starts left of the button (${heldRead})`).toBeGreaterThanOrEqual(held.button.left - 0.5);
+      expect(held.spinner.right, `X36a: the spinner does not lead the word (${heldRead})`).toBeLessThanOrEqual(held.word.left + 0.5);
+      expect(held.spinner.top, `X36a: the spinner starts above the button (${heldRead})`).toBeGreaterThanOrEqual(held.button.top - 0.5);
+      expect(held.spinner.bottom, `X36a: the spinner ends below the button (${heldRead})`).toBeLessThanOrEqual(held.button.bottom + 0.5);
+      // W38: the right-anchored word holds its place while the write runs.
+      expect(Math.abs(held.word.right - rest.word.right), `X36a: the word moved while the removal was held (${restRead} then ${heldRead})`).toBeLessThanOrEqual(0.5);
       expect(del.count(), 'X36a: two live presses sent more than one removal').toBe(1);
 
       const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-      expect(fits, 'X53: horizontal overflow on the collection card').toBe(true);
+      expect(fits, 'R4 D4: horizontal overflow on the collection card').toBe(true);
     } finally {
       // Answered in the browser, never handed on.
       await del.release({ message: 'Game removed from your collection' });

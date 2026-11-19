@@ -819,66 +819,49 @@ describe('userProfile destructive gates (Req 11)', () => {
 
     // 88-33 Task 5 (fork 7, walk row 381): the GLYPH control arms into the
     // labeled verb 'Remove' — not the default instruction copy.
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
     await waitFor(() =>
       expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-catan')
     );
   });
 
-  // 88-33 Task 5 (fork 7): resting prominence + no-reflow reservation on the
-  // collection glyph control — a real affordance box at the 44px floor, with the
-  // armed label's width reserved at rest so arming cannot squeeze the title.
-  it('collection remove is a 44px affordance box whose armed width is pre-reserved', async () => {
+  // 88-33 Task 5 (fork 7): resting prominence + no-reflow reservation on the collection glyph
+  // control. AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the glyph is gone. The control is a
+  // worded Remove button that arms to the house Tap again; its width is held from the arm (the
+  // phone Remove's form), not reserved at rest. The look is pinned in the R4 D4 test below.
+  it('collection remove is a worded 44px Remove that counts down and then reads Tap again, in one armed width', async () => {
     const { userGamesAPI } = await import('@/lib/api');
     (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(OWNED_GAMES);
 
     renderProfile();
     const trigger = await screen.findByRole('button', { name: 'Remove Catan' });
-    expect(trigger.className).toContain('min-h-11');
-    expect(trigger.className).toContain('min-w-11');
-    // AMENDED Phase 88.9-68 (X53): the border is the small box's inside the 44px button, and the
-    // armed-width reserve sits on the slot around the button, no longer inside it.
-    expect((trigger.firstElementChild as HTMLElement).className.split(/\s+/)).toContain('border');
-    // X69 width (88.9-67): the slot is armed-width at rest through the shared reserve — every
-    // label the armed x can paint, each invisible and set in the armed 600 (the 88.6-17
-    // measurement), as attribute text that never enters the button's own text.
-    const slot = trigger.closest('span.inline-grid') as HTMLElement;
-    expect(slot, 'the x has no slot around it').not.toBeNull();
-    const reserves = Array.from(slot.querySelectorAll(':scope > [data-reserve]'));
-    expect(reserves.map((span) => span.getAttribute('data-reserve'))).toEqual([
-      'Wait (3)',
-      'Wait (2)',
-      'Wait (1)',
-      'Remove',
-    ]);
-    for (const span of reserves) {
-      expect(span.getAttribute('aria-hidden')).toBe('true');
-      expect(span.className.split(/\s+/)).toContain('invisible');
-      expect(span.className.split(/\s+/)).toContain('font-semibold');
-      expect(span.textContent).toBe('');
-    }
-    // AMENDED Phase 88.9-68 (X53): at rest the x paints the dialog's X icon and no text.
-    expect(trigger.textContent).toBe('');
-    expect(trigger.querySelector('svg')).not.toBeNull();
+    expect(trigger.className.split(/\s+/)).toContain('min-h-11');
+    expect(trigger.textContent).toBe('Remove');
+    expect(trigger.querySelector('svg')).toBeNull();
+    // Nothing is reserved at rest.
+    expect(trigger.querySelectorAll('[data-reserve]')).toHaveLength(0);
 
-    // Armed: the visible label counts Wait 3, 2, 1, then reads 'Remove', on the
-    // error-subtle treatment (the box's, AMENDED Phase 88.9-68).
+    // Armed: the visible label counts Wait 3, 2, 1, then reads Tap again; the weight is the
+    // only change of look (W38), and the width is held from the arm through every label.
     fireEvent.click(trigger);
     const gated = screen.getByRole('button', { name: 'Remove Catan, wait 3 seconds' });
     expect(gated.textContent).toBe('Wait (3)');
-    // AMENDED Phase 88.9-52 (W38, owner ruling): one look in every state. Armed keeps the resting
-    // bordered box and adds only the 600 weight; the error-subtle FILL it gained is gone (the
-    // hover fill is the resting box's own, in every state).
-    const armedBoxTokens = (button: HTMLElement) => (button.firstElementChild as HTMLElement).className.split(/\s+/);
-    for (const tokens of [armedBoxTokens(gated)]) {
-      expect(tokens).toEqual(expect.arrayContaining(['font-semibold', 'border', 'border-status-error', 'group-hover:bg-status-error-subtle']));
-      expect(tokens).not.toContain('bg-status-error-subtle');
+    expect(gated.className.split(/\s+/)).toContain('font-semibold');
+    const reserves = Array.from(gated.querySelectorAll('[data-reserve]'));
+    expect(reserves.map((span) => span.getAttribute('data-reserve'))).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again']);
+    for (const span of reserves) {
+      expect(span.getAttribute('aria-hidden')).toBe('true');
+      expect(span.className.split(/\s+/)).toContain('invisible');
+      expect(span.textContent).toBe('');
     }
     passGate();
-    const armed = screen.getByRole('button', { name: 'Remove' });
-    expect(armed.textContent).toBe('Remove');
-    expect(armedBoxTokens(armed)).toEqual(expect.arrayContaining(['font-semibold', 'border', 'border-status-error']));
-    expect(armedBoxTokens(armed)).not.toContain('bg-status-error-subtle');
+    const armed = screen.getByRole('button', { name: 'Tap again to remove' });
+    expect(armed).toBe(gated);
+    expect(armed.textContent).toBe('Tap again');
+    expect(armed.className.split(/\s+/)).toContain('font-semibold');
+    for (const cls of armed.className.split(/\s+/)) {
+      expect(cls === 'border' || cls.startsWith('border-') || cls.startsWith('bg-'), cls).toBe(false);
+    }
   });
 
   // AR DEC-2: the armed state is keyed by TARGET, not a boolean. Without that,
@@ -894,7 +877,7 @@ describe('userProfile destructive gates (Req 11)', () => {
     expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
     passGate();
     // The new target is armed (labeled 'Remove' — fork 7), the old one is back at rest.
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tap again to remove' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove Catan' })).toBeInTheDocument();
     expect(armedAnnouncement()).toContain('Brass');
   });
@@ -1133,7 +1116,7 @@ describe('userProfile two-tap armed state (F-357)', () => {
         perStep.push(SafeImageStub.mock.calls.length);
       }
       // The control went live, so the ticks really ran.
-      expect(screen.getByRole('button', { name: 'Remove' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'Tap again to remove' })).toHaveAttribute('aria-pressed', 'true');
       // On arm and on each tick: the armed card renders (at least once), the other 29 do not.
       for (const count of perStep) {
         expect(count, 'card renders per step: ' + perStep.join(', ')).toBeGreaterThanOrEqual(1);
@@ -1236,7 +1219,7 @@ describe('userProfile toast register (OI-5)', () => {
     renderProfile();
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Catan' }));
     passGate();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
 
     // AMENDED Phase 88.9-24 (save-feedback rule 2): no success toast; the root announcer speaks it once.
     await waitFor(() => expect(vi.mocked(announceStatus)).toHaveBeenCalledWith('Game removed'));
@@ -2429,13 +2412,15 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
   // survive are named, so a sixth is a decision and not a rebase.
   // AMENDED Phase 88.9-67 (X69 width): the fifth 600 is no longer a sizer span's className; it is
   // the collection x's reserveClassName on ReservedLabel, the same measurement in the shared reserve.
-  it('leaves exactly five 600 weights, all of them armed-state or the armed-label sizer', async () => {
+  // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): FOUR. The collection x's sizer and its armed box
+  // are gone with the x; the worded Remove that replaced it is one armed site, like the others.
+  it('leaves exactly four 600 weights, all of them armed-state (five until the collection x and its sizer went, R4 D4)', async () => {
     const source = await pageSource();
     const stripped = source
       .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
       .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
     const sites = [...stripped.matchAll(/\bfont-(?:medium|semibold)\b/g)];
-    expect(sites).toHaveLength(5);
+    expect(sites).toHaveLength(4);
     expect(sites.every((m) => m[0] === 'font-semibold')).toBe(true);
 
     // Each survivor sits within reach of the thing that justifies it.
@@ -2453,8 +2438,8 @@ describe('userProfile type + weight sweep (plan 88.6-17)', () => {
       .filter((m) => !isSizer(m))
       .map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60));
     const armed = windows.filter((w) => /\.isArmed\(/.test(w));
-    const cardArmed = windows.filter((w) => !/\.isArmed\(/.test(w) && /\barmed\s*\? 'font-semibold /.test(w));
-    expect(sizer).toHaveLength(1);
+    const cardArmed = windows.filter((w) => !/\.isArmed\(/.test(w) && /\barmed \? ' font-semibold' : ''/.test(w));
+    expect(sizer).toHaveLength(0);
     expect(armed).toHaveLength(3);
     expect(cardArmed).toHaveLength(1);
     expect(stripped.match(/\barmed=\{/g)).toEqual(['armed={']);
@@ -5050,7 +5035,7 @@ describe('collection list and first-load failure (88.6.1-67: D-09a, D-37, Req 9)
   async function twoTapRemove(name: string) {
     fireEvent.click(await screen.findByRole('button', { name: `Remove ${name}` }));
     passGate();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
   }
 
   afterEach(async () => {
@@ -5300,7 +5285,7 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
   async function twoTapRemove(user: ReturnType<typeof userEvent.setup>, name: string) {
     await user.click(await screen.findByRole('button', { name: `Remove ${name}` }));
     passGate();
-    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await user.click(screen.getByRole('button', { name: 'Tap again to remove' }));
   }
 
   function addFromBgg() {
@@ -5390,7 +5375,7 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
     (document.activeElement as HTMLElement | null)?.blur();
     fireEvent.click(remove);
     passGate();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
     await waitFor(() => expect(document.activeElement).toBe(addFromBgg()));
     expect(screen.queryByRole('button', { name: 'Remove Catan' })).toBeNull();
     await act(async () => { refresh.resolve([OWNED_GAMES[1]]); });
@@ -5410,7 +5395,7 @@ describe('collection refresh notice and Remove focus (88.6.1-67: RF1, Req 5)', (
     const remove = await screen.findByRole('button', { name: 'Remove Catan' });
     await user.click(remove);
     passGate();
-    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await user.click(screen.getByRole('button', { name: 'Tap again to remove' }));
     await waitFor(() => expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1));
     // CONFIRM-ONLY in jsdom: the pressed Remove keeps focus and its row stays while the call is held.
     expect(document.activeElement).toBe(remove);
@@ -6822,59 +6807,58 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     (usersAPI.removePhone as Mock).mockReset().mockResolvedValue({});
   });
 
-  it("X53 (88.9-68): the collection x rests as a 32px bordered box holding the dialog's 20px X icon inside a 44px hit area, and the armed-width sizer sits on the slot outside the box", async () => {
+  // R4 D4 (88.9-52, owner 2026-11-18: the x becomes a Remove button; his reason: "the x works better
+  // for quick removal of things, but the fact that we aren't allowing quick removal, I'm not sure if
+  // the x is warranted here."). This REPLACES the X53 test (the 32px bordered x in a 44px hit area)
+  // and PIX-2's anchor pins: there is no x, no box and no slot around the button any more.
+  // The marker is at src/app/userProfile/page.js ("DECISION Phase 88.9-52 (R4 D4, owner 2026-11-18): the collection remove is a worded Remove button").
+  it('R4 D4 (88.9-52; X53 superseded): the collection remove is a worded Remove button in the look of the other list removes, with no x, no box and no slot, on a line that lets it drop under the title', async () => {
     const { userGamesAPI } = await import('@/lib/api');
     (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
     renderProfile();
-    const x = await vi.waitFor(() => screen.getByRole('button', { name: 'Remove Catan' }));
+    const remove = await vi.waitFor(() => screen.getByRole('button', { name: 'Remove Catan' }));
 
-    // The button is the hit area: 44px floors, no border and no fill of its own.
-    const classes = x.className.split(/\s+/);
-    expect(classes).toContain('min-h-11');
-    expect(classes).toContain('min-w-11');
-    expect(classes.filter((c) => c === 'border' || c.startsWith('border-') || c.startsWith('bg-'))).toEqual([]);
+    // A word, not a glyph; the name still names the action and the object (F-369).
+    expect(remove.textContent).toBe('Remove');
+    expect(remove.querySelector('svg')).toBeNull();
+    expect(remove).toHaveAccessibleName('Remove Catan');
+    // The schedule Delete's class string plus ml-auto and shrink-0 (the Friends Remove's form):
+    // 44px tall, no border and no fill in any state, error-subtle on hover.
+    expect(remove.className.split(/\s+/).filter(Boolean)).toEqual([
+      'ml-auto', 'inline-flex', 'min-h-11', 'shrink-0', 'items-center', 'whitespace-nowrap', 'rounded-btn', 'px-2', 'text-sm',
+      'text-content-status-error', 'hover:bg-status-error-subtle', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring',
+    ]);
+    // The page's own phone Remove is the model: every look class it carries, this one carries.
+    const source = await pageSource();
+    const phone = /className=\{`-mx-2 ml-3 (inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring)\$\{/.exec(source);
+    expect(phone, 'LOCATOR: the phone Remove class string').not.toBeNull();
+    for (const cls of phone![1].split(' ')) expect(remove.className.split(/\s+/), cls).toContain(cls);
+    // No slot around the button and nothing reserved at rest.
+    expect(remove.closest('span.inline-grid')).toBeNull();
+    expect(remove.querySelectorAll('[data-reserve]')).toHaveLength(0);
 
-    // One visible box inside it: 32px, bordered in the error ink, holding the dialog's X.
-    const box = x.firstElementChild as HTMLElement;
-    const boxClasses = box.className.split(/\s+/);
-    for (const cls of ['h-8', 'min-w-8', 'border', 'border-status-error']) expect(boxClasses).toContain(cls);
-    // The box is 32px SQUARE at rest: its padding must leave the 32px minimum in charge. The 20px
-    // icon with 6px of padding each side and the 1px border measured 34px wide in CI (runs
-    // 43796833042 and 43796838489), so the padding is 4px each side (20 + 8 + 2 = 30, under 32).
-    // AMENDED Phase 88.9-52 (PIX-2, W38 one look): 5px each side, so the box is 32px by its own content
-    // (20 + 10 + 2) and the X sits 6px inside the box's right edge with no centring slack. With 4px the
-    // 2px of slack was shared round the X at rest and gone while busy, one of the two causes of the X
-    // moving while busy (the picture pass measured 7px at 375).
-    expect(boxClasses).toContain('px-1.25');
-    expect(boxClasses.filter((c) => /^p[xlr]?-/.test(c))).toEqual(['px-1.25']);
-    // The button anchors the box 6px inside its right edge at rest (44 - 6 - 32 leaves 6 on the left,
-    // the same place as centred) and keeps that anchor while busy.
-    expect(classes).toContain('justify-end');
-    expect(classes).toContain('pr-1.5');
-    expect(classes).not.toContain('justify-center');
-    const icon = box.querySelector('svg');
-    expect(icon, 'the box holds no icon').not.toBeNull();
-    expect(icon).toHaveAttribute('width', '20');
-    expect(icon).toHaveAttribute('height', '20');
-    expect(icon).toHaveAttribute('stroke-width', '2');
-    expect(icon).toHaveAttribute('aria-hidden', 'true');
-    expect(x.textContent).toBe('');
+    // ROOM (the D2 form): the line may wrap, the title column asks for 8rem before it shares the
+    // line, and the button keeps to the right when it drops.
+    const line = remove.parentElement as HTMLElement;
+    expect(line.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'justify-between', 'items-start', 'gap-x-2']));
+    const title = line.firstElementChild as HTMLElement;
+    expect(title.className.split(/\s+/).filter(Boolean)).toEqual(['flex-[1_1_8rem]', 'min-w-0']);
+    expect(within(title).getByRole('heading', { name: 'Catan' })).toBeInTheDocument();
+    expect(line.children).toHaveLength(2);
 
-    // The reserve wraps the BUTTON: nothing is reserved inside the box at rest, and the slot holds
-    // 67's reserve set unchanged, at the armed 600, with the button at the slot's right edge.
-    expect(x.querySelectorAll('[data-reserve]')).toHaveLength(0);
-    const slot = x.closest('span.inline-grid') as HTMLElement;
-    expect(slot, 'the x has no slot around it').not.toBeNull();
-    expect(slot.className.split(/\s+/)).toContain('justify-items-end');
-    const reserves = Array.from(slot.querySelectorAll(':scope > [data-reserve]'));
-    expect(reserves.map((span) => span.getAttribute('data-reserve'))).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Remove']);
-    for (const span of reserves) {
-      const reserveClasses = span.className.split(/\s+/);
-      expect(reserveClasses).toContain('invisible');
-      expect(reserveClasses).toContain('font-semibold');
-      expect(reserveClasses).toContain('px-2');
-    }
-    expect(x).toHaveAccessibleName('Remove Catan');
+    // Armed: Wait (3), then the house Tap again, spoken as the sentence the other removes use.
+    fireEvent.click(remove);
+    expect(remove).toHaveAccessibleName('Remove Catan, wait 3 seconds');
+    expect(remove.textContent).toBe('Wait (3)');
+    expect(remove.className.split(/\s+/)).toContain('font-semibold');
+    advance(CONFIRM_DELAY_MS);
+    expect(remove).toHaveAccessibleName('Tap again to remove');
+    expect(remove.textContent).toBe('Tap again');
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    // The config: the fork 7 armedLabel is gone, the hook default applies.
+    const stripped = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(stripped).not.toMatch(/armedLabel:/);
+    expect(stripped.match(/armedName: 'Tap again to remove'/g)).toHaveLength(2);
   });
 
   it('X36a (88.9-68): a committing collection Remove is aria-disabled, named with the removing suffix, shows the house spinner after 200 ms, and two taps send one DELETE', async () => {
@@ -6896,28 +6880,24 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledTimes(1);
     expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-catan');
 
-    // In flight: no longer armed, aria-disabled, named with the suffix, the X still showing.
+    // In flight: no longer armed, aria-disabled, named with the suffix, the word Remove showing
+    // (AMENDED Phase 88.9-52 R4 D4: a word now, where the X icon was).
     expect(x).not.toHaveAttribute('aria-pressed');
     expect(x).toHaveAttribute('aria-disabled', 'true');
     expect(x).toHaveAttribute('aria-label', 'Remove Catan, removing');
-    expect(x.querySelector('svg')).not.toBeNull();
+    expect(x.textContent).toBe('Remove');
     expectSpinnerAppearsAfterTheDelay(x);
-    // The spinner sits in the bordered box, beside the X.
-    expect((x.firstElementChild as HTMLElement).querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
-    // W38 (88.9-52): the spinner LEADS, so the X (right-anchored) holds its place while the box grows left.
-    // PIX-2 (88.9-52): the button and the box keep their resting class strings while busy, so the box stays
-    // anchored 6px inside the button's right edge once it is wider than the 44px button (it was centred at
-    // rest and flush right while busy: the X moved 7px).
+    // W38 (88.9-52): the spinner LEADS the word, so the right-anchored word holds its place while the
+    // button grows left. AMENDED Phase 88.9-52 (R4 D4): the bordered box and PIX-2's anchor classes
+    // went with the x; the button keeps its resting class string while busy.
     const busyClasses = x.className.split(/\s+/);
-    expect(busyClasses).toContain('justify-end');
-    expect(busyClasses).toContain('pr-1.5');
-    expect(busyClasses).not.toContain('justify-center');
-    expect((x.firstElementChild as HTMLElement).className.split(/\s+/).filter((c) => /^p[xlr]?-/.test(c))).toEqual(['px-1.25']);
-    const boxChildren = Array.from((x.firstElementChild as HTMLElement).children);
-    expect(boxChildren).toHaveLength(2);
-    expect(boxChildren[0].getAttribute('data-slot')).toBe('spinner');
-    expect(boxChildren[1].tagName.toLowerCase()).toBe('svg');
-    expect(boxChildren[1].getAttribute('data-slot')).not.toBe('spinner');
+    expect(busyClasses).toContain('ml-auto');
+    expect(busyClasses).not.toContain('font-semibold');
+    const parts = Array.from(x.children);
+    expect(parts).toHaveLength(2);
+    expect(parts[0].getAttribute('data-slot')).toBe('spinner');
+    expect(parts[0].className.split(/\s+/)).toContain('mr-2');
+    expect(parts[1].textContent).toBe('Remove');
     // The other card's x is untouched.
     const other = screen.getByRole('button', { name: 'Remove Brass' });
     expect(other).not.toHaveAttribute('aria-disabled');

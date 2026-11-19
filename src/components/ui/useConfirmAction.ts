@@ -79,6 +79,10 @@ export const TWO_TAP_WINDOW_MS = CONFIRM_DELAY_MS + CONFIRM_LIVE_MS;
    one-string armed label of Phase 88-05 and the Profile phone Remove's visible sentence (X36b).
    NOT covered: a control whose live label is its own verb (the Profile collection x arms to
    Remove by an earlier owner ruling, fork 7); it passes armedLabel and is unchanged.
+   AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): that exception is gone. The collection
+   control is a worded Remove button now and arms to Tap again like the rest, so no shipped
+   control passes armedLabel any more; the option stays for a control whose live label must be
+   its own verb. The ruling is at src/app/userProfile/page.js ("AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): REPLACED.").
    Lengthening the visible label again is a decision, not a cleanup. */
 /** The armed VISIBLE label of every two-tap control. */
 export const DEFAULT_ARMED_LABEL = 'Tap again';
