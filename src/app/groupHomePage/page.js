@@ -1125,7 +1125,8 @@ function GroupHomePage(){
                 (an uncapped inline-block grows to fit the word, so the crumb's `wrap-break-word`
                 below was inert — the owner's name ran off a 375px screen). `wrap-break-word` sits on
                 the nav because overflow-wrap inherits (groupPlanning's group link additionally
-                carries `max-w-[200px] truncate`, so it truncates rather than wraps — by design).
+                carries `max-w-[200px] truncate`, so it truncates rather than wraps — by design;
+                AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): no longer, it wraps in full like this one).
                 `min-w-0` is on the nav and KEPT on purpose: it is inert today, because no breadcrumb
                 nav is a flex item (every parent is a block div), and it is there so a future flex
                 parent cannot let `min-width: auto` beat `max-w-full` and re-open UAT3-D1. Pinned on

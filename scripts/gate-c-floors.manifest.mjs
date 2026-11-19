@@ -62,7 +62,7 @@ export const floors = [
   { spec: 'e2e/group-header-controls.spec.ts', project: 'phone', floor: 1, why: '1 of 7 listed run in phone; 6 skipped here by an isMobile predicate' },
   { spec: 'e2e/group-home-games-refresh.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed (raised 1 to 2 by 88.9-52 round 4, R4-A3) run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/group-home-load-failures.spec.ts', project: 'phone', floor: 7, why: '7 of 7 listed run in phone (88.9-52 P1 added test 7); the other project is skipped by an isMobile predicate' },
-  { spec: 'e2e/group-planning-role-failure.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/group-planning-role-failure.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone (the second added by 88.9-52 R4 D2); the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/group-settings-danger.spec.ts', project: 'phone', floor: 9, why: '9 of 9 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/group-settings-pending-focus.spec.ts', project: 'phone', floor: 5, why: '5 of 5 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/header-main-nav.spec.ts', project: 'journeys', floor: 5, why: '5 of 7 listed run in journeys; 2 skipped here by an isMobile predicate' },

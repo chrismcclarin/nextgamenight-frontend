@@ -721,12 +721,23 @@ export default function GroupPlanningPage() {
                 breadcrumb marker records (its "deliberately NOT added" sentence), which plan
                 88.6.1-55 amends while it adds the token to the shared breadcrumb scan. Removing it
                 is a decision, not a cleanup. */}
+            {/* AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the group name in this breadcrumb wraps
+                in full. It was cut at 200px with an ellipsis (max-w-[200px] truncate on an
+                inline-block link). The owner's rule: never cap, shrink or cut text to make a layout
+                fit. The link is plain inline text now, the group page's own crumb form (UAT3-D1):
+                it breaks between words, and inside a word only when that one word is longer than
+                the pill's line (the nav's wrap-break-word and max-w-full, unchanged). THE NAME'S
+                ROOM: nothing here competes with it for width. Home, the separators and the page
+                title are inline text on the same lines, so the name always has the pill's full
+                line to break on and can never be squeezed into letter-stacks; no minimum width is
+                needed and none is set. CHOSEN OVER a wider cap (still a cut) and OVER a block
+                link (it would put every crumb on its own line at every width). */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {group && (
                     <>
-                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 max-w-[200px] truncate inline-block align-bottom focus-visible:ring-offset-surface-elevated">
+                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">
                             {group.name}
                         </Link>
                         <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
