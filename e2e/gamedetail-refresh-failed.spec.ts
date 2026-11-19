@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
 import { holdRequests, settleAnimations } from './support/inFlight';
 import { scrubbedFetch } from './support/scrubbedFetch';
+import { expectHeldInside, expectNeighbourWhole, expectWholeWords, readWordLines, setNarrowLargeText, TWO_WORD_NAME } from './support/wordLines';
 import { E2E_GAME, E2E_GAME_NAME, E2E_GAME_PATH, routeFakeGameSuccess } from './support/fakeGame';
 
 // Plan 88.6.1-74 — contract C8 (d) of plan 88.6.1-70 for the event / game page at 375px: a failed
@@ -275,6 +276,78 @@ test('event page: a failed background refresh keeps the event and shows the noti
   await retry.click();
   await expect(page.getByRole('main').getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
   await expect(page.locator(':focus')).toHaveText('Game Night');
+});
+
+// 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room; his worry: a
+// long name broken up too much to read, We/eke/nd W/arr/iors). A Participants chip cut its name to
+// one line with an ellipsis; it now wraps by piece
+// (src/app/gameDetail/page.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the chip's name wraps")).
+// The event read is real; only its participant list is replaced in the browser, with one typed-in
+// name and one guest who has an account (nothing is written). Read at 320 wide with the root text
+// at 200%: each word of the name is on one line, the chip's pills are whole inside the chip, the
+// chip is inside its card, and an Invite button beside a chip (drawn only for an owner or admin) is
+// whole and at least 44px. The page's own sideways scroll at this size is recorded in the log: the
+// rest of the event page at 320 / 200% is not this test's subject.
+test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each word of a two-word name whole and its pills inside the chip', async ({ page }) => {
+  const participants = [
+    { user_id: null, username: TWO_WORD_NAME, is_guest: true, is_custom: true },
+    { user_id: '8861a072-0000-4000-8000-0000000000e2', username: TWO_WORD_NAME, is_guest: true, is_custom: false },
+  ];
+  await page.route('**/api/events/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET' && EVENT_GET_PATH.test(new URL(request.url()).pathname)) {
+      const response = await scrubbedFetch(route);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        await route.fulfill({ response });
+        return;
+      }
+      if (body && typeof body === 'object' && !Array.isArray(body)) {
+        (body as { EventParticipations?: unknown }).EventParticipations = participants;
+      }
+      await route.fulfill({ response, json: body });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto(E2E_EVENT_DETAIL_PATH);
+  await expect(page.getByRole('heading', { level: 1, name: 'Game Night' })).toBeVisible();
+  const main = page.getByRole('main');
+  // The chip's name is the 600 span that holds the answered name; its parent is the bordered chip,
+  // and the chip's parent holds the Invite button when one is drawn.
+  const names = main.locator('span.font-semibold.wrap-break-word', { hasText: TWO_WORD_NAME });
+  await expect(names, 'R4 D2: the two answered participants never rendered as chips').toHaveCount(2, { timeout: 15_000 });
+  await settleAnimations(main);
+
+  await setNarrowLargeText(page, 'R4 D2 participant chip');
+  const expected = [
+    ['Weekend', 'Warriors', '(Guest)'],
+    ['Weekend', 'Warriors'],
+  ];
+  for (let i = 0; i < 2; i += 1) {
+    const name = names.nth(i);
+    const chip = name.locator('xpath=..');
+    const outer = chip.locator('xpath=..');
+    const strip = outer.locator('xpath=..');
+    const read = await readWordLines(name);
+    // eslint-disable-next-line no-console -- the measured chip is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 participant chip ${i}] 320 / 200%: ${JSON.stringify(read)}`);
+    expectWholeWords(read, expected[i], `R4 D2 chip ${i} at 320 / 200%`, { pageSideways: false });
+    // The chip holds its pills, and the strip holds the chip and its Invite button.
+    await expectHeldInside(chip, `R4 D2 chip ${i}`);
+    await expectHeldInside(strip, `R4 D2 chip ${i}'s strip`);
+    const pieces = chip.locator(':scope > span');
+    expect(await pieces.count(), `R4 D2 chip ${i}: the chip has no piece after its name`).toBeGreaterThan(1);
+    const buttons = outer.getByRole('button');
+    const buttonCount = await buttons.count();
+    // eslint-disable-next-line no-console -- whether the fixture viewer is offered Invite is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 participant chip ${i}] buttons beside the chip: ${buttonCount}`);
+    for (let b = 0; b < buttonCount; b += 1) {
+      await expectNeighbourWhole(buttons.nth(b), `R4 D2 chip ${i}: the button beside the chip`, { button: true });
+    }
+  }
 });
 
 // No game fixture exists in CI, so the game arm serves the shared CUSTOM fake game and an empty

@@ -1200,6 +1200,29 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
     }
   });
 
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room). The chip's
+  // name was cut to one line. jsdom lays nothing out, so this holds the classes of the by-piece
+  // form; the rendered widths are in e2e/gamedetail-refresh-failed.spec.ts ("R4 D2 (88.9-52)").
+  it('R4 D2 (88.9-52): a Participants chip wraps by piece, its name is never cut and never squeezed under one word', async () => {
+    pinClockBeforeTheNight();
+    try {
+      renderEventDetail({ role: 'owner', participants: [{ ...SIX_PARTICIPANTS[0], username: 'Weekend Warriors' }] });
+      const name = await screen.findByText('Weekend Warriors');
+      expect(name.className).not.toMatch(/(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere|min-w-0|overflow-hidden)(\s|$)/);
+      expect(name).toHaveClass('wrap-break-word', 'max-w-full', 'font-semibold');
+      // The bordered chip: its pieces drop to the next line before the name gives up a word.
+      const chip = name.parentElement as HTMLElement;
+      expect(chip).toHaveClass('inline-flex', 'flex-wrap', 'max-w-full');
+      expect(chip.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
+      await waitFor(() => expect(within(chip).getByText('No reply')).toBeInTheDocument());
+      // The chip and its Invite button: the button drops under the chip.
+      const outer = chip.parentElement as HTMLElement;
+      expect(outer).toHaveClass('inline-flex', 'flex-wrap', 'max-w-full');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('W26 (88.9-52): once the night has started nobody shows No reply; a reply that was given stays', async () => {
     // eventFixture's night began 2026-03-01; the page reads the live clock (hasStarted), and RSVP
     // closes at the start, so "No reply" on a started night describes nothing anyone can act on.
@@ -2004,8 +2027,12 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     expect(chip.contains(invite), 'the invite sits beside the chip, not inside it').toBe(false);
     const group = chip.parentElement as HTMLElement;
     expect(group.contains(invite)).toBe(true);
-    expect(group.className.split(/\s+/)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'max-w-full']));
-    expect(chip.className.split(/\s+/)).toContain('min-w-0');
+    // AMENDED 88.9-52 R4 D2 (owner 2026-11-18): the pair may wrap, so the button drops under the chip, and
+    // the chip no longer carries min-w-0 (it let the button squeeze the name; the chip is capped at the
+    // strip by max-w-full instead).
+    expect(group.className.split(/\s+/)).toEqual(expect.arrayContaining(['inline-flex', 'flex-wrap', 'items-center', 'max-w-full']));
+    expect(chip.className.split(/\s+/)).toContain('max-w-full');
+    expect(chip.className.split(/\s+/)).not.toContain('min-w-0');
 
     // Held: the kept word, the name with the suffix, and the house spinner.
     await user.click(invite);

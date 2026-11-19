@@ -233,12 +233,18 @@ describe('Phase 88.9-63 (X16 / X17a): one pill family, sentence case, names 600'
     }
 
     // The two participant names take 600 so the name outweighs the 12px pill beside it: the
-    // Participants chip's name (it truncates) and the See-all row's name (it wraps in full).
+    // Participants chip's name and the See-all row's name. Both wrap in full: the chip's name was
+    // cut to one line until 88.9-52 R4 D2 (owner 2026-11-18), the marker is at
+    // src/app/gameDetail/page.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the chip's name wraps").
     const gamePage = scan('app/gameDetail/page.js', PILL_FILES['app/gameDetail/page.js']);
     expect(
-      gamePage.chunkTexts.filter((t) => t === 'text-content-primary truncate font-semibold'),
-      'the Participants chip name is 600',
+      gamePage.chunkTexts.filter((t) => t === 'text-content-primary max-w-full wrap-break-word font-semibold'),
+      'the Participants chip name is 600, wraps by whole words and is capped at its chip',
     ).toHaveLength(1);
+    expect(
+      gamePage.chunkTexts.filter((t) => /(^|\s)truncate(\s|$)/.test(t) && /(^|\s)font-semibold(\s|$)/.test(t)),
+      'no 600 name on the game page is cut to one line',
+    ).toEqual([]);
     expect(
       gamePage.chunkTexts.filter((t) => t === 'text-content-primary font-semibold'),
       'the See-all row name is 600',

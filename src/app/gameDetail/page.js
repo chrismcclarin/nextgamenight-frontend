@@ -142,11 +142,28 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
     const isCustom = !!participant.is_custom;
     return (
         /* DECISION Phase 88.9-65 (X63, owner at N43: the chip grows too thick): the invite sits beside its chip, as at its other two sites, chosen OVER a sub-44 button inside it (the .btn phone floor is unlayered; .btn-compact is closed) and OVER a 44px box in a slim chip (its ring would cross the chip edge, as in X19). Heard name owner-ratified 2026-11-14. The error arm keeps the visible word Retry and its name adds inviting <name> to the group (owner 2026-11-14 Q7 B), chosen OVER a bare Retry (it does not say what is retried or for whom) and OVER Retry, invite <name> to the group. */
-        <span className="inline-flex items-center gap-1.5 max-w-full">
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full min-w-0">
+        <span className="inline-flex flex-wrap items-center gap-1.5 max-w-full">
+        <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
             {/* 88.9-63 (X16 / X17a): the name is 600 and the pills below are sentence case on the pill
-                family; the marker is at the See-all row's name. */}
-            <span className="text-content-primary truncate font-semibold">
+                family; the marker is at the See-all row's name.
+                AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the chip's name wraps in full, by
+                whole words, with no line limit, and the chip wraps BY PIECE, the session chip's
+                form on this page (this file ("DECISION Phase 88.9-65 (X47): the chip wraps by piece")).
+                The name's floor is its longest word (the automatic minimum of a flex item, capped
+                at the chip by max-w-full; wrap-break-word breaks inside a word only when that one
+                word is wider than the whole chip), and its NEIGHBOURS move first: the reply pill,
+                the Owner / Admin / Guest pills and the die drop to the chip's next line, and the
+                Invite button drops under the chip. REPLACES truncate on the name with min-w-0 on
+                the chip: together they let the pills squeeze a name down to an ellipsis, and with
+                the cut alone removed they would squeeze it to one letter per line (the owner's
+                We/eke/nd W/arr/iors). REJECTED: a fixed rem floor (wider than a short name needs,
+                and still under a long word); flex-1 on the name (the pills would hang beside a
+                two-line name, which the X47 form already turned down for the session chip); a
+                line clamp (still a cut). The sum at 320 wide with text at 200%: the strip is 222px
+                (320 - 48 page - 48 card - 2), the chip's sides take 34, and Weekend at 28px is
+                about 121px, so the name has its line and the pills sit under it. At ordinary text
+                a chip whose pieces fit on one line is unchanged. */}
+            <span className="text-content-primary max-w-full wrap-break-word font-semibold">
                 {isCustom ? (
                     <>{participant.username || 'Guest'}<span className="text-content-muted ml-1">(Guest)</span></>
                 ) : (

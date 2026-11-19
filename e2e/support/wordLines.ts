@@ -130,3 +130,34 @@ export async function expectNeighbourWhole(locator: Locator, label: string, opti
     expect(Math.round(read.height * 100) / 100, `${label}: shorter than 44px (${line})`).toBeGreaterThanOrEqual(44);
   }
 }
+
+/**
+ * Expect a card (or row) to hold its parts at the current size: it is inside the window, nothing
+ * in it is wider than it (its own scrollWidth), and every descendant's box ends inside it. The
+ * page's own sideways scroll is returned for the log; a caller on a page that is known to be clean
+ * at this size asserts it, the others record it (the rest of the page is not the site's subject).
+ */
+export async function expectHeldInside(card: Locator, tag: string): Promise<{ pageSideways: number }> {
+  const read = await card.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const parts = Array.from(el.querySelectorAll('*')) as HTMLElement[];
+    const boxes = parts.map((p) => p.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    const doc = document.documentElement;
+    return {
+      left: box.left,
+      right: box.right,
+      ownSideways: el.scrollWidth - el.clientWidth,
+      rightmost: boxes.length ? Math.max(...boxes.map((r) => r.right)) : box.right,
+      leftmost: boxes.length ? Math.min(...boxes.map((r) => r.left)) : box.left,
+      window: doc.clientWidth,
+      pageSideways: doc.scrollWidth - doc.clientWidth,
+    };
+  });
+  const line = JSON.stringify(read);
+  expect(read.left, `${tag}: the card starts left of the window (${line})`).toBeGreaterThanOrEqual(-0.5);
+  expect(read.right, `${tag}: the card ends right of the window (${line})`).toBeLessThanOrEqual(read.window + 0.5);
+  expect(read.ownSideways, `${tag}: something in the card is wider than the card (${line})`).toBeLessThanOrEqual(0);
+  expect(read.rightmost, `${tag}: a part of the card ends right of the card (${line})`).toBeLessThanOrEqual(read.right + 0.5);
+  expect(read.leftmost, `${tag}: a part of the card starts left of the card (${line})`).toBeGreaterThanOrEqual(read.left - 0.5);
+  return { pageSideways: read.pageSideways };
+}
