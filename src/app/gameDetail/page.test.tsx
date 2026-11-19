@@ -1253,7 +1253,7 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
       friendship.accepted.add('p-1');
       const participants = [
         ...SIX_PARTICIPANTS.map((p) => (p.user_id === 'p-1' || p.user_id === 'p-2' ? { ...p, is_guest: true } : p)),
-        participantRow({ id: 'row-typed', user_id: null, username: 'Typed Tom', is_custom: true }),
+        participantRow({ user_id: null, username: 'Typed Tom', is_custom: true }),
       ];
       renderEventDetail({ role: 'owner', participants });
       await screen.findByText('Player 0');
