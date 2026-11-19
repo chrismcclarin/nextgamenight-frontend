@@ -305,6 +305,30 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     expect(img!.closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room). The row's
+  // game name was cut to one line between the thumbnail and the tick box. jsdom lays nothing out,
+  // so this holds the classes of the Friends-row form; the rendered widths are in
+  // e2e/games-to-bring-picker-phone.spec.ts ("R4 D2 (88.9-52)").
+  // The marker is at src/app/components/BringGamePicker.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the game name wraps").
+  it('R4 D2 (88.9-52): a row may wrap, its name is never cut and keeps its longest word, and the tick box keeps to the right', async () => {
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    const row = screen.getByRole('checkbox', { name: 'Catan' });
+    expect(row).toHaveClass('flex', 'flex-wrap', 'w-full');
+    const name = within(row).getByText('Catan');
+    expect(name.className).not.toMatch(/(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere)(\s|$)/);
+    expect(name).toHaveClass('wrap-break-word');
+    const column = name.parentElement as HTMLElement;
+    expect(column).toHaveClass('flex-1', 'max-w-full');
+    // min-w-0 or a clip on the column would let the thumbnail and the box squeeze the name under one word.
+    expect(column.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
+    const box = row.lastElementChild as HTMLElement;
+    expect(box).not.toBe(column);
+    expect(box).toHaveClass('ml-auto', 'shrink-0', 'w-5', 'h-5');
+    // The thumbnail well keeps its size; it moves to a line of its own instead of shrinking.
+    expect(row.firstElementChild).toHaveClass('shrink-0', 'w-8', 'h-8');
+  });
+
   it('3. the search control carries id + name + a label source (house rule Input.tsx:11-19)', async () => {
     render(<Host initiallyOpen />);
     await settleOnRows();

@@ -451,7 +451,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                     aria-labelledby={`bring-game-name-${gameId}`}
                     aria-describedby={othersCount > 0 ? `bring-game-others-${gameId}` : undefined}
                     onClick={() => toggleGame(gameId)}
-                    className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition-colors ${
+                    className={`w-full flex flex-wrap items-center gap-x-3 gap-y-1 p-2 rounded-lg text-left transition-colors ${
                       isSelected ? 'bg-surface-muted border border-accent' : 'hover:bg-surface-hover border border-transparent'
                     }`}
                   >
@@ -519,8 +519,27 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                         `bg-surface-muted` on the wrapping button, against which 4.3725 is below
                         the AA 4.5 floor. Ink moved rather than ground, same as the thumbnail
                         well above. Going back is a decision, not a cleanup. */}
-                    <div className="flex-1 min-w-0">
-                      <p id={`bring-game-name-${gameId}`} className="text-sm font-normal text-content-primary truncate">{gameName}</p>
+                    {/* AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the game name wraps in full, by
+                        whole words, with no line limit, and the row may WRAP, the Friends-row form
+                        (src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot")).
+                        The name column's floor is its longest word (flex-1 with the automatic
+                        minimum, capped at the row by max-w-full) in place of min-w-0, and its
+                        NEIGHBOURS move first: when the thumbnail, that word and the tick box no
+                        longer share a line, the name drops under the thumbnail and the box, kept
+                        to the right (ml-auto), drops under the name. REPLACES truncate, which hid
+                        the name of the game being ticked. The sum at 320 wide with text at 200%:
+                        the row's inside is 172px (320 - 48 dialog gutter - 2 - 64 list padding
+                        - 32 row padding - 2), the thumbnail takes 64 and the box 40 with two 24px
+                        gaps, which left the name 20px; Weekend at 28px is 129px. Stacked, the name
+                        has the whole 172. REJECTED: wrap-anywhere or keeping min-w-0 (one letter
+                        per line, the owner's We/eke/nd W/arr/iors); a fixed rem floor (it would
+                        stack a short name at ordinary text); shrinking the thumbnail or the box
+                        below their sizes. NOT DECIDED HERE, the owner's call: at that size the
+                        decorative thumbnail sits on a line of its own; not drawing it at large
+                        text (his Play history ruling, R4 C3) would save that line. At ordinary
+                        text with an ordinary name nothing moves (gap-y-1 only shows once wrapped). */}
+                    <div className="flex-1 max-w-full">
+                      <p id={`bring-game-name-${gameId}`} className="text-sm font-normal text-content-primary wrap-break-word">{gameName}</p>
                       {othersCount > 0 && (
                         <p id={`bring-game-others-${gameId}`} className="text-xs text-content-secondary">
                           {othersCount} {othersCount === 1 ? 'other' : 'others'} bringing this
@@ -529,7 +548,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                     </div>
 
                     {/* Checkbox */}
-                    <div className={`w-5 h-5 rounded-sm border-2 shrink-0 flex items-center justify-center transition-colors ${
+                    <div className={`ml-auto w-5 h-5 rounded-sm border-2 shrink-0 flex items-center justify-center transition-colors ${
                       isSelected ? 'bg-accent border-accent' : 'border-line'
                     }`}>
                       {/* DECISION Phase 88.9-22 F4b: the checkmark takes --color-on-accent (purple-950:

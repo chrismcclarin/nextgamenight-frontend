@@ -55,7 +55,7 @@ export const floors = [
   { spec: 'e2e/friends-long-address.spec.ts', project: 'phone', floor: 4, why: '4 of 4 listed run in phone; the other project is skipped by an isMobile predicate (a 375 layout defect)' },
   { spec: 'e2e/game-suggestion-card.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/gamedetail-refresh-failed.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone (the third added by 88.9-52 R4-E D2, the participant chip); the other project is skipped by an isMobile predicate' },
-  { spec: 'e2e/games-to-bring-picker-phone.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/games-to-bring-picker-phone.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone (the third added by 88.9-52 R4-E D2, the picker row at large text); the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/group-card-names.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/group-games-failed-refresh.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/group-header-controls.spec.ts', project: 'journeys', floor: 7, why: '7 of 7 listed run in journeys; none skipped here (6 sit in an isMobile-skipped describe, so phone runs only the X37 test)' },

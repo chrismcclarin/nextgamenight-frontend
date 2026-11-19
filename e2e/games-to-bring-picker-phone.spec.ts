@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 import { expectTouchTarget } from './support/touchTarget';
 import { injectViewerYesRsvp } from './support/viewerRsvp';
+import { expectHeldInside, expectWholeWords, readWordLines, setNarrowLargeText, TWO_WORD_NAME } from './support/wordLines';
 
 // Phase 88.6.2-22 (R8, register row 78: Games to Bring has no phone e2e) — the Games to Bring
 // picker at 375px, in a real browser (the phone project).
@@ -220,5 +221,101 @@ test.describe('Games to Bring at 375px (88.6.2-22)', () => {
 
     await dialog.getByRole('button', { name: 'Skip for now', exact: true }).tap();
     await expect(dialog, 'Skip for now did not close the Games to Bring dialog').toHaveCount(0);
+  });
+
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room; his worry: a
+  // long name broken up too much to read, We/eke/nd W/arr/iors). A picker row cut its game name to
+  // one line between the thumbnail and the tick box; it now wraps by whole words and the two move
+  // (src/app/components/BringGamePicker.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the game name wraps")).
+  // The owned-games read is answered in the browser with one two-word game (registered after the
+  // write hold, so it answers first); nothing is written and Save is never pressed. At 375 with
+  // ordinary text the thumbnail, the name and the tick box share one line. At 320 wide with the
+  // root text at 200% each word of the name is on one line (or, for a word wider than the whole
+  // row, broken only after the name has the row's full width), the row holds its thumbnail and
+  // tick box whole, the row is at least 44px and inside the dialog, and the dialog does not scroll
+  // sideways. The page behind the dialog is not this test's subject; its sideways scroll is logged.
+  test('R4 D2 (88.9-52): at 320 wide with 200% text a picker row keeps each word of a two-word game name whole, with its thumbnail and tick box whole', async ({
+    page,
+  }) => {
+    await page.route(
+      (url) => url.pathname.startsWith('/api/user-games/user/'),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: CORS_HEADERS,
+          body: JSON.stringify([{ id: 'e2e-bring-game-d2', name: TWO_WORD_NAME }]),
+        });
+      },
+    );
+    await injectViewerYesRsvp(page);
+    await page.goto(E2E_EVENT_DETAIL_PATH);
+
+    const heading = page.getByRole('heading', { name: 'Bringing', exact: true });
+    await expect(heading, 'the Bringing section never rendered').toBeVisible({ timeout: 15_000 });
+    const control = heading.locator('xpath=..').getByRole('button', { name: 'Add games', exact: true });
+    await expect(control, 'no Add games control in the Bringing section').toBeVisible();
+    await control.tap();
+
+    const dialog = page.getByRole('dialog', { name: 'Games to Bring', exact: true });
+    await expect(dialog, 'the Add games control did not open the Games to Bring dialog').toBeVisible({
+      timeout: 10_000,
+    });
+    const row = dialog.getByRole('checkbox', { name: TWO_WORD_NAME, exact: true });
+    await expect(row, 'the two-word game row never rendered (the routed owned-games answer did not land)').toBeVisible({ timeout: 10_000 });
+    await settleAnimations(dialog);
+    const name = row.locator('p', { hasText: TWO_WORD_NAME });
+
+    // The row's three parts: the thumbnail well (first child), the name column, the tick box (last).
+    const parts = () =>
+      row.evaluate((el) => {
+        const box = (node: Element) => {
+          const r = node.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+        };
+        const dialogEl = el.closest('[role="dialog"]') as HTMLElement;
+        return {
+          row: box(el),
+          well: box(el.firstElementChild as Element),
+          tick: box(el.lastElementChild as Element),
+          rem: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+          dialog: box(dialogEl),
+          dialogSideways: dialogEl.scrollWidth - dialogEl.clientWidth,
+        };
+      });
+
+    // Ordinary text at 375: one line, as before.
+    const before = await parts();
+    const beforeLine = JSON.stringify(before);
+    expectWholeWords(await readWordLines(name, row), ['Weekend', 'Warriors'], 'R4 D2 picker row at ordinary text', { pageSideways: false });
+    expect(
+      before.tick.top < before.well.bottom && before.tick.bottom > before.well.top && before.tick.left > before.well.right,
+      `R4 D2: at ordinary text the tick box no longer shares the thumbnail's line (${beforeLine})`,
+    ).toBe(true);
+
+    await setNarrowLargeText(page, 'R4 D2 picker row');
+    // The row is named: a word may break only once the name has the row's whole width to itself.
+    const read = await readWordLines(name, row);
+    const after = await parts();
+    const afterLine = JSON.stringify(after);
+    // eslint-disable-next-line no-console -- the measured row is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 picker row] 320 / 200%: ${JSON.stringify(read)} ${afterLine}`);
+    expectWholeWords(read, ['Weekend', 'Warriors'], 'R4 D2 picker row at 320 / 200%', { pageSideways: false });
+    await expectHeldInside(row, 'R4 D2 picker row');
+    // The neighbours kept their sizes (2rem thumbnail, 1.25rem tick box): they moved, they did not shrink.
+    expect(Math.abs(after.well.width - 2 * after.rem), `R4 D2: the thumbnail well is not 2rem wide (${afterLine})`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(after.well.height - 2 * after.rem), `R4 D2: the thumbnail well is not 2rem tall (${afterLine})`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(after.tick.width - 1.25 * after.rem), `R4 D2: the tick box is not 1.25rem wide (${afterLine})`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(after.tick.height - 1.25 * after.rem), `R4 D2: the tick box is not 1.25rem tall (${afterLine})`).toBeLessThanOrEqual(0.5);
+    // The row is the control: at least 44px, inside the dialog, and the dialog does not scroll sideways.
+    expect(after.row.height, `R4 D2: the row is shorter than 44px (${afterLine})`).toBeGreaterThanOrEqual(44);
+    expect(after.row.width, `R4 D2: the row is narrower than 44px (${afterLine})`).toBeGreaterThanOrEqual(44);
+    expect(after.row.left, `R4 D2: the row starts left of the dialog (${afterLine})`).toBeGreaterThanOrEqual(after.dialog.left - 0.5);
+    expect(after.row.right, `R4 D2: the row ends right of the dialog (${afterLine})`).toBeLessThanOrEqual(after.dialog.right + 0.5);
+    expect(after.dialogSideways, `R4 D2: the dialog scrolls sideways (${afterLine})`).toBeLessThanOrEqual(0);
   });
 });
