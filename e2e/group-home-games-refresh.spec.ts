@@ -25,6 +25,7 @@
 import { test, expect, type Route } from '@playwright/test';
 
 import { holdWrites } from './support/inFlight';
+import { expectHeldInside, expectWholeWords, readWordLines, setNarrowLargeText, TWO_WORD_NAME } from './support/wordLines';
 
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 
@@ -264,5 +265,109 @@ test.describe('group home games refresh — phone', () => {
       `R4-A3: at 320px and 200% text the group page is ${read.pageScrollWidth}px wide — it scrolls sideways by ${read.pageScrollWidth - read.viewport}px`,
     ).toBeLessThanOrEqual(read.viewport);
     await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room; his worry: a
+  // long name broken up too much to read, We/eke/nd W/arr/iors). A Library row cut its game name
+  // and its facts line to one line each between the picture and the owner count; both now wrap by
+  // whole words and the neighbours move
+  // (src/app/components/GroupLibrary.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the game name wraps")).
+  // The library read is answered in the browser with one two-word game (nothing is written). At
+  // 375 with ordinary text the picture, the words and the count share one line. At 320 wide with
+  // the root text at 200% each word of the name and of the facts line is on one line (or, for a
+  // word wider than the whole row, broken only after the words have the row's full width), the
+  // picture keeps its 2.5rem square, the owner count is whole on one line, and the row holds
+  // everything. The page's own sideways scroll with the Library tab open at this size is recorded
+  // in the log: the tab's search and filter controls at 320 / 200% are not this test's subject.
+  test('R4 D2 (88.9-52): at 320 wide with 200% text a Library row keeps each word of a two-word game name and of its facts line whole, with the picture and the owner count whole', async ({
+    page,
+  }) => {
+    await page.route(
+      (url) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/library`),
+      async (route: Route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        const owner = { user_id: '00000000-0000-4000-8000-0000000000d6', username: 'E2E Owner' };
+        await route.fulfill({
+          status: 200,
+          json: {
+            games: [
+              {
+                id: '00000000-0000-4000-8000-0000000000d2',
+                name: TWO_WORD_NAME,
+                thumbnail_url: null,
+                image_url: null,
+                min_players: 3,
+                max_players: 4,
+                playing_time: 60,
+                weight: 2.3,
+                owners: [owner],
+              },
+            ],
+            members: [owner],
+          },
+        });
+      },
+    );
+
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    const tab = page.getByRole('button', { name: 'Library', exact: true });
+    await expect(tab, 'R4 D2: the Library tab never rendered').toBeVisible({ timeout: 15_000 });
+    await tab.tap();
+    const name = page.locator('p.font-bold', { hasText: TWO_WORD_NAME });
+    await expect(name, 'R4 D2: the answered library game never rendered').toBeVisible({ timeout: 15_000 });
+    const row = name.locator('xpath=ancestor::button[1]');
+    const facts = row.locator('p', { hasText: 'players' });
+    await row.scrollIntoViewIfNeeded();
+
+    // The row's three parts: the picture (first child), the words column, the owner count (last).
+    const parts = () =>
+      row.evaluate((el) => {
+        const box = (node: Element) => {
+          const r = node.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+        };
+        const count = el.lastElementChild as HTMLElement;
+        const range = document.createRange();
+        range.selectNodeContents(count);
+        return {
+          row: box(el),
+          picture: box(el.firstElementChild as Element),
+          words: box(el.children[1] as Element),
+          count: box(count),
+          countLines: new Set(Array.from(range.getClientRects()).filter((r) => r.width > 0).map((r) => Math.round(r.top))).size,
+          rem: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+        };
+      });
+
+    // Ordinary text at 375: one line, as before.
+    const before = await parts();
+    const beforeLine = JSON.stringify(before);
+    expect(
+      before.words.left >= before.picture.right && before.count.left >= before.words.right - 1 && before.count.top < before.picture.bottom && before.count.bottom > before.picture.top,
+      `R4 D2: at ordinary text the picture, the words and the owner count no longer share one line (${beforeLine})`,
+    ).toBe(true);
+    expectWholeWords(await readWordLines(name, row), ['Weekend', 'Warriors'], 'R4 D2 library name at ordinary text', { pageSideways: false });
+
+    await setNarrowLargeText(page, 'R4 D2 library row');
+    await row.scrollIntoViewIfNeeded();
+    // The row is named: a word may break only once the words have the row's whole width.
+    const nameRead = await readWordLines(name, row);
+    const factsRead = await readWordLines(facts, row);
+    const after = await parts();
+    const afterLine = JSON.stringify(after);
+    // eslint-disable-next-line no-console -- the measured row is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 library row] 320 / 200%: ${JSON.stringify(nameRead)} ${JSON.stringify(factsRead)} ${afterLine}`);
+    expectWholeWords(nameRead, ['Weekend', 'Warriors'], 'R4 D2 library name at 320 / 200%', { pageSideways: false });
+    expectWholeWords(factsRead, null, 'R4 D2 library facts line at 320 / 200%', { pageSideways: false });
+    await expectHeldInside(row, 'R4 D2 library row');
+    // The neighbours moved, they did not shrink or break: a 2.5rem picture and a one-line count.
+    expect(Math.abs(after.picture.width - 2.5 * after.rem), `R4 D2: the picture is not 2.5rem wide (${afterLine})`).toBeLessThanOrEqual(1);
+    expect(Math.abs(after.picture.height - 2.5 * after.rem), `R4 D2: the picture is not 2.5rem tall (${afterLine})`).toBeLessThanOrEqual(1);
+    expect(after.countLines, `R4 D2: the owner count is on ${after.countLines} lines (${afterLine})`).toBe(1);
+    expect(after.row.height, `R4 D2: the row is shorter than 44px (${afterLine})`).toBeGreaterThanOrEqual(44);
   });
 });
