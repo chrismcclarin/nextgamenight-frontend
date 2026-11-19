@@ -958,6 +958,33 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === 'Showing Sunday Wingspan')).toBeInTheDocument();
   });
 
+  // 88.9-52 R4 D2 (the second cut on this page, routed under the owner's ruling of 2026-11-18: text
+  // is not cut to keep a layout tidy). A Switch poll chip cut its label to one line with an
+  // ellipsis, and the label is the only place an unselected poll is named in that row. jsdom lays
+  // nothing out, so this holds the classes; the rendered widths are in
+  // e2e/check-ins-select-poll.spec.ts ("R4 D2 (88.9-52)").
+  // The marker is at src/app/groupPlanning/page.js ("AMENDED Phase 88.9-52 (R4 D2, the second cut on this page").
+  it('R4 D2 (88.9-52): a Switch poll chip shows its whole label, wrapped by whole words, in a chip capped at the row', async () => {
+    const auto = poll(P1, { created_by_settings_id: 'set-1', Creator: null, schedule_name: 'Weekend Warriors' });
+    (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [auto, manual(P2, 'Ben')] });
+    (promptAPI.getActivePrompt as Mock).mockResolvedValue({ prompt: auto });
+    render(<GroupPlanningPage />);
+    await settledOn(P1);
+    const chips = await screen.findByRole('group', { name: 'Switch poll' });
+    expect(chips).toHaveClass('flex', 'flex-wrap');
+    const buttons = within(chips).getAllByRole('button');
+    expect(buttons).toHaveLength(2);
+    for (const chip of buttons) {
+      // Capped at the row, and its floor is NOT zeroed: the chip keeps its longest word.
+      expect(chip).toHaveClass('max-w-full');
+      expect(chip.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden|shrink-0)(\s|$)/);
+      const label = chip.firstElementChild as HTMLElement;
+      expect(label.className).not.toMatch(/(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere)(\s|$)/);
+      expect(label).toHaveClass('block', 'wrap-break-word');
+    }
+    expect(within(chips).getByRole('button', { name: 'Weekend Warriors' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   // AMENDED quick-261026-pi6-fix F9: a chip names a poll the open-polls cache holds, so its swap
   // is served from that cache and can no longer fail on the network; this test first pinned the
   // banner and the focus fallback after a failed chip swap, and now pins that the swap holds while

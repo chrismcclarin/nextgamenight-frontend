@@ -359,11 +359,15 @@ test('S5: a shared link opens its poll; an unknown poll id falls back to the act
 // At 375 with ordinary text the kebab still shares the title's line. At 320 wide with the root text
 // at 200% each word of the title is on one line (or, for a word wider than the whole card, broken
 // only after the title has the card's full width), the kebab is whole, at least 44px and inside
-// the card. The page's own sideways scroll at this size is recorded in the log: the rest of the
+// the card. The same test reads the Switch poll chips, the page's second cut
+// (src/app/groupPlanning/page.js ("AMENDED Phase 88.9-52 (R4 D2, the second cut on this page")):
+// both polls share the game's name, so each chip's label is that name plus the label rule's own
+// suffix, and every word of it must be whole inside a chip that is whole inside the row, at least
+// 44px. The page's own sideways scroll at this size is recorded in the log: the rest of the
 // planning page at 320 / 200% is not this test's subject.
 const D2_GAME_ID = '26102600-0000-4000-8000-0000000000d2';
 
-test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card keeps each word of a two-word title whole and its kebab drops under it', async ({ page, isMobile }) => {
+test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card and a Switch poll chip keep each word of a two-word name whole; the kebab drops under the card body', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'the 320px large-text proof is phone-only');
   await mockPolls(page);
   // Registered after mockPolls, so these two answer first.
@@ -436,4 +440,21 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card keeps each wor
     await expectHeldInside(row, `R4 D2 card ${i}`);
     await expectNeighbourWhole(kebabOf(row), `R4 D2 card ${i}: the kebab`, { button: true });
   }
+
+  // The Switch poll chips: each label holds the answered name, uncut, and each chip is whole.
+  const chipRow = switchPoll(page);
+  const chips = chipRow.getByRole('button');
+  await expect(chips, 'R4 D2: the Switch poll row does not hold the two chips').toHaveCount(2);
+  for (let i = 0; i < 2; i += 1) {
+    const chip = chips.nth(i);
+    const label = chip.locator(':scope > span');
+    // The chip row is named: a word may break only once the label has the row's whole width.
+    const read = await readWordLines(label, chipRow);
+    // eslint-disable-next-line no-console -- the measured chip is recorded from the CI log
+    console.log(`[88.9-52 R4 D2 switch-poll chip ${i}] 320 / 200%: ${JSON.stringify(read)}`);
+    expect(read.text, `R4 D2 chip ${i}: the label does not hold the answered name (${JSON.stringify(read)})`).toContain(TWO_WORD_NAME);
+    expectWholeWords(read, null, `R4 D2 chip ${i} at 320 / 200%`, { pageSideways: false });
+    await expectNeighbourWhole(chip, `R4 D2 chip ${i}`, { button: true });
+  }
+  await expectHeldInside(chipRow, 'R4 D2 Switch poll row');
 });

@@ -923,7 +923,20 @@ export default function GroupPlanningPage() {
                                     src/app/Header.js ("h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50");
                                     if a failed swap removes the control a person stood on, focus goes to the
                                     Availability Polls heading. Changing any of this is a decision, not a
-                                    cleanup. */}
+                                    cleanup.
+                                    AMENDED Phase 88.9-52 (R4 D2, the second cut on this page, routed under
+                                    the owner's ruling of 2026-11-18 that text is not cut to keep a layout
+                                    tidy): a chip's label wraps in full, by whole words, with no line limit
+                                    (wrap-break-word in place of truncate). The label is the only place an
+                                    unselected poll is named in this row, so the cut hid which poll a chip
+                                    opens. The room it keeps is its longest word: the chip is a flex item
+                                    with the automatic minimum, capped at the row by max-w-full, and the
+                                    row already wraps, so a chip takes a line of its own before a word is
+                                    broken. At 320 wide with text at 200% the row is 206px and a chip's
+                                    sides take 48, which leaves a word 158px (Weekend at 28px bold is about
+                                    136). REJECTED: a line clamp (still a cut) and wrap-anywhere (one
+                                    letter per line in a squeezed chip). A two-line label in a pill is
+                                    accepted. */}
                                 {openPolls.length >= 2 && (
                                     <div role="group" aria-label={SWITCH_POLL_LABEL} className="mb-3 flex flex-wrap gap-2">
                                         {openPolls.map((p) => {
@@ -938,7 +951,7 @@ export default function GroupPlanningPage() {
                                                         ? 'max-w-full px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card md:focus-visible:ring-offset-surface-page bg-btn-primary text-btn-primary-text'
                                                         : 'max-w-full px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card md:focus-visible:ring-offset-surface-page bg-surface-muted text-content-secondary hover:text-content-primary'}
                                                 >
-                                                    <span className="block truncate">{chipLabels.get(p.id)}</span>
+                                                    <span className="block wrap-break-word">{chipLabels.get(p.id)}</span>
                                                 </button>
                                             );
                                         })}
