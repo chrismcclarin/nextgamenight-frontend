@@ -199,7 +199,9 @@ export async function expectHeldInside(card: Locator, tag: string): Promise<{ pa
   const read = await card.evaluate((el) => {
     const box = el.getBoundingClientRect();
     const parts = Array.from(el.querySelectorAll('*')) as HTMLElement[];
-    const boxes = parts.map((p) => p.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    // A screen-reader-only part (the house sr-only: a 1px by 1px box with a -1px margin) draws nothing,
+    // so it is not a part that can stick out; CI run at FE 23226f4 read one 1px left of the strip.
+    const boxes = parts.map((p) => p.getBoundingClientRect()).filter((r) => r.width > 1 && r.height > 1);
     const doc = document.documentElement;
     return {
       left: box.left,
