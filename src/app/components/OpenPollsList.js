@@ -455,15 +455,27 @@ export function pollChipLabels(prompts, group) {
    OVER a tinted background (both rejected at the mockup); both cells pad one pixel less when
    selected so the border does not grow the card; the tag is aria-hidden because aria-pressed
    already says selected. Changing this is a decision, not a cleanup. */
-const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex items-start';
-const CARD_ROW_SELECTED_CLASS = 'bg-surface-card border-2 border-content-link rounded-card flex items-start';
+/* AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the card row may WRAP and its body keeps its
+   longest word, the Friends-row form (src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot")).
+   The body is flex-1 with the automatic minimum (its longest word plus its padding), capped at the
+   row by max-w-full, in place of min-w-0; the kebab cell keeps to the right (ml-auto) and drops
+   UNDER the body when that minimum, plus the cell, no longer fits the card. The sum that made it
+   necessary, at 320 wide with text at 200%: the card is 206px (320 - 64 page - 48 section - 2),
+   the kebab cell is 112 (an 88px trigger, 2.75rem, plus 24), which left the title 46px beside it;
+   Weekend at 32px bold is about 155px. With the kebab under the body the title has 156px.
+   REJECTED: keeping min-w-0 and only removing the cut (the title falls to two or three letters
+   per line, the owner's We/eke/nd W/arr/iors); a fixed rem floor on the body (it would drop the
+   kebab at ordinary text for a short title); shrinking the kebab (44px is its floor). At ordinary
+   text the cell needs 56px and a word of 16px bold rarely passes 150, so nothing moves. */
+const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex flex-wrap items-start';
+const CARD_ROW_SELECTED_CLASS = 'bg-surface-card border-2 border-content-link rounded-card flex flex-wrap items-start';
 const CARD_BODY_BUTTON_CLASS =
-  'min-w-0 flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-3';
+  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-3';
 const CARD_BODY_BUTTON_SELECTED_CLASS =
-  'min-w-0 flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-[11px]';
-const CARD_BODY_STATIC_CLASS = 'min-w-0 flex-1 p-3';
-const CARD_KEBAB_CELL_CLASS = 'shrink-0 py-3 pr-3';
-const CARD_KEBAB_CELL_SELECTED_CLASS = 'shrink-0 py-[11px] pr-[11px]';
+  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset p-[11px]';
+const CARD_BODY_STATIC_CLASS = 'max-w-full flex-1 p-3';
+const CARD_KEBAB_CELL_CLASS = 'ml-auto shrink-0 py-3 pr-3';
+const CARD_KEBAB_CELL_SELECTED_CLASS = 'ml-auto shrink-0 py-[11px] pr-[11px]';
 const VIEWING_TAG = 'Viewing';
 const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wider text-content-link mb-0.5';
 
@@ -531,8 +543,15 @@ function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSel
           is a prohibition outside the `Button` label (§4.2). It is a `<p>` and not an `<hN>`,
           so the A1 heading-`truncate` ruling does not reach it and `truncate` stays.
           AMENDED quick-261026-pi6: it is now a block span, not a paragraph, because the card body
-          is a button (phrasing content only); it is still not a heading, so `truncate` stays. */}
-      <span className="block font-bold text-content-primary truncate">{title}</span>
+          is a button (phrasing content only); it is still not a heading, so `truncate` stays.
+          AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the title wraps in full, by whole words,
+          with no line limit; truncate is REMOVED. The owner ruled that the no-cut rule reaches
+          this line too, heading or not: text is not cut to keep a layout tidy, because enlarged
+          text is the setting a cut defeats. wrap-break-word breaks inside a word only when that
+          one word is wider than the whole card, and the room the title keeps comes from the
+          row (the marker at CARD_ROW_CLASS). REJECTED: a line clamp (still a cut) and
+          wrap-anywhere (it lets the title shrink to one letter per line). */}
+      <span className="block font-bold text-content-primary wrap-break-word">{title}</span>
       <span className="block text-xs text-content-muted mt-0.5 wrap-anywhere">{sourceLabel}</span>
       {deadlineDisplay && (
         <span className="block text-xs text-content-secondary mt-1">

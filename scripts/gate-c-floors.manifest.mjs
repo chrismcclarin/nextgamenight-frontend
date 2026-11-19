@@ -39,7 +39,7 @@ export const floors = [
   { spec: 'e2e/check-ins-banner-dismiss.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/check-ins-end-focus.spec.ts', project: 'journeys', floor: 3, why: '3 of 4 listed run in journeys; 1 skipped here by an isMobile predicate (raised 2 to 3 by 88.9-52 round 4, E4)' },
   { spec: 'e2e/check-ins-end-focus.spec.ts', project: 'phone', floor: 4, why: '4 of 4 listed run in phone (raised 3 to 4 by 88.9-52 round 4, E4)' },
-  { spec: 'e2e/check-ins-select-poll.spec.ts', project: 'phone', floor: 5, why: '5 of 5 listed run in phone; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/check-ins-select-poll.spec.ts', project: 'phone', floor: 6, why: '6 of 6 listed run in phone (the sixth added by 88.9-52 R4-E D2, the check-in card and the Switch poll chips at large text); the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/dialog-focus-floor.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/email-change-drift.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/empty-status-region-idle.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },

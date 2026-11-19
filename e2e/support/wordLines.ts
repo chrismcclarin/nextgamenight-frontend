@@ -140,11 +140,13 @@ export interface WholeWordsOptions {
  * Expect the name to be shown whole and uncut, inside the window, with each word on a single line.
  * The one exception is the rule's own: a word wider than the whole row may break, and only when
  * the name's text line is already as wide as the row can make it (the read must have named a row).
- * `words` is the exact list of words expected under the element, in order.
+ * `words` is the exact list of words expected under the element, in order; null takes whatever
+ * words are there (a label the page composes), which must still be at least one.
  */
-export function expectWholeWords(read: WordLinesRead, words: string[], tag: string, options: WholeWordsOptions = {}): void {
+export function expectWholeWords(read: WordLinesRead, words: string[] | null, tag: string, options: WholeWordsOptions = {}): void {
   const line = JSON.stringify(read);
-  expect(read.words.map((w) => w.word), `${tag}: the words on screen are not the expected ones (${line})`).toEqual(words);
+  if (words) expect(read.words.map((w) => w.word), `${tag}: the words on screen are not the expected ones (${line})`).toEqual(words);
+  else expect(read.words.length, `${tag}: no word was read (${line})`).toBeGreaterThan(0);
   for (const w of read.words) {
     if (w.lines !== 1) {
       // Broken inside itself: allowed only for a word that cannot fit the widest line the row can give.

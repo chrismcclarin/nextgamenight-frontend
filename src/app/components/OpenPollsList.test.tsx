@@ -774,6 +774,38 @@ describe('OpenPollsList: the card body selects the poll (quick-261026-pi6, owner
     // The card markup is the same in both modes: its text lines are block spans.
     expect(label.tagName).toBe('SPAN');
   });
+
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room). The card's
+  // title (the poll's game name) was cut to one line beside the kebab. jsdom lays nothing out, so
+  // this holds the classes of the Friends-row form; the rendered widths are in
+  // e2e/check-ins-select-poll.spec.ts ("R4 D2 (88.9-52)").
+  // The marker is at src/app/components/OpenPollsList.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the title wraps").
+  it('R4 D2 (88.9-52): the card title is never cut, the body keeps its longest word, and the kebab drops under it at the right', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({
+      prompts: [checkIn('pa', 'Ana', { game_id: 'game-1' }), checkIn('pb', 'Ben', { game_id: 'game-1' })],
+    } as never);
+    renderList(undefined, {
+      onSelectPoll: vi.fn(),
+      selectedPollId: 'pb',
+      group: { id: 'g1', games: [{ id: 'game-1', name: 'Weekend Warriors' }] },
+    });
+    const titles = await screen.findAllByText('Weekend Warriors');
+    expect(titles).toHaveLength(2);
+    for (const title of titles) {
+      expect(title.className).not.toMatch(/(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere)(\s|$)/);
+      expect(title).toHaveClass('block', 'wrap-break-word', 'font-bold');
+      const body = title.parentElement as HTMLElement;
+      expect(body.tagName).toBe('BUTTON');
+      expect(body).toHaveClass('flex-1', 'max-w-full');
+      // min-w-0 or a clip on the body would let the kebab squeeze the title under one word.
+      expect(body.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
+      const row = body.closest('li') as HTMLElement;
+      expect(row).toHaveClass('flex', 'flex-wrap', 'items-start');
+      const kebabCell = row.lastElementChild as HTMLElement;
+      expect(kebabCell).not.toBe(body);
+      expect(kebabCell).toHaveClass('ml-auto', 'shrink-0');
+    }
+  });
 });
 
 type ChipLabels = (prompts: Record<string, unknown>[], group: Record<string, unknown>) => Map<string, string>;
