@@ -202,7 +202,9 @@ vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
 // orphan <label> that sat over it, and a `() => null` stub makes both the
 // radiogroup-name pin and the orphan-label sweep vacuous on the review dialog.
 vi.mock('@/app/components/ClickableMemberName', () => ({
-  default: ({ username }: { username?: string }) => <span>{username}</span>,
+  // 88.9-52 R4 D3: the stub marks itself with the user id it was handed, so a test can tell a name
+  // routed through the name control from the page's own plain text.
+  default: ({ username, userId }: { username?: string; userId?: string }) => <span data-member-name={userId}>{username}</span>,
 }));
 
 // Keep ApiError/ApiErrorCode REAL (the real useFetchErrorState reads them);
@@ -1237,78 +1239,80 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
     }
   });
 
-  it('R4-A1 (88.9-52): a guest who is an accepted friend shows the Friend pill in See-all at every width, before No reply and Guest', async () => {
-    // The round-3 capture: Frank and Eve (guests, accepted friends) showed [Friend][Guest] on the
-    // game page and no Friend in See-all. A guest is not on the group roster, so the name stays
-    // plain text (no ClickableMemberName draws a phone pill for it): the page's own pill must show
-    // on a phone too, so it carries no hidden / md: pair.
+  // R4-A1 (88.9-52) drew a guest's name as plain text and showed the page's own Friend pill at every
+  // width. AMENDED Phase 88.9-52 (R4 D3, owner 2026-11-18: same controls as elsewhere): every named
+  // person with an account goes through the name control the session rows use, so a guest who is not
+  // yet a friend gets the add-friend control here too, and a guest who is a friend gets the control's
+  // own phone pill. The page's Friend pill is therefore the desktop twin on EVERY row. A typed-in name
+  // (no account) and the viewer's own row stay plain text.
+  // The marker is at src/app/gameDetail/page.js ("AMENDED Phase 88.9-52 (R4 D3, owner 2026-11-18): same controls as elsewhere").
+  it('R4 D3 (88.9-52; R4-A1 superseded): in See-all every named person with an account goes through the name control, a typed-in name stays plain, and Friend is one pill per row', async () => {
     pinClockBeforeTheNight();
     try {
       const user = userEvent.setup();
       friendship.accepted.add('p-1');
-      const participants = SIX_PARTICIPANTS.map((p) =>
-        p.user_id === 'p-1' || p.user_id === 'p-2' ? { ...p, is_guest: true } : p
-      );
+      const participants = [
+        ...SIX_PARTICIPANTS.map((p) => (p.user_id === 'p-1' || p.user_id === 'p-2' ? { ...p, is_guest: true } : p)),
+        participantRow({ id: 'row-typed', user_id: null, username: 'Typed Tom', is_custom: true }),
+      ];
       renderEventDetail({ role: 'owner', participants });
       await screen.findByText('Player 0');
       const dialog = await openParticipantsModal(user);
+
+      // A guest who is a friend: the name control is mounted for it, with the guest's own user id.
+      const friendName = within(dialog).getByText('Player 1');
+      expect(friendName).toHaveAttribute('data-member-name', 'p-1');
+      const line = friendName.closest('div') as HTMLElement;
+      // One page pill, the desktop twin (the phone's is the name control's own, 4px after the name).
       const friends = within(dialog).getAllByText('Friend');
       expect(friends).toHaveLength(1);
       const friend = friends[0];
-      const line = within(dialog).getByText('Player 1').closest('div') as HTMLElement;
       expect(line).toContainElement(friend);
+      for (const cls of ['hidden', 'md:inline-flex', 'bg-surface-pill-emerald', 'text-content-pill-emerald']) {
+        expect(friend).toHaveClass(cls);
+      }
+      // R4 B5's 2px phone pull went with the page's phone pill.
+      expect(friend.className.split(/\s+/).some((c) => c.includes('-ms-'))).toBe(false);
+      // Still Friend, then the RSVP pill, then Guest.
       const noReply = within(line).getByText('No reply');
       const guest = within(line).getByText('Guest');
       expect(friend.compareDocumentPosition(noReply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(noReply.compareDocumentPosition(guest) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      expect(friend).not.toHaveClass('hidden');
-      for (const cls of ['inline-flex', 'bg-surface-pill-emerald', 'text-content-pill-emerald']) {
-        expect(friend).toHaveClass(cls);
+
+      // A guest who is NOT a friend: the name control too (it is what draws the add-friend control), no pill.
+      const strangerName = within(dialog).getByText('Player 2');
+      expect(strangerName).toHaveAttribute('data-member-name', 'p-2');
+      expect(within(strangerName.closest('div') as HTMLElement).queryByText('Friend')).toBeNull();
+
+      // Every other account row goes through it as well, each with its own id.
+      for (const n of [0, 3, 4, 5]) {
+        expect(within(dialog).getByText(`Player ${n}`)).toHaveAttribute('data-member-name', `p-${n}`);
       }
-      // The guest's name is still plain text: no name button (the stubbed ClickableMemberName is not mounted for it).
-      expect(within(line).queryByRole('button', { name: /Player 1/ })).toBeNull();
-      // A guest who is not a friend (Player 2) shows no Friend pill.
-      const other = within(dialog).getByText('Player 2').closest('div') as HTMLElement;
-      expect(within(other).queryByText('Friend')).toBeNull();
+      // A typed-in name has no account: plain text, no name control.
+      const typed = within(dialog).getByText('Typed Tom', { exact: false });
+      expect(typed.closest('[data-member-name]')).toBeNull();
+      expect((typed.closest('div') as HTMLElement).querySelector('[data-member-name]')).toBeNull();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('R4 B5 (88.9-52): on a phone the Friend pill sits 4px after a guest name, as it does after a member name', async () => {
-    // The round-4 re-shoot measured, at 375, the Friend pill 6px after the name on a guest row
-    // and 4px on a member row. A member row's phone pill is drawn by ClickableMemberName inside
-    // the name, 4px after it (src/app/components/ClickableMemberName.js ("'md:hidden ml-1 inline-flex items-center align-middle'")).
-    // A guest row's pill is the page's own, a sibling of the name in a line whose items sit 6px
-    // apart (space-x-1.5): below md it now pulls 2px back (max-md:-ms-0.5), so 6 - 2 = 4.
-    // From md both rows draw the page's pill 6px after the name, so the pull stops there.
+  it('R4 D3 (88.9-52): the viewer\'s own See-all row stays plain text with the You pill, and a roster friend keeps the desktop pill', async () => {
     pinClockBeforeTheNight();
     try {
       const user = userEvent.setup();
-      friendship.accepted.add('p-1');
-      // A roster member who is a friend (the row the R19 test above reads) beside the guest.
       friendship.accepted.add(OTHER_UUID);
-      const participants = [participantRow(), ...SIX_PARTICIPANTS.slice(0, 5).map((p) => (p.user_id === 'p-1' ? { ...p, is_guest: true } : p))];
+      const participants = [participantRow(), ...SIX_PARTICIPANTS.slice(0, 5)];
       renderEventDetail({ role: 'owner', participants });
       await screen.findByText('Player 0');
       const dialog = await openParticipantsModal(user);
-      const guestLine = within(dialog).getByText('Player 1').closest('div') as HTMLElement;
-      // The line's own spacing is 6px between items.
-      expect(guestLine.className.split(/\s+/)).toContain('space-x-1.5');
-      const guestPill = within(guestLine).getByText('Friend');
-      expect(guestPill.parentElement, 'the guest pill is the page\'s own, a sibling of the name').toBe(guestLine);
-      expect(guestPill.className.split(/\s+/)).toEqual(expect.arrayContaining(['inline-flex', 'max-md:-ms-0.5']));
-      // No pull that would also apply from md, where 6px is the gap on every row.
-      expect(guestPill.className.split(/\s+/).filter((c) => /^-?m[sxl]-/.test(c))).toEqual([]);
-      // A roster friend's page pill is the desktop twin: hidden on a phone, and it takes no pull.
-      const memberPills = within(dialog)
-        .getAllByText('Friend')
-        .filter((el) => el !== guestPill && el.className.split(/\s+/).includes('md:inline-flex'));
-      expect(memberPills.length, 'a roster friend draws the desktop pill').toBeGreaterThanOrEqual(1);
-      for (const pill of memberPills) {
-        expect(pill.className.split(/\s+/)).toContain('hidden');
-        expect(pill.className.split(/\s+/).some((c) => c.includes('-ms-'))).toBe(false);
-      }
+      const pills = within(dialog).getAllByText('Friend');
+      expect(pills).toHaveLength(1);
+      expect(pills[0].className.split(/\s+/)).toEqual(expect.arrayContaining(['hidden', 'md:inline-flex']));
+      // No row of the list draws a page pill at phone width any more.
+      for (const pill of pills) expect(pill.className.split(/\s+/)).not.toContain('max-md:-ms-0.5');
+      const you = within(dialog).queryByText('You');
+      if (you) expect((you.closest('div') as HTMLElement).querySelector('[data-member-name]')).toBeNull();
     } finally {
       vi.useRealTimers();
     }

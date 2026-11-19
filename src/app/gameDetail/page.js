@@ -3330,7 +3330,19 @@ export default function GameDetailPage() {
                                plain text the fallback below draws). A typed-in name has no account and stays
                                'unknown'. Because no ClickableMemberName draws a phone pill on such a row, its
                                one Friend pill below shows at every width. Keying this back on the roster
-                               alone is a decision, not a cleanup. */
+                               alone is a decision, not a cleanup.
+                               AMENDED Phase 88.9-52 (R4 D3, owner 2026-11-18): same controls as elsewhere, his words. The
+                               route this marker REJECTED is now CHOSEN, by the owner: every named person on
+                               this list who has an account (the roster member, and the guest, by the same
+                               friendUuid) goes through ClickableMemberName, the control the session rows
+                               use, so a guest who is not yet a friend gets the add-friend control here too,
+                               exactly as on the session rows. It supersedes the plain-text guest name and
+                               the page pill shown at every width: the name control now draws the phone's
+                               Friend pill on a guest row as it does on a member row (4px after the name),
+                               so the page's own pill below is the desktop twin on EVERY row and R4 B5's 2px
+                               phone pull is dead and removed. Still plain text: a typed-in name (no
+                               account, nobody to befriend), the viewer's own row, and a row with no user
+                               id at all. The friendship read still keys on friendUuid (unchanged). */
                             const friendUuid = memberUuid || (!p.is_custom && p.user_id) || null;
                             const friendStatus = friendUuid ? getFriendshipStatus(friendUuid) : 'unknown';
                             const isSelfRow = friendStatus === 'self' || isCurrentUser;
@@ -3368,17 +3380,21 @@ export default function GameDetailPage() {
                                                 // status === 'self' (no popover, no indicator) so this
                                                 // short-circuit is byte-equivalent on both mobile + desktop.
                                                 <span>{p.username || 'Unknown'}</span>
-                                            ) : memberUuid ? (
+                                            ) : friendUuid ? (
+                                                // R4 D3 (88.9-52): keyed on friendUuid, so a guest with an
+                                                // account takes this arm too (it was memberUuid: roster only).
                                                 // Stranger / pending / accepted all route through
                                                 // ClickableMemberName. For accepted on mobile it draws the
                                                 // md:hidden green Friend pill (R19, 88.9-52; ticked text
                                                 // before that). For accepted on desktop ClickableMemberName
                                                 // renders only the plain name — the desktop-only 'Friend'
                                                 // pill below gives desktop its read-only indicator.
-                                                <ClickableMemberName userId={memberUuid} username={p.username || 'Unknown'} />
+                                                <ClickableMemberName userId={friendUuid} username={p.username || 'Unknown'} />
                                             ) : (
-                                                // memberUuid couldn't be resolved through groupMembersByUserId
-                                                // (game-only viewer or missing-from-group edge case).
+                                                // No user id at all on the row. (Until 88.9-52 R4 D3 this arm
+                                                // also took every person not on the roster: a guest, or any
+                                                // row seen by a game-only viewer. Those have an id and now
+                                                // take the arm above.)
                                                 // Render plain text — same fallback as before.
                                                 <span>{p.username || 'Unknown'}</span>
                                             )}
@@ -3406,7 +3422,13 @@ export default function GameDetailPage() {
                                             // row draws THIS pill, 6px after the name, so the pull is phone only.
                                             // Chosen OVER moving the member pill to 6px (R19's picked look, and
                                             // the component's gap on every other surface).
-                                            <span className={`${memberUuid ? 'hidden md:inline-flex' : 'inline-flex max-md:-ms-0.5'} items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold`}>
+                                            // AMENDED Phase 88.9-52 (R4 D3, owner 2026-11-18): both lines above
+                                            // (R4-A1's every-width arm and R4 B5's pull) are SUPERSEDED. A guest's
+                                            // name now goes through the name control like a member's, which draws
+                                            // the phone pill 4px after the name itself, so this pill is the
+                                            // desktop twin on every row: one class string, no guest arm, no pull.
+                                            // One Friend per row at every width.
+                                            <span className="hidden md:inline-flex items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold">
                                                 Friend
                                             </span>
                                         )}
