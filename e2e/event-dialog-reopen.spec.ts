@@ -19,7 +19,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 import { fillCreateEventManualEntry } from './support/createEvent';
 import { E2E_GROUP_ID } from './support/groupSettings';
-import { holdWrites, holdUntilReleased } from './support/inFlight';
+import { expectNoApiWrites, holdWrites, holdUntilReleased } from './support/inFlight';
 import { expectTouchTarget } from './support/touchTarget';
 import { scrubbedFetch } from './support/scrubbedFetch';
 
@@ -199,6 +199,9 @@ test.describe('Edit Event — the dialog shell cannot be scrolled (88.9-52 round
 
     expect(net.count('PUT', /\/events\//)).toBe(0);
     expect(net.count('POST', /\/events/)).toBe(0);
+    // Scoped check 3 (L1): this test presses nothing that writes, so NO write of any kind may be
+    // waiting in the hold when the routes are removed (removing them would let it through).
+    expectNoApiWrites(net);
     await page.keyboard.press('Escape');
     await expect(editHeading(page)).toBeHidden();
   });

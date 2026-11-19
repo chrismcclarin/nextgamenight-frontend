@@ -269,11 +269,13 @@ async function expectDemoGridWholeAt375(page: Page): Promise<void> {
       return e.paintedFill !== e.plainFill;
     }, { message: 'S4: no painted cell after 1000 ms on the availability step, so the edge check below measures nothing' })
     .toBe(true);
-  // Let the 300 ms ease finish, in real time, then read once.
-  await page.waitForTimeout(400);
-  const edges = await readEdges();
-  expect(edges.paintedFill).not.toBe(edges.plainFill);
-  expect(edges.paintedEdge, 'S4: in dark a painted demo cell has a different edge colour from an unpainted one').toBe(edges.plainEdge);
+  // The edge eases over 300 ms: wait for it to arrive, never a fixed pause (scoped check 3, L2).
+  await expect
+    .poll(async () => {
+      const e = await readEdges();
+      return e.paintedFill !== e.plainFill && e.paintedEdge === e.plainEdge;
+    }, { message: 'S4: in dark a painted demo cell has a different edge colour from an unpainted one' })
+    .toBe(true);
 }
 
 // The per-project skip is a describe-level callback (the availability-grid-touch.spec.ts idiom);

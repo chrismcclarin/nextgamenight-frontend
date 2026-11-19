@@ -660,6 +660,9 @@ describe('ConfirmDialog — dialog tier', () => {
         confirmDisabled={() => false}
       />
     );
+    const waiting = screen.getByRole('button', { name: /^Make admin/ });
+    expect(waiting).toHaveClass('btn', 'btn-admin');
+    expect(waiting).not.toHaveClass('btn-danger');
     const cancel = screen.getByRole('button', { name: 'Cancel' });
     expect(cancel).toHaveClass('btn-secondary');
     expect(cancel).not.toHaveClass('btn-admin');

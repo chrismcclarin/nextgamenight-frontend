@@ -288,13 +288,9 @@ test('event page: a failed background refresh keeps the event and shows the noti
 // chip is inside its card, and an Invite button beside a chip (drawn only for an owner or admin) is
 // whole and at least 44px. The page's own sideways scroll at this size is recorded in the log: the
 // rest of the event page at 320 / 200% is not this test's subject.
-test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each word of a two-word name whole and its pills inside the chip', async ({ page }) => {
-  // DECISION Phase 88.9-52 (owner 2026-11-18): this 320 wide / 200% text read is marked as an
-  // expected failure, kept running, over skipping it, deleting it or patching the screen. The
-  // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
-  // the large-text method and owns this read. When the screen is fixed this test reports an
-  // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
-  test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
+// SPLIT Phase 88.9-52 (scoped check 3, L3): one body, two tests. The ordinary-text test keeps the chips,
+// their pills and the whole-word read gated; only the 320 / 200% read is the known failure.
+async function participantChipProof(page: Page, large: boolean) {
   const participants = [
     { user_id: null, username: TWO_WORD_NAME, is_guest: true, is_custom: true },
     { user_id: '8861a072-0000-4000-8000-0000000000e2', username: TWO_WORD_NAME, is_guest: true, is_custom: false },
@@ -327,7 +323,8 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each
   await expect(names, 'R4 D2: the two answered participants never rendered as chips').toHaveCount(2, { timeout: 15_000 });
   await settleAnimations(main);
 
-  await setNarrowLargeText(page, 'R4 D2 participant chip');
+  if (large) await setNarrowLargeText(page, 'R4 D2 participant chip');
+  const at = large ? '320 / 200%' : 'ordinary text';
   const expected = [
     ['Weekend', 'Warriors', '(Guest)'],
     ['Weekend', 'Warriors'],
@@ -340,8 +337,8 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each
     // The strip is named: a word may break only once the name has the strip's whole width to itself.
     const read = await readWordLines(name, strip);
     // eslint-disable-next-line no-console -- the measured chip is recorded from the CI log
-    console.log(`[88.9-52 R4 D2 participant chip ${i}] 320 / 200%: ${JSON.stringify(read)}`);
-    expectWholeWords(read, expected[i], `R4 D2 chip ${i} at 320 / 200%`, { pageSideways: false });
+    console.log(`[88.9-52 R4 D2 participant chip ${i}] ${at}: ${JSON.stringify(read)}`);
+    expectWholeWords(read, expected[i], `R4 D2 chip ${i} at ${at}`, { pageSideways: false });
     // The chip holds its pills, and the strip holds the chip and its Invite button.
     await expectHeldInside(chip, `R4 D2 chip ${i}`);
     await expectHeldInside(strip, `R4 D2 chip ${i}'s strip`);
@@ -355,6 +352,20 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each
       await expectNeighbourWhole(buttons.nth(b), `R4 D2 chip ${i}: the button beside the chip`, { button: true });
     }
   }
+}
+
+test('R4 D2 at ordinary text (88.9-52): a Participants chip shows a two-word name in whole words with its pills inside the chip', async ({ page }) => {
+  await participantChipProof(page, false);
+});
+
+test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each word of a two-word name whole and its pills inside the chip', async ({ page }) => {
+  // DECISION Phase 88.9-52 (owner 2026-11-18): this 320 wide / 200% text read is marked as an
+  // expected failure, kept running, over skipping it, deleting it or patching the screen. The
+  // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
+  // the large-text method and owns this read. When the screen is fixed this test reports an
+  // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
+  test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
+  await participantChipProof(page, true);
 });
 
 // No game fixture exists in CI, so the game arm serves the shared CUSTOM fake game and an empty
