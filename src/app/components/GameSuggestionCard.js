@@ -47,6 +47,18 @@ export default function GameSuggestionCard({ game, onClick }) {
   // list stays ONE inline template literal because `cardPaddingIdiom.test.ts` needs at least
   // one template-literal card site and this is the only one.
   // Changing any of this is a decision, not a cleanup.
+  // AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the card may WRAP and its words column keeps
+  // its longest word, the Friends-row form (src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot")).
+  // The column is flex-1 with the automatic minimum, capped at the card by max-w-full, in place of
+  // min-w-0; when the 4rem picture, the gap and that word no longer share a line, the words drop
+  // UNDER the picture and take the card's full width. The sum at 320 wide with text at 200% on the
+  // event page: the card's inside is 172px (320 - 48 page - 48 section - 2 - 48 card - 2), the
+  // picture and its gap take 160, which left the words 12px; Weekend at 32px bold is about 155px.
+  // REJECTED: keeping min-w-0 with the cut removed (one letter per line, the owner's
+  // We/eke/nd W/arr/iors); shrinking the picture; a fixed rem floor (it stacks a short title at
+  // ordinary text). NOT DECIDED HERE, the owner's call: not drawing the picture at large text, his
+  // ruling for the Play history card (R4 C3), in place of stacking it above the words.
+  // At ordinary text with an ordinary title nothing moves.
   // DECISION Phase 88.9-58 (X14): this whole-card control keeps its own hover wash; the card utility has none (owner 2026-11-11).
   return (
     <button
@@ -54,7 +66,7 @@ export default function GameSuggestionCard({ game, onClick }) {
       onClick={() => onClick(game)}
       aria-labelledby={nameId}
       aria-describedby={describedBy}
-      className={`card p-3 md:p-6 hover:bg-surface-hover flex gap-4 hover:shadow-theme-md transition-shadow cursor-pointer w-full text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card`}
+      className={`card p-3 md:p-6 hover:bg-surface-hover flex gap-4 flex-wrap gap-y-2 hover:shadow-theme-md transition-shadow cursor-pointer w-full text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card`}
     >
       {/* Thumbnail.
           DECISION Phase 88.6.1-03 (D-38): the thumbnail is hidden from assistive tech by this
@@ -80,7 +92,7 @@ export default function GameSuggestionCard({ game, onClick }) {
       </span>
 
       {/* Details */}
-      <span className="flex-1 min-w-0 flex flex-col gap-1">
+      <span className="flex-1 max-w-full flex flex-col gap-1">
         {/* DECISION Phase 88.6-33 (§4.5 HIERARCHY): `font-bold` (700) over the EMPHASIS outcome
             (400 + colour). This is the card's TITLE — the one string that identifies the card —
             and 400 would leave it reading as prose beside its own metadata. It stays a `<p>` and
@@ -94,8 +106,15 @@ export default function GameSuggestionCard({ game, onClick }) {
             now a block span, not a paragraph, because the card is a native button and a button
             holds phrasing content only. It is still NOT a Heading, for the same P4 reason, and
             its weight and rung are unchanged. It also carries the id the button's
-            aria-labelledby points at, so this span's text IS the card's accessible name. */}
-        <span id={nameId} className="block font-bold text-content-primary truncate">{game.name}</span>
+            aria-labelledby points at, so this span's text IS the card's accessible name.
+
+            AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the title wraps in full, by whole
+            words, with no line limit; truncate is REMOVED (it hid the end of the name the card
+            is for). wrap-break-word breaks inside a word only when that one word is wider than
+            the whole card. REJECTED: a line clamp (still a cut) and wrap-anywhere (it lets the
+            title shrink to one letter per line). The room it keeps comes from the card row
+            (the marker above the button). */}
+        <span id={nameId} className="block font-bold text-content-primary wrap-break-word">{game.name}</span>
 
         {/* Metadata row */}
         <span id={metaId} className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-content-muted">
@@ -110,9 +129,13 @@ export default function GameSuggestionCard({ game, onClick }) {
           )}
         </span>
 
-        {/* Owners */}
+        {/* Owners.
+            AMENDED Phase 88.9-52 (R4 D2, the second cut on this card, routed under the same
+            ruling): the Owned by line wraps in full; truncate is REMOVED. It is the only place
+            the owners are named (it is also the card's description), so the cut hid people,
+            not decoration. A long unbroken username breaks only when wider than the card. */}
         {hasOwners && (
-          <span id={ownersId} className="block text-xs text-content-muted truncate">
+          <span id={ownersId} className="block text-xs text-content-muted wrap-break-word">
             Owned by {game.owners.join(', ')}
           </span>
         )}
