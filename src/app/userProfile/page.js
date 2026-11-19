@@ -1968,8 +1968,9 @@ function Profile(){
            sure if the x is warranted here." CHOSEN OVER keeping the glyph that arms into Remove
            (this ruling of 2026-08-17). Walk row 381's worry (what will the armed state do?) is
            answered by the resting word itself. The spoken name once live is the sentence the
-           phone Remove and the member Remove already use. The look is at the card
-           (this file ("DECISION Phase 88.9-52 (R4 D4, owner 2026-11-18): the collection remove is a worded Remove button")). */
+           phone Remove and the member Remove already use. The look, and how the button keeps
+           clear of the title, are written at the card: the R4 D4 marker on the title line of
+           CollectionCard, below in this file. */
         armedName: 'Tap again to remove',
         onConfirm: (gameId, ctx) => removeGameFromCollection(gameId, ctx),
     });
