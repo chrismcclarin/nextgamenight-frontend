@@ -7,6 +7,13 @@ import { expect, type Locator, type Page } from '@playwright/test';
 // line clamp) and the page's sideways scroll, because the three failures of a long name are a cut,
 // a letter-stack and a page that scrolls sideways.
 //
+// THE RULE IT HOLDS (the owner's two parts): a word is on ONE line, except when that one word is
+// wider than the whole row, and then only after the name has been given the whole row (nothing sits
+// beside it any more). So the read also takes each word's own unbroken width and, when the caller
+// names the row, the room that row can give the name. A proof that only said "one line per word"
+// would go red on a word that honestly cannot fit a 320px screen at 200% text; a proof that allowed
+// any break would pass a letter-stack.
+//
 // DECISION Phase 88.9-52 (R4-E): one shared read, chosen OVER a copy in each of the specs that prove
 // a D2 site (the first two proofs, in e2e/friends-page.spec.ts and
 // e2e/group-planning-role-failure.spec.ts, each carry their own; six more copies was the
@@ -38,6 +45,8 @@ export interface WordRead {
   lines: number;
   left: number;
   right: number;
+  /** The word's own width on one line, in the name's font. */
+  natural: number;
 }
 
 export interface WordLinesRead {
@@ -46,17 +55,39 @@ export interface WordLinesRead {
   whiteSpace: string;
   textOverflow: string;
   lineClamp: string;
-  /** The element's own box. */
-  box: { left: number; right: number; width: number };
+  /** The element's own box; contentWidth is the room its text has on a line. */
+  box: { left: number; right: number; width: number; contentWidth: number };
+  /** The widest the row can make the name's text line (the row's content width less every box edge between the two); null when no row was named. */
+  rowRoom: number | null;
   window: number;
   /** scrollWidth minus clientWidth of the document: above 0 the page scrolls sideways. */
   pageSideways: number;
 }
 
-/** Read every word under `locator` (all of its text nodes) and how many line boxes each is on. */
-export async function readWordLines(locator: Locator): Promise<WordLinesRead> {
-  return locator.evaluate((el) => {
-    const words: Array<{ word: string; lines: number; left: number; right: number }> = [];
+/**
+ * Read every word under `locator` (all of its text nodes) and how many line boxes each is on.
+ * `row` is the container the name's neighbours move out of: the name may break a word only once
+ * its text line is as wide as that row can make it.
+ */
+export async function readWordLines(locator: Locator, row?: Locator): Promise<WordLinesRead> {
+  const rowHandle = row ? await row.elementHandle() : null;
+  return locator.evaluate((el, rowEl) => {
+    const px = (value: string) => Number.parseFloat(value) || 0;
+    const edges = (node: Element, withBorder: boolean) => {
+      const c = getComputedStyle(node);
+      return px(c.paddingLeft) + px(c.paddingRight) + (withBorder ? px(c.borderLeftWidth) + px(c.borderRightWidth) : 0);
+    };
+    const ruler = document.createElement('span');
+    const own = getComputedStyle(el);
+    ruler.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;left:-9999px;top:0;';
+    ruler.style.font = own.font;
+    ruler.style.letterSpacing = own.letterSpacing;
+    document.body.appendChild(ruler);
+    const naturalWidth = (word: string) => {
+      ruler.textContent = word;
+      return ruler.getBoundingClientRect().width;
+    };
+    const words: Array<{ word: string; lines: number; left: number; right: number; natural: number }> = [];
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     let text = '';
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -72,23 +103,32 @@ export async function readWordLines(locator: Locator): Promise<WordLinesRead> {
           lines: new Set(rects.map((r) => Math.round(r.top))).size,
           left: Math.min(...rects.map((r) => r.left)),
           right: Math.max(...rects.map((r) => r.right)),
+          natural: naturalWidth(match[0]),
         });
       }
     }
+    ruler.remove();
     const cs = getComputedStyle(el);
     const box = el.getBoundingClientRect();
     const doc = document.documentElement;
+    let rowRoom: number | null = null;
+    if (rowEl) {
+      rowRoom = (rowEl as HTMLElement).clientWidth - edges(rowEl as Element, false);
+      for (let a = el.parentElement; a && a !== rowEl; a = a.parentElement) rowRoom -= edges(a, true);
+      rowRoom -= edges(el, true);
+    }
     return {
       text,
       words,
       whiteSpace: cs.whiteSpace,
       textOverflow: cs.textOverflow,
       lineClamp: cs.getPropertyValue('-webkit-line-clamp') || 'none',
-      box: { left: box.left, right: box.right, width: box.width },
+      box: { left: box.left, right: box.right, width: box.width, contentWidth: box.width - edges(el, true) },
+      rowRoom,
       window: doc.clientWidth,
       pageSideways: doc.scrollWidth - doc.clientWidth,
     };
-  });
+  }, rowHandle);
 }
 
 export interface WholeWordsOptions {
@@ -97,14 +137,30 @@ export interface WholeWordsOptions {
 }
 
 /**
- * Expect the name to be shown whole and uncut with each word on a single line, inside the window.
+ * Expect the name to be shown whole and uncut, inside the window, with each word on a single line.
+ * The one exception is the rule's own: a word wider than the whole row may break, and only when
+ * the name's text line is already as wide as the row can make it (the read must have named a row).
  * `words` is the exact list of words expected under the element, in order.
  */
 export function expectWholeWords(read: WordLinesRead, words: string[], tag: string, options: WholeWordsOptions = {}): void {
   const line = JSON.stringify(read);
   expect(read.words.map((w) => w.word), `${tag}: the words on screen are not the expected ones (${line})`).toEqual(words);
   for (const w of read.words) {
-    expect(w.lines, `${tag}: the word ${w.word} is drawn on ${w.lines} lines, so it is broken inside itself (${line})`).toBe(1);
+    if (w.lines !== 1) {
+      // Broken inside itself: allowed only for a word that cannot fit the widest line the row can give.
+      expect(read.rowRoom, `${tag}: the word ${w.word} is drawn on ${w.lines} lines and no row was named to excuse it (${line})`).not.toBeNull();
+      expect(
+        read.box.contentWidth,
+        `${tag}: the word ${w.word} is broken inside itself while the name has only ${read.box.contentWidth}px of the ${read.rowRoom}px its row could give: a neighbour is still squeezing it (${line})`,
+      ).toBeGreaterThanOrEqual((read.rowRoom ?? 0) - 1);
+      expect(
+        w.natural,
+        `${tag}: the word ${w.word} (${w.natural}px) is broken inside itself although it fits its ${read.box.contentWidth}px line (${line})`,
+      ).toBeGreaterThan(read.box.contentWidth - 0.5);
+      expect(w.lines, `${tag}: the word ${w.word} is on ${w.lines} lines, more than a word of ${w.natural}px needs on ${read.box.contentWidth}px lines (${line})`).toBeLessThanOrEqual(
+        Math.ceil(w.natural / Math.max(read.box.contentWidth, 1)) + 1,
+      );
+    }
     expect(w.left, `${tag}: the word ${w.word} starts left of the window (${line})`).toBeGreaterThanOrEqual(-0.5);
     expect(w.right, `${tag}: the word ${w.word} ends right of the window (${line})`).toBeLessThanOrEqual(read.window + 0.5);
   }

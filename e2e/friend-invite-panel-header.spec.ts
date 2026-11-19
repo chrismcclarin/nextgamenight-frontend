@@ -201,7 +201,8 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text the found person\'s two-word n
   ).toBe(true);
 
   await setNarrowLargeText(page, 'R4 D2 invite panel');
-  const read = await readWordLines(name);
+  // The row is named: a word may break only once the name has the row's whole width to itself.
+  const read = await readWordLines(name, row);
   // eslint-disable-next-line no-console -- the measured row is recorded from the CI log
   console.log(`[88.9-52 R4 D2 invite panel] 320 / 200%: ${JSON.stringify(read)}`);
   expectWholeWords(read, ['Weekend', 'Warriors'], 'R4 D2 at 320 / 200%', { pageSideways: false });

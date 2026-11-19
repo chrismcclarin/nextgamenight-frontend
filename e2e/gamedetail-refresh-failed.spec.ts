@@ -331,7 +331,8 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each
     const chip = name.locator('xpath=..');
     const outer = chip.locator('xpath=..');
     const strip = outer.locator('xpath=..');
-    const read = await readWordLines(name);
+    // The strip is named: a word may break only once the name has the strip's whole width to itself.
+    const read = await readWordLines(name, strip);
     // eslint-disable-next-line no-console -- the measured chip is recorded from the CI log
     console.log(`[88.9-52 R4 D2 participant chip ${i}] 320 / 200%: ${JSON.stringify(read)}`);
     expectWholeWords(read, expected[i], `R4 D2 chip ${i} at 320 / 200%`, { pageSideways: false });
