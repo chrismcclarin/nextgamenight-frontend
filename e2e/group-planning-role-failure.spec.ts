@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+import { scrubbedFetch } from './support/scrubbedFetch';
+
 // Phase 88.6.1 plan 16 (D-25, copy row G6): the planning page tells a failed ROLE read, seen on a
 // phone at 375 x 667.
 //
@@ -93,7 +95,7 @@ test.describe('groupPlanning — a failed role read on a phone (88.6.1-16, D-25 
           await route.continue();
           return;
         }
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         const body = await response.json();
         // The name sits at the top of the answer, or one level down, depending on the envelope.
         const patched =
