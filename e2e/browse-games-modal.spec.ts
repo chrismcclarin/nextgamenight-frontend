@@ -314,7 +314,9 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
   // (e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")), not browser zoom. Read-only: nothing is
   // clicked after the dialog opens, and the suggestions response is this file's route.
   // RED on the tree before R4 C2: the first size assertion reads 32.
-  test('R4 C2 (88.9-52): the player-count steppers are 44 by 44 squares, the row fits at 320px, and with text at 200% nothing in it leaves the dialog', async ({ page }) => {
+  // SPLIT Phase 88.9-52 (owner 2026-11-18): the ordinary-text reads and the 320 / 200% read are two
+  // tests over this one body, so the sizes that work stay gated while the 200% read is a known failure.
+  const stepperRowProof = async (page: Page, large: boolean) => {
     const route = await installSuggestionsRoute(page);
     try {
       const browse = await openBrowseGames(page);
@@ -348,27 +350,32 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
         expect(row.barOverflow, `R4 C2 (${at}): the toolbar scrolls sideways by ${row.barOverflow}px`).toBeLessThanOrEqual(1);
       };
 
-      // 375, ordinary text.
-      const phone = await readRow();
-      expectSquare(phone.dec, 44, 'the decrease stepper at 375');
-      expectSquare(phone.inc, 44, 'the increase stepper at 375');
-      expect(Math.abs(phone.dec.top - phone.inc.top), 'R4 C2: at 375 the two steppers are not on one line').toBeLessThanOrEqual(1);
-      expect(Math.abs(phone.box.left - phone.dec.right - 4), `R4 C2: at 375 the box starts ${phone.box.left - phone.dec.right}px after the decrease stepper, expected 4`).toBeLessThanOrEqual(0.5);
-      expect(Math.abs(phone.inc.left - phone.box.right - 4), `R4 C2: at 375 the increase stepper starts ${phone.inc.left - phone.box.right}px after the box, expected 4`).toBeLessThanOrEqual(0.5);
-      expectInsideBar(phone, '375');
+      if (!large) {
+        // 375, ordinary text.
+        const phone = await readRow();
+        expectSquare(phone.dec, 44, 'the decrease stepper at 375');
+        expectSquare(phone.inc, 44, 'the increase stepper at 375');
+        expect(Math.abs(phone.dec.top - phone.inc.top), 'R4 C2: at 375 the two steppers are not on one line').toBeLessThanOrEqual(1);
+        expect(Math.abs(phone.box.left - phone.dec.right - 4), `R4 C2: at 375 the box starts ${phone.box.left - phone.dec.right}px after the decrease stepper, expected 4`).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(phone.inc.left - phone.box.right - 4), `R4 C2: at 375 the increase stepper starts ${phone.inc.left - phone.box.right}px after the box, expected 4`).toBeLessThanOrEqual(0.5);
+        expectInsideBar(phone, '375');
+      }
 
       // 320, ordinary text: still one line, inside the toolbar.
       const viewport = page.viewportSize();
       expect(viewport, 'the page has no viewport size').not.toBeNull();
       await page.setViewportSize({ width: 320, height: viewport!.height });
       await expect.poll(async () => (await rect(controls, 'the filter toolbar')).width, { message: 'R4 C2: the toolbar did not narrow at 320px' }).toBeLessThan(300);
-      const narrow = await readRow();
-      expectSquare(narrow.dec, 44, 'the decrease stepper at 320');
-      expectSquare(narrow.inc, 44, 'the increase stepper at 320');
-      expect(Math.abs(narrow.dec.top - narrow.inc.top), 'R4 C2: at 320 and ordinary text the count row wrapped').toBeLessThanOrEqual(1);
-      expect(narrow.dec.right, 'R4 C2: at 320 the box is not between the steppers').toBeLessThanOrEqual(narrow.box.left + 0.5);
-      expect(narrow.box.right, 'R4 C2: at 320 the box is not between the steppers').toBeLessThanOrEqual(narrow.inc.left + 0.5);
-      expectInsideBar(narrow, '320');
+      if (!large) {
+        const narrow = await readRow();
+        expectSquare(narrow.dec, 44, 'the decrease stepper at 320');
+        expectSquare(narrow.inc, 44, 'the increase stepper at 320');
+        expect(Math.abs(narrow.dec.top - narrow.inc.top), 'R4 C2: at 320 and ordinary text the count row wrapped').toBeLessThanOrEqual(1);
+        expect(narrow.dec.right, 'R4 C2: at 320 the box is not between the steppers').toBeLessThanOrEqual(narrow.box.left + 0.5);
+        expect(narrow.box.right, 'R4 C2: at 320 the box is not between the steppers').toBeLessThanOrEqual(narrow.inc.left + 0.5);
+        expectInsideBar(narrow, '320');
+        return;
+      }
 
       // 320 with text at 200%: 88px squares, wrapped, nothing outside the toolbar.
       await page.addStyleTag({ content: 'html{font-size:200% !important}' });
@@ -385,6 +392,20 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
     } finally {
       route.release();
     }
+  };
+
+  test('R4 C2 (88.9-52): the player-count steppers are 44 by 44 squares and the row fits at 320px', async ({ page }) => {
+    await stepperRowProof(page, false);
+  });
+
+  test('R4 C2 (88.9-52): at 320px with text at 200% the steppers are 88px squares and nothing in the row leaves the dialog', async ({ page }) => {
+    // DECISION Phase 88.9-52 (owner 2026-11-18): this 320 wide / 200% text read is marked as an
+    // expected failure, kept running, over skipping it, deleting it or patching the screen. The
+    // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
+    // the large-text method and owns this read. When the screen is fixed this test reports an
+    // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
+    test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
+    await stepperRowProof(page, true);
   });
 
   test('D15b (88.9): the results dim to 85% while a refresh is in flight, the meta line still reads, and they return to full after', async ({ page }) => {

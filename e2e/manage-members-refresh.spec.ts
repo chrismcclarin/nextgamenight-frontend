@@ -797,7 +797,9 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
   // finger at its centre. Every item is at least 44px tall. The header's close box ends at least
   // 2px (its focus ring) inside the dialog's right edge and starts after the title
   // (src/app/components/Modal.tsx ("AMENDED Phase 88.9-52 (R4 B3, round 4")).
-  test('G4 (88.9-52): the member menu is whole inside the dialog at 375 and 320, at 100% and 200% text', async ({ page }) => {
+  // SPLIT Phase 88.9-52 (owner 2026-11-18): 320 wide with 200% text is its own test over this one
+  // body, so the three sizes that work stay gated while that read is a known failure.
+  const memberMenuProof = async (page: Page, arms: ReadonlyArray<readonly ['100%' | '200%', ReadonlyArray<375 | 320>]>) => {
     const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
     await expect(dialog).toBeVisible({ timeout: 15_000 });
     await expect(dialog.getByText('E2E Removable', { exact: true })).toBeVisible();
@@ -842,7 +844,7 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
     const inside = (inner: Box, outer: Box) =>
       inner.left >= outer.left - 0.5 && inner.right <= outer.right + 0.5 && inner.top >= outer.top - 0.5 && inner.bottom <= outer.bottom + 0.5;
 
-    for (const scale of ['100%', '200%'] as const) {
+    for (const [scale, widths] of arms) {
       if (scale === '200%') {
         await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
         await expect
@@ -851,7 +853,7 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
           })
           .toBe('32px');
       }
-      for (const width of [375, 320] as const) {
+      for (const width of widths) {
         const label = `G4, ${width} wide, ${scale} text`;
         await page.setViewportSize({ width, height });
         await settleAnimations(dialog);
@@ -908,5 +910,19 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
       }
     }
     expect(heldMemberWrites(), 'G4: opening and closing the menu sent no member write').toEqual([]);
+  };
+
+  test('G4 (88.9-52): the member menu is whole inside the dialog at 375 and 320 at 100% text, and at 375 at 200% text', async ({ page }) => {
+    await memberMenuProof(page, [['100%', [375, 320]], ['200%', [375]]]);
+  });
+
+  test('G4 at 320 wide with 200% text (88.9-52): the member menu is inside the dialog and every item can be reached', async ({ page }) => {
+    // DECISION Phase 88.9-52 (owner 2026-11-18): this 320 wide / 200% text read is marked as an
+    // expected failure, kept running, over skipping it, deleting it or patching the screen. The
+    // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
+    // the large-text method and owns this read. When the screen is fixed this test reports an
+    // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
+    test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
+    await memberMenuProof(page, [['200%', [320]]]);
   });
 });

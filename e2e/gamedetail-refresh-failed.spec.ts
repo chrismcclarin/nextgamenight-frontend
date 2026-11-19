@@ -289,6 +289,12 @@ test('event page: a failed background refresh keeps the event and shows the noti
 // whole and at least 44px. The page's own sideways scroll at this size is recorded in the log: the
 // rest of the event page at 320 / 200% is not this test's subject.
 test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each word of a two-word name whole and its pills inside the chip', async ({ page }) => {
+  // DECISION Phase 88.9-52 (owner 2026-11-18): this 320 wide / 200% text read is marked as an
+  // expected failure, kept running, over skipping it, deleting it or patching the screen. The
+  // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
+  // the large-text method and owns this read. When the screen is fixed this test reports an
+  // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
+  test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
   const participants = [
     { user_id: null, username: TWO_WORD_NAME, is_guest: true, is_custom: true },
     { user_id: '8861a072-0000-4000-8000-0000000000e2', username: TWO_WORD_NAME, is_guest: true, is_custom: false },

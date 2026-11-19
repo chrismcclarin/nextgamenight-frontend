@@ -87,6 +87,12 @@ test.describe('groupPlanning — a failed role read on a phone (88.6.1-16, D-25 
   // The page's own sideways scroll at this size is recorded in the log, not asserted here: this test
   // was written without a browser and the rest of the planning page at 320 / 200% is not its subject.
   test('R4 D2 (88.9-52): at 320 wide with 200% text a two-word group name wraps by whole words in the breadcrumb, uncut', async ({ page }) => {
+    // DECISION Phase 88.9-52 (owner 2026-11-18): this 320 wide / 200% text read is marked as an
+    // expected failure, kept running, over skipping it, deleting it or patching the screen. The
+    // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
+    // the large-text method and owns this read. When the screen is fixed this test reports an
+    // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
+    test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
     const NAME = 'Weekend Warriors';
     await page.route(
       (url) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}`),
