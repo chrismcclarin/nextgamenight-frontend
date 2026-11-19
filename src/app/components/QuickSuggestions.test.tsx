@@ -998,3 +998,42 @@ describe('QuickSuggestions — the debounce is cancelled on unmount (review roun
     expect(api.getGroupSuggestions).not.toHaveBeenCalled();
   });
 });
+
+// 88.9-52 R4 D1 (owner 2026-11-18: keep the chips, remove the cap). The chip's game name was cut at
+// 120px with an ellipsis. It now shows in full on one line inside its chip (the chip row already
+// scrolls sideways inside itself); only a name wider than the row itself wraps, inside its chip,
+// by whole words. The chip keeps its 44px floor, and the slot's floor is still that one token, so a
+// wrapped name makes the row taller rather than being cut. jsdom lays nothing out: class pins.
+// The marker is at src/app/components/QuickSuggestions.js ("DECISION Phase 88.9-52 (R4 D1, owner 2026-11-18)").
+describe('R4 D1 (88.9-52) — a quick-suggestion chip shows the whole game name', () => {
+  it('R4 D1 (88.9-52): the name carries no width cap and no cut; the chip is capped at the row so only a name wider than the row wraps, and the 44px floor and the scrolling row are kept', async () => {
+    const LONG = 'Twilight Imperium: Fourth Edition Prophecy of Kings';
+    api.getGroupSuggestions.mockResolvedValue({ suggestions: [{ ...GAMES[0], id: 'g-long', name: LONG }, ...GAMES] });
+    renderSuggestions();
+    await runDebounce();
+    const name = await waitFor(() => screen.getByText(LONG));
+    const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+    // The whole name is in the page, uncut: no truncate, no max width, no clamp of any kind.
+    expect(name.textContent).toBe(LONG);
+    expect(tokens(name).filter((t) => t === 'truncate' || t.startsWith('max-w-') || t.startsWith('line-clamp') || t === 'overflow-hidden' || t === 'text-ellipsis')).toEqual([]);
+    expect(tokens(name)).toEqual(['text-sm', 'text-content-primary', 'min-w-0', 'wrap-break-word']);
+    // The chip: its 44px floor, never shrunk by the row, never wider than the row.
+    const chip = name.closest('button') as HTMLElement;
+    expect(tokens(chip)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'min-h-11', 'shrink-0', 'max-w-full']));
+    expect(tokens(chip)).not.toContain('whitespace-nowrap');
+    // The row still scrolls sideways inside itself and does not wrap its chips.
+    const row = chip.parentElement as HTMLElement;
+    expect(tokens(row)).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto', 'flex-nowrap', 'flex-1', 'min-w-0']));
+    // The slot's floor is still the chip's own token, with no height cap that would cut a wrapped name.
+    const slot = screen.getByTestId('quick-suggestions-slot');
+    expect(tokens(slot)).toContain('min-h-11');
+    expect(tokens(slot).filter((t) => /^(h|max-h)-/.test(t))).toEqual([]);
+    expect(tokens(row).filter((t) => /^(h|max-h)-/.test(t) || t === 'overflow-y-hidden' || t === 'overflow-hidden')).toEqual([]);
+    // Every chip, not just the long one.
+    for (const game of GAMES) {
+      const other = screen.getByText(game.name);
+      expect(tokens(other)).not.toContain('truncate');
+      expect(tokens(other).some((t) => t.startsWith('max-w-'))).toBe(false);
+    }
+  });
+});

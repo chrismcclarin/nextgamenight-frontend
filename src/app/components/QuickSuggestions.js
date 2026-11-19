@@ -163,7 +163,7 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
                    primary CTAs". `min-h-11` with `inline-flex items-center`; the content is
                    unchanged and just gains leading. This token is ALSO the slot's own floor
                    above, so raising it re-derives the slot and breaks no height constant. */
-                className="inline-flex items-center gap-1.5 min-h-11 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-hover transition-colors cursor-pointer shrink-0"
+                className="inline-flex items-center gap-1.5 min-h-11 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-hover transition-colors cursor-pointer shrink-0 max-w-full"
                 title={game.name}
               >
                 {/* DECISION Phase 88.6-39 (T-88.6-111): the BGG thumbnail moves to `SafeImage` —
@@ -203,7 +203,24 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
                     imgClassName="object-cover"
                   />
                 </span>
-                <span className="text-sm text-content-primary truncate max-w-[120px]">
+                {/* DECISION Phase 88.9-52 (R4 D1, owner 2026-11-18): the game name shows IN FULL. The chips
+                    are kept and the cap is removed: the name was cut at 120px with an ellipsis
+                    (truncate max-w-[120px]), which hid most of a long name at any text size and more
+                    of it the larger the text. Now the name has no width cap and no cut. It sits on
+                    one line inside its chip, and the chip row already scrolls sideways inside itself,
+                    so a long name is read by scrolling the row, never lost. ONE exception, by the
+                    same ruling: a name wider than the ROW ITSELF wraps inside its chip, by whole
+                    words (a single word breaks only when that one word is wider than the row). How:
+                    the chip never shrinks (shrink-0) and is capped at the row (max-w-full), and the
+                    name may shrink inside it (min-w-0) and breaks by words (wrap-break-word), so a
+                    name wraps only once its chip has reached the row's full width. CHOSEN OVER the
+                    cut (the owner: never cap or cut text to make a layout fit) and OVER a larger cap
+                    (still a cut). The chip keeps its 44px floor; a wrapped name makes its chip, and
+                    so the slot (a floor, min-h-11, never a fixed height), taller for as long as that
+                    chip is shown. That is the one way this slot can now change height: a name wider
+                    than the whole row, about 30 letters on a phone. The title attribute stays (it
+                    was the only way to read a cut name; it is harmless now). */}
+                <span className="text-sm text-content-primary min-w-0 wrap-break-word">
                   {game.name}
                 </span>
                 {(game.min_players || game.max_players) && (
