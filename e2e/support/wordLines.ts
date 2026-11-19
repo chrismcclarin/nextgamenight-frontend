@@ -1,0 +1,132 @@
+import { expect, type Locator, type Page } from '@playwright/test';
+
+// The ONE whole-word read for e2e specs (88.9-52 R4 D2 / R4-E, owner 2026-11-18: a name wraps, with
+// no line limit, and it keeps its room; his worry was a name broken into letter-stacks,
+// We/eke/nd W/arr/iors). A word that is broken inside itself is drawn on more than one line box, so
+// the read counts the line boxes of every word of a name. It also reads the cut (ellipsis, nowrap,
+// line clamp) and the page's sideways scroll, because the three failures of a long name are a cut,
+// a letter-stack and a page that scrolls sideways.
+//
+// DECISION Phase 88.9-52 (R4-E): one shared read, chosen OVER a copy in each of the specs that prove
+// a D2 site (the first two proofs, in e2e/friends-page.spec.ts and
+// e2e/group-planning-role-failure.spec.ts, each carry their own; six more copies was the
+// alternative). Changing this is a decision, not a cleanup.
+
+/** The two-word name the owner used; every D2 proof answers it in the browser. */
+export const TWO_WORD_NAME = 'Weekend Warriors';
+
+/** 320 CSS px wide with the root text at 200% (32px), the size every D2 proof reads at. */
+export async function setNarrowLargeText(page: Page, tag: string): Promise<void> {
+  const height = page.viewportSize()?.height ?? 667;
+  await page.setViewportSize({ width: 320, height });
+  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+  await expect
+    .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+      message: `${tag}: the root font size did not become 32px after the 200% style tag`,
+    })
+    .toBe('32px');
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.clientWidth), {
+      message: `${tag}: the window did not become 320px wide`,
+    })
+    .toBe(320);
+}
+
+export interface WordRead {
+  word: string;
+  /** How many line boxes the word is drawn on; more than 1 means it is broken inside itself. */
+  lines: number;
+  left: number;
+  right: number;
+}
+
+export interface WordLinesRead {
+  text: string;
+  words: WordRead[];
+  whiteSpace: string;
+  textOverflow: string;
+  lineClamp: string;
+  /** The element's own box. */
+  box: { left: number; right: number; width: number };
+  window: number;
+  /** scrollWidth minus clientWidth of the document: above 0 the page scrolls sideways. */
+  pageSideways: number;
+}
+
+/** Read every word under `locator` (all of its text nodes) and how many line boxes each is on. */
+export async function readWordLines(locator: Locator): Promise<WordLinesRead> {
+  return locator.evaluate((el) => {
+    const words: Array<{ word: string; lines: number; left: number; right: number }> = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let text = '';
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const content = node.textContent ?? '';
+      text += content;
+      for (const match of content.matchAll(/\S+/g)) {
+        const range = document.createRange();
+        range.setStart(node, match.index ?? 0);
+        range.setEnd(node, (match.index ?? 0) + match[0].length);
+        const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0);
+        words.push({
+          word: match[0],
+          lines: new Set(rects.map((r) => Math.round(r.top))).size,
+          left: Math.min(...rects.map((r) => r.left)),
+          right: Math.max(...rects.map((r) => r.right)),
+        });
+      }
+    }
+    const cs = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    const doc = document.documentElement;
+    return {
+      text,
+      words,
+      whiteSpace: cs.whiteSpace,
+      textOverflow: cs.textOverflow,
+      lineClamp: cs.getPropertyValue('-webkit-line-clamp') || 'none',
+      box: { left: box.left, right: box.right, width: box.width },
+      window: doc.clientWidth,
+      pageSideways: doc.scrollWidth - doc.clientWidth,
+    };
+  });
+}
+
+export interface WholeWordsOptions {
+  /** Assert that the page does not scroll sideways (the default). False records it only. */
+  pageSideways?: boolean;
+}
+
+/**
+ * Expect the name to be shown whole and uncut with each word on a single line, inside the window.
+ * `words` is the exact list of words expected under the element, in order.
+ */
+export function expectWholeWords(read: WordLinesRead, words: string[], tag: string, options: WholeWordsOptions = {}): void {
+  const line = JSON.stringify(read);
+  expect(read.words.map((w) => w.word), `${tag}: the words on screen are not the expected ones (${line})`).toEqual(words);
+  for (const w of read.words) {
+    expect(w.lines, `${tag}: the word ${w.word} is drawn on ${w.lines} lines, so it is broken inside itself (${line})`).toBe(1);
+    expect(w.left, `${tag}: the word ${w.word} starts left of the window (${line})`).toBeGreaterThanOrEqual(-0.5);
+    expect(w.right, `${tag}: the word ${w.word} ends right of the window (${line})`).toBeLessThanOrEqual(read.window + 0.5);
+  }
+  expect(read.textOverflow, `${tag}: the text is still cut with an ellipsis (${line})`).not.toBe('ellipsis');
+  expect(read.whiteSpace, `${tag}: the text cannot wrap (${line})`).not.toMatch(/nowrap/);
+  expect(read.lineClamp, `${tag}: the text still has a line limit (${line})`).toBe('none');
+  if (options.pageSideways !== false) {
+    expect(read.pageSideways, `${tag}: the page scrolls sideways by ${read.pageSideways}px (${line})`).toBeLessThanOrEqual(0);
+  }
+}
+
+/** Expect a neighbouring control to be whole inside the window, and at least 44px tall and wide when it is a button. */
+export async function expectNeighbourWhole(locator: Locator, label: string, options: { button?: boolean } = {}): Promise<void> {
+  const read = await locator.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, right: r.right, width: r.width, height: r.height, window: document.documentElement.clientWidth };
+  });
+  const line = JSON.stringify(read);
+  expect(read.left, `${label}: starts left of the window (${line})`).toBeGreaterThanOrEqual(-0.5);
+  expect(read.right, `${label}: ends right of the window (${line})`).toBeLessThanOrEqual(read.window + 0.5);
+  if (options.button) {
+    expect(Math.round(read.width * 100) / 100, `${label}: narrower than 44px (${line})`).toBeGreaterThanOrEqual(44);
+    expect(Math.round(read.height * 100) / 100, `${label}: shorter than 44px (${line})`).toBeGreaterThanOrEqual(44);
+  }
+}

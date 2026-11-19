@@ -1183,6 +1183,37 @@ describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4
     expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
 
+  // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room). The found
+  // person's name was cut to one line beside Add Friend. jsdom lays nothing out, so this holds the
+  // classes of the Friends-row form; the rendered widths are in
+  // e2e/friend-invite-panel-header.spec.ts ("R4 D2 (88.9-52)").
+  // The marker is at src/app/components/FriendInvitePanel.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the found-person row may wrap").
+  it('R4 D2 (88.9-52): the add-friend prompt row may wrap, the name column keeps its longest word, and Add Friend keeps to the right', async () => {
+    const { friendshipsAPI: api, invitesAPI } = await import('@/lib/api');
+    (api.searchUserByEmail as Mock).mockResolvedValue({ id: FRIEND_UUID, username: 'Weekend Warriors' });
+    (invitesAPI.sendInvite as Mock).mockResolvedValue({});
+    renderPanel({ friends: [] });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invite by Email' }), {
+      target: { value: 'weekend@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const add = await screen.findByRole('button', { name: 'Add Friend' });
+    const row = add.parentElement as HTMLElement;
+    expect(row).toHaveAttribute('data-add-friend-prompt');
+    expect(row).toHaveClass('flex', 'flex-wrap');
+    const name = screen.getByText('Weekend Warriors');
+    expect(name.className).not.toMatch(/(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere)(\s|$)/);
+    expect(name).toHaveClass('wrap-break-word');
+    // The column that holds the chip: grows, capped at the row, and its floor is NOT zeroed.
+    const column = row.firstElementChild as HTMLElement;
+    expect(column.contains(name)).toBe(true);
+    expect(column).toHaveClass('flex-1', 'max-w-full');
+    expect(column.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
+    expect(add).toHaveClass('ml-auto', 'max-w-full');
+    expect(add.className).not.toMatch(/(^|\s)shrink-0(\s|$)/);
+  });
+
   // 88.9-52 Q66: the search answers id and username only, so the prompt has no branch that draws
   // the found person's email. A payload that carried one and no name must not put it on screen.
   it("Q66 (88.9-52): the add-friend prompt never draws the found person's email", async () => {

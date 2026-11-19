@@ -944,10 +944,23 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             className="mt-2 text-content-status-success"
                         />
                         {friendPrompt && !friendRequestSent && (
-                            <div className="mt-3 p-3 bg-surface-sunken border border-line rounded-lg flex items-center justify-between gap-3">
+                            <div data-add-friend-prompt="" className="mt-3 p-3 bg-surface-sunken border border-line rounded-lg flex flex-wrap items-center justify-between gap-3">
                                 {/* PRIM-04 adoption: render the resolved found-user identity
-                                    via the shared UserChip primitive. */}
-                                <div className="min-w-0">
+                                    via the shared UserChip primitive.
+                                    AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the found-person row may wrap,
+                                    the Friends-row form (src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot")):
+                                    the name column's floor is the longest word of the name (flex-1 with the
+                                    automatic minimum, capped at the row by max-w-full; the chip's avatar
+                                    moves above the name before a word is broken)
+                                    in place of min-w-0, and Add Friend drops under the name, kept to the
+                                    right (ml-auto), when that floor, the gap and the button no longer share
+                                    a line. REPLACES a column that could shrink to nothing beside a button
+                                    that never shrank (min-w-0 against shrink-0), where the chip's label was
+                                    cut to an ellipsis. REJECTED: a fixed rem floor for the name (a value
+                                    that helps at 200% text also drops the button at ordinary text for a
+                                    short name) and wrap-anywhere (one letter per line). At ordinary text
+                                    with an ordinary name nothing moves. */}
+                                <div className="flex-1 max-w-full">
                                     <UserChip
                                         user={{ name: friendPrompt.username }}
                                         size="sm"
@@ -962,7 +975,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     busy={addingFriend}
                                     busySuffix=", sending"
                                     aria-describedby={friendRequestError ? 'invite-friend-request-error' : undefined}
-                                    className="shrink-0 focus-visible:ring-offset-surface-sunken"
+                                    className="ml-auto max-w-full focus-visible:ring-offset-surface-sunken"
                                 >
                                     Add Friend
                                 </Button>

@@ -109,7 +109,7 @@ const UserChip = React.forwardRef<HTMLDivElement, UserChipProps>(
     return (
       <div
         ref={ref}
-        className={cn('inline-flex items-center gap-2', className)}
+        className={cn('inline-flex max-w-full flex-wrap items-center gap-2', className)}
         {...props}
       >
         {avatar && avatarOk ? (
@@ -158,7 +158,28 @@ const UserChip = React.forwardRef<HTMLDivElement, UserChipProps>(
             {initialsOf(label)}
           </span>
         )}
-        <span className="truncate text-sm text-content-primary">{label}</span>
+        {/* AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the label wraps in full, by whole
+            words, with no line limit (wrap-break-word: a word breaks inside itself only when
+            that one word is wider than the whole line), and the chip is capped at its container
+            (max-w-full) so a long label wraps instead of pushing its row wider. It REPLACES
+            truncate, the one-line cut with an ellipsis, which hid the name of the person being
+            added. The room the label keeps is its LONGEST WORD (the automatic minimum of a
+            flex item, capped at the chip by max-w-full), and its neighbour moves first: the
+            chip may wrap (flex-wrap), so when the avatar, the gap and that word no longer fit
+            on one line the label drops UNDER the avatar and takes the chip's full width. The
+            sum that made this necessary, at 320 wide with text at 200% in the invite panel:
+            the row's inside is 156px (320 - 48 dialog gutter - 2 border - 64 section padding
+            - 48 row padding - 2 border), the sm avatar and gap take 64, and Weekend at 28px
+            is about 121px against the 92 left beside the avatar. The label is flex-1 so it
+            still sits beside the avatar, on as many lines as it needs, whenever its longest
+            word fits there. The row that holds the chip must let its other neighbours move
+            too (src/app/components/FriendInvitePanel.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the found-person row may wrap")).
+            REJECTED: wrap-anywhere and min-w-0 on the label (either lets a squeezed label
+            fall to one letter per line, the owner's We/eke/nd W/arr/iors); a fixed rem floor
+            (the primitive does not know its row; a floor wider than the row overflows it, and
+            one narrower than a word still breaks the word); a line clamp (still a cut);
+            shrinking or hiding the avatar (it is the only cue when a name is missing). */}
+        <span className="flex-1 max-w-full wrap-break-word text-sm text-content-primary">{label}</span>
       </div>
     );
   }
