@@ -99,6 +99,8 @@ export const floors = [
   { spec: 'e2e/session-chip-wrap.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/share-game-qr-pending.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/tailwind-v4-styles.spec.ts', project: 'journeys', floor: 3, why: '3 of 3 listed run in journeys; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/toast-bridge-offset.spec.ts', project: 'journeys', floor: 2, why: '2 of 2 listed run in journeys; no conditional skip (Phase 89.6-03 spec, rows added by 89.6-05 so a green run names this spec: the toast bridge and the toast offset; a later test raises it in the same commit)' },
+  { spec: 'e2e/toast-bridge-offset.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; no conditional skip (Phase 89.6-03 spec, rows added by 89.6-05 so a green run names this spec: the toast bridge and the toast offset; a later test raises it in the same commit)' },
   { spec: 'e2e/touch-targets.spec.ts', project: 'journeys', floor: 4, why: '4 of 30 listed run in journeys (88.9-52 R5 added the feedback button proof); 26 skipped here by an isMobile predicate (the D10 arm; the D10 step keeps its own title-prefixed floor)' },
   { spec: 'e2e/touch-targets.spec.ts', project: 'phone', floor: 26, why: '26 of 30 listed run in phone (88.9-52 R21 added the header name proof); 4 skipped here by an isMobile predicate' },
   { spec: 'e2e/tutorial-phone-wording.spec.ts', project: 'journeys', floor: 1, why: '1 of 2 listed run in journeys; 1 skipped here by an isMobile predicate' },
