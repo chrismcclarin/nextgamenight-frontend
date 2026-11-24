@@ -608,6 +608,21 @@
   --radius-card: 12px;
   --radius-btn: 8px;
 
+  /* edges     -- owner pick O-M1 = D, literal px values, no collision with v4 built-ins */
+  /* DECISION Phase 89.6-05 (O-M1): page and card edges are px tokens that do not grow with text:
+     edge-card 12px, edge-page 16px, edge-wide 24px for desktop pages and cards; owner pick
+     O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge); names get about
+     255px; buttons, gaps and avatars still grow'. Chosen OVER rem edges that double at 200% (a
+     Home card name gets 195px at 320 instead of 255px) and OVER a smaller spacing unit everywhere
+     (avatars and initials overlap, research M F2). Pixel-identical at normal text (16px is 1rem).
+     Not the fixed-spacing bug of the phone-forward rule, which is padding that does not adapt to a
+     small screen: these keep their phone value at every text size. HR-9: every page edge, card and
+     bar uses them (a bar takes edge-card, then edge-page on desktop); plan 89.6-15 applies them at
+     every site. Changing this is a decision, not a cleanup. */
+  --spacing-edge-card: 12px;
+  --spacing-edge-page: 16px;
+  --spacing-edge-wide: 24px;
+
   /* shadows   -- no collision with v4 built-ins.
      NOTE the asymmetry with the three project shadow properties these reference: those STAY in
      plain `:root`. See the guardrail marker at their declaration site below. */
@@ -844,6 +859,60 @@
   .bb-label {
     min-width: 0;
     overflow-wrap: break-word;
+  }
+
+  /* DECISION Phase 89.6-05 (bb-cluster): items wrap as whole items and a chip shows its whole
+     name, wrapped (owner D1); an item wider than its row is capped to the row and its label
+     (.bb-label) wraps inside it; a .bb-keep unit (icons and digits only, HR-3) never splits; a
+     breadcrumb separator rides with the crumb after it. Chosen OVER a sideways scroll strip (34px
+     chips in a 14px box, register R5-03) and OVER a width cap on chips. HR-6 as amended by SPEC A9
+     (3): a control's label is a .bb-label, the control is capped to its row, every control keeps
+     the 44px floor through its own size class (min-h-11 and min-w-11 in the Button primitive and
+     on the harness controls; the block caps width only and never sets a min-width of 0 on a
+     control, so a flex item cannot shrink below its own minimum; the tap-floor specs,
+     e2e/touch-targets.spec.ts, measure the floor on screens, the matrix does not), and an
+     icon-only control keeps a 44 by 44 box whose icon follows the text up to 32px (owner pick
+     O-M4 = Fixed+). GR holds: nothing is squeezed, shrunk, cut or broken to avoid stacking.
+     Changing this is a decision, not a cleanup. */
+  .bb-cluster {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .bb-cluster > * {
+    max-width: 100%;
+  }
+
+  .bb-chip {
+    max-width: 100%;
+    white-space: normal;
+    text-align: start;
+  }
+
+  .bb-keep {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.25rem;
+    white-space: nowrap;
+  }
+
+  .bb-crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Each crumb stays a block-level flex item whose words wrap inside it, so its leading separator
+     stays with it. */
+  .bb-crumbs > * {
+    max-width: 100%;
   }
 }
 

@@ -65,7 +65,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 const HARNESS_DIR = resolve(__dirname, 'support/large-text-harness');
 
 /** The building blocks under test; each has a harness file of the same name. Later plans append. */
-const BLOCKS = ['bb-row'] as const;
+const BLOCKS = ['bb-row', 'bb-cluster'] as const;
 /** The four content cases every block is rendered with, each a section of the harness file. */
 const CASES = ['ordinary', 'empty', 'word30', 'emoji'] as const;
 
@@ -114,10 +114,12 @@ const CELLS: Cell[] = [
   ...MATRIX_SIZES.map((size): Cell => ({ set: 'heldout', ...size, theme: 'light', mode: '150' })),
 ];
 
-/** The boxes of a block that must be equal in the two 200% modes, by block. Later plans append. */
-const MODE_BOXES: Record<(typeof BLOCKS)[number], string> = {
-  'bb-row': '.bb-row-text, .bb-row-end',
-};
+/**
+ * The boxes that must be equal in the two 200% modes: the frame and every element under it whose
+ * class list holds a token starting bb-, so a new block or a new part of one is compared without
+ * being named here (Phase 89.6-05; the list of bb-row parts this replaced named two of them).
+ */
+const BLOCK_BOX_SCOPE = '[data-frame], [data-frame] *';
 
 /** src/app/globals.css as the app ships it, plus the utilities the harness pages use. */
 let compiledCss = '';
@@ -184,14 +186,26 @@ interface Box {
   height: number;
 }
 
-/** The boxes of every element the selector matches, in document order. */
-async function boxesOf(page: Page, selector: string): Promise<Box[]> {
-  return page.locator(selector).evaluateAll((elements) =>
-    elements.map((el) => {
-      const r = el.getBoundingClientRect();
-      return { left: r.left, top: r.top, width: r.width, height: r.height };
-    }),
+/** The box of every building-block element (a class token starting bb-) at or under the frame, in document order. */
+async function blockBoxesOf(page: Page): Promise<Box[]> {
+  return page.locator(BLOCK_BOX_SCOPE).evaluateAll((elements) =>
+    elements
+      .filter((el) => Array.from(el.classList).some((token) => token.startsWith('bb-')))
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
+      }),
   );
+}
+
+/**
+ * The compiled stylesheet holds a rule for the block. Every test asserts this LAST (Phase 89.6-05):
+ * a block with no rules then fails first on the cell read it breaks, by name, and a block whose
+ * reads pass with no rules at all still fails here. It is not part of beforeAll, where one missing
+ * block would fail every test with the hook's error and hide which cell broke.
+ */
+function expectBlockRule(block: string, tag: string): void {
+  expect(new RegExp(`\\.${block}\\s*\\{`).test(compiledCss), `${tag}: the compiled stylesheet holds no .${block} rule, so this cell rendered without the block`).toBe(true);
 }
 
 for (const block of BLOCKS) {
@@ -216,6 +230,7 @@ for (const block of BLOCKS) {
         }
         expect(reads.length, `${zoomName}: four content cases were to be read`).toBe(4);
         expect(requests, `${zoomName}: the page made a request`).toEqual([]);
+        expectBlockRule(block, zoomName);
       });
       continue;
     }
@@ -228,7 +243,7 @@ for (const block of BLOCKS) {
       for (const name of CASES) {
         await renderSection(page, cell, sectionOf(harness, name), `${cellName} ${name}`);
         reads.push({ case: name, read: await readLargeTextCell(frameOf(page)) });
-        styleTagBoxes[name] = await boxesOf(page, MODE_BOXES[block]);
+        styleTagBoxes[name] = await blockBoxesOf(page);
       }
       // Attached BEFORE asserting, so a red cell still leaves its four reads behind.
       await testInfo.attach('cell-read', { body: JSON.stringify(reads, null, 2), contentType: 'application/json' });
@@ -242,7 +257,10 @@ for (const block of BLOCKS) {
 
       // The second 200% mode, for the two 768 / 200% matrix cells only: the same four cases on a
       // fresh page in font32, the same checks, and every block box equal to the style-tag render.
-      if (cell.set !== 'matrix' || cell.width !== 768 || cell.mode !== '200') return;
+      if (cell.set !== 'matrix' || cell.width !== 768 || cell.mode !== '200') {
+        expectBlockRule(block, cellName);
+        return;
+      }
       const second = await page.context().newPage();
       try {
         const secondRequests = await countRequests(second);
@@ -252,7 +270,7 @@ for (const block of BLOCKS) {
           // setTextMode is a no-op on this page after the first case: font32 is a page setting.
           await renderSection(second, { ...cell, mode: 'font32' }, sectionOf(harness, name), `${cellName} font32 ${name}`);
           font32Reads.push({ case: name, read: await readLargeTextCell(frameOf(second)) });
-          font32Boxes[name] = await boxesOf(second, MODE_BOXES[block]);
+          font32Boxes[name] = await blockBoxesOf(second);
         }
         await testInfo.attach('mode-boxes', { body: JSON.stringify({ styleTag: styleTagBoxes, font32: font32Boxes, font32Reads }, null, 2), contentType: 'application/json' });
         for (const { case: name, read } of font32Reads) {
@@ -261,7 +279,8 @@ for (const block of BLOCKS) {
           const want = styleTagBoxes[name];
           const got = font32Boxes[name];
           expect(got.length, `${tag}: the two modes drew a different number of block boxes`).toBe(want.length);
-          expect(got.length, `${tag}: no block box was found to compare`).toBeGreaterThan(0);
+          // The empty case of a block may hold no block element at all (a card with one line of text).
+          if (name !== 'empty') expect(got.length, `${tag}: no block box was found to compare`).toBeGreaterThan(0);
           got.forEach((box, i) => {
             for (const side of ['left', 'top', 'width', 'height'] as const) {
               expect(Math.abs(box[side] - want[i][side]), `${tag}: box ${i} differs in ${side} between the modes (style tag ${want[i][side]}px, font32 ${box[side]}px)`).toBeLessThanOrEqual(0.5);
@@ -272,6 +291,7 @@ for (const block of BLOCKS) {
       } finally {
         await second.close();
       }
+      expectBlockRule(block, cellName);
     });
   }
 }

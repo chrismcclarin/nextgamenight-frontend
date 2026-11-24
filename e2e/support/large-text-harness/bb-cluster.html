@@ -1,0 +1,110 @@
+<!--
+  The bb-cluster building block (items that wrap as whole items: a breadcrumb, a stepper unit that
+  stays together, and chips that show their whole name) in its four content cases.
+  One section per content case, marked with data-case; the matrix spec renders ONE section at a time.
+  The wrappers carry lt- hook names the app never styles, so nothing here collides with a shipped rule.
+  The frame and the card carry the thin edges at their phone values at every width (16px page edge,
+  12px card edge), with no desktop variant, so both 200% modes lay out alike.
+  The 30-letter case holds two more parts than the others, so that each of the two width caps is
+  seen on its own: a plain line of text that is not a chip inside the cluster (only the cap on
+  cluster items holds it to the row) and one chip outside any cluster (only the chip's own cap does).
+  The plain line has no side padding: the split read does not take padding off a row.
+  Every state is static markup: this file holds no script and no outside address.
+-->
+
+<section data-case="ordinary">
+  <main data-frame class="lt-frame px-edge-page py-4">
+    <div data-card class="lt-card rounded-card border border-line bg-surface-card p-edge-card">
+      <nav aria-label="Breadcrumb">
+        <ol class="bb-crumbs">
+          <li>Home</li>
+          <li><span aria-hidden="true">/</span> Weekend Warriors</li>
+          <li><span aria-hidden="true">/</span> Ticket to Ride</li>
+        </ol>
+      </nav>
+      <div class="bb-cluster mt-3">
+        <span class="bb-keep">
+          <button type="button" aria-label="Fewer players" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn border border-line text-content-primary">−</button>
+          <span>4</span>
+          <button type="button" aria-label="More players" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn border border-line text-content-primary">+</button>
+        </span>
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Catan</span></button>
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Azul</span></button>
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Ticket to Ride</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="empty">
+  <main data-frame class="lt-frame px-edge-page py-4">
+    <div data-card class="lt-card rounded-card border border-line bg-surface-card p-edge-card">
+      <nav aria-label="Breadcrumb">
+        <ol class="bb-crumbs">
+          <li>Home</li>
+          <li><span aria-hidden="true">/</span> Weekend Warriors</li>
+        </ol>
+      </nav>
+      <div class="bb-cluster mt-3">
+        <span class="bb-keep">
+          <button type="button" aria-label="Fewer players" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn border border-line text-content-primary">−</button>
+          <span>4</span>
+          <button type="button" aria-label="More players" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn border border-line text-content-primary">+</button>
+        </span>
+      </div>
+      <p class="mt-3 text-sm text-content-muted">No suggestions yet.</p>
+    </div>
+  </main>
+</section>
+
+<section data-case="word30">
+  <main data-frame class="lt-frame px-edge-page py-4">
+    <div data-card class="lt-card rounded-card border border-line bg-surface-card p-edge-card">
+      <nav aria-label="Breadcrumb">
+        <ol class="bb-crumbs">
+          <li>Home</li>
+          <li><span aria-hidden="true">/</span> Weekend Warriors</li>
+          <li><span aria-hidden="true">/</span> Grandmasterboardgamecollective</li>
+        </ol>
+      </nav>
+      <div class="bb-cluster mt-3">
+        <span class="bb-keep">
+          <button type="button" aria-label="Fewer players" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn border border-line text-content-primary">−</button>
+          <span>4</span>
+          <button type="button" aria-label="More players" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn border border-line text-content-primary">+</button>
+        </span>
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Catan</span></button>
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Azul</span></button>
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Grandmasterboardgamecollective</span></button>
+        <span class="text-sm text-content-secondary">Picked by Grandmasterboardgamecollective</span>
+      </div>
+      <div class="mt-3">
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Grandmasterboardgamecollective</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="emoji">
+  <main data-frame class="lt-frame px-edge-page py-4">
+    <div data-card class="lt-card rounded-card border border-line bg-surface-card p-edge-card">
+      <nav aria-label="Breadcrumb">
+        <ol class="bb-crumbs">
+          <li>Home</li>
+          <li><span aria-hidden="true">/</span> Weekend Warriors</li>
+          <li><span aria-hidden="true">/</span> Weekend Warriors 🎲</li>
+        </ol>
+      </nav>
+      <div class="bb-cluster mt-3">
+        <span class="bb-keep">
+          <button type="button" aria-label="Fewer players" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn border border-line text-content-primary">−</button>
+          <span>4</span>
+          <button type="button" aria-label="More players" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn border border-line text-content-primary">+</button>
+        </span>
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Catan</span></button>
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Azul</span></button>
+        <button type="button" class="btn btn-secondary bb-chip min-h-11"><span class="bb-label">Weekend Warriors 🎲</span></button>
+      </div>
+    </div>
+  </main>
+</section>
