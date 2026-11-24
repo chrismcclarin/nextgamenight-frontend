@@ -42,6 +42,8 @@ import {
 //
 // NEGATIVE CONTROLS. One test per check renders a bad twin, which the check must report, and its
 // good twin, which it must not: a read that cannot fail would pass every broken layout after it.
+// The split check has four more tests (orchestrator fix R3): its row rule has parts, and each part
+// has a twin that goes red when that part alone is taken out. One last test pins the harness cut.
 //
 // HOW 200% IS PRODUCED. A style tag sets the root font size to 200%, so every rem doubles, as
 // e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED") explains. Browser zoom is not used.
