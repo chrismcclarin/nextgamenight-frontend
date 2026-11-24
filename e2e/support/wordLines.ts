@@ -319,6 +319,10 @@ export interface LargeTextCellRead {
   cut: string[];
   /** One entry per word drawn on more than one line although it fits its row on one. */
   split: string[];
+  /** One entry per broken word held narrow by a box with a width of its own (orchestrator change R6; not read yet, always empty). */
+  held: string[];
+  /** One entry per broken word that is wider than its whole room; written down, never failed (R6; not read yet, always empty). */
+  wide: string[];
   /** One entry per word that paints outside its nearest box with a fill, a side border or a control. */
   spill: string[];
   /** One entry per select whose chosen option is wider than the room the closed select has for it. */
@@ -742,7 +746,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   }
 
   ruler.remove();
-  return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, spill, selectCut, lost };
+  return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, held: [], wide: [], spill, selectCut, lost };
 }
 
 /**
@@ -759,6 +763,8 @@ export async function readLargeTextCell(root: Locator, options: LargeTextReadOpt
     dialogSideways: read.dialogSideways,
     cut: read.cut,
     split: read.split,
+    held: read.held,
+    wide: read.wide,
     spill: read.spill,
     selectCut: read.selectCut,
   };

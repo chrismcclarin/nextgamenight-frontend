@@ -2,10 +2,13 @@
   Negative controls for the large-text checks: a bad twin and a good twin for each check.
   One section per twin, marked with data-case; the matrix spec renders ONE section at a time.
   A bad twin holds the defect its check must report; its good twin holds the same content without it.
-  The split check has many more: a bad form with no twin holds a squeeze the check must report,
-  and every other split case holds a word that IS broken and that the check must NOT report,
-  because that word is wider than the room its row can give it. The good twin of a pair holds a
-  30-letter word for that reason: it is wider than the whole row, so it breaks there and may.
+  The split check has many more, and since orchestrator change R6 (2026-11-24) each says which of
+  three lists its broken word lands in. SPLIT: the word would be whole if the rows above it stacked,
+  or it is glued to what precedes it on its line (a bad form). HELD: a box with a width of its own
+  holds the word narrow, stacking would not help, and the page has room for it. WIDE: the word is
+  wider than any room the layout could give it, or it only wraps at its own hyphen; silent. In every
+  case the word IS broken: a list that names no word proves nothing about a word that never broke.
+  The good twin of a pair holds a 30-letter word for that reason: it is wider than the whole row.
   The wrappers carry lt- hook names the app never styles. Every state is static markup:
   this file holds no script and no outside address.
 -->
@@ -162,7 +165,7 @@
   </main>
 </section>
 
-<!-- a plain narrow block, with no flex or grid row above it inside the frame: its word is wider than the block, so the word may break and nothing is reported. -->
+<!-- a plain narrow block, with no flex or grid row above it inside the frame: nothing can stack, and the block's own width holds its word narrow in a card that has room for it. HELD. -->
 <section data-case="split-block-only">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
@@ -173,7 +176,7 @@
   </main>
 </section>
 
-<!-- the read's own root is a narrow item of a row: what is above the root is outside the read, so the word wider than the root may break and nothing is reported. -->
+<!-- the read's own root is a narrow item of a row: what is above the root is outside the read, so the word is wider than its whole room. WIDE. -->
 <section data-case="split-above-root">
   <div class="lt-shell flex gap-2 px-4 py-4">
     <main data-frame class="lt-frame w-8 flex-none">
@@ -261,7 +264,7 @@
   </main>
 </section>
 
-<!-- a fixed narrow card in a column: nothing sits beside it and no row is above it, so its word, wider than the card, may break and nothing is reported. A column is never the row. -->
+<!-- a fixed narrow card in a column: nothing sits beside it and no row is above it to stack, so the card's own width holds its word narrow. HELD. A column is never stacked. -->
 <section data-case="split-column-card">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
@@ -274,7 +277,7 @@
   </main>
 </section>
 
-<!-- the same in a grid of ONE column: it stacks its items like a column, so it is not a row either. -->
+<!-- the same in a grid of ONE column: it stacks its items like a column, so it is not a row either. HELD by the card. -->
 <section data-case="split-grid-card">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
@@ -287,7 +290,7 @@
   </main>
 </section>
 
-<!-- the read's own root is a narrow COLUMN container that is an item of a wider row: the row is above the root and the root is a column, so nothing is reported. -->
+<!-- the read's own root is a narrow COLUMN container that is an item of a wider row: the row is above the root and the root is a column, so the word is wider than its whole room. WIDE. -->
 <section data-case="split-root-column">
   <div class="lt-shell flex gap-2 px-4 py-4">
     <main data-frame class="lt-frame flex w-8 flex-none flex-col">
@@ -307,7 +310,7 @@
   </main>
 </section>
 
-<!-- a row named with data-room: the mark is the row, whatever rows are above it, so the word wider than the marked box may break and nothing is reported. -->
+<!-- a box named with data-room: the mark is the bound of the stacking, whatever rows are above it, so the word wider than the marked box is wider than its whole room. WIDE. -->
 <section data-case="split-marked-row">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
@@ -321,7 +324,7 @@
   </main>
 </section>
 
-<!-- a mark ABOVE the root of the read, bad form only: the marked row holds the read's root and a fixed box beside it. The mark is the row wherever it is, so the name squeezed inside the root is measured against the marked row and reported. -->
+<!-- a mark ABOVE the root of the read, bad form only: the marked row holds the read's root and a fixed box beside it. The mark is the bound wherever it is, so the marked row is stacked, the name squeezed inside the root becomes whole, and it is reported. -->
 <section data-case="split-mark-above-root">
   <div data-room class="lt-shell flex gap-2 px-4 py-4">
     <main data-frame class="lt-frame min-w-0 flex-1">
@@ -331,7 +334,7 @@
   </div>
 </section>
 
-<!-- an automatic margin, bad form only: a narrow item pushed to the end of its row. The margin is the free space of the row, not an edge of the item, so the row still has room for the word and the break is reported. -->
+<!-- an automatic margin (amended by R6: held, it was "reported"): a narrow item pushed to the end of its row. The margin is the free space of the row, not an edge of the item; stacked, the item is still as narrow as its own width makes it, so the word is HELD by that width. -->
 <section data-case="split-auto-margin">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
@@ -347,9 +350,9 @@
 <!--
   margins between the word and its row. Sized like the padded pill below: the first line makes the
   box the word plus 36px wide; the item under it has a 20px margin on each side (40px), so it has
-  4px less than the word needs. The word breaks, and it may. The margin is on a wrapper around the
-  word's own paragraph: the edges of every box between the word and its row count, not only those
-  of the word's own box.
+  4px less than the word needs. The word breaks, and stacking the row cannot make it whole: the
+  margin is on a wrapper around the word's own paragraph, and the browser lays it out stacked too.
+  HELD by the sizing box (its fit-content width), which is narrower than the card.
 -->
 <section data-case="split-margin-good">
   <main data-frame class="lt-frame px-4 py-4">
@@ -369,7 +372,8 @@
 <!--
   a padded INLINE box around the word, in a plain paragraph. The paragraph is the word plus 36px
   wide; the box around the word has 16px of padding and a 4px border on each side (40px), so the
-  line is 4px short of the word in its box. The word breaks, and it may.
+  line is 4px short of the word in its box. The word breaks, there is no row to stack, and the
+  sizing box is narrower than the card. HELD by the sizing box.
 -->
 <section data-case="split-inline-pill-good">
   <main data-frame class="lt-frame px-4 py-4">
@@ -417,9 +421,9 @@
 <!--
   a padded pill directly in a row. The first line sizes the box: it is the word plus 36px wide, so
   the row under it has room for the word, and the pill (16px of padding and a 4px border on each
-  side, 40px in all) has 4px less than the word needs. The word breaks, and it may: it is wider
-  than its row less the pill's own padding and border. Taking off the padding alone (32px) or the
-  border alone (8px) still leaves room for the word, so both must come off.
+  side, 40px in all) has 4px less than the word needs. The word breaks, and it is not split: it
+  is wider than its row less the pill's own padding and border, stacked too. Taking off the padding
+  alone (32px) or the border alone (8px) still leaves room for the word. HELD by the sizing box.
 -->
 <section data-case="split-padded-good">
   <main data-frame class="lt-frame px-4 py-4">
@@ -429,6 +433,284 @@
         <div class="lt-pill-row flex w-0 min-w-full">
           <span class="lt-pill max-w-full rounded-full border-4 border-line px-2 font-semibold text-base text-content-primary">Weekend</span>
         </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!--
+  THE MEASURED CASES (orchestrator change R6, 2026-11-24). The split read stacks the side-by-side
+  containers above a broken word for a moment and reads the word again. T-numbers are the twin
+  list of the research the change came from; each case says the list its word must land in.
+-->
+
+<!-- T1, a pop-up of fixed width hanging in a row: stacking the row does not change the pop-up, and the page has room for the word. HELD by the pop-up; the read as built before R6 called it split. -->
+<section data-case="split-popup-fixed">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row relative flex h-11">
+        <span class="text-base text-content-primary">Menu</span>
+        <div class="lt-menu absolute right-0 top-full w-[100px]">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- T1, the same pop-up hanging from an anchor whose side padding leaves less room than the pop-up is wide: no box here is narrower than its parent offers, so only the pop-up's own position names it. HELD. -->
+<section data-case="split-popup-padded-anchor">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-anchor relative h-11 px-[60px]">
+        <div class="lt-menu absolute left-0 top-full w-[100px]">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!--
+  T2, the middle word of a padded inline box, bad form only. Sized like the padded pill above: the
+  row is the word plus 36px wide. The inline box has 20px of padding on each side, which sits only
+  beside its first and last words; stacked, the middle word has a line of its own with no padding
+  on it and is whole. SPLIT. Arithmetic that takes both paddings off every word in the box misses it.
+-->
+<section data-case="split-inline-middle">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-fit w-fit max-w-full">
+        <p class="lt-sizer pr-[36px] font-semibold text-base text-content-primary">Weekend</p>
+        <div class="lt-pill-row flex w-0 min-w-full">
+          <div class="lt-wrap min-w-0"><span class="lt-name px-[20px] font-semibold text-base text-content-primary">Ab Weekend cd</span></div>
+          <div aria-hidden="true" class="lt-fixed h-11 w-11 flex-none rounded-btn bg-surface-sunken"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- T3, a label of fixed width in a row: stacking the row leaves the label as narrow as its own width makes it, and the row has room for the word. HELD by the label; the read as built before R6 called it split. -->
+<section data-case="split-fixed-label">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row flex gap-2">
+        <div class="lt-name w-[56px] flex-none font-semibold text-base text-content-primary">Weekend</div>
+        <div class="text-base text-content-primary">Val</div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- T4, text in two columns, bad form only: the columns sit side by side, and one column the width of the card holds the word whole. SPLIT. -->
+<section data-case="split-multicol">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-columns columns-2 gap-2">
+        <p class="lt-name font-semibold text-base text-content-primary">Weekend</p>
+        <p class="text-base text-content-primary">x</p>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- T5, the read's own root is a subgrid of two tracks, bad form only: its grid is above the root, and its computed column list names no track size. Stacking the root gives the name the whole root. SPLIT. -->
+<section data-case="split-subgrid-root">
+  <div class="lt-shell grid grid-cols-[3rem_minmax(0,1fr)] px-4 py-4">
+    <main data-frame class="lt-frame col-span-full grid grid-cols-subgrid">
+      <p class="lt-name font-semibold text-base text-content-primary">Weekend</p>
+      <div class="lt-side text-base text-content-primary">Menu</div>
+    </main>
+  </div>
+</section>
+
+<!-- T6, a button of fixed width whose label may shrink, in a row: stacked, the label is as wide as the button and no wider. HELD by the button. A label left to centre itself would be whole only by spilling out of the button. -->
+<section data-case="split-centred-button">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row flex gap-2">
+        <button type="button" class="lt-chip inline-flex w-[64px] flex-none items-center"><span class="lt-name min-w-0 font-semibold text-base text-content-primary">Weekend</span></button>
+        <span class="text-base text-content-primary">Val</span>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- T6, a chip that centres a 30-letter label: the word is wider than the whole room. WIDE. -->
+<section data-case="split-chip-wide">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <button type="button" class="lt-chip inline-flex w-[96px] max-w-full items-center justify-center"><span class="lt-name min-w-0 font-semibold text-base text-content-primary">Grandmasterboardgamecollective</span></button>
+    </div>
+  </main>
+</section>
+
+<!-- T7, a row whose direction is important inside a cascade layer, bad form only: the temporary stylesheet cannot stack it, so nothing can be measured and the read says COULD NOT STACK in the split list. -->
+<section data-case="split-important-row">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row flex flex-row! gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!--
+  T8, the put-back proof: squeezed names inside a scrolling box and under it. Stacking a row makes
+  the content much shorter (a letter-stack becomes two lines), so a scroll offset at the bottom is
+  clamped while a row is stacked. After the read every box, both scroll offsets and the page's
+  adopted stylesheet list are as they were.
+-->
+<section data-case="split-put-back">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-scroller h-40 overflow-y-auto">
+      <div class="lt-row flex gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-2 w-24 flex-none bg-surface-sunken"></div>
+      </div>
+      <div class="lt-row flex gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <p class="font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-2 w-24 flex-none bg-surface-sunken"></div>
+      </div>
+    </div>
+    <div class="lt-row flex gap-2">
+      <div class="lt-wrap min-w-0 flex-1">
+        <p class="font-semibold text-base text-content-primary">Weekend Warriors</p>
+      </div>
+      <div aria-hidden="true" class="lt-fixed h-2 w-24 flex-none bg-surface-sunken"></div>
+    </div>
+    <div class="lt-row flex gap-2">
+      <div class="lt-wrap min-w-0 flex-1">
+        <p class="font-semibold text-base text-content-primary">Weekend Warriors</p>
+      </div>
+      <div aria-hidden="true" class="lt-fixed h-2 w-24 flex-none bg-surface-sunken"></div>
+    </div>
+  </main>
+</section>
+
+<!-- T9, a grid of ONE column whose column list carries line names, and a fixed card in it: the names are not columns, so the grid is not a row. HELD by the card. -->
+<section data-case="split-grid-named-lines">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-page grid grid-cols-[[full-start]_minmax(0,1fr)_[full-end]] gap-2">
+        <div class="lt-narrow w-[64px]">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- T9, the same one-column grid between a squeezed name and its row, bad form only: ONE row stacks (the flex row); the grid with line names is not counted as a second. SPLIT. -->
+<section data-case="split-grid-named-lines-in-row">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row flex gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <div class="lt-page grid grid-cols-[[full-start]_minmax(0,1fr)_[full-end]]">
+            <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+          </div>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- T10, a centred row item that holds a squeezed word AND a 30-letter word, bad form for the short word: stacked and stretched, the item has the whole row and the short word is whole. SPLIT for the short word, WIDE for the long one. Left centred, the item would be as wide as its long word and spill, and the short word would hide behind it. -->
+<section data-case="split-centred-item-wide-word">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row flex items-center gap-2">
+        <div aria-hidden="true" class="lt-fixed h-11 w-16 flex-none rounded-btn bg-surface-sunken"></div>
+        <div class="lt-name min-w-0 flex-1">
+          <h3 class="font-semibold text-base text-content-primary">Grandmasterboardgamecollective</h3>
+          <p class="text-base text-content-primary">Weekend</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- T11, a breadcrumb whose crumb is glued to its separator, bad form only: the line has no place to wrap before the crumb, so the browser breaks the crumb although it would fit a line of its own. There is no row to stack. SPLIT, as glued. -->
+<section data-case="split-glued-crumb">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <nav aria-label="Sample breadcrumb" class="lt-crumbs inline-block max-w-full px-3 font-semibold text-base text-content-primary"><a href="#up">Up</a><span class="mx-1">&gt;</span><span class="lt-name">Weekend</span></nav>
+    </div>
+  </main>
+</section>
+
+<!--
+  T12, a hyphenated word that wraps at its own hyphen in a paragraph. The first line sizes the box:
+  it holds "Go auto-clo", so the paragraph under it has room for "Go auto-" and not for the whole
+  word. A line break after a hyphen is ordinary wrapping, not a word broken inside itself, and
+  nothing can stack. WIDE (silent); the read as built before R6 called it split.
+-->
+<section data-case="split-hyphen-wrap">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-fit w-fit max-w-full">
+      <p class="lt-sizer text-base text-content-primary">Go auto-clo</p>
+      <p class="lt-name w-0 min-w-full text-base text-content-primary">Go auto-close</p>
+    </div>
+  </main>
+</section>
+
+<!-- T13, a grid item that spans both columns of a padded two-column grid: the word is wider than the row's content, and the row is as wide as the frame. Stacked, it has the same room. WIDE. Left to centre itself it would be whole only by spilling into the row's padding. -->
+<section data-case="split-spanning-grid-wide">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-row grid grid-cols-[1fr_auto] items-center px-[70px]">
+      <p class="lt-name col-span-2 font-semibold text-base text-content-primary">Weekend</p>
+      <span aria-hidden="true" class="lt-fixed h-2 w-2"></span>
+    </div>
+  </main>
+</section>
+
+<!-- T13, an item with a fit-content width in a padded row: stacked, it is as wide as its word and spills into the row's padding. A word that is whole only outside the content box of a box above it has not been given room. WIDE. -->
+<section data-case="split-spill-into-padding">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-row flex px-[70px]">
+      <p class="lt-name w-fit min-w-0 font-semibold text-base text-content-primary">Weekend</p>
+      <div aria-hidden="true" class="lt-fixed h-11 w-[20px] flex-none"></div>
+    </div>
+  </main>
+</section>
+
+<!--
+  T14, a hyphenated heading squeezed by a box beside it, bad form only. The first line sizes the
+  box: the heading has room for "Check-i", so it wraps at its hyphen; stacked, it has 60px more and
+  is whole. SPLIT: a break at a hyphen is ordinary only when stacking does not undo it.
+-->
+<section data-case="split-hyphen-squeezed">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-fit w-fit max-w-full">
+        <p class="lt-sizer pr-[60px] font-semibold text-base text-content-primary">Check-i</p>
+        <div class="lt-pill-row flex w-0 min-w-full items-center">
+          <h3 class="lt-name min-w-0 font-semibold text-base text-content-primary">Check-ins</h3>
+          <span aria-hidden="true" class="lt-fixed h-2 w-[60px] flex-none"></span>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- a text item whose width of 0 exists only to share its row (w-0 with flex-1): stacked, the width of 0 stays, so the word reads HELD by that width. UNSETTLED in the research (a person could call it a defect); pinned as built, and the app has no such item. -->
+<section data-case="split-zero-width-share">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row flex gap-2">
+        <div class="lt-name w-0 flex-1 font-semibold text-base text-content-primary">Weekend</div>
+        <div aria-hidden="true" class="lt-fixed h-11 w-16 flex-none rounded-btn bg-surface-sunken"></div>
       </div>
     </div>
   </main>
