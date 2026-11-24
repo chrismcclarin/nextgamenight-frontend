@@ -157,13 +157,16 @@ function harnessOf(block: string): string {
  * silent cut it was (the case rendered only as far as the inner element's end and every cell
  * passed on half a page: plan 89.6-05 met it with two column sections) and OVER a cut that
  * balances nested tags (a parser in a test helper, for a shape a div serves as well). Making the
- * match greedy instead joins every case after this one into it. Changing this is a decision, not
- * a cleanup.
+ * match greedy instead joins every case after this one into it. Tag names are read in any letter
+ * case, and HTML comments are taken out before the cut (so the case handed back holds none): a
+ * comment that names a section tag is not markup, and it once ended a case or read as a nested
+ * section. Changing this is a decision, not a cleanup.
  */
 function sectionOf(harness: string, name: string, file: string): string {
-  const match = harness.match(new RegExp(`<section data-case="${name}"[^>]*>[\\s\\S]*?</section>`));
+  const markup = harness.replace(/<!--[\s\S]*?-->/g, '');
+  const match = markup.match(new RegExp(`<section data-case="${name}"[^>]*>[\\s\\S]*?</section>`, 'i'));
   if (!match) throw new Error(`${file}: the harness has no section with data-case="${name}"`);
-  if ((match[0].match(/<section\b/g) ?? []).length > 1) {
+  if ((match[0].match(/<section\b/gi) ?? []).length > 1) {
     throw new Error(`${file}: the case "${name}" nests a section element. A case is cut at the first closing section tag, so only part of it would render: use a div.`);
   }
   return match[0];
@@ -594,6 +597,21 @@ test('harness (89.6-05, R3): a content case that nests a section throws, naming 
   // The same case with a div in place of the inner section is handed back whole.
   const flat = nested.replace('<section class="lt-col">One</section>', '<div class="lt-col">One</div>');
   expect(sectionOf(flat, 'word30', 'doctored.html')).toBe(flat);
+});
+
+test('harness (89.6-05, R3 repair): the cut reads tag names in any letter case and never reads inside an HTML comment', () => {
+  // An inner section whose opening tag is in capitals is still a nested section.
+  const capitals = '<section data-case="word30"><main data-frame><SECTION class="lt-col">One</section><div class="lt-col">Two</div></main></section>';
+  expect(() => sectionOf(capitals, 'word30', 'doctored.html'), 'an inner section written in capitals was cut at its closing tag without a word').toThrow(
+    'doctored.html: the case "word30" nests a section element',
+  );
+  // A closing tag in capitals still ends the case.
+  expect(sectionOf('<section data-case="a"><p>One</p></SECTION><p>after</p>', 'a', 'doctored.html')).toBe('<section data-case="a"><p>One</p></SECTION>');
+  // A comment that names a closing tag does not end the case, and one that names an opening tag is not a nested section.
+  const closingInComment = '<section data-case="a"><p>One</p><!-- not the end: </section> --><p>Two</p></section>';
+  expect(sectionOf(closingInComment, 'a', 'doctored.html'), 'a comment that names a closing section tag cut the case short').toBe('<section data-case="a"><p>One</p><p>Two</p></section>');
+  const openingInComment = '<section data-case="a"><!-- a <section> would nest --><p>One</p></section>';
+  expect(sectionOf(openingInComment, 'a', 'doctored.html'), 'a comment that names an opening section tag was taken for a nested section').toBe('<section data-case="a"><p>One</p></section>');
 });
 
 // ---------------------------------------------------------------------------------------------
