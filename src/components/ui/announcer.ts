@@ -3,7 +3,8 @@
  * 2026-11-08, DEC-3 option A). `RootAnnouncer` reads it through `useSyncExternalStore`; callers
  * write it with `announceStatus`. No React import: the store outlives any component that writes it.
  * Since 88.9-52 (A-47) the same store also feeds the region inside the top open dialog: see the
- * A-47 DECISION marker below.
+ * A-47 DECISION marker below. Since 89.6-03 a toast's words reach that region too, through
+ * `announceInOpenDialog`: see the toast-bridge marker below.
  */
 import { REGION_EMPTY_DWELL_MS } from './StatusRegion';
 import { INLINE_RECEIPT_MS } from './useInlineReceipt';
@@ -98,7 +99,11 @@ function settle(): void {
    AMENDED Phase 88.9-52 (A-47): "the ONE region" is now one region PER PLACE, and the words are
    only ever in one of them — the root region, or the region inside the top open dialog. The
    clear, the dwell and the clear window above are unchanged and shared by every region; the
-   marker below records the routing. */
+   marker below records the routing.
+   AMENDED Phase 89.6-03 (toast-bridge): this store has a second writer. announceInOpenDialog
+   hands a toast's words to it while a house dialog is on the page, so the outcomes it carries
+   are no longer only the ones rule 2 stopped toasting. The reasoning is the toast-bridge marker
+   further down this file. */
 export function announceStatus(next: string): void {
   clearPending();
   held = null;
@@ -153,6 +158,30 @@ export function announceStatus(next: string): void {
    (Manage Members among them).
    Not verifiable off the device: whether VoiceOver speaks the in-dialog region. jsdom shows only
    where the words are and when. Changing any of this is a decision, not a cleanup. */
+
+/* DECISION Phase 89.6-03 (toast-bridge): ONE bridge reads Sonner's toast list and hands each new
+   toast's words to the open dialog's region through this export
+   (src/components/ui/ToastAnnouncer.tsx ("export function ToastAnnouncer()")),
+   chosen OVER a house notify() wrapper at every toast call site (11 files: every caller changes
+   and the next one can forget it, the reason A-47 above refused a parameter) and OVER an inline
+   error line in each dialog, which reverses DECISION Phase 88.6-20
+   (src/app/components/GroupSettings.js ("This is a MUTATION inside an open modal, so §6.2 routes it to the toast")).
+   Zero toast call sites change, and announceStatus is unchanged.
+   WHY: with Customize Group open and Save Changes failing, VoiceOver on the owner's iPhone said
+   only save changes; the error toast was not spoken
+   (planning:.planning/deferred/phase-89.6.md ("Error notices are not spoken while a dialog is open")).
+   Sonner's live region sits outside the aria-modal dialog, the case A-47 measured silent for the
+   root region.
+   THE GATE IS READ AT THE CALL, THE TARGET WHEN THE WORDS LAND. With no house dialog open
+   nothing is written: Sonner's own region is the one that speaks there, so nothing is read twice
+   outside dialogs. With one open the words go through announceStatus as they are, so the clear,
+   the dwell, the one-text rule and the landing are A-47's own, not a copy.
+   Not verifiable off the device: whether VoiceOver speaks the words in the dialog region. The
+   listen check is plan 89.6-32's. Changing this is a decision, not a cleanup. */
+export function announceInOpenDialog(next: string): void {
+  if (hosts.length === 0) return;
+  announceStatus(next);
+}
 
 /** A dialog opened: it becomes the top announce target. Returns its close (the open prop went false). */
 export function registerAnnounceHost(host: AnnounceHost): () => void {

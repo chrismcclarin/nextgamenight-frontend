@@ -14,6 +14,7 @@ import FriendshipStatusProvider from './components/FriendshipStatusProvider'
 import UnreadNotificationProvider from './components/UnreadNotificationProvider'
 import FeedbackModalProvider from './components/FeedbackModalProvider'
 import { RootAnnouncer } from '../components/ui/RootAnnouncer'
+import { ToastAnnouncer } from '../components/ui/ToastAnnouncer'
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -48,7 +49,13 @@ export default function RootLayout({ children }) {
               dialog is open (measured 2026-11-16), so while one is open the same store hands the
               words to a region inside that dialog and this one stays empty
               (src/components/ui/announcer.ts ("DECISION Phase 88.9-52 (A-47): while a house dialog is open")).
-              The mount here is unchanged. */}
+              The mount here is unchanged.
+              AMENDED Phase 89.6-03 (toast-bridge): the outcomes are no longer the only words that
+              reach an open dialog. ToastAnnouncer, mounted beside this region, hands a toast's
+              words to the open dialog's region through the same store
+              (src/components/ui/announcer.ts ("DECISION Phase 89.6-03 (toast-bridge)")).
+              It is not a Toaster (GUARD-02 still holds) and renders no node. This region's mount
+              is unchanged. */}
           {/* DECISION Phase 88.9-52 (W40, owner at the after-build look page: the error toast lies
               over the header and its close x overlaps the logo on a phone): on a phone (Sonner's
               600px and under) the toast starts 72px from the top, the 64px header strip plus an
@@ -60,6 +67,7 @@ export default function RootLayout({ children }) {
               src/app/miniPicks.test.ts ("8. 88.9-52 W40"). */}
           <Toaster position="top-right" richColors closeButton theme="system" mobileOffset={{ top: 72 }} />
           <RootAnnouncer />
+          <ToastAnnouncer />
           {/* PRIM-07 (Plan 84-04): TanStack Query provider mounted at the app
               root via the server-fresh / browser-singleton getQueryClient()
               factory. Must sit ABOVE any component that calls useQuery. */}
