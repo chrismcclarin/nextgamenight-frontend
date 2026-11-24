@@ -96,6 +96,12 @@
  * against its own fill and against the list box, at rest and keyboard-focused, both themes; the
  * floor guards it being deleted or skipped.
  *
+ * RAISED 44 -> 45, Phase 89.6-09, MEASURED 2026-11-24: npx playwright test --list --project=phone
+ * reports 45 tests in e2e/contrast.spec.ts, all of which execute in phone. The new one is the
+ * 89.6 R7 U1 read (owner pick O-3): the selected Friends tab's underline against its ground, at
+ * rest (the border) and keyboard-focused (the inset band), both themes; the floor guards it being
+ * deleted or skipped.
+ *
  * GENERALISED 2026-09-28 (Phase 88.6 plan 55, owner-ruled NEW OWNER ITEM 4). DECISION Phase
  * 88.6-55: optional flags on THIS script, chosen OVER a second floor script — two copies of the
  * same report walk is the duplication the milestone tenet forbids, and they would drift. The
@@ -127,7 +133,7 @@ import { pathToFileURL } from 'node:url';
 const REPORT = process.argv[2] ?? 'playwright-results.json';
 const SPEC = 'e2e/contrast.spec.ts';
 const PROJECT = 'phone';
-const FLOOR = 44;
+const FLOOR = 45;
 
 // Optional overrides (see the GENERALISED note above). Parsed strictly: fail closed.
 const KNOWN_FLAGS = {

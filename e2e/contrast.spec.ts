@@ -3032,4 +3032,66 @@ test.describe('Req 11 Gate C — 89.6 R7 edges, both themes per test', () => {
       }
     });
   });
+
+  test('89.6 R7 U1: the selected Friends tab underline clears 3:1 at rest and when focused, both themes', async ({ page }) => {
+    test.slow();
+    hold = await sweepWriteGuard(page, {});
+    await inBothThemes(page, 'U1 Friends selected tab underline', async (theme) => {
+      await page.goto('/friends');
+      await assertTheme(page, theme);
+      // The selected tab is the strip button that says so (aria-current), whichever tab that is.
+      const tab = page.getByRole('main').locator('button[aria-current="true"]');
+      await expect(tab, `U1 (${theme}): the Friends page shows no selected tab`).toBeVisible({ timeout: 15_000 });
+      await settleAnimations(tab);
+
+      // AT REST: the 2px bottom border against the ground the tab sits on. The muted fill is read
+      // beside it (a token value, never a literal): in dark the line's colour measures under 3:1
+      // on that fill, so the line must not be sitting on it.
+      const restLabel = `U1 (${theme}) selected tab underline at rest`;
+      const rest = await ratioAgainstGround(tab, restLabel, 'border-bottom-color');
+      expect.soft(rest.ratio, edgeMessage(restLabel, rest)).toBeGreaterThanOrEqual(NON_TEXT);
+      const mutedFill = (await probeElement(tab, ['--color-bg-muted'])).computed['--color-bg-muted'].css;
+      if (mutedFill === null) throw new Error(`U1 (${theme}): the muted fill token did not resolve to a colour on the tab`);
+      expect(
+        rest.ground,
+        `U1 (${theme}): the selected tab sits on ${rest.ground}, which is the muted fill ${mutedFill}; the tab-indicator colour is not declared for that ground`
+      ).not.toBe(mutedFill);
+
+      // FOCUSED: reached by keyboard (focus is put on the tab, moved back one stop, then Tab brings
+      // it back), so focus-visible applies and the underline is the inset band in the box-shadow.
+      await tab.focus();
+      await page.keyboard.press('Shift+Tab');
+      await expect(tab, `U1 (${theme}): Shift+Tab did not move focus off the selected tab`).not.toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(tab, `U1 (${theme}): Tab did not bring focus back to the selected tab`).toBeFocused();
+      expect(
+        await tab.evaluate((el) => el.matches(':focus-visible')),
+        `U1 (${theme}): the focused tab does not match focus-visible, so its band is not drawn`
+      ).toBe(true);
+      await settleAnimations(tab);
+      const shadow = (await probeElement(tab, ['box-shadow'])).computed['box-shadow'].raw;
+      const layers = shadow.split(/,(?![^(]*\))/).map((layer) => layer.trim());
+      // NOTE FOR THE NEXT EDITOR. The FIRST colour of the box-shadow is read, which is right only
+      // while the underline band is the first layer on the focused tab; the check below fails the
+      // test by name if it is not. Plan 89.6-14 adds the ring's inner band to the same list and
+      // changes this read to pick the underline band by its inset keyword and offset, not by
+      // position.
+      expect(
+        layers[0]?.endsWith('0px -2px 0px 0px inset'),
+        `U1 (${theme}): the first box-shadow layer of the focused tab is not the 2px underline band (${shadow})`
+      ).toBe(true);
+      const band = /rgba?\([^)]*\)/.exec(shadow)?.[0];
+      if (!band) throw new Error(`U1 (${theme}): no rgb colour in the focused tab's box-shadow (${shadow}). A probe failure, not a contrast failure.`);
+      const bandRatio = contrastRatio(band, rest.ground);
+      if (bandRatio === null) throw new Error(`U1 (${theme}): could not compute the band ${band} against the ground ${rest.ground}`);
+      expect
+        .soft(bandRatio, `U1 (${theme}) selected tab underline band, focused: band ${band} on ${rest.ground} measures ${bandRatio.toFixed(4)}:1, floor ${NON_TEXT}:1`)
+        .toBeGreaterThanOrEqual(NON_TEXT);
+      // One indicator colour: the band is the resting underline's colour.
+      expect(
+        parseHex(band)?.join(','),
+        `U1 (${theme}): the focused band ${band} is not the resting underline's colour ${rest.fg}`
+      ).toBe(parseHex(rest.fg)?.join(','));
+    });
+  });
 });

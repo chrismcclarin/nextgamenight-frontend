@@ -657,6 +657,36 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     ).toBe(resolve('light', '--color-border-strong'));
   });
 
+  it('89.6 R7 dot-token: the header unread dot token keeps red-500 and clears 3:1 on the header in both themes', () => {
+    // The header unread dot is painted with the raw palette red (bg-red-500) and had no declared
+    // token (register entry "Header unread dot uses raw bg-red-500"). It carries meaning, so WCAG
+    // 1.4.11 applies: 3.0 against the header it sits on. Measured 2026-11-23, unrounded: #ef4444 on
+    // the light-theme header #2d2520 3.9944, on the dark-theme header #1a1614 4.7746. The bell's
+    // count colour (--color-badge-count-bg) was NOT chosen: it measures 2.3233 / 2.7770 there.
+    //
+    // The token KEEPS red-500's value, so the dot does not change colour when plan 89.6-26 applies
+    // it. red-500 lives in the theme block, which lookup() does not read (the correction recorded
+    // in test 8c), so the token ends in a literal and the palette value is read here from the
+    // comment-masked stylesheet by one unique match.
+    const red500 = [...MASKED.matchAll(/^[ \t]*--color-red-500[ \t]*:[ \t]*(#[0-9a-f]{6})[ \t]*;/gim)];
+    expect(red500, 'dot-token: expected exactly one --color-red-500 declaration in globals.css').toHaveLength(1);
+    const paletteRed = red500[0][1].toLowerCase();
+    const req = 'R7 dot-token (89.6) / 1.4.11 (the header unread dot)';
+    for (const theme of ['light', 'dark'] as const) {
+      expect(
+        resolve(theme, '--color-header-dot-bg'),
+        `dot-token: [${theme}] --color-header-dot-bg must stay byte-equal to the palette red-500 (${paletteRed})`,
+      ).toBe(paletteRed);
+      expectRatio(theme, '--color-header-dot-bg', '--color-bg-header', 3.0, req);
+    }
+    // The utility family (bg-header-dot) exists only through this key. Its name differs from the
+    // runtime property on purpose (the key-naming rule recorded at the pill family in globals.css).
+    expect(
+      declIn(blockOf('theme'), '--color-header-dot'),
+      'dot-token: the theme key --color-header-dot must bridge to var(--color-header-dot-bg)',
+    ).toBe('var(--color-header-dot-bg)');
+  });
+
   // ===================================================================================
   // Req 3 — shadows (UI-SPEC §5.4)
   // ===================================================================================
@@ -3446,5 +3476,47 @@ describe('PIX-8 — Friends tab labels on the page ground (Phase 88.9-52)', () =
       // text on the page, this says so and the choice can be looked at again.
       expectRatioBelow(theme, '--color-btn-primary-bg', '--color-bg-page', 4.5, 'PIX-8 / the retired button-fill ink on the page');
     }
+  });
+
+  it('89.6 R7 U1: the Friends selected-tab underline and its focused band clear 3:1 in both themes', () => {
+    // The selected tab's 2px underline was drawn with the primary button FILL (border-btn-primary):
+    // 4.3366 on the light page and 2.9867 on the dark page, a hair under the 3.0 edge floor (the
+    // register entry "[floor] Friends tab underline in dark measures 2.99 (floor 3.0)"). The
+    // focused state paints the same line as an inset band, so it carried the same miss. Owner pick
+    // O-3 (U1 + E1, 2026-11-22: "So I'll follow recommendation to make it follow the rule.") gives
+    // the line a token of its own: light purple-600 (unchanged, 4.3366 on the page), dark
+    // purple-500 (4.1790 on the page, 3.4225 on the card).
+    //
+    // The arm is read from the page's source (the PIX-8 regex above), so a later re-point of the
+    // underline or of the band turns this row red. Both draw ONE colour: the border through the
+    // utility, the band through the runtime property the utility's key points at.
+    //
+    // NOT A GROUND FOR THIS TOKEN: the dark input, muted and elevated fill (#2f3b50), where
+    // purple-500 measures 2.7868. The rendered pin (e2e/contrast.spec.ts, same id) asserts the
+    // tab's real ground is not that fill.
+    const arms = source.match(/activeTab === key\s*\?\s*'([^']+)'\s*:\s*'([^']+)'/);
+    expect(arms, 'U1: the Friends tab class ternary was not found in src/app/friends/page.js').not.toBeNull();
+    const [, activeArm] = arms as RegExpMatchArray;
+    const tokens = activeArm.split(/\s+/);
+    expect(tokens, 'U1: the selected tab draws its underline with the tab-indicator utility').toContain('border-tab-indicator');
+    expect(tokens, 'U1: the selected tab no longer draws its underline with the primary button fill').not.toContain('border-btn-primary');
+    expect(tokens, 'U1: the focused band reads the same token as the underline').toContain(
+      'focus-visible:inset-shadow-[0_-2px_0_0_var(--color-tab-indicator-line)]',
+    );
+    // The utility exists only through this key; its name differs from the runtime property.
+    expect(
+      declIn(blockOf('theme'), '--color-tab-indicator'),
+      'U1: the theme key --color-tab-indicator must bridge to var(--color-tab-indicator-line)',
+    ).toBe('var(--color-tab-indicator-line)');
+    const req = 'R7 U1 (89.6) / 1.4.11 (the selected-tab underline)';
+    for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--color-tab-indicator-line', '--color-bg-page', 3.0, req);
+      expectRatio(theme, '--color-tab-indicator-line', '--color-bg-card', 3.0, req);
+    }
+    // Light is pixel-identical: the light line is still the light primary fill.
+    expect(
+      resolve('light', '--color-tab-indicator-line'),
+      'U1: light --color-tab-indicator-line must resolve to the same colour as light --color-btn-primary-bg',
+    ).toBe(resolve('light', '--color-btn-primary-bg'));
   });
 });
