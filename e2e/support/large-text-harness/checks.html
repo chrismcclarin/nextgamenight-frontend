@@ -863,6 +863,18 @@
   </main>
 </section>
 
+<!-- the same with a hyphenated word that is wider than the whole frame: stacked, it wraps at its hyphen and no further, but a word wider than its whole room may break (SPEC R4), so it is WIDE whatever its row does. -->
+<section data-case="split-hyphen-wide-letter-stacked">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-row flex gap-2">
+      <div class="lt-wrap min-w-0 flex-1">
+        <p class="lt-name text-base text-content-primary">Weekenders-Weekenders</p>
+      </div>
+      <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+    </div>
+  </main>
+</section>
+
 <!-- a word whose wrapping is important inside a cascade layer, bad form only: its forced breaks cannot be switched off, so its natural break points cannot be measured. COULD NOT UNWRAP in the split list, not a guess. -->
 <section data-case="split-important-wrap">
   <main data-frame class="lt-frame px-4 py-4">

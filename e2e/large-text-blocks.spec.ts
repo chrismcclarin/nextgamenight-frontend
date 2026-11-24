@@ -870,6 +870,11 @@ test('check: split, places the browser breaks anyway (89.6-02, R6 repair): a wra
   expect(sizerBroken, 'the sizing line breaks a word: the row is not as wide as its sizing line').toEqual([]);
   expectReported(stacked, 'a hyphenated word letter-stacked by a box beside it', 'auto-close');
   expect(entriesFor(stacked.read.split, 'auto-close').join(' | '), 'the word is not reported as losing its forced breaks when its row stacks').toContain('ordinary wrap');
+  // The same shape with a hyphenated word wider than its whole room: wide, whatever its row does.
+  const tooWide = await splitCase(page, 'split-hyphen-wide-letter-stacked');
+  await testInfo.attach('twin-read-too-wide', { body: JSON.stringify({ tooWide }, null, 2), contentType: 'application/json' });
+  expectWide(tooWide, 'a hyphenated word wider than the whole frame, letter-stacked by a box beside it', 'Weekenders-Weekenders');
+  expect(entriesFor(tooWide.read.wide, 'Weekenders-Weekenders').join(' | '), 'the word is not written down as wider than its whole room').toContain('wider than its whole room');
   // A word whose wrapping is important inside a cascade layer: its natural break points cannot be measured.
   expect(important.broken, 'the case does not break its word, so the harness is not the shape it says').toContain('Weekenders');
   expect(entriesFor(important.read.split, 'Weekenders').join(' | '), `a word whose forced breaks could not be switched off is not reported as COULD NOT UNWRAP (${JSON.stringify(important.read)})`).toContain('COULD NOT UNWRAP');
