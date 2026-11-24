@@ -38,7 +38,7 @@ import { render, screen, within, cleanup, waitFor, act, fireEvent } from '@testi
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
-import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 
 const SELF_UUID = '11111111-1111-4111-8111-111111111111';
@@ -1459,13 +1459,13 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
     expect(eventsAPI.removeParticipation).toHaveBeenCalledWith(EVENT_ID, 'p-0');
   });
 
-  it('reverts to Remove when the confirm window lapses, deleting nothing', async () => {
+  it('OW-2 (89.6-04): an armed Remove inside the dialog is still live after 60 s; a press elsewhere in the dialog disarms it, says Confirmation cancelled. and deletes nothing', async () => {
     // `shouldAdvanceTime` is load-bearing, not decoration: RTL's `waitFor`
     // sniffs for JEST fake timers, does not recognise vitest's, and then polls
     // with a `setInterval` that the fake clock has frozen — every `findBy*` in
     // this file hangs for 5s and the whole suite times out after it. Letting the
     // fake clock also track real time keeps `waitFor` alive while still allowing
-    // the 3s confirm window to be jumped rather than waited out.
+    // the 3 s wait (and the minute after it) to be jumped rather than waited out.
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -1476,10 +1476,15 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
       await user.click(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0]);
       within(dialog).getByRole('button', { name: GATED_REMOVE });
 
-      // F9b: the window is now gated CONFIRM_DELAY_MS + live CONFIRM_LIVE_MS.
+      // OW-2 A: no window. The wait, then a minute, and the control is still live.
       await act(async () => {
-        vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS + 100);
+        vi.advanceTimersByTime(CONFIRM_DELAY_MS + 60_000);
       });
+      expect(within(dialog).getAllByRole('button', { name: ARMED_REMOVE })).toHaveLength(1);
+
+      // A press elsewhere in the dialog is outside the control: the dialog CONTAINS the control, so
+      // it is not a layer above it, and the press disarms.
+      await user.click(within(dialog).getByRole('heading', { name: /^Participants \(/ }));
 
       expect(
         within(dialog).queryByRole('button', { name: ARMED_REMOVE })
@@ -1489,10 +1494,49 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
       expect(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })).toHaveLength(
         SIX_PARTICIPANTS.length
       );
+      // The gate's own region, inside the dialog, says the disarm.
+      const said = within(dialog)
+        .getAllByRole('status')
+        .filter((region) => region.textContent === 'Confirmation cancelled.');
+      expect(said).toHaveLength(1);
       expect(eventsAPI.removeParticipation).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // Plan review scoped check S14. The gate's receipt state lives at page level, outside the dialog,
+  // so a disarm that speaks while the dialog closes would come back in the reopened dialog's region.
+  // The dialog's close cancels the gate silently instead (the close is the feedback).
+  it('OW-2 (89.6-04): Escape on an armed Remove inside the Participants dialog closes the dialog and leaves the gate disarmed', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    (eventsAPI.removeParticipation as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+
+    const dialog = await openParticipantsModal(user);
+    await user.click(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0]);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(within(dialog).getByRole('button', { name: ARMED_REMOVE })).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    // Reopened at once, with no timer advanced: inside the 4 s receipt window.
+    const reopened = await openParticipantsModal(user);
+    expect(within(reopened).getAllByRole('button', { name: RESTING_REMOVE })).toHaveLength(
+      SIX_PARTICIPANTS.length
+    );
+    expect(within(reopened).queryByRole('button', { name: ARMED_REMOVE })).toBeNull();
+    expect(within(reopened).queryByRole('button', { name: GATED_REMOVE })).toBeNull();
+    const regions = within(reopened).getAllByRole('status');
+    expect(regions.length).toBeGreaterThan(0);
+    expect(
+      regions.map((region) => region.textContent),
+      'no stale cancel words in the reopened dialog'
+    ).not.toContain('Confirmation cancelled.');
+    expect(eventsAPI.removeParticipation).not.toHaveBeenCalled();
   });
 
   // X36a (88.9-65, once-over R3): the commit is SEEN and HEARD. While the DELETE is out the pressed

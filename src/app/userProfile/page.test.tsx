@@ -42,7 +42,7 @@ import * as React from 'react';
 import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner';
 import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { INLINE_RECEIPT_MS } from '@/components/ui/useInlineReceipt';
@@ -1050,10 +1050,11 @@ describe('userProfile timezone picker (F-359)', () => {
 });
 
 describe('userProfile two-tap armed state (F-357)', () => {
-  // The armed disposition must CLEAR when the window lapses, not just when the
+  // The armed disposition must CLEAR when the control disarms, not just when the
   // action commits — an aria-pressed left true on a reverted trigger tells a screen
-  // reader the control is still armed when it is not.
-  it('drops aria-pressed when the arm window lapses', async () => {
+  // reader the control is still armed when it is not. OW-2 A (89.6-04): no window ends it; a
+  // disarm does.
+  it('OW-2 (89.6-04): an armed collection Remove stays pressed after 60 s; a press outside it drops aria-pressed and says Confirmation cancelled.', async () => {
     vi.useFakeTimers();
     try {
       const { userGamesAPI } = await import('@/lib/api');
@@ -1073,13 +1074,23 @@ describe('userProfile two-tap armed state (F-357)', () => {
         'true'
       );
 
-      // F9b: the window is now gated CONFIRM_DELAY_MS + live CONFIRM_LIVE_MS.
+      // The wait, then a minute: still armed and live.
       await act(async () => {
-        vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
+        vi.advanceTimersByTime(CONFIRM_DELAY_MS + 60_000);
       });
+      expect(screen.getByRole('button', { name: 'Tap again to remove' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
+
+      fireEvent.mouseDown(document.body);
 
       const reverted = screen.getByRole('button', { name: 'Remove Catan' });
       expect(reverted).not.toHaveAttribute('aria-pressed');
+      const said = screen
+        .getAllByRole('status')
+        .filter((region) => region.textContent === 'Confirmation cancelled.');
+      expect(said).toHaveLength(1);
       expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();

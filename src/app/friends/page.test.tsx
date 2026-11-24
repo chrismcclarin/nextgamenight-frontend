@@ -165,12 +165,12 @@ import { queryCacheOnError } from '@/lib/queryClient';
 import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
-import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 
 // F9b (88.9-23): the two-tap gate refuses the second tap for CONFIRM_DELAY_MS after arming.
 // A test that commits installs a fake clock that still advances with real time (so the
 // promise-driven renders keep flowing; installed after the mount fetches settle, as the
-// revert test below does) BEFORE the arming tap, then steps past the gate with passGate().
+// OW-2 test below does) BEFORE the arming tap, then steps past the gate with passGate().
 function fakeClock() {
   vi.useFakeTimers({ shouldAdvanceTime: true });
 }
@@ -582,27 +582,39 @@ describe('remove friend (two-tap tier)', () => {
     expect(providerCtx.refreshFriendships).toHaveBeenCalled();
   });
 
-  it('reverts to the resting label once the arm window lapses', async () => {
+  // OW-2 A (owner 2026-11-22, Phase 89.6-04): the armed state has no time limit. This test replaced
+  // the one that pinned the revert at the end of the old live window.
+  it('OW-2 (89.6-04): an armed Remove is still live after 60 s; a press outside it disarms, says Confirmation cancelled. and removes nothing', async () => {
     renderFriends();
     const button = await screen.findByRole('button', { name: 'Remove Dana' });
 
     // Fake timers are installed AFTER the mount fetches settle — installing them
     // first would stall the promise-driven render this test depends on.
     vi.useFakeTimers();
-    fireEvent.click(button);
-    // F9b: the armed label counts down first; the window is now gated + live.
-    expect(button).toHaveTextContent('Wait (3)');
+    try {
+      fireEvent.click(button);
+      expect(button).toHaveTextContent('Wait (3)');
 
-    act(() => {
-      vi.advanceTimersByTime(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
-    });
+      act(() => {
+        vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+      });
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      const armed = screen.getByRole('button', { name: 'Tap again to confirm' });
+      expect(armed).toBe(button);
+      expect(armed).toHaveAttribute('aria-pressed', 'true');
 
-    expect(button).toHaveTextContent('Remove');
-    expect(button).toHaveAttribute('aria-label', 'Remove Dana');
-    expect(button).not.toHaveAttribute('aria-pressed');
-    expect(gateStatus()).toHaveTextContent('');
-    expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
-    vi.useRealTimers();
+      // A press anywhere outside the control itself disarms it, and the gate's own region says so.
+      fireEvent.mouseDown(screen.getByRole('heading', { name: 'Add Friend' }));
+      expect(screen.getByRole('button', { name: 'Remove Dana' })).toBe(button);
+      expect(button).toHaveTextContent('Remove');
+      expect(button).not.toHaveAttribute('aria-pressed');
+      expect(gateStatus().textContent).toBe('Confirmation cancelled.');
+      expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // AR DEC-2. The hook keys the armed state on the TARGET id, not a boolean —

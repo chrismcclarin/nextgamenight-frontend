@@ -3291,7 +3291,17 @@ export default function GameDetailPage() {
                     INTERACTION — the implementation converged onto useConfirmAction
                     (see the amended handler marker); it is still an inline second
                     click, never a modal. */}
-                <Modal open={showAllParticipants} onClose={() => setShowAllParticipants(false)}>
+                {/* DECISION Phase 89.6-04 (close-cancels): closing the Participants dialog cancels the
+                    Remove gate silently, chosen OVER leaving the gate to its own Escape disarm, whose
+                    cancel words sit in page-level receipt state and would come back in the reopened
+                    dialog's region for up to 4 s. Changing this is a decision, not a cleanup. */}
+                <Modal
+                    open={showAllParticipants}
+                    onClose={() => {
+                        removeParticipantGate.cancel();
+                        setShowAllParticipants(false);
+                    }}
+                >
                     <Modal.Header>Participants ({participants.length})</Modal.Header>
                     <Modal.Body className="space-y-2">
                         {participants.map((p, idx) => {

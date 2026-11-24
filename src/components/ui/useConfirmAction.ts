@@ -45,13 +45,14 @@ import * as React from 'react';
 
 import {
   CONFIRM_DELAY_MS,
-  CONFIRM_LIVE_MS,
   COUNTDOWN_LABELS,
   countdownLabel,
   countdownName,
   useConfirmCountdown,
 } from '@/components/ui/confirmDelay';
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { useDismissal, type DismissalContainerProps } from '@/components/ui/useDismissal';
+import { useInlineReceipt } from '@/components/ui/useInlineReceipt';
 
 export type ConfirmTier = 'typed' | 'dialog' | 'two-tap';
 
@@ -63,8 +64,26 @@ export type ConfirmTier = 'typed' | 'dialog' | 'two-tap';
  * AMENDED Phase 88.9-23 (owner pick F9b, 88.9-PICKS-B5.json, 2026-11-07): the window is now gated
  * CONFIRM_DELAY_MS + live CONFIRM_LIVE_MS (6000 ms) from confirmDelay.ts, chosen OVER the shipped
  * 3000 ms immediately-live window.
+ * AMENDED Phase 89.6-04 (OW-2): the window and its export are gone; the wait before a control goes
+ * live is unchanged. See the OW-2 marker below.
  */
-export const TWO_TAP_WINDOW_MS = CONFIRM_DELAY_MS + CONFIRM_LIVE_MS;
+// DECISION Phase 89.6-04 (OW-2, owner 2026-11-22 3:49 PM Pacific: OW2) A): the two-tap tier has NO
+// live window. After the wait, the armed control stays live until the second press commits or until
+// it disarms: a press anywhere outside the control itself, focus moving to another control, or
+// Escape, all three through the one dismissal hook, with the armed control as both container and
+// trigger:
+// src/components/ui/useDismissal.ts ("DECISION Phase 88.6.1-05 (D-18): ONE hook")
+// It also disarms when the control scrolls out of view or the page is hidden (the scroll-out marker
+// below). A press on another row of the gate is a press outside the armed one: that row disarms and
+// the pressed row arms. Every disarm says DISARM_ANNOUNCEMENT, the kebab's revert words (owner
+// OW-2b: Yes); a commit and this hook's own re-arm never do. No forgiveness margin: the container is
+// the control, so a press just outside its 44px box disarms (owner: If 44px is the size of
+// accessibility standard for unsteady hands, then we should follow it.). Chosen OVER a 20 second
+// live window (still a time limit under WCAG 2.2.1, which names the expiry of a window of
+// opportunity to react) and OVER keeping 3 seconds (on the owner's iPhone VoiceOver spent the window
+// speaking, register L14). Adding a revert timer back is a decision, not a cleanup.
+/** The words a disarmed two-tap control says (OW-2b): the kebab's revert copy, one home for both tiers. */
+export const DISARM_ANNOUNCEMENT = 'Confirmation cancelled.';
 
 /* DECISION Phase 88.9-52 (R13, owner 2026-11-17, pick Everywhere; his words: What if we just made
    it "tap again"? would that work?): the live armed label a person SEES is Tap again on every
@@ -167,6 +186,10 @@ export interface ConfirmTriggerProps {
    * every caller while armed AND gated: the resting name, then the wait (X69, 88.9-67).
    */
   'aria-label'?: string;
+  /** Present ONLY while armed: the dismissal hook's Escape half (OW-2, 89.6-04). */
+  onKeyDown?: DismissalContainerProps['onKeyDown'];
+  /** Present ONLY while armed: the dismissal hook's focus-leaving half (OW-2, 89.6-04). */
+  onBlur?: DismissalContainerProps['onBlur'];
 }
 
 /** Everything `ConfirmDialog` needs. Spread it: `<ConfirmDialog {...dialogProps} />`. */
@@ -205,6 +228,11 @@ export interface ConfirmActionState {
    * AMENDED Phase 88.9-23 (F9b): the two-tap arm text is written at the LIVE edge, not at arm,
    * chosen OVER announcing at arm (a false instruction for CONFIRM_DELAY_MS) and OVER new live
    * copy (research A12, no copy row).
+   * AMENDED Phase 89.6-04 (OW-2b): a disarm writes DISARM_ANNOUNCEMENT here through
+   * useInlineReceipt, which clears it after INLINE_RECEIPT_MS so the hidden node is not left holding
+   * it as a phantom swipe stop; a commit or a re-arm writes nothing, and the live edge replaces it.
+   * The house rule for a hidden region that keeps its words is stated at
+   * src/components/ui/announcer.ts ("cleared again")
    */
   statusNode: React.ReactElement;
   /**
@@ -289,7 +317,10 @@ function defaultAnnouncement(
    AMENDED Phase 88.9-52 (A-56): the measured count is 4 extra host renders per arm (two ticks, the
    live edge, the countdown's reset to idle when the row disarms), not 3. It was 5 until the
    countdown's arm-time state write was removed (src/components/ui/confirmDelay.ts ("AMENDED Phase 88.9-52 (A-56)")).
-   Pinned by src/components/ui/useConfirmAction.test.ts ("A-56 (88.9-52): one arm left alone costs the host 4 extra renders"). */
+   Pinned by src/components/ui/useConfirmAction.test.ts ("A-56 (88.9-52): one arm left alone costs the host 4 extra renders").
+   AMENDED Phase 89.6-04 (OW-2): the fourth render is the reset when the row disarms, by any path; an
+   arm left alone costs nothing once live. Measured after the change: still 4 extra, 6 with the arm
+   and the disarm themselves. */
 
 /** The countdown's key for one arm: the target plus that arm's sequence number (A-55 marker below). */
 function countdownKey(armedId: string, armSeq: number): string {
@@ -325,6 +356,8 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
   // would keep the ended window's live state: the label would read live at once and the next press
   // would delete with no wait. The number makes each arm a new key. Removing it is a decision, not
   // a cleanup.
+  // AMENDED Phase 89.6-04 (OW-2): there is no window end now; the same race comes from any disarm
+  // followed by a press on the same row in one turn, so the sequence number stays.
   const [armSeq, setArmSeq] = React.useState(0);
   const [announcement, setAnnouncement] = React.useState('');
 
@@ -335,7 +368,10 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
   const armSeqRef = React.useRef(0);
   const pendingRef = React.useRef(false);
   const targetRef = React.useRef<string | undefined>(undefined);
-  const armedTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // OW-2 (89.6-04): the armed control itself, the dismissal hook's container AND trigger. Set on the
+  // arm from the pressed control, cleared on the commit; a disarm leaves it so Escape's restore can
+  // refocus the same control.
+  const armedElRef = React.useRef<HTMLElement | null>(null);
   const mountedRef = React.useRef(true);
   // F9b (88.9-23): the arm text waits here until the gate runs out (written at the live edge),
   // and the dialog tier's open time backs the wall-clock refusal in confirm().
@@ -350,42 +386,39 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
   const tierRef = React.useRef(tier);
   const armedAnnouncementRef = React.useRef(armedAnnouncement);
   const confirmLabelRef = React.useRef(confirmLabel);
+  const dismissalPropsRef = React.useRef<DismissalContainerProps | null>(null);
   React.useEffect(() => {
     onConfirmRef.current = onConfirm;
     tierRef.current = tier;
     armedAnnouncementRef.current = armedAnnouncement;
     confirmLabelRef.current = confirmLabel;
+    // OW-2 (89.6-04): the newest dismissal handlers, read by the two stable wrappers below.
+    dismissalPropsRef.current = dismissal.containerProps;
   });
 
-  const clearArmTimer = React.useCallback(() => {
-    if (armedTimerRef.current) {
-      clearTimeout(armedTimerRef.current);
-      armedTimerRef.current = null;
-    }
-  }, []);
-
-  // Unmount cleanup, absorbed verbatim in semantics from
-  // src/app/components/KebabMenu.js ("Cleanup on unmount — pending timer must not fire after unmount."):
-  // a pending arm timer must never fire into an unmounted tree.
+  // mountedRef stops a settling commit from writing state into an unmounted tree.
   React.useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (armedTimerRef.current) {
-        clearTimeout(armedTimerRef.current);
-        armedTimerRef.current = null;
-      }
     };
   }, []);
+
+  // OW-2b (89.6-04): the disarm words and when they clear. The timer is the receipt hook's, so this
+  // file schedules nothing of its own.
+  const disarmReceipt = useInlineReceipt();
+  const { showReceipt: showDisarmReceipt, clearReceipt: clearDisarmReceipt } = disarmReceipt;
 
   // F9b (88.9-23): the two-tap countdown, keyed by the armed target. The dialog tier's visible
   // countdown is ConfirmDialog's own (see the AMENDED line on the R2-M16 marker above); the typed
   // tier has none. onLive writes the unchanged NC-1 arm text once pressing works.
   const announceLive = React.useCallback(() => {
     if (tierRef.current === 'two-tap' && armedIdRef.current !== null) {
+      // The live-edge words replace any cancel words still showing, and end their timer.
+      clearDisarmReceipt();
       setAnnouncement(pendingAnnouncementRef.current);
     }
-  }, []);
+  }, [clearDisarmReceipt]);
   const countdown = useConfirmCountdown(
     tier === 'two-tap' && armedId !== null ? countdownKey(armedId, armSeq) : null,
     announceLive
@@ -398,12 +431,44 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
   // live label stays the caller's (fork 7).
   const armedText = gated ? countdownLabel(secondsLeft) : armedLabel;
 
+  // The SILENT disarm: cancel() only. It says nothing (see cancel below).
   const disarm = React.useCallback(() => {
-    clearArmTimer();
     armedIdRef.current = null;
+    armedElRef.current = null;
     setArmedId(null);
     setAnnouncement('');
-  }, [clearArmTimer]);
+  }, []);
+
+  // The disarm that SPEAKS: every path a person takes away from an armed control (the OW-2 marker
+  // at the top of this file). When nothing is armed it returns: a commit or an earlier disarm got
+  // there first, and this guard is what keeps the cancel words off a commit.
+  const disarmWithNotice = React.useCallback(() => {
+    if (armedIdRef.current === null) return;
+    armedIdRef.current = null;
+    if (!mountedRef.current) return;
+    setArmedId(null);
+    setAnnouncement('');
+    showDisarmReceipt(DISARM_ANNOUNCEMENT);
+  }, [showDisarmReceipt]);
+
+  // The one dismissal hook, consumed, never copied: the outside press, Escape and focus leaving.
+  // It reads the container at event time, so this one call follows the armed control row to row.
+  const dismissal = useDismissal({
+    open: tier === 'two-tap' && armedId !== null,
+    onDismiss: disarmWithNotice,
+    containerRef: armedElRef,
+    triggerRef: armedElRef,
+  });
+  // Two stable wrappers, so an armed target's props keep one identity across countdown ticks (the
+  // memoised collection card depends on it).
+  const armedOnKeyDown = React.useCallback<DismissalContainerProps['onKeyDown']>(
+    (event) => dismissalPropsRef.current?.onKeyDown(event),
+    []
+  );
+  const armedOnBlur = React.useCallback<DismissalContainerProps['onBlur']>(
+    (event) => dismissalPropsRef.current?.onBlur(event),
+    []
+  );
 
   const matchesPhrase = React.useCallback(
     (value: string) =>
@@ -467,8 +532,8 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       // target, which re-arms there and never commits. Without this key, arming
       // row A and single-tapping row B destroys row B (AR DEC-2).
       if (armedIdRef.current !== key) {
-        clearArmTimer();
         armedIdRef.current = key;
+        armedElRef.current = from instanceof HTMLElement ? from : null;
         setArmedId(key);
         armSeqRef.current += 1;
         setArmSeq(armSeqRef.current);
@@ -477,14 +542,9 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
           targetLabel,
           confirmLabelRef.current
         );
+        // Any cancel words from a disarm just before this arm stay on the page (a press on another
+        // row): the live edge replaces them, or the receipt clears them.
         setAnnouncement('');
-        armedTimerRef.current = setTimeout(() => {
-          armedTimerRef.current = null;
-          armedIdRef.current = null;
-          if (!mountedRef.current) return;
-          setArmedId(null);
-          setAnnouncement('');
-        }, TWO_TAP_WINDOW_MS);
         return;
       }
 
@@ -493,14 +553,16 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
       // slip through.
       if (!isLive(countdownKey(key, armSeqRef.current))) return;
 
-      // Second invocation on the SAME target inside the live window — commit.
-      clearArmTimer();
+      // Second invocation on the SAME target once it is live — commit. The armed refs are cleared
+      // BEFORE the commit runs, so no disarm path can speak over it.
       armedIdRef.current = null;
+      armedElRef.current = null;
       setArmedId(null);
       setAnnouncement('');
+      clearDisarmReceipt();
       void runConfirm(targetId, { from: from ?? null });
     },
-    [clearArmTimer, runConfirm, isLive]
+    [runConfirm, isLive, clearDisarmReceipt]
   );
 
   const confirm = React.useCallback(
@@ -528,7 +590,10 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     setOpen(false);
     targetRef.current = undefined;
     disarm();
-  }, [disarm]);
+    // It removes words and writes none: a close that cancels never leaves the cancel words waiting
+    // for a reopened region (the Participants dialog, src/app/gameDetail/page.js).
+    clearDisarmReceipt();
+  }, [disarm, clearDisarmReceipt]);
 
   const isArmed = React.useCallback(
     (targetId?: string) => armedId !== null && armedId === (targetId ?? SOLE_TARGET_KEY),
@@ -588,6 +653,8 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
         onClick: (event) => trigger(targetId, targetLabel, event?.currentTarget ?? null),
         ...(armed ? { 'aria-pressed': true as const } : {}),
         ...(armed && gated ? { 'aria-disabled': true as const } : {}),
+        // OW-2 (89.6-04): Escape and focus leaving, while armed only; a resting target gets nothing.
+        ...(armed ? { onKeyDown: armedOnKeyDown, onBlur: armedOnBlur } : {}),
         ...(waiting
           ? { 'aria-label': countdownName(restingAriaLabel ?? confirmLabel, secondsLeft) }
           : live
@@ -599,7 +666,7 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
               : {}),
       };
     },
-    [isArmed, armedLabel, armedName, gated, trigger, confirmLabel, secondsLeft]
+    [isArmed, armedLabel, armedName, gated, trigger, confirmLabel, secondsLeft, armedOnKeyDown, armedOnBlur]
   );
 
   const statusNode = React.useMemo(
@@ -608,9 +675,10 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
         // Visually hidden: the visible armed label is the sighted affordance,
         // this is the same information for assistive tech.
         className: 'sr-only',
-        message: announcement,
+        // The arm words when there are any, else the disarm receipt: one node, one region.
+        message: announcement !== '' ? announcement : disarmReceipt.receipt,
       }),
-    [announcement]
+    [announcement, disarmReceipt.receipt]
   );
 
   const dialogProps = React.useMemo<ConfirmDialogState>(

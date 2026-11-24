@@ -12,6 +12,8 @@
 //      AMENDED Phase 88.9-23 (F9b): the window is now gated CONFIRM_DELAY_MS, then live
 //      CONFIRM_LIVE_MS (TWO_TAP_WINDOW_MS = 6000); "3s" in the titles below is the historical
 //      name. Every commit below advances CONFIRM_DELAY_MS first (confirmed inside the gate).
+//      AMENDED Phase 89.6-04 (OW-2): there is no window; the armed state ends on the second press
+//      or a disarm.
 //   5. Pending: a slow `onConfirm` cannot be double-fired
 //   6. Typed tier compares with `!==` string equality, never a built pattern
 import * as React from 'react';
@@ -32,7 +34,6 @@ import { CONFIRM_DELAY_MS } from './confirmDelay';
 import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from './useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the delay / hold budgets
 import {
   useConfirmAction,
-  TWO_TAP_WINDOW_MS,
   DEFAULT_ARMED_LABEL,
   DEFAULT_ARMED_NAME,
   type UseConfirmActionConfig,
@@ -297,13 +298,14 @@ describe('useConfirmAction — two-tap tier', () => {
     expect(screen.getByTestId('trigger-bo')).toHaveTextContent('Remove Bo');
   });
 
-  it('commits on a second invocation on the SAME target inside the window', async () => {
+  it('commits on a second invocation on the SAME target, however long after the wait', async () => {
     const onConfirm = vi.fn();
     render(<TwoTapHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
+    // OW-2 (89.6-04): no window ends the armed state; a minute later the second press still commits.
     act(() => {
-      vi.advanceTimersByTime(TWO_TAP_WINDOW_MS - 100);
+      vi.advanceTimersByTime(60_000);
     });
     await act(async () => {
       fireEvent.click(screen.getByTestId('trigger-alex'));
@@ -366,49 +368,54 @@ describe('useConfirmAction — two-tap tier', () => {
     expect(screen.getByRole('status')).not.toHaveTextContent('Alex');
   });
 
-  it("A's timer is cancelled when B re-arms, so A cannot revert B", () => {
+  it("OW-2 (89.6-04): with no window, B stays armed long after A's old window would have ended", () => {
     const onConfirm = vi.fn();
     render(<TwoTapHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
-    // AMENDED Phase 88.9-23 (F9b): re-arm B 1000ms before A's window ends (it was 2000 of the
-    // old 3000ms window), so the check below still lands after A's original revert time.
     act(() => {
-      vi.advanceTimersByTime(TWO_TAP_WINDOW_MS - 1000);
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS + 2000);
     });
     fireEvent.click(screen.getByTestId('trigger-bo'));
-    // A's original timer would have fired at TWO_TAP_WINDOW_MS (i.e. 1000ms from here).
+    // A minute on: no timer of A's (or of B's) exists to revert B.
     act(() => {
-      vi.advanceTimersByTime(1200);
+      vi.advanceTimersByTime(60_000);
     });
 
     expect(screen.getByTestId('armed')).toHaveTextContent('bo');
+    expect(screen.getByTestId('trigger-bo')).toHaveTextContent(DEFAULT_ARMED_LABEL);
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  it('auto-reverts after the 3s window, then re-arms rather than commits', () => {
+  it('an outside press disarms, then a press re-arms rather than commits', () => {
     const onConfirm = vi.fn();
     render(<TwoTapHarness onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
     act(() => {
-      vi.advanceTimersByTime(TWO_TAP_WINDOW_MS);
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
     });
+    // OW-2 (89.6-04): the disarm is a press outside the control, and it is said.
+    fireEvent.mouseDown(document.body);
 
     expect(screen.getByTestId('armed')).toHaveTextContent('none');
     expect(screen.getByTestId('trigger-alex')).toHaveTextContent('Remove Alex');
-    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    expect(screen.getByRole('status').textContent).toBe('Confirmation cancelled.');
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByTestId('armed')).toHaveTextContent('alex');
+    // A fresh wait, never the last arm's live state.
+    expect(screen.getByTestId('trigger-alex')).toHaveTextContent('Wait (3)');
   });
 
   it('clears the pending arm timer on unmount (no setState after unmount)', () => {
     const { unmount } = render(<TwoTapHarness onConfirm={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
-    // F9b: two timers while gated — the arm revert and the countdown tick.
-    expect(vi.getTimerCount()).toBe(2);
+    // ONE timer while gated: the countdown tick. (F9b had two; the arm revert timer went with
+    // OW-2, Phase 89.6-04.)
+    expect(vi.getTimerCount()).toBe(1);
 
     unmount();
     expect(vi.getTimerCount()).toBe(0);
@@ -480,17 +487,18 @@ describe('useConfirmAction — the always-mounted announcement region', () => {
     expect(node).toHaveTextContent('Alex');
   });
 
-  it('DOM-IDENTITY: survives the 3s revert as the same node', () => {
+  it('DOM-IDENTITY: survives a disarm as the same node', () => {
     render(<TwoTapHarness onConfirm={vi.fn()} />);
 
     const node = screen.getByRole('status');
     fireEvent.click(screen.getByTestId('trigger-alex'));
     act(() => {
-      vi.advanceTimersByTime(TWO_TAP_WINDOW_MS);
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
     });
+    fireEvent.mouseDown(document.body);
 
     expect(screen.getByRole('status')).toBe(node);
-    expect(node).toBeEmptyDOMElement();
+    expect(node.textContent).toBe('Confirmation cancelled.');
   });
 
   it('clears the announcement on commit', async () => {
@@ -547,14 +555,16 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
     expect(alex).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('drops aria-pressed again on the 3s revert', () => {
+  it('drops aria-pressed again on a disarm', () => {
     render(<TwoTapHarness onConfirm={vi.fn()} />);
 
     const alex = screen.getByTestId('trigger-alex');
     fireEvent.click(alex);
     act(() => {
-      vi.advanceTimersByTime(TWO_TAP_WINDOW_MS);
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
     });
+    expect(alex).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.mouseDown(document.body);
 
     expect(alex).not.toHaveAttribute('aria-pressed');
     expect(alex).toHaveAttribute('aria-label', 'Remove Alex');

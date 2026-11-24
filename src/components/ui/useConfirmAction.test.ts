@@ -1,13 +1,14 @@
 // F9b (88.9) pins for the delayed-enable confirm on the shared state machine
-// (owner pick F9b, 88.9-PICKS-B5.json item F9, 2026-11-07; window = the Q4 default in
-// 88.9-RULINGS.md round 2: gated CONFIRM_DELAY_MS, then live CONFIRM_LIVE_MS).
+// (owner pick F9b, 88.9-PICKS-B5.json item F9, 2026-11-07; the wait = the Q4 default in
+// 88.9-RULINGS.md round 2: gated CONFIRM_DELAY_MS).
+// AMENDED Phase 89.6-04 (OW-2 A, owner 2026-11-22): the live half has no end any more; item 2.
 //
 // What these lock:
 //   1. A second tap inside the gate is refused, and the armed label counts down
 //      Wait (3), (2), (1) while the accessible name reads the resting name, then the wait
 //      (X69, 88.9-67: the name contains the visible word and changes with every step).
-//   2. The two-tap tier is live from CONFIRM_DELAY_MS to CONFIRM_DELAY_MS + CONFIRM_LIVE_MS,
-//      commits once, then reverts.
+//   2. The two-tap tier is live from the 3 s wait with no end; it disarms on an outside press,
+//      focus leaving, Escape, scroll-out or page hidden, each saying the cancel words.
 //   3. The dialog tier refuses confirm() for CONFIRM_DELAY_MS after open (the Enter path),
 //      then commits, and never auto-closes.
 //   4. The typed tier carries no countdown.
@@ -20,9 +21,11 @@ import * as React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from './confirmDelay';
+import { CONFIRM_DELAY_MS } from './confirmDelay';
+import { INLINE_RECEIPT_MS } from './useInlineReceipt';
 import {
   DEFAULT_ARMED_LABEL,
+  DISARM_ANNOUNCEMENT,
   DEFAULT_ARMED_NAME,
   useConfirmAction,
   type ConfirmActionState,
@@ -62,7 +65,9 @@ function Host({
       'button',
       { ...gate.triggerProps('sam', 'Sam', 'Remove Sam'), 'data-testid': 'trigger' },
       gate.labelFor('sam', 'Remove')
-    )
+    ),
+    // A second, plain control: somewhere for focus to go (OW-2, 89.6-04).
+    React.createElement('button', { type: 'button', 'data-testid': 'other' }, 'Other')
   );
 }
 
@@ -134,7 +139,7 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  it('F9b (88.9): two-tap tier — live from 3 s to 6 s, commits once, reverts at 6 s', async () => {
+  it('OW-2 (89.6-04): two-tap tier — live from 3 s with no end, commits once; no timer is pending once live', async () => {
     const onConfirm = vi.fn();
     renderHost('two-tap', onConfirm);
     const trigger = screen.getByTestId('trigger');
@@ -153,15 +158,202 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     expect(onConfirm).toHaveBeenCalledWith('sam', { from: trigger });
     expect(current().armedId).toBeNull();
 
-    // A second arm, left alone, stays armed through the live window and reverts at its end.
+    // A second arm, left alone, goes live and stays live: nothing ends it but a press or a disarm.
     fireEvent.click(trigger);
     expect(current().armedId).toBe('sam');
-    advance(CONFIRM_DELAY_MS + CONFIRM_LIVE_MS - 1);
+    advance(CONFIRM_DELAY_MS);
+    expect(trigger.textContent).toBe('Tap again');
+    // Once live nothing is scheduled: no revert timer exists (it was 1 before 89.6-04).
+    expect(vi.getTimerCount()).toBe(0);
+    advance(60000);
     expect(current().armedId).toBe('sam');
-    advance(1);
+    expect(trigger.textContent).toBe('Tap again');
+    expect(trigger).toHaveAttribute('aria-pressed', 'true');
+    expect(vi.getTimerCount()).toBe(0);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('OW-2 (89.6-04): an outside press disarms and says Confirmation cancelled.; a press on the control\'s own parent is outside (no margin); a press on the control is not', () => {
+    const onConfirm = vi.fn();
+    renderHost('two-tap', onConfirm);
+    const trigger = screen.getByTestId('trigger');
+    const region = screen.getByRole('status');
+
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    // A press on the control itself is inside: still armed.
+    fireEvent.mouseDown(trigger);
+    expect(current().armedId).toBe('sam');
+    expect(trigger.textContent).toBe('Tap again');
+
+    // The control's own parent (its row) is outside: the 44px box is the edge, with no margin.
+    fireEvent.mouseDown(trigger.parentElement as HTMLElement);
     expect(current().armedId).toBeNull();
     expect(trigger).toHaveTextContent('Remove');
+    expect(trigger).not.toHaveAttribute('aria-pressed');
+    expect(trigger).toHaveAttribute('aria-label', 'Remove Sam');
+    // The same node before and after (C-6: a remounted live region says nothing).
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe('Confirmation cancelled.');
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('OW-2 (89.6-04): focus moving to another control disarms and says it; a null relatedTarget does not', () => {
+    renderHost('two-tap');
+    const trigger = screen.getByTestId('trigger');
+    const other = screen.getByTestId('other');
+
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.focusOut(trigger, { relatedTarget: null });
+    expect(current().armedId).toBe('sam');
+    expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove Sam');
+
+    fireEvent.focusOut(trigger, { relatedTarget: other });
+    expect(current().armedId).toBeNull();
+    expect(trigger).not.toHaveAttribute('aria-pressed');
+    expect(screen.getByRole('status').textContent).toBe('Confirmation cancelled.');
+  });
+
+  it('OW-2 (89.6-04): Escape disarms, says it, keeps focus on the control and claims the key', () => {
+    const onConfirm = vi.fn();
+    renderHost('two-tap', onConfirm);
+    const trigger = screen.getByTestId('trigger');
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    // fireEvent returns false when the handler called preventDefault: the key is claimed.
+    expect(fireEvent.keyDown(trigger, { key: 'Escape' })).toBe(false);
+    expect(current().armedId).toBeNull();
+    expect(trigger).toHaveTextContent('Remove');
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.getByRole('status').textContent).toBe('Confirmation cancelled.');
+    // At rest the control claims nothing: Escape belongs to whatever is around it again.
+    expect(fireEvent.keyDown(trigger, { key: 'Escape' })).toBe(true);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('OW-2 (89.6-04): a commit never says Confirmation cancelled., even when focus leaves during the commit', async () => {
+    let settle!: () => void;
+    const pendingCommit = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const onConfirm = vi.fn(() => pendingCommit);
+    renderHost('two-tap', onConfirm);
+    const trigger = screen.getByTestId('trigger');
+    const other = screen.getByTestId('other');
+
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
     expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(current().pending).toBe(true);
+    expect(screen.getByRole('status').textContent).toBe('');
+
+    // Focus leaves while the commit is still out, by every path a disarm could take.
+    fireEvent.focusOut(trigger, { relatedTarget: other });
+    fireEvent.mouseDown(document.body);
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(screen.getByRole('status').textContent).toBe('');
+
+    await act(async () => {
+      settle();
+      await pendingCommit;
+    });
+    expect(screen.getByRole('status').textContent).toBe('');
+    advance(INLINE_RECEIPT_MS);
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  it('OW-2b (89.6-04): the disarm words are the kebab\'s', () => {
+    expect(DISARM_ANNOUNCEMENT).toBe('Confirmation cancelled.');
+  });
+
+  it('OW-2 (89.6-04): a press on another row disarms the first and its cancel words stay through the new arm until the live edge replaces them', () => {
+    const onConfirm = vi.fn();
+    function TwoRowHost() {
+      const gate = useConfirmAction({ tier: 'two-tap', title: 'Remove?', confirmLabel: 'Remove', onConfirm });
+      latest = gate;
+      return React.createElement(
+        'div',
+        null,
+        gate.statusNode,
+        React.createElement(
+          'button',
+          { ...gate.triggerProps('a', 'Alex', 'Remove Alex'), 'data-testid': 'row-a' },
+          gate.labelFor('a', 'Remove')
+        ),
+        React.createElement(
+          'button',
+          { ...gate.triggerProps('b', 'Bo', 'Remove Bo'), 'data-testid': 'row-b' },
+          gate.labelFor('b', 'Remove')
+        )
+      );
+    }
+    render(React.createElement(TwoRowHost));
+    const rowA = screen.getByTestId('row-a');
+    const rowB = screen.getByTestId('row-b');
+    const region = screen.getByRole('status');
+
+    fireEvent.click(rowA);
+    advance(CONFIRM_DELAY_MS);
+    expect(rowA.textContent).toBe('Tap again');
+
+    // The real pointer order on another row: the press, then the click.
+    fireEvent.mouseDown(rowB);
+    expect(current().armedId).toBeNull();
+    expect(region.textContent).toBe('Confirmation cancelled.');
+    fireEvent.click(rowB);
+    expect(current().armedId).toBe('b');
+    expect(rowB).toHaveTextContent('Wait (3)');
+    expect(rowB).toHaveAttribute('aria-disabled', 'true');
+    expect(rowA).not.toHaveAttribute('aria-pressed');
+    // The first row's disarm is still said while the new row waits.
+    expect(region.textContent).toBe('Confirmation cancelled.');
+    advance(CONFIRM_DELAY_MS - 1);
+    expect(region.textContent).toBe('Confirmation cancelled.');
+
+    advance(1);
+    expect(rowB.textContent).toBe('Tap again');
+    expect(region.textContent).toBe('Press again to confirm: Remove Bo');
+    // The receipt's own clear (4 s after the disarm) must not wipe the live words.
+    advance(INLINE_RECEIPT_MS);
+    expect(region.textContent).toBe('Press again to confirm: Remove Bo');
+    expect(screen.getByRole('status')).toBe(region);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('OW-2 (89.6-04): the cancel words clear after INLINE_RECEIPT_MS, in the same node', () => {
+    renderHost('two-tap');
+    const trigger = screen.getByTestId('trigger');
+    const region = screen.getByRole('status');
+
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.mouseDown(document.body);
+    expect(region.textContent).toBe('Confirmation cancelled.');
+    advance(INLINE_RECEIPT_MS - 1);
+    expect(region.textContent).toBe('Confirmation cancelled.');
+    advance(1);
+    // Cleared, so the hidden region is not left holding the words as a phantom swipe stop.
+    expect(region.textContent).toBe('');
+    expect(screen.getByRole('status')).toBe(region);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // A disarm, then a re-arm before the receipt clears: the live edge clears it, so once the
+    // control is armed and live no timer is pending.
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    fireEvent.mouseDown(document.body);
+    expect(region.textContent).toBe('Confirmation cancelled.');
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    expect(trigger.textContent).toBe('Tap again');
+    expect(region.textContent).toBe('Press again to confirm: Remove Sam');
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('F9b (88.9): dialog tier — confirm() is refused for 3 s after open, then commits', async () => {
@@ -185,7 +377,7 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     advance(100);
     expect(screen.getByRole('status').textContent).toBe('');
     // Live, and it stays open: the dialog tier never reverts on its own.
-    advance(CONFIRM_LIVE_MS + 1000);
+    advance(60000);
     expect(current().open).toBe(true);
 
     await act(async () => {
@@ -268,13 +460,14 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     expect(current().reserveFor('sam')).toEqual([]);
     expect(current().reserveFor('sam', { atRest: true })).toEqual(HELD);
 
-    // Armed: through the gate and the live window, for the armed target only.
+    // Armed: through the gate and for as long as it stays live, for the armed target only.
     fireEvent.click(trigger);
     expect(current().reserveFor('sam')).toEqual(HELD);
     expect(current().reserveFor('alex')).toEqual([]);
     advance(CONFIRM_DELAY_MS);
     expect(current().reserveFor('sam')).toEqual(HELD);
-    advance(CONFIRM_LIVE_MS);
+    // OW-2 (89.6-04): the reserve ends when the row disarms, not at the end of a window.
+    fireEvent.mouseDown(document.body);
     expect(current().reserveFor('sam')).toEqual([]);
 
     // Strings, never markup (the hook's No markup contract).
@@ -300,16 +493,17 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     expect(trigger).toHaveTextContent('Wait (2)');
 
     unmount();
-    // ... and unmounting leaves neither the tick nor the revert timer behind.
+    // ... and unmounting leaves no timer behind (the tick is the only one since 89.6-04).
     expect(vi.getTimerCount()).toBe(0);
     advance(10000);
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('A-55 (88.9-52): a re-arm of the same row in the turn its window ends starts a fresh gate', () => {
-    // The window's end and the re-arm land in ONE act, so React commits them together and the armed
-    // row never renders as disarmed in between. The countdown must still restart: the label reads
-    // Wait (3) and a press right after is refused, not committed on the last window's live state.
+  it('A-55 (88.9-52, re-pinned 89.6-04): a re-arm of the same row in the turn it disarms starts a fresh gate', () => {
+    // The disarm (an outside press, since 89.6-04 removed the window) and the re-arm land in ONE
+    // act, so React commits them together and the armed row never renders as disarmed in between.
+    // The countdown must still restart: the label reads Wait (3) and a press right after is
+    // refused, not committed on the last arm's live state.
     const onConfirm = vi.fn();
     renderHost('two-tap', onConfirm);
     const trigger = screen.getByTestId('trigger');
@@ -319,7 +513,7 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     expect(trigger.textContent).toBe('Tap again');
 
     act(() => {
-      vi.advanceTimersByTime(CONFIRM_LIVE_MS);
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       current().trigger('sam', 'Sam', trigger);
     });
     expect(current().armedId).toBe('sam');
@@ -354,10 +548,13 @@ describe('useConfirmAction — F9b delayed enable (88.9-23)', () => {
     advance(CONFIRM_DELAY_MS - 2000);
     expect(trigger.textContent).toBe('Tap again');
     expect(hostRenders - atRest, 'arm, Wait (2), Wait (1), live').toBe(4);
-    advance(CONFIRM_LIVE_MS);
+    // OW-2 (89.6-04): an arm left alone costs nothing once live.
+    advance(60000);
+    expect(hostRenders - atRest, 'a minute live adds no render').toBe(4);
+    fireEvent.mouseDown(document.body);
     expect(trigger).toHaveTextContent('Remove');
-    // The window's end is one render (the row disarms) plus the countdown's own reset to idle.
-    expect(hostRenders - atRest, 'arm and window end are the two renders every arm needs; the countdown adds 4').toBe(2 + 4);
+    // The disarm is one render (the row disarms) plus the countdown's own reset to idle.
+    expect(hostRenders - atRest, 'arm and disarm are the two renders every arm needs; the countdown adds 4').toBe(2 + 4);
   });
 });
 
@@ -417,7 +614,7 @@ describe('useConfirmAction — R13 the armed label is Tap again, the name the fu
       expect(control).toHaveAttribute('aria-label', 'Tap again to confirm');
       expect(control).toHaveAccessibleName('Tap again to confirm');
       expect(control).not.toHaveAttribute('aria-disabled');
-      advance(CONFIRM_LIVE_MS);
+      fireEvent.mouseDown(document.body);
       // Back at rest the armed name is gone: the bare control is named by its text again.
       expect(control.textContent).toBe('Remove');
     }
