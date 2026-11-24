@@ -528,8 +528,9 @@ test('check: cut (89.6-02): reports its bad twin and passes its good twin', asyn
 //   held   a box with a width of its own (or a positioned box) holds the word narrow, and the
 //          entry names that box. Fails the cell by default, and the owner's ruling is pending:
 //          e2e/support/wordLines.ts ("DECISION Phase 89.6-02 (held-policy)").
-//   wide   the word is wider than its whole room, or it only wraps at its own hyphen. Written
-//          down, never failed.
+//   wide   the word is wider than its whole room, or it only wraps where the browser breaks
+//          anyway (measured: a hyphen, a soft hyphen and a dash are such places). Written down,
+//          never failed.
 //
 // WHAT A CASE PROVES. Every case first proves, with the older whole-word read, that its word
 // really is broken: a list that names no word proves nothing about a word that never broke. The
@@ -937,7 +938,7 @@ test('check: split, T12 (89.6-02, R6): a hyphenated word that wraps at its own h
   expect(sizerBroken, 'the sizing line breaks a word: the paragraph is not as wide as its sizing line').toEqual([]);
   expect(paragraph.broken, 'the hyphenated word is not the one word on two lines: the harness is not the shape it says').toEqual(['auto-close']);
   expectWide(paragraph, 'a hyphenated word wrapped after its hyphen, in a paragraph with nothing beside it', 'auto-close');
-  expect(entriesFor(paragraph.read.wide, 'auto-close').join(' | '), 'the word is not written down as wrapping at its hyphen').toContain('hyphen');
+  expect(entriesFor(paragraph.read.wide, 'auto-close').join(' | '), 'the word is not written down as wrapping where the browser breaks anyway').toContain('wraps only where the browser breaks anyway');
   expect(requests, 'the page made a request').toEqual([]);
 });
 
@@ -1235,7 +1236,26 @@ test('check: split, a forced break that leaves the line count as it was (89.6-02
   const dashSizer = await brokenWordsOf(page.locator('.lt-sizer'));
   const held = await splitCase(page, 'split-hyphen-held-same-count', '.lt-frame');
   const heldLines = await linesOf(page.locator('.lt-frame'));
-  await testInfo.attach('twin-read', { body: JSON.stringify({ same, sameLines, sameSizer, more, moreLines, dash, dashLines, dashSizer, held, heldLines }, null, 2), contentType: 'application/json' });
+  // The same page with wrapping of its own on body, which the measuring span sits in, and none of it on the case.
+  await page.evaluate(() => {
+    document.body.style.wordBreak = 'break-all';
+    document.body.style.setProperty('line-break', 'anywhere');
+    const section = document.querySelector('section');
+    section?.style.setProperty('word-break', 'normal');
+    section?.style.setProperty('line-break', 'auto');
+  });
+  const bodyWraps = await page.evaluate(() => {
+    const cs = getComputedStyle(document.body);
+    return { wordBreak: cs.wordBreak, lineBreak: cs.lineBreak };
+  });
+  const underBodyWrapping = await readLargeTextCell(frameOf(page));
+  const SHY = 'Week\u00ADend';
+  const refused = await splitCase(page, 'split-soft-hyphen-refused');
+  const refusedShape = await page.locator('.lt-name').evaluate((el) => ({ hyphens: getComputedStyle(el).hyphens, text: el.textContent }));
+  await testInfo.attach('twin-read', {
+    body: JSON.stringify({ same, sameLines, sameSizer, more, moreLines, dash, dashLines, dashSizer, held, heldLines, bodyWraps, underBodyWrapping, refused, refusedShape }, null, 2),
+    contentType: 'application/json',
+  });
   // Squeezed beside a box: on two lines as drawn (broken inside "Weekend") and on two lines once stacked (at the hyphen).
   expect(sameSizer, 'the sizing line breaks its word: the row is not as wide as that line').toEqual([]);
   expect(sameLines[HYPHEN], 'the hyphenated name is not on two lines as drawn: the case does not show a forced break that leaves the line count as it was').toBe(2);
@@ -1249,12 +1269,20 @@ test('check: split, a forced break that leaves the line count as it was (89.6-02
   expect(entriesFor(dash.read.split, DASH).join(' | '), 'the dashed name is not reported as losing its forced breaks when its row stacks').toContain('its forced breaks go');
   // In a box of its own width, with nothing to stack: held, with a hyphen and without one.
   expect(heldLines['Weekend-Go'], 'the hyphenated name in the narrow box is not on two lines as drawn: the case does not show a forced break that leaves the line count as it was').toBe(2);
-  expect(held.broken, 'the two names in the narrow boxes are not both broken: the harness is not the shape it says').toEqual(['Weekend-Go', 'WeekendGo']);
+  expect(held.broken, 'the two names in the narrow boxes and the 30-letter word are not all broken: the harness is not the shape it says').toEqual(['Weekend-Go', 'WeekendGo', THIRTY_LETTER_WORD]);
   expect(held.read.split, `a name held by a box of its own width reads as split (${JSON.stringify(held.read)})`).toEqual([]);
-  expect(held.read.wide, `a name broken inside its first part reads as wide (${JSON.stringify(held.read)})`).toEqual([]);
   for (const word of ['Weekend-Go', 'WeekendGo']) {
+    expect(entriesFor(held.read.wide, word), `${word}, broken inside its first part, reads as wide (${JSON.stringify(held.read)})`).toEqual([]);
     expect(entriesFor(held.read.held, word).join(' | '), `${word} is not held by its sizing box (${JSON.stringify(held.read)})`).toContain('held narrow by div.lt-fit');
   }
+  // The 30-letter word is judged after the measuring span was laid out with no room: its width is still measured on one line.
+  expect(entriesFor(held.read.wide, THIRTY_LETTER_WORD).join(' | '), `the 30-letter word after the two names is not written down as wider than its whole room (${JSON.stringify(held.read)})`).toContain('is wider than its whole room');
+  // The places the browser breaks anyway are measured with none of the page's own wrapping.
+  expect(bodyWraps, 'body does not wrap anywhere: the harness is not the shape it says').toEqual({ wordBreak: 'break-all', lineBreak: 'anywhere' });
+  expect(underBodyWrapping, 'the read differs when body, where the measuring span sits, has wrapping of its own').toEqual(held.read);
+  // A soft hyphen the page refuses is no place the browser breaks at anyway.
+  expect(refusedShape, 'the name does not hold a soft hyphen under hyphens: none: the harness is not the shape it says').toEqual({ hyphens: 'none', text: SHY });
+  expectHeld(refused, 'a name broken by force at a soft hyphen that hyphens: none refuses', 'held narrow by div.lt-fit', SHY);
   expect(requests, 'the page made a request').toEqual([]);
 });
 

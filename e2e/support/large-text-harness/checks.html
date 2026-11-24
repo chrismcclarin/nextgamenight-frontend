@@ -6,7 +6,8 @@
   three lists its broken word lands in. SPLIT: the word would be whole if the rows above it stacked,
   or it is glued to what precedes it on its line (a bad form). HELD: a box with a width of its own
   holds the word narrow, stacking would not help, and the page has room for it. WIDE: the word is
-  wider than any room the layout could give it, or it only wraps at its own hyphen; silent. In every
+  wider than any room the layout could give it, or it only wraps where the browser breaks anyway
+  (measured, not read from its characters: a hyphen, a soft hyphen and a dash are such places); silent. In every
   case the word IS broken: a list that names no word proves nothing about a word that never broke.
   The good twin of a pair holds a 30-letter word for that reason: it is wider than the whole row.
   The wrappers carry lt- hook names the app never styles. Every state is static markup:
@@ -954,14 +955,14 @@
   </main>
 </section>
 
-<!-- the same with a margin twice the card's padding: the row leaves the card's border box. A box with padding or a border of its own stops the widening, so the name, whole once stacked, is outside the frame's content box: it is whole only by spilling out of its card. WIDE, as before R9. -->
+<!-- the same with a margin twice the card's padding and one word: the row leaves the card's border box. A box with padding or a border of its own stops the widening, so the name, whole once stacked at the row's start, is outside the frame's content box: it is whole only by spilling out of its card. WIDE, as before R9. -->
 <section data-case="split-full-bleed-spill">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
       <div class="lt-plain">
         <div class="lt-row -mx-6 flex gap-2">
           <div class="lt-wrap min-w-0 flex-1">
-            <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+            <p class="lt-name font-semibold text-base text-content-primary">Weekend</p>
           </div>
           <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
         </div>
@@ -1020,7 +1021,9 @@
   two names in boxes as wide as "Weeken" (the first line sizes each box), with nothing to stack: one
   with a hyphen, one without. Both are broken inside "Weekend" and both are on two lines; the
   hyphenated one would be on two lines with its forced breaks off as well (at its hyphen). HELD by
-  the box, both; before R9 the hyphenated one read wide (ordinary wrapping).
+  the box, both; before R9 the hyphenated one read wide (ordinary wrapping). A 30-letter word
+  follows them: it is judged after the measuring span was laid out with no room for the two names,
+  and its own width must still be measured on one line. WIDE, wider than its whole room.
 -->
 <section data-case="split-hyphen-held-same-count">
   <main data-frame class="lt-frame px-4 py-4">
@@ -1031,6 +1034,17 @@
     <div class="lt-fit w-fit max-w-full">
       <p class="lt-sizer font-semibold text-base text-content-primary">Weeken</p>
       <p class="lt-name w-0 min-w-full font-semibold text-base text-content-primary">WeekendGo</p>
+    </div>
+    <p class="lt-name font-semibold text-base text-content-primary">Grandmasterboardgamecollective</p>
+  </main>
+</section>
+
+<!-- a soft hyphen the page refuses (hyphens: none), in a box as wide as "Week" (the first line sizes it): the name breaks after "Week" all the same, by force, and shows no hyphen. The measuring span takes the word's own hyphens value, so that place is not one the browser breaks at anyway. HELD by the box, before R9 too. -->
+<section data-case="split-soft-hyphen-refused">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-fit w-fit max-w-full">
+      <p class="lt-sizer font-semibold text-base text-content-primary">Week</p>
+      <p class="lt-name w-0 min-w-full hyphens-none font-semibold text-base text-content-primary">Week&shy;end</p>
     </div>
   </main>
 </section>

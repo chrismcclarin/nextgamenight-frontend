@@ -325,7 +325,7 @@ export interface LargeTextCellRead {
   split: string[];
   /** One entry per broken word held narrow by a box with a width of its own, or by a positioned box; the entry names the box and what makes it that wide. */
   held: string[];
-  /** One entry per broken word that is wider than its whole room, or that only wraps at its own hyphen. Written down for the reader, never failed. */
+  /** One entry per broken word that is wider than its whole room, that only wraps where the browser breaks anyway (measured, not read from its characters), or that no box holds narrower than its parent offers. Written down for the reader, never failed. */
   wide: string[];
   /** One entry per word that paints outside its nearest box with a fill, a side border or a control. */
   spill: string[];
@@ -493,9 +493,10 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
 
     // ---- split -----------------------------------------------------------------------------------
     // DECISION Phase 89.6-02 (split-row), REPLACED 2026-11-24 (R6): an orchestrator change, after
-    // two amendments the same day, REPAIRED the same day after its scoped check. The read MEASURES
-    // whether a broken word would be whole if the rows above it stacked, and whether its breaks are
-    // forced, chosen OVER working either out from the page's structure or from its characters.
+    // two amendments the same day, REPAIRED the same day after its scoped check, and amended once
+    // more by the owner-ruled last batch (R9, the same day). The read MEASURES whether a broken
+    // word would be whole if the rows above it stacked, and whether its breaks are forced, chosen
+    // OVER working either out from the page's structure, from its characters or from line counts.
     //
     // WHAT IT DOES, for each word drawn on more than one line (text inside .bb-breakable is not read
     // here: emails and links may break anywhere):
@@ -518,28 +519,40 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     //      bound. Whole only by spilling out of a box is not room. INSIDE a box means inside its
     //      content box, widened on a side by the negative margin of its child on the word's path
     //      (a box pulled into its parent's padding by its own margin was placed there; a box that
-    //      overflows because its content is too wide was not). At a box that scrolls sideways the
-    //      word is placed in that box's own scroll coordinates, the whole scrollable width counts,
-    //      and the boxes above it are not looked at: scrolling moves the word, it does not spill it.
+    //      overflows because its content is too wide was not). The widening is CARRIED UP, side by
+    //      side, through every box on the path that has no padding and no border of its own on
+    //      that side: a full-bleed row inside a plain wrapper sits in the padding of the card
+    //      around the wrapper, and was placed there the same way (R9). A box with an edge hands
+    //      nothing up, chosen OVER a running total carried through every box: with that, a row
+    //      pulled out of its card altogether would read as inside the page around the card. At a
+    //      box that scrolls sideways the word is placed in that box's own scroll coordinates, the
+    //      whole scrollable width counts, and the boxes above it are not looked at: scrolling
+    //      moves the word, it does not spill it.
     //   5. Otherwise WIDE when the word's own one-line width is greater than the bound's content
     //      width: such a word may break (SPEC R4), whatever its breaks are and whatever its rows do.
-    //   6. A word still on more than one line is read AGAIN with its forced breaks switched off
-    //      (overflow-wrap and word-break set to normal on the elements from the word's own up to
-    //      its block, through one more temporary sheet). The breaks that stay are places the
-    //      browser breaks anyway, whatever they are: measured here, a hyphen, a soft hyphen and
-    //      an en dash are; a slash between two words is not (Chromium breaks inside the pair).
-    //      A declaration that did not take is said as COULD NOT UNWRAP.
-    //   7. When every break left is of that kind: with nothing stacked it is ordinary wrapping,
-    //      written into the wide list. With rows stacked, the word is read once more as the page
-    //      is, breaks switched off: if it had a forced break there, stacking took it away, and
-    //      that is SPLIT (the word was broken inside itself only because of the row); otherwise
-    //      ordinary wrapping.
+    //   6. A word still on more than one line has its breaks sorted by WHERE they fall (R9). The
+    //      places the browser breaks the word anyway are measured once: the word is laid out in
+    //      the measuring span with no room at all and with overflow-wrap, word-break and
+    //      line-break at their normal values, and every line start there is such a place
+    //      (measured here: after a hyphen, a soft hyphen and an en dash; not after a slash
+    //      between two words). A break of the word in the page that falls anywhere else is
+    //      FORCED. Counting lines with forced breaks off, as this step did before R9, missed a
+    //      forced break that left the count as it was ("Weekend-Gogo" broken inside "Weekend" is
+    //      on two lines, and so is its wrap at the hyphen). The word is also read in place with
+    //      the same three properties switched off, on the word's OWN element only, through one
+    //      more temporary sheet (step 8 uses that read); a declaration that did not take is said
+    //      as COULD NOT UNWRAP.
+    //   7. When no break is forced: with nothing stacked it is ordinary wrapping, written into
+    //      the wide list. With rows stacked, the breaks of the word in the page AS IT IS are
+    //      sorted the same way: if one is forced there, stacking took it away, and that is SPLIT
+    //      (the word was broken inside itself only because of the row); otherwise ordinary
+    //      wrapping.
     //   8. When a forced break is left: SPLIT, as glued, when the word unbroken would fit a line
-    //      of its own block: its unbroken width, plus the side padding, border and margin of
-    //      every inline box that holds only this word, is at most the block's content width. The
-    //      browser breaks a word only when its line has no earlier place to wrap, so this word
-    //      was glued to what stands before it. What stands before it is not read (an element,
-    //      generated content, nothing).
+    //      of its own block: with its forced breaks off it is on ONE line, and its width there,
+    //      plus the side padding, border and margin of every inline box that holds only this
+    //      word, is at most the block's content width. The browser breaks a word only when its
+    //      line has no earlier place to wrap, so this word was glued to what stands before it.
+    //      What stands before it is not read (an element, generated content, nothing).
     //   9. Otherwise HELD by the first box, from its own up to the bound (the bound left out), that
     //      is positioned absolute or fixed, or is narrower than its parent's content width less its
     //      own side margins (an automatic margin is free space, not an edge). The entry names the box.
@@ -548,8 +561,8 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     //      finally (a throw part-way leaves nothing behind), and at the end the layout (the root's
     //      box and every word's boxes), the length of the sheet list and the scroll offsets are
     //      compared with what they were. A difference is said in the split list as NOT RESTORED.
-    // Steps 5 to 10 are read while the stack is still on (step 7's second read apart): what
-    // stacking could not change is what holds the word.
+    // Steps 5 to 10 are read while the stack is still on (step 7's look at the page as it is
+    // apart): what stacking could not change is what holds the word.
     //
     // WHAT THE APP CAN SEE OF A READ. No app node is written to: every change is a stylesheet of
     // the read's own. The ONE touch of the DOM is the measuring span (the ruler above): appended to
@@ -571,6 +584,10 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     // a soft hyphen and an en dash read as split), and a reading of what stands before the word for
     // glue (an icon positioned in a label's padding read as glue; generated content did not):
     // planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/R6-SCOPED-CHECK-1.md ("Findings").
+    // (f) Three parts of the repaired method (R9): forced breaks told by a count of lines, the
+    // widening of step 4 for a box's direct child only, and line-break left on while forced
+    // breaks are off:
+    // planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/R6-SCOPED-CHECK-2.md ("New findings").
     //
     // WHAT IT CANNOT SEE (measured, or named as not measured): planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/R4-RESEARCH.md ("6. What each method cannot see, measured").
     //   - an item whose width of 0 exists only to share its row (w-0 with flex-1) reads HELD, where
@@ -580,6 +597,11 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     //   - the first or last word of an inline box that holds several words carries that box's
     //     side padding on its line; step 8 does not count it (only a box that holds the one word);
     //   - a box moved by a transform or by relative positioning is not a box placed by its margin;
+    //   - a pull carried up through a plain wrapper is not made smaller by that wrapper's own
+    //     positive side margin, and stops at the first box with padding or a border, however thin;
+    //   - the places the browser breaks anyway are measured in the measuring span, which takes
+    //     the word's own hyphens value and nothing else of its style: a word hyphenated by a
+    //     language set below the document root is not laid out in that language;
     //   - text inside a shadow tree or a frame is not reached by the stylesheet (not measured);
     //   - a pop-up that hangs outside its anchor's box and is whole only when stacked may fail the
     //     inside check and read HELD (not built, none found in src).
@@ -766,13 +788,24 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     /** Step 4's inside: see the marker. `word` is the word's box, read in the layout as it stands. */
     const insideEveryBox = (word: DOMRect, own: Element, boundBox: Element): boolean => {
       let child: Element | null = null;
+      // How far the boxes below were pulled out of the content of the box being looked at, per side.
+      let pulledLeft = 0;
+      let pulledRight = 0;
       for (let a: Element | null = own; a; child = a, a = a === boundBox ? null : parentBoxOf(a)) {
         const cs = getComputedStyle(a);
         const box = a.getBoundingClientRect();
-        // A child pulled out of this box's content by its own negative margin was placed there.
-        const childStyle = child ? getComputedStyle(child) : null;
-        const pulledLeft = childStyle ? Math.max(0, -px(childStyle.marginLeft)) : 0;
-        const pulledRight = childStyle ? Math.max(0, -px(childStyle.marginRight)) : 0;
+        if (child) {
+          // A child pulled out of this box's content by its own negative margin was placed there.
+          // What was pulled out of the child itself comes up with it only when the child has no
+          // padding and no border of its own on that side: a plain wrapper is no edge to spill out
+          // of. A child with an edge hands nothing up, so a box pulled out of a card altogether
+          // is outside the box above the card, as it was before the pull was carried at all.
+          const childStyle = getComputedStyle(child);
+          const plainLeft = px(childStyle.paddingLeft) + px(childStyle.borderLeftWidth) === 0;
+          const plainRight = px(childStyle.paddingRight) + px(childStyle.borderRightWidth) === 0;
+          pulledLeft = Math.max(0, -px(childStyle.marginLeft)) + (plainLeft ? pulledLeft : 0);
+          pulledRight = Math.max(0, -px(childStyle.marginRight)) + (plainRight ? pulledRight : 0);
+        }
         if (cs.overflowX === 'auto' || cs.overflowX === 'scroll') {
           // In this box's own scroll coordinates, the same at every scroll offset; all of its
           // scrollable width counts, and nothing above a scrolling box can be spilled out of.
@@ -796,11 +829,14 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       /** On one line: its unbroken width, plus the side edges of every inline box that holds only this word. */
       needs: number;
     }
-    /** Step 6: the word read again with its forced breaks switched off, in the layout as it stands. */
+    /**
+     * Step 6: the word read again with its forced breaks switched off, in the layout as it stands.
+     * The three properties are set on the word's OWN element and nowhere else: they are inherited,
+     * and a text breaks by the values of the element that holds it, so a rule on that element is
+     * all the word needs. The boxes around it keep their wrapping, and so does the text beside it.
+     */
     const unwrapped = (w: Word, own: Element): Unwrapped => {
-      const rules: string[] = [];
-      for (let a: Element | null = w.el; a; a = a === own ? null : a.parentElement) rules.push(`${pathOf(a)} { overflow-wrap: normal !important; word-break: normal !important; }`);
-      return withSheet(rules.join('\n'), () => {
+      return withSheet(`${pathOf(w.el)} { overflow-wrap: normal !important; word-break: normal !important; line-break: auto !important; }`, () => {
         const cs = getComputedStyle(w.el);
         const range = rangeOf(w);
         let needs = range.getBoundingClientRect().width;
@@ -809,8 +845,53 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
           if (edge.display !== 'inline' || (a.textContent ?? '').trim() !== w.text) continue;
           needs += px(edge.paddingLeft) + px(edge.paddingRight) + px(edge.borderLeftWidth) + px(edge.borderRightWidth) + px(edge.marginLeft) + px(edge.marginRight);
         }
-        return { took: cs.overflowWrap === 'normal' && cs.wordBreak === 'normal', lines: lineCount(drawnRects(range)), needs };
+        return { took: cs.overflowWrap === 'normal' && cs.wordBreak === 'normal' && cs.lineBreak === 'auto', lines: lineCount(drawnRects(range)), needs };
       });
+    };
+
+    /** Where a new line starts inside a run of text: the offset, counted from `start`, of every character drawn on another line than the character drawn before it. */
+    const lineStartsIn = (node: Node, start: number, end: number): number[] => {
+      const content = node.textContent ?? '';
+      const range = document.createRange();
+      const starts: number[] = [];
+      let line: number | null = null;
+      for (let at = start; at < end; ) {
+        const size = (content.codePointAt(at) ?? 0) > 0xffff ? 2 : 1;
+        range.setStart(node, at);
+        range.setEnd(node, Math.min(at + size, end));
+        // A character that draws nothing (a soft hyphen the line did not break at) is on no line.
+        const drawn = drawnRects(range)[0];
+        if (drawn) {
+          const top = Math.round(drawn.top);
+          if (line !== null && top !== line) starts.push(at - start);
+          line = top;
+        }
+        at += size;
+      }
+      return starts;
+    };
+    /**
+     * The places the browser breaks the word anyway: the word laid out in the measuring span with
+     * no room at all and forced breaks off. With no room every place it may break is taken, so
+     * each line start is one of them. Where a word may break does not depend on its font, so the
+     * span keeps whatever font it has; it takes the word's own hyphens value (a soft hyphen is no
+     * such place under hyphens: none) and none of the page's wrapping, which it would inherit
+     * from body. Its style is put back for the width measurements that follow.
+     */
+    const naturalBreaksOf = (w: Word): Set<number> => {
+      const styleBefore = ruler.style.cssText;
+      try {
+        ruler.style.hyphens = getComputedStyle(w.el).hyphens;
+        ruler.style.whiteSpace = 'normal';
+        ruler.style.width = '0';
+        ruler.style.overflowWrap = 'normal';
+        ruler.style.wordBreak = 'normal';
+        ruler.style.lineBreak = 'auto';
+        ruler.textContent = w.text;
+        return new Set(ruler.firstChild ? lineStartsIn(ruler.firstChild, 0, w.text.length) : []);
+      } finally {
+        ruler.style.cssText = styleBefore;
+      }
     };
 
     type Verdict = 'split' | 'held' | 'wide';
@@ -831,8 +912,15 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       const couldNotUnwrap: Found = { verdict: 'split', text: `${quoted} COULD NOT UNWRAP ${nameOf(w.el)}: its forced breaks could not be switched off, nothing measured` };
       const ordinary = (ending: string): Found => ({
         verdict: 'wide',
-        text: `${quoted} wraps only where the browser breaks anyway (a hyphen, a soft hyphen, a dash), ${ending}: ordinary wrapping`,
+        text: `${quoted} wraps only where the browser breaks anyway (measured with no room and no forced breaks, not read from its characters), ${ending}: ordinary wrapping`,
       });
+      let natural: Set<number> | null = null;
+      /** Step 6: a break of the word, in the layout as it stands, that falls anywhere but at a place the browser breaks it anyway. */
+      const hasForcedBreak = (): boolean => {
+        natural ??= naturalBreaksOf(w);
+        const places = natural;
+        return lineStartsIn(w.node, w.start, w.end).some((at) => !places.has(at));
+      };
       /** Step 5: a word wider than its whole room may break, whatever its breaks are and whatever its rows do. */
       const widerThanItsRoom = (): Found | null => {
         const natural = naturalWidth(w.text, w.el);
@@ -871,7 +959,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
         const ownRoom = contentWidth(own);
         const free = unwrapped(w, own);
         if (!free.took) return couldNotUnwrap;
-        if (free.lines >= lines) return rows.length === 0 ? ordinary('and nothing above it stacks') : null;
+        if (!hasForcedBreak()) return rows.length === 0 ? ordinary('and nothing above it stacks') : null;
         // A forced break is left.
         if (free.lines === 1 && free.needs <= ownRoom + 0.5) {
           return { verdict: 'split', text: `${quoted} ${w.lines} lines: a line of its own block would hold it (${round(free.needs)}px of ${round(ownRoom)}px), so it is glued to what stands before it` };
@@ -880,10 +968,8 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       };
       const found = stack.changes.size === 0 ? stacked() : withSheet(sheetTextOf(stack), stacked);
       if (found) return found;
-      // Step 7, rows stacked: was the word broken inside itself in the page as it is?
-      const asIs = unwrapped(w, own);
-      if (!asIs.took) return couldNotUnwrap;
-      if (asIs.lines < w.lines) return { verdict: 'split', text: `${quoted} ${w.lines} lines: its forced breaks go when ${stacking}, and what is left is an ordinary wrap` };
+      // Step 7, rows stacked: was the word broken inside itself in the page as it is? (The stack is off again here.)
+      if (hasForcedBreak()) return { verdict: 'split', text: `${quoted} ${w.lines} lines: its forced breaks go when ${stacking}, and what is left is an ordinary wrap` };
       return ordinary('and stacking does not make it whole');
     };
 
@@ -1130,12 +1216,18 @@ export function expectLargeTextCell(read: LargeTextCellRead, tag: string): void 
 // overlapping into unusable; everything else is recorded, not failed, chosen OVER the full five
 // checks there (WCAG Reflow does not cover a viewport under 320; Resize Text still asks for no
 // loss). Changing this is a decision, not a cleanup.
+//
+// AMENDED 2026-11-24 (R9, owner-ruled): ONE kind of recorded entry fails there too, the read
+// saying that it failed itself: a word it could not measure (COULD NOT STACK, COULD NOT UNWRAP)
+// or a page it did not put back (NOT RESTORED). Chosen OVER recording those like any split: a
+// read that could not measure has no finding to record, and one that left the page changed has
+// spoiled every read after it. A split or held word that WAS measured is still only recorded.
 // ---------------------------------------------------------------------------------------------
 
 export interface PageZoomRead {
   /** Lost content or function: unreachable, cut with no way to reach it, or overlapping. These fail. */
   lost: string[];
-  /** Seen and written down, never failed: the page's sideways scroll, splits, held words and spills. */
+  /** Seen and written down: the page's sideways scroll, splits, held words and spills. Never failed, but for a split entry that says the read itself failed (the amendment above). */
   recorded: string[];
 }
 
@@ -1147,7 +1239,18 @@ export async function readPageZoomCell(root: Locator, options: LargeTextReadOpti
   return { lost: read.lost, recorded };
 }
 
-/** Expect a page-zoom cell to have lost no content and no function. */
+/**
+ * A recorded split entry that says the read itself failed: a word it could not measure, or a page
+ * it did not put back. The page read writes these three texts itself (it runs in the browser and
+ * can use nothing from this file), and every entry about a word starts with that word in quotes.
+ */
+const READ_FAILED = /^split: (NOT RESTORED\b|"\S+" COULD NOT (STACK|UNWRAP)\b)/;
+
+/** Expect a page-zoom cell to have lost no content and no function, and its read to have measured what it recorded. */
 export function expectPageZoomUsable(read: PageZoomRead, tag: string): void {
   expect(read.lost, `${tag}: content or function is lost at this page-zoom width (${JSON.stringify(read)})`).toEqual([]);
+  expect(
+    read.recorded.filter((entry) => READ_FAILED.test(entry)),
+    `${tag}: the read could not measure a word, or could not put the page back, at this page-zoom width (${JSON.stringify(read)})`,
+  ).toEqual([]);
 }
