@@ -1305,6 +1305,16 @@ function FriendsPage() {
                                the 3.0 edge floor and is reported to the owner, not changed here). The
                                active tab is still told apart by more than colour: the 2px underline
                                and aria-current. Held by src/app/tokenContrast.test.ts ("PIX-8 (88.9-52): the Friends tab labels on the page").
+                               AMENDED Phase 89.6-09 (U1, owner pick O-3 = U1+E1, 2026-11-22: "So I'll follow
+                               recommendation to make it follow the rule."): the underline now reads the
+                               tab-indicator token (border-tab-indicator): light 4.3366 against the page,
+                               unchanged, and dark 4.1790 (purple-500; it was 2.99). The dark miss is
+                               CLOSED, no longer "reported to the owner, not changed here"; the sentence
+                               above is kept as the 88.9-52 record. Chosen OVER keeping
+                               border-btn-primary and OVER re-tuning the primary fill for every button
+                               (src/app/globals.css ("DECISION Phase 89.6-09 (U1)")). The active tab is
+                               still told apart by more than colour: the 2px underline and aria-current.
+                               Held by src/app/tokenContrast.test.ts ("89.6 R7 U1").
                                AMENDED Phase 88.9-52 (R11, owner 2026-11-17: Centred; his words: make it like
                                a padding, the same distance below the word as above): the ring is INSIDE the
                                tab (ring-inset, 2px, the group-home tabs' form) and the label is padded clear
@@ -1366,7 +1376,17 @@ function FriendsPage() {
                                and OVER an underline on every tab. The band must stay in the
                                inset-shadow slot: moved to the plain shadow slot it is painted UNDER
                                the ring and the selected cue disappears on focus.
-                               e2e/friends-page.spec.ts ("R4 D7: while focused the underline is a band") is the rendered proof. */
+                               e2e/friends-page.spec.ts ("R4 D7: while focused the underline is a band") is the rendered proof.
+                               AMENDED Phase 89.6-09 (U1, owner pick O-3 = U1+E1, 2026-11-22: "So I'll follow
+                               recommendation to make it follow the rule."): the band reads the same
+                               token as the underline it stands in for, the runtime property
+                               --color-tab-indicator-line (it was --color-btn-primary), so the focused
+                               underline clears 3:1 in dark too (4.1790 on the page, it was 2.99).
+                               The runtime property is named, not the theme key, chosen OVER
+                               var(--color-tab-indicator): the property is declared in the light and
+                               the dark block whatever Tailwind emits for a theme key. Everything
+                               else about the band (its slot, its order over the ring) stands.
+                               e2e/contrast.spec.ts ("89.6 R7 U1") measures it. */
                             <Fragment key={key}>
                             {index > 0 && <span aria-hidden="true" className="w-8 shrink min-w-0" />}
                             <button
@@ -1390,7 +1410,7 @@ function FriendsPage() {
                                 aria-current={activeTab === key ? 'true' : undefined}
                                 className={`inline-flex items-center justify-center shrink-0 whitespace-nowrap px-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring min-h-11 min-w-11 ${
                                     activeTab === key
-                                        ? 'border-b-2 border-btn-primary pt-[2px] text-content-primary focus-visible:border-b-0 focus-visible:pb-[2px] focus-visible:inset-shadow-[0_-2px_0_0_var(--color-btn-primary)]'
+                                        ? 'border-b-2 border-tab-indicator pt-[2px] text-content-primary focus-visible:border-b-0 focus-visible:pb-[2px] focus-visible:inset-shadow-[0_-2px_0_0_var(--color-tab-indicator-line)]'
                                         : 'text-content-secondary hover:text-content-primary'
                                 }`}
                             >

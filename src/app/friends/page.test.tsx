@@ -818,7 +818,9 @@ describe('friends D-16 / R2 #171 — the tab strip', () => {
     expect(tokens(friendsTab)).toContain('text-content-primary');
     expect(tokens(friendsTab)).not.toContain('text-btn-primary');
     expect(tokens(friendsTab)).toContain('border-b-2');
-    expect(tokens(friendsTab)).toContain('border-btn-primary');
+    // AMENDED Phase 89.6-09 (U1, owner pick O-3): the underline's colour class is the tab-indicator
+    // token now (it was border-btn-primary, 2.99 on the dark page); the 2px underline stands.
+    expect(tokens(friendsTab)).toContain('border-tab-indicator');
     expect(tokens(sentTab)).toContain('text-content-secondary');
     expect(tokens(sentTab)).not.toContain('border-b-2');
 
@@ -968,7 +970,8 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     expect(row.className.split(/\s+/)).not.toContain('gap-8');
     // The active tab keeps its underline and its spoken state.
     expect(tabs[0]).toHaveAttribute('aria-current', 'true');
-    expect(tabs[0].className.split(/\s+/)).toEqual(expect.arrayContaining(['border-b-2', 'border-btn-primary']));
+    // AMENDED Phase 89.6-09 (U1): the underline's colour class is border-tab-indicator.
+    expect(tabs[0].className.split(/\s+/)).toEqual(expect.arrayContaining(['border-b-2', 'border-tab-indicator']));
     expect(tabs[1]).not.toHaveAttribute('aria-current');
   });
 
@@ -1010,13 +1013,15 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
         // border goes, 2px of bottom padding takes its place (the label does not move), and an
         // inset band in the underline's own colour is painted above the ring layer.
         // The marker is at src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 D7, owner page pick S3 = Merge, 2026-11-18)").
-        for (const merged of ['focus-visible:border-b-0', 'focus-visible:pb-[2px]', 'focus-visible:inset-shadow-[0_-2px_0_0_var(--color-btn-primary)]']) {
+        // AMENDED Phase 89.6-09 (U1): the band reads the tab-indicator runtime property, the same
+        // token as the underline (it read the primary fill's key before).
+        for (const merged of ['focus-visible:border-b-0', 'focus-visible:pb-[2px]', 'focus-visible:inset-shadow-[0_-2px_0_0_var(--color-tab-indicator-line)]']) {
           expect(classes.includes(merged), merged + ' on ' + (tab.textContent ?? '')).toBe(active);
         }
         // The ring itself is unchanged on every tab: 2px, inset, the focus-ring colour.
         expect(classes).toEqual(expect.arrayContaining(['focus-visible:ring-2', 'focus-visible:ring-inset', 'focus-visible:ring-focus-ring']));
         // The underline keeps its colour: the band reads the same token the border class names.
-        if (active) expect(classes).toContain('border-btn-primary');
+        if (active) expect(classes).toContain('border-tab-indicator');
         // No other up-or-down padding or margin is left to push the label off the middle.
         expect(classes.filter((c) => /^-?(p[ytb]|m[ytb])-/.test(c) && c !== 'pt-[2px]')).toEqual([]);
       }
