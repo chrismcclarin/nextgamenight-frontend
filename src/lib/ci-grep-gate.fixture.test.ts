@@ -1701,6 +1701,11 @@ describe('Phase 89.6-05 — the large-text matrix runs once, in its own step, fl
 
 const LARGE_TEXT_SWEEP_STEP = 'Large-text sweep — every surface row in the sweep cells, pending rows listed (SPEC R4)';
 const LARGE_TEXT_SWEEP_SPEC = 'e2e/large-text-sweep.spec.ts';
+// Full mode (Phase 89.6-08, for plan 89.6-34's close run): ONE dispatch input selects the cells
+// inside the sweep step. It defaults to the PR lane, never touches --project and can only add cells.
+const LARGE_TEXT_FULL_INPUT = 'large-text-full';
+const SWEEP_MODE_ENV_LINE = `LARGE_TEXT_SWEEP_MODE: ${'$'}{{ github.event.inputs.${LARGE_TEXT_FULL_INPUT} == 'true' && 'full' || 'pr' }}`;
+const E2E_TIMEOUT_LINE = `timeout-minutes: ${'$'}{{ github.event.inputs.${LARGE_TEXT_FULL_INPUT} == 'true' && 90 || 30 }}`;
 
 describe('Phase 89.6-08 — the large-text sweep runs once, in its own step after the matrix', () => {
   /** The one sweep step, or a thrown sentence naming what is wrong. */
@@ -1711,6 +1716,7 @@ describe('Phase 89.6-08 — the large-text sweep runs once, in its own step afte
     return { step: found[0], steps };
   };
 
+  // AMENDED Phase 89.6-08 (full mode): the coverage line passes the mode, and the step's one env line is allowed.
   test('the step exists once, directly after the matrix step, with no if:, and runs the sweep, its floor of 2 and the coverage script', () => {
     const { step, steps } = sweepStep();
     const at = steps.indexOf(step);
@@ -1723,10 +1729,11 @@ describe('Phase 89.6-08 — the large-text sweep runs once, in its own step afte
       'set -euo pipefail',
       `PLAYWRIGHT_JSON_OUTPUT_FILE=playwright-results-large-text-sweep.json npx playwright test --project=journeys --no-deps --output=test-results/large-text-sweep ${LARGE_TEXT_SWEEP_SPEC}`,
       `node scripts/gate-c-executed-floor.mjs playwright-results-large-text-sweep.json --spec ${LARGE_TEXT_SWEEP_SPEC} --project journeys --floor 2`,
-      'node scripts/large-text-sweep-coverage.mjs --results test-results/large-text-sweep/results',
+      'node scripts/large-text-sweep-coverage.mjs --results test-results/large-text-sweep/results --mode "$LARGE_TEXT_SWEEP_MODE"',
     ]);
 
-    const body = step.lines.filter((l) => !isYamlComment(l)).join('\n');
+    // The mode expression holds || by design; no other line of the step may.
+    const body = step.lines.filter((l) => !isYamlComment(l) && l.trim() !== SWEEP_MODE_ENV_LINE).join('\n');
     expect(body, 'the sweep step must not swallow a failure with ||').not.toContain('||');
     expect(body, 'the sweep step must not carry continue-on-error').not.toContain('continue-on-error');
   });
@@ -1754,5 +1761,65 @@ describe('Phase 89.6-08 — the large-text sweep runs once, in its own step afte
     for (const e of encryptInvocations()) {
       expect(e.inputs.includes(report), `the encrypt step "${e.step}" packs the sweep report`).toBe(false);
     }
+  });
+
+  test('full mode is one dispatch input that only the sweep step and the e2e job timeout read; every other trigger keeps the PR lane and 30 minutes', () => {
+    const lines = CI_YML.split('\n');
+    const indentOf = (l: string) => (l.match(/^\s*/)?.[0].length ?? 0);
+
+    // The workflow_dispatch inputs: backend-ref and large-text-full, nothing else.
+    const dispatchAt = lines.findIndex((l) => /^  workflow_dispatch:\s*$/.test(l));
+    expect(dispatchAt, 'ci.yml has no workflow_dispatch trigger').toBeGreaterThan(-1);
+    expect(lines[dispatchAt + 1], 'workflow_dispatch must be followed by its inputs').toMatch(/^    inputs:\s*$/);
+    const inputs: Record<string, string[]> = {};
+    let current = '';
+    for (const l of lines.slice(dispatchAt + 2)) {
+      if (l.trim() === '') continue;
+      if (indentOf(l) <= 4) break;
+      const name = l.match(/^      ([A-Za-z0-9_-]+):\s*$/)?.[1];
+      if (name) {
+        current = name;
+        inputs[current] = [];
+      } else if (current) inputs[current].push(l.trim());
+    }
+    expect(Object.keys(inputs), 'the dispatch inputs are backend-ref and large-text-full; a project-selection input stays out (D-19)').toEqual(['backend-ref', LARGE_TEXT_FULL_INPUT]);
+    const full = inputs[LARGE_TEXT_FULL_INPUT] ?? [];
+    expect(full, 'large-text-full must be a boolean').toContain('type: boolean');
+    expect(full, 'large-text-full must default to false, the PR lane').toContain('default: false');
+    expect(full, 'large-text-full must not be required').toContain('required: false');
+
+    // The sweep step turns the input into the mode, and its coverage line reads that same mode.
+    const { step } = sweepStep();
+    const keyIndent = indentOf(step.lines[0]) + 2;
+    const envAt = step.lines.findIndex((l) => indentOf(l) === keyIndent && /^\s*env:\s*$/.test(l));
+    expect(envAt, 'the sweep step has no env: block').toBeGreaterThan(-1);
+    const env: string[] = [];
+    for (const l of step.lines.slice(envAt + 1)) {
+      if (l.trim() === '' || isYamlComment(l)) continue;
+      if (indentOf(l) <= keyIndent) break;
+      env.push(l.trim());
+    }
+    expect(env, 'the sweep step sets exactly LARGE_TEXT_SWEEP_MODE: full only when the input is true, else pr').toEqual([SWEEP_MODE_ENV_LINE]);
+    expect(runLines(step)[3]?.endsWith(' --mode "$LARGE_TEXT_SWEEP_MODE"'), 'the coverage line must pass the mode the sweep ran in').toBe(true);
+
+    // Nothing else reads the input: the e2e job's timeout and the sweep step's env, and no third line.
+    const readers = lines.filter((l) => !isYamlComment(l) && l.includes(`inputs.${LARGE_TEXT_FULL_INPUT}`)).map((l) => l.trim().replace(/\s+#.*$/, ''));
+    expect(readers.sort(), 'the large-text-full input is read by exactly two lines').toEqual([SWEEP_MODE_ENV_LINE, E2E_TIMEOUT_LINE].sort());
+    const others = ciSteps().filter((other) => other.name !== LARGE_TEXT_SWEEP_STEP && other.lines.some((l) => !isYamlComment(l) && l.includes(LARGE_TEXT_FULL_INPUT)));
+    expect(others.map((other) => other.name), 'another step reads the large-text-full input').toEqual([]);
+
+    // The e2e job: 30 minutes on every trigger, 90 only for the full-mode dispatch.
+    const timeouts = lines.filter((l) => !isYamlComment(l) && /^\s*timeout-minutes:/.test(l)).map((l) => l.trim().replace(/\s+#.*$/, ''));
+    expect(timeouts.filter((l) => l.includes('inputs.')), 'exactly one job timeout reads an input, and it is the e2e job\'s').toEqual([E2E_TIMEOUT_LINE]);
+    const e2eJobAt = lines.findIndex((l) => /^  e2e:\s*$/.test(l));
+    const timeoutAt = lines.findIndex((l, k) => k > e2eJobAt && /^    timeout-minutes:/.test(l));
+    const nextJobAt = lines.findIndex((l, k) => k > e2eJobAt && /^  [A-Za-z0-9_-]+:\s*$/.test(l));
+    expect(e2eJobAt > -1 && timeoutAt > e2eJobAt && (nextJobAt === -1 || timeoutAt < nextJobAt), 'the e2e job has no timeout-minutes of its own').toBe(true);
+    expect(lines[timeoutAt].trim().replace(/\s+#.*$/, ''), 'the e2e job timeout must be 30 except for the full-mode dispatch').toBe(E2E_TIMEOUT_LINE);
+
+    // The pinned --project allowlist of the main run is untouched: the input selects cells, never projects.
+    const main = stepWindow(PLAYWRIGHT_STEP).filter((l) => !isYamlComment(l) && l.includes('npx playwright test') && l.includes('--no-deps'));
+    expect(main.length).toBe(1);
+    expect([...main[0].matchAll(/--project=(\S+)/g)].map((m) => m[1]), 'the main run line must keep exactly its two pinned projects').toEqual(['journeys', 'phone']);
   });
 });

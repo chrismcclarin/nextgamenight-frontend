@@ -45,9 +45,11 @@ import {
   ALL_ROWS,
   CENSUS_IDS,
   EMPTY_STATES,
+  FULL_CELLS,
   PR_CELLS,
   WRITE_GETS,
   WRITE_GET_HANDLERS,
+  laneOf,
   sweepWriteGuard,
   type SurfaceRow,
   type SweepCell,
@@ -75,7 +77,8 @@ if (RAW_MODE !== '' && RAW_MODE !== 'pr' && RAW_MODE !== 'full') {
 }
 const MODE: 'pr' | 'full' = RAW_MODE === 'full' ? 'full' : 'pr';
 const RESULTS_DIR = process.env.LARGE_TEXT_SWEEP_RESULTS ?? join('test-results', 'large-text-sweep', 'results');
-const LANE: readonly SweepCell[] = PR_CELLS;
+// The PR lane on every push; the full lane only when ci.yml's large-text-full dispatch input says so.
+const LANE: readonly SweepCell[] = laneOf(MODE);
 
 function writeResult(name: string, body: unknown): string {
   mkdirSync(RESULTS_DIR, { recursive: true });
@@ -300,7 +303,11 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
   expect(ALL_ROWS.filter((row) => row.status === 'enforced' && !row.reach).map((row) => row.id), 'an enforced row has no reach').toEqual([]);
   expect(PR_CELLS.length, 'the PR lane is seven cells').toBe(7);
   expect(PR_CELLS.filter((cell) => cell.theme === 'light').map((cell) => cell.id), 'the PR lane holds exactly one light cell').toEqual(['375x667-light-200']);
-  expect(new Set(LANE.map((cell) => cell.id)).size, 'a cell id is declared twice').toBe(LANE.length);
+  expect(FULL_CELLS.length, 'the full lane is eighteen cells').toBe(18);
+  expect(new Set(FULL_CELLS.map((cell) => cell.id)).size, 'a cell id is declared twice').toBe(FULL_CELLS.length);
+  expect(PR_CELLS.filter((cell) => !FULL_CELLS.some((other) => other.id === cell.id)).map((cell) => cell.id), 'a PR-lane cell is missing from the full lane').toEqual([]);
+  expect(FULL_CELLS.filter((cell) => cell.theme === 'light').length, 'the full lane reads every cell in both themes').toBe(9);
+  expect(LANE.length, 'the lane is the mode\'s').toBe(MODE === 'full' ? 18 : 7);
 
   // The rows and the census cannot drift apart: a module removed, or a skipped id given a row.
   expect([...new Set(ALL_ROWS.map((row) => row.census))].sort(), 'the census ids of the surface rows differ from CENSUS_IDS').toEqual([...new Set(CENSUS_IDS)].sort());

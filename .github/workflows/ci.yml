@@ -22,6 +22,11 @@ on:
         description: "Backend branch/ref for the e2e job's cross-repo checkout (pre-merge backend PRs point this at their feature branch)"
         required: false
         default: "main"
+      large-text-full:
+        description: "Run the large-text sweep in full mode: every cell, both themes (plan 89.6-34 close run)"
+        type: boolean
+        default: false
+        required: false
 
 # CodeQL `actions/missing-workflow-permissions` (first scan, 2026-09-08) flagged all three
 # jobs: with no `permissions:` key, every job got the default token, which on a
@@ -352,7 +357,7 @@ jobs:
     # pinned. Remove this pin only after a Playwright upgrade proves the browser install on the
     # image the rolling label then names. Changing this is a decision, not a cleanup.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30 # a healthy run is ~10 min; a hung step burned an hour once (run 27309008729)
+    timeout-minutes: ${{ github.event.inputs.large-text-full == 'true' && 90 || 30 }} # a healthy run is ~10 min; a hung step burned an hour once (run 27309008729). AMENDED Phase 89.6-08: 90 only for the full-mode sweep dispatch; every other trigger keeps 30.
 
     services:
       postgres:
@@ -744,13 +749,19 @@ jobs:
         # floor raised by every sweep plan (fourteen plans would edit this file in one wave) and
         # OVER a manifest row (it would read NOT COLLECTED in the main report, SPEC A12). Pending
         # rows are printed, never failed, until plan 89.6-34 runs it with --close. Lockstep-pinned
-        # by src/lib/ci-grep-gate.fixture.test.ts. Changing this is a decision, not a cleanup.
+        # by src/lib/ci-grep-gate.fixture.test.ts. The full mode is a dispatch input that selects
+        # cells inside this step, chosen OVER the throwaway-branch run the D-19 note above prescribes
+        # for project selection: it defaults to the PR lane, never touches --project, can only add
+        # cells, and lets the close run test the exact phase head. Changing this is a decision, not
+        # a cleanup.
         shell: bash
+        env:
+          LARGE_TEXT_SWEEP_MODE: ${{ github.event.inputs.large-text-full == 'true' && 'full' || 'pr' }}
         run: |
           set -euo pipefail
           PLAYWRIGHT_JSON_OUTPUT_FILE=playwright-results-large-text-sweep.json npx playwright test --project=journeys --no-deps --output=test-results/large-text-sweep e2e/large-text-sweep.spec.ts
           node scripts/gate-c-executed-floor.mjs playwright-results-large-text-sweep.json --spec e2e/large-text-sweep.spec.ts --project journeys --floor 2
-          node scripts/large-text-sweep-coverage.mjs --results test-results/large-text-sweep/results
+          node scripts/large-text-sweep-coverage.mjs --results test-results/large-text-sweep/results --mode "$LARGE_TEXT_SWEEP_MODE"
 
       # Phase 88.3-cr, CR-09: the pinned `--project=phone` above is what makes Gate C
       # RUN, and the lockstep test in `src/lib/ci-grep-gate.fixture.test.ts` is what
