@@ -264,6 +264,36 @@
   </main>
 </section>
 
+<!-- the fixed cell FIRST, holding a box that cannot shrink, and the name's cell after it, bad form only (orchestrator change R6): the cells themselves are stacked with their row. A row made a block with its cells left as cells is rebuilt by the browser as a table as wide as its cells need, and the name would sit whole outside its card. -->
+<section data-case="split-table-cell-last">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-table table w-full table-fixed">
+        <div class="table-row">
+          <div aria-hidden="true" class="lt-fixed table-cell w-20"><div class="h-11 w-20 bg-surface-sunken"></div></div>
+          <div class="lt-cell table-cell align-top">
+            <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- text that may break anywhere (bb-breakable: emails, links, codes), squeezed like the first bad twin: the split check does not read it at all, so it is in none of the three lists. -->
+<section data-case="split-breakable">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <p class="lt-name bb-breakable font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
 <!-- a fixed narrow card in a column: nothing sits beside it and no row is above it to stack, so the card's own width holds its word narrow. HELD. A column is never stacked. -->
 <section data-case="split-column-card">
   <main data-frame class="lt-frame px-4 py-4">
@@ -591,10 +621,12 @@
 </section>
 
 <!--
-  T8, the put-back proof: squeezed names inside a scrolling box and under it. Stacking a row makes
-  the content much shorter (a letter-stack becomes two lines), so a scroll offset at the bottom is
-  clamped while a row is stacked. After the read every box, both scroll offsets and the page's
-  adopted stylesheet list are as they were.
+  T8, the put-back proof: one squeezed name inside a scrolling box and one under it. Stacking a
+  row makes it much shorter (a letter-stack becomes two lines): the scrolling box then has nothing
+  left to scroll, and neither has the page, so both scroll offsets drop to 0 while a row is
+  stacked, and an offset that drops to 0 does not come back by itself (measured; one that is only
+  shortened does). After the read every box, both scroll offsets and the page's adopted stylesheet
+  list are as they were.
 -->
 <section data-case="split-put-back">
   <main data-frame class="lt-frame px-4 py-4">
@@ -605,18 +637,6 @@
         </div>
         <div aria-hidden="true" class="lt-fixed h-2 w-24 flex-none bg-surface-sunken"></div>
       </div>
-      <div class="lt-row flex gap-2">
-        <div class="lt-wrap min-w-0 flex-1">
-          <p class="font-semibold text-base text-content-primary">Weekend Warriors</p>
-        </div>
-        <div aria-hidden="true" class="lt-fixed h-2 w-24 flex-none bg-surface-sunken"></div>
-      </div>
-    </div>
-    <div class="lt-row flex gap-2">
-      <div class="lt-wrap min-w-0 flex-1">
-        <p class="font-semibold text-base text-content-primary">Weekend Warriors</p>
-      </div>
-      <div aria-hidden="true" class="lt-fixed h-2 w-24 flex-none bg-surface-sunken"></div>
     </div>
     <div class="lt-row flex gap-2">
       <div class="lt-wrap min-w-0 flex-1">

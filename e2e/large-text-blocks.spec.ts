@@ -500,12 +500,14 @@ test('check: split in an inner row (89.6-02, R3 repair): reports a name squeezed
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split in a table row (89.6-02, R3 repair): reports a name squeezed by a fixed cell, with a row element, without one, and with no cell of its own', async ({ page }, testInfo) => {
+test('check: split in a table row (89.6-02, R3 repair; R6): reports a name squeezed by a fixed cell, with a row element, without one, with no cell of its own, and with the fixed cell first', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
   const row = await splitCase(page, 'split-table-row');
   const cells = await splitCase(page, 'split-table-cells');
   const bareRow = await splitCase(page, 'split-table-bare-row');
-  await testInfo.attach('twin-read', { body: JSON.stringify({ row, cells, bareRow }, null, 2), contentType: 'application/json' });
+  const cellLast = await splitCase(page, 'split-table-cell-last');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ row, cells, bareRow, cellLast }, null, 2), contentType: 'application/json' });
+  expectReported(cellLast, 'a name in a table cell after a fixed cell that holds a box of fixed width');
   expectReported(row, 'a name in a table cell beside a fixed cell');
   expectReported(cells, 'a name in a table cell beside a fixed cell, the two cells directly in the table');
   expectReported(bareRow, 'a name directly in a table row beside a fixed cell');
@@ -704,7 +706,7 @@ test('check: split, T8 (89.6-02, R6): the read leaves the page as it found it: e
   const again = await readLargeTextCell(frame);
   await testInfo.attach('twin-read', { body: JSON.stringify({ read, before, after }, null, 2), contentType: 'application/json' });
   // The read did change the page for a moment: every squeezed name was stacked and found whole.
-  expect(entriesFor(read.split, 'Weekend').length, `the read stacked nothing, so there was nothing to put back (${JSON.stringify(read)})`).toBe(4);
+  expect(entriesFor(read.split, 'Weekend').length, `the read stacked nothing, so there was nothing to put back (${JSON.stringify(read)})`).toBe(2);
   expect(before.windowScroll[1], 'the page is not scrolled down: the harness is not the shape it says').toBeGreaterThan(0);
   expect(before.scrollerScroll?.[1] ?? 0, 'the scrolling box is not scrolled down: the harness is not the shape it says').toBeGreaterThan(0);
   expect(before.sheets, 'the page does not hold its own adopted stylesheet: the test did not set it').toEqual(['.lt-own-sheet { color: red; }']);
@@ -786,6 +788,17 @@ test('check: split, a width of 0 that shares a row (89.6-02, R6, unsettled in th
   const item = await splitCase(page, 'split-zero-width-share');
   await testInfo.attach('twin-read', { body: JSON.stringify({ item }, null, 2), contentType: 'application/json' });
   expectHeld(item, 'a word in an item whose width of 0 exists only to share its row', 'width 0px');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, text that may break anywhere (89.6-02; R6): a word broken inside bb-breakable is not read by the split check', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const breakable = await splitCase(page, 'split-breakable');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ breakable }, null, 2), contentType: 'application/json' });
+  expect(breakable.broken, 'the case does not break its name, so the harness is not the shape it says').toContain('Weekend');
+  expect(breakable.read.split, 'a word inside bb-breakable reads as split').toEqual([]);
+  expect(breakable.read.held, 'a word inside bb-breakable reads as held').toEqual([]);
+  expect(breakable.read.wide, 'a word inside bb-breakable is written down as wide').toEqual([]);
   expect(requests, 'the page made a request').toEqual([]);
 });
 
