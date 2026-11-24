@@ -1068,10 +1068,8 @@ test('check: split, a forced break (89.6-02, R6 repair): a word wider than the c
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split, a page that is not put back (89.6-02, R6 repair): when the page refuses the put-back of the stylesheet list or of a scroll offset, the read says NOT RESTORED for the sheets, the layout and the scroll', async ({ page }, testInfo) => {
-  const requests = await countRequests(page);
-  // The page lets a stylesheet be adopted and refuses to let one go: every stack stays on.
-  const frame = await renderTwin(page, 'split-bad');
+/** Make the page let a stylesheet be adopted and refuse to let one go: every temporary sheet of a read stays on. */
+async function refuseSheetRelease(page: Page): Promise<void> {
   await page.evaluate(() => {
     const own = Object.getOwnPropertyDescriptor(Document.prototype, 'adoptedStyleSheets');
     if (!own?.get || !own.set) throw new Error('Document.prototype.adoptedStyleSheets is not an accessor');
@@ -1084,6 +1082,12 @@ test('check: split, a page that is not put back (89.6-02, R6 repair): when the p
       },
     });
   });
+}
+
+test('check: split, a page that is not put back (89.6-02, R6 repair): when the page refuses the put-back of the stylesheet list or of a scroll offset, the read says NOT RESTORED for the sheets, the layout and the scroll', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const frame = await renderTwin(page, 'split-bad');
+  await refuseSheetRelease(page);
   const stuck = await readLargeTextCell(frame);
   // The page refuses a scroll offset written back to its scrolling box.
   const second = await renderTwin(page, 'split-put-back');
@@ -1183,6 +1187,184 @@ test('check: split, the held policy (89.6-02, R6): a held word fails the cell wi
   expect(wide.held, `the wide twin reads as held (${JSON.stringify(wide)})`).toEqual([]);
   expect(entriesFor(wide.wide, 'Weekend').length, `the wide twin holds no wide word (${JSON.stringify(wide)})`).toBeGreaterThan(0);
   expect(() => expectLargeTextCell(wide, 'the wide twin'), 'a cell whose only broken word is wide failed').not.toThrow();
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+// ---- the last batch (orchestrator change R9, after the final scoped check of R6) ----
+
+/** How many lines each word under one element is drawn on. */
+async function linesOf(locator: Locator): Promise<Record<string, number>> {
+  const read = await readWordLines(locator);
+  return Object.fromEntries(read.words.map((w) => [w.word, w.lines]));
+}
+
+test('check: split, a full-bleed row inside a plain wrapper (89.6-02, R9): reports a name squeezed in a row pulled into its card padding through a wrapper with no edge of its own, and a row pulled out of its card altogether is still not room', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const wrapped = await splitCase(page, 'split-full-bleed-wrapped');
+  const wrappedShape = await page.locator('.lt-plain').evaluate((el) => {
+    const own = getComputedStyle(el);
+    const row = el.firstElementChild ? getComputedStyle(el.firstElementChild) : null;
+    return { edge: Number.parseFloat(own.paddingLeft) + Number.parseFloat(own.borderLeftWidth), rowMargin: row ? Number.parseFloat(row.marginLeft) : 0 };
+  });
+  const spill = await splitCase(page, 'split-full-bleed-spill');
+  const spillShape = await page.locator('.lt-row').evaluate((el) => {
+    const card = el.closest('.lt-card');
+    return { rowLeft: el.getBoundingClientRect().left, cardLeft: card ? card.getBoundingClientRect().left : 0 };
+  });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ wrapped, wrappedShape, spill, spillShape }, null, 2), contentType: 'application/json' });
+  expect(wrappedShape.edge, 'the wrapper has padding or a border of its own: the harness is not the shape it says').toBe(0);
+  expect(wrappedShape.rowMargin, 'the row has no negative side margin: the harness is not the shape it says').toBeLessThan(0);
+  expectReported(wrapped, 'a name squeezed in a full-bleed row that sits in a plain wrapper inside its card');
+  expect(entriesFor(wrapped.read.split, 'Weekend').join(' | '), 'the name in the wrapped full-bleed row was not measured as whole when stacked').toContain('whole on one line');
+  expect(spillShape.rowLeft, 'the row does not start left of its card: the harness is not the shape it says').toBeLessThan(spillShape.cardLeft);
+  expectWide(spill, 'a name in a row pulled out of its card by a margin twice the card padding');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, a forced break that leaves the line count as it was (89.6-02, R9): a hyphenated or dashed name broken inside its first part is reported when stacking leaves only the wrap at its hyphen, and is held by a box of its own width, whether or not it is on more lines than its natural wrap', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const HYPHEN = 'Weekend-Gogo';
+  const DASH = 'Weekend–Gogo';
+  const same = await splitCase(page, 'split-hyphen-forced-same-count');
+  const sameLines = await linesOf(page.locator('.lt-name'));
+  const sameSizer = await brokenWordsOf(page.locator('.lt-sizer'));
+  const more = await splitCase(page, 'split-hyphen-forced-more-lines');
+  const moreLines = await linesOf(page.locator('.lt-name'));
+  const dash = await splitCase(page, 'split-dash-forced-same-count');
+  const dashLines = await linesOf(page.locator('.lt-name'));
+  const dashSizer = await brokenWordsOf(page.locator('.lt-sizer'));
+  const held = await splitCase(page, 'split-hyphen-held-same-count', '.lt-frame');
+  const heldLines = await linesOf(page.locator('.lt-frame'));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ same, sameLines, sameSizer, more, moreLines, dash, dashLines, dashSizer, held, heldLines }, null, 2), contentType: 'application/json' });
+  // Squeezed beside a box: on two lines as drawn (broken inside "Weekend") and on two lines once stacked (at the hyphen).
+  expect(sameSizer, 'the sizing line breaks its word: the row is not as wide as that line').toEqual([]);
+  expect(sameLines[HYPHEN], 'the hyphenated name is not on two lines as drawn: the case does not show a forced break that leaves the line count as it was').toBe(2);
+  expectReported(same, 'a hyphenated name broken inside its first part by a box beside it, on as many lines as its natural wrap', HYPHEN);
+  expect(entriesFor(same.read.split, HYPHEN).join(' | '), 'the name is not reported as losing its forced breaks when its row stacks').toContain('its forced breaks go');
+  expect(moreLines[HYPHEN], 'the hyphenated name beside the wider box is not on more than two lines: the harness is not the shape it says').toBeGreaterThan(2);
+  expectReported(more, 'the same name beside a wider box, on more lines than its natural wrap', HYPHEN);
+  expect(dashSizer, 'the sizing line of the dashed name breaks its word: the row is not as wide as that line').toEqual([]);
+  expect(dashLines[DASH], 'the dashed name is not on two lines as drawn: the case does not show a forced break that leaves the line count as it was').toBe(2);
+  expectReported(dash, 'a name with an en dash broken inside its first part by a box beside it', DASH);
+  expect(entriesFor(dash.read.split, DASH).join(' | '), 'the dashed name is not reported as losing its forced breaks when its row stacks').toContain('its forced breaks go');
+  // In a box of its own width, with nothing to stack: held, with a hyphen and without one.
+  expect(heldLines['Weekend-Go'], 'the hyphenated name in the narrow box is not on two lines as drawn: the case does not show a forced break that leaves the line count as it was').toBe(2);
+  expect(held.broken, 'the two names in the narrow boxes are not both broken: the harness is not the shape it says').toEqual(['Weekend-Go', 'WeekendGo']);
+  expect(held.read.split, `a name held by a box of its own width reads as split (${JSON.stringify(held.read)})`).toEqual([]);
+  expect(held.read.wide, `a name broken inside its first part reads as wide (${JSON.stringify(held.read)})`).toEqual([]);
+  for (const word of ['Weekend-Go', 'WeekendGo']) {
+    expect(entriesFor(held.read.held, word).join(' | '), `${word} is not held by its sizing box (${JSON.stringify(held.read)})`).toContain('held narrow by div.lt-fit');
+  }
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, line-break anywhere (89.6-02, R9): text that may break between any two letters by line-break is measured with that switched off: held by a box narrower than its word, reported when a line of its block would hold it, and said so when it cannot be switched off', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const narrow = await splitCase(page, 'split-line-break-anywhere');
+  const narrowStyle = await page.locator('.lt-name').evaluate((el) => getComputedStyle(el).lineBreak);
+  const fits = await splitCase(page, 'split-line-break-anywhere-fits');
+  const fitsSizer = await brokenWordsOf(page.locator('.lt-sizer'));
+  const important = await splitCase(page, 'split-important-line-break');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ narrow, narrowStyle, fits, fitsSizer, important }, null, 2), contentType: 'application/json' });
+  expect(narrowStyle, 'the name does not compute to line-break: anywhere: the harness is not the shape it says').toBe('anywhere');
+  expectHeld(narrow, 'a word under line-break: anywhere in a 100px box', 'width 100px', 'Weekenders');
+  expect(fitsSizer, 'the sizing line breaks a word: the box is not as wide as that line').toEqual([]);
+  expectReported(fits, 'a word under line-break: anywhere whose last letter drops alone although a line of its block would hold the word');
+  expect(entriesFor(fits.read.split, 'Weekend').join(' | '), 'the word is not reported as one a line of its own block would hold').toContain('a line of its own block would hold it');
+  expect(important.broken, 'the case does not break its word, so the harness is not the shape it says').toContain('Weekenders');
+  expect(entriesFor(important.read.split, 'Weekenders').join(' | '), `a word whose line-break could not be switched off is not reported as COULD NOT UNWRAP (${JSON.stringify(important.read)})`).toContain('COULD NOT UNWRAP');
+  expect(important.read.held, 'a word that could not be measured reads as held').toEqual([]);
+  expect(important.read.wide, 'a word that could not be measured reads as wide').toEqual([]);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, a read that failed under the page-zoom read (89.6-02, R9): a word that could not be measured and a page that was not put back FAIL a page-zoom cell, and a split that was measured is only recorded there', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  // The page-zoom read is the same page read with a lighter expectation. These twins break their
+  // word at 320 / 200%, so they are read there: what is proven is what the expectation does.
+  const measured = await readPageZoomCell(await renderTwin(page, 'split-bad'));
+  const noStack = await readPageZoomCell(await renderTwin(page, 'split-important-row'));
+  const noUnwrap = await readPageZoomCell(await renderTwin(page, 'split-important-wrap'));
+  const frame = await renderTwin(page, 'split-bad');
+  await refuseSheetRelease(page);
+  const stuck = await readPageZoomCell(frame);
+  await testInfo.attach('twin-read', { body: JSON.stringify({ measured, noStack, noUnwrap, stuck }, null, 2), contentType: 'application/json' });
+  expect(measured.lost, `the measured twin lost content, so it cannot show what a recorded split alone does (${JSON.stringify(measured)})`).toEqual([]);
+  expect(measured.recorded.join(' | '), 'the measured twin records no split').toContain('split: "Weekend"');
+  expect(() => expectPageZoomUsable(measured, 'the measured twin'), 'a page-zoom cell whose only finding is a measured split failed').not.toThrow();
+  for (const [read, token, what] of [
+    [noStack, 'COULD NOT STACK', 'a row that could not be stacked'],
+    [noUnwrap, 'COULD NOT UNWRAP', 'a word whose forced breaks could not be switched off'],
+    [stuck, 'NOT RESTORED', 'a page that was not put back'],
+  ] as const) {
+    expect(read.lost, `${what}: the twin lost content, so it cannot show what ${token} alone does (${JSON.stringify(read)})`).toEqual([]);
+    expect(read.recorded.join(' | '), `${what}: the read does not say ${token} (${JSON.stringify(read)})`).toContain(token);
+    expect(() => expectPageZoomUsable(read, what), `${what}: a page-zoom cell whose read says ${token} passed`).toThrow('the read could not measure a word, or could not put the page back');
+  }
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, the glued test needs the word on one line (89.6-02, R9): a hyphenated name under break-all that is still on two lines with its forced breaks off, each of them fitting its box, is held by the box and not called glued', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const WORD = 'Weekend-Gogo';
+  const found = await splitCase(page, 'split-break-all-two-lines-free');
+  const sizer = await brokenWordsOf(page.locator('.lt-sizer'));
+  // The same word with word-break put back to normal, as the read's own second look does: where it sits then.
+  const free = await page.locator('.lt-name').evaluate((el) => {
+    const name = el as HTMLElement;
+    name.style.wordBreak = 'normal';
+    const range = document.createRange();
+    range.selectNodeContents(name);
+    const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0);
+    const read = { lines: new Set(rects.map((r) => Math.round(r.top))).size, width: range.getBoundingClientRect().width, room: name.clientWidth };
+    name.style.wordBreak = '';
+    return read;
+  });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ found, sizer, free }, null, 2), contentType: 'application/json' });
+  expect(sizer, 'the sizing line breaks its word: the box is not as wide as that line').toEqual([]);
+  expect(free.lines, 'with word-break normal the name is not on two lines: the case does not show a word still wrapped with its forced breaks off').toBe(2);
+  expect(free.width, 'with word-break normal the name is wider than its box: the case does not show a measured width that fits').toBeLessThanOrEqual(free.room + 0.5);
+  expectHeld(found, 'a hyphenated name under break-all in a box as wide as its sizing line', 'held narrow by div.lt-fit', WORD);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, the half pixel of wider than its room (89.6-02, R9): a word a quarter of a pixel wider than its marked room is not written down as wider than its whole room, and one three quarters of a pixel wider is', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const frame = await renderTwin(page, 'split-wide-boundary');
+  const name = page.locator('.lt-name');
+  const natural = (await readWordLines(name)).words[0].natural;
+  /** Make the marked room `over` px narrower than the word, by its own left padding: the room the read computes is its client width less its padding. */
+  const readAt = async (over: number) => {
+    const shape = await page.locator('.lt-room').evaluate(
+      (el, want) => {
+        const room = el as HTMLElement;
+        const width = Math.ceil(want.natural) + 20;
+        room.style.boxSizing = 'border-box';
+        room.style.width = `${width}px`;
+        room.style.paddingLeft = `${width - (want.natural - want.over)}px`;
+        const cs = getComputedStyle(room);
+        return { clientWidth: room.clientWidth, paddingLeft: Number.parseFloat(cs.paddingLeft), room: room.clientWidth - Number.parseFloat(cs.paddingLeft) - Number.parseFloat(cs.paddingRight) };
+      },
+      { natural, over },
+    );
+    return { over, shape, by: natural - shape.room, broken: await brokenWordsOf(name), read: await readLargeTextCell(frame) };
+  };
+  const quarter = await readAt(0.25);
+  const threeQuarters = await readAt(0.75);
+  await testInfo.attach('twin-read', { body: JSON.stringify({ natural, quarter, threeQuarters }, null, 2), contentType: 'application/json' });
+  const WIDER = 'is wider than its whole room';
+  const entries = (read: LargeTextCellRead) => [...entriesFor(read.split, 'Weekend'), ...entriesFor(read.held, 'Weekend'), ...entriesFor(read.wide, 'Weekend')];
+  expect(quarter.by, 'the room is not about a quarter of a pixel narrower than the word: the harness is not the shape it says').toBeGreaterThan(0.1);
+  expect(quarter.by, 'the room is not about a quarter of a pixel narrower than the word: the harness is not the shape it says').toBeLessThan(0.4);
+  expect(quarter.broken, 'the word a quarter of a pixel wider than its room is not broken, so no verdict is due').toEqual(['Weekend']);
+  expect(entries(quarter.read).length, `the word a quarter of a pixel over is not in exactly one list (${JSON.stringify(quarter.read)})`).toBe(1);
+  expect(entries(quarter.read).join(' | '), `a word a quarter of a pixel wider than its room is written down as wider than its whole room (${JSON.stringify(quarter.read)})`).not.toContain(WIDER);
+  expect(threeQuarters.by, 'the room is not about three quarters of a pixel narrower than the word: the harness is not the shape it says').toBeGreaterThan(0.6);
+  expect(threeQuarters.by, 'the room is not about three quarters of a pixel narrower than the word: the harness is not the shape it says').toBeLessThan(0.9);
+  expect(threeQuarters.broken, 'the word three quarters of a pixel wider than its room is not broken, so no verdict is due').toEqual(['Weekend']);
+  expect(entriesFor(threeQuarters.read.wide, 'Weekend').join(' | '), `a word three quarters of a pixel wider than its room is not written down as wider than its whole room (${JSON.stringify(threeQuarters.read)})`).toContain(WIDER);
+  expect(threeQuarters.read.split, `a word three quarters of a pixel wider than its room reads as split (${JSON.stringify(threeQuarters.read)})`).toEqual([]);
+  expect(threeQuarters.read.held, `a word three quarters of a pixel wider than its room reads as held (${JSON.stringify(threeQuarters.read)})`).toEqual([]);
   expect(requests, 'the page made a request').toEqual([]);
 });
 
