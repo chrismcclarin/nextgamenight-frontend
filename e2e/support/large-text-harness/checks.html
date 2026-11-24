@@ -2,9 +2,10 @@
   Negative controls for the large-text checks: a bad twin and a good twin for each check.
   One section per twin, marked with data-case; the matrix spec renders ONE section at a time.
   A bad twin holds the defect its check must report; its good twin holds the same content without it.
-  The split check has more than one pair: a bad form with no twin holds a defect the check must
-  report, and split-block-only, split-above-root and split-padded-good hold a broken word the
-  check must NOT report.
+  The split check has many more: a bad form with no twin holds a squeeze the check must report,
+  and every other split case holds a word that IS broken and that the check must NOT report,
+  because that word is wider than the room its row can give it. The good twin of a pair holds a
+  30-letter word for that reason: it is wider than the whole row, so it breaks there and may.
   The wrappers carry lt- hook names the app never styles. Every state is static markup:
   this file holds no script and no outside address.
 -->
@@ -76,12 +77,12 @@
   </main>
 </section>
 
-<!-- split: a text that may shrink to nothing beside a fixed button, then the same content in bb-row. The text is the row's own item here; the twins after these put it one or two levels down. -->
+<!-- split: a text that may shrink to nothing beside a fixed button, then the same content in bb-row. The text is the row's own item here; the cases after these put it deeper. The second word is wider than the whole row: it breaks in both twins and may. -->
 <section data-case="split-bad">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
       <div class="flex gap-3">
-        <div class="min-w-0 font-semibold text-base text-content-primary">Weekend Warriors</div>
+        <div class="lt-name min-w-0 font-semibold text-base text-content-primary">Weekend Grandmasterboardgamecollective</div>
         <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
       </div>
     </div>
@@ -92,7 +93,7 @@
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
       <div class="bb-row">
-        <div class="bb-row-text font-semibold text-base text-content-primary">Weekend Warriors</div>
+        <div class="lt-name bb-row-text font-semibold text-base text-content-primary">Weekend Grandmasterboardgamecollective</div>
         <div class="bb-row-end">
           <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
         </div>
@@ -107,7 +108,7 @@
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
       <div class="flex gap-2">
         <div class="lt-wrap min-w-0 flex-1">
-          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Grandmasterboardgamecollective</p>
         </div>
         <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
       </div>
@@ -120,7 +121,7 @@
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
       <div class="bb-row">
         <div class="bb-row-text">
-          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Grandmasterboardgamecollective</p>
         </div>
         <div class="bb-row-end">
           <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
@@ -144,22 +145,7 @@
   </main>
 </section>
 
-<!-- split through a column container, bad form only: the item that may shrink is itself a column of two lines. -->
-<section data-case="split-column-pass">
-  <main data-frame class="lt-frame px-4 py-4">
-    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
-      <div class="flex gap-2">
-        <div class="lt-stack flex min-w-0 flex-1 flex-col">
-          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
-          <p class="text-sm text-content-secondary">Host</p>
-        </div>
-        <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
-      </div>
-    </div>
-  </main>
-</section>
-
-<!-- the same, with the column of two lines one level down, inside a plain wrapper that is the item that may shrink. -->
+<!-- a column of two lines inside the item that may shrink, bad form only: the walk to the row passes a column container without stopping at it. -->
 <section data-case="split-column-wrapper">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
@@ -195,6 +181,177 @@
     </main>
     <div class="lt-side text-base text-content-primary">Menu</div>
   </div>
+</section>
+
+<!-- a row INSIDE the item that may shrink, bad form only (the Manage Members shape): the name sits in an inner row of its own, three levels under the row that squeezes it. The nearest row is as narrow as the name; the outermost one is the row that could give it room. -->
+<section data-case="split-inner-row">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex flex-wrap gap-2">
+        <div class="lt-item flex min-w-0 flex-1 items-center gap-3">
+          <div class="lt-wrap min-w-0 flex-1">
+            <div class="lt-line flex flex-wrap items-center gap-x-2">
+              <p class="lt-name wrap-anywhere font-semibold text-base text-content-primary">Weekend Warriors</p>
+            </div>
+          </div>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-11 w-20 flex-none rounded-btn bg-surface-sunken"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- the same with a link as the item that may shrink, bad form only. -->
+<section data-case="split-link-item">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex gap-2">
+        <a href="#members" class="lt-link block min-w-0 flex-1">
+          <div class="lt-line flex items-center gap-2">
+            <p class="lt-name wrap-anywhere font-semibold text-base text-content-primary">Weekend Warriors</p>
+          </div>
+        </a>
+        <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- a table row, bad form only: a fixed cell beside the cell that holds the name. -->
+<section data-case="split-table-row">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-table table w-full table-fixed">
+        <div class="table-row">
+          <div class="lt-cell table-cell align-top">
+            <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+          </div>
+          <div aria-hidden="true" class="lt-fixed table-cell h-11 w-20 bg-surface-sunken"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- the same with the two cells directly in the table, bad form only: the browser builds the row around them. -->
+<section data-case="split-table-cells">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-table table w-full table-fixed">
+        <div class="lt-cell table-cell align-top">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div aria-hidden="true" class="lt-fixed table-cell h-11 w-20 bg-surface-sunken"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- a fixed narrow card in a column: nothing sits beside it and no row is above it, so its word, wider than the card, may break and nothing is reported. A column is never the row. -->
+<section data-case="split-column-card">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-page flex flex-col gap-2">
+        <div class="lt-narrow flex w-8 flex-col">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- the same in a grid of ONE column: it stacks its items like a column, so it is not a row either. -->
+<section data-case="split-grid-card">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-page grid gap-2">
+        <div class="lt-narrow w-8">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- the read's own root is a narrow COLUMN container that is an item of a wider row: the row is above the root and the root is a column, so nothing is reported. -->
+<section data-case="split-root-column">
+  <div class="lt-shell flex gap-2 px-4 py-4">
+    <main data-frame class="lt-frame flex w-8 flex-none flex-col">
+      <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+    </main>
+    <div class="lt-side text-base text-content-primary">Menu</div>
+  </div>
+</section>
+
+<!-- the read's own root IS the row, bad form only: the root itself may be the row a word is measured against. -->
+<section data-case="split-root-row">
+  <main data-frame class="lt-frame flex gap-2 px-4 py-4">
+    <div class="lt-wrap min-w-0 flex-1">
+      <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+    </div>
+    <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+  </main>
+</section>
+
+<!-- a row named with data-room: the mark is the row, whatever rows are above it, so the word wider than the marked box may break and nothing is reported. -->
+<section data-case="split-marked-row">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex gap-2">
+        <div data-room class="lt-narrow w-8 flex-none">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div class="lt-side text-base text-content-primary">Menu</div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- an automatic margin, bad form only: a narrow item pushed to the end of its row. The margin is the free space of the row, not an edge of the item, so the row still has room for the word and the break is reported. -->
+<section data-case="split-auto-margin">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row flex">
+        <div class="lt-narrow ml-auto w-8">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!--
+  margins between the word and its row. Sized like the padded pill below: the first line makes the
+  box the word plus 36px wide; the item under it has a 20px margin on each side (40px), so it has
+  4px less than the word needs. The word breaks, and it may.
+-->
+<section data-case="split-margin-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-fit w-fit max-w-full">
+        <p class="lt-sizer pr-[36px] font-semibold text-base text-content-primary">Weekend</p>
+        <div class="lt-pill-row flex w-0 min-w-full">
+          <span class="lt-pill mx-[20px] min-w-0 font-semibold text-base text-content-primary">Weekend</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!--
+  a padded INLINE box around the word, in a plain paragraph. The paragraph is the word plus 36px
+  wide; the box around the word has 16px of padding and a 4px border on each side (40px), so the
+  line is 4px short of the word in its box. The word breaks, and it may.
+-->
+<section data-case="split-inline-pill-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-fit w-fit max-w-full">
+        <p class="lt-sizer pr-[36px] font-semibold text-base text-content-primary">Weekend</p>
+        <p class="lt-line w-0 min-w-full"><span class="lt-pill rounded-full border-4 border-line px-2 font-semibold text-base text-content-primary">Weekend</span></p>
+      </div>
+    </div>
+  </main>
 </section>
 
 <!--

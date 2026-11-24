@@ -735,7 +735,7 @@ jobs:
         run: |
           set -euo pipefail
           PLAYWRIGHT_JSON_OUTPUT_FILE=playwright-results-large-text.json npx playwright test --project=journeys --no-deps --output=test-results/large-text-blocks e2e/large-text-blocks.spec.ts
-          node scripts/gate-c-executed-floor.mjs playwright-results-large-text.json --spec e2e/large-text-blocks.spec.ts --project journeys --floor 147
+          node scripts/gate-c-executed-floor.mjs playwright-results-large-text.json --spec e2e/large-text-blocks.spec.ts --project journeys --floor 152
 
       # Phase 88.3-cr, CR-09: the pinned `--project=phone` above is what makes Gate C
       # RUN, and the lockstep test in `src/lib/ci-grep-gate.fixture.test.ts` is what

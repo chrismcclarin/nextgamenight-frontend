@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import postcss, { type AcceptedPlugin } from 'postcss';
 import tailwindcss from '@tailwindcss/postcss';
 import {
+  THIRTY_LETTER_WORD,
   expectLargeTextCell,
   expectPageZoomUsable,
   readLargeTextCell,
@@ -42,8 +43,9 @@ import {
 //
 // NEGATIVE CONTROLS. One test per check renders a bad twin, which the check must report, and its
 // good twin, which it must not: a read that cannot fail would pass every broken layout after it.
-// The split check has four more tests (orchestrator fix R3): its row rule has parts, and each part
-// has a twin that goes red when that part alone is taken out. One last test pins the harness cut.
+// The split check has nine more tests (orchestrator fix R3 and its repair batch): its row rule has
+// parts, and each part has a case that goes red when that part alone is taken out. The last tests
+// pin the harness cut.
 //
 // HOW 200% IS PRODUCED. A style tag sets the root font size to 200%, so every rem doubles, as
 // e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED") explains. Browser zoom is not used.
@@ -359,22 +361,15 @@ test('check: cut (89.6-02): reports its bad twin and passes its good twin', asyn
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split (89.6-02): reports its bad twin and passes its good twin', async ({ page }, testInfo) => {
-  const requests = await countRequests(page);
-  const bad = await readLargeTextCell(await renderTwin(page, 'split-bad'));
-  const good = await readLargeTextCell(await renderTwin(page, 'split-good'));
-  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, good }, null, 2), contentType: 'application/json' });
-  expect(bad.split.length, 'the bad twin (a name that may shrink to nothing beside a fixed button) did not read as split').toBeGreaterThan(0);
-  expect(bad.split.join(' | '), 'the split read did not name the squeezed word').toContain('"Weekend"');
-  expect(good.split, 'the good twin (the same content in bb-row) reads as split').toEqual([]);
-  expect(requests, 'the page made a request').toEqual([]);
-});
-
-// The split read through wrappers (orchestrator fix R3, 2026-11-24). A word's row is looked for
-// past the plain wrappers and column containers above its own box, and its room is that row less
-// the padding and border between the two: e2e/support/wordLines.ts ("DECISION Phase 89.6-02 (split-row)").
-// Each test first proves, with the older whole-word read, that its twin's word really is broken
-// (or whole): "nothing reported" about a word that never broke would prove nothing.
+// THE SPLIT CONTROLS (plan 89.6-02, orchestrator fix R3 and its repair batch, 2026-11-24). A word's
+// row is the OUTERMOST container at or under the root of the read that lays its children out side
+// by side, and its room is that row less every edge between the two: e2e/support/wordLines.ts ("DECISION Phase 89.6-02 (split-row)").
+// Each part of that rule has a case here that goes red when that part alone is taken out.
+//
+// WHAT A CASE PROVES. A bad case holds a squeeze the read must report. Every other case holds a
+// word that IS broken and that the read must NOT report; each test first proves, with the older
+// whole-word read, that the word really is broken, because "nothing reported" about a word that
+// never broke proves nothing. The good twin of a pair holds a 30-letter word for that reason.
 
 /** The words under one element that are drawn on more than one line. */
 async function brokenWordsOf(locator: Locator): Promise<string[]> {
@@ -382,50 +377,105 @@ async function brokenWordsOf(locator: Locator): Promise<string[]> {
   return read.words.filter((w) => w.lines > 1).map((w) => w.word);
 }
 
-test('check: split through a wrapper (89.6-02, R3): reports its bad twins, in a flex row and in a grid, and passes its good twin', async ({ page }, testInfo) => {
+interface SplitCase {
+  read: LargeTextCellRead;
+  /** The words of the case's name (.lt-name) that are drawn on more than one line. */
+  broken: string[];
+}
+
+/** Render one split case, read it, and say which words of its name are broken. */
+async function splitCase(page: Page, name: string): Promise<SplitCase> {
+  const read = await readLargeTextCell(await renderTwin(page, name));
+  return { read, broken: await brokenWordsOf(page.locator('.lt-name')) };
+}
+
+/** A bad case: its name is squeezed (the harness is the shape it says) and the read names the word. */
+function expectReported(found: SplitCase, what: string): void {
+  expect(found.broken, `${what}: the case does not squeeze its name, so the harness is not the shape it says`).toContain('Weekend');
+  expect(found.read.split.join(' | '), `${what}: did not read as split`).toContain('"Weekend"');
+}
+
+/** A case whose word is broken and may be: the word really is broken, and the read reports nothing. */
+function expectBrokenAndSilent(found: SplitCase, word: string, what: string): void {
+  expect(found.broken, `${what}: the case does not break its word, so the harness is not the shape it says`).toContain(word);
+  expect(found.read.split, `${what}: reads as split`).toEqual([]);
+}
+
+test('check: split (89.6-02): reports its bad twin and passes its good twin, whose 30-letter word breaks and may', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
-  const bad = await readLargeTextCell(await renderTwin(page, 'split-wrapper-bad'));
-  const badBroken = await brokenWordsOf(page.locator('.lt-name'));
-  const grid = await readLargeTextCell(await renderTwin(page, 'split-grid-wrapper'));
-  const gridBroken = await brokenWordsOf(page.locator('.lt-name'));
-  const good = await readLargeTextCell(await renderTwin(page, 'split-wrapper-good'));
-  const goodBroken = await brokenWordsOf(page.locator('.lt-name'));
-  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, badBroken, grid, gridBroken, good, goodBroken }, null, 2), contentType: 'application/json' });
-  expect(badBroken, 'the bad twin does not squeeze its name: the harness is not the shape it says').toContain('Weekend');
-  expect(bad.split.join(' | '), 'the bad twin (a name in a paragraph inside the item that may shrink to nothing) did not read as split').toContain('"Weekend"');
-  expect(gridBroken, 'the grid twin does not squeeze its name: the harness is not the shape it says').toContain('Weekend');
-  expect(grid.split.join(' | '), 'the grid twin (a name in a paragraph inside the grid column that may shrink to nothing) did not read as split').toContain('"Weekend"');
-  expect(goodBroken, 'the good twin breaks a word of its name: the harness is not the shape it says').toEqual([]);
-  expect(good.split, 'the good twin (the same content in bb-row) reads as split').toEqual([]);
+  const bad = await splitCase(page, 'split-bad');
+  const good = await splitCase(page, 'split-good');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, good }, null, 2), contentType: 'application/json' });
+  expectReported(bad, 'the bad twin (a name that may shrink to nothing beside a fixed button)');
+  expect(good.broken, 'the good twin (the same content in bb-row) breaks a word that fits its row, or does not break its 30-letter word').toEqual([THIRTY_LETTER_WORD]);
+  expect(good.read.split, 'the good twin (the same content in bb-row) reads as split').toEqual([]);
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split through a column container (89.6-02, R3): reports a name squeezed in a column of lines, as the row item and inside a wrapper', async ({ page }, testInfo) => {
+test('check: split through a wrapper (89.6-02, R3): reports its bad twins (a flex row, a grid, a row that is the root of the read) and passes its good twin, whose 30-letter word breaks and may', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
-  const item = await readLargeTextCell(await renderTwin(page, 'split-column-pass'));
-  const itemBroken = await brokenWordsOf(page.locator('.lt-name'));
-  const wrapped = await readLargeTextCell(await renderTwin(page, 'split-column-wrapper'));
-  const wrappedBroken = await brokenWordsOf(page.locator('.lt-name'));
-  await testInfo.attach('twin-read', { body: JSON.stringify({ item, itemBroken, wrapped, wrappedBroken }, null, 2), contentType: 'application/json' });
-  expect(itemBroken, 'the first twin does not squeeze its name: the harness is not the shape it says').toContain('Weekend');
-  expect(item.split.join(' | '), 'a name in a column of lines that is itself the item that may shrink did not read as split').toContain('"Weekend"');
-  expect(wrappedBroken, 'the second twin does not squeeze its name: the harness is not the shape it says').toContain('Weekend');
-  expect(wrapped.split.join(' | '), 'a name in a column of lines inside the wrapper that may shrink did not read as split').toContain('"Weekend"');
+  const bad = await splitCase(page, 'split-wrapper-bad');
+  const grid = await splitCase(page, 'split-grid-wrapper');
+  const rootRow = await splitCase(page, 'split-root-row');
+  const good = await splitCase(page, 'split-wrapper-good');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, grid, rootRow, good }, null, 2), contentType: 'application/json' });
+  expectReported(bad, 'the bad twin (a name in a paragraph inside the item that may shrink to nothing)');
+  expectReported(grid, 'the grid case (a name in a paragraph inside the grid column that may shrink to nothing)');
+  expectReported(rootRow, 'the root case (the row that squeezes the name is the root of the read itself)');
+  expect(good.broken, 'the good twin (the same content in bb-row) breaks a word that fits its row, or does not break its 30-letter word').toEqual([THIRTY_LETTER_WORD]);
+  expect(good.read.split, 'the good twin (the same content in bb-row) reads as split').toEqual([]);
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split in a plain block (89.6-02, R3): a word wider than its block, with no row above it inside the read, is not reported', async ({ page }, testInfo) => {
+test('check: split past a column container (89.6-02, R3): reports a name squeezed in a column of lines inside the item that may shrink', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
-  const read = await readLargeTextCell(await renderTwin(page, 'split-block-only'));
-  const broken = await brokenWordsOf(page.locator('.lt-name'));
-  // The second twin has a row, but ABOVE the root of the read: the search for a row stops at the root.
-  const aboveRoot = await readLargeTextCell(await renderTwin(page, 'split-above-root'));
-  const aboveRootBroken = await brokenWordsOf(page.locator('.lt-name'));
-  await testInfo.attach('twin-read', { body: JSON.stringify({ read, broken, aboveRoot, aboveRootBroken }, null, 2), contentType: 'application/json' });
-  expect(broken, 'the twin does not break its word: the harness is not the shape it says').toContain('Weekend');
-  expect(read.split, 'a word wider than its whole row (a plain block, nothing beside it) reads as split').toEqual([]);
-  expect(aboveRootBroken, 'the second twin does not break its word: the harness is not the shape it says').toContain('Weekend');
-  expect(aboveRoot.split, 'a word wider than the root of the read was measured against a row above that root').toEqual([]);
+  const column = await splitCase(page, 'split-column-wrapper');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ column }, null, 2), contentType: 'application/json' });
+  expectReported(column, 'a name in a column of lines inside the wrapper that may shrink');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, rows that are not looked at (89.6-02, R3): a plain block, a row above the root of the read, and the rows above a marked row report nothing', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const block = await splitCase(page, 'split-block-only');
+  const aboveRoot = await splitCase(page, 'split-above-root');
+  const marked = await splitCase(page, 'split-marked-row');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ block, aboveRoot, marked }, null, 2), contentType: 'application/json' });
+  expectBrokenAndSilent(block, 'Weekend', 'a word wider than its whole row (a plain block, nothing beside it)');
+  expectBrokenAndSilent(aboveRoot, 'Weekend', 'a word wider than the root of the read, with a row above that root');
+  expectBrokenAndSilent(marked, 'Weekend', 'a word wider than the row named with data-room, with a wider row above the mark');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split in an inner row (89.6-02, R3 repair): reports a name squeezed in a row inside the item that may shrink, and in a link that is that item', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const inner = await splitCase(page, 'split-inner-row');
+  const link = await splitCase(page, 'split-link-item');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ inner, link }, null, 2), contentType: 'application/json' });
+  expectReported(inner, 'a name in a row of its own, three levels under the row that squeezes it');
+  expectReported(link, 'a name in a row of its own inside a link that is the item that may shrink');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split in a table row (89.6-02, R3 repair): reports a name squeezed by a fixed cell, with a row element and without one', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const row = await splitCase(page, 'split-table-row');
+  const cells = await splitCase(page, 'split-table-cells');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ row, cells }, null, 2), contentType: 'application/json' });
+  expectReported(row, 'a name in a table cell beside a fixed cell');
+  expectReported(cells, 'a name in a table cell beside a fixed cell, the two cells directly in the table');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, no row to stack (89.6-02, R3 repair): a word wider than its fixed card in a column, in a one-column grid, and under a root that is a column, is not reported', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const column = await splitCase(page, 'split-column-card');
+  const grid = await splitCase(page, 'split-grid-card');
+  const rootColumn = await splitCase(page, 'split-root-column');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ column, grid, rootColumn }, null, 2), contentType: 'application/json' });
+  expectBrokenAndSilent(column, 'Weekend', 'a word wider than its fixed card, the card in a column with nothing beside it');
+  expectBrokenAndSilent(grid, 'Weekend', 'a word wider than its fixed card, the card in a grid of one column');
+  expectBrokenAndSilent(rootColumn, 'Weekend', 'a word wider than the root of the read, the root a column that is an item of a wider row');
   expect(requests, 'the page made a request').toEqual([]);
 });
 
@@ -446,6 +496,45 @@ test('check: split room (89.6-02, R3): a word that fits its row but not the row 
   expect(word.natural, `the pill holds the word: the harness is not the shape it says (${JSON.stringify(pill)})`).toBeGreaterThan(roomInPill + 0.5);
   expect(word.lines, 'the word in the pill is not broken: the harness is not the shape it says').toBeGreaterThan(1);
   expect(read.split, 'a word wider than its row less the padding and border of its own pill reads as split').toEqual([]);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split room, margins (89.6-02, R3 repair): a margin between the word and its row comes off the room, and an automatic margin does not', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const read = await readLargeTextCell(await renderTwin(page, 'split-margin-good'));
+  const item = await readWordLines(page.locator('.lt-pill'), page.locator('.lt-pill-row'));
+  const sizerBroken = await brokenWordsOf(page.locator('.lt-sizer'));
+  const auto = await splitCase(page, 'split-auto-margin');
+  const autoMargin = await page.locator('.lt-narrow').evaluate((el) => Number.parseFloat(getComputedStyle(el).marginLeft));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ read, item, sizerBroken, auto, autoMargin }, null, 2), contentType: 'application/json' });
+  const word = item.words[0];
+  // The row's content width: the item has no padding and no border, so the older read's room is the row itself.
+  const rowWidth = item.rowRoom ?? Number.NaN;
+  expect(sizerBroken, 'the sizing line breaks its word: the box is not the word plus 36px wide').toEqual([]);
+  expect(word.natural, `the row does not hold the word: the harness is not the shape it says (${JSON.stringify(item)})`).toBeLessThanOrEqual(rowWidth + 0.5);
+  expect(word.natural, `the row less the item's 40px of margin holds the word: the harness is not the shape it says (${JSON.stringify(item)})`).toBeGreaterThan(rowWidth - 40 + 0.5);
+  expect(word.lines, 'the word in the item is not broken: the harness is not the shape it says').toBeGreaterThan(1);
+  expect(read.split, 'a word wider than its row less the margins of its own item reads as split').toEqual([]);
+  // The automatic margin is the free space of its row (a used value of many px), and it is not an
+  // edge: the row still has room for the word, so the narrow item's broken word is reported.
+  expect(autoMargin, 'the automatic margin took no free space: the harness is not the shape it says').toBeGreaterThan(100);
+  expectReported(auto, 'a word broken in a narrow item pushed to the end of its row by an automatic margin');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split room, inline box (89.6-02, R3 repair): a word that fits its line but not with the padding and border of its own inline box is not reported', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const read = await readLargeTextCell(await renderTwin(page, 'split-inline-pill-good'));
+  const pill = await readWordLines(page.locator('.lt-pill'), page.locator('.lt-line'));
+  const sizerBroken = await brokenWordsOf(page.locator('.lt-sizer'));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ read, pill, sizerBroken }, null, 2), contentType: 'application/json' });
+  const word = pill.words[0];
+  const roomInBox = pill.rowRoom ?? Number.NaN;
+  expect(sizerBroken, 'the sizing line breaks its word: the paragraph is not the word plus 36px wide').toEqual([]);
+  expect(word.natural, `the line does not hold the bare word: the harness is not the shape it says (${JSON.stringify(pill)})`).toBeLessThanOrEqual(roomInBox + 40);
+  expect(word.natural, `the line holds the word in its box: the harness is not the shape it says (${JSON.stringify(pill)})`).toBeGreaterThan(roomInBox + 0.5);
+  expect(word.lines, 'the word in the inline box is not broken: the harness is not the shape it says').toBeGreaterThan(1);
+  expect(read.split, 'a word wider than its line less the padding and border of its own inline box reads as split').toEqual([]);
   expect(requests, 'the page made a request').toEqual([]);
 });
 
