@@ -2351,14 +2351,20 @@ describe('88.9-52 (A-47): Role updated and Member removed are announced INSIDE t
   }
 
   it('the store is real in this block and the root region is mounted', () => {
+    // 89.6-03 added four exports for the toast bridge (announceInOpenDialog, dialogHostActive,
+    // dialogHostOpen, subscribeHostState); like the rest they run their real implementation here.
     expect(storeMocks().map(([name]) => name).sort()).toEqual([
+      'announceInOpenDialog',
       'announceStatus',
+      'dialogHostActive',
+      'dialogHostOpen',
       'getHostSnapshot',
       'getServerSnapshot',
       'getSnapshot',
       'registerAnnounceHost',
       'releaseAnnounceHost',
       'subscribe',
+      'subscribeHostState',
     ]);
     expect(rootRegion()).not.toBeNull();
     expect(rootRegion()).toBeEmptyDOMElement();
