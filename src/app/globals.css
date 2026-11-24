@@ -914,6 +914,76 @@
   .bb-crumbs > * {
     max-width: 100%;
   }
+
+  /* DECISION Phase 89.6-05 (bb-media): a card with a picture gives the words the width: the
+     text's basis is 10rem with no min-width, so a word too long to sit beside the picture moves
+     the words under it instead of breaking; the picture is dropped by a call-site container
+     variant at picture plus 1rem plus 10rem (15rem for a 4rem picture, 14rem for 3rem), the
+     precedent src/app/components/GroupGamesList.js ("DECISION Phase 88.9-52 (R4 C3"). Chosen OVER
+     a display rule in this layer (utilities beat components, so a picture that also carries a
+     display utility never drops, research M F4) and OVER shrinking the picture. The container is
+     inline-size, so a .bb-media box must sit where a block gives it width; inside a shrink-to-fit
+     parent it collapses. A dropped picture has a text twin (HR-5). Changing this is a decision,
+     not a cleanup. */
+  .bb-media {
+    container-type: inline-size;
+  }
+
+  .bb-media-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .bb-media-row > :not(.bb-media-text) {
+    flex: 0 0 auto;
+  }
+
+  .bb-media-text {
+    flex: 1 1 10rem;
+    max-width: 100%;
+    overflow-wrap: break-word;
+  }
+
+  /* DECISION Phase 89.6-05 (bb-columns): columns stack before a column narrows past --bb-col
+     (default 18rem, so it scales with text) or past its longest word: a rem flex-basis with no
+     explicit min-width, chosen OVER a two-up media query (it cannot see the text size, research
+     M1), OVER a px column (the Home column letter-stacked at 768 / 200%, register CI-02) and OVER
+     an explicit minimum of the smaller of 100% and a length (it let a 30-letter word sit in a
+     too-narrow column, research M F4). Changing this is a decision, not a cleanup. */
+  .bb-columns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .bb-columns > * {
+    flex: 1 1 var(--bb-col, 18rem);
+    max-width: 100%;
+  }
+
+  /* DECISION Phase 89.6-05 (bb-frame): no child is wider than its frame: the three form controls
+     preflight leaves uncapped (select, input, textarea) are held to 100% (preflight caps img and
+     video; src has no table and no pre). HR-7 as rewritten by owner pick O-M3 = A+, 2026-11-22
+     ('Keep the drop-downs. When one does not fit beside its label it drops to its own row'): a
+     native select keeps its natural width up to that cap and the row it sits in wraps (a
+     bb-cluster or bb-row at the call site), chosen OVER a radio list (the option he declined) and
+     OVER a fixed select width (plans 89.6-17, -18 and -22 amend the w-auto notes at their
+     selects). The frame sets no gutter: the page edge is the edge token at the call site (O-M1
+     D), so a page has one source for its edge. .bb-breakable lets emails, links and codes break
+     anywhere (SPEC Edge R4 encoding), never names. Changing this is a decision, not a cleanup. */
+  .bb-frame {
+    max-width: 100%;
+  }
+
+  .bb-frame :where(select, input, textarea) {
+    max-width: 100%;
+  }
+
+  .bb-breakable {
+    overflow-wrap: anywhere;
+  }
 }
 
 /* ===== DESIGN SYSTEM: Palette Primitives ===== */

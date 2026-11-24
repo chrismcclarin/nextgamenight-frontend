@@ -65,7 +65,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 const HARNESS_DIR = resolve(__dirname, 'support/large-text-harness');
 
 /** The building blocks under test; each has a harness file of the same name. Later plans append. */
-const BLOCKS = ['bb-row', 'bb-cluster'] as const;
+const BLOCKS = ['bb-row', 'bb-cluster', 'bb-media', 'bb-columns', 'bb-frame'] as const;
 /** The four content cases every block is rendered with, each a section of the harness file. */
 const CASES = ['ordinary', 'empty', 'word30', 'emoji'] as const;
 

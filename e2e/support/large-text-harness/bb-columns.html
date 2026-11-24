@@ -1,0 +1,91 @@
+<!--
+  The bb-columns building block (two columns that stack before either narrows past its basis or
+  past its longest word) in its four content cases. The columns sit in the frame with no card
+  around them; each column is a card of its own.
+  The columns are div elements, not section elements: the matrix spec cuts a content case at the
+  first closing section tag.
+  One section per content case, marked with data-case; the matrix spec renders ONE section at a time.
+  The wrappers carry lt- hook names the app never styles, so nothing here collides with a shipped rule.
+  The frame and the card carry the thin edges at their phone values at every width (16px page edge,
+  12px card edge), with no desktop variant, so both 200% modes lay out alike.
+  Every state is static markup: this file holds no script and no outside address.
+-->
+
+<section data-case="ordinary">
+  <main data-frame class="lt-frame px-edge-page py-4">
+    <div class="bb-columns">
+      <div class="lt-col rounded-card border border-line bg-surface-card p-edge-card">
+        <h2 class="text-xl font-bold text-content-primary">Your Groups</h2>
+        <ul class="mt-2">
+          <li>Weekend Warriors</li>
+          <li>Ticket to Ride</li>
+        </ul>
+        <button type="button" class="btn btn-primary mt-3 min-h-11"><span class="bb-label">+ Create New Group</span></button>
+      </div>
+      <div class="lt-col rounded-card border border-line bg-surface-card p-edge-card">
+        <h2 class="text-xl font-bold text-content-primary">Upcoming</h2>
+        <ul class="mt-2">
+          <li>Catan night, Friday 7 PM</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="empty">
+  <main data-frame class="lt-frame px-edge-page py-4">
+    <div class="bb-columns">
+      <div class="lt-col rounded-card border border-line bg-surface-card p-edge-card">
+        <h2 class="text-xl font-bold text-content-primary">Your Groups</h2>
+        <p class="mt-2 text-sm text-content-muted">No groups yet.</p>
+        <button type="button" class="btn btn-primary mt-3 min-h-11"><span class="bb-label">+ Create New Group</span></button>
+      </div>
+      <div class="lt-col rounded-card border border-line bg-surface-card p-edge-card">
+        <h2 class="text-xl font-bold text-content-primary">Upcoming</h2>
+        <p class="mt-2 text-sm text-content-muted">No nights planned.</p>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="word30">
+  <main data-frame class="lt-frame px-edge-page py-4">
+    <div class="bb-columns">
+      <div class="lt-col rounded-card border border-line bg-surface-card p-edge-card">
+        <h2 class="text-xl font-bold text-content-primary">Your Groups</h2>
+        <ul class="mt-2">
+          <li>Weekend Warriors</li>
+          <li>Grandmasterboardgamecollective</li>
+        </ul>
+        <button type="button" class="btn btn-primary mt-3 min-h-11"><span class="bb-label">+ Create New Group</span></button>
+      </div>
+      <div class="lt-col rounded-card border border-line bg-surface-card p-edge-card">
+        <h2 class="text-xl font-bold text-content-primary">Upcoming</h2>
+        <ul class="mt-2">
+          <li>Catan night, Friday 7 PM</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="emoji">
+  <main data-frame class="lt-frame px-edge-page py-4">
+    <div class="bb-columns">
+      <div class="lt-col rounded-card border border-line bg-surface-card p-edge-card">
+        <h2 class="text-xl font-bold text-content-primary">Your Groups</h2>
+        <ul class="mt-2">
+          <li>Weekend Warriors</li>
+          <li>Weekend Warriors 🎲</li>
+        </ul>
+        <button type="button" class="btn btn-primary mt-3 min-h-11"><span class="bb-label">+ Create New Group</span></button>
+      </div>
+      <div class="lt-col rounded-card border border-line bg-surface-card p-edge-card">
+        <h2 class="text-xl font-bold text-content-primary">Upcoming</h2>
+        <ul class="mt-2">
+          <li>Catan night, Friday 7 PM</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+</section>

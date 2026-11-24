@@ -1,0 +1,96 @@
+<!--
+  The bb-frame building block (no child is wider than its frame: the select, the text input and
+  the text area are held to the frame, and an address may break anywhere) in its four content cases.
+  The select is the Browse games sort select: the same class string and the same three options.
+  The text input has no width class and the text area asks for 40 columns: their own widths are
+  the case the cap exists for.
+  One section per content case, marked with data-case; the matrix spec renders ONE section at a time.
+  The wrappers carry lt- hook names the app never styles, so nothing here collides with a shipped rule.
+  The frame and the card carry the thin edges at their phone values at every width (16px page edge,
+  12px card edge), with no desktop variant, so both 200% modes lay out alike.
+  Every state is static markup: this file holds no script and no outside address.
+-->
+
+<section data-case="ordinary">
+  <main data-frame class="lt-frame bb-frame px-edge-page py-4">
+    <h1 class="text-xl font-bold text-content-primary">Ticket to Ride</h1>
+    <div data-card class="lt-card mt-3 rounded-card border border-line bg-surface-card p-edge-card">
+      <div class="bb-cluster">
+        <label for="lt-sort" class="text-sm text-content-secondary">Sort:</label>
+        <select id="lt-sort" class="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-base">
+          <option value="rating" selected>Best fit</option>
+          <option value="complexity">Complexity</option>
+          <option value="name">Game name</option>
+        </select>
+      </div>
+      <label for="lt-name" class="mt-3 block text-sm text-content-secondary">Display name</label>
+      <input id="lt-name" type="text" value="Ticket to Ride" class="p-2 border border-line rounded-btn bg-surface-input text-base">
+      <label for="lt-notes" class="mt-3 block text-sm text-content-secondary">Notes</label>
+      <textarea id="lt-notes" rows="3" cols="40" class="p-2 border border-line rounded-btn bg-surface-input text-base"></textarea>
+      <p class="mt-3 bb-breakable text-sm text-content-primary">bob.smith@example.com</p>
+    </div>
+  </main>
+</section>
+
+<section data-case="empty">
+  <main data-frame class="lt-frame bb-frame px-edge-page py-4">
+    <h1 class="text-xl font-bold text-content-primary">Profile</h1>
+    <div data-card class="lt-card mt-3 rounded-card border border-line bg-surface-card p-edge-card">
+      <div class="bb-cluster">
+        <label for="lt-sort" class="text-sm text-content-secondary">Sort:</label>
+        <select id="lt-sort" class="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-base">
+          <option value="rating" selected>Best fit</option>
+          <option value="complexity">Complexity</option>
+          <option value="name">Game name</option>
+        </select>
+      </div>
+      <label for="lt-name" class="mt-3 block text-sm text-content-secondary">Display name</label>
+      <input id="lt-name" type="text" class="p-2 border border-line rounded-btn bg-surface-input text-base">
+      <label for="lt-notes" class="mt-3 block text-sm text-content-secondary">Notes</label>
+      <textarea id="lt-notes" rows="3" cols="40" class="p-2 border border-line rounded-btn bg-surface-input text-base"></textarea>
+      <p class="mt-3 text-sm text-content-muted">Nothing saved yet.</p>
+    </div>
+  </main>
+</section>
+
+<section data-case="word30">
+  <main data-frame class="lt-frame bb-frame px-edge-page py-4">
+    <h1 class="text-xl font-bold text-content-primary">Grandmasterboardgamecollective</h1>
+    <div data-card class="lt-card mt-3 rounded-card border border-line bg-surface-card p-edge-card">
+      <div class="bb-cluster">
+        <label for="lt-sort" class="text-sm text-content-secondary">Sort:</label>
+        <select id="lt-sort" class="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-base">
+          <option value="rating" selected>Best fit</option>
+          <option value="complexity">Complexity</option>
+          <option value="name">Game name</option>
+        </select>
+      </div>
+      <label for="lt-name" class="mt-3 block text-sm text-content-secondary">Display name</label>
+      <input id="lt-name" type="text" value="Grandmasterboardgamecollective" class="p-2 border border-line rounded-btn bg-surface-input text-base">
+      <label for="lt-notes" class="mt-3 block text-sm text-content-secondary">Notes</label>
+      <textarea id="lt-notes" rows="3" cols="40" class="p-2 border border-line rounded-btn bg-surface-input text-base"></textarea>
+      <p class="mt-3 bb-breakable text-sm text-content-primary">grandmasterboardgamecollective@example.com</p>
+    </div>
+  </main>
+</section>
+
+<section data-case="emoji">
+  <main data-frame class="lt-frame bb-frame px-edge-page py-4">
+    <h1 class="text-xl font-bold text-content-primary">Weekend Warriors 🎲</h1>
+    <div data-card class="lt-card mt-3 rounded-card border border-line bg-surface-card p-edge-card">
+      <div class="bb-cluster">
+        <label for="lt-sort" class="text-sm text-content-secondary">Sort:</label>
+        <select id="lt-sort" class="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-base">
+          <option value="rating" selected>Best fit</option>
+          <option value="complexity">Complexity</option>
+          <option value="name">Game name</option>
+        </select>
+      </div>
+      <label for="lt-name" class="mt-3 block text-sm text-content-secondary">Display name</label>
+      <input id="lt-name" type="text" value="Weekend Warriors 🎲" class="p-2 border border-line rounded-btn bg-surface-input text-base">
+      <label for="lt-notes" class="mt-3 block text-sm text-content-secondary">Notes</label>
+      <textarea id="lt-notes" rows="3" cols="40" class="p-2 border border-line rounded-btn bg-surface-input text-base"></textarea>
+      <p class="mt-3 bb-breakable text-sm text-content-primary">weekend.warriors@example.com</p>
+    </div>
+  </main>
+</section>

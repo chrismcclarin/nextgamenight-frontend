@@ -72,7 +72,7 @@ export const floors = [
   { spec: 'e2e/input-date-phone.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/lane-a-tap-floors-desktop.spec.ts', project: 'journeys', floor: 14, why: '14 of 14 listed run in journeys; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/lane-a-tap-floors.spec.ts', project: 'phone', floor: 10, why: '10 of 10 listed run in phone; the other project is skipped by an isMobile predicate' },
-  { spec: 'e2e/large-text-blocks.spec.ts', project: 'journeys', floor: 61, why: '61 of 61 listed run in journeys; the other project is skipped by an isMobile predicate (the building-block matrix: bb-row and bb-cluster, 27 cells each, plus 6 negative controls and the mode probe; 89.6-05 raised 34 to 61)' },
+  { spec: 'e2e/large-text-blocks.spec.ts', project: 'journeys', floor: 142, why: '142 of 142 listed run in journeys; the other project is skipped by an isMobile predicate (bb-row, bb-cluster, bb-media, bb-columns, bb-frame, 27 cells each, plus 6 negative controls and the mode probe; 89.6-05 raised 61 to 142)' },
   { spec: 'e2e/manage-members-refresh.spec.ts', project: 'phone', floor: 9, why: '9 of 9 listed (raised 7 to 8 by 88.9-52 round 4, G4; 8 to 9 when its 320 / 200% read became its own expected-fail test owned by Phase 89.6) run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/member-plus-failure.spec.ts', project: 'phone', floor: 4, why: '4 of 4 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/month-nav-row.spec.ts', project: 'journeys', floor: 2, why: '2 of 6 listed run in journeys; 4 skipped here by an isMobile predicate' },
