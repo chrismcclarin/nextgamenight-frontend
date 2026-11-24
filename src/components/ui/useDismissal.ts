@@ -31,6 +31,13 @@
  * AMENDED Phase 88.6.1-80: one exemption added — an open modal dialog that does not contain the
  * container is a layer ABOVE the surface, so a press while it is open, and focus moving into it,
  * never dismiss the surface. See `DECISION Phase 88.6.1-80 (modal layer above, D-18)` below.
+ * AMENDED Phase 89.6-04 (OW-2): a third consumer, the inline two-tap tier of
+ * src/components/ui/useConfirmAction.ts ("DECISION Phase 89.6-04 (OW-2, owner")
+ * Its panel is the armed control itself (containerRef and triggerRef both point at it), so a press
+ * anywhere outside that control, focus moving to another control, or Escape disarms it, with no
+ * margin (owner 2026-11-22). A change to the outside event, the focusout rule or the Escape claim
+ * now also changes how an armed Remove disarms; plan 89.6-32 checks on the owner's iPhone whether a
+ * tap on blank space reaches the outside event chosen above.
  */
 import * as React from 'react';
 

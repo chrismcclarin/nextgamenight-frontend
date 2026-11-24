@@ -641,3 +641,183 @@ describe('useConfirmAction — R13 the armed label is Tap again, the name the fu
     expect(current().reserveFor('sam', { atRest: true })).toEqual(['Wait (3)', 'Wait (2)', 'Wait (1)', 'Tap again']);
   });
 });
+
+// OW-2 (89.6-04 Task 2; owner 2026-11-22 9:52 PM Pacific): an armed control also disarms when it
+// scrolls fully out of view after it was seen in view, and when the page is hidden. jsdom has no
+// IntersectionObserver, so the scroll-out cases install a test-local one.
+describe('useConfirmAction — OW-2 scroll-out and page hidden (89.6-04)', () => {
+  class StubObserver {
+    static instances: StubObserver[] = [];
+    observed: Element[] = [];
+    disconnected = false;
+    readonly options: IntersectionObserverInit | undefined;
+    private readonly callback: IntersectionObserverCallback;
+    constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+      this.callback = callback;
+      this.options = options;
+      StubObserver.instances.push(this);
+    }
+    observe(target: Element): void {
+      this.observed.push(target);
+    }
+    unobserve(): void {}
+    disconnect(): void {
+      this.disconnected = true;
+    }
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+    // One callback holding one entry, as a browser reports a change.
+    report(target: Element, isIntersecting: boolean): void {
+      act(() => {
+        this.callback(
+          [{ target, isIntersecting } as unknown as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver
+        );
+      });
+    }
+  }
+
+  function newest(): StubObserver {
+    const observer = StubObserver.instances[StubObserver.instances.length - 1];
+    if (!observer) throw new Error('no observer was created');
+    return observer;
+  }
+
+  function pageBecomes(state: 'hidden' | 'visible') {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(state);
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  }
+
+  beforeEach(() => {
+    latest = null;
+    hostRenders = 0;
+    StubObserver.instances = [];
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('page hidden: a hidden page disarms an armed control and says Confirmation cancelled.; a visible page does not', () => {
+    const onConfirm = vi.fn();
+    renderHost('two-tap', onConfirm);
+    const trigger = screen.getByTestId('trigger');
+
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    pageBecomes('visible');
+    expect(current().armedId).toBe('sam');
+    expect(trigger.textContent).toBe('Tap again');
+
+    pageBecomes('hidden');
+    expect(current().armedId).toBeNull();
+    expect(trigger).toHaveTextContent('Remove');
+    expect(trigger).not.toHaveAttribute('aria-pressed');
+    expect(screen.getByRole('status').textContent).toBe('Confirmation cancelled.');
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('page hidden: the listener exists only while a control is armed', () => {
+    const added = vi.spyOn(document, 'addEventListener');
+    const removed = vi.spyOn(document, 'removeEventListener');
+    const hiddenListeners = (spy: typeof added | typeof removed) =>
+      spy.mock.calls.filter(([type]) => type === 'visibilitychange').map(([, listener]) => listener);
+    renderHost('two-tap');
+    const trigger = screen.getByTestId('trigger');
+
+    // Nothing armed: nothing listens, so a hidden page changes nothing.
+    expect(hiddenListeners(added)).toHaveLength(0);
+    pageBecomes('hidden');
+    expect(screen.getByRole('status').textContent).toBe('');
+    pageBecomes('visible');
+
+    fireEvent.click(trigger);
+    expect(hiddenListeners(added)).toHaveLength(1);
+    expect(hiddenListeners(removed)).toHaveLength(0);
+
+    // Disarmed: the very function that was added is removed.
+    fireEvent.mouseDown(document.body);
+    expect(hiddenListeners(removed)).toEqual(hiddenListeners(added));
+  });
+
+  it('scroll-out: an arm observes exactly the armed control; in view then out of view disarms, says Confirmation cancelled. and disconnects the observer', () => {
+    vi.stubGlobal('IntersectionObserver', StubObserver);
+    const onConfirm = vi.fn();
+    renderHost('two-tap', onConfirm);
+    const trigger = screen.getByTestId('trigger');
+
+    expect(StubObserver.instances).toHaveLength(0);
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    const observer = newest();
+    expect(observer.observed).toEqual([trigger]);
+    // The viewport is the root and any pixel counts, so a scroll box (a dialog body) clips it too.
+    expect(observer.options?.root ?? null).toBeNull();
+    expect(observer.options?.threshold ?? 0).toBe(0);
+
+    observer.report(trigger, true);
+    expect(current().armedId).toBe('sam');
+    observer.report(trigger, false);
+    expect(current().armedId).toBeNull();
+    expect(trigger).toHaveTextContent('Remove');
+    expect(screen.getByRole('status').textContent).toBe('Confirmation cancelled.');
+    expect(observer.disconnected).toBe(true);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('scroll-out: a first report out of view disarms nothing', () => {
+    vi.stubGlobal('IntersectionObserver', StubObserver);
+    renderHost('two-tap');
+    const trigger = screen.getByTestId('trigger');
+
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    const observer = newest();
+    // Never seen in view (armed by keyboard under the fold, or a control with no box yet).
+    observer.report(trigger, false);
+    expect(current().armedId).toBe('sam');
+    expect(trigger.textContent).toBe('Tap again');
+    expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove Sam');
+  });
+
+  it('scroll-out: the observer is disconnected when the control commits', async () => {
+    vi.stubGlobal('IntersectionObserver', StubObserver);
+    const onConfirm = vi.fn();
+    renderHost('two-tap', onConfirm);
+    const trigger = screen.getByTestId('trigger');
+
+    fireEvent.click(trigger);
+    advance(CONFIRM_DELAY_MS);
+    const observer = newest();
+    observer.report(trigger, true);
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(observer.disconnected).toBe(true);
+    // A late report after the commit says nothing.
+    observer.report(trigger, false);
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  // CONFIRM-ONLY: green before the scroll-out work too, by design. It guards the environment with no
+  // IntersectionObserver (jsdom's default, and an old browser): nothing throws, nothing is lost.
+  it('confirm-only: with no IntersectionObserver in the environment, arming and every other disarm still work', () => {
+    expect(typeof globalThis.IntersectionObserver).toBe('undefined');
+    renderHost('two-tap');
+    const trigger = screen.getByTestId('trigger');
+
+    expect(() => fireEvent.click(trigger)).not.toThrow();
+    advance(CONFIRM_DELAY_MS);
+    expect(trigger.textContent).toBe('Tap again');
+    fireEvent.mouseDown(document.body);
+    expect(current().armedId).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Confirmation cancelled.');
+  });
+});

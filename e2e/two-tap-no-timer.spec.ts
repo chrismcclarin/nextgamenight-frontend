@@ -3,8 +3,8 @@
 //
 // WHAT. Owner ruling OW-2 A (2026-11-22): an armed tap-again control has no time limit. It stays
 // live until the second press or until it disarms. Test 1 arms a Friends Remove and reads it again
-// 8 seconds later (the old revert came 6 seconds after the arm). Phase 89.6-04 Task 2 adds the
-// scroll-out-of-view case here, and plan 89.6-07 the kebab case.
+// 8 seconds later (the old revert came 6 seconds after the arm). Test 2 arms it, scrolls it fully
+// out of view and reads the disarm (owner, the same evening). Plan 89.6-07 adds the kebab case.
 //
 // WRITE GUARD. holdWrites is registered FIRST, before any route and before the navigation, and
 // holds every non-GET on every URL (the backend and the BFF proxy alike). Both friend lists are
@@ -144,5 +144,42 @@ test.describe('the inline two-tap confirm has no time limit (OW-2, 89.6-04)', ()
     await page.waitForTimeout(8_000);
     await expect(remove, 'OW-2: the armed Remove reverted on its own').toHaveAccessibleName('Tap again to confirm');
     await expect(remove).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  // Owner, 2026-11-22: the scroll-out-of-view disarm is built. The phone project runs this one at
+  // 320 x 568 (test 1 covers 375); journeys runs it at its own desktop size.
+  test('OW-2 (89.6-04): an armed friend Remove scrolled out of view disarms and says Confirmation cancelled.', async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    if (testInfo.project.name === 'phone') {
+      // BEFORE the navigation, so the page lays out at 320 from its first paint.
+      await page.setViewportSize({ width: 320, height: 568 });
+    }
+    await page.goto('/friends');
+    if (testInfo.project.name === 'phone') {
+      expect(page.viewportSize()?.width).toBe(320);
+    }
+
+    const remove = firstRemove(page);
+    await expect(remove, 'OW-2: the routed friend row never rendered its Remove').toBeVisible({ timeout: 15_000 });
+    await remove.scrollIntoViewIfNeeded();
+    await remove.click();
+    await expect(remove).toHaveAccessibleName('Tap again to confirm', { timeout: 10_000 });
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const box = await remove.boundingBox();
+    expect(box, 'OW-2: the first Remove has no layout box').not.toBeNull();
+    const bottom = Math.round((box?.y ?? 0) + (box?.height ?? 0));
+    expect(
+      bottom,
+      `the page is too short to scroll the first Remove out of view: route more friends (its bottom edge is at ${bottom}px)`,
+    ).toBeLessThanOrEqual(0);
+
+    // Straight after the scroll: the words clear 4 s after the disarm (INLINE_RECEIPT_MS).
+    await expect(
+      page.getByRole('status').filter({ hasText: /^Confirmation cancelled\.$/ }),
+      'OW-2: no status region said the disarm',
+    ).toHaveCount(1);
+    await expect(remove).toHaveAccessibleName('Remove E2E Two Tap 01');
+    await expect(remove).not.toHaveAttribute('aria-pressed', 'true');
   });
 });

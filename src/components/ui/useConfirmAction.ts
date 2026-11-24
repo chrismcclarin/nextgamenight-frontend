@@ -470,6 +470,55 @@ export function useConfirmAction(config: UseConfirmActionConfig): ConfirmActionS
     []
   );
 
+  // DECISION Phase 89.6-04 (scroll-out): an armed two-tap control also disarms, and says the cancel
+  // words, when it scrolls fully out of view after it was seen in view (an observer on the armed
+  // control, threshold 0) and when the page is hidden (a page-visibility listener: an armed control
+  // must not sit live across a locked phone, research S F-OW2 item 6). Both live here and run only
+  // while armed. Chosen OVER adding either to the one dismissal hook, which would change the kebab,
+  // whose item stays armed while its menu is open (owner OW-2a: Keep), and the bell:
+  // src/components/ui/useDismissal.ts ("DECISION Phase 88.6.1-05 (D-18): ONE hook")
+  // and OVER a shared in-view hook (no second consumer). Not a second dismissal engine: the outside
+  // press, Escape and focus leaving stay that hook's; the page-hidden event exists only on the
+  // document and is none of its four pieces. A control hidden only under the sticky header still
+  // counts as in view. Owner, 2026-11-22: Sorry, I forgot, lets do teh scroll out of view disarm.
+  // Changing this is a decision, not a cleanup.
+  React.useEffect(() => {
+    if (tier !== 'two-tap' || armedId === null) return;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') disarmWithNotice();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [tier, armedId, armSeq, disarmWithNotice]);
+
+  React.useEffect(() => {
+    if (tier !== 'two-tap' || armedId === null) return;
+    const element = armedElRef.current;
+    // No armed element (a programmatic arm), or no observer in this browser: nothing to watch, and
+    // every other disarm still works.
+    if (element === null || typeof IntersectionObserver === 'undefined') return;
+    const armedKey = armedId;
+    // Out of view counts only AFTER the control was seen in view: a first report out of view (armed
+    // from the keyboard under the fold, or before layout) disarms nothing.
+    let seenInView = false;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Entries arrive oldest first, so one batch holding in view then out of view still disarms.
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            seenInView = true;
+          } else if (seenInView && armedIdRef.current === armedKey) {
+            disarmWithNotice();
+          }
+        }
+      },
+      // The viewport is the root, so a scroll box (the Participants dialog body) clips it too.
+      { root: null, threshold: 0 }
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [tier, armedId, armSeq, disarmWithNotice]);
+
   const matchesPhrase = React.useCallback(
     (value: string) =>
       // Exact equality on the RAW string (ASVS V5). Never a pattern compiled
