@@ -976,7 +976,15 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                        chip, not 12. At ordinary text chip + gap + 6rem is 140px, under the 150px the
                                        block has at its narrowest (320, beside the actions button), so nothing moves.
                                        REJECTED: hiding the chip at large text (D4a put it there); letting the pill
-                                       shrink (a clipped role word). */
+                                       shrink (a clipped role word).
+                                       AMENDED Phase 89.6-11 (members-rows): measured green in every sweep cell after O-8 C
+                                       (320 x 568, 375 x 667 and 768 x 1024 with 200% text, 768 at a default font of 32, and
+                                       215 and 187 wide at normal text; sweep rows D12, D13 and D16 to D20, with a long
+                                       hyphenated member name in the roster), so this row keeps its own wrapping rule,
+                                       chosen OVER converting it to .bb-row (its flex-start alignment would move the
+                                       actions at normal text) and OVER removing min-w-0 with nothing failing. The pending
+                                       rows above keep the same rule (removal-owned, Phase 91.1, CONTEXT D-07). Changing
+                                       this is a decision, not a cleanup. */
                                     <div
                                         key={member.id}
                                         className="flex flex-wrap items-center justify-between gap-y-2 p-4 border border-line rounded-lg hover:bg-surface-hover"
