@@ -62,6 +62,8 @@ export interface ShellGeometry {
   titleLines: ShellBox[];
   close: ShellBox | null;
   closeIcon: ShellBox | null;
+  /** The Body: the dialog's direct child that grows to fill it (flex-1). */
+  body: ShellBox | null;
   footer: ShellBox | null;
   /** The footer's content box: its box less its padding and border. */
   footerContent: ShellBox | null;
@@ -96,6 +98,7 @@ export async function readShell(dialog: Locator): Promise<ShellGeometry> {
     el.scrollTop = 0;
     const header = el.firstElementChild;
     const footer = Array.from(el.children).find((child) => child.tagName === 'DIV' && child.classList.contains('border-t')) ?? null;
+    const bodyPart = Array.from(el.children).find((child) => child.classList.contains('flex-1')) ?? null;
     const title = header?.querySelector('h2') ?? null;
     const close = header?.querySelector('[data-modal-close]') ?? null;
     const icon = close?.querySelector('svg') ?? null;
@@ -147,6 +150,7 @@ export async function readShell(dialog: Locator): Promise<ShellGeometry> {
       titleLines,
       close: close ? box(close) : null,
       closeIcon: icon ? box(icon) : null,
+      body: bodyPart ? box(bodyPart) : null,
       footer: footer ? box(footer) : null,
       footerContent,
     };

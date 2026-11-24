@@ -208,7 +208,38 @@ const BLOCK_OPTIONS: Partial<Record<(typeof BLOCKS)[number], BlockOptions>> = {
         if (read.buttons.filter((button) => button.part === 'footer').length === 0) problems.push(`${tag} shell ${at}: the footer holds no button`);
         problems.push(...shellProblems(read, mode, `${tag} shell ${at}`));
       }
-      return { geometry, problems };
+      // BP-5 (Phase 89.6-11): on the short phone at 200% text the tall shell scrolls as one page.
+      // From its top, its twelfth list item is scrolled into view by the nearest edge and must
+      // keep room under it for a focus ring: the shell's scroll padding. A footer button cannot
+      // show this (the footer's own padding already leaves room at the end of the scroll).
+      const size = page.viewportSize();
+      const tall = page.locator('[data-frame] [data-shell="tall"]');
+      if (/ ordinary$/.test(tag) && (await tall.count()) !== 1) problems.push(`${tag}: the ordinary case must hold exactly one tall shell (data-shell="tall")`);
+      if (mode !== '200' || size?.width !== 320 || size.height !== 568 || (await tall.count()) !== 1) return { geometry, problems };
+      const bp5 = await tall.evaluate((el) => {
+        const before = { top: el.scrollTop, x: window.scrollX, y: window.scrollY };
+        el.scrollTop = 0;
+        const item = el.querySelectorAll('li')[11];
+        if (!item) return null;
+        const belowFoldBy = item.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom;
+        item.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+        const read = {
+          belowFoldBy,
+          room: el.getBoundingClientRect().bottom - item.getBoundingClientRect().bottom,
+          scrolledTo: el.scrollTop,
+          scrollPaddingBottom: getComputedStyle(el).scrollPaddingBottom,
+          borderBottom: getComputedStyle(el).borderBottomWidth,
+        };
+        el.scrollTop = before.top;
+        window.scrollTo(before.x, before.y);
+        return read;
+      });
+      if (!bp5) problems.push(`${tag}: BP-5: the tall shell holds no twelfth list item`);
+      else {
+        if (bp5.belowFoldBy <= 0 || bp5.scrolledTo <= 0) problems.push(`${tag}: BP-5: the twelfth list item was not below the fold of the tall shell, so nothing is proved (${JSON.stringify(bp5)})`);
+        if (bp5.room < 4) problems.push(`${tag}: BP-5: scrolled into view by the nearest edge, the twelfth list item has ${Math.round(bp5.room * 100) / 100}px under it inside the dialog, expected at least 4px of scroll padding (${JSON.stringify(bp5)})`);
+      }
+      return { geometry: { shells: geometry, bp5 }, problems };
     },
     attachment: 'shell-geometry',
     compareModes: false,

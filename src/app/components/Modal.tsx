@@ -57,7 +57,7 @@ export const SIZE_CLASS: Record<ModalSize, string> = {
    dialog-shell block, which renders them in every cell. One string per line, and SIZE_CLASS
    above is exported for the same reason. Each part's decisions stay at its use site below; a
    change to a string here is a change to every dialog, so read that part's markers first. */
-export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-y-auto rounded-[12px] bg-card p-0 md:w-full @container/dialog';
+export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-y-auto rounded-[12px] bg-card p-0 md:w-full @container/dialog scroll-p-2';
 /* DECISION Phase 89.6-10 (T1b): GR (owner, 2026-11-22: 'A row stays a row while everything in it
    fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid
    stacking.'): the close sits beside the title while the title's longest word fits beside it,
@@ -74,7 +74,7 @@ export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-
 export const MODAL_HEADER_CLASS = 'flex flex-wrap-reverse items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-6 md:py-3';
 export const MODAL_TITLE_CLASS = 'grow basis-[min-content] max-w-full wrap-break-word text-content-primary';
 export const MODAL_CLOSE_CLASS = 'ml-auto inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-btn text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring';
-export const MODAL_BODY_CLASS = 'relative flex-1 overflow-y-auto p-3 md:p-6 @max-[12rem]/dialog:overflow-visible @max-[12rem]/dialog:flex-none';
+export const MODAL_BODY_CLASS = 'relative flex-1 overflow-y-auto p-3 md:p-6 @max-[12rem]/dialog:overflow-visible @max-[12rem]/dialog:flex-none scroll-p-2';
 export const MODAL_FOOTER_CLASS = 'flex flex-wrap justify-end gap-3 border-t border-border px-3 py-4 md:px-6 @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch';
 
 /**
@@ -448,6 +448,12 @@ function ModalRoot({
              125px). At 12rem and over the Body is the only part that scrolls, as before, and the
              shell never has a scroll range (its content fits because the Body shrinks). Changing
              this is a decision, not a cleanup. */
+          /* DECISION Phase 89.6-11 (BP-5): both scroll boxes carry scroll-padding 0.5rem (scroll-p-2), so a
+             control focused or scrolled to at a scroll edge keeps room for its focus ring, chosen
+             OVER the Body only (below the 12rem dialog container the shell is the box that scrolls)
+             and OVER padding the footer (it would change the look at rest). Scroll padding moves
+             nothing until something is scrolled into view. Changing this is a decision, not a
+             cleanup. */
           MODAL_SHELL_CLASS,
           SIZE_CLASS[size],
           className

@@ -1489,4 +1489,13 @@ describe('88.9-52 (R4 L3): Modal.Body holds the absolute boxes a consumer puts i
     const parts = Array.from(dialog.children).filter((el) => el !== dialog.lastElementChild);
     expect(parts.filter(scrolls)).toEqual([body]);
   });
+
+  // BP-5 (Phase 89.6-11): both scroll boxes keep room for a focus ring at a scroll edge. The
+  // marker is at src/app/components/Modal.tsx ("DECISION Phase 89.6-11 (BP-5)"); the rendered
+  // proof is the tall shell of the large-text matrix's dialog-shell block.
+  it('BP-5 (89.6-11): the shell and the Body carry scroll padding', () => {
+    const { dialog, body } = renderWithBody();
+    expect(tokens(dialog)).toContain('scroll-p-2');
+    expect(tokens(body)).toContain('scroll-p-2');
+  });
 });
