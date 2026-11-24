@@ -20,8 +20,9 @@ import {
   vacuityGround,
   type Measurement,
 } from './support/contrast';
-import { switchToManualEntry } from './support/createEvent';
-import { holdWrites, settleAnimations } from './support/inFlight';
+import { openCreateEventDialog, switchToManualEntry } from './support/createEvent';
+import { expectNoApiWrites, holdWrites, settleAnimations } from './support/inFlight';
+import { sweepWriteGuard, type SweepHold } from './support/largeTextSurfaces';
 import { injectViewerYesRsvp } from './support/viewerRsvp';
 import { scrubbedFetch } from './support/scrubbedFetch';
 import { advanceMonths, monthWithTrailingDays } from './support/calendarGrid';
@@ -2926,6 +2927,109 @@ test.describe('Req 11 Gate C — round 2, the logged-out landing hero (88.9 R2)'
           ? 'landing hero Get Started ring (R2-71, light: card halo + purple-700 ring per O01a / B4a)'
           : 'landing hero Get Started ring (R2-71, dark: nav halo + amber ring per B4a)'
       );
+    });
+  });
+});
+
+// =========================================================================================
+// Phase 89.6-09 — SPEC R7: the two dark control edges the owner ruled on (pick O-3 = U1 + E1,
+// 2026-11-22: "So I'll follow recommendation to make it follow the rule."). Each test reads both
+// themes (inBothThemes) and is shown red before its token moves; the token-layer twins are in
+// src/app/tokenContrast.test.ts, titled with the same id.
+//
+// WRITE GUARD. sweepWriteGuard (e2e/support/largeTextSurfaces/index.ts) is the phase's one guard
+// and is registered before the first navigation: every non-GET on every URL is held (the backend
+// and the BFF proxy alike), the self read goes on without its timezone parameter, and a GET that
+// writes is held and named. No test here presses a control that writes, and none turns route
+// interception off (a held request is released when interception is disabled).
+// Failure messages print colours and ratios only, never a fixture value.
+// =========================================================================================
+
+/** One edge read: the colour of a border longhand against the element's own fill, unrounded. */
+function edgeMessage(label: string, m: Measurement): string {
+  return `${label}: edge ${m.fg} on ${m.ground} measures ${m.ratio.toFixed(4)}:1, floor ${NON_TEXT}:1.\n${describeRatio(label, NON_TEXT, m)}`;
+}
+
+test.describe('Req 11 Gate C — 89.6 R7 edges, both themes per test', () => {
+  let hold: SweepHold | undefined;
+
+  test.afterEach(() => {
+    // A project this spec does not run in still runs afterEach with the hold unset.
+    expectNoApiWrites(hold);
+    const writeGets = hold?.writeGets ?? [];
+    expect(writeGets, `a GET that writes was sent ${writeGets.length} time(s): ${writeGets.join(', ')}`).toEqual([]);
+    hold = undefined;
+  });
+
+  test('89.6 R7 E1: the participant list input edges clear 3:1 on their fill and on the list box, both themes', async ({ page }) => {
+    test.slow();
+    hold = await sweepWriteGuard(page, {});
+    await inBothThemes(page, 'E1 participant list input edges', async (theme) => {
+      await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+      await assertTheme(page, theme);
+      await expect(
+        page.getByRole('button', { name: 'Create Event', exact: true }),
+        `E1 (${theme}): the group page's Create Event control is not visible`
+      ).toBeVisible({ timeout: 15_000 });
+      await openCreateEventDialog(page);
+      // THE REACH. The Participants group is in the dialog as soon as it opens (no game or date is
+      // needed first) and is filled with the group's members, so each row is a read-only name box,
+      // a Score input and a Faction input.
+      const list = page.getByRole('dialog').getByRole('group', { name: /^Participants/ });
+      await expect(list, `E1 (${theme}): the dialog's Participants group is not visible`).toBeVisible({ timeout: 15_000 });
+      await settleAnimations(page.getByRole('dialog'));
+
+      // Every box in the list that draws the input edge. The class is READ to pick the boxes; no
+      // locator selects by it (this file's selector policy): each one is addressed by its position.
+      const boxes = list.locator('*');
+      const edges = await boxes.evaluateAll((els) =>
+        els.flatMap((el, index) =>
+          el.classList.contains('border-input')
+            ? [{ index, tag: el.tagName.toLowerCase(), typesIn: el.matches('input:not([disabled]), select:not([disabled]), textarea:not([disabled])') }]
+            : []
+        )
+      );
+      // Non-vacuity: a list with no input edge in it measures nothing.
+      expect(edges.length, `E1 (${theme}): no box in the participant list draws the input edge (0 found)`).toBeGreaterThanOrEqual(1);
+
+      for (const [n, edge] of edges.entries()) {
+        const box = boxes.nth(edge.index);
+        const label = `E1 (${theme}) participant list edge ${n + 1} of ${edges.length} <${edge.tag}>`;
+        const own = await ratioAgainstGround(box, `${label} on its own fill`, 'border-top-color');
+        expect.soft(own.ratio, edgeMessage(`${label} on its own fill`, own)).toBeGreaterThanOrEqual(NON_TEXT);
+        // The list box around it: the ground from the parent rung up. The box's own fill is
+        // opaque, so the walk above stops AT the box; a second walk starts from its parent.
+        const around = compositeGround(await probeElement(box.locator('xpath=..'), []));
+        if (around === null) throw new Error(`${label}: the walk above the box never reached an opaque ground`);
+        const onList = contrastRatio(own.fg, around);
+        if (onList === null) throw new Error(`${label}: could not compute the edge ${own.fg} against the list box ground ${around}`);
+        expect
+          .soft(onList, `${label} on the list box: edge ${own.fg} on ${around} measures ${onList.toFixed(4)}:1, floor ${NON_TEXT}:1`)
+          .toBeGreaterThanOrEqual(NON_TEXT);
+      }
+
+      // The focused edge. The first box of the list a person can type in is reached BY KEYBOARD:
+      // focus is put on it, moved back one stop, then Tab brings it back, so the arrival is a
+      // keyboard one and the focus-visible arm applies. The shared control class draws the focused
+      // edge with a class of its own, so the resting read above does not cover it.
+      const firstTypeIn = edges.find((edge) => edge.typesIn);
+      expect(firstTypeIn, `E1 (${theme}): no box in the participant list can be typed in, so no focused edge was read`).toBeDefined();
+      if (firstTypeIn) {
+        const box = boxes.nth(firstTypeIn.index);
+        await box.focus();
+        await page.keyboard.press('Shift+Tab');
+        await expect(box, `E1 (${theme}): Shift+Tab did not move focus off the box`).not.toBeFocused();
+        await page.keyboard.press('Tab');
+        await expect(box, `E1 (${theme}): Tab did not bring focus back to the box`).toBeFocused();
+        expect(
+          await box.evaluate((el) => el.matches(':focus-visible')),
+          `E1 (${theme}): the focused box does not match focus-visible, so its focused edge is not drawn`
+        ).toBe(true);
+        await settleAnimations(box);
+        const label = `E1 (${theme}) participant list first type-in box <${firstTypeIn.tag}>, focused`;
+        const focused = await ratioAgainstGround(box, label, 'border-top-color');
+        expect.soft(focused.ratio, edgeMessage(label, focused)).toBeGreaterThanOrEqual(NON_TEXT);
+      }
     });
   });
 });

@@ -608,6 +608,55 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     ).toBe('var(--input)');
   });
 
+  it('89.6 R7 E1: the dark input edge clears 3:1 on every dark ground, and the light edge is unchanged', () => {
+    // WHY THIS SITS BESIDE 8c AND DOES NOT REPLACE IT. Test 8c pins --input on the card and the page
+    // only. An input edge is most often drawn on the input FILL, and in dark the input, muted,
+    // elevated and hover grounds are one colour (#2f3b50), where the purple-500 edge measured
+    // 2.7868: the register entry "[floor] Dark input edge in the event dialog's participant list
+    // measures 2.79 (floor 3.0)". Owner pick O-3 (U1 + E1, 2026-11-22: "So I'll follow
+    // recommendation to make it follow the rule.") moves the dark edge one step lighter.
+    //
+    // Measured 2026-11-23 with the WCAG formula, unrounded. Dark purple-400 #8a9bba: the #2f3b50
+    // fill 4.0156, card 4.9316, page 6.0217, sunken 5.5485 (purple-500 #6b7fa3 was 2.7868 on the
+    // fill). Light warm-500 #8c7a6a: page 3.1496, card / input / elevated 4.1120, sunken / hover
+    // 3.8790.
+    //
+    // Every row is a FLOOR through expectRatio (it prints both colours and the ratio); none is a
+    // recorded failure. The dark fill is read first so a reverted token names the measured miss.
+    //
+    // NOT ASSERTED HERE, on purpose: light --input on the light muted ground (warm-250, 2.7329).
+    // Whether any control edge is drawn there is plan 89.6-09's edge census, and its colour is the
+    // owner's pick at look 2 (plan 89.6-33), which extends THIS test in place. It is not accepted.
+    const req = 'R7 E1 (89.6) / 1.4.11 (the input edge)';
+    for (const ground of [
+      '--color-bg-input',
+      '--color-bg-muted',
+      '--color-bg-elevated',
+      '--color-bg-hover',
+      '--color-bg-card',
+      '--color-bg-page',
+      '--color-bg-sunken',
+    ]) {
+      expectRatio('dark', '--input', ground, 3.0, req);
+    }
+    for (const ground of [
+      '--color-bg-input',
+      '--color-bg-card',
+      '--color-bg-elevated',
+      '--color-bg-page',
+      '--color-bg-sunken',
+      '--color-bg-hover',
+    ]) {
+      expectRatio('light', '--input', ground, 3.0, req);
+    }
+    // Light is pixel-identical: the light input edge is still the light strong border.
+    expect(
+      resolve('light', '--input'),
+      'R7 E1 (89.6): light --input must resolve to the same colour as light --color-border-strong ' +
+        '(E1 moves the DARK edge only)',
+    ).toBe(resolve('light', '--color-border-strong'));
+  });
+
   // ===================================================================================
   // Req 3 — shadows (UI-SPEC §5.4)
   // ===================================================================================
