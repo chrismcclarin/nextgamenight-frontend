@@ -22,6 +22,7 @@ import type { VariantProps } from 'class-variance-authority';
 
 import { withoutComments } from '../../test-utils/sourceScan';
 import { Button, buttonVariants } from './Button';
+import { Icon } from './Icon';
 
 afterEach(cleanup);
 
@@ -520,5 +521,99 @@ describe('Button', () => {
         '88.6-06 T-88.6-12 — an unnamed icon-only Button must be REPORTED, not silently named by the primitive. The rule ID is asserted specifically: "some violation" would pass on an unrelated finding'
       ).toContain('button-name');
     });
+  });
+});
+
+// Phase 89.6-06: a string or number child renders inside span.bb-label, so the label can shrink
+// to its control and wrap inside it (src/components/ui/Button.tsx ("DECISION Phase 89.6-06 (bb-label)")).
+// jsdom draws nothing, so the spill itself is read in Chromium, in
+// e2e/primitives-large-text.spec.ts ("bb-label (89.6-06)"). These cases pin the DOM shape only.
+describe('89.6-06 bb-label: text children wrap in the label span (research M F4)', () => {
+  /** The direct text nodes of an element, joined. After the wrap a Button has none. */
+  const directText = (el: Element): string =>
+    Array.from(el.childNodes)
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent)
+      .join('');
+
+  it('a string child renders as button > span.bb-label holding the text', () => {
+    render(<Button>Save</Button>);
+    const btn = screen.getByRole('button', { name: 'Save' });
+    const labels = btn.querySelectorAll(':scope > span.bb-label');
+    expect(labels).toHaveLength(1);
+    expect(labels[0].textContent).toBe('Save');
+    expect(directText(btn), 'the label must not also stay as bare text in the button').toBe('');
+  });
+
+  it('an element child stays a direct child and only the text is wrapped', () => {
+    render(
+      <Button>
+        <Icon name="X" /> Save
+      </Button>
+    );
+    const btn = screen.getByRole('button', { name: 'Save' });
+    const svg = btn.querySelector('svg');
+    expect(svg).not.toBeNull();
+    expect(svg?.parentElement, 'the icon must stay a direct child of the button').toBe(btn);
+    const labels = btn.querySelectorAll(':scope > span.bb-label');
+    expect(labels).toHaveLength(1);
+    expect(labels[0].textContent?.trim()).toBe('Save');
+    expect(labels[0].querySelector('svg'), 'the label span must hold text only').toBeNull();
+  });
+
+  it('asChild renders the child element with no label span', () => {
+    render(
+      <Button asChild>
+        <a href="/x">Go</a>
+      </Button>
+    );
+    const link = screen.getByRole('link', { name: 'Go' });
+    expect(link.querySelector('.bb-label')).toBeNull();
+    expect(directText(link)).toBe('Go');
+  });
+
+  it('a numeric child is wrapped', () => {
+    render(<Button aria-label="count">{3}</Button>);
+    const btn = screen.getByRole('button', { name: 'count' });
+    const labels = btn.querySelectorAll(':scope > span.bb-label');
+    expect(labels).toHaveLength(1);
+    expect(labels[0].textContent).toBe('3');
+  });
+
+  it('a run of text and number children is ONE label span, so the words stay one flex item and keep their spaces', () => {
+    // The shape of src/app/gameDetail/page.js ("Show {Math.min(3, filteredEvents.length - visibleSessions)} More Sessions"):
+    // three children. A span per child would be three flex items with the .btn gap between them.
+    const n = 3;
+    render(<Button>Show {n} More Sessions</Button>);
+    const btn = screen.getByRole('button', { name: 'Show 3 More Sessions' });
+    const labels = btn.querySelectorAll(':scope > span.bb-label');
+    expect(labels).toHaveLength(1);
+    expect(labels[0].textContent).toBe('Show 3 More Sessions');
+    expect(btn.children).toHaveLength(1);
+  });
+
+  it('a run that is only white space stays bare text: no empty flex item, so no extra gap at normal text', () => {
+    // A flex container draws no box for white space between two elements; a span around it would
+    // be a flex item and add the .btn gap.
+    render(
+      <Button aria-label="pair">
+        <Icon name="X" /> <Icon name="Check" />
+      </Button>
+    );
+    const btn = screen.getByRole('button', { name: 'pair' });
+    expect(btn.querySelectorAll('svg')).toHaveLength(2);
+    expect(btn.querySelector('.bb-label')).toBeNull();
+    expect(btn.children).toHaveLength(2);
+  });
+
+  it('busy keeps the sr-only suffix outside the label span', () => {
+    render(<Button busy>Save</Button>);
+    const btn = screen.getByRole('button', { name: 'Save, saving' });
+    const labels = btn.querySelectorAll(':scope > span.bb-label');
+    expect(labels).toHaveLength(1);
+    expect(labels[0].textContent).toBe('Save');
+    const suffix = btn.querySelector(':scope > span.sr-only');
+    expect(suffix?.textContent).toBe(', saving');
+    expect(labels[0].contains(suffix)).toBe(false);
   });
 });

@@ -1221,7 +1221,11 @@ describe('ConfirmDialog — F9b delayed enable through the real hook (88.9-23)',
     });
     const typed = screen.getByRole('button', { name: 'Delete group' });
     expect(typed.querySelectorAll('[data-reserve]')).toHaveLength(0);
-    expect(typed.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+    // AMENDED Phase 89.6-06 (bb-label): the bare label is the Button's own label span and nothing
+    // else, chosen OVER the direct text node this read expected: Button now renders a text child
+    // inside span.bb-label. What the pin guards is unchanged: no reserve wrapper on the typed tier.
+    expect(typed.childNodes).toHaveLength(1);
+    expect((typed.firstChild as Element | null)?.className).toBe('bb-label');
     expect(typed.firstChild?.textContent).toBe('Delete group');
   });
 });

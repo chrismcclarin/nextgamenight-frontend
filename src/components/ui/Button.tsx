@@ -1,5 +1,15 @@
 'use client';
 
+/** @jsxImportSource react */
+/* DECISION Phase 89.6-06 (jsx-source): the line above names React as this file's JSX source, chosen
+   OVER leaving it unsaid (React is the default in Next and Vitest, so the line looks redundant).
+   Playwright's own transform compiles the JSX of every file a spec imports against its
+   component-testing runtime unless the file names a source, and react-dom/server then cannot
+   render this component for e2e/primitives-large-text.spec.ts ("DECISION Phase 89.6-06 (primitives-spec)"):
+   it throws Objects are not valid as a React child, found an object with the key __pw_type
+   (measured 2026-11-24 on Playwright 1.60.0). Next and Vitest already compile this file against
+   React, so nothing they build changes. Removing the line is a decision, not a cleanup. */
+
 /**
  * Button — the one button primitive (PRIM-01 / D-01 elevation, D-02 variants).
  *
@@ -326,6 +336,41 @@ export interface ButtonProps
   busySuffix?: string;
 }
 
+/**
+ * Children with every run of consecutive string or number children gathered into ONE label span;
+ * any other child (an icon, an sr-only span) is handed back as it is. A run that is only white
+ * space stays bare text: a flex container draws no box for it, and a span around it would become
+ * a flex item and add the .btn gap, a look change at normal text. See the bb-label marker on the
+ * render below.
+ */
+function withLabelSpans(children: React.ReactNode): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  let run = '';
+  const flush = () => {
+    if (run === '') return;
+    out.push(
+      run.trim() === '' ? (
+        run
+      ) : (
+        <span key={`bb-label-${out.length}`} className="bb-label">
+          {run}
+        </span>
+      )
+    );
+    run = '';
+  };
+  for (const child of React.Children.toArray(children)) {
+    if (typeof child === 'string' || typeof child === 'number') {
+      run += String(child);
+    } else {
+      flush();
+      out.push(child);
+    }
+  }
+  flush();
+  return out;
+}
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
     {
@@ -361,6 +406,16 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
        latches. Not applied under asChild (Slot takes one child). Changing any of this is a decision,
        not a cleanup.
        AMENDED Phase 88.9-54 (owner ruling R-C3b, 88.9-RULINGS.md, 2026-11-10): the Spinner now renders through DelayedSpinner (useDelayedSpinner: 200 ms appear delay, 500 ms minimum hold — the numbers and their measured basis live on that hook's marker), mounted only when a caller passes busy (41 of 207 Button mounts at 35d5348), so a resting Button pays nothing; aria-disabled and the sr-only suffix stay immediate so the refusal and the heard name never wait. The Spinner is MOUNTED on show, chosen OVER a reserved invisible slot (a sub-200 ms write would twitch the control's width by the spinner's 16 px plus the btn gap, the very jump rule 1 ends). ConfirmDialog's confirm and Modal.Action inherit this through Button; asChild is still untouched (no Spinner there). Every raw-host Spinner site outside Button takes the same element in plan 88.9-56. */
+    /* DECISION Phase 89.6-06 (bb-label): text children render inside a .bb-label span, chosen OVER
+       bare text (an anonymous flex item that cannot shrink below its longest word, so 'Member'
+       spilled 4px out of Invite Member at 320 / 200%, research M F4) and OVER a whitespace or width
+       rule per call site. Elements (icons) stay direct children; asChild is untouched (Slot takes
+       one child). Each RUN of consecutive string or number children is ONE span, chosen OVER a span
+       per child: JSX like Show, a number, More Sessions is three children, and three spans would be
+       three flex items with the .btn gap between them and their edge spaces dropped, a look change
+       at normal text. The rule itself is src/app/globals.css ("DECISION Phase 89.6-02 (bb-label-rule)").
+       GR: the label wraps inside its control, never spills or is cut. Changing this is a decision,
+       not a cleanup. */
     return (
       <Comp
         ref={ref}
@@ -374,7 +429,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           children
         ) : (
           <>
-            {children}
+            {withLabelSpans(children)}
             {tracksBusy ? <DelayedSpinner busy={busy} /> : null}
             {busy ? <span className="sr-only">{busySuffix}</span> : null}
           </>

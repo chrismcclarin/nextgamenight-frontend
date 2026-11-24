@@ -1888,7 +1888,10 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     // "" for a hidden node; measured 2026-11-10). The pin reads the button's own parts: the kept
     // label as its whole text, and no sr-only busy suffix (the spinner's absence is pinned by the
     // X13-8 test below, past the spinner's 200 ms appear delay).
-    const opener = (await screen.findByText('Reset invite link', { selector: 'button' })) as HTMLElement;
+    // AMENDED Phase 89.6-06 (bb-label): the opener is found through its label span, chosen OVER the
+    // text-in-button query this read used: a Button's text now sits in span.bb-label, so no button
+    // holds the text node itself. The kept-label pin below still reads the button's whole text.
+    const opener = (await screen.findByText('Reset invite link', { selector: 'button .bb-label' })).closest('button') as HTMLElement;
     await waitFor(() => expect(opener).toHaveAttribute('aria-disabled', 'true'));
     expect(opener.textContent).toBe('Reset invite link');
     expect(opener.querySelector('.sr-only')).toBeNull();
@@ -1914,7 +1917,8 @@ describe('ManageMembers 88.6.1-50 — copy row G1 and the reset opener (D-30, W0
     fireEvent.click(await screen.findByRole('button', { name: 'Reset invite link' }));
     const confirm = await liveConfirm('Reset link');
     fireEvent.click(confirm);
-    const opener = (await screen.findByText('Reset invite link', { selector: 'button' })) as HTMLElement;
+    // AMENDED Phase 89.6-06 (bb-label): found through the label span, as in the RS1 test above.
+    const opener = (await screen.findByText('Reset invite link', { selector: 'button .bb-label' })).closest('button') as HTMLElement;
     const spinnersIn = (el: ParentNode) => el.querySelectorAll('[data-slot="spinner"]').length;
 
     // During the write: the pressed control carries the one spinner (R-C3a) once its 200 ms

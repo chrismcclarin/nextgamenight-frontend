@@ -57,12 +57,12 @@ describe('Spinner + Button busy (88.9-24, save-feedback rule 1)', () => {
   it("rule 1 (88.9): a busy Button keeps its label, shows the spinner and is named '<label>, saving'", () => {
     const { container } = render(<Button busy>Save</Button>);
     const button = screen.getByRole('button', { name: 'Save, saving' });
-    // The visible label never changes: the only visible text node is the label.
-    const visible = Array.from(button.childNodes)
-      .filter((n) => n.nodeType === Node.TEXT_NODE)
-      .map((n) => n.textContent)
-      .join('');
-    expect(visible).toBe('Save');
+    // The visible label never changes.
+    // AMENDED Phase 89.6-06 (bb-label): the label is read from the label span, chosen OVER the
+    // button's direct text nodes this read used: the text now sits in span.bb-label, so the button
+    // has no direct text node left (the sr-only suffix stays outside the span).
+    expect(button.querySelector('.bb-label')?.textContent).toBe('Save');
+    expect(Array.from(button.childNodes).filter((n) => n.nodeType === Node.TEXT_NODE)).toHaveLength(0);
     expect(button.getAttribute('aria-disabled')).toBe('true');
     act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS)); // AMENDED Phase 88.9-54 (R-C3b): waits for the 200 ms appear
     expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
@@ -133,11 +133,9 @@ describe('Button busy is delayed and held (88.9-54, R-C3b)', () => {
     const { container } = render(<Button busy>Save</Button>);
     const button = screen.getByRole('button', { name: 'Save, saving' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
-    const visible = Array.from(button.childNodes)
-      .filter((n) => n.nodeType === Node.TEXT_NODE)
-      .map((n) => n.textContent)
-      .join('');
-    expect(visible).toBe('Save');
+    // AMENDED Phase 89.6-06 (bb-label): read from the label span, as in the rule 1 test above.
+    expect(button.querySelector('.bb-label')?.textContent).toBe('Save');
+    expect(Array.from(button.childNodes).filter((n) => n.nodeType === Node.TEXT_NODE)).toHaveLength(0);
     expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
     act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS - 1));
     expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0);
