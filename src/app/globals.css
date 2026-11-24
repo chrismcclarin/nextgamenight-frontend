@@ -2946,8 +2946,14 @@ body {
   /* DECISION Phase 88-24: this 24px is the FALLBACK, not the shipped value. All 28
      `.card` call sites author `p-3 md:p-6` (12px phone / 24px desktop) and every one
      of them is load-bearing — deleting a call site's `p-*` silently doubles its phone
-     padding to this value. Full reasoning at the marker in gameDetail/page.js. */
-  padding: 1.5rem;
+     padding to this value. Full reasoning at the marker in gameDetail/page.js.
+     AMENDED Phase 89.6-05 (O-M1): owner pick O-M1 = D, 2026-11-22 ('Edges stay thin (16px page
+     edge, 12px card edge)'): the fallback is the edge-wide token, 24px at every text size, chosen
+     OVER 1.5rem, which a site that lost its padding utility would draw at 48px with 200% text.
+     Identical at normal text. Every call site still authors its own padding (the trap above
+     stands; src/app/cardPaddingIdiom.test.ts ("site with NO padding utility") guards it); plan
+     89.6-15 moves the call sites onto the edge tokens. */
+  padding: --theme(--spacing-edge-wide);
   transition: var(--theme-transition);
 
   /* HISTORY, kept as written; the hover block it sat in is gone (see the amendment at its end).

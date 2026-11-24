@@ -86,12 +86,21 @@ const SENTINEL_SOURCE = 'src/lib/ci-grep-gate.fixture.test.ts';
  * `../lib/**` deliberately has no entry: its whole non-test surface is data and helpers, so
  * there is no utility it uniquely sources. Saying so is better than pinning a class that
  * happens to appear there today and silently stops.
+ *
+ * AMENDED Phase 89.6-05 (R6-step): the five bb- entries are not origin pins (all come from
+ * globals.css itself); they prove the building blocks the CI matrix renders from source also
+ * ship in the production bundle, because the matrix compiles its own CSS (research M F6).
  */
 const REQUIRED = [
   'bg-status-error-subtle',
   'border-input',
   'btn',
   'text-sm',
+  'bb-row',
+  'bb-cluster',
+  'bb-media',
+  'bb-columns',
+  'bb-frame',
 ];
 
 function chunkFiles() {
