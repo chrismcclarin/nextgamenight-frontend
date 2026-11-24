@@ -189,7 +189,7 @@ async function washBadge(page: Page, theme: Theme): Promise<void> {
   // is red (3.56 at the .29 step).
   // The week-strip aggregate is deliberately NOT read here: the strip renders only at phone width,
   // src/app/components/EventScheduler.tsx ("{isPhoneViewport && (") on the query in
-  // src/lib/hooks/usePhoneViewport.ts ("PHONE_MEDIA_QUERY = '(max-width: 767px)'"), so a 1280 strip read could
+  // src/lib/hooks/usePhoneViewport.ts ("export const PHONE_MEDIA_QUERY = '(width < 48rem)'"), so a 1280 strip read could
   // never pass. Its absence is not a gap; the strip is pinned at 375 in e2e/contrast.spec.ts.
   await openPage(page, GROUP_PAGE, theme);
   await openCreateEventDialog(page);

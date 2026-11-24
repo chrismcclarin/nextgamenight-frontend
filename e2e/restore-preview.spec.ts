@@ -150,12 +150,18 @@ test.describe('Phase 87.8 R7 — group-restore preview at phone width (phone pro
        REJECTED — reverting `Heading` to `break-words` to satisfy this spec: it would pin the WEAKER
        mechanic, the one that cannot stop the overflow this test exists to catch, and it would
        contradict the owner ruling.
-       Changing this value back is a decision, not a cleanup. */
+       Changing this value back is a decision, not a cleanup.
+       AMENDED Phase 89.6-06 (heading-wrap): the base is now wrap-break-word with max-w-full. The 2026-09-21
+       ruling ('the phase's choice stands') is superseded by the owner's governing rule of
+       2026-11-22 ('Nothing is squeezed, shrunk, cut or broken to avoid stacking'). anywhere lowers
+       min-content and lets a heading in a flex row shrink into a letter-stack (research M F3),
+       while max-w-full keeps the overflow this test guards against from happening. The right-edge
+       read below is still the overflow guard. Changing this back is a decision, not a cleanup. */
     const overflowWrap = await groupName.evaluate((node) => getComputedStyle(node).overflowWrap);
     expect(
       overflowWrap,
-      `the group-name h1 computes overflow-wrap: ${overflowWrap}, expected anywhere — the Heading primitive's cva base carries wrap-anywhere (src/components/ui/Heading.tsx ("const headingVariants = cva(")), chosen over break-words because a break-word value does not count in min-content and therefore cannot stop a long unbroken group name widening its flex/grid cell`,
-    ).toBe('anywhere');
+      `the group-name h1 computes overflow-wrap: ${overflowWrap}, expected break-word. The Heading primitive's cva base carries wrap-break-word with max-w-full (src/components/ui/Heading.tsx ("const headingVariants = cva(")), chosen over wrap-anywhere in Phase 89.6-06: anywhere lowers min-content, so a heading in a flex row shrank into a letter-stack at 200% text; max-w-full is what keeps a long unbroken group name inside its cell, and the right-edge read below is the guard for that`,
+    ).toBe('break-word');
 
     // And the rendered box itself stays inside the viewport.
     const box = await groupName.boundingBox();

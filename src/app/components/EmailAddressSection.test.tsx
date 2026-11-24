@@ -1924,8 +1924,11 @@ describe('EmailAddressSection — 88.6-38: headings on the primitive, with the i
        the rung contract of UI-SPEC §4.1 ("`text-xl leading-tight` … 1.25"), which the raw
        heading was NOT honouring. `wrap-anywhere` is inert on a one-word title that never
        wraps; `leading-tight` is a real ~3px line-box change on that one line. */
+    // AMENDED Phase 89.6-06 (heading-wrap): the cva base the note above names is now
+    // wrap-break-word with max-w-full, chosen OVER wrap-anywhere (it let a heading in a flex row
+    // shrink into a letter-stack at 200% text). Both are just as inert on this one-word title.
     expect(heading.className.split(/\s+/).sort()).toEqual(
-      ['font-bold', 'leading-tight', 'mb-1', 'text-content-primary', 'text-xl', 'wrap-anywhere'].sort()
+      ['font-bold', 'leading-tight', 'max-w-full', 'mb-1', 'text-content-primary', 'text-xl', 'wrap-break-word'].sort()
     );
   });
 });

@@ -26,7 +26,8 @@
  *   does not add one; import from `@/components/ui/Heading`.
  * - **No ref-as-prop.** Phase 90's React 19 codemod converts every primitive
  *   together; pre-adopting here would split that codemod's blast radius.
- * - **No ellipsis and no clipping.** The base carries `wrap-anywhere` and none of
+ * - **No ellipsis and no clipping.** The base carries `wrap-break-word` with `max-w-full`
+ *   (AMENDED Phase 89.6-06: it carried `wrap-anywhere`; see the base note below) and none of
  *   `truncate` / `line-clamp-*` / `text-ellipsis` / `whitespace-nowrap`. A caller
  *   that wants `truncate` is making a per-site decision and leaves a `DECISION`
  *   marker at that site. The three former truncating headings all chose WRAP under
@@ -57,12 +58,13 @@ import { cn } from '@/lib/cn';
    inexpressible. The precedent is `EmptyState.tsx:83-90`, which already made this exact call for
    one surface; this primitive is the third writing of it and therefore the place it stops being
    duplicated. Splitting size back out of this prop, or folding it back in, is a decision, not a cleanup.
+   AMENDED Phase 89.6-06: the shared base wrap changed (see the base note); level and size stay independent.
 
    `level` reaches 6 — not 1-4 — because `CalendarListView.js:1020-1027`'s
    `DECISION Phase 88.5 (DR2-7b)` marker deliberately renders h5/h6 through the
    `headingLevel` / `rowHeadingLevel` seam (`:767-768`, `:792-793`, `:1044-1045`, `:1064`) so that
    no two structurally-nested headings share a level. A 1-4 primitive would bulldoze that. */
-const headingVariants = cva('font-bold wrap-anywhere', {
+const headingVariants = cva('font-bold wrap-break-word max-w-full', {
   variants: {
     size: {
       display: 'text-3xl leading-tight', // 30
@@ -84,7 +86,16 @@ const headingVariants = cva('font-bold wrap-anywhere', {
    THIS BASE SUPERSEDES the `cva('font-bold', …)` skeleton still shown in `88.6-RESEARCH.md`
    § Code Examples and in `88.6-PATTERNS.md`; do not restore the wrap-less base on the grounds
    that a doc shows it. The class-list half is pinned in `Heading.test.tsx`; the real 375px
-   geometry half is plan 12's planted phone arm (E5), because jsdom performs no layout. */
+   geometry half is plan 12's planted phone arm (E5), because jsdom performs no layout.
+   AMENDED Phase 89.6-06 (heading-wrap): the base is now wrap-break-word with max-w-full, chosen
+   OVER wrap-anywhere, which this note chose and whose min-content effect is the defect: anywhere
+   lowers min-content, so a heading in a flex row shrinks into a letter-stack at 200% text
+   (research M F3; HR-1 in src/app/globals.css ("DECISION Phase 89.6-02 (HR-1)") now stops the
+   long-token sideways scroll this note guarded against, and max-w-full caps the heading to its
+   container). This reverses the owner ruling of 2026-09-21 (88.6-SPEC Amendments row 30(c),
+   'Heading keeps wrap-anywhere') under the owner's governing rule of 2026-11-22 ('Nothing is
+   squeezed, shrunk, cut or broken to avoid stacking'). The do-not-restore instruction above still
+   holds for the wrap-less base. Changing this back is a decision, not a cleanup. */
 
 type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 

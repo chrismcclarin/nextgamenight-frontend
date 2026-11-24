@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import AvailabilityGrid from './AvailabilityGrid';
 import { utcToWallClock } from '@/lib/datetime';
+import { PHONE_MEDIA_QUERY } from '@/lib/hooks/usePhoneViewport';
 
 afterEach(cleanup);
 
@@ -638,7 +639,9 @@ describe('88.6.1-39 (D-14 / D-45, AC-24) — the count is spoken ONCE, when a ge
 
 // Plan 88.6.1-39 (D-16 / D-33 rows 11 and 17, copy rows A1 / A3 / A4). A local media stub for
 // the phone arm, modelled on EventScheduler.test.tsx's stubMatchMedia (FE-TESTING-CONVENTIONS
-// C-2): it answers any query naming max-width 767px with `matches`, every other query false,
+// C-2): it answers the phone hook's own query with `matches`, every other query false
+// (AMENDED Phase 89.6-06 (phone-query): matched on the PHONE_MEDIA_QUERY constant, chosen OVER
+// the literal this stub re-typed, so the stub cannot drift from the hook again),
 // captures the change handler the shared phone hook registers, and must be installed BEFORE
 // render and restored in a finally.
 function stubPhoneMedia(matches: boolean) {
@@ -646,11 +649,11 @@ function stubPhoneMedia(matches: boolean) {
   let handler: ((event: { matches: boolean }) => void) | null = null;
   window.matchMedia = ((query: string) =>
     ({
-      matches: query.includes('max-width: 767px') ? matches : false,
+      matches: query === PHONE_MEDIA_QUERY ? matches : false,
       media: query,
       onchange: null,
       addEventListener: (_type: string, cb: (event: { matches: boolean }) => void) => {
-        if (query.includes('max-width: 767px')) handler = cb;
+        if (query === PHONE_MEDIA_QUERY) handler = cb;
       },
       removeEventListener: () => {},
       addListener: () => {},

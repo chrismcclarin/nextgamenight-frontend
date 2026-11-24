@@ -9,7 +9,8 @@
  *
  * THE BREAKPOINT (moved here from EventScheduler.tsx by 88.6.1-09): the line every
  * phone/desktop render fork that reads this hook branches on — Tailwind's `md`, so "md and below"
- * is `max-width: 767px`. Until Phase 88.9-52 (R4 C1) the same query was also read imperatively
+ * was `max-width: 767px` (AMENDED Phase 89.6-06: the query is now the rem range form of the same
+ * line, 48rem; see the phone-query marker below). Until Phase 88.9-52 (R4 C1) the same query was also read imperatively
  * by the game title's two expand handlers: a one-shot read of the current match inside a click,
  * with no state and no subscription. Those handlers went when the title's clamp did
  * (src/app/gameDetail/page.js ("AMENDED Phase 88.9-52 (R4 C1, accessibility once-over A2, owner 2026-11-18): the TITLE")),
@@ -77,10 +78,16 @@
        `stubMatchMedia`); jsdom's global stub answers false (`vitest.setup.ts:23-35`), so a test
        with no stub renders the desktop arm. */
 
+/* DECISION Phase 89.6-06 (phone-query): the phone query is the rem range form Tailwind v4 writes
+   for md, chosen OVER the px max-width query, because a reader who enlarges the browser's default
+   font moves every CSS md breakpoint (48rem) but not a px query, so the JS arm and the CSS
+   disagreed (research M F1b). The range syntax needs Safari 16.4, the same floor Tailwind v4's own
+   md variant already needs. Changing this is a decision, not a cleanup. */
+
 import { useEffect, useState } from 'react';
 
 /** Tailwind `md` and below — the phone/desktop line (see the docblock above). */
-export const PHONE_MEDIA_QUERY = '(max-width: 767px)';
+export const PHONE_MEDIA_QUERY = '(width < 48rem)';
 
 /** `false` on the server and the first client render, then the live phone-viewport match. */
 export function usePhoneViewport(): boolean {

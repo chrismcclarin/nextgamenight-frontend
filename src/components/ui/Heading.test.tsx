@@ -9,7 +9,9 @@
 //   2. the four sizes are the §4.1 rungs, and every one of them is 700
 //   3. empty children render NO element at all (SPEC AC-3) — and the element that
 //      vanishes takes its `id` with it, which is a live a11y hazard, pinned below
-//   4. the base WRAPS and never clips — `wrap-anywhere` at every rung
+//   4. the base WRAPS and never clips — `wrap-break-word` with `max-w-full` at every rung
+//      (AMENDED Phase 89.6-06 (heading-wrap): it was `wrap-anywhere`; why is at
+//      src/components/ui/Heading.tsx ("AMENDED Phase 89.6-06 (heading-wrap)"))
 //   5. the three untyped-caller hazards plan 36 makes reachable are closed: an
 //      out-of-range `level`, a forced `dangerouslySetInnerHTML` (T-88.6-05), and a
 //      `level` naming an Object.prototype key such as "constructor" (W074)
@@ -247,16 +249,21 @@ describe('Heading — wraps, never clips', () => {
     );
     const el = container.querySelector('h2');
     expect(el).not.toBeNull();
-    expect(el).toHaveClass('wrap-anywhere');
+    expect(el).toHaveClass('wrap-break-word');
+    expect(el).toHaveClass('max-w-full');
+    expect(el).not.toHaveClass('wrap-anywhere');
   });
 
   it('puts the wrap utility on the BASE, not on any single size variant', () => {
     for (const [size] of RUNGS) {
-      expect(headingVariants({ size })).toContain('wrap-anywhere');
+      expect(headingVariants({ size })).toContain('wrap-break-word');
+      expect(headingVariants({ size })).toContain('max-w-full');
+      expect(headingVariants({ size })).not.toContain('wrap-anywhere');
       expect(headingVariants({ size })).toContain('font-bold');
     }
     // and on the bare call too, so a future size variant inherits it
-    expect(headingVariants()).toContain('wrap-anywhere');
+    expect(headingVariants()).toContain('wrap-break-word');
+    expect(headingVariants()).toContain('max-w-full');
   });
 
   it('carries no clip or ellipsis utility at any rung', () => {

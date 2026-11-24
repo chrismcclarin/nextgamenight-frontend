@@ -268,6 +268,7 @@ import { ApiError } from '@/lib/api';
 // beside-retry form (messageBesideRetry over the register line).
 import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
+import { PHONE_MEDIA_QUERY } from '@/lib/hooks/usePhoneViewport';
 import { availabilityKeys } from '@/lib/queryKeys/availabilityKeys';
 import { QueryClientContext, hashKey } from '@tanstack/react-query';
 import { UNAVAILABLE_COPY } from '@/app/components/EmailAddressSection';
@@ -1658,7 +1659,8 @@ describe('userProfile type scale (Req 2)', () => {
     for (const attrs of h4s) expect(attrs).toMatch(/\bsize="body"/);
   });
 
-  // A-1: the page title WRAPS. `Heading`'s base is `wrap-anywhere`, and a call-site
+  // A-1: the page title WRAPS. `Heading`'s base is `wrap-break-word` with `max-w-full`
+  // (AMENDED Phase 89.6-06 (heading-wrap): it was `wrap-anywhere`), and a call-site
   // `truncate` would be a clip policy fighting it.
   it('leaves no clip utility on the page title', async () => {
     const source = await pageSource();
@@ -6497,11 +6499,14 @@ describe('collection bar and dark card fill (88.9-68: X52d, X56c)', () => {
     NAMES.slice(0, count).map((name, index) => ({ id: `shelf-${index + 1}`, name, year_published: 2001 + index, image_url: null }));
 
   // The usePhoneViewport query answers true (a phone) or false; every other query answers false.
+  // AMENDED Phase 89.6-06 (phone-query): matched on the hook's own constant, chosen OVER the
+  // literal this stub re-typed, so the stub cannot drift from the hook again (it would have
+  // answered false to the new rem query and rendered the desktop arm, silently).
   let restoreMedia: (() => void) | undefined;
   function stubPhoneViewport(isPhone: boolean) {
     const original = window.matchMedia;
     window.matchMedia = ((query: string) => ({
-      matches: isPhone && query.includes('max-width: 767px'),
+      matches: isPhone && query === PHONE_MEDIA_QUERY,
       media: query,
       onchange: null,
       addEventListener: () => {},

@@ -69,7 +69,8 @@ describe('ErrorFallback', () => {
     // not a raw tag that happens to carry the same size. It is RED against the pre-migration
     // `<h1 className="text-xl font-bold text-content-primary">`.
     expect(heading, '700 from the primitive base, not from the call site').toHaveClass('font-bold');
-    expect(heading, 'wrap utility from the primitive base').toHaveClass('wrap-anywhere');
+    // AMENDED Phase 89.6-06 (heading-wrap): the base wrap is wrap-break-word (it was wrap-anywhere).
+    expect(heading, 'wrap utility from the primitive base').toHaveClass('wrap-break-word');
     expect(heading).toHaveClass('leading-tight');
     expect(heading).toHaveClass('text-content-primary');
   });

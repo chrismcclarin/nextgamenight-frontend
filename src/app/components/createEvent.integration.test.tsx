@@ -162,6 +162,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import CreateEvent from './createEvent';
+import { PHONE_MEDIA_QUERY } from '@/lib/hooks/usePhoneViewport';
 
 const EMPTY_HEATMAP = { slots: [], totalMembers: 0, totalGroupMembers: 2, membersWithoutDataCount: 2 };
 
@@ -450,16 +451,17 @@ describe('CreateEvent + real EventScheduler — the Phase 66-01 controlled round
 // DELIBERATE COPY, not an accident: `stubMatchMedia` duplicates the shape at
 // `EventScheduler.test.tsx`'s `function stubMatchMedia(`. That helper is file-local and NOT exported; exporting it
 // from a `.test.tsx` to import here would make one suite's harness load-bearing for another's.
-// If the media-query fork ever changes, both copies change. (Hoisted to file scope by 88.6-44:
+// If the media-query fork ever changes, both copies change.
+// AMENDED Phase 89.6-06 (phone-query): it changed (the phone query is rem now), and both copies
+// now key on the hook's PHONE_MEDIA_QUERY constant instead of parsing a px value out of the
+// query, so neither can drift from the hook again. (Hoisted to file scope by 88.6-44:
 // the CR-01 describe below and the composed audit at the end of the file share this ONE copy.)
 function stubMatchMedia() {
   const original = window.matchMedia;
   window.matchMedia = ((query: string) => {
-    const widthMatch = /max-width:\s*(\d+)px/.exec(query);
-    // Phone arm: 375px, coarse pointer.
-    const matches = widthMatch
-      ? 375 <= Number(widthMatch[1])
-      : query.includes('hover: none');
+    // Phone arm: 375px, coarse pointer. This stub is the phone arm only, so the hook's query
+    // answers true.
+    const matches = query === PHONE_MEDIA_QUERY || query.includes('hover: none');
     return {
       matches,
       media: query,
@@ -817,7 +819,7 @@ describe('createEvent — the paint-gesture flag is WRITTEN here and subscribed 
 //
 // TWO media-query forks exist on this audited tree and BOTH are audited by stub, not by
 // resize: `createEvent.js` reads `matchMedia('(hover: none)')` (swipe gating), and the real
-// `EventScheduler` forks its layout on `max-width` (the DAY arm below `md`). The desktop arm is
+// `EventScheduler` forks its layout on PHONE_MEDIA_QUERY (the DAY arm below `md`). The desktop arm is
 // the setup-file stub (`matches: false` for every query); the phone arm is `stubMatchMedia`
 // above (375px + coarse pointer). jsdom has no layout and neither rule is viewport-dependent,
 // so a resize would measure nothing.
@@ -880,6 +882,8 @@ describe('createEvent — R7 composed axe audit + house rule + focus contract (8
   it('2. PHONE fork (375px + hover:none — createEvent.js swipe gating and the EventScheduler DAY arm) passes the same three', async () => {
     restoreMatchMedia = stubMatchMedia();
     await auditThisFork();
+    // 89.6-06 (phone-query): the audited tree really is the phone arm, one day column.
+    expect(columnHeaders()).toHaveLength(1);
   });
 
   it('3. MANUAL-ENTRY branch: passes both rules and the house rule; the four hand-wired controls carry `name`', async () => {

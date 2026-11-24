@@ -122,6 +122,7 @@ vi.mock('@/lib/hooks/usePhoneViewport', async (importOriginal) => {
 
 import type { ComponentType } from 'react';
 import EventSchedulerDefault from './EventScheduler';
+import { PHONE_MEDIA_QUERY } from '@/lib/hooks/usePhoneViewport';
 
 // EventScheduler is still a `.js` component (the FE is mid JS->TS migration, WS-12), so its
 // INFERRED prop type marks every prop required and narrows the defaulted ones to `null`.
@@ -675,12 +676,12 @@ const AXE_VIEWPORTS: AxeViewport[] = [
 function stubMatchMedia({ hoverNone, maxWidth }: AxeViewport) {
   const original = window.matchMedia;
   window.matchMedia = ((query: string) => {
-    const widthMatch = /max-width:\s*(\d+)px/.exec(query);
-    const matches = widthMatch
-      ? maxWidth <= Number(widthMatch[1])
-      : query.includes('hover: none')
-        ? hoverNone
-        : false;
+    // AMENDED Phase 89.6-06 (phone-query): the phone query is matched on the hook's own constant
+    // and answered by the viewport (768 = 48rem at the 16px default), chosen OVER parsing a px
+    // value out of the query: the query is rem now, so the parse found nothing and the phone arm
+    // rendered the desktop grid. Never a bare match on the constant: this stub also serves the
+    // desktop viewport, which must answer false.
+    const matches = query === PHONE_MEDIA_QUERY ? maxWidth < 768 : query.includes('hover: none') ? hoverNone : false;
     return {
       matches,
       media: query,
@@ -725,6 +726,10 @@ describe.each(AXE_VIEWPORTS)('EventScheduler — axe on the $name arm (Req 6)', 
       ).toHaveNoViolations();
       const dayHeaders = within(container).getAllByRole('columnheader');
       expect(dayHeaders.length).toBeGreaterThan(0);
+      // 89.6-06 (phone-query): the arm really is the one the viewport names. One day column on the
+      // phone arm, seven on the desktop arm; a stub that stops answering the hook's query would
+      // render the desktop grid on the phone arm and this audit would pass on the wrong tree.
+      expect(dayHeaders).toHaveLength(viewport.name === 'phone' ? 1 : 7);
       for (const header of dayHeaders) {
         expect(header.getAttribute('aria-label') ?? '').toMatch(/^[A-Z][a-z]+day \d{1,2}$/);
         expect(header).toHaveAttribute('tabindex', '-1');

@@ -558,7 +558,7 @@ const REVIEWS_HEADING = (h: Heading) =>
 //  - SUPPLY   rules are RAW-ONLY. Plan 03 puts the rung AND the weight inside the
 //             primitive
 //             (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-03-PLAN.md ("Task 2: Implement Heading.tsx on the Button idiom")
-//             and src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'"): the cva base is `font-bold`, the
+//             and src/components/ui/Heading.tsx ("cva('font-bold wrap-break-word max-w-full'"): the cva base is `font-bold`, the
 //             `size` variant supplies `text-3xl`/`text-xl`/`text-base`/`text-sm`), so a
 //             migrated call site's own className carries neither and would be a NEW
 //             offender on two rules while absent from a roster seeded from current
@@ -1128,11 +1128,11 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
 const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-23 task 3 (wave 7, 2026-09-16): the same two headings as the
   // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
-  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'")) rather than a stated
+  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-break-word max-w-full'")) rather than a stated
   // utility. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): the same seven headings as the
   // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
-  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'")) rather than a stated
+  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-break-word max-w-full'")) rather than a stated
   // utility. Entries DELETED, not zeroed.
   // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): the same `<h3>` at `:97` as the
   // heading-semibold roster above. Its 700 now comes from the primitive's `font-bold` base
@@ -1149,7 +1149,7 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): same three headings as the
   // heading-semibold roster above. The 700 now comes from the primitive's `font-bold` base
-  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'")) rather than from a stated
+  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-break-word max-w-full'")) rather than from a stated
   // utility, and a migrated heading leaves this
   // RAW-only population. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupGamesList.js`
@@ -1202,7 +1202,7 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // `Heading.test.tsx`). Entry DELETED, not zeroed.
   // DELETED by plan 88.6-24 task 2 (wave 7, 2026-09-16): the same two headings as the
   // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
-  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-anywhere'")) rather than a stated
+  // (src/components/ui/Heading.tsx ("cva('font-bold wrap-break-word max-w-full'")) rather than a stated
   // utility. Entry DELETED, not zeroed.
 };
 

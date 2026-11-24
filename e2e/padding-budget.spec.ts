@@ -310,7 +310,8 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
      breakable characters, backend scripts/e2e-fixtures.js) and never overflows, and the h1
      renders its fallback "Plan Game Session" BEFORE the group GET resolves — so a guard that
      waited for any level-1 heading would measure a short string and stay green whether or not
-     the primitive's wrap-anywhere survives. The real group GET is fetched and fulfilled with
+     the primitive's wrap (wrap-break-word with max-w-full since Phase 89.6-06; it was
+     wrap-anywhere) survives. The real group GET is fetched and fulfilled with
      only its name replaced (the month-tile-desktop.spec.ts rewrite idiom), and the reads wait
      for the NAME-BEARING title. The predicate matches ONLY the exact group read — the members
      read is /groups/:id/users and must not be touched.
@@ -318,7 +319,8 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
      FOUR reads, each catching a different regression: (i) the h1's right edge inside the
      viewport; (ii) no page-level horizontal scroll; (iii) the h1 is taller than one line —
      re-adding the old ellipsis clip collapses it to one; (iv) the h1's own content does not
-     overflow its box. (iv) is the one that catches wrap-anywhere being dropped: without it the
+     overflow its box. (iv) is the one that catches the wrap (wrap-break-word with max-w-full
+     since Phase 89.6-06; it was wrap-anywhere) being dropped: without it the
      title still wraps at its spaces (so (iii) holds) and the element box stays inside its
      column (so (i) holds) while the 80 W's run out past it. CI-only — no .auth/ locally. */
   test('groupPlanning page title: an 80-character unbroken group name wraps inside the 375px viewport — no horizontal overflow (88.6-53)', async ({ page }) => {
@@ -375,7 +377,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
     expect(
       metrics.scrollWidth,
       `the title's content overflows its box (${metrics.scrollWidth} > ${metrics.clientWidth}) — ` +
-        'the unbroken name did not break; check the Heading primitive still carries wrap-anywhere',
+        'the unbroken name did not break; check the Heading primitive still carries wrap-break-word with max-w-full (it was wrap-anywhere before Phase 89.6-06)',
     ).toBeLessThanOrEqual(metrics.clientWidth);
   });
 

@@ -179,7 +179,7 @@ describe('usePhoneViewport — the hook contract (88.6.1-09, D-16)', () => {
     for (const call of spy.mock.calls) {
       expect(call).toEqual([PHONE_MEDIA_QUERY]);
     }
-    expect(PHONE_MEDIA_QUERY).toBe('(max-width: 767px)');
+    expect(PHONE_MEDIA_QUERY).toBe('(width < 48rem)');
   });
 });
 
@@ -252,7 +252,9 @@ describe('one phone-viewport mechanism (88.6.1-09, D-16)', () => {
   });
 
   it('VP-C2. the phone breakpoint literal appears in code only on the owned roster, exactly', () => {
-    const { counts, scanned } = measure(/max-width:\s*767px/g);
+    // AMENDED Phase 89.6-06 (phone-query): the literal counted is the rem query between quotes (it
+    // was the px max-width form). The quotes keep a CSS media rule in a string out of the count.
+    const { counts, scanned } = measure(/['"`]\(width < 48rem\)['"`]/g);
     expect(scanned).toBeGreaterThan(100);
     expect(assertRosterShape(PHONE_QUERY_LITERAL_SITES)).toEqual([]);
     expect(

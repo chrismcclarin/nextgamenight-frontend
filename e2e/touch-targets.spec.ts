@@ -1543,14 +1543,16 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      companions a red should be read against:
        - E1: plan 06's `Button.test.tsx` pin that the cva base carries no `truncate`;
        - E5: plan 03's `Heading.test.tsx` class-list pin that the cva base carries `wrap-anywhere`.
+         AMENDED Phase 89.6-06 (heading-wrap): the base, and that pin, are now wrap-break-word with max-w-full;
+         max-w-full is what keeps the box inside its container.
 
      PLANTED, in ONE container whose 375px width comes from an INLINE `style` and never from a
      Tailwind class: `e2e/` is outside the three `@source` globs (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit")), so a
      class only this file wears is never emitted and a probe wearing it measures nothing. For the
      same reason every class the probes wear is one `src/` already emits — `btn`/`btn-primary`
      from the shipped CTAs, `min-h-11` from the `Button` cva base, and
-     `font-bold wrap-anywhere text-xl leading-tight` from `Heading.tsx`'s cva base + `heading`
-     rung (re-derived 2026-09-15 from the landed primitive, src/components/ui/Heading.tsx ("const headingVariants = cva('font-bold wrap-anywhere', {") and src/components/ui/Heading.tsx ("heading: 'text-xl leading-tight',")).
+     `font-bold wrap-break-word max-w-full text-xl leading-tight` from `Heading.tsx`'s cva base + `heading`
+     rung (re-derived 2026-11-24 by Phase 89.6-06 from the new base; it was `font-bold wrap-anywhere text-xl leading-tight`, derived 2026-09-15; src/components/ui/Heading.tsx ("const headingVariants = cva('font-bold wrap-break-word max-w-full', {") and src/components/ui/Heading.tsx ("heading: 'text-xl leading-tight',")).
 
      NO PROJECT GUARD OF ITS OWN: this is a 375px measurement and it belongs inside this file's
      phone-only describe, which is exactly what that block is for. The `journeys` arm added by the
@@ -1596,9 +1598,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       // E5. `Heading`'s base + `heading` rung on an <h2> carrying a 60-character unbroken
       // token. `wrap-anywhere` is the load-bearing class: `break-words` does not count in
       // min-content and so cannot stop a long token widening its column (plan 03).
+      // AMENDED Phase 89.6-06 (heading-wrap): the base is now wrap-break-word with max-w-full, and the probe
+      // follows it. max-w-full is what keeps the box inside its container; break-word then breaks
+      // the token inside that box.
       const TOKEN = 'A'.repeat(60);
       const heading = document.createElement('h2');
-      heading.className = 'font-bold wrap-anywhere text-xl leading-tight';
+      heading.className = 'font-bold wrap-break-word max-w-full text-xl leading-tight';
       heading.textContent = TOKEN;
       host.appendChild(heading);
 
@@ -1683,11 +1688,11 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // --- E5 · overflow -------------------------------------------------------------------
     expect(
       probes.heading.right,
-      `UI-SPEC §9.3 E5: the <h2> carrying a 60-character unbroken token has its right edge at ${probes.heading.right}px, past its 375px container's (${probes.hostRight}px). Source companion: plan 03's Heading.test.tsx class-list pin that the cva base carries \`wrap-anywhere\` — if that pin is green and this is red, the utility is emitted but not applying`,
+      `UI-SPEC §9.3 E5: the <h2> carrying a 60-character unbroken token has its right edge at ${probes.heading.right}px, past its 375px container's (${probes.hostRight}px). Source companion: plan 03's Heading.test.tsx class-list pin that the cva base carries \`wrap-anywhere\` — if that pin is green and this is red, the utility is emitted but not applying. AMENDED Phase 89.6-06 (heading-wrap): the base is now wrap-break-word with max-w-full, and max-w-full is what keeps the box inside its container`,
     ).toBeLessThanOrEqual(probes.hostRight + 1);
     expect(
       probes.heading.scrollWidth,
-      `UI-SPEC §9.3 E5: the <h2> scrolls to ${probes.heading.scrollWidth}px inside a ${probes.hostClientWidth}px container — \`wrap-anywhere\` is not breaking the 60-character token. \`break-words\` does NOT count in min-content and is not a substitute (plan 03)`,
+      `UI-SPEC §9.3 E5: the <h2> scrolls to ${probes.heading.scrollWidth}px inside a ${probes.hostClientWidth}px container — \`wrap-anywhere\` is not breaking the 60-character token. \`break-words\` does NOT count in min-content and is not a substitute (plan 03). AMENDED Phase 89.6-06 (heading-wrap): the base is now wrap-break-word with max-w-full; max-w-full keeps the box inside its container and break-word breaks the token inside it`,
     ).toBeLessThanOrEqual(probes.hostClientWidth + 1);
 
     const docWidths = await page.evaluate(() => ({

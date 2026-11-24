@@ -2496,7 +2496,8 @@ describe('gameDetail expand affordances (rows 326/334)', () => {
     expect(title.className).not.toMatch(/cursor-pointer/);
     // A single over-long word breaks only when it cannot fit: the Heading primitive's own
     // overflow-wrap token (never break-all, which would cut every word).
-    expect(title.className).toMatch(/(^|\s)wrap-anywhere(\s|$)/);
+    // AMENDED Phase 89.6-06 (heading-wrap): the primitive's token is wrap-break-word (it was wrap-anywhere).
+    expect(title.className).toMatch(/(^|\s)wrap-break-word(\s|$)/);
     expect(title.className).not.toMatch(/break-all/);
     expect(screen.queryByRole('button', { name: /full title/i })).toBeNull();
     expect(document.querySelector('[aria-controls="game-title"]')).toBeNull();

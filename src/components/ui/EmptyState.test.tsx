@@ -70,7 +70,8 @@ describe('EmptyState', () => {
   // Plan 88.6-36 task 1 (D-05). The three pins above assert the RENDERED RESULT and would stay
   // green against the raw `<HeadingTag>` this file shipped before — they are the PRESERVATION
   // halves, and they are what proves the migration moved nothing visible. This arm is the one
-  // that proves the COMPOSITION: `wrap-anywhere` comes from `Heading`'s cva BASE and
+  // that proves the COMPOSITION: the wrap utility comes from `Heading`'s cva BASE
+  // (AMENDED Phase 89.6-06 (heading-wrap): `wrap-break-word` with `max-w-full`; it was `wrap-anywhere`) and
   // `leading-tight` from its `heading` size variant, and neither was on the raw tag, so this
   // assertion is RED against the pre-migration component. Written that way on purpose — a
   // migration pinned only by "it still looks the same" cannot tell a migration from a no-op.
@@ -84,10 +85,10 @@ describe('EmptyState', () => {
       render(<EmptyState {...base} headingLevel={tag} />);
       const heading = screen.getByRole('heading', { level, name: base.heading });
       expect(heading.tagName).toBe(tag.toUpperCase());
-      // Heading.tsx's cva base (`font-bold wrap-anywhere`) and its `heading` size variant
+      // Heading.tsx's cva base (`font-bold wrap-break-word max-w-full`, AMENDED Phase 89.6-06) and its `heading` size variant
       // (`text-xl leading-tight`) — the primitive's fingerprint.
       expect(heading, `${tag}: wrap utility comes from the primitive base`).toHaveClass(
-        'wrap-anywhere'
+        'wrap-break-word'
       );
       expect(heading, `${tag}: 20px rung`).toHaveClass('text-xl');
       expect(heading, `${tag}: 1.25 line height`).toHaveClass('leading-tight');
