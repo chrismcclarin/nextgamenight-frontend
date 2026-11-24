@@ -457,13 +457,15 @@ test('check: split in an inner row (89.6-02, R3 repair): reports a name squeezed
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split in a table row (89.6-02, R3 repair): reports a name squeezed by a fixed cell, with a row element and without one', async ({ page }, testInfo) => {
+test('check: split in a table row (89.6-02, R3 repair): reports a name squeezed by a fixed cell, with a row element, without one, and with no cell of its own', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
   const row = await splitCase(page, 'split-table-row');
   const cells = await splitCase(page, 'split-table-cells');
-  await testInfo.attach('twin-read', { body: JSON.stringify({ row, cells }, null, 2), contentType: 'application/json' });
+  const bareRow = await splitCase(page, 'split-table-bare-row');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ row, cells, bareRow }, null, 2), contentType: 'application/json' });
   expectReported(row, 'a name in a table cell beside a fixed cell');
   expectReported(cells, 'a name in a table cell beside a fixed cell, the two cells directly in the table');
+  expectReported(bareRow, 'a name directly in a table row beside a fixed cell');
   expect(requests, 'the page made a request').toEqual([]);
 });
 
@@ -479,12 +481,18 @@ test('check: split, no row to stack (89.6-02, R3 repair): a word wider than its 
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split room (89.6-02, R3): a word that fits its row but not the row less its pill padding and border is not reported', async ({ page }, testInfo) => {
+test('check: split room (89.6-02, R3): a word that fits its row but not the row less its pill padding and border is not reported, and padding on an element with no box of its own is no edge', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
   const read = await readLargeTextCell(await renderTwin(page, 'split-padded-good'));
   const pill = await readWordLines(page.locator('.lt-pill'), page.locator('.lt-pill-row'));
   const sizerBroken = await brokenWordsOf(page.locator('.lt-sizer'));
-  await testInfo.attach('twin-read', { body: JSON.stringify({ read, pill, sizerBroken }, null, 2), contentType: 'application/json' });
+  // Two bad forms: 12rem of padding on a display: contents element, and on an inline box around
+  // the name's paragraph. Neither narrows the name, so the row still has room and the squeeze is reported.
+  const contents = await splitCase(page, 'split-contents-edge');
+  const inlineAncestor = await splitCase(page, 'split-inline-ancestor-edge');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ read, pill, sizerBroken, contents, inlineAncestor }, null, 2), contentType: 'application/json' });
+  expectReported(contents, 'a squeezed name under a padded display: contents element');
+  expectReported(inlineAncestor, 'a squeezed name whose paragraph sits in a padded inline box');
   const word = pill.words[0];
   const roomInPill = pill.rowRoom ?? Number.NaN;
   // The twin's geometry, whatever the font: the row holds the word (the pill's 40px of padding and

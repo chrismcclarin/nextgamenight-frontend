@@ -476,70 +476,94 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   }
 
   // ---- split -----------------------------------------------------------------------------------
-  // DECISION Phase 89.6-02 (split-row), AMENDED 2026-11-24 (orchestrator fix R3): a word's row is
-  // the row that could give it room, found THROUGH the wrappers above the text's own box, chosen
-  // OVER the first rule (start at the text's own box and climb only while the parent is a flex or
-  // grid container). That rule stopped at a paragraph inside a wrapper and compared a squeezed
-  // word with its own narrow box, so a letter-stack in a paragraph inside a shrinking flex item
-  // was never reported; SPEC R4 lets a word break only when it is wider than its WHOLE row.
-  // The row, in order:
-  //   1. the nearest [data-room] ancestor, when there is one (a marked row wins);
-  //   2. otherwise the text's own box, or, when the search finds one at or under the root of the
-  //      read, the nearest element at or above that box whose parent is a row-direction flex
-  //      container or a grid container: the item a neighbour can squeeze sideways. The search
-  //      passes plain wrappers and column-direction flex containers. A column does not squeeze
-  //      its items sideways, and stopping at one would make every page-level column the row;
-  //   3. then, as before R3, up while the parent is a flex or grid container of any direction.
-  // So a label inside a button inside .bb-row-end, and a paragraph inside .bb-row-text, both
-  // measure against the whole .bb-row: a word that would fit the row but breaks because a
-  // neighbour squeezed it is a letter-stack. A plain block with no such row above it stays its own
-  // row: a word wider than its block may break.
-  // The word's room is the row's content width LESS the left and right padding and border of
-  // every box from the text's own box up to the row (the row's own padding is already off). A word
-  // that fits its row but not the padded pill it sits in may break; before R3 that read as a split.
+  // DECISION Phase 89.6-02 (split-row), AMENDED 2026-11-24 twice (orchestrator fix R3, then its
+  // repair batch after scoped check 1): ONE walk finds a word's row, chosen OVER two climbs with
+  // two rules. The first rule (the text's own box, climbing only while the parent was a flex or
+  // grid container) stopped at a paragraph inside a wrapper and compared a squeezed word with its
+  // own narrow box. R3's first build (the nearest row, then that old climb) still stopped at a row
+  // INSIDE the squeezed item, went up through column containers, and went above the root.
+  //
+  // THE ROW. Walk from the word up to the root of the read, and never above it:
+  //   - an element marked [data-room] is the row, at once. The mark is an explicit row, named by
+  //     the caller, and it wins over the rules below (the nearest mark; one above the root is not
+  //     seen). The edges between the word and a marked row come off the room like any other row's;
+  //   - otherwise every container met from the text's own box up to the root, the root included,
+  //     that lays its children out SIDE BY SIDE is a candidate: a row-direction flex container, a
+  //     grid with more than one column, a table row (a table-row box, and whatever holds a table
+  //     cell: the browser builds the row around cells). The row is the OUTERMOST candidate;
+  //   - with no candidate the row is the text's own box: plain block flow, where a word wider
+  //     than its container may break.
+  // The OUTERMOST, chosen OVER the nearest: the owner's governing rule, src/app/globals.css ("DECISION Phase 89.6-02 (bb-row)"),
+  // says a row stays a row while everything in it fits whole, and when it does not, items stack;
+  // nothing is broken to avoid stacking. So if stacking ANY row above the word would let it fit
+  // whole, breaking it is the defect. The nearest row is often a row of the word's own inside the
+  // squeezed item, exactly as narrow as the word. A deliberately fixed narrow column inside a row
+  // is therefore reported: it is an exception to name at the sweep, not a blind spot of this read.
+  // A column-direction flex container and a grid of one column are NEVER candidates, chosen OVER
+  // counting every flex or grid container: they stack their items already and squeeze nothing
+  // sideways, and counting them makes every page-level column the row of each card in it.
+  //
+  // THE ROOM is the row's content width LESS, for every box between the word and the row, its left
+  // and right padding, border and margin: the inline boxes that hold the word, the text's own box,
+  // and each box above it. The row's own padding is off already, once. An AUTOMATIC margin is not
+  // taken off: it is the row's free space, not an edge of the box (getComputedStyle gives its
+  // used px, so the computed value is read from computedStyleMap). An inline box ABOVE the text's
+  // own box and a display: contents element take nothing: neither narrows a block inside it.
   // Text inside .bb-breakable is not read here (emails and links may break anywhere).
-  // Narrowing the search back to the text's own box, stopping it at a column container, or putting
-  // the padding back into the room is a decision, not a cleanup: the wrapper, column and padded
-  // twins of the checks harness go red.
-  const squeezesSideways = (el: Element) => {
-    const cs = getComputedStyle(el);
-    if (/grid/.test(cs.display)) return true;
-    return /flex/.test(cs.display) && !cs.flexDirection.startsWith('column');
+  //
+  // Each part has a case that goes red when that part alone is taken out: e2e/large-text-blocks.spec.ts ("THE SPLIT CONTROLS").
+  // Changing a part is a decision, not a cleanup.
+  const sideBySide = (container: Element, child: Element | null): boolean => {
+    const cs = getComputedStyle(container);
+    if (/flex/.test(cs.display)) return !cs.flexDirection.startsWith('column');
+    if (/grid/.test(cs.display)) {
+      // The used track list, one size per column, with the line names taken out.
+      const columns = cs.gridTemplateColumns.replace(/\[[^\]]*\]/g, ' ').split(/\s+/).filter((track) => track && track !== 'none');
+      return columns.length > 1;
+    }
+    if (cs.display === 'table-row') return true;
+    return child !== null && getComputedStyle(child).display === 'table-cell';
   };
   const rowOf = (el: Element): Element => {
-    const marked = el.closest('[data-room]');
-    if (marked) return marked;
-    const own = boxOf(el);
-    let row = own;
-    let a: Element | null = own;
-    while (a && a !== rootEl && rootEl.contains(a) && a.parentElement) {
-      if (squeezesSideways(a.parentElement)) {
-        row = a;
-        break;
-      }
-      a = a.parentElement;
+    // With no candidate, the text's own box. The inline boxes under it are never candidates: an
+    // inline box is no flex, grid or table-row box and holds no table cell.
+    let row = boxOf(el);
+    let child: Element | null = null;
+    for (let a: Element | null = el; a; child = a, a = a.parentElement) {
+      if (a.hasAttribute('data-room')) return a;
+      if (sideBySide(a, child)) row = a;
+      if (a === rootEl) break;
     }
-    while (row.parentElement && /flex|grid/.test(getComputedStyle(row.parentElement).display)) row = row.parentElement;
     return row;
   };
   const contentWidth = (el: Element) => {
     const cs = getComputedStyle(el);
     return el.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight);
   };
-  // The padding and border a box takes from the line of what is inside it. An inline box and a
-  // display: contents element take none from a block inside them.
-  const sideEdges = (el: Element) => {
+  /** A side margin in px, or 0 when it is automatic (the computed value, not the used one). */
+  const sideMargin = (el: Element, property: 'margin-left' | 'margin-right', used: string): number => {
+    const computed = el.computedStyleMap().get(property);
+    return computed instanceof CSSKeywordValue && computed.value === 'auto' ? 0 : px(used);
+  };
+  /** What a box takes from the line of the word inside it: side padding, border and margin. */
+  const sideEdges = (el: Element, holdsTheWordInline: boolean): number => {
     const cs = getComputedStyle(el);
-    if (cs.display === 'inline' || cs.display === 'contents') return 0;
-    return px(cs.paddingLeft) + px(cs.paddingRight) + px(cs.borderLeftWidth) + px(cs.borderRightWidth);
+    if (cs.display === 'contents') return 0;
+    if (cs.display === 'inline' && !holdsTheWordInline) return 0;
+    return (
+      px(cs.paddingLeft) + px(cs.paddingRight) + px(cs.borderLeftWidth) + px(cs.borderRightWidth) + sideMargin(el, 'margin-left', cs.marginLeft) + sideMargin(el, 'margin-right', cs.marginRight)
+    );
   };
   const roomOf = (el: Element): number => {
     const row = rowOf(el);
     const own = boxOf(el);
     let room = contentWidth(row);
-    // Only when the row is above the text's own box: a marked row can be the box itself or under it.
-    if (row !== own && row.contains(own)) {
-      for (let between: Element | null = own; between && between !== row; between = between.parentElement) room -= sideEdges(between);
+    // Every box from the word's element up to the row, the row left out. Below the text's own box
+    // they are the inline boxes that hold the word.
+    let belowOwnBox = true;
+    for (let a: Element | null = el; a && a !== row; a = a.parentElement) {
+      if (a === own) belowOwnBox = false;
+      room -= sideEdges(a, belowOwnBox);
     }
     return room;
   };

@@ -247,6 +247,20 @@
   </main>
 </section>
 
+<!-- the same with the name directly in the row element, bad form only: the browser builds a cell around it. -->
+<section data-case="split-table-bare-row">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-table table w-full table-fixed">
+        <div class="table-row">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+          <div aria-hidden="true" class="lt-fixed table-cell h-11 w-20 bg-surface-sunken"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
 <!-- a fixed narrow card in a column: nothing sits beside it and no row is above it, so its word, wider than the card, may break and nothing is reported. A column is never the row. -->
 <section data-case="split-column-card">
   <main data-frame class="lt-frame px-4 py-4">
@@ -323,7 +337,9 @@
 <!--
   margins between the word and its row. Sized like the padded pill below: the first line makes the
   box the word plus 36px wide; the item under it has a 20px margin on each side (40px), so it has
-  4px less than the word needs. The word breaks, and it may.
+  4px less than the word needs. The word breaks, and it may. The margin is on a wrapper around the
+  word's own paragraph: the edges of every box between the word and its row count, not only those
+  of the word's own box.
 -->
 <section data-case="split-margin-good">
   <main data-frame class="lt-frame px-4 py-4">
@@ -331,7 +347,9 @@
       <div class="lt-fit w-fit max-w-full">
         <p class="lt-sizer pr-[36px] font-semibold text-base text-content-primary">Weekend</p>
         <div class="lt-pill-row flex w-0 min-w-full">
-          <span class="lt-pill mx-[20px] min-w-0 font-semibold text-base text-content-primary">Weekend</span>
+          <div class="lt-wrap mx-[20px] min-w-0">
+            <p class="lt-pill font-semibold text-base text-content-primary">Weekend</p>
+          </div>
         </div>
       </div>
     </div>
@@ -349,6 +367,38 @@
       <div class="lt-fit w-fit max-w-full">
         <p class="lt-sizer pr-[36px] font-semibold text-base text-content-primary">Weekend</p>
         <p class="lt-line w-0 min-w-full"><span class="lt-pill rounded-full border-4 border-line px-2 font-semibold text-base text-content-primary">Weekend</span></p>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- padding that is no edge, bad form only: the element between the name and its row has display: contents, so it has no box and its 12rem of padding takes nothing from the row. -->
+<section data-case="split-contents-edge">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex gap-2">
+        <div class="lt-ghost contents px-24">
+          <div class="lt-wrap min-w-0 flex-1">
+            <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+          </div>
+          <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- the same with an inline box around the name's paragraph, bad form only: an inline box does not narrow a block inside it, so its 12rem of padding takes nothing from the row. -->
+<section data-case="split-inline-ancestor-edge">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <a href="#members" class="lt-link px-24">
+            <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+          </a>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
       </div>
     </div>
   </main>
