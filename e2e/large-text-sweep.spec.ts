@@ -145,7 +145,6 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
   };
 
   const records: CellRecord[] = [];
-  const extrasErrors: unknown[] = [];
   let broke: unknown;
 
   const readCell = async (target: Page, reached: { root: Locator; dialog?: Locator }, cell: SweepCell): Promise<void> => {
@@ -171,8 +170,7 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
         await row.extras(target, cell);
       } catch (error) {
         record.verdict = 'fail';
-        record.why = record.why ?? firstLine(error);
-        extrasErrors.push(error);
+        record.why = record.why ?? `${tag}: ${firstLine(error)}`;
       }
     }
     records.push(record);
@@ -235,11 +233,13 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
   await testInfo.attach(`${row.id}-cells`, { body: result, contentType: 'application/json' });
 
   if (broke !== undefined) throw broke;
-  for (const record of records) {
-    const cell = LANE.find((candidate) => candidate.id === record.cell);
-    if (cell) expectCell(record, cell, `${row.id} ${cell.id}`);
-  }
-  if (extrasErrors.length > 0) throw extrasErrors[0];
+  // Every failing cell in ONE assertion, each with its tag and its whole read: a red CI log then
+  // names them all (the failure artifacts leave CI encrypted, so the log is what a plan can read).
+  const failedCells = records.filter((record) => record.verdict === 'fail');
+  expect(
+    failedCells.map((record) => record.why),
+    `${row.id}: ${failedCells.length} of ${records.length} cells did not hold the large-text checks`,
+  ).toEqual([]);
   expect(records.map((record) => record.cell).sort(), `${row.id}: not every cell of the ${MODE} lane was read`).toEqual(LANE.map((cell) => cell.id).sort());
   for (const hold of holds) {
     expectNoApiWrites(hold);
