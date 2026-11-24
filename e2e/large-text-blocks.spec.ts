@@ -28,6 +28,17 @@ import {
 // e2e/support/wordLines.ts ("DECISION Phase 89.6-02 (A8)"): only lost content or function fails;
 // sideways scroll, splits and spills seen there are written into the attachment.
 //
+// HELD-OUT CELLS. Each block is also rendered one pixel either side of the matrix widths (319,
+// 374, 767, 769, at 100% and 200%) and at 150% text at the three matrix widths: backstops, so a
+// block cannot pass only at the exact widths it was tuned on.
+//
+// THE SECOND 200% MODE. The style tag doubles every rem in a rule and in a container query, but a
+// rem in a MEDIA query keeps the initial size, so at 768 the style tag still matches the 48rem
+// breakpoint that a person's own 32px default font size turns off. The two 768 / 200% cells are
+// therefore rendered a second time on a fresh page in font32 mode, which sets Chromium's default
+// font size, and every block box must be equal in both renders: a block must not depend on which
+// mode made the text large. The mode test at the end proves the second mode is the real setting.
+//
 // NEGATIVE CONTROLS. One test per check renders a bad twin, which the check must report, and its
 // good twin, which it must not: a read that cannot fail would pass every broken layout after it.
 //
@@ -60,8 +71,8 @@ const CASES = ['ordinary', 'empty', 'word30', 'emoji'] as const;
 
 type Theme = 'light' | 'dark';
 interface Cell {
-  /** matrix: the 12 cells, all five checks. pagezoom: SPEC A8's widths, the lighter read. */
-  set: 'matrix' | 'pagezoom';
+  /** matrix: the 12 cells, all five checks. pagezoom: SPEC A8's widths, the lighter read. heldout: the backstop widths and 150% text, all five checks. */
+  set: 'matrix' | 'pagezoom' | 'heldout';
   width: number;
   height: number;
   theme: Theme;
@@ -81,16 +92,32 @@ const PAGE_ZOOM_SIZES = [
   { width: 187, height: 333 },
 ] as const;
 
+/** One pixel either side of the matrix widths (320 has no narrower neighbour worth a second cell: 319 is it). */
+const HELD_OUT_EDGES = [
+  { width: 319, height: 568 },
+  { width: 374, height: 667 },
+  { width: 767, height: 1024 },
+  { width: 769, height: 1024 },
+] as const;
+
 /**
  * The 12 matrix cells (320 first, then 375, then 768; each light then dark; each 100 then 200),
- * then the 4 page-zoom cells (215, then 187; each light then dark; normal text).
+ * then the 4 page-zoom cells (215, then 187; each light then dark; normal text), then the 11
+ * held-out cells, light only (319, 374, 767 and 769 at 100 and 200; then 320, 375 and 768 at 150).
  */
 const CELLS: Cell[] = [
   ...MATRIX_SIZES.flatMap((size) =>
     THEMES.flatMap((theme) => (['100', '200'] as const).map((mode): Cell => ({ set: 'matrix', ...size, theme, mode }))),
   ),
   ...PAGE_ZOOM_SIZES.flatMap((size) => THEMES.map((theme): Cell => ({ set: 'pagezoom', ...size, theme, mode: '100' }))),
+  ...HELD_OUT_EDGES.flatMap((size) => (['100', '200'] as const).map((mode): Cell => ({ set: 'heldout', ...size, theme: 'light', mode }))),
+  ...MATRIX_SIZES.map((size): Cell => ({ set: 'heldout', ...size, theme: 'light', mode: '150' })),
 ];
+
+/** The boxes of a block that must be equal in the two 200% modes, by block. Later plans append. */
+const MODE_BOXES: Record<(typeof BLOCKS)[number], string> = {
+  'bb-row': '.bb-row-text, .bb-row-end',
+};
 
 /** src/app/globals.css as the app ships it, plus the utilities the harness pages use. */
 let compiledCss = '';
@@ -106,6 +133,8 @@ test.beforeAll(async () => {
   compiledCss = result.css;
   expect(compiledCss, 'the compile did not produce the app stylesheet (no .btn rule)').toContain('.btn {');
   expect(compiledCss, 'the compile did not produce the app stylesheet (no components layer)').toContain('@layer components');
+  // Proof that @source reached the harness folder: this utility is used by the modes harness only.
+  expect(compiledCss, 'the compile did not scan the harness folder (no container-query probe class)').toContain('max-\\[24rem\\]\\:hidden');
 });
 
 /** The harness file of a block. */
@@ -148,6 +177,23 @@ function frameOf(page: Page): Locator {
   return page.locator('[data-frame]');
 }
 
+interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** The boxes of every element the selector matches, in document order. */
+async function boxesOf(page: Page, selector: string): Promise<Box[]> {
+  return page.locator(selector).evaluateAll((elements) =>
+    elements.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
+    }),
+  );
+}
+
 for (const block of BLOCKS) {
   for (const cell of CELLS) {
     if (cell.set === 'pagezoom') {
@@ -178,9 +224,11 @@ for (const block of BLOCKS) {
       const requests = await countRequests(page);
       const harness = harnessOf(block);
       const reads: Array<{ case: string; read: LargeTextCellRead }> = [];
+      const styleTagBoxes: Record<string, Box[]> = {};
       for (const name of CASES) {
         await renderSection(page, cell, sectionOf(harness, name), `${cellName} ${name}`);
         reads.push({ case: name, read: await readLargeTextCell(frameOf(page)) });
+        styleTagBoxes[name] = await boxesOf(page, MODE_BOXES[block]);
       }
       // Attached BEFORE asserting, so a red cell still leaves its four reads behind.
       await testInfo.attach('cell-read', { body: JSON.stringify(reads, null, 2), contentType: 'application/json' });
@@ -191,6 +239,39 @@ for (const block of BLOCKS) {
       }
       expect(reads.length, `${cellName}: four content cases were to be read`).toBe(4);
       expect(requests, `${cellName}: the page made a request`).toEqual([]);
+
+      // The second 200% mode, for the two 768 / 200% matrix cells only: the same four cases on a
+      // fresh page in font32, the same checks, and every block box equal to the style-tag render.
+      if (cell.set !== 'matrix' || cell.width !== 768 || cell.mode !== '200') return;
+      const second = await page.context().newPage();
+      try {
+        const secondRequests = await countRequests(second);
+        const font32Reads: Array<{ case: string; read: LargeTextCellRead }> = [];
+        const font32Boxes: Record<string, Box[]> = {};
+        for (const name of CASES) {
+          // setTextMode is a no-op on this page after the first case: font32 is a page setting.
+          await renderSection(second, { ...cell, mode: 'font32' }, sectionOf(harness, name), `${cellName} font32 ${name}`);
+          font32Reads.push({ case: name, read: await readLargeTextCell(frameOf(second)) });
+          font32Boxes[name] = await boxesOf(second, MODE_BOXES[block]);
+        }
+        await testInfo.attach('mode-boxes', { body: JSON.stringify({ styleTag: styleTagBoxes, font32: font32Boxes, font32Reads }, null, 2), contentType: 'application/json' });
+        for (const { case: name, read } of font32Reads) {
+          const tag = `${cellName} font32 ${name}`;
+          expectLargeTextCell(read, tag);
+          const want = styleTagBoxes[name];
+          const got = font32Boxes[name];
+          expect(got.length, `${tag}: the two modes drew a different number of block boxes`).toBe(want.length);
+          expect(got.length, `${tag}: no block box was found to compare`).toBeGreaterThan(0);
+          got.forEach((box, i) => {
+            for (const side of ['left', 'top', 'width', 'height'] as const) {
+              expect(Math.abs(box[side] - want[i][side]), `${tag}: box ${i} differs in ${side} between the modes (style tag ${want[i][side]}px, font32 ${box[side]}px)`).toBeLessThanOrEqual(0.5);
+            }
+          });
+        }
+        expect(secondRequests, `${cellName} font32: the page made a request`).toEqual([]);
+      } finally {
+        await second.close();
+      }
     });
   }
 }
@@ -286,5 +367,60 @@ test('check: A8 (89.6-02): reports its bad twin and passes its good twin', async
   expect(lost, 'the line of text pulled up over another is not in lost').toContain('overlap: the text of p "Hosted by Bob" and p "Sunday at noon"');
   expect(good.lost, 'the good twin (text below the fold of a scrolling body, a panel wider than the page, two tight lines whose letters do not meet) reads as lost').toEqual([]);
   expect(good.recorded.join(' | '), 'the panel wider than the page was not recorded as page sideways scroll').toContain('the page scrolls sideways by');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// The mode probe: the second 200% mode is the real browser setting, and the first can be left.
+// ---------------------------------------------------------------------------------------------
+
+test("mode (89.6-02): Chromium's default font 32 turns the 48rem media query off at 768 while a rem container query reads the same as the style tag", async ({ page }) => {
+  const requests = await countRequests(page);
+  const tag = 'mode probe';
+  const section = sectionOf(harnessOf('modes'), 'modes');
+  const probes = () =>
+    page.evaluate(() => {
+      const shown = (name: string) => {
+        const el = document.querySelector(`[data-probe="${name}"]`);
+        return el ? getComputedStyle(el).display !== 'none' : null;
+      };
+      return { media: shown('media'), container: shown('container') };
+    });
+  const rootSize = () => page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
+  const modeTags = () => page.locator('style[data-lt-text-mode]').count();
+
+  // The style-tag round trip on one page: a mode can be left, and no stale tag stays behind.
+  await renderSection(page, { width: 768, height: 1024, theme: 'light', mode: '200' }, section, tag);
+  const roundTrip: Array<[TextMode, string, number]> = [
+    ['200', '32px', 1],
+    ['100', '16px', 0],
+    ['150', '24px', 1],
+    ['200', '32px', 1],
+    ['100', '16px', 0],
+  ];
+  for (const [mode, size, tags] of roundTrip) {
+    await setTextMode(page, mode, tag);
+    expect(await rootSize(), `round trip: the root is not ${size} in mode ${mode}`).toBe(size);
+    expect(await modeTags(), `round trip: mode ${mode} left ${tags === 0 ? 'a' : 'more or fewer than one'} text-mode style tag behind`).toBe(tags);
+  }
+
+  // At normal text the container (600px) is wider than 24rem (384px): its probe shows.
+  expect(await probes(), 'normal text: both probes are shown').toEqual({ media: true, container: true });
+
+  // The style tag: every rem in a rule and in a container query doubles; the media query does not move.
+  await setTextMode(page, '200', tag);
+  expect(await probes(), 'style tag: the media probe is still shown at 768 (48rem is 768px there) and the container probe is hidden (24rem is 768px)').toEqual({ media: true, container: false });
+
+  // The default font size: the media query moves too (48rem is 1536px), the container query reads the same.
+  await setTextMode(page, '100', tag);
+  await setTextMode(page, 'font32', tag);
+  expect(await rootSize(), 'font32: the root is not 32px').toBe('32px');
+  expect(await modeTags(), 'font32: a text-mode style tag is on the page, so the 32px could be the tag and not the setting').toBe(0);
+  expect(await probes(), 'font32: the media probe is still displayed at 768, or the container probe reads differently from the style tag').toEqual({ media: false, container: false });
+
+  // font32 is one-way: a second call is a no-op, any other mode throws.
+  await setTextMode(page, 'font32', tag);
+  expect(await rootSize(), 'font32 twice: the root is not 32px').toBe('32px');
+  await expect(setTextMode(page, '100', tag), 'a page was taken out of font32').rejects.toThrow('font32 is one-way: use a fresh page');
   expect(requests, 'the page made a request').toEqual([]);
 });

@@ -1,0 +1,17 @@
+<!--
+  Two probes that tell the two ways of making 200% text apart.
+  The media probe is shown from 48rem of window width up; the container probe is hidden while its
+  container is at most 24rem wide. The container is 600px wide, a px width, so only the rem of the
+  query can differ between the modes.
+  The wrappers carry lt- hook names the app never styles. Every state is static markup:
+  this file holds no script and no outside address.
+-->
+
+<section data-case="modes">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div data-probe="media" class="lt-probe hidden md:block text-base text-content-primary">media</div>
+    <div class="lt-container @container" style="width: 600px">
+      <div data-probe="container" class="lt-probe @max-[24rem]:hidden text-base text-content-primary">container</div>
+    </div>
+  </main>
+</section>

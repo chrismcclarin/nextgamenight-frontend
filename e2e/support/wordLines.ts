@@ -230,6 +230,8 @@ export async function expectHeldInside(card: Locator, tag: string): Promise<{ pa
 // select-fit), chosen OVER a read per spec and OVER the three SPEC R4 checks alone (text spilling
 // out of its control and a cut select value pass all three: research M F4). DECISION Phase 88.9-52
 // (R4-E) above stands: these extend the one shared read. Changing this is a decision, not a cleanup.
+// The second 200% mode is Chromium's default font size, used for the 768 cells because media
+// queries keep the initial size under the style tag (research M1).
 //
 // HOW A CELL IS READ. One in-page read under a root element, after the layout has settled. Text
 // that draws nothing is not read: a text node whose element is visibility hidden, or whose element
@@ -242,31 +244,61 @@ export const THIRTY_LETTER_WORD = 'Grandmasterboardgamecollective';
 /** The owner's two-word name plus one emoji, the game die (UI-SPEC content case "Name with an emoji"). */
 export const EMOJI_NAME = `${TWO_WORD_NAME} \u{1F3B2}`;
 
-/** How the root text size of a cell is produced: '100' adds nothing, '200' is the 200% style tag. */
-export type TextMode = '100' | '200';
+/**
+ * How the root text size of a cell is produced. '100' adds nothing; '150' and '200' are a style
+ * tag on the root; 'font32' is Chromium's default font size set to 32px, the setting a person
+ * changes in the browser, under which a rem in a media query doubles too.
+ */
+export type TextMode = '100' | '150' | '200' | 'font32';
 
 /** Every style tag setTextMode adds carries this attribute, so the next call can take it away. */
 const TEXT_MODE_ATTRIBUTE = 'data-lt-text-mode';
 
+/** The pages put in font32. It is a page setting, so it outlives every setContent on that page. */
+const FONT32_PAGES = new WeakMap<Page, true>();
+
 /**
- * Put the page in a text mode. A mode can be set from any earlier style-tag mode on the same page:
- * every call first removes the style tag an earlier call added. The 200% tag has the same content
- * setNarrowLargeText uses; that helper and its callers are not changed.
+ * Put the page in a text mode. A style-tag mode can be set from any earlier style-tag mode on the
+ * same page: every call first removes the style tag an earlier call added. The 200% tag has the
+ * same content setNarrowLargeText uses; that helper and its callers are not changed.
+ *
+ * font32 is ONE-WAY on a page. The first 'font32' call makes the one CDP call; a later 'font32'
+ * call on that page makes no second one and only waits for the root to read 32px again (the render
+ * helper calls this for every content case). A later call for any other mode throws: a page is
+ * never taken out of font32, so a caller that needs a style-tag mode again uses a fresh page.
  */
 export async function setTextMode(page: Page, mode: TextMode, tag: string): Promise<void> {
+  const rootBecomes = (expected: string) =>
+    expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: `${tag}: the root font size did not become ${expected} in text mode ${mode}`,
+      })
+      .toBe(expected);
+  if (FONT32_PAGES.has(page)) {
+    if (mode !== 'font32') throw new Error(`${tag}: font32 is one-way: use a fresh page`);
+    await rootBecomes('32px');
+    return;
+  }
   await page.evaluate((attribute) => {
     for (const style of Array.from(document.querySelectorAll(`style[${attribute}]`))) style.remove();
   }, TEXT_MODE_ATTRIBUTE);
-  if (mode === '200') {
-    const handle = await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
-    await handle.evaluate((style, attribute) => (style as Element).setAttribute(attribute, '200'), TEXT_MODE_ATTRIBUTE);
+  if (mode === 'font32') {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Page.setFontSizes', { fontSizes: { standard: 32 } });
+    FONT32_PAGES.set(page, true);
+    await rootBecomes('32px');
+    // Proof that the mode is the real setting and not a style tag: a rem in a media query doubled.
+    const read = await page.evaluate(() => ({ window: document.documentElement.clientWidth, media: matchMedia('(min-width: 48rem)').matches }));
+    if (read.window >= 768) {
+      expect(read.media, `${tag}: the 48rem media query still matches at ${read.window}px wide, so the default font size did not change`).toBe(false);
+    }
+    return;
   }
-  const expected = mode === '200' ? '32px' : '16px';
-  await expect
-    .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
-      message: `${tag}: the root font size did not become ${expected} in text mode ${mode}`,
-    })
-    .toBe(expected);
+  if (mode === '150' || mode === '200') {
+    const handle = await page.addStyleTag({ content: `html { font-size: ${mode}% !important; }` });
+    await handle.evaluate((style, set) => (style as Element).setAttribute(set.attribute, set.value), { attribute: TEXT_MODE_ATTRIBUTE, value: mode });
+  }
+  await rootBecomes(mode === '200' ? '32px' : mode === '150' ? '24px' : '16px');
 }
 
 export interface LargeTextReadOptions {
