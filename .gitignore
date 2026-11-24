@@ -67,6 +67,7 @@ logs
 # CR-09 (88.3-cr): the CI json reporter's output, read by scripts/gate-c-executed-floor.mjs
 /playwright-results.json
 /playwright-results-large-text.json
+/playwright-results-large-text-sweep.json
 /playwright-report/
 /playwright/.cache/
 

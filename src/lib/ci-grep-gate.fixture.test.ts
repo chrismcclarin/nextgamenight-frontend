@@ -1013,7 +1013,7 @@ describe('Phase 88.6.2-26 — executed floors for every conditional-skip e2e spe
     expect(bad).toEqual([]);
   });
 
-  test('every spec with a conditional skip has an entry (contrast.spec.ts keeps Gate C; large-text-blocks.spec.ts keeps its own step)', () => {
+  test('every spec with a conditional skip has an entry (contrast.spec.ts keeps Gate C; the two large-text specs keep their own steps)', () => {
     // The population is read from the tree, comments stripped by the shared lexer, so a skip
     // mentioned in a comment does not count and a new conditional spec cannot ship unfloored.
     const e2eDir = resolve(FE_ROOT, 'e2e');
@@ -1023,10 +1023,13 @@ describe('Phase 88.6.2-26 — executed floors for every conditional-skip e2e spe
       .map((f) => `e2e/${f}`);
     expect(population.length, 'the population scan found too few specs; the regex or the lexer broke').toBeGreaterThanOrEqual(45);
     const floored = new Set((floors as Array<{ spec: string }>).map((e) => e.spec));
-    const missing = population.filter((f) => f !== 'e2e/contrast.spec.ts' && f !== 'e2e/large-text-blocks.spec.ts' && !floored.has(f));
+    const ownStep = ['e2e/contrast.spec.ts', 'e2e/large-text-blocks.spec.ts', 'e2e/large-text-sweep.spec.ts'];
+    const missing = population.filter((f) => !ownStep.includes(f) && !floored.has(f));
     expect(missing, 'a spec with a conditional skip has no executed floor in scripts/gate-c-floors.manifest.mjs').toEqual([]);
     expect(floored.has('e2e/contrast.spec.ts'), 'contrast.spec.ts is floored by Gate C, not by the config').toBe(false);
     expect(floored.has('e2e/large-text-blocks.spec.ts'), 'large-text-blocks.spec.ts is floored by its own step (Phase 89.6-05); a manifest row would read NOT COLLECTED in the main report').toBe(false);
+    expect(population, 'the sweep spec skips its pending rows, so it belongs to the conditional-skip population').toContain('e2e/large-text-sweep.spec.ts');
+    expect(floored.has('e2e/large-text-sweep.spec.ts'), 'large-text-sweep.spec.ts is floored by its own step (Phase 89.6-08); a manifest row would read NOT COLLECTED in the main report').toBe(false);
   });
 
   test('config mode passes at floor, reds DISARMED below it, and matches specs on a path boundary', () => {
@@ -1629,16 +1632,19 @@ describe('Phase 89.6-05 — the large-text matrix runs once, in its own step, fl
     expect(body, 'the large-text step must not carry continue-on-error').not.toContain('continue-on-error');
   });
 
-  test('the journeys and phone invocation leaves the matrix out by a pattern that matches that one spec and nothing else', () => {
+  // AMENDED Phase 89.6-08: the pattern now leaves out the sweep spec too, which runs in its own step.
+  test('the journeys and phone invocation leaves the matrix and the sweep out by a pattern that matches exactly the two large-text specs', () => {
     const invocations = stepWindow(PLAYWRIGHT_STEP).filter((l) => !isYamlComment(l) && l.includes('npx playwright test') && l.includes('--no-deps'));
     expect(invocations.length, 'the --no-deps Playwright run line is missing').toBe(1);
     const source = invocations[0].match(/--grep-invert '([^']+)'/)?.[1];
-    expect(source, 'the journeys and phone invocation carries no --grep-invert, so the matrix runs twice: there and in its own step').toBe('large-text-blocks\\.spec\\.ts');
+    expect(source, 'the journeys and phone invocation must leave out both large-text specs, or each runs twice: there and in its own step').toBe('large-text-(blocks|sweep)\\.spec\\.ts');
     const pattern = new RegExp(source ?? '(?!)');
 
     const specs = e2eSpecFiles();
     expect(specs.length, 'the e2e spec scan found too few files').toBeGreaterThanOrEqual(45);
-    expect(specs.filter((f) => pattern.test(f)), 'the exclusion pattern must match exactly one e2e spec file; every other match is a spec the main run silently drops').toEqual([LARGE_TEXT_SPEC.slice('e2e/'.length)]);
+    expect(specs.filter((f) => pattern.test(f)).sort(), 'the exclusion pattern must match exactly the two large-text spec files; every other match is a spec the main run silently drops').toEqual(
+      [LARGE_TEXT_SPEC, LARGE_TEXT_SWEEP_SPEC].map((f) => f.slice('e2e/'.length)).sort(),
+    );
 
     // A title elsewhere that quotes the file name would drop that test from the main run too.
     const TITLE = /\btest(?:\.[A-Za-z]+)*\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
@@ -1675,6 +1681,78 @@ describe('Phase 89.6-05 — the large-text matrix runs once, in its own step, fl
     expect(failurePack[0].inputs, 'the failure-evidence encrypt step no longer packs test-results/, so a red matrix cell leaves no evidence').toContain('test-results/');
     for (const e of encryptInvocations()) {
       expect(e.inputs.includes(report), `the encrypt step "${e.step}" packs the matrix report`).toBe(false);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 89.6-08 (SPEC R4): the per-surface large-text sweep runs ONCE per CI run, in its own
+// named step directly after the matrix step.
+//
+// WHY ITS OWN STEP AND REPORT. The same two reasons as the matrix step above: the main report is
+// read by three floor steps, and Playwright clears its output folder. The sweep's floor is 2, the
+// two tests that always run (the row list and R17); every other row is checked by
+// scripts/large-text-sweep-coverage.mjs against the results the spec writes, so a plan that turns
+// a row on edits no number here or in ci.yml.
+//
+// The step's results folder sits inside its output folder, under test-results, which leaves CI
+// only inside the encrypted failure upload.
+// ---------------------------------------------------------------------------
+
+const LARGE_TEXT_SWEEP_STEP = 'Large-text sweep — every surface row in the sweep cells, pending rows listed (SPEC R4)';
+const LARGE_TEXT_SWEEP_SPEC = 'e2e/large-text-sweep.spec.ts';
+
+describe('Phase 89.6-08 — the large-text sweep runs once, in its own step after the matrix', () => {
+  /** The one sweep step, or a thrown sentence naming what is wrong. */
+  const sweepStep = (): { step: CiStep; steps: CiStep[] } => {
+    const steps = ciSteps();
+    const found = steps.filter((s) => s.name === LARGE_TEXT_SWEEP_STEP);
+    if (found.length !== 1) throw new Error(`ci.yml holds ${found.length} steps named "${LARGE_TEXT_SWEEP_STEP}"; it must hold exactly one`);
+    return { step: found[0], steps };
+  };
+
+  test('the step exists once, directly after the matrix step, with no if:, and runs the sweep, its floor of 2 and the coverage script', () => {
+    const { step, steps } = sweepStep();
+    const at = steps.indexOf(step);
+    expect(steps[at - 1]?.name, 'the sweep step must sit directly after the large-text matrix step').toBe(LARGE_TEXT_STEP);
+    expect(steps[at - 1].end, 'the matrix step and the sweep step are not adjacent steps of one job').toBe(step.start);
+    expect(stepKey(step, 'if'), 'the sweep step must carry no if: (an if: exempts a trigger, and the sweep then never runs there)').toBeUndefined();
+    expect(stepKey(step, 'shell')).toBe('bash');
+
+    expect(runLines(step), 'the sweep step must hold exactly four run lines: the bash options, the sweep run, the floor, the coverage script').toEqual([
+      'set -euo pipefail',
+      `PLAYWRIGHT_JSON_OUTPUT_FILE=playwright-results-large-text-sweep.json npx playwright test --project=journeys --no-deps --output=test-results/large-text-sweep ${LARGE_TEXT_SWEEP_SPEC}`,
+      `node scripts/gate-c-executed-floor.mjs playwright-results-large-text-sweep.json --spec ${LARGE_TEXT_SWEEP_SPEC} --project journeys --floor 2`,
+      'node scripts/large-text-sweep-coverage.mjs --results test-results/large-text-sweep/results',
+    ]);
+
+    const body = step.lines.filter((l) => !isYamlComment(l)).join('\n');
+    expect(body, 'the sweep step must not swallow a failure with ||').not.toContain('||');
+    expect(body, 'the sweep step must not carry continue-on-error').not.toContain('continue-on-error');
+  });
+
+  test('the step writes its own report outside every upload input, its artifacts under a sub-folder of test-results, and the coverage script reads a folder inside that output', () => {
+    const { step } = sweepStep();
+    const run = runLines(step);
+    const report = run[1]?.match(/^PLAYWRIGHT_JSON_OUTPUT_FILE=(\S+) /)?.[1] ?? '';
+    expect(report, 'the sweep run does not name its own JSON report').not.toBe('');
+    expect(report.includes('/'), 'the report must be a root file: inside a folder it could sit under an upload input').toBe(false);
+    expect(['playwright-results.json', 'playwright-results-large-text.json'], 'the report must not be the main report or the matrix report, which other floor lines read').not.toContain(report);
+    expect(run[2]?.includes(` ${report} `), 'the floor line must read the report the sweep run wrote').toBe(true);
+    const ignored = readFileSync(resolve(FE_ROOT, '.gitignore'), 'utf8').split('\n').map((l) => l.trim());
+    expect(ignored, 'the report file is not in .gitignore').toContain(`/${report}`);
+
+    const output = run[1]?.match(/ --output=(\S+) /)?.[1] ?? '';
+    expect(/^test-results\/[^/.][^/]*$/.test(output), `the artifacts must go to a strict sub-folder of test-results/, got "${output}": Playwright clears its output folder at the start of a run`).toBe(true);
+    expect(output, 'the sweep must not write into the matrix step\'s output folder, which that run cleared for itself').not.toBe('test-results/large-text-blocks');
+    const results = run[3]?.match(/ --results (\S+)/)?.[1] ?? '';
+    expect(results.startsWith(`${output}/`) && results.length > output.length + 1, `the coverage script must read a folder inside the sweep's own output (${output}), got "${results}"`).toBe(true);
+
+    const failurePack = encryptInvocations().filter((e) => e.name === 'playwright-report');
+    expect(failurePack.length, 'the failure-evidence encrypt invocation was not found').toBe(1);
+    expect(failurePack[0].inputs, 'the failure-evidence encrypt step no longer packs test-results/, so a red sweep row leaves no evidence').toContain('test-results/');
+    for (const e of encryptInvocations()) {
+      expect(e.inputs.includes(report), `the encrypt step "${e.step}" packs the sweep report`).toBe(false);
     }
   });
 });
