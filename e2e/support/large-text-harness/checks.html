@@ -701,12 +701,10 @@
   </main>
 </section>
 
-<!-- T11, a breadcrumb whose crumb is glued to its separator, bad form only: the line has no place to wrap before the crumb, so the browser breaks the crumb although it would fit a line of its own. There is no row to stack. SPLIT, as glued. -->
+<!-- T11, a breadcrumb whose crumb is glued to its separator, bad form only: the line has no place to wrap before the crumb, so the browser breaks the crumb although it would fit a line of its own. There is no row to stack. SPLIT, as glued. The breadcrumb sits in the frame itself (208px of room): the crumb must fit a line of it in any font. -->
 <section data-case="split-glued-crumb">
   <main data-frame class="lt-frame px-4 py-4">
-    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
-      <nav aria-label="Sample breadcrumb" class="lt-crumbs inline-block max-w-full px-3 font-semibold text-base text-content-primary"><a href="#up">Up</a><span class="mx-1">&gt;</span><span class="lt-name">Weekend</span></nav>
-    </div>
+    <nav aria-label="Sample breadcrumb" class="lt-crumbs inline-block max-w-full px-3 font-semibold text-base text-content-primary"><a href="#up">Up</a><span class="mx-1">&gt;</span><span class="lt-name">Weekend</span></nav>
   </main>
 </section>
 
@@ -898,18 +896,14 @@
 <!-- the breadcrumb of T11 with the text before the crumb drawn by the crumb's own ::before, bad form only: no element stands before the crumb, it is glued the same way, and a line of its own would hold it. SPLIT, as for the real separator; the first build called this one held. -->
 <section data-case="split-crumb-before">
   <main data-frame class="lt-frame px-4 py-4">
-    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
-      <nav aria-label="Sample breadcrumb" class="lt-crumbs inline-block max-w-full px-3 font-semibold text-base text-content-primary"><span class="lt-name before:mr-2 before:content-['Up_>']">Weekend</span></nav>
-    </div>
+    <nav aria-label="Sample breadcrumb" class="lt-crumbs inline-block max-w-full px-3 font-semibold text-base text-content-primary"><span class="lt-name before:mr-2 before:content-['Up>']">Weekend</span></nav>
   </main>
 </section>
 
-<!-- the breadcrumb again, its crumb an inline box of two words with 60px of padding after the second, bad form only: that padding sits beside the second word, not beside the glued first one, so only an inline box that holds the ONE word adds its edges to what the word needs. SPLIT. -->
+<!-- the breadcrumb again, its crumb an inline box of two words with 100px of padding after the second, bad form only: that padding sits beside the second word, not beside the glued first one, so only an inline box that holds the ONE word adds its edges to what the word needs. SPLIT. -->
 <section data-case="split-crumb-padded-pair">
   <main data-frame class="lt-frame px-4 py-4">
-    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
-      <nav aria-label="Sample breadcrumb" class="lt-crumbs inline-block max-w-full px-3 font-semibold text-base text-content-primary"><a href="#up">Up</a><span class="mx-1">&gt;</span><span class="lt-name pr-[60px]">Weekend Go</span></nav>
-    </div>
+    <nav aria-label="Sample breadcrumb" class="lt-crumbs inline-block max-w-full px-3 font-semibold text-base text-content-primary"><a href="#up">Up</a><span class="mx-1">&gt;</span><span class="lt-name pr-[100px]">Weekend Go</span></nav>
   </main>
 </section>
 
