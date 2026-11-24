@@ -164,6 +164,17 @@ export function shellProblems(read: ShellGeometry, mode: string, tag: string): s
     const overlapX = Math.min(read.close.right, read.title.right) - Math.max(read.close.left, read.title.left);
     const overlapY = Math.min(read.close.bottom, read.title.bottom) - Math.max(read.close.top, read.title.top);
     if (overlapX > 0.5 && overlapY > 0.5) problems.push(`${tag}: the close box overlaps the title by ${px(overlapX)} x ${px(overlapY)}px`);
+    // Owner pick E8b: beside the title the close is centred on the whole title block; on its own
+    // row above the title it sits at the right, where the title's row ends.
+    if (read.close.bottom <= read.title.top + 0.5) {
+      if (!near(read.close.right, read.title.right)) problems.push(`${tag}: the close is on its own row above the title and ends at ${px(read.close.right)}px, not at the row's right edge (${px(read.title.right)}px)`);
+    } else if (overlapY > 0.5) {
+      const closeMid = (read.close.top + read.close.bottom) / 2;
+      const titleMid = (read.title.top + read.title.bottom) / 2;
+      if (!near(closeMid, titleMid)) problems.push(`${tag}: the close beside the title is not centred on the title block (close centre ${px(closeMid)}px, title centre ${px(titleMid)}px; E8b)`);
+    } else {
+      problems.push(`${tag}: the close is neither beside the title nor on a row above it (close ${px(read.close.top)} to ${px(read.close.bottom)}px, title ${px(read.title.top)} to ${px(read.title.bottom)}px)`);
+    }
   }
   // The dialog box does not scroll sideways.
   if (read.sideways > 0) problems.push(`${tag}: the dialog box scrolls sideways by ${read.sideways}px`);
