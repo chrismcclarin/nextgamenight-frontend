@@ -833,7 +833,7 @@
   </main>
 </section>
 
-<!-- places the browser breaks anyway, in 150px boxes with nothing to stack: a soft hyphen, an en dash and a slash. A break there is ordinary wrapping, found by measuring (the word is read again with forced breaks switched off), not by a list of characters. Not split; the first build called the first two split, as glued. -->
+<!-- three words in 150px boxes with nothing to stack: a soft hyphen, an en dash and a slash. Where the browser breaks anyway is found by measuring (the word is read again with forced breaks switched off), not from a list of characters: the first two wrap there, which is ordinary wrapping (WIDE, written down); the slash pair is broken by force and HELD by its box. None is split; with text before them on their line the first build called the first two split, as glued. -->
 <section data-case="split-natural-breaks">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">

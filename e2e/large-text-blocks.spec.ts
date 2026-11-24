@@ -847,7 +847,7 @@ test('check: split, a sideways scroller (89.6-02, R6 repair): reports two squeez
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split, places the browser breaks anyway (89.6-02, R6 repair): a wrap at a soft hyphen, an en dash or a slash is ordinary wrapping, a hyphenated word letter-stacked by its row is reported, and a word whose forced breaks cannot be switched off is said so', async ({ page }, testInfo) => {
+test('check: split, places the browser breaks anyway (89.6-02, R6 repair): a wrap at a soft hyphen or an en dash is ordinary wrapping, a slash pair is broken by force and held by its box, a hyphenated word letter-stacked by its row is reported, and a word whose forced breaks cannot be switched off is said so', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
   const SOFT = 'Week­enders';
   const DASH = 'Mon–Friday';
@@ -859,8 +859,11 @@ test('check: split, places the browser breaks anyway (89.6-02, R6 repair): a wra
   await testInfo.attach('twin-read', { body: JSON.stringify({ natural, stacked, sizerBroken, important }, null, 2), contentType: 'application/json' });
   expect(natural.broken, 'the three words are not each on more than one line: the harness is not the shape it says').toEqual([SOFT, DASH, SLASH]);
   expect(natural.read.split, `a wrap at a place the browser breaks anyway reads as split (${JSON.stringify(natural.read)})`).toEqual([]);
-  expect(natural.read.held, `a wrap at a place the browser breaks anyway reads as held (${JSON.stringify(natural.read)})`).toEqual([]);
-  for (const word of [SOFT, DASH, SLASH]) {
+  // Measured, not listed: Chromium does not break after a slash between two words, so that pair
+  // is broken by force, no line of its 150px box would hold it, and the box holds it.
+  expect(natural.read.held.length, `only the slash pair is to read as held (${JSON.stringify(natural.read)})`).toBe(1);
+  expect(entriesFor(natural.read.held, SLASH).join(' | '), `the slash pair is not held by its fixed box (${JSON.stringify(natural.read)})`).toContain('width 150px');
+  for (const word of [SOFT, DASH]) {
     expect(entriesFor(natural.read.wide, word).join(' | '), `${JSON.stringify(word)} is not written down as ordinary wrapping (${JSON.stringify(natural.read)})`).toContain('ordinary wrapping');
   }
   // A hyphenated word broken inside itself by a box beside it: stacked, only the wrap at its hyphen is left.
