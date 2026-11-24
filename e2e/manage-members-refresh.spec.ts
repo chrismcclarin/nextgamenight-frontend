@@ -1,4 +1,4 @@
-import { test, expect, type APIResponse, type Page, type Route } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 import { forceLightMode } from './support/contrast';
 import {
@@ -17,7 +17,7 @@ import {
   stopLabelRecorder,
   valuesAt,
 } from './support/labelRecorder';
-import { scrubbedFetch } from './support/scrubbedFetch';
+import { isMembersReadFor, routeMemberRoster } from './support/memberRoster';
 
 /**
  * Phase 88.6.1-42 (D-09a, Req 9; Req 5 H1, D-05 as amended by D-57) — Manage Members at 375px.
@@ -79,36 +79,24 @@ const SYNTH_NEXT = {
 // The browser calls the same-origin BFF: the members read is `GET /api/groups/<id>/users` and
 // the remove is `DELETE /api/groups/<id>/users/<member id>` (src/lib/api.ts, getGroupMembers and
 // removeUserFromGroup).
-const isMembersRead = (url: URL) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/users`);
+const isMembersRead = isMembersReadFor(E2E_GROUP_ID);
 const isSynthRemove = (url: URL) =>
   url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/users/${SYNTH.id}`);
-
-/** The real roster from the backend, as an array (an empty one if the read was not a roster). */
-async function realRoster(route: Route): Promise<{ response: APIResponse; body: unknown[] }> {
-  const response = await scrubbedFetch(route);
-  const json: unknown = await response.json();
-  return { response, body: Array.isArray(json) ? json : [] };
-}
 
 /**
  * Answer every members GET with the real roster plus the rows `extraRows` returns, appended (any
  * other method on that path falls back). `extraRows` runs AFTER the real read and BEFORE the
  * answer, so a test can hold a read there. The ONE augmentation in this file (Phase 88.6.1-50
  * hoisted it out of the remove test when the transfer test needed it too; never a second copy).
+ * AMENDED Phase 89.6-11: hoisted to e2e/support/memberRoster.ts so the large-text sweep's members
+ * rows answer the read the same way; still the one augmentation. The real read (realRoster, which
+ * the afterEach note below names) moved there with it.
  */
 async function routeAugmentedRoster(
   page: Page,
   extraRows: () => unknown[] | Promise<unknown[]>,
 ): Promise<void> {
-  await page.route(isMembersRead, async (route) => {
-    if (route.request().method() !== 'GET') {
-      await route.fallback();
-      return;
-    }
-    const { response, body } = await realRoster(route);
-    const extra = await extraRows();
-    await route.fulfill({ response, json: [...body, ...extra] });
-  });
+  await routeMemberRoster(page, E2E_GROUP_ID, async (rows) => [...rows, ...(await extraRows())]);
 }
 
 test.describe('Phase 88.6.1-42 — Manage Members refreshes in place (phone project)', () => {
@@ -933,5 +921,158 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
     // this read passed with the mark still on, which the mark reports as a failure (local run on
     // the seeded group, 2026-11-24). It is a gate now, and plan 89.6-11 adds the 320 x 568 arm.
     await memberMenuProof(page, [['200%', [320]]]);
+  });
+
+  // Phase 89.6-11 (owner pick O-8 = C): the short phone. At 320 x 568 with 200% text the dialog is
+  // under its 12rem container width, so the whole dialog scrolls as one page and the box the proof
+  // reads as the body (the first ancestor of the menu's trigger that is not overflow-visible) is
+  // the dialog itself. The same reads as the two tests above, on that box.
+  test('G4 at 320 x 568 with 200% text (89.6-11, O-8 C): the member menu is inside the box that scrolls and every item can be reached', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await memberMenuProof(page, [['200%', [320]]]);
+  });
+});
+
+// Phase 89.6-11 (owner picks O-8 = C and O-8b = C1, 2026-11-22). PHONE PROJECT ONLY, like the rest
+// of this file.
+// WHAT IT PROVES THAT JSDOM CANNOT: which box scrolls, and what a finger can reach. At ordinary
+// text the refresh notice is pinned under the title while the list scrolls inside the dialog (owner
+// ruling #242). At large text on a short phone the whole dialog scrolls as one page, the notice
+// with it, and the footer Close can be reached.
+// WHY IT IS SAFE: holdWrites is registered before navigation; the extra members are synthetic rows
+// in the browser's answer; nothing but Manage Members and the footer Close is pressed.
+// Ten more synthetic members, so the list overflows the dialog whatever size the seeded roster is.
+const C1_FILL = Array.from({ length: 10 }, (_, at) => {
+  const n = String(at + 1).padStart(2, '0');
+  return {
+    id: `00000000-0000-4000-8000-0000000c10${n}`,
+    user_id: `auth0|e2e-synthetic-c1-${n}`,
+    username: `E2E Fill ${n}`,
+    email: null,
+    UserGroup: { role: 'member' },
+  };
+});
+
+test.describe('Phase 89.6-11 — Manage Members on a phone at large text (phone project)', () => {
+  test.skip(({ isMobile }) => !isMobile, 'O-8 C / C1 phone proof — phone project only');
+
+  // Same reason as the first describe (DECISION Phase 88.6.1-42 wave 5 CI gate).
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('C1 (89.6-11): after a failed refresh the notice stays pinned at 375 / 100% and scrolls with the sheet at 320 x 568 / 200%, where the footer Close can be reached', async ({
+    page,
+  }) => {
+    // Copy row RF1, as in the 88.6.1-78 test above, which keeps its own copy inside its body (that
+    // test is unchanged by this plan).
+    const RF1 = "Couldn't refresh. Showing what loaded earlier.";
+    type Box = { x: number; y: number; width: number; height: number };
+    const inside = (inner: Box, outer: Box) =>
+      inner.x >= outer.x - 0.5 &&
+      inner.x + inner.width <= outer.x + outer.width + 0.5 &&
+      inner.y >= outer.y - 0.5 &&
+      inner.y + inner.height <= outer.y + outer.height + 0.5;
+
+    const hold = await holdWrites(page);
+    await routeAugmentedRoster(page, () => [SYNTH, SYNTH_NEXT, ...C1_FILL]);
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    const manage = page.getByRole('button', { name: 'Manage Members' });
+    await expect(manage).toBeVisible({ timeout: 15_000 });
+    await manage.tap();
+
+    const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    const self = dialog.getByText('(You)', { exact: true });
+    await expect(self).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByText('E2E Fill 10', { exact: true })).toHaveCount(1);
+
+    // A real close with the footer Close (two buttons are NAMED Close; this one shows the word).
+    const footerClose = dialog.getByRole('button', { name: 'Close', exact: true }).filter({ hasText: 'Close' });
+    await footerClose.tap();
+    await expect(dialog).toHaveCount(0);
+
+    // Registered after the roster route, so it runs first: the reopen's members read fails.
+    let mode: 'fail' | 'pass' = 'pass';
+    await page.route(isMembersRead, async (route) => {
+      if (route.request().method() !== 'GET' || mode !== 'fail') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ status: 500, json: { message: 'Internal error' } });
+    });
+    mode = 'fail';
+    await manage.tap();
+    const line = dialog.getByText(RF1, { exact: true }).and(page.locator('span'));
+    await expect(line).toBeVisible({ timeout: 15_000 });
+    await expect(self).toBeVisible();
+    await settleAnimations(dialog);
+
+    // 375 x 667, 100% text: the list scrolls inside the dialog and the notice stays pinned (#242).
+    expect(page.viewportSize()).toEqual({ width: 375, height: 667 });
+    const ordinary = await self.evaluate((el) => {
+      const shell = el.closest('[role="dialog"]');
+      let body: Element | null = el;
+      while (body && body.parentElement !== shell) body = body.parentElement;
+      if (!shell || !body) return null;
+      const read = { shellRange: shell.scrollHeight - shell.clientHeight, bodyScroll: body.scrollHeight, bodyClient: body.clientHeight };
+      body.scrollTop = body.scrollHeight;
+      return { ...read, bodyScrolledTo: body.scrollTop };
+    });
+    if (!ordinary) throw new Error('C1: the dialog part that holds the (You) row was not found');
+    const ordinaryLine = JSON.stringify(ordinary);
+    expect(ordinary.bodyScroll, `C1, 375 / 100%: the list does not overflow the dialog body, so nothing is proved (${ordinaryLine})`).toBeGreaterThan(ordinary.bodyClient + 1);
+    expect(ordinary.shellRange, `C1, 375 / 100%: the dialog itself has a scroll range at ordinary text (${ordinaryLine})`).toBeLessThanOrEqual(1);
+    expect(ordinary.bodyScrolledTo, `C1, 375 / 100%: the dialog body did not scroll (${ordinaryLine})`).toBeGreaterThan(0);
+    const pinnedLine = await line.boundingBox();
+    const pinnedDialog = await dialog.boundingBox();
+    if (!pinnedLine || !pinnedDialog) throw new Error('C1: the notice line or the dialog has no box at 375 / 100%');
+    expect(
+      inside(pinnedLine, pinnedDialog),
+      `C1, 375 / 100%: with the list scrolled to its end the notice is not whole inside the dialog (line ${JSON.stringify(pinnedLine)}, dialog ${JSON.stringify(pinnedDialog)}; owner ruling #242 at ordinary sizes)`,
+    ).toBe(true);
+
+    // 320 x 568, 200% text: the whole dialog scrolls as one page, and the footer Close can be reached.
+    await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+        message: 'C1: the root font size did not become 32px after the 200% style tag',
+      })
+      .toBe('32px');
+    await page.setViewportSize({ width: 320, height: 568 });
+    await settleAnimations(dialog);
+    const reach = await footerClose.evaluate((el) => {
+      const shell = el.closest('[role="dialog"]');
+      let box: Element | null = el.parentElement;
+      // The first ancestor, up to the dialog, that holds more content than its own height.
+      while (box && box.scrollHeight <= box.clientHeight + 1) box = box === shell ? null : box.parentElement;
+      if (!shell || !box) return null;
+      const overflowY = getComputedStyle(box).overflowY;
+      const read = { overflowY, isDialog: box === shell, scrollHeight: box.scrollHeight, clientHeight: box.clientHeight };
+      box.scrollTop = box.scrollHeight;
+      return { ...read, scrolledTo: box.scrollTop };
+    });
+    if (!reach) throw new Error('C1, 320 x 568 / 200%: no box between the footer Close and the dialog holds more content than its height, so nothing is proved');
+    const reachLine = JSON.stringify(reach);
+    expect(['auto', 'scroll'], `C1, 320 x 568 / 200%: the box holding the footer Close is not user-scrollable (${reachLine})`).toContain(reach.overflowY);
+    const closeBox = await footerClose.boundingBox();
+    const sheetBox = await dialog.boundingBox();
+    const scrolledLine = await line.boundingBox();
+    if (!closeBox || !sheetBox || !scrolledLine) throw new Error('C1: the footer Close, the dialog or the notice line has no box at 320 x 568 / 200%');
+    expect(
+      inside(closeBox, sheetBox),
+      `C1, 320 x 568 / 200%: scrolled to its end, the footer Close is not whole inside the dialog (Close ${JSON.stringify(closeBox)}, dialog ${JSON.stringify(sheetBox)}; ${reachLine})`,
+    ).toBe(true);
+    const underFinger = await footerClose.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return Boolean(hit && el.contains(hit));
+    });
+    expect(underFinger, `C1, 320 x 568 / 200%: the footer Close is not the thing under a finger at its centre (${reachLine})`).toBe(true);
+    expect(
+      scrolledLine.y + scrolledLine.height,
+      `C1, 320 x 568 / 200%: the notice did not scroll away with the sheet (line ${JSON.stringify(scrolledLine)}, dialog ${JSON.stringify(sheetBox)}; owner pick C1)`,
+    ).toBeLessThanOrEqual(sheetBox.y + 0.5);
+    expectNoApiWrites(hold);
   });
 });
