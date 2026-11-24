@@ -1,4 +1,5 @@
 // Surface rows: the shared dialog shell, read on three dialogs (the shell extras; census D07, D12 and D19). Owner: plan 89.6-10.
+// D07-shell is pending under plan 89.6-25 since Phase 89.6-11: the marker at its row says why.
 // One row per line, each with its census id.
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
@@ -345,7 +346,16 @@ const shellExtras =
   };
 
 export const rows: SurfaceRow[] = [
-  { id: 'D07-shell', census: 'D07', kind: 'dialog', owner: '89.6-10', status: 'enforced', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: shellExtras('D07-shell', customizeGroup) },
+  // DECISION Phase 89.6-11 (D07-shell pending; orchestrator ruling 2026-11-24, the owner can veto): this row goes back from
+  // enforced (plan 89.6-10) to PENDING under plan 89.6-25, chosen OVER leaving it enforced and red until that plan, OVER
+  // fixing the emoji picker here (plan 89.6-25 Task 1 carries the designed fix, owner finding H-23), and OVER changing the
+  // O-8 C recipe so the Body keeps the overflow to itself (that hides it again). Its 7 of 7 was only true while the Body's
+  // own scroll box hid the emoji picker's sideways overflow. With O-8 C the Body is overflow-visible below the 12rem dialog
+  // container, so the dialog box itself shows it: 8px at 215 wide, 15px at 187, 42px at 320 with 200% text, 28px at 375
+  // with 200% text (both themes). Plan 89.6-25 fixes the picker and sets this row back to enforced in that commit; the
+  // coverage script's --close run fails on any pending row, so the phase cannot close with this one off. The reach, the
+  // answers and the extras stay, so turning it on is the status word alone. Changing this is a decision, not a cleanup.
+  { id: 'D07-shell', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'pending', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: shellExtras('D07-shell', customizeGroup) },
   { id: 'D12-shell', census: 'D12', kind: 'dialog', owner: '89.6-10', status: 'enforced', reach: reachManageMembers, extras: shellExtras('D12-shell', manageMembers) },
   { id: 'D19-shell', census: 'D19', kind: 'dialog', owner: '89.6-10', status: 'enforced', reach: reachResetConfirm, extras: shellExtras('D19-shell', resetConfirm) },
 ];
