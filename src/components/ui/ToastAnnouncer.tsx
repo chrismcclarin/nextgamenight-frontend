@@ -92,7 +92,10 @@ export function ToastAnnouncer() {
      (planning:.planning/deferred/phase-89.6.md ("Error notices are not spoken while a dialog is open")).
      Sonner renders the section on every render and does not manage aria-hidden, so the attribute
      holds until this bridge removes it; the bridge removes only the attribute it set
-     (data-toast-bridge-hidden says so). A pointer can still close a visible toast.
+     (data-toast-bridge-hidden says so). aria-hidden changes nothing for sight or for a pointer.
+     (While a modal dialog is OPEN, Radix turns the page's pointer events off outside it, with or
+     without this bridge, so a toast's close button takes no click then; it does again once the
+     dialog starts to close.)
      THE CLOSE PATH. The store picks its target when words land. Words for a toast that arrived
      while a dialog was OPEN are spoken in the dialog region and leave with it, so at the leave
      the section is exposed again (that toast may still show; it is the only copy). Words for a

@@ -207,7 +207,9 @@ export function announceStatus(next: string): void {
      the leave while it still shows a toast whose words went to the root
      (src/components/ui/ToastAnnouncer.tsx ("DECISION Phase 89.6-03 (toast-single-reading)")).
    WHAT IS CHECKED: Chromium's accessibility tree holds the words once with the dialog open and
-   at most once after it closes (this plan's e2e spec, its first test); jsdom pins the attribute
+   at most once after it closes
+   (e2e/toast-bridge-offset.spec.ts ("1. an error toast raised while Customize Group is open"));
+   jsdom pins the attribute
    (src/components/ui/ToastAnnouncer.test.tsx ("6. Sonner section is aria-hidden while a house Modal is open or closing"),
    src/components/ui/ToastAnnouncer.test.tsx ("7. after the leave Sonner section stays aria-hidden"));
    the iPhone and Mac rows of plan 89.6-32 check by ear, with the dialog open only.
