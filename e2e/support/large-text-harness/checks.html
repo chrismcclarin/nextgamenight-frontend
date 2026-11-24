@@ -1,0 +1,179 @@
+<!--
+  Negative controls for the large-text checks: a bad twin and a good twin for each check.
+  One section per twin, marked with data-case; the matrix spec renders ONE section at a time.
+  A bad twin holds the defect its check must report; its good twin holds the same content without it.
+  The wrappers carry lt- hook names the app never styles. Every state is static markup:
+  this file holds no script and no outside address.
+-->
+
+<!-- sideways: a block wider than the page, then the same block capped to the page. -->
+<section data-case="sideways-bad">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-wide w-160 bg-surface-card p-3 text-base text-content-primary">A block forty rem wide</div>
+  </main>
+</section>
+
+<section data-case="sideways-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-wide w-160 max-w-full bg-surface-card p-3 text-base text-content-primary">A block forty rem wide</div>
+  </main>
+</section>
+
+<!-- sideways inside a dialog box: the box hides what is too wide, so the page does not scroll. -->
+<section data-case="sideways-dialog-bad">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div role="dialog" aria-label="Sample dialog" class="lt-dialog w-full overflow-hidden rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-wide w-160 text-base text-content-primary">A part forty rem wide</div>
+    </div>
+  </main>
+</section>
+
+<section data-case="sideways-dialog-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div role="dialog" aria-label="Sample dialog" class="lt-dialog w-full overflow-hidden rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-wide w-160 max-w-full text-base text-content-primary">A part forty rem wide</div>
+    </div>
+  </main>
+</section>
+
+<!-- cut: one sample per kind (ellipsis, clamp, nowrap, hidden, shrunk). -->
+<section data-case="cut-bad">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3 text-content-primary">
+      <p class="w-24 truncate text-base">A long line that ends in three dots</p>
+      <p class="line-clamp-2 text-base">A long paragraph that is held to two lines although it has far more to say than two lines can ever hold at this size.</p>
+      <p class="w-24 whitespace-nowrap text-base">A long line that cannot wrap</p>
+      <div class="h-6 overflow-hidden text-base">First line<br>Second line<br>Third line</div>
+      <p class="text-[10px]">Small print</p>
+    </div>
+  </main>
+</section>
+
+<section data-case="cut-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3 text-content-primary">
+      <p class="w-24 text-base">A long line that ends in three dots</p>
+      <p class="text-base">A long paragraph that is held to two lines although it has far more to say than two lines can ever hold at this size.</p>
+      <p class="w-24 text-base">A long line that cannot wrap</p>
+      <div class="text-base">First line<br>Second line<br>Third line</div>
+      <p class="text-base">Small print</p>
+      <div class="lt-scroll-shell h-24 overflow-hidden">
+        <div class="lt-scroll-body h-full overflow-y-auto text-base">
+          <p>Paragraph one</p>
+          <p>Paragraph two</p>
+          <p>Paragraph three</p>
+          <p>Paragraph four</p>
+          <p>Paragraph five</p>
+          <p>Paragraph six</p>
+          <p>Paragraph seven</p>
+          <p>Paragraph eight</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- split: a text that may shrink to nothing beside a fixed button, then the same content in bb-row. -->
+<section data-case="split-bad">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex gap-3">
+        <div class="min-w-0 font-semibold text-base text-content-primary">Weekend Warriors</div>
+        <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="split-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="bb-row">
+        <div class="bb-row-text font-semibold text-base text-content-primary">Weekend Warriors</div>
+        <div class="bb-row-end">
+          <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- spill: bare text in a fixed button, then the same text in a label that may shrink and break. -->
+<section data-case="spill-bad">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <button type="button" class="btn btn-secondary min-h-11 w-24">Invite Grandmasterboardgamecollective</button>
+    </div>
+  </main>
+</section>
+
+<section data-case="spill-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite Grandmasterboardgamecollective</span></button>
+    </div>
+  </main>
+</section>
+
+<!-- select-fit: a select held to a narrow box, then the same select at its own width. -->
+<section data-case="select-bad">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-select-box w-24">
+      <select aria-label="Reminder" class="w-full rounded-btn border border-line bg-surface-card p-2 text-base text-content-primary">
+        <option selected>30 minutes before</option>
+        <option>1 hour before</option>
+      </select>
+    </div>
+  </main>
+</section>
+
+<section data-case="select-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-select-box">
+      <select aria-label="Reminder" class="rounded-btn border border-line bg-surface-card p-2 text-base text-content-primary">
+        <option selected>30 minutes before</option>
+        <option>1 hour before</option>
+      </select>
+    </div>
+  </main>
+</section>
+
+<!-- page zoom (SPEC A8): two buttons that overlap, a button hidden past the end of a clipped row, and one line of text pulled up over another. -->
+<section data-case="zoom-bad">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-overlap flex">
+      <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Invite</span></button>
+      <button type="button" class="btn btn-primary min-h-11 -ml-8"><span class="bb-label">Share</span></button>
+    </div>
+    <div class="lt-clip mt-3 w-24 overflow-hidden">
+      <div class="whitespace-nowrap text-base text-content-primary">A long line of words <button type="button" class="btn btn-secondary min-h-11">Remove</button></div>
+    </div>
+    <div class="lt-text-overlap mt-3 text-base text-content-primary">
+      <p>Hosted by Bob</p>
+      <p class="-mt-4">Sunday at noon</p>
+    </div>
+  </main>
+</section>
+
+<!-- page zoom, good: text below the fold of a scrolling body, a panel wider than the page, and two tight lines that touch without their letters meeting. -->
+<section data-case="zoom-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-scroll-shell h-24 overflow-hidden">
+      <div class="lt-scroll-body h-full overflow-y-auto text-base text-content-primary">
+        <p>Paragraph one</p>
+        <p>Paragraph two</p>
+        <p>Paragraph three</p>
+        <p>Paragraph four</p>
+        <p>Paragraph five</p>
+        <p>Paragraph six</p>
+        <p>Paragraph seven</p>
+        <p>Paragraph eight</p>
+      </div>
+    </div>
+    <div class="lt-wide mt-3 w-80 bg-surface-card p-3 text-base text-content-primary">A panel twenty rem wide, wider than the page</div>
+    <div class="lt-tight mt-3 text-content-primary">
+      <p class="text-2xl leading-none">12</p>
+      <p class="text-xs leading-none">games</p>
+    </div>
+  </main>
+</section>

@@ -833,6 +833,18 @@
     gap: 0.5rem;
     margin-inline-start: auto;
   }
+
+  /* DECISION Phase 89.6-02 (bb-label-rule): a control's label may shrink to its control and breaks
+     a word only when that word is wider than the control, chosen OVER bare text in the control (an
+     anonymous flex item that cannot shrink below its longest word, so it spills out: 'Member' 4px
+     out of Invite Member at 320 / 200%, research M F4). The ONE place a min-width of 0 is safe,
+     because the control itself is capped to its row (HR-6); never on text that shares a line with
+     other text (HR-2). Plan 89.6-06 applies it in the Button primitive. Changing this is a
+     decision, not a cleanup. */
+  .bb-label {
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
 }
 
 /* ===== DESIGN SYSTEM: Palette Primitives ===== */

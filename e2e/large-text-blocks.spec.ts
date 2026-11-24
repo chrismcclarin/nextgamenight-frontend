@@ -3,7 +3,16 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import postcss, { type AcceptedPlugin } from 'postcss';
 import tailwindcss from '@tailwindcss/postcss';
-import { expectLargeTextCell, readLargeTextCell, setTextMode, type LargeTextCellRead, type TextMode } from './support/wordLines';
+import {
+  expectLargeTextCell,
+  expectPageZoomUsable,
+  readLargeTextCell,
+  readPageZoomCell,
+  setTextMode,
+  type LargeTextCellRead,
+  type PageZoomRead,
+  type TextMode,
+} from './support/wordLines';
 
 // Phase 89.6-02 (SPEC R3, R4, R6): the large-text building blocks, RENDERED, in every matrix cell.
 //
@@ -13,6 +22,14 @@ import { expectLargeTextCell, readLargeTextCell, setTextMode, type LargeTextCell
 // word, a name with an emoji) and reads each with the large-text checks of the one shared read,
 // e2e/support/wordLines.ts ("DECISION Phase 89.6-02 (checks)"). A test is one block in one cell;
 // it attaches its four reads and then asserts them.
+//
+// PAGE ZOOM (SPEC A8). Four more cells per block, 215 and 187 wide at normal text, light and dark:
+// a 430-wide and a 375-wide phone at 200% page zoom. They take the lighter read of
+// e2e/support/wordLines.ts ("DECISION Phase 89.6-02 (A8)"): only lost content or function fails;
+// sideways scroll, splits and spills seen there are written into the attachment.
+//
+// NEGATIVE CONTROLS. One test per check renders a bad twin, which the check must report, and its
+// good twin, which it must not: a read that cannot fail would pass every broken layout after it.
 //
 // HOW 200% IS PRODUCED. A style tag sets the root font size to 200%, so every rem doubles, as
 // e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED") explains. Browser zoom is not used.
@@ -43,7 +60,8 @@ const CASES = ['ordinary', 'empty', 'word30', 'emoji'] as const;
 
 type Theme = 'light' | 'dark';
 interface Cell {
-  set: 'matrix';
+  /** matrix: the 12 cells, all five checks. pagezoom: SPEC A8's widths, the lighter read. */
+  set: 'matrix' | 'pagezoom';
   width: number;
   height: number;
   theme: Theme;
@@ -57,10 +75,22 @@ const MATRIX_SIZES = [
 ] as const;
 const THEMES: readonly Theme[] = ['light', 'dark'];
 
-/** The 12 matrix cells: 320 first, then 375, then 768; each light then dark; each 100 then 200. */
-const CELLS: Cell[] = MATRIX_SIZES.flatMap((size) =>
-  THEMES.flatMap((theme) => (['100', '200'] as const).map((mode): Cell => ({ set: 'matrix', ...size, theme, mode }))),
-);
+/** Half the 932 and 667 viewport heights of the two phones; scrolling down is allowed there. */
+const PAGE_ZOOM_SIZES = [
+  { width: 215, height: 466 },
+  { width: 187, height: 333 },
+] as const;
+
+/**
+ * The 12 matrix cells (320 first, then 375, then 768; each light then dark; each 100 then 200),
+ * then the 4 page-zoom cells (215, then 187; each light then dark; normal text).
+ */
+const CELLS: Cell[] = [
+  ...MATRIX_SIZES.flatMap((size) =>
+    THEMES.flatMap((theme) => (['100', '200'] as const).map((mode): Cell => ({ set: 'matrix', ...size, theme, mode }))),
+  ),
+  ...PAGE_ZOOM_SIZES.flatMap((size) => THEMES.map((theme): Cell => ({ set: 'pagezoom', ...size, theme, mode: '100' }))),
+];
 
 /** src/app/globals.css as the app ships it, plus the utilities the harness pages use. */
 let compiledCss = '';
@@ -120,6 +150,29 @@ function frameOf(page: Page): Locator {
 
 for (const block of BLOCKS) {
   for (const cell of CELLS) {
+    if (cell.set === 'pagezoom') {
+      const zoomName = `${block} page zoom ${cell.width} ${cell.theme}`;
+      test(`${zoomName} (89.6-02, SPEC A8): the four content cases lose no content or function`, async ({ page }, testInfo) => {
+        const requests = await countRequests(page);
+        const harness = harnessOf(block);
+        const reads: Array<{ case: string; window: number; read: PageZoomRead }> = [];
+        for (const name of CASES) {
+          await renderSection(page, cell, sectionOf(harness, name), `${zoomName} ${name}`);
+          const window = await page.evaluate(() => document.documentElement.clientWidth);
+          reads.push({ case: name, window, read: await readPageZoomCell(frameOf(page)) });
+        }
+        // Attached BEFORE asserting: what is only recorded at these widths lives here.
+        await testInfo.attach('cell-read', { body: JSON.stringify(reads, null, 2), contentType: 'application/json' });
+        for (const { case: name, window, read } of reads) {
+          const tag = `${zoomName} ${name}`;
+          expect(window, `${tag}: the window is not ${cell.width}px wide`).toBe(cell.width);
+          expectPageZoomUsable(read, tag);
+        }
+        expect(reads.length, `${zoomName}: four content cases were to be read`).toBe(4);
+        expect(requests, `${zoomName}: the page made a request`).toEqual([]);
+      });
+      continue;
+    }
     const cellName = `${block} ${cell.width} ${cell.theme} ${cell.mode}`;
     test(`${cellName} (89.6-02): the four content cases hold the large-text checks`, async ({ page }, testInfo) => {
       const requests = await countRequests(page);
@@ -141,3 +194,97 @@ for (const block of BLOCKS) {
     });
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Negative controls: each check reports its bad twin and passes its good twin. The twins are the
+// sections of the checks harness file; all but the page-zoom one render at 320 wide, light, 200%.
+// ---------------------------------------------------------------------------------------------
+
+const CHECK_CELL = { width: 320, height: 568, theme: 'light', mode: '200' } as const;
+const ZOOM_CHECK_CELL = { width: 215, height: 466, theme: 'light', mode: '100' } as const;
+
+/** Render one twin of the checks harness and hand back the frame to read. */
+async function renderTwin(page: Page, name: string, cell: { width: number; height: number; theme: Theme; mode: TextMode } = CHECK_CELL): Promise<Locator> {
+  await renderSection(page, cell, sectionOf(harnessOf('checks'), name), `check twin ${name}`);
+  return frameOf(page);
+}
+
+test('check: sideways (89.6-02): reports its bad twin and passes its good twin', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const bad = await readLargeTextCell(await renderTwin(page, 'sideways-bad'));
+  const good = await readLargeTextCell(await renderTwin(page, 'sideways-good'));
+  await renderTwin(page, 'sideways-dialog-bad');
+  const dialogBad = await readLargeTextCell(frameOf(page), { dialog: page.getByRole('dialog') });
+  await renderTwin(page, 'sideways-dialog-good');
+  const dialogGood = await readLargeTextCell(frameOf(page), { dialog: page.getByRole('dialog') });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, good, dialogBad, dialogGood }, null, 2), contentType: 'application/json' });
+  expect(bad.pageSideways, 'the bad twin (a block 40rem wide) did not read as page sideways scroll').toBeGreaterThan(0);
+  expect(good.pageSideways, 'the good twin (the same block capped to the page) reads as page sideways scroll').toBe(0);
+  expect(good.dialogSideways, 'no dialog was named, so no dialog read was due').toBeNull();
+  expect(dialogBad.dialogSideways, 'the bad dialog twin (a 40rem part in a box that hides it) did not read as sideways scroll in the dialog').toBeGreaterThan(0);
+  expect(dialogBad.pageSideways, 'the bad dialog twin hides its wide part, so the page itself must not scroll sideways').toBe(0);
+  expect(dialogGood.dialogSideways, 'the good dialog twin reads as sideways scroll in the dialog').toBe(0);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: cut (89.6-02): reports its bad twin and passes its good twin', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const bad = await readLargeTextCell(await renderTwin(page, 'cut-bad'));
+  const good = await readLargeTextCell(await renderTwin(page, 'cut-good'));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, good }, null, 2), contentType: 'application/json' });
+  const kindsReported = (kind: string) => bad.cut.filter((entry) => entry.startsWith(`${kind}: `)).length;
+  expect(kindsReported('ellipsis'), `the cut read did not name the ellipsis kind (${JSON.stringify(bad.cut)})`).toBeGreaterThan(0);
+  expect(kindsReported('clamp'), `the cut read did not name the clamp kind (${JSON.stringify(bad.cut)})`).toBeGreaterThan(0);
+  expect(kindsReported('nowrap'), `the cut read did not name the nowrap kind (${JSON.stringify(bad.cut)})`).toBeGreaterThan(0);
+  expect(kindsReported('hidden'), `the cut read did not name the hidden kind (${JSON.stringify(bad.cut)})`).toBeGreaterThan(0);
+  expect(kindsReported('shrunk'), `the cut read did not name the shrunk kind (${JSON.stringify(bad.cut)})`).toBeGreaterThan(0);
+  expect(good.cut, 'the good twin (the same texts uncapped, and text scrolled out of a scrolling body) reads as cut').toEqual([]);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split (89.6-02): reports its bad twin and passes its good twin', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const bad = await readLargeTextCell(await renderTwin(page, 'split-bad'));
+  const good = await readLargeTextCell(await renderTwin(page, 'split-good'));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, good }, null, 2), contentType: 'application/json' });
+  expect(bad.split.length, 'the bad twin (a name that may shrink to nothing beside a fixed button) did not read as split').toBeGreaterThan(0);
+  expect(bad.split.join(' | '), 'the split read did not name the squeezed word').toContain('"Weekend"');
+  expect(good.split, 'the good twin (the same content in bb-row) reads as split').toEqual([]);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: spill (89.6-02): reports its bad twin and passes its good twin', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const bad = await readLargeTextCell(await renderTwin(page, 'spill-bad'));
+  const good = await readLargeTextCell(await renderTwin(page, 'spill-good'));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, good }, null, 2), contentType: 'application/json' });
+  expect(bad.spill.length, 'the bad twin (bare text in a fixed button) did not read as spilling out of its button').toBeGreaterThan(0);
+  expect(bad.spill.join(' | '), 'the spill read did not name the button').toContain('out of its button');
+  expect(good.spill, 'the good twin (the same text in a bb-label) spills out of its button').toEqual([]);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: select-fit (89.6-02): reports its bad twin and passes its good twin', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const bad = await readLargeTextCell(await renderTwin(page, 'select-bad'));
+  const good = await readLargeTextCell(await renderTwin(page, 'select-good'));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, good }, null, 2), contentType: 'application/json' });
+  expect(bad.selectCut.length, 'the bad twin (a select held to a narrow box) did not read as a cut value').toBe(1);
+  expect(bad.selectCut[0], 'the select read did not name the chosen option').toContain('"30 minutes before"');
+  expect(good.selectCut, 'the good twin (the same select at its own width) reads as a cut value').toEqual([]);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: A8 (89.6-02): reports its bad twin and passes its good twin', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const bad = await readPageZoomCell(await renderTwin(page, 'zoom-bad', ZOOM_CHECK_CELL));
+  const good = await readPageZoomCell(await renderTwin(page, 'zoom-good', ZOOM_CHECK_CELL));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ bad, good }, null, 2), contentType: 'application/json' });
+  const lost = bad.lost.join(' | ');
+  expect(lost, 'the two overlapping buttons are not in lost').toContain('overlap: button "Invite" and button "Share"');
+  expect(lost, 'the button past the end of the clipped row is not in lost').toContain('unreachable: button "Remove"');
+  expect(lost, 'the line of text pulled up over another is not in lost').toContain('overlap: the text of p "Hosted by Bob" and p "Sunday at noon"');
+  expect(good.lost, 'the good twin (text below the fold of a scrolling body, a panel wider than the page, two tight lines whose letters do not meet) reads as lost').toEqual([]);
+  expect(good.recorded.join(' | '), 'the panel wider than the page was not recorded as page sideways scroll').toContain('the page scrolls sideways by');
+  expect(requests, 'the page made a request').toEqual([]);
+});

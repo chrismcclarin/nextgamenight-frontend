@@ -287,16 +287,27 @@ export interface LargeTextCellRead {
   cut: string[];
   /** One entry per word drawn on more than one line although it fits its row on one. */
   split: string[];
+  /** One entry per word that paints outside its nearest box with a fill, a side border or a control. */
+  spill: string[];
+  /** One entry per select whose chosen option is wider than the room the closed select has for it. */
+  selectCut: string[];
 }
 
 interface LargeTextPageArg {
   dialogEl: Element | null;
   exceptions: string[];
+  /** Also work out what is lost at a page-zoom width (the A8 read below). */
+  zoom: boolean;
+}
+
+interface LargeTextPageResult extends LargeTextCellRead {
+  /** The A8 read's losses; empty when the read was not asked for. */
+  lost: string[];
 }
 
 // The ONE in-page read behind every large-text check. It runs in the browser, so it uses nothing
 // from this file: every helper it needs is declared inside it.
-function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextCellRead {
+function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPageResult {
   const doc = document.documentElement;
   const px = (value: string) => Number.parseFloat(value) || 0;
   const round = (value: number) => Math.round(value * 100) / 100;
@@ -377,12 +388,14 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextCel
 
   // ---- cut -------------------------------------------------------------------------------------
   const cut: string[] = [];
+  const cutHits: Array<{ kind: string; el: Element }> = [];
   const cutSeen = new Map<Element, Set<string>>();
   const addCut = (kind: string, el: Element) => {
     const kinds = cutSeen.get(el) ?? new Set<string>();
     if (kinds.has(kind)) return;
     kinds.add(kind);
     cutSeen.set(el, kinds);
+    cutHits.push({ kind, el });
     cut.push(`${kind}: "${first30(el)}"`);
   };
 
@@ -455,8 +468,170 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextCel
     if (natural <= room + 0.5) split.push(`"${w.text}" ${w.lines} lines, ${round(natural)}px fits its row ${round(room)}px`);
   }
 
+  // ---- spill -----------------------------------------------------------------------------------
+  // A word's box is the nearest element, from the text's own element up, that has a fill (a
+  // background colour that is not transparent), a left or right border, or is a control. A word
+  // with any rect more than 1px past that box's left or right edge paints outside it: no page
+  // scroll, no cut and no split see that (research M F4, "Member" 4px out of Invite Member).
+  const CONTROL = 'button, a[href], select, input, textarea, label, [role="button"]';
+  const transparent = (colour: string) => colour === 'transparent' || /,\s*0\)$/.test(colour) || /\/\s*0\)$/.test(colour);
+  const spillBoxOf = (el: Element): Element | null => {
+    for (let a: Element | null = el; a && a !== doc; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (!transparent(cs.backgroundColor) || px(cs.borderLeftWidth) > 0 || px(cs.borderRightWidth) > 0 || a.matches(CONTROL)) return a;
+    }
+    return null;
+  };
+  const spill: string[] = [];
+  for (const w of words) {
+    const box = spillBoxOf(w.el);
+    if (!box) continue;
+    const edge = box.getBoundingClientRect();
+    const past = Math.max(...w.rects.map((r) => Math.max(edge.left - r.left, r.right - edge.right)));
+    if (past > 1) spill.push(`"${w.text}" spills ${round(past)}px out of its ${box.tagName.toLowerCase()}`);
+  }
+
+  // ---- select-fit ------------------------------------------------------------------------------
+  // A closed select shows its chosen option on one line and cuts what does not fit. The room is
+  // the select's inside width less its side padding, less 20px for the native arrow unless the
+  // select has dropped its native appearance.
+  const selectCut: string[] = [];
+  for (const select of Array.from(rootEl.querySelectorAll('select'))) {
+    if (drawsNothing(select)) continue;
+    const chosen = select.selectedOptions[0]?.text ?? '';
+    if (!chosen.trim()) continue;
+    const cs = getComputedStyle(select);
+    const native = cs.appearance !== 'none' && cs.getPropertyValue('-webkit-appearance') !== 'none';
+    const room = select.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight) - (native ? 20 : 0);
+    const needs = naturalWidth(chosen, select);
+    if (needs > room + 1) selectCut.push(`select value cut: "${chosen}" needs ${round(needs)}px, has ${round(room)}px`);
+  }
+
+  // ---- lost (the A8 read) ----------------------------------------------------------------------
+  const lost: string[] = [];
+  if (arg.zoom) {
+    const named = (el: Element) => `${el.tagName.toLowerCase()} "${first30(el) || (el.getAttribute('aria-label') ?? '').slice(0, 30)}"`;
+    // The first overflow that is not visible, climbing from the element itself in one axis.
+    const firstOverflow = (el: Element, axis: Axis): 'scroll' | 'clip' | null => {
+      for (let a: Element | null = el; a && a !== doc; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        const overflow = axis === 'x' ? cs.overflowX : cs.overflowY;
+        if (overflow === 'auto' || overflow === 'scroll') return 'scroll';
+        if (overflow === 'hidden' || overflow === 'clip') return 'clip';
+      }
+      return null;
+    };
+
+    // (a) unreachable: a control, or text, that starts left of or above the page's origin (no
+    // scroll goes there), or that lies past the padding box of a hidden or clip ancestor, with the
+    // same per-axis climb as the hidden kind above (a scroller met first makes it reachable).
+    const unreachable = new Set<Element>();
+    const whyUnreachable = (rects: DOMRect[], climbFrom: Element | null): string | null => {
+      if (Math.min(...rects.map((r) => r.left)) + window.scrollX < -0.5) return 'starts left of the page';
+      if (Math.min(...rects.map((r) => r.top)) + window.scrollY < -0.5) return 'starts above the page';
+      const clipper = climbFrom ? (clippedBy(climbFrom, rects, 'x') ?? clippedBy(climbFrom, rects, 'y')) : null;
+      return clipper ? `is clipped by its ${clipper.tagName.toLowerCase()}` : null;
+    };
+    const REACHED = 'button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])';
+    const controls = Array.from(rootEl.querySelectorAll(REACHED)).filter((c) => {
+      const r = c.getBoundingClientRect();
+      return !drawsNothing(c) && r.width > 0 && r.height > 0;
+    });
+    for (const control of controls) {
+      const why = whyUnreachable([control.getBoundingClientRect()], control.parentElement);
+      if (!why) continue;
+      unreachable.add(control);
+      lost.push(`unreachable: ${named(control)} ${why}`);
+    }
+    for (const el of textElements) {
+      if (Array.from(unreachable).some((u) => u.contains(el))) continue;
+      const why = whyUnreachable(words.filter((w) => w.el === el).flatMap((w) => w.rects), el);
+      if (!why) continue;
+      unreachable.add(el);
+      lost.push(`unreachable: ${named(el)} ${why}`);
+    }
+
+    // (b) cut with no way to reach it: the ellipsis, clamp and nowrap kinds above (the exceptions
+    // list already honoured), unless a scroller is the first overflow met climbing from the cut
+    // element itself, sideways for ellipsis and nowrap, downward for clamp.
+    for (const hit of cutHits) {
+      if (!['ellipsis', 'clamp', 'nowrap'].includes(hit.kind)) continue;
+      if (firstOverflow(hit.el, hit.kind === 'clamp' ? 'y' : 'x') === 'scroll') continue;
+      lost.push(`cut: ${hit.kind} ${named(hit.el)}`);
+    }
+
+    // (c) overlap: two controls whose boxes cross by more than 1px in both directions, or the
+    // text of two elements crossing the same way, where neither element contains the other.
+    // Only the DRAWN part of a box counts: what is left of it after every ancestor that does not
+    // show its overflow (hidden, clip, auto or scroll) has cut it to its padding box. Text scrolled
+    // out of a scrolling body is laid out over whatever sits under that body, and draws nothing there.
+    interface Part {
+      left: number;
+      top: number;
+      right: number;
+      bottom: number;
+    }
+    const drawnPart = (from: Element | null, r: DOMRect): Part | null => {
+      const part: Part = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      for (let a: Element | null = from; a && a !== doc; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+        const box = a.getBoundingClientRect();
+        if (cs.overflowX !== 'visible') {
+          part.left = Math.max(part.left, box.left + px(cs.borderLeftWidth));
+          part.right = Math.min(part.right, box.right - px(cs.borderRightWidth));
+        }
+        if (cs.overflowY !== 'visible') {
+          part.top = Math.max(part.top, box.top + px(cs.borderTopWidth));
+          part.bottom = Math.min(part.bottom, box.bottom - px(cs.borderBottomWidth));
+        }
+        if (part.right - part.left <= 0 || part.bottom - part.top <= 0) return null;
+      }
+      return part;
+    };
+    const crosses = (p: Part, q: Part) => Math.min(p.right, q.right) - Math.max(p.left, q.left) > 1 && Math.min(p.bottom, q.bottom) - Math.max(p.top, q.top) > 1;
+    // DECISION Phase 89.6-02 (A8-text-overlap): two texts cross only when their rects meet by more
+    // than 1px sideways AND, top to bottom, by more than a third of the shorter rect, chosen OVER
+    // the controls' rule of 1px in both directions. A text rect is the font's whole ascent-plus-
+    // descent box, taller than its line when the line height is tight, so two stacked tight lines
+    // meet by a few px with no ink touching (measured: 2.7px between a 24px and a 12px line at a
+    // line height of 1; the zoom-good twin of the checks harness holds that pair). Lowering the
+    // third back to 1px is a decision, not a cleanup: it fails pages for their line height.
+    const textCrosses = (p: Part, q: Part) => crosses(p, q) && Math.min(p.bottom, q.bottom) - Math.max(p.top, q.top) > Math.min(p.bottom - p.top, q.bottom - q.top) / 3;
+    const apart = (p: Element, q: Element) => !p.contains(q) && !q.contains(p);
+    const overlapping: Array<[Element, Element]> = [];
+    const controlParts = controls.map((control) => ({ control, part: drawnPart(control.parentElement, control.getBoundingClientRect()) }));
+    for (let i = 0; i < controlParts.length; i += 1) {
+      for (let j = i + 1; j < controlParts.length; j += 1) {
+        const p = controlParts[i];
+        const q = controlParts[j];
+        if (!p.part || !q.part || !apart(p.control, q.control) || !crosses(p.part, q.part)) continue;
+        overlapping.push([p.control, q.control]);
+        lost.push(`overlap: ${named(p.control)} and ${named(q.control)}`);
+      }
+    }
+    const textRects = textElements.map((el) => ({
+      el,
+      rects: words
+        .filter((w) => w.el === el)
+        .flatMap((w) => w.rects)
+        .map((r) => drawnPart(el, r))
+        .filter((part): part is Part => part !== null),
+    }));
+    for (let i = 0; i < textRects.length; i += 1) {
+      for (let j = i + 1; j < textRects.length; j += 1) {
+        const p = textRects[i];
+        const q = textRects[j];
+        if (!apart(p.el, q.el)) continue;
+        // Text inside two controls that were already reported as overlapping is the same finding.
+        if (overlapping.some(([m, n]) => (m.contains(p.el) && n.contains(q.el)) || (m.contains(q.el) && n.contains(p.el)))) continue;
+        if (p.rects.some((r) => q.rects.some((s) => textCrosses(r, s)))) lost.push(`overlap: the text of ${named(p.el)} and ${named(q.el)}`);
+      }
+    }
+  }
+
   ruler.remove();
-  return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split };
+  return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, spill, selectCut, lost };
 }
 
 /**
@@ -465,7 +640,17 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextCel
  */
 export async function readLargeTextCell(root: Locator, options: LargeTextReadOptions = {}): Promise<LargeTextCellRead> {
   const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
-  return root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])] });
+  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: false });
+  return {
+    rootFontSize: read.rootFontSize,
+    window: read.window,
+    pageSideways: read.pageSideways,
+    dialogSideways: read.dialogSideways,
+    cut: read.cut,
+    split: read.split,
+    spill: read.spill,
+    selectCut: read.selectCut,
+  };
 }
 
 /** Expect a cell read to hold every large-text check. */
@@ -477,4 +662,34 @@ export function expectLargeTextCell(read: LargeTextCellRead, tag: string): void 
   }
   expect(read.cut, `${tag}: text is capped, shrunk or cut (${line})`).toEqual([]);
   expect(read.split, `${tag}: a word is split inside itself although it fits its row (${line})`).toEqual([]);
+  expect(read.spill, `${tag}: text paints outside its own box (${line})`).toEqual([]);
+  expect(read.selectCut, `${tag}: a select's chosen value is cut (${line})`).toEqual([]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// DECISION Phase 89.6-02 (A8): at the page-zoom widths (215 and 187 at normal text, SPEC A8) the
+// read fails only on lost content or function: unreachable, cut with no way to reach it,
+// overlapping into unusable; everything else is recorded, not failed, chosen OVER the full five
+// checks there (WCAG Reflow does not cover a viewport under 320; Resize Text still asks for no
+// loss). Changing this is a decision, not a cleanup.
+// ---------------------------------------------------------------------------------------------
+
+export interface PageZoomRead {
+  /** Lost content or function: unreachable, cut with no way to reach it, or overlapping. These fail. */
+  lost: string[];
+  /** Seen and written down, never failed: the page's sideways scroll, splits and spills. */
+  recorded: string[];
+}
+
+/** Read one page-zoom cell under `root`: what is lost, and what is only recorded. */
+export async function readPageZoomCell(root: Locator, options: LargeTextReadOptions = {}): Promise<PageZoomRead> {
+  const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
+  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: true });
+  const recorded = [...(read.pageSideways > 0 ? [`the page scrolls sideways by ${read.pageSideways}px`] : []), ...read.split.map((s) => `split: ${s}`), ...read.spill.map((s) => `spill: ${s}`)];
+  return { lost: read.lost, recorded };
+}
+
+/** Expect a page-zoom cell to have lost no content and no function. */
+export function expectPageZoomUsable(read: PageZoomRead, tag: string): void {
+  expect(read.lost, `${tag}: content or function is lost at this page-zoom width (${JSON.stringify(read)})`).toEqual([]);
 }
