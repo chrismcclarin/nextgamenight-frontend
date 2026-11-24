@@ -8,6 +8,14 @@
 // the shell: the footer with the same five checks, and the shell's geometry (readShell and
 // shellProblems, below), which the large-text matrix's dialog-shell block runs too.
 //
+// A TALL DIALOG SCROLLS (Phase 89.6-11, owner pick O-8 = C): below the 12rem dialog container the
+// whole dialog scrolls as one page (src/app/components/Modal.tsx ("DECISION Phase 89.6-11 (O-8)")),
+// and house rule GR says scrolling down is fine. So the shell read asks what a finger can REACH,
+// not what is on screen at rest: the header is read with the dialog scrolled to its top, and each
+// footer button is scrolled into view first, and must then be whole inside the dialog box and be
+// the thing under a finger at its centre. A box that had to scroll for that must be one a finger
+// can scroll (overflow-y auto or scroll): a clipping box moves for a script and for nobody else.
+//
 // THE FOOTER IS FOUND BY STRUCTURE, never by position: the dialog's LAST child is the
 // screen-reader announcer region, an empty 1px box on which every check passes with nothing read
 // (src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (A-47): every house Modal carries its own announcer region")).
@@ -56,17 +64,35 @@ export interface ShellGeometry {
   footer: ShellBox | null;
   /** The footer's content box: its box less its padding and border. */
   footerContent: ShellBox | null;
-  /** Every button of the shell's own parts (its header and its footer), in document order. */
-  buttons: Array<{ label: string; part: 'header' | 'footer'; box: ShellBox }>;
+  /** Every button of the shell's own parts (its header and its footer), in document order, with the dialog scrolled to its top. */
+  buttons: Array<{ label: string; part: 'header' | 'footer'; box: ShellBox; reached?: ShellReach }>;
 }
 
-/** Read one dialog shell. The header is the dialog's first child; the footer its direct child with a top border. */
+/** One footer button after it was scrolled into view: where it and the dialog box then are. */
+export interface ShellReach {
+  box: ShellBox;
+  dialog: ShellBox;
+  /** Is the button the thing under a finger at its centre? */
+  onTop: boolean;
+  /** How far the dialog box itself scrolled to show the button. */
+  dialogScrolledTo: number;
+  /** The dialog box's computed overflow-y: only auto and scroll are scrolls a finger can make. */
+  dialogOverflowY: string;
+}
+
+/**
+ * Read one dialog shell. The header is the dialog's first child; the footer its direct child with
+ * a top border. The dialog is scrolled to its top for the read, each footer button is scrolled
+ * into view for its own reach read, and the dialog and the window are put back to where they were.
+ */
 export async function readShell(dialog: Locator): Promise<ShellGeometry> {
   return dialog.evaluate((el) => {
     const box = (node: Element | DOMRect) => {
       const r = node instanceof Element ? node.getBoundingClientRect() : node;
       return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
     };
+    const before = { dialog: el.scrollTop, x: window.scrollX, y: window.scrollY };
+    el.scrollTop = 0;
     const header = el.firstElementChild;
     const footer = Array.from(el.children).find((child) => child.tagName === 'DIV' && child.classList.contains('border-t')) ?? null;
     const title = header?.querySelector('h2') ?? null;
@@ -107,8 +133,11 @@ export async function readShell(dialog: Locator): Promise<ShellGeometry> {
         label: (button.getAttribute('aria-label') ?? button.textContent ?? '').trim(),
         part,
         box: box(button),
+        node: button,
       }));
-    return {
+    const headerButtons = buttonsOf('header', header).map(({ label, part, box: at }) => ({ label, part, box: at }));
+    const footerAtTop = buttonsOf('footer', footer);
+    const read = {
       dialog: box(el),
       sideways: el.scrollWidth - el.clientWidth,
       containerRem: el.clientWidth / (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16),
@@ -119,8 +148,28 @@ export async function readShell(dialog: Locator): Promise<ShellGeometry> {
       closeIcon: icon ? box(icon) : null,
       footer: footer ? box(footer) : null,
       footerContent,
-      buttons: [...buttonsOf('header', header), ...buttonsOf('footer', footer)],
     };
+    // Each footer button, scrolled into view: is it then whole inside the dialog, and under a finger?
+    const footerButtons = footerAtTop.map(({ label, part, box: at, node }) => {
+      node.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+      const r = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {
+        label,
+        part,
+        box: at,
+        reached: {
+          box: box(r),
+          dialog: box(el),
+          onTop: Boolean(hit && node.contains(hit)),
+          dialogScrolledTo: el.scrollTop,
+          dialogOverflowY: getComputedStyle(el).overflowY,
+        },
+      };
+    });
+    el.scrollTop = before.dialog;
+    window.scrollTo(before.x, before.y);
+    return { ...read, buttons: [...headerButtons, ...footerButtons] };
   });
 }
 
@@ -139,10 +188,19 @@ const px = (value: number): string => `${Math.round(value * 100) / 100}`;
  */
 export function shellProblems(read: ShellGeometry, mode: string, tag: string): string[] {
   const problems: string[] = [];
-  // Every button of the shell lies inside the dialog box.
+  // Every button of the shell can be reached: a header button lies inside the dialog box with the
+  // dialog scrolled to its top; a footer button, scrolled into view, lies whole inside the dialog
+  // box and is the thing under a finger at its centre (Phase 89.6-11: a tall dialog scrolls).
   for (const button of read.buttons) {
-    if (!inside(button.box, read.dialog)) {
-      problems.push(`${tag}: the ${button.part} button "${button.label}" is outside the dialog box (button ${px(button.box.left)} to ${px(button.box.right)} by ${px(button.box.top)} to ${px(button.box.bottom)}; dialog ${px(read.dialog.left)} to ${px(read.dialog.right)} by ${px(read.dialog.top)} to ${px(read.dialog.bottom)})`);
+    const at = button.reached?.box ?? button.box;
+    const dialog = button.reached?.dialog ?? read.dialog;
+    if (!inside(at, dialog)) {
+      problems.push(`${tag}: the ${button.part} button "${button.label}" is outside the dialog box${button.reached ? ' after it was scrolled into view' : ''} (button ${px(at.left)} to ${px(at.right)} by ${px(at.top)} to ${px(at.bottom)}; dialog ${px(dialog.left)} to ${px(dialog.right)} by ${px(dialog.top)} to ${px(dialog.bottom)})`);
+    }
+    if (!button.reached) continue;
+    if (!button.reached.onTop) problems.push(`${tag}: the footer button "${button.label}", scrolled into view, is not the thing under a finger at its centre`);
+    if (button.reached.dialogScrolledTo > 0.5 && button.reached.dialogOverflowY !== 'auto' && button.reached.dialogOverflowY !== 'scroll') {
+      problems.push(`${tag}: the footer button "${button.label}" is reached only by scrolling the dialog box ${px(button.reached.dialogScrolledTo)}px, and a finger cannot scroll that box (overflow-y ${button.reached.dialogOverflowY})`);
     }
   }
   // The close is a 44 x 44 box inside the dialog, and its icon follows the text up to 32px.

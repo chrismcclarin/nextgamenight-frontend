@@ -143,7 +143,7 @@ export interface SchedulerGeometryProbe {
     overflowY: string;
   };
   /** Every ancestor between the scroller and <body> that clips. The modal's own
-   *  `max-h-[90dvh] overflow-hidden` box (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]")) shows up HERE as a measured
+   *  `max-h-[90dvh]` clipping box (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]")) shows up HERE as a measured
    *  rect instead of as a citation. */
   clipChain: ClipAncestor[];
   /** The scroller's rect intersected with every clipping ancestor AND the viewport —

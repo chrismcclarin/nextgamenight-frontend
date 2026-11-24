@@ -229,7 +229,7 @@ interface GridGeometry {
    * clamp gave `368.352 .. 667` — so the old filter admitted FIVE cells where only FOUR were
    * reachable, and a drag to the fifth landed on the Radix backdrop
    * (`div.fixed inset-0 z-50 bg-black/80`, `elementFromPoint` -> null). The modal is
-   * max-h-[90dvh] overflow-hidden, src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"); the viewport is not the clip.
+   * max-h-[90dvh] and clips (overflow-y-auto since Phase 89.6-11), src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"); the viewport is not the clip.
    */
   visibleBand: { top: number; bottom: number; height: number };
 }
@@ -350,7 +350,7 @@ async function resetColumnScroll(page: Page): Promise<void> {
  * which re-resolve the target LIVE on every step and therefore track a shift whenever it
  * happens. This settle is what keeps that chase REACHABLE: measured on the phone arm, the last
  * corridor cell sat 35.7px clear of the clipped box's bottom (cell bottom 596.9 vs band bottom
- * 632.648), so a 62px shift carried it OUT of the modal's `overflow-hidden` box entirely and no
+ * 632.648), so a 62px shift carried it OUT of the modal's clipping box entirely and no
  * amount of live tracking could have put a finger on it. Measure after the growth, then chase
  * anything left. Two layers, and they fail independently.
  *
@@ -938,7 +938,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
        same measurement (B2 refuted): the finger simply never landed on the grid.
 
        The target must sit inside BOTH boxes, and they are different boxes:
-         - the CLIPPED band — where a finger can land at all (the modal is `overflow-hidden`);
+         - the CLIPPED band — where a finger can land at all (the modal clips);
          - the hook's own edge band — `getBounds` (`EventScheduler.tsx`) returns the scroller's
            UNCLIPPED rect, so the band the loop watches is `scroller.bottom - EDGE_BAND_PX`
            upward from the scroller's real bottom, which extends past the clip.

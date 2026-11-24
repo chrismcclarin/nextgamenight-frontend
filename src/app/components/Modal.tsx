@@ -57,7 +57,7 @@ export const SIZE_CLASS: Record<ModalSize, string> = {
    dialog-shell block, which renders them in every cell. One string per line, and SIZE_CLASS
    above is exported for the same reason. Each part's decisions stay at its use site below; a
    change to a string here is a change to every dialog, so read that part's markers first. */
-export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full @container/dialog';
+export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-y-auto rounded-[12px] bg-card p-0 md:w-full @container/dialog';
 /* DECISION Phase 89.6-10 (T1b): GR (owner, 2026-11-22: 'A row stays a row while everything in it
    fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid
    stacking.'): the close sits beside the title while the title's longest word fits beside it,
@@ -74,7 +74,7 @@ export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-
 export const MODAL_HEADER_CLASS = 'flex flex-wrap-reverse items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-6 md:py-3';
 export const MODAL_TITLE_CLASS = 'grow basis-[min-content] max-w-full wrap-break-word text-content-primary';
 export const MODAL_CLOSE_CLASS = 'ml-auto inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-btn text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring';
-export const MODAL_BODY_CLASS = 'relative flex-1 overflow-y-auto p-3 md:p-6';
+export const MODAL_BODY_CLASS = 'relative flex-1 overflow-y-auto p-3 md:p-6 @max-[12rem]/dialog:overflow-visible @max-[12rem]/dialog:flex-none';
 export const MODAL_FOOTER_CLASS = 'flex flex-wrap justify-end gap-3 border-t border-border px-3 py-4 md:px-6 @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch';
 
 /**
@@ -416,6 +416,11 @@ function ModalRoot({
              the surface's scroll container, above the first content element — is
              unaffected by the unit change. RESEARCH § Assumptions Log A7 flags a
              scroll-container change as the thing that would silently move it.
+             AMENDED Phase 89.6-11 (O-8): below the 12rem dialog container the shell, not the Body, is
+             the scroll container (owner pick O-8 = C, 2026-11-22). The §6.2 rule this sentence
+             protects still holds: the banner stays first in the content region, inside the scroll
+             container, and is on screen when the dialog opens. At 12rem and over this sentence
+             stands as written.
 
              (e) THE OTHER SIDE, now closed (historical): when this marker was written,
              `BottomSheet.tsx`'s dvh marker still called `Modal` the known-divergent
@@ -433,6 +438,16 @@ function ModalRoot({
              shell's width never depended on its content (a percentage or md:w-full, capped by
              SIZE_CLASS), so the containment moves nothing; the transform already made it the
              containing block for fixed descendants. Changing this is a decision, not a cleanup. */
+          /* DECISION Phase 89.6-11 (O-8): owner pick O-8 = C, 2026-11-22 ('The whole dialog scrolls as
+             one page only at large text on a phone; normal text looks exactly as today'): the shell
+             scrolls (overflow-y-auto) and, below the 12rem dialog container, the Body gives up its
+             own scroll so header, notice, Body and footer scroll as one page and every control can
+             be reached by a finger (GR: scrolling down is fine). Chosen OVER the whole sheet always
+             (B: title, notice and footer scroll away on every phone at every size), OVER a sticky
+             title bar (287px of a 511px sheet), and OVER shrinking padding (the Body was still
+             125px). At 12rem and over the Body is the only part that scrolls, as before, and the
+             shell never has a scroll range (its content fits because the Body shrinks). Changing
+             this is a decision, not a cleanup. */
           MODAL_SHELL_CLASS,
           SIZE_CLASS[size],
           className
@@ -632,6 +647,10 @@ function ModalBody({ children, className }: ModalBodyProps) {
        the Body before and are clipped by it now.
        Pinned by this dialog's own test, "L3: an sr-only box straight in the Body, and one
        nested in it, are held by the Body". Removing `relative` is a decision, not a cleanup.
+       AMENDED Phase 89.6-11 (O-8): the shell is now overflow-y-auto, so the WHY NOT overflow-clip
+       paragraph's 'described as overflow-hidden' is history; the shell is still a scroll
+       container, which that paragraph requires, and the positioned Body still holds every
+       sr-only box.
        Phase 89.6-10: the string these markers describe is MODAL_BODY_CLASS, at the top of this file. */
     <div className={cn(MODAL_BODY_CLASS, className)}>{children}</div>
   );

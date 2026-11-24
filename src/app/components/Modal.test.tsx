@@ -1475,10 +1475,17 @@ describe('88.9-52 (R4 L3): Modal.Body holds the absolute boxes a consumer puts i
     }
   });
 
+  // AMENDED Phase 89.6-11 (O-8 C): the shell is a scroll container at every size; it scrolls only when the Body gives up its own scroll below the 12rem dialog container.
+  // The title is kept. `scrolls` reads bare overflow tokens only, so the Body's two
+  // @max-[12rem]/dialog: tokens are not read as scrolling: at ordinary sizes the Body is still the
+  // only one of the three parts that scrolls. The marker is at
+  // src/app/components/Modal.tsx ("DECISION Phase 89.6-11 (O-8)").
   it('L3: the shell still clips and the Body is still the only scrolling box of the three parts', () => {
     const { dialog, body } = renderWithBody();
-    expect(tokens(dialog)).toContain('overflow-hidden');
-    expect(scrolls(dialog)).toBe(false);
+    expect(tokens(dialog)).toContain('overflow-y-auto');
+    expect(tokens(dialog)).not.toContain('overflow-hidden');
+    expect(scrolls(dialog)).toBe(true);
+    expect(tokens(body)).toEqual(expect.arrayContaining(['@max-[12rem]/dialog:overflow-visible', '@max-[12rem]/dialog:flex-none']));
     const parts = Array.from(dialog.children).filter((el) => el !== dialog.lastElementChild);
     expect(parts.filter(scrolls)).toEqual([body]);
   });

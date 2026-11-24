@@ -769,7 +769,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 Precedent: the home group list made the same choice for the same reason (plan
                 88.6.1-77, its notice outside its scrolling list). Mockup
                 https://claude.ai/artifact/JMvFMJXD1M6GkDt6xGBuYi (v2, frame 3).
-                Moving this back into the scrolling body is a decision, not a cleanup. */}
+                Moving this back into the scrolling body is a decision, not a cleanup.
+                AMENDED Phase 89.6-11 (C1): owner pick O-8b = C1, 2026-11-22 ('At large text on a phone the
+                notice scrolls with the rest; at normal text it stays pinned as you ruled'): pinned at
+                ordinary sizes; below the 12rem dialog container the whole sheet scrolls and the notice
+                with it, chosen OVER sticky (it held 248px of a 511px sheet at 320 x 568 / 200%, and
+                W3C's reflow guidance asks for static positioning at small sizes). No code here changes:
+                the notice is a part of the shell, and the shell is what scrolls there
+                (src/app/components/Modal.tsx ("DECISION Phase 89.6-11 (O-8)")). */}
             {/* DECISION Phase 88.6.1-78 (C12, focus when the roster is withdrawn):
                 CHOSEN: plan 88.6.1-70's shared guard beside the RF1 notice, outside the roster block
                 and the scrolling body, with no target — so when an access or gone answer withdraws

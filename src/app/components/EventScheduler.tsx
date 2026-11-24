@@ -895,7 +895,7 @@ export default function EventScheduler({
    * BOTH axes are pointed at the grid's own scroll container, and the edge bands are measured
    * from its rect. The hook's documented VERTICAL DEFAULT is the page — correct for the
    * full-page check-in grid it was extracted from, wrong here: this grid lives inside a Radix
-   * dialog whose content is `overflow-hidden` (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"), `overflow-hidden rounded-[12px]`)
+   * dialog whose content clips (overflow-y-auto; it scrolls as one only below the 12rem dialog container, 89.6-11) (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"))
    * with the body `overflow-y-auto` (src/app/components/Modal.tsx ("function ModalBody("), `flex-1 overflow-y-auto`), so a page-level
    * scroll is either inert or scrolls the page BEHIND the
    * modal. The symptom of getting this wrong is a paint that works but stops dead at the visible

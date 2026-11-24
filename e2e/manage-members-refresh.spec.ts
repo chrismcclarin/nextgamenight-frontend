@@ -920,6 +920,9 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
     // header fixed (a 44px close, on its own row above the title) the body is tall enough, and
     // this read passed with the mark still on, which the mark reports as a failure (local run on
     // the seeded group, 2026-11-24). It is a gate now, and plan 89.6-11 adds the 320 x 568 arm.
+    // AMENDED Phase 89.6-11: the short phone (320 x 568, the test below) is fixed by O-8 C
+    // (src/app/components/Modal.tsx ("DECISION Phase 89.6-11 (O-8)")); the expected-failure mark was
+    // already gone when that fix landed (plan 89.6-10 removed it), so the fix commit removes none.
     await memberMenuProof(page, [['200%', [320]]]);
   });
 

@@ -328,7 +328,7 @@ export default function KebabMenu({
      for it, on six sites. (3) Two of the six sites are inside the Radix dialog, which makes
      everything outside its content inert and aria-hidden: a list portalled to the body there
      cannot be focused or read at all, and one portalled into the dialog shell is still clipped
-     by the shell's own overflow-hidden. A list that scrolls inside itself changes none of
+     by the shell's own clip (overflow-y-auto since Phase 89.6-11). A list that scrolls inside itself changes none of
      that: same element, same place, same order, so Escape, the focus return to the trigger, the
      armed and busy states and keepOpen are untouched on all six sites, and a Tab to an item
      below the fold scrolls it into view natively. Its cost is said plainly: at 320 with 200%

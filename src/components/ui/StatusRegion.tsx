@@ -54,7 +54,7 @@ export interface StatusRegionProps
   // overflow container must confirm that its containing block clips the 1px region, or
   // position the scroller; otherwise the region's static position can extend the page's
   // scrollable overflow. ParticipantRow's hint meets this: its containing block is the
-  // dialog's fixed, overflow-hidden content. Changing any of this is a decision, not a
+  // dialog's fixed, clipping content (overflow-y-auto since Phase 89.6-11). Changing any of this is a decision, not a
   // cleanup.
   /**
    * Opt-in (default `false`). While the region has nothing to say — its rendered
