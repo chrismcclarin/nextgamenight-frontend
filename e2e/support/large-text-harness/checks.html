@@ -904,6 +904,15 @@
   </main>
 </section>
 
+<!-- the breadcrumb again, its crumb an inline box of two words with 60px of padding after the second, bad form only: that padding sits beside the second word, not beside the glued first one, so only an inline box that holds the ONE word adds its edges to what the word needs. SPLIT. -->
+<section data-case="split-crumb-padded-pair">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <nav aria-label="Sample breadcrumb" class="lt-crumbs inline-block max-w-full px-3 font-semibold text-base text-content-primary"><a href="#up">Up</a><span class="mx-1">&gt;</span><span class="lt-name pr-[60px]">Weekend Go</span></nav>
+    </div>
+  </main>
+</section>
+
 <!-- a table of three rows with the squeezed row second, bad form only: the whole table is stacked with the row, so the row is not left bound to the first column. SPLIT; the first build called it held by the row. -->
 <section data-case="split-table-second-row">
   <main data-frame class="lt-frame px-4 py-4">

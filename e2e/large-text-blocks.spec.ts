@@ -894,6 +894,10 @@ test('check: split, a forced break (89.6-02, R6 repair): a word wider than the c
   expectReported(span, 'a crumb glued to a separator that is an element');
   expectReported(before, 'a crumb glued to a separator drawn by its own ::before');
   expect(entriesFor(before.read.split, 'Weekend'), 'the two crumbs are not reported the same way').toEqual(entriesFor(span.read.split, 'Weekend'));
+  const pair = await splitCase(page, 'split-crumb-padded-pair');
+  await testInfo.attach('twin-read-pair', { body: JSON.stringify({ pair }, null, 2), contentType: 'application/json' });
+  expectReported(pair, 'a glued crumb that is the first of two words in an inline box padded after the second');
+  expect(entriesFor(pair.read.split, 'Weekend').join(' | '), 'the first word of the padded pair is not reported as glued').toContain('glued');
   expect(requests, 'the page made a request').toEqual([]);
 });
 
@@ -939,11 +943,14 @@ test('check: split, a throw part-way (89.6-02, R6 repair): when the read throws 
   await page.evaluate(() => {
     const scroller = document.querySelector('.lt-scroller');
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    const sideways = document.querySelector('.lt-xscroller');
+    if (sideways) sideways.scrollLeft = sideways.scrollWidth;
     window.scrollTo(0, document.documentElement.scrollHeight);
   });
   const stateOf = () =>
     page.evaluate(() => {
       const scroller = document.querySelector('.lt-scroller');
+      const sideways = document.querySelector('.lt-xscroller');
       return {
         boxes: Array.from(document.querySelectorAll('body, body *')).map((el) => {
           const r = el.getBoundingClientRect();
@@ -952,6 +959,7 @@ test('check: split, a throw part-way (89.6-02, R6 repair): when the read throws 
         bodyChildren: document.body.children.length,
         windowScroll: [window.scrollX, window.scrollY],
         scrollerScroll: scroller ? [scroller.scrollLeft, scroller.scrollTop] : null,
+        sidewaysScroll: sideways ? [sideways.scrollLeft, sideways.scrollTop] : null,
         sheets: document.adoptedStyleSheets.length,
       };
     });
@@ -978,6 +986,8 @@ test('check: split, a throw part-way (89.6-02, R6 repair): when the read throws 
   expect(after.bodyChildren, "the read's measuring span is still in the page after the throw").toBe(before.bodyChildren);
   expect(after.windowScroll, 'the page scroll offset was not put back after the throw').toEqual(before.windowScroll);
   expect(after.scrollerScroll, "the scrolling box's scroll offset was not put back after the throw").toEqual(before.scrollerScroll);
+  expect(before.sidewaysScroll?.[0] ?? 0, 'the sideways box is not scrolled sideways: the harness is not the shape it says').toBeGreaterThan(0);
+  expect(after.sidewaysScroll, "the sideways box's scroll offset was not put back after the throw").toEqual(before.sidewaysScroll);
   expect(after.boxes, 'a box moved or changed size: the layout was not put back after the throw').toEqual(before.boxes);
   expect(again, 'a read after the throw differs from the read before it').toEqual(clean);
   expect(requests, 'the page made a request').toEqual([]);
