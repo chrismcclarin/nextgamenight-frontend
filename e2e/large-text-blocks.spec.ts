@@ -374,7 +374,8 @@ test('check: cut (89.6-02): reports its bad twin and passes its good twin', asyn
 //   split  a defect: the word would be whole if its rows stacked, or it is glued to what precedes
 //          it on its line. Fails the cell.
 //   held   a box with a width of its own (or a positioned box) holds the word narrow, and the
-//          entry names that box. Fails the cell by default; the owner's ruling is pending.
+//          entry names that box. Fails the cell by default, and the owner's ruling is pending:
+//          e2e/support/wordLines.ts ("DECISION Phase 89.6-02 (held-policy)").
 //   wide   the word is wider than its whole room, or it only wraps at its own hyphen. Written
 //          down, never failed.
 //

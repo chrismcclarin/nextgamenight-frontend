@@ -317,11 +317,15 @@ export interface LargeTextCellRead {
   dialogSideways: number | null;
   /** One entry per hit, written kind: "first 30 characters"; kinds ellipsis, clamp, nowrap, hidden, shrunk. */
   cut: string[];
-  /** One entry per word drawn on more than one line although it fits its row on one. */
+  /**
+   * Defects. One entry per word drawn on more than one line that would be whole if the rows above
+   * it stacked, or that is glued to what precedes it on its line. The read also says here when it
+   * could not measure (COULD NOT STACK) and when it could not put the page back (NOT RESTORED).
+   */
   split: string[];
-  /** One entry per broken word held narrow by a box with a width of its own (orchestrator change R6; not read yet, always empty). */
+  /** One entry per broken word held narrow by a box with a width of its own, or by a positioned box; the entry names the box and what makes it that wide. */
   held: string[];
-  /** One entry per broken word that is wider than its whole room; written down, never failed (R6; not read yet, always empty). */
+  /** One entry per broken word that is wider than its whole room, or that only wraps at its own hyphen. Written down for the reader, never failed. */
   wide: string[];
   /** One entry per word that paints outside its nearest box with a fill, a side border or a control. */
   spill: string[];
@@ -397,6 +401,10 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   interface Word {
     text: string;
     el: Element;
+    /** The text node that holds the word, and the word's offsets in it: the split check reads the word again. */
+    node: Node;
+    start: number;
+    end: number;
     rects: DOMRect[];
     lines: number;
   }
@@ -411,13 +419,15 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     if (drawsNothing(el)) continue;
     let drawn = false;
     for (const match of content.matchAll(/\S+/g)) {
+      const start = match.index ?? 0;
+      const end = start + match[0].length;
       const range = document.createRange();
-      range.setStart(node, match.index ?? 0);
-      range.setEnd(node, (match.index ?? 0) + match[0].length);
+      range.setStart(node, start);
+      range.setEnd(node, end);
       const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
       if (!rects.length) continue;
       drawn = true;
-      words.push({ text: match[0], el, rects, lines: new Set(rects.map((r) => Math.round(r.top))).size });
+      words.push({ text: match[0], el, node, start, end, rects, lines: new Set(rects.map((r) => Math.round(r.top))).size });
     }
     if (drawn && !textElements.includes(el)) textElements.push(el);
   }
@@ -480,70 +490,74 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   }
 
   // ---- split -----------------------------------------------------------------------------------
-  // DECISION Phase 89.6-02 (split-row), AMENDED 2026-11-24 twice (orchestrator fix R3, then its
-  // repair batch after scoped check 1): ONE walk finds a word's row, chosen OVER two climbs with
-  // two rules. The first rule (the text's own box, climbing only while the parent was a flex or
-  // grid container) stopped at a paragraph inside a wrapper and compared a squeezed word with its
-  // own narrow box. R3's first build (the nearest row, then that old climb) still stopped at a row
-  // INSIDE the squeezed item, went up through column containers, and went above the root.
+  // DECISION Phase 89.6-02 (split-row), REPLACED 2026-11-24 (R6): an orchestrator change, after
+  // two amendments the same day. The read MEASURES whether a broken word would be whole if the
+  // rows above it stacked, chosen OVER working that out from the page's structure.
   //
-  // THE ROW:
-  //   - the nearest ancestor marked [data-room] is the row, WHEREVER it is, above the root of the
-  //     read too. The mark is the author's deliberate statement of the row and wins over the search
-  //     below; it is not bounded by the root, chosen OVER a mark seen only at or under the root (the
-  //     repair batch first built that): plan 89.6-22 marks a row above its read root.
-  //     The edges between the word and a marked row come off the room like any other row's;
-  //   - otherwise walk from the word up to the root of the read, and never above it: only this
-  //     unmarked search is bounded. Every container met up to the root, the root included,
-  //     that lays its children out SIDE BY SIDE is a candidate: a row-direction flex container, a
-  //     grid with more than one column, a table row (a table-row box, and whatever holds a table
-  //     cell: the browser builds the row around cells). The row is the OUTERMOST candidate;
-  //   - with no candidate the row is the text's own box: plain block flow, where a word wider
-  //     than its container may break.
-  // The OUTERMOST, chosen OVER the nearest: the owner's governing rule, src/app/globals.css ("DECISION Phase 89.6-02 (bb-row)"),
-  // says a row stays a row while everything in it fits whole, and when it does not, items stack;
-  // nothing is broken to avoid stacking. So if stacking ANY row above the word would let it fit
-  // whole, breaking it is the defect. The nearest row is often a row of the word's own inside the
-  // squeezed item, exactly as narrow as the word. A deliberately fixed narrow column inside a row
-  // is therefore reported: it is an exception to name at the sweep, not a blind spot of this read.
-  // A column-direction flex container and a grid of one column are NEVER candidates, chosen OVER
-  // counting every flex or grid container: they stack their items already and squeeze nothing
-  // sideways, and counting them makes every page-level column the row of each card in it.
+  // WHAT IT DOES, for each word drawn on more than one line (text inside .bb-breakable is not read
+  // here: emails and links may break anywhere):
+  //   1. THE BOUND is the nearest ancestor marked [data-room], WHEREVER it is, above the root of
+  //      the read too (plan 89.6-22 marks a row above its read root); with no mark, the root.
+  //   2. THE STACK SET is every element from the word's own element up to the bound, the bound
+  //      included, that lays its children out side by side: a flex container whose direction is
+  //      a row; a grid of more than one column; a table-row box, or a box that holds the table
+  //      cell the word is in, with its cells; a multi-column box. A column-direction flex container
+  //      and a grid of one column are never in it: they stack their items already.
+  //   3. ONE constructed stylesheet, added to a COPY of document.adoptedStyleSheets, lays each of
+  //      them out as a stack, its items stretched to its width, every declaration important. The
+  //      read then checks that every declaration took. One that did not (an important declaration
+  //      on the element itself, or inside a cascade layer, wins) is said so in the split list as
+  //      COULD NOT STACK: nothing was measured, and guessing would be silent.
+  //   4. SPLIT when the word is now on one line AND lies inside the CONTENT box of every box from
+  //      its own up to the bound. Whole only by spilling out of a box is not room.
+  //   5. Otherwise a word whose only breaks fall right after its own hyphens is ordinary wrapping:
+  //      written into the wide list. A hyphen wrap that stacking undoes was SPLIT at 4.
+  //   6. Otherwise WIDE when its own one-line width is greater than the bound's content width.
+  //   7. Otherwise SPLIT, as glued, when something of its own box sits before it on the line it
+  //      starts on: the browser breaks a word only when the line has no earlier place to wrap.
+  //   8. Otherwise HELD by the first box, from its own up to the bound (the bound left out), that
+  //      is positioned absolute or fixed, or is narrower than its parent's content width less its
+  //      own side margins (an automatic margin is free space, not an edge). The entry names the box.
+  //   9. Otherwise WIDE: the edges between the word and its bound take the room.
+  //  10. The sheet list and every scroll offset are put back after each word, and at the end the
+  //      layout (the root's box and every word's boxes), the length of the sheet list and the
+  //      scroll offsets are compared with what they were. A difference is said in the split list
+  //      as NOT RESTORED.
+  // Steps 5 to 9 are read while the stack is still on: what stacking could not change is what
+  // holds the word.
   //
-  // THE ROOM is the row's content width LESS, for every box between the word and the row, its left
-  // and right padding, border and margin: the inline boxes that hold the word, the text's own box,
-  // and each box above it. The row's own padding is off already, once. An AUTOMATIC margin is not
-  // taken off: it is the row's free space, not an edge of the box (getComputedStyle gives its
-  // used px, so the computed value is read from computedStyleMap). An inline box ABOVE the text's
-  // own box and a display: contents element take nothing: neither narrows a block inside it.
-  // Text inside .bb-breakable is not read here (emails and links may break anywhere).
+  // WHAT WAS REJECTED. (a) The structural walk this replaces: find the outermost row above the
+  // word, take every padding, border and margin between the two off its content width, compare
+  // with the word's width. On 92 judged words it gave 15 wrong verdicts against 1 for this method,
+  // and it had no held list: planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/R4-RESEARCH.md ("2. Answer in short").
+  // Two scoped checks each found shapes its arithmetic had not thought of (a pop-up, a fixed
+  // label, a middle word of a padded inline box, a subgrid, text columns). (b) Intrinsic sizes
+  // read from hidden clones: 30 wrong, mostly real squeezes read as wide, and every clone is a DOM
+  // insert the app can see. (c) The same measurement through inline styles saved and put back: the
+  // app's own MutationObservers see it, and an inline style put back wrong stays wrong. (d) A
+  // stacked item left centred (no stretch): on real screens it hid every squeezed word that shared
+  // an item with one genuinely wide word, 8 silent misses.
+  //
+  // WHAT IT CANNOT SEE (measured, or named as not measured): planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/R4-RESEARCH.md ("6. What each method cannot see, measured").
+  //   - an item whose width of 0 exists only to share its row (w-0 with flex-1) reads HELD, where
+  //     a person could say split. It is surfaced, never silent; the app has no such item;
+  //   - a row it cannot stack is not judged at all (COULD NOT STACK);
+  //   - text inside a shadow tree or a frame is not reached by the stylesheet (not measured);
+  //   - the glued rule reads left to right; right-to-left text is not measured;
+  //   - a pop-up that hangs outside its anchor's box and is whole only when stacked may fail the
+  //     inside check and read HELD (not built, none found in src).
+  //
+  // CHROMIUM ONLY, as every Playwright project here is: constructed stylesheets in
+  // document.adoptedStyleSheets (which hands back the SAME live array every time, so the list is
+  // copied before it is changed: putting back the array itself restores nothing), and
+  // computedStyleMap with CSSKeywordValue (the computed value of a width or margin, where
+  // getComputedStyle gives used px).
   //
   // Each part has a case that goes red when that part alone is taken out: e2e/large-text-blocks.spec.ts ("THE SPLIT CONTROLS").
+  // The governing rule is the owner's: src/app/globals.css ("DECISION Phase 89.6-02 (bb-row)").
   // Changing a part is a decision, not a cleanup.
-  const sideBySide = (container: Element, child: Element | null): boolean => {
-    const cs = getComputedStyle(container);
-    if (/flex/.test(cs.display)) return !cs.flexDirection.startsWith('column');
-    if (/grid/.test(cs.display)) {
-      // The used track list, one size per column, with the line names taken out.
-      const columns = cs.gridTemplateColumns.replace(/\[[^\]]*\]/g, ' ').split(/\s+/).filter((track) => track && track !== 'none');
-      return columns.length > 1;
-    }
-    if (cs.display === 'table-row') return true;
-    return child !== null && getComputedStyle(child).display === 'table-cell';
-  };
-  const rowOf = (el: Element): Element => {
-    // With no candidate, the text's own box. The inline boxes under it are never candidates: an
-    // inline box is no flex, grid or table-row box and holds no table cell.
-    const marked = el.closest('[data-room]');
-    if (marked) return marked;
-    let row = boxOf(el);
-    let child: Element | null = null;
-    for (let a: Element | null = el; a; child = a, a = a.parentElement) {
-      if (sideBySide(a, child)) row = a;
-      if (a === rootEl) break;
-    }
-    return row;
-  };
+  const parentBoxOf = (el: Element): Element | null => (el.parentElement ? boxOf(el.parentElement) : null);
+  const nameOf = (el: Element) => `${el.tagName.toLowerCase()}${Array.from(el.classList).slice(0, 3).map((token) => `.${token}`).join('')}`;
   const contentWidth = (el: Element) => {
     const cs = getComputedStyle(el);
     return el.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight);
@@ -553,34 +567,221 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     const computed = el.computedStyleMap().get(property);
     return computed instanceof CSSKeywordValue && computed.value === 'auto' ? 0 : px(used);
   };
-  /** What a box takes from the line of the word inside it: side padding, border and margin. */
-  const sideEdges = (el: Element, holdsTheWordInline: boolean): number => {
-    const cs = getComputedStyle(el);
-    if (cs.display === 'contents') return 0;
-    if (cs.display === 'inline' && !holdsTheWordInline) return 0;
-    return (
-      px(cs.paddingLeft) + px(cs.paddingRight) + px(cs.borderLeftWidth) + px(cs.borderRightWidth) + sideMargin(el, 'margin-left', cs.marginLeft) + sideMargin(el, 'margin-right', cs.marginRight)
-    );
+  /** How many columns a grid lays its items out in. */
+  const gridColumns = (cs: CSSStyleDeclaration): number => {
+    const list = cs.gridTemplateColumns;
+    // A subgrid's computed list holds no track size: the keyword, then one bracket group per LINE.
+    if (/^subgrid\b/.test(list)) return (list.match(/\[/g) ?? []).length - 1;
+    // Any other grid: the used track list, one size per column, with the line names taken out.
+    return list
+      .replace(/\[[^\]]*\]/g, ' ')
+      .split(/\s+/)
+      .filter((track) => track && track !== 'none').length;
   };
-  const roomOf = (el: Element): number => {
-    const row = rowOf(el);
-    const own = boxOf(el);
-    let room = contentWidth(row);
-    // Every box from the word's element up to the row, the row left out. Below the text's own box
-    // they are the inline boxes that hold the word.
-    let belowOwnBox = true;
-    for (let a: Element | null = el; a && a !== row; a = a.parentElement) {
-      if (a === own) belowOwnBox = false;
-      room -= sideEdges(a, belowOwnBox);
+  const rangeOf = (w: Word): Range => {
+    const range = document.createRange();
+    range.setStart(w.node, w.start);
+    range.setEnd(w.node, w.end);
+    return range;
+  };
+  const drawnRects = (range: Range) => Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+  const lineCount = (rects: DOMRect[]) => new Set(rects.map((r) => Math.round(r.top))).size;
+  /** True when every break inside the word falls right after one of its own hyphens. */
+  const breaksOnlyAtHyphens = (w: Word): boolean => {
+    if (!w.text.includes('-')) return false;
+    let at = w.start;
+    for (const part of w.text.match(/[^-]+-*|-+/g) ?? []) {
+      const range = document.createRange();
+      range.setStart(w.node, at);
+      range.setEnd(w.node, at + part.length);
+      at += part.length;
+      if (lineCount(drawnRects(range)) > 1) return false;
     }
-    return room;
+    return true;
   };
-  const split: string[] = [];
-  for (const w of words) {
-    if (w.lines <= 1 || w.el.closest('.bb-breakable')) continue;
-    const room = roomOf(w.el);
+
+  interface Stack {
+    /** The temporary declarations, per element. */
+    changes: Map<Element, Record<string, string>>;
+    /** The stacked containers whose items are stretched across them. */
+    stretched: Set<Element>;
+    /** The side-by-side containers, nearest the word first. */
+    rows: Element[];
+  }
+  const stackOf = (from: Element, bound: Element): Stack => {
+    const stack: Stack = { changes: new Map(), stretched: new Set(), rows: [] };
+    const change = (el: Element, declarations: Record<string, string>) => stack.changes.set(el, { ...stack.changes.get(el), ...declarations });
+    let child: Element | null = null;
+    for (let a: Element | null = from; a; child = a, a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      const display = cs.display;
+      const flex = /flex/.test(display);
+      const grid = /grid/.test(display);
+      if (flex && !cs.flexDirection.startsWith('column')) {
+        change(a, { 'flex-direction': 'column', 'flex-wrap': 'nowrap', 'align-items': 'stretch' });
+        stack.stretched.add(a);
+        stack.rows.push(a);
+      } else if (grid && gridColumns(cs) > 1) {
+        change(a, { display: display === 'inline-grid' ? 'inline-flex' : 'flex', 'flex-direction': 'column', 'flex-wrap': 'nowrap', 'align-items': 'stretch' });
+        stack.stretched.add(a);
+        stack.rows.push(a);
+      } else if (display === 'table-row' || (child !== null && getComputedStyle(child).display === 'table-cell')) {
+        // A table-row box, or whatever holds the cell the word is in (the browser builds the row around cells).
+        change(a, { display: 'block' });
+        for (const cell of Array.from(a.children)) if (getComputedStyle(cell).display === 'table-cell') change(cell, { display: 'block' });
+        stack.rows.push(a);
+      }
+      // The column properties do nothing on a flex or grid container, so those are not text columns.
+      if (!flex && !grid && (cs.columnCount !== 'auto' || cs.columnWidth !== 'auto')) {
+        change(a, { 'column-count': 'auto', 'column-width': 'auto' });
+        if (!stack.rows.includes(a)) stack.rows.push(a);
+      }
+      if (a === bound) break;
+    }
+    return stack;
+  };
+  /** A selector for one element: its position among its siblings, at every level from the root. */
+  const pathOf = (el: Element): string => {
+    const steps: string[] = [];
+    for (let a: Element | null = el; a && a !== doc; a = a.parentElement) {
+      steps.unshift(`:nth-child(${Array.prototype.indexOf.call(a.parentElement?.children ?? [], a) + 1})`);
+    }
+    return [':root', ...steps].join(' > ');
+  };
+  const sheetTextOf = (stack: Stack): string => {
+    const rules: string[] = [];
+    for (const [el, declarations] of stack.changes) {
+      const path = pathOf(el);
+      rules.push(`${path} { ${Object.entries(declarations).map(([property, value]) => `${property}: ${value} !important;`).join(' ')} }`);
+      if (stack.stretched.has(el)) rules.push(`${path} > * { align-self: stretch !important; }`);
+    }
+    return rules.join('\n');
+  };
+  /** The elements of a stack on which a temporary declaration did not take. */
+  const notStacked = (stack: Stack): Element[] => {
+    const missed: Element[] = [];
+    for (const [el, declarations] of stack.changes) {
+      const cs = getComputedStyle(el);
+      const took = Object.entries(declarations).every(([property, value]) => cs.getPropertyValue(property) === value);
+      const stretched = !stack.stretched.has(el) || Array.from(el.children).every((item) => getComputedStyle(item).alignSelf === 'stretch');
+      if (!took || !stretched) missed.push(el);
+    }
+    return missed;
+  };
+  /** What makes a box as wide as it is by its own style, for the held entry. */
+  const whyOf = (el: Element): string => {
+    const computed = el.computedStyleMap();
+    const position = getComputedStyle(el).position;
+    const isKeyword = (property: string, keyword: string) => {
+      const value = computed.get(property);
+      return value instanceof CSSKeywordValue && value.value === keyword;
+    };
+    const parts: string[] = [];
+    if (position === 'absolute' || position === 'fixed') parts.push(`position ${position}`);
+    if (!isKeyword('width', 'auto')) parts.push(`width ${String(computed.get('width'))}`);
+    if (!isKeyword('max-width', 'none')) parts.push(`max-width ${String(computed.get('max-width'))}`);
+    const basis = computed.get('flex-basis');
+    if (basis !== undefined && !(basis instanceof CSSKeywordValue)) parts.push(`flex-basis ${String(basis)}`);
+    return parts.join(', ') || 'no width of its own';
+  };
+
+  type Verdict = 'split' | 'held' | 'wide';
+  /** Steps 4 to 9, read in the layout as it stands when called (the stack is on). */
+  const judge = (w: Word, bound: Element, rows: Element[], hyphenWrap: boolean): { verdict: Verdict; text: string } => {
+    const quoted = `"${w.text}"`;
+    const range = rangeOf(w);
+    const rects = drawnRects(range);
+    const own = boxOf(w.el);
+    // The bound as a box: a mark on an element with no box of its own stands for the nearest box around it.
+    const boundBox = boxOf(bound);
+    if (rows.length > 0 && lineCount(rects) === 1) {
+      const word = range.getBoundingClientRect();
+      let inside = true;
+      for (let a: Element | null = own; a && inside; a = a === boundBox ? null : parentBoxOf(a)) {
+        const cs = getComputedStyle(a);
+        const box = a.getBoundingClientRect();
+        const left = box.left + px(cs.borderLeftWidth) + px(cs.paddingLeft);
+        const right = box.right - px(cs.borderRightWidth) - px(cs.paddingRight);
+        if (word.left < left - 0.5 || word.right > right + 0.5) inside = false;
+      }
+      if (inside) {
+        return { verdict: 'split', text: `${quoted} ${w.lines} lines, whole on one line when ${rows.length} ${rows.length === 1 ? 'row stacks' : 'rows stack'}: ${rows.map(nameOf).join(', ')}` };
+      }
+    }
+    if (hyphenWrap) return { verdict: 'wide', text: `${quoted} wraps only at its own hyphen, and stacking does not make it whole: ordinary wrapping` };
     const natural = naturalWidth(w.text, w.el);
-    if (natural <= room + 0.5) split.push(`"${w.text}" ${w.lines} lines, ${round(natural)}px fits its row ${round(room)}px`);
+    const room = contentWidth(boundBox);
+    if (natural > room + 0.5) return { verdict: 'wide', text: `${quoted} ${round(natural)}px is wider than its whole room, ${round(room)}px (${nameOf(boundBox)})` };
+    const first = rects[0];
+    if (first) {
+      const before = document.createRange();
+      before.setStart(own, 0);
+      before.setEnd(w.node, w.start);
+      const glued = Array.from(before.getClientRects()).some(
+        (r) => r.width > 0.5 && r.right <= first.left + 1 && Math.min(r.bottom, first.bottom) - Math.max(r.top, first.top) > first.height / 2,
+      );
+      if (glued) return { verdict: 'split', text: `${quoted} ${w.lines} lines: it starts mid-line and the line has no place to wrap before it (glued to what precedes it)` };
+    }
+    for (let a: Element | null = own; a && a !== boundBox; a = parentBoxOf(a)) {
+      const cs = getComputedStyle(a);
+      if (cs.position === 'absolute' || cs.position === 'fixed') return { verdict: 'held', text: `${quoted} ${w.lines} lines, held narrow by ${nameOf(a)} (${whyOf(a)})` };
+      const parent = parentBoxOf(a);
+      if (!parent) break;
+      const offered = contentWidth(parent) - sideMargin(a, 'margin-left', cs.marginLeft) - sideMargin(a, 'margin-right', cs.marginRight);
+      const used = a.getBoundingClientRect().width;
+      if (used < offered - 0.5) {
+        return { verdict: 'held', text: `${quoted} ${w.lines} lines, held narrow by ${nameOf(a)} (${whyOf(a)}): ${round(used)}px of the ${round(offered)}px its parent offers` };
+      }
+    }
+    return { verdict: 'wide', text: `${quoted} ${round(natural)}px: no box between it and ${nameOf(boundBox)} is narrower than its parent offers; the edges between them take the room` };
+  };
+
+  const split: string[] = [];
+  const held: string[] = [];
+  const wide: string[] = [];
+  const judged = words.filter((w) => w.lines > 1 && !w.el.closest('.bb-breakable'));
+  if (judged.length > 0) {
+    // Read before anything is stacked: which words break only at their own hyphens, and what must be put back.
+    const hyphenWraps = new Set(judged.filter(breaksOnlyAtHyphens));
+    const layoutOf = () => JSON.stringify([rootEl.getBoundingClientRect(), ...words.map((w) => Array.from(rangeOf(w).getClientRects()).map((r) => [r.left, r.top, r.width]))]);
+    const scrollOf = () =>
+      Array.from(document.querySelectorAll('*'))
+        .filter((el) => el.scrollTop !== 0 || el.scrollLeft !== 0)
+        .map((el) => ({ el, top: el.scrollTop, left: el.scrollLeft }));
+    const layoutBefore = layoutOf();
+    const scrollBefore = scrollOf();
+    const sheetCountBefore = document.adoptedStyleSheets.length;
+    const lists: Record<Verdict, string[]> = { split, held, wide };
+    for (const w of judged) {
+      const bound = w.el.closest('[data-room]') ?? rootEl;
+      const stack = stackOf(w.el, bound);
+      if (stack.changes.size === 0) {
+        // Nothing lays this word's boxes out side by side: it is judged in the page as it is.
+        const found = judge(w, bound, stack.rows, hyphenWraps.has(w));
+        lists[found.verdict].push(found.text);
+        continue;
+      }
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(sheetTextOf(stack));
+      // A COPY of the list (see the marker above): the array itself is live.
+      const sheetsBefore = [...document.adoptedStyleSheets];
+      document.adoptedStyleSheets = [...sheetsBefore, sheet];
+      const missed = notStacked(stack);
+      const found: { verdict: Verdict; text: string } =
+        missed.length > 0 ? { verdict: 'split', text: `"${w.text}" COULD NOT STACK ${missed.map(nameOf).join(', ')}: nothing measured` } : judge(w, bound, stack.rows, hyphenWraps.has(w));
+      document.adoptedStyleSheets = sheetsBefore;
+      for (const s of scrollBefore) {
+        if (s.el.scrollTop !== s.top) s.el.scrollTop = s.top;
+        if (s.el.scrollLeft !== s.left) s.el.scrollLeft = s.left;
+      }
+      lists[found.verdict].push(found.text);
+    }
+    // The put-back proof. Each line fails the cell: a read that leaves the page changed spoils every check after it.
+    const scrollAfter = scrollOf();
+    const scrollMoved = scrollAfter.length !== scrollBefore.length || scrollBefore.some((s, i) => scrollAfter[i].el !== s.el || scrollAfter[i].top !== s.top || scrollAfter[i].left !== s.left);
+    if (document.adoptedStyleSheets.length !== sheetCountBefore) split.push(`NOT RESTORED: the page has ${document.adoptedStyleSheets.length} adopted stylesheets after the read, ${sheetCountBefore} before it`);
+    if (scrollMoved) split.push('NOT RESTORED: a scroll offset moved during the read');
+    if (layoutOf() !== layoutBefore) split.push('NOT RESTORED: the layout differs after the read');
   }
 
   // ---- spill -----------------------------------------------------------------------------------
@@ -746,7 +947,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   }
 
   ruler.remove();
-  return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, held: [], wide: [], spill, selectCut, lost };
+  return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, held, wide, spill, selectCut, lost };
 }
 
 /**
@@ -770,7 +971,17 @@ export async function readLargeTextCell(root: Locator, options: LargeTextReadOpt
   };
 }
 
-/** Expect a cell read to hold every large-text check. */
+// DECISION Phase 89.6-02 (held-policy), orchestrator change R6, 2026-11-24: a word held narrow by
+// a box with a width of its own FAILS the cell, and the entry names the box, chosen OVER listing
+// held words without failing and OVER allowing them silently. This is SPEC R4 read literally: a
+// word may break only when it is "wider than its whole row", and a held word is not. Nothing then
+// passes without someone deciding: each held box is either fixed or named as an exception.
+// The owner's ruling is PENDING (question Q1): planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/R4-RESEARCH.md ("11. The owner question for answer (c)").
+// Until he rules, this default stands, and changing this one constant is the whole change: false
+// keeps the held list in the read (so in every attachment) and stops failing on it.
+const HELD_WORD_FAILS_THE_CELL = true;
+
+/** Expect a cell read to hold every large-text check. The wide list is never looked at: it is written down only. */
 export function expectLargeTextCell(read: LargeTextCellRead, tag: string): void {
   const line = JSON.stringify(read);
   expect(read.pageSideways, `${tag}: the page scrolls sideways by ${read.pageSideways}px (${line})`).toBeLessThanOrEqual(0);
@@ -778,7 +989,10 @@ export function expectLargeTextCell(read: LargeTextCellRead, tag: string): void 
     expect(read.dialogSideways, `${tag}: the dialog's content box scrolls sideways by ${read.dialogSideways}px (${line})`).toBeLessThanOrEqual(0);
   }
   expect(read.cut, `${tag}: text is capped, shrunk or cut (${line})`).toEqual([]);
-  expect(read.split, `${tag}: a word is split inside itself although it fits its row (${line})`).toEqual([]);
+  expect(read.split, `${tag}: a word is split inside itself although it would be whole if the rows above it stacked, or it is glued to what precedes it (${line})`).toEqual([]);
+  if (HELD_WORD_FAILS_THE_CELL) {
+    expect(read.held, `${tag}: a word is split inside itself in a box with a width of its own, which the entry names (${line})`).toEqual([]);
+  }
   expect(read.spill, `${tag}: text paints outside its own box (${line})`).toEqual([]);
   expect(read.selectCut, `${tag}: a select's chosen value is cut (${line})`).toEqual([]);
 }
@@ -794,7 +1008,7 @@ export function expectLargeTextCell(read: LargeTextCellRead, tag: string): void 
 export interface PageZoomRead {
   /** Lost content or function: unreachable, cut with no way to reach it, or overlapping. These fail. */
   lost: string[];
-  /** Seen and written down, never failed: the page's sideways scroll, splits and spills. */
+  /** Seen and written down, never failed: the page's sideways scroll, splits, held words and spills. */
   recorded: string[];
 }
 
@@ -802,7 +1016,7 @@ export interface PageZoomRead {
 export async function readPageZoomCell(root: Locator, options: LargeTextReadOptions = {}): Promise<PageZoomRead> {
   const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
   const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: true });
-  const recorded = [...(read.pageSideways > 0 ? [`the page scrolls sideways by ${read.pageSideways}px`] : []), ...read.split.map((s) => `split: ${s}`), ...read.spill.map((s) => `spill: ${s}`)];
+  const recorded = [...(read.pageSideways > 0 ? [`the page scrolls sideways by ${read.pageSideways}px`] : []), ...read.split.map((s) => `split: ${s}`), ...read.held.map((s) => `held: ${s}`), ...read.spill.map((s) => `spill: ${s}`)];
   return { lost: read.lost, recorded };
 }
 
