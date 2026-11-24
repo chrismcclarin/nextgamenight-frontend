@@ -321,6 +321,16 @@
   </main>
 </section>
 
+<!-- a mark ABOVE the root of the read, bad form only: the marked row holds the read's root and a fixed box beside it. The mark is the row wherever it is, so the name squeezed inside the root is measured against the marked row and reported. -->
+<section data-case="split-mark-above-root">
+  <div data-room class="lt-shell flex gap-2 px-4 py-4">
+    <main data-frame class="lt-frame min-w-0 flex-1">
+      <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+    </main>
+    <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+  </div>
+</section>
+
 <!-- an automatic margin, bad form only: a narrow item pushed to the end of its row. The margin is the free space of the row, not an edge of the item, so the row still has room for the word and the break is reported. -->
 <section data-case="split-auto-margin">
   <main data-frame class="lt-frame px-4 py-4">

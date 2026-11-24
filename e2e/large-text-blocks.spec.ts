@@ -43,7 +43,7 @@ import {
 //
 // NEGATIVE CONTROLS. One test per check renders a bad twin, which the check must report, and its
 // good twin, which it must not: a read that cannot fail would pass every broken layout after it.
-// The split check has nine more tests (orchestrator fix R3 and its repair batch): its row rule has
+// The split check has ten more tests (orchestrator fix R3 and its repair batch): its row rule has
 // parts, and each part has a case that goes red when that part alone is taken out. The last tests
 // pin the harness cut.
 //
@@ -438,15 +438,23 @@ test('check: split past a column container (89.6-02, R3): reports a name squeeze
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split, rows that are not looked at (89.6-02, R3): a plain block, a row above the root of the read, and the rows above a marked row report nothing', async ({ page }, testInfo) => {
+test('check: split, rows that are not looked at (89.6-02, R3): a plain block and an unmarked row above the root of the read report nothing', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
   const block = await splitCase(page, 'split-block-only');
   const aboveRoot = await splitCase(page, 'split-above-root');
-  const marked = await splitCase(page, 'split-marked-row');
-  await testInfo.attach('twin-read', { body: JSON.stringify({ block, aboveRoot, marked }, null, 2), contentType: 'application/json' });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ block, aboveRoot }, null, 2), contentType: 'application/json' });
   expectBrokenAndSilent(block, 'Weekend', 'a word wider than its whole row (a plain block, nothing beside it)');
-  expectBrokenAndSilent(aboveRoot, 'Weekend', 'a word wider than the root of the read, with a row above that root');
+  expectBrokenAndSilent(aboveRoot, 'Weekend', 'a word wider than the root of the read, with an unmarked row above that root');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, a marked row (89.6-02, R3 repair): a data-room mark is the row wherever it is: under a wider row it keeps a broken word silent, and above the root of the read it is used and the squeeze is reported', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const marked = await splitCase(page, 'split-marked-row');
+  const aboveRoot = await splitCase(page, 'split-mark-above-root');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ marked, aboveRoot }, null, 2), contentType: 'application/json' });
   expectBrokenAndSilent(marked, 'Weekend', 'a word wider than the row named with data-room, with a wider row above the mark');
+  expectReported(aboveRoot, 'a name squeezed inside the root of the read, the row marked with data-room above that root');
   expect(requests, 'the page made a request').toEqual([]);
 });
 
