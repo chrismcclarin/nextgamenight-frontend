@@ -49,7 +49,7 @@ import PromptScheduleSection from './PromptScheduleSection';
 import ClickableMemberName from './ClickableMemberName';
 import MemberChipStack from './MemberChipStack';
 import KebabMenu from './KebabMenu';
-import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import GroupList from './grouplist';
 import CalendarMonthView from './CalendarMonthView';
 import { Modal } from './Modal';
@@ -902,7 +902,8 @@ describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => 
   });
 
   it('KM-16. committing an armed item emits NO revert message', () => {
-    // `armedIndex -> null` has three producers and one of them is a SUCCESSFUL commit.
+    // `armedIndex -> null` has two producers since 89.6-07 (the close-resets effect and a
+    // SUCCESSFUL commit; the revert timer is gone, OW-2a), and one of them is the commit.
     // Announcing the revert there would tell a screen-reader user the destructive action was
     // cancelled at the exact moment it fired.
     const onRemove = vi.fn();
@@ -949,7 +950,7 @@ describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () =
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 
-  it('KM-18 (ii). the twoTap path is UNCHANGED with the flag in the module: arm, timeout-revert, commit', () => {
+  it('KM-18 (ii). the twoTap path is UNCHANGED with the flag in the module: arm, still armed a minute later, close-revert, commit', () => {
     vi.useFakeTimers();
     try {
       const onRemove = vi.fn();
@@ -966,19 +967,26 @@ describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () =
       passKebabGate();
       expect(within(list).getByRole('button', { name: 'Tap again to remove' })).toBeInTheDocument();
 
-      // the 3s revert timer still reverts, and still announces for itself
-      // F9b: the revert lands at the end of the live window (gated + live).
+      // OW-2a (89.6-07): no revert timer. A minute on, with the menu open, the item is still
+      // armed and nothing new was said.
       act(() => {
-        vi.advanceTimersByTime(CONFIRM_LIVE_MS + 100);
+        vi.advanceTimersByTime(60_000);
       });
-      expect(within(list).getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+      expect(within(list).getByRole('button', { name: 'Tap again to remove' })).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove');
+      expect(onRemove).not.toHaveBeenCalled();
+
+      // the menu closing is what reverts it, and the close announces the revert
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByRole('list')).not.toBeInTheDocument();
       expect(screen.getByRole('status')).toHaveTextContent('Confirmation cancelled.');
       expect(onRemove).not.toHaveBeenCalled();
 
       // and the commit path still commits AND closes — a twoTap item never consults the flag
-      fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+      const reopened = openKebab();
+      fireEvent.click(within(reopened.list).getByRole('button', { name: 'Remove' }));
       passKebabGate();
-      fireEvent.click(within(list).getByRole('button', { name: 'Tap again to remove' }));
+      fireEvent.click(within(reopened.list).getByRole('button', { name: 'Tap again to remove' }));
       expect(onRemove).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('list')).not.toBeInTheDocument();
     } finally {

@@ -6,6 +6,13 @@
 // 8 seconds later (the old revert came 6 seconds after the arm). Test 2 arms it, scrolls it fully
 // out of view and reads the disarm (owner, the same evening). Plan 89.6-07 adds the kebab case.
 //
+// KEBAB (89.6-07): OW-2a Keep. A member Remove in Manage Members stays armed after 8 s and while
+// focus moves between the items of its menu; closing the menu is what disarms it. Real seeded
+// roster read with GET (the seed is the fixture layer: Weekend Warriors has three non-owner
+// members); never a second press; the viewport is set before goto in both projects because the
+// member menu is the phone layout (md:hidden); no conditional skip, so both tests run in both
+// projects and each raises both rows in scripts/gate-c-floors.manifest.mjs.
+//
 // WRITE GUARD. holdWrites is registered FIRST, before any route and before the navigation, and
 // holds every non-GET on every URL (the backend and the BFF proxy alike). Both friend lists are
 // answered in the browser. The self read loses its timezone parameter before it reaches the
@@ -29,7 +36,13 @@
 // e2e/support/ is that plan's first step. Selectors are role, name or data attribute only, never
 // Tailwind classes. Assertion messages carry numbers only, never personal data.
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
-import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
+import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
+
+// The seeded group minted by the backend's scripts/e2e-fixtures.js in CI. No fallback id (the
+// e2e/manage-members-refresh.spec.ts ("const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '';")
+// idiom): a fallback would open a group the fixtures do not own. Never printed: the failure
+// message names the variable, not its value.
+const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '';
 
 // 20 routed friends: enough rows that the first one can scroll fully out of view at 320 x 568.
 const FRIENDS = Array.from({ length: 20 }, (_, index) => {
@@ -73,6 +86,45 @@ function firstRemove(page: Page): Locator {
   return firstRow(page).getByRole('button', {
     name: /^(Remove E2E Two Tap 01(, wait \d seconds?)?|Tap again to confirm)$/,
   });
+}
+
+// OW-2a (89.6-07): the shared start of the two kebab tests. Opens the seeded group's Manage
+// Members dialog at a phone size, opens the first member menu and arms its Remove (ONE press).
+// Returns once the item is live.
+async function armFirstMemberRemove(page: Page, viewport: { width: number; height: number }) {
+  expect(E2E_GROUP_ID, 'E2E_GROUP_ID must be set by the CI fixture step').toBeTruthy();
+  // BEFORE the navigation, in both projects: journeys is a desktop size, and the member menu
+  // exists only in the phone layout.
+  await page.setViewportSize(viewport);
+  await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+  expect(page.viewportSize()?.width).toBe(viewport.width);
+
+  const manage = page.getByRole('button', { name: 'Manage Members' });
+  await expect(manage, 'OW-2a: the group page never rendered Manage Members').toBeVisible({ timeout: 15_000 });
+  await manage.click();
+  const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+  await settleAnimations(dialog);
+
+  const triggers = dialog.getByRole('button', { name: /^Member actions for / });
+  await expect
+    .poll(() => triggers.count(), {
+      message: 'the seeded group has no other member: fix the seed, scripts/seed-sample-data.js',
+      timeout: 15_000,
+    })
+    .toBeGreaterThanOrEqual(1);
+  const trigger = triggers.first();
+  await trigger.click();
+  // The open list, through the trigger's own aria-controls, so every item below is this menu's.
+  const listId = await trigger.getAttribute('aria-controls');
+  expect(listId, 'OW-2a: the open member menu names no list').toBeTruthy();
+  const menu = dialog.locator(`[id="${listId}"]`);
+
+  await menu.getByRole('button', { name: 'Remove', exact: true }).click();
+  // Live after the 3 s wait: it shows Tap again and is named by its sentence.
+  const armed = menu.getByRole('button', { name: 'Tap again to remove', exact: true });
+  await expect(armed).toHaveText('Tap again', { timeout: 10_000 });
+  return { dialog, trigger, menu, armed };
 }
 
 test.describe('the inline two-tap confirm has no time limit (OW-2, 89.6-04)', () => {
@@ -181,5 +233,56 @@ test.describe('the inline two-tap confirm has no time limit (OW-2, 89.6-04)', ()
     ).toHaveCount(1);
     await expect(remove).toHaveAccessibleName('Remove E2E Two Tap 01');
     await expect(remove).not.toHaveAttribute('aria-pressed', 'true');
+  });
+
+  // OW-2a (89.6-07): the kebab half. Both tests run in both projects at a phone size and press an
+  // armed item ONCE; the afterEach above proves nothing left the browser.
+  test('OW-2a (89.6-07): an armed Manage Members Remove still reads Tap again after 8 seconds, also while focus moves to the item above it and back (375 x 667)', async ({ page }) => {
+    test.setTimeout(60_000);
+    const { trigger, menu, armed } = await armFirstMemberRemove(page, { width: 375, height: 667 });
+
+    // 8 seconds on, with nothing pressed: the old revert came 3 seconds after the live edge.
+    // The fixed wait IS the test: no timer may end the armed state.
+    await page.waitForTimeout(8_000);
+    await expect(armed, 'OW-2a: the armed Remove reverted on its own').toHaveText('Tap again');
+    await expect(armed).toHaveAttribute('aria-pressed', 'true');
+
+    // Focus moves to the item above and back: both moves stay inside the open menu.
+    await armed.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(menu.getByRole('button', { name: /^Make (admin|member)$/ })).toBeFocused();
+    await expect(armed, 'OW-2a: moving focus to the item above disarmed the Remove').toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Tab');
+    await expect(armed).toBeFocused();
+    await expect(armed).toHaveAccessibleName('Tap again to remove');
+    await expect(armed).toHaveAttribute('aria-pressed', 'true');
+
+    // Close the menu by its trigger: nothing is left armed.
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('OW-2a (89.6-07): closing the menu after 8 seconds disarms the armed Manage Members Remove and says Confirmation cancelled. (320 x 568)', async ({ page }) => {
+    test.setTimeout(60_000);
+    const { dialog, trigger, menu, armed } = await armFirstMemberRemove(page, { width: 320, height: 568 });
+
+    await page.waitForTimeout(8_000);
+    await expect(armed, 'OW-2a: the armed Remove reverted on its own').toHaveText('Tap again');
+
+    // A press outside the menu, inside the dialog: the menu closes, and the close says the words.
+    await dialog.getByRole('heading', { name: 'Manage Group Members' }).click();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(
+      page.getByRole('status').filter({ hasText: /^Confirmation cancelled\.$/ }),
+      'OW-2a: no status region said the disarm',
+    ).toHaveCount(1);
+
+    // Reopened, the item is at rest.
+    await trigger.click();
+    const remove = menu.getByRole('button', { name: 'Remove', exact: true });
+    await expect(remove).toBeVisible();
+    await expect(remove).not.toHaveAttribute('aria-pressed');
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
 });

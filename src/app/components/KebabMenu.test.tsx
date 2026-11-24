@@ -32,7 +32,7 @@ import { axe } from 'vitest-axe';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { CONFIRM_DELAY_MS, CONFIRM_LIVE_MS } from '@/components/ui/confirmDelay';
+import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the appear and hold budgets
 import KebabMenu from './KebabMenu';
 
@@ -709,6 +709,108 @@ describe('R20 (88.9-52): the item band fills a one-item menu and is an inset rou
   });
 });
 
+// OW-2a (89.6-07, owner 2026-11-22: Keep; the pick card: Stays armed while the menu is open;
+// closing the menu disarms it). A live twoTap item has no revert timer: it stays armed while its
+// menu is open, however long and while focus moves between the items of the menu, and the menu
+// closing is what disarms it and says the revert words. The marker is at
+// src/app/components/KebabMenu.js ("DECISION Phase 89.6-07 (OW-2a, owner"). Every test runs on a
+// fake clock (the afterEach above restores the real one) over the largest shipped item set.
+describe('OW-2a (89.6-07): an armed kebab item stays armed while its menu is open; closing the menu is what disarms it', () => {
+  const ONE_MINUTE_MS = 60_000;
+
+  // Open the member menu, press Remove and step past the 3 s wait: the item is live.
+  function armLiveRemove() {
+    const { trigger, list } = openMenu();
+    const remove = within(list).getByRole('button', { name: 'Remove' });
+    fireEvent.click(remove);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    return { trigger, list, remove };
+  }
+
+  it('OW-2a (89.6-07): a live item is still armed 60 s later with its menu open, and no timer is pending once live', () => {
+    vi.useFakeTimers();
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { list, remove } = armLiveRemove();
+    // Once live nothing is left on the clock (before 89.6-07 the revert timer was: 1).
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(ONE_MINUTE_MS);
+    });
+    expect(remove.textContent).toBe('Tap again');
+    expect(remove).toHaveAttribute('aria-label', 'Tap again to remove');
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(remove).not.toHaveAttribute('aria-disabled');
+    expect(list).toBeInTheDocument();
+    expect(screen.getByRole('status').textContent).toBe('Press again to confirm: Remove');
+  });
+
+  it('OW-2a (89.6-07): focus moving between the items of the open menu keeps the item armed and says nothing', () => {
+    vi.useFakeTimers();
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { list, remove } = armLiveRemove();
+    act(() => {
+      vi.advanceTimersByTime(ONE_MINUTE_MS);
+    });
+    const makeAdmin = within(list).getByRole('button', { name: 'Make admin' });
+
+    // Focus leaves the armed item for the item above it, then comes back: both moves stay inside
+    // the menu, so the dismissal hook ignores them.
+    fireEvent.focusOut(remove, { relatedTarget: makeAdmin });
+    fireEvent.focusOut(makeAdmin, { relatedTarget: remove });
+
+    expect(remove.textContent).toBe('Tap again');
+    expect(remove).toHaveAccessibleName('Tap again to remove');
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(list).toBeInTheDocument();
+    expect(screen.getByRole('status').textContent).toBe('Press again to confirm: Remove');
+  });
+
+  it('OW-2a (89.6-07): closing the menu a minute after the arm disarms the item and says Confirmation cancelled., by an outside press and by the trigger', () => {
+    vi.useFakeTimers();
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const first = armLiveRemove();
+    act(() => {
+      vi.advanceTimersByTime(ONE_MINUTE_MS);
+    });
+    // Still armed a minute on (before 89.6-07 the item had reverted on its own).
+    expect(first.remove.textContent).toBe('Tap again');
+    expect(first.remove).toHaveAttribute('aria-pressed', 'true');
+    const status = screen.getByRole('status');
+
+    // A press outside the menu closes it: the same region says the revert words.
+    fireEvent.mouseDown(document.body);
+    expect(first.list).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toBe(status);
+    expect(status.textContent).toBe('Confirmation cancelled.');
+
+    // Reopened, the item is at rest: its own label, no pressed state, no name of its own.
+    const second = openMenu();
+    const removeAtRest = within(second.list).getByRole('button', { name: 'Remove' });
+    expect(removeAtRest.textContent).toBe('Remove');
+    expect(removeAtRest).not.toHaveAttribute('aria-pressed');
+    expect(removeAtRest).not.toHaveAttribute('aria-label');
+
+    // Armed again, it goes live as before.
+    fireEvent.click(removeAtRest);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    expect(removeAtRest).toHaveAttribute('aria-pressed', 'true');
+    expect(status.textContent).toBe('Press again to confirm: Remove');
+    act(() => {
+      vi.advanceTimersByTime(ONE_MINUTE_MS);
+    });
+
+    // The trigger closes it too, with the same words.
+    fireEvent.click(second.trigger);
+    expect(second.list).not.toBeInTheDocument();
+    expect(status.textContent).toBe('Confirmation cancelled.');
+  });
+});
+
 // R13 (88.9-52, owner 2026-11-17, pick Everywhere): an armed, live item SHOWS Tap again and is
 // NAMED by the full sentence (its own armedName, else the menu's default), and the width it holds
 // from open follows the short words. The marker is at src/app/components/KebabMenu.js ("DECISION Phase 88.9-52 (R13)").
@@ -730,12 +832,16 @@ describe('R13 (88.9-52): an armed kebab item shows Tap again and is named by its
     expect(remove).toHaveAccessibleName('Tap again to remove');
     expect(remove).toHaveAttribute('aria-pressed', 'true');
     expect(remove).not.toHaveAttribute('aria-disabled');
-    // The window ends: the item is named by its own text again.
+    // OW-2a (89.6-07): the window no longer ends; closing the menu returns the item to its own text.
     act(() => {
-      vi.advanceTimersByTime(CONFIRM_LIVE_MS);
+      vi.advanceTimersByTime(60_000);
     });
-    expect(remove.textContent).toBe('Remove');
-    expect(remove).not.toHaveAttribute('aria-label');
+    expect(remove.textContent).toBe('Tap again');
+    expect(remove).toHaveAttribute('aria-label', 'Tap again to remove');
+    fireEvent.mouseDown(document.body);
+    const removeAtRest = within(openMenu().list).getByRole('button', { name: 'Remove' });
+    expect(removeAtRest.textContent).toBe('Remove');
+    expect(removeAtRest).not.toHaveAttribute('aria-label');
     cleanup();
 
     render(

@@ -4,8 +4,6 @@ import { useState, useEffect, useLayoutEffect, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
-  CONFIRM_DELAY_MS,
-  CONFIRM_LIVE_MS,
   COUNTDOWN_LABELS,
   countdownLabel,
   countdownName,
@@ -39,6 +37,10 @@ import { cn } from '@/lib/cn';
  *   <item>, wait n seconds; live words and the live-edge announcement unchanged.
  *   AMENDED Phase 88.9-52 (R13, owner 2026-11-17): the live item SHOWS Tap again and is NAMED by
  *   the full sentence (item.armedName, else the menu's armedName); see the R13 marker at the item.
+ *   AMENDED Phase 89.6-07 (OW-2a): no revert timer. A live item stays armed while its menu is open,
+ *   however long and while focus moves between its items, until the second tap commits, a tap on
+ *   another twoTap item re-arms there, or the menu closes, which says the revert words (the OW-2a
+ *   marker at the close-resets effect).
  *
  * Dismissal (outside mousedown, container Escape, the non-null relatedTarget
  * `focusout` rule, and the guarded focus restore to the trigger) is owned by the
@@ -101,7 +103,6 @@ export default function KebabMenu({
   const [announcement, setAnnouncement] = useState('');
   const containerRef = useRef(null);
   const triggerRef = useRef(null);
-  const armedTimerRef = useRef(null);
   const listId = useId();
 
   // F9b (88.9-23): the armed item's gate. The NC-1 arm text waits in a ref and is written at
@@ -248,29 +249,41 @@ export default function KebabMenu({
          path at all and the timeout keeps emitting for itself.
      The rejected latch is a second piece of mutable state on a component with six
      render sites and buys nothing the batching already gives. Re-adding it is a
-     decision, not a fix for a missing piece. */
+     decision, not a fix for a missing piece.
+     AMENDED Phase 89.6-07 (OW-2a): the 3s timeout is gone (owner OW-2a: Keep), so
+     armedIndex reaches null from TWO producers now, this effect and a SUCCESSFUL
+     commit; the two sentences above that name the timeout are history. The single
+     gate is unchanged and still keeps the revert words off a commit, the
+     CONSEQUENCE this marker exists for. */
+  // DECISION Phase 89.6-07 (OW-2a, owner 2026-11-22: Keep; the card: Stays armed while the menu is
+  // open; closing the menu disarms it): a twoTap item has NO revert timer. Once live it stays armed
+  // while its menu is open, however long, and while focus moves between the items of the menu (the
+  // dismissal hook ignores a press or a focus move that stays inside the container); the menu
+  // closing by any path, a press outside it, Escape on the menu, focus leaving it or the trigger,
+  // is what disarms it, through this effect, which says the revert words. A commit never says them
+  // (the D-12 gate above); a tap on another twoTap item re-arms there, silently, as before. Chosen
+  // OVER the page buttons' disarm set
+  // (src/components/ui/useConfirmAction.ts ("DECISION Phase 89.6-04 (OW-2, owner")),
+  // which would disarm the item when focus moves to the next item of the menu (the owner kept the
+  // menu as the boundary); OVER a longer live window (WCAG 2.2.1 counts the expiry of a window of
+  // opportunity to react as a time limit); and OVER keeping 3 seconds (register L14: on the owner's
+  // iPhone VoiceOver spent the window speaking, and the item had reverted before he could swipe
+  // back to it). No scroll-out or page-hidden disarm here: the owner scoped the scroll-out disarm
+  // to page buttons, and the page-hidden disarm is theirs too
+  // (src/components/ui/useConfirmAction.ts ("DECISION Phase 89.6-04 (scroll-out)")),
+  // so a menu left open across a locked phone still shows its armed item, on its red band, when
+  // the person returns. Inside a dialog, Escape closes the dialog and this menu with it
+  // (this file ("THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD")),
+  // which unmounts the region and says nothing; nothing is left armed. Adding a revert timer back
+  // is a decision, not a cleanup.
   useEffect(() => {
     if (!open) {
-      if (armedTimerRef.current) {
-        clearTimeout(armedTimerRef.current);
-        armedTimerRef.current = null;
-      }
       if (armedIndex !== null) {
         setAnnouncement(REVERT_ANNOUNCEMENT);
       }
       setArmedIndex(null);
     }
   }, [open, armedIndex]);
-
-  // Cleanup on unmount — pending timer must not fire after unmount.
-  useEffect(() => {
-    return () => {
-      if (armedTimerRef.current) {
-        clearTimeout(armedTimerRef.current);
-        armedTimerRef.current = null;
-      }
-    };
-  }, []);
 
   /* DECISION Phase 88.9-52 (G4, round 4, 2026-11-18): an open menu is FITTED to the box that clips
      it, once, when it opens. The list is an absolute box hung from the right edge of its trigger,
@@ -384,9 +397,8 @@ export default function KebabMenu({
     if (item.ariaDisabled) return;
 
     if (item.twoTap) {
-      // First tap on this item: arm the revert timer (gated + live window, F9b).
+      // First tap on this item: arm it (the F9b gate runs; no revert timer since 89.6-07, OW-2a).
       if (armedIndex !== index) {
-        if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
         setArmedIndex(index);
         /* DECISION Phase 88.6-16 (D-12): the armed announcement names THE ITEM,
            a deliberate DIVERGENCE from src/components/ui/useConfirmAction.ts ("It MUST name the target")
@@ -415,19 +427,12 @@ export default function KebabMenu({
            above unchanged. */
         pendingAnnouncementRef.current = `Press again to confirm: ${item.label}`;
         setAnnouncement('');
-        armedTimerRef.current = setTimeout(() => {
-          setArmedIndex(null);
-          armedTimerRef.current = null;
-          setAnnouncement(REVERT_ANNOUNCEMENT);
-        }, CONFIRM_DELAY_MS + CONFIRM_LIVE_MS);
         return;
       }
       // Second tap while the gate still runs — refused (F9b): stay armed, announcement
       // unchanged. Read from the countdown's ref, keyed by this item's index.
       if (!isLive(index)) return;
-      // Second tap inside the live window — clear timer + commit.
-      clearTimeout(armedTimerRef.current);
-      armedTimerRef.current = null;
+      // Second tap once live: commit.
       setArmedIndex(null);
       // NOT the revert copy: a commit is not a cancellation.
       setAnnouncement('');

@@ -6,6 +6,18 @@
  * analogue) and over a timer per tier (two numbers that drift apart). Owner pick F9b,
  * 88.9-PICKS-B5.json item F9, 2026-11-07; window = the Q4 default in 88.9-RULINGS.md (round 2).
  * Every confirm-window number in the app is written HERE and nowhere else.
+ * AMENDED Phase 89.6-07 (OW-2, owner 2026-11-22 3:49 PM Pacific: OW2) A; OW-2a: Keep): the two-tap
+ * tiers have NO live window, so the delay above is the only confirm-window number left. After it
+ * the armed control stays live until the second press or until it disarms: a page tap-again button
+ * on a press anywhere outside it, focus moving to another control, Escape, scrolling out of view or
+ * the page being hidden
+ * (src/components/ui/useConfirmAction.ts ("DECISION Phase 89.6-04 (OW-2, owner"));
+ * a kebab item when its menu closes, staying armed while the menu is open
+ * (src/app/components/KebabMenu.js ("DECISION Phase 89.6-07 (OW-2a, owner")).
+ * Chosen OVER a 20 second live window (still a time limit under WCAG 2.2.1, which names the expiry
+ * of a window of opportunity to react) and OVER keeping 3 seconds (on the owner's iPhone VoiceOver
+ * spent the window speaking, register L14). The live-window constant is gone; adding a revert timer
+ * back to either tier is a decision, not a cleanup.
  *
  * Consumers: src/components/ui/useConfirmAction.ts (the two-tap tier's countdown and the dialog
  * tier's wall-clock refusal), src/components/ui/ConfirmDialog.tsx (the dialog tier's visible
@@ -28,9 +40,6 @@ import * as React from 'react';
 
 /** The gated part of the window: the confirm refuses every press for this long after arming. */
 export const CONFIRM_DELAY_MS = 3000;
-
-/** The live part of the window, two-tap tiers only: after the gate, the confirm works this long. */
-export const CONFIRM_LIVE_MS = 3000;
 
 /** One countdown step. The label counts whole seconds. */
 const TICK_MS = 1000;

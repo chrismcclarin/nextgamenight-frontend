@@ -106,7 +106,7 @@ export const floors = [
   { spec: 'e2e/touch-targets.spec.ts', project: 'phone', floor: 26, why: '26 of 30 listed run in phone (88.9-52 R21 added the header name proof); 4 skipped here by an isMobile predicate' },
   { spec: 'e2e/tutorial-phone-wording.spec.ts', project: 'journeys', floor: 1, why: '1 of 2 listed run in journeys; 1 skipped here by an isMobile predicate' },
   { spec: 'e2e/tutorial-phone-wording.spec.ts', project: 'phone', floor: 1, why: '1 of 2 listed run in phone; 1 skipped here by an isMobile predicate' },
-  { spec: 'e2e/two-tap-no-timer.spec.ts', project: 'journeys', floor: 2, why: '2 of 2 listed run in journeys; no conditional skip (Phase 89.6-04, OW-2: the rows exist so a green run names this spec; raised 1 to 2 by the scroll-out test; a later test raises it in the same commit)' },
-  { spec: 'e2e/two-tap-no-timer.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; no conditional skip (Phase 89.6-04, OW-2: the rows exist so a green run names this spec; raised 1 to 2 by the scroll-out test; a later test raises it in the same commit)' },
+  { spec: 'e2e/two-tap-no-timer.spec.ts', project: 'journeys', floor: 4, why: '4 of 4 listed run in journeys; no conditional skip (Phase 89.6-04, OW-2: the rows exist so a green run names this spec; raised 1 to 2 by the scroll-out test and 2 to 4 by the two kebab tests of 89.6-07, OW-2a; a later test raises it in the same commit)' },
+  { spec: 'e2e/two-tap-no-timer.spec.ts', project: 'phone', floor: 4, why: '4 of 4 listed run in phone; no conditional skip (Phase 89.6-04, OW-2: the rows exist so a green run names this spec; raised 1 to 2 by the scroll-out test and 2 to 4 by the two kebab tests of 89.6-07, OW-2a; a later test raises it in the same commit)' },
   { spec: 'e2e/typed-line-breaks.spec.ts', project: 'phone', floor: 10, why: '10 of 10 listed run in phone; the other project is skipped by an isMobile predicate' },
 ];
