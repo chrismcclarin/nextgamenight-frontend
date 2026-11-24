@@ -1128,7 +1128,7 @@ function Profile(){
         }
     };
 
-    // Cleanup the two-tap revert timer on unmount (mirrors src/app/components/KebabMenu.js ("pending timer must not fire after unmount")).
+    // Cleanup on unmount. (The two-tap timer this effect once mirrored is gone: 88.9-68 moved the phone Remove onto the shared gate, and 89.6-04 removed the gate's own timer.)
     // R2 #29: the resend cooldown ticker is cleared HERE too — an ADDITION to this effect's
     // body, deliberately not a second unmount effect. 88.6.1-60: so is the BGG import outcome's
     // hold observer, and the BGG import's result timer is cleared HERE too.
@@ -4813,6 +4813,8 @@ function Profile(){
                                         ariaDisabled={removeTrigger['aria-disabled']}
                                         removing={removingGameId === game.id}
                                         onRemovePress={pressRemoveGame}
+                                        onArmedKeyDown={removeTrigger.onKeyDown}
+                                        onArmedBlur={removeTrigger.onBlur}
                                     />
                                 );
                             })}
@@ -4925,7 +4927,8 @@ export default Profile;
    triggerProps sites, the accept recorded there) and a custom memo comparator (hides a real prop change). Passing this
    component the gate object, an inline function or a fresh object brings every card back on every tick, silently for a
    reader and red in src/app/userProfile/page.test.tsx ("A-49 (88.9-52): a countdown tick re-renders the armed collection card only").
-   The markup, classes and markers below moved here from the map word for word. */
+   The markup, classes and markers below moved here from the map word for word.
+   AMENDED Phase 89.6-04 (OW-2): two more props, onArmedKeyDown and onArmedBlur, the gate's Escape and focus-leaving handlers. They are undefined for a card at rest and one stable function each while armed, so a resting card still receives the same values on every tick. */
 const CollectionCard = memo(function CollectionCard({
     game,
     isPeek,
@@ -4940,6 +4943,8 @@ const CollectionCard = memo(function CollectionCard({
     ariaDisabled,
     removing,
     onRemovePress,
+    onArmedKeyDown,
+    onArmedBlur,
 }) {
     return (
     // D49-b (owner ruling 2026-09-09, option i): the inlined built-in md hover shadow was
@@ -5063,6 +5068,8 @@ const CollectionCard = memo(function CollectionCard({
                 <button
                     type="button"
                     onClick={(event) => onRemovePress(game, event)}
+                    onKeyDown={onArmedKeyDown}
+                    onBlur={onArmedBlur}
                     aria-label={ariaLabel}
                     aria-pressed={ariaPressed}
                     aria-disabled={ariaDisabled}

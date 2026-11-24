@@ -1097,6 +1097,90 @@ describe('userProfile two-tap armed state (F-357)', () => {
     }
   });
 
+  // OW-2 (89.6-04 Task 3): the collection card is memoised and takes selected values, not the gate's
+  // spread, so the gate's Escape and focus-leaving handlers have to be threaded onto its button.
+  it('OW-2 (89.6-04): Escape on an armed collection Remove disarms it, keeps focus on it and says Confirmation cancelled.', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(
+        OWNED_GAMES
+      );
+
+      renderProfile();
+      await vi.waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Remove Catan' })).toBeInTheDocument()
+      );
+
+      const remove = screen.getByRole('button', { name: 'Remove Catan' });
+      remove.focus();
+      fireEvent.click(remove);
+      await act(async () => {
+        vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+      });
+      const armed = screen.getByRole('button', { name: 'Tap again to remove' });
+      expect(armed).toHaveAttribute('aria-pressed', 'true');
+
+      // fireEvent returns false when the handler called preventDefault: the key is claimed.
+      expect(fireEvent.keyDown(armed, { key: 'Escape' })).toBe(false);
+
+      const resting = screen.getByRole('button', { name: 'Remove Catan' });
+      expect(resting).not.toHaveAttribute('aria-pressed');
+      expect(document.activeElement).toBe(resting);
+      const said = screen
+        .getAllByRole('status')
+        .filter((region) => region.textContent === 'Confirmation cancelled.');
+      expect(said).toHaveLength(1);
+      expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('OW-2 (89.6-04): focus leaving an armed collection Remove disarms it; a null relatedTarget does not', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(
+        OWNED_GAMES
+      );
+
+      renderProfile();
+      await vi.waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Remove Catan' })).toBeInTheDocument()
+      );
+
+      const remove = screen.getByRole('button', { name: 'Remove Catan' });
+      remove.focus();
+      fireEvent.click(remove);
+      await act(async () => {
+        vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+      });
+      const armed = screen.getByRole('button', { name: 'Tap again to remove' });
+
+      // A null relatedTarget is ambiguous (a press over non-focusable chrome), so it never disarms.
+      fireEvent.focusOut(armed, { relatedTarget: null });
+      expect(screen.getByRole('button', { name: 'Tap again to remove' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
+
+      // Focus moving to any other control on the page is the person leaving.
+      const other = screen.getAllByRole('button').find((button) => button !== armed);
+      expect(other).toBeDefined();
+      fireEvent.focusOut(armed, { relatedTarget: other });
+
+      expect(screen.getByRole('button', { name: 'Remove Catan' })).not.toHaveAttribute('aria-pressed');
+      const said = screen
+        .getAllByRole('status')
+        .filter((region) => region.textContent === 'Confirmation cancelled.');
+      expect(said).toHaveLength(1);
+      expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // PIX-1 / A-49 (88.9-52, owner condition met: the picture pass measured a hitch with 120 games).
   // Each card renders its one SafeImage, so the stub's call count is the number of card renders.
   // Before the memoised card every mounted card rendered on every countdown tick (30 of 30).
