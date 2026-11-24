@@ -3,7 +3,8 @@
   One section per twin, marked with data-case; the matrix spec renders ONE section at a time.
   A bad twin holds the defect its check must report; its good twin holds the same content without it.
   The split check has more than one pair: a bad form with no twin holds a defect the check must
-  report, and split-block-only and split-padded-good hold a broken word the check must NOT report.
+  report, and split-block-only, split-above-root and split-padded-good hold a broken word the
+  check must NOT report.
   The wrappers carry lt- hook names the app never styles. Every state is static markup:
   this file holds no script and no outside address.
 -->
@@ -129,6 +130,20 @@
   </main>
 </section>
 
+<!-- the same squeeze in a grid, bad form only: the text's column may shrink to nothing beside a fixed column. -->
+<section data-case="split-grid-wrapper">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="grid grid-cols-[minmax(0,1fr)_6rem] gap-2">
+        <div class="lt-wrap">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Invite</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
 <!-- split through a column container, bad form only: the item that may shrink is itself a column of two lines. -->
 <section data-case="split-column-pass">
   <main data-frame class="lt-frame px-4 py-4">
@@ -170,6 +185,16 @@
       </div>
     </div>
   </main>
+</section>
+
+<!-- the read's own root is a narrow item of a row: what is above the root is outside the read, so the word wider than the root may break and nothing is reported. -->
+<section data-case="split-above-root">
+  <div class="lt-shell flex gap-2 px-4 py-4">
+    <main data-frame class="lt-frame w-8 flex-none">
+      <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+    </main>
+    <div class="lt-side text-base text-content-primary">Menu</div>
+  </div>
 </section>
 
 <!--

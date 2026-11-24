@@ -476,15 +476,49 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   }
 
   // ---- split -----------------------------------------------------------------------------------
-  // A word's row: the nearest [data-room] ancestor when there is one; otherwise start at the text's
-  // own box and climb while the parent is a flex or grid container. So a label inside a button
-  // inside .bb-row-end measures against the whole .bb-row: a word that would fit the row but
-  // breaks because a neighbour squeezed it is a letter-stack. Text inside .bb-breakable is not
-  // read here (emails and links may break anywhere).
+  // DECISION Phase 89.6-02 (split-row), AMENDED 2026-11-24 (orchestrator fix R3): a word's row is
+  // the row that could give it room, found THROUGH the wrappers above the text's own box, chosen
+  // OVER the first rule (start at the text's own box and climb only while the parent is a flex or
+  // grid container). That rule stopped at a paragraph inside a wrapper and compared a squeezed
+  // word with its own narrow box, so a letter-stack in a paragraph inside a shrinking flex item
+  // was never reported; SPEC R4 lets a word break only when it is wider than its WHOLE row.
+  // The row, in order:
+  //   1. the nearest [data-room] ancestor, when there is one (a marked row wins);
+  //   2. otherwise the text's own box, or, when the search finds one at or under the root of the
+  //      read, the nearest element at or above that box whose parent is a row-direction flex
+  //      container or a grid container: the item a neighbour can squeeze sideways. The search
+  //      passes plain wrappers and column-direction flex containers. A column does not squeeze
+  //      its items sideways, and stopping at one would make every page-level column the row;
+  //   3. then, as before R3, up while the parent is a flex or grid container of any direction.
+  // So a label inside a button inside .bb-row-end, and a paragraph inside .bb-row-text, both
+  // measure against the whole .bb-row: a word that would fit the row but breaks because a
+  // neighbour squeezed it is a letter-stack. A plain block with no such row above it stays its own
+  // row: a word wider than its block may break.
+  // The word's room is the row's content width LESS the left and right padding and border of
+  // every box from the text's own box up to the row (the row's own padding is already off). A word
+  // that fits its row but not the padded pill it sits in may break; before R3 that read as a split.
+  // Text inside .bb-breakable is not read here (emails and links may break anywhere).
+  // Narrowing the search back to the text's own box, stopping it at a column container, or putting
+  // the padding back into the room is a decision, not a cleanup: the wrapper, column and padded
+  // twins of the checks harness go red.
+  const squeezesSideways = (el: Element) => {
+    const cs = getComputedStyle(el);
+    if (/grid/.test(cs.display)) return true;
+    return /flex/.test(cs.display) && !cs.flexDirection.startsWith('column');
+  };
   const rowOf = (el: Element): Element => {
     const marked = el.closest('[data-room]');
     if (marked) return marked;
-    let row = boxOf(el);
+    const own = boxOf(el);
+    let row = own;
+    let a: Element | null = own;
+    while (a && a !== rootEl && rootEl.contains(a) && a.parentElement) {
+      if (squeezesSideways(a.parentElement)) {
+        row = a;
+        break;
+      }
+      a = a.parentElement;
+    }
     while (row.parentElement && /flex|grid/.test(getComputedStyle(row.parentElement).display)) row = row.parentElement;
     return row;
   };
@@ -492,10 +526,27 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     const cs = getComputedStyle(el);
     return el.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight);
   };
+  // The padding and border a box takes from the line of what is inside it. An inline box and a
+  // display: contents element take none from a block inside them.
+  const sideEdges = (el: Element) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'inline' || cs.display === 'contents') return 0;
+    return px(cs.paddingLeft) + px(cs.paddingRight) + px(cs.borderLeftWidth) + px(cs.borderRightWidth);
+  };
+  const roomOf = (el: Element): number => {
+    const row = rowOf(el);
+    const own = boxOf(el);
+    let room = contentWidth(row);
+    // Only when the row is above the text's own box: a marked row can be the box itself or under it.
+    if (row !== own && row.contains(own)) {
+      for (let between: Element | null = own; between && between !== row; between = between.parentElement) room -= sideEdges(between);
+    }
+    return room;
+  };
   const split: string[] = [];
   for (const w of words) {
     if (w.lines <= 1 || w.el.closest('.bb-breakable')) continue;
-    const room = contentWidth(rowOf(w.el));
+    const room = roomOf(w.el);
     const natural = naturalWidth(w.text, w.el);
     if (natural <= room + 0.5) split.push(`"${w.text}" ${w.lines} lines, ${round(natural)}px fits its row ${round(room)}px`);
   }
