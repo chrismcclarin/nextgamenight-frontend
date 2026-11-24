@@ -609,11 +609,21 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
    milestone-tenet rule forbids.
 
    A future reader re-pointing arm one back at a shipped control re-introduces the expiry date plan
-   88.6-12 removed from this arm's twin. That is a decision, not a cleanup. */
+   88.6-12 removed from this arm's twin. That is a decision, not a cleanup.
+
+   AMENDED Phase 89.6-06 (btn-floor), owner pick DT-1 = 44, 2026-11-23 ('Dt-1 fine'): ARM ONE is
+   REVERSED. Everything above that says a blanket .btn min-height must red this test was true
+   until the owner ruled that the .btn CLASS floor applies at every width
+   (src/app/globals.css ("AMENDED Phase 89.6-06 (btn-floor)")). The planted bare .btn is now
+   expected to measure 44px at 1280, chosen OVER retiring the arm (it is still the only 1280 read
+   of the class floor on a signed-in page) and OVER leaving it asserting under 44 (it went red in
+   CI run 45397745120 on FE efec613, as it was built to). The describe title is the SPEC Req 8 /
+   DEF-1 acceptance sentence and is kept as history; the test title says what is measured now.
+   ARM TWO is unchanged. Changing this back is a decision, not a cleanup. */
 test.describe('SPEC Req 8 / DEF-1 — a dense `.btn` row stays dense at desktop', () => {
   test.skip(({ isMobile }) => !!isMobile, 'DEF-1 is the DESKTOP half of D-36: below md the phone floor legitimately makes these 44px, so at 375px this assertion would be backwards');
 
-  test('groupHomePage CTA row: the unfloored `.btn` stays < 44px and the per-CTA floor still holds at 1280', async ({ page }) => {
+  test('groupHomePage CTA row: a bare `.btn` is floored at 44px by the class and the per-CTA floor still holds at 1280', async ({ page }) => {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
 
     const manageMembers = page.getByRole('button', { name: /manage members/i });
@@ -628,7 +638,9 @@ test.describe('SPEC Req 8 / DEF-1 — a dense `.btn` row stays dense at desktop'
       'the "Plan Game Session" CTA did not render — same gate as above; a missing control here would make the floor assertion below vacuous',
     ).toBeVisible({ timeout: 15_000 });
 
-    /* ARM ONE — the CLASS-level floor is still phone-only, measured on a PLANTED bare `.btn`.
+    /* ARM ONE — the CLASS-level floor, measured on a PLANTED bare `.btn`. AMENDED Phase 89.6-06
+       (btn-floor): it now applies at every width, so the probe is expected at 44px; this line read
+       "the CLASS-level floor is still phone-only".
        The two visibility guards above are retained as the FIXTURE check (they are the only thing
        in this test that catches a broken seed) but they no longer supply the number: both controls
        are `<Button>` now and would measure 44 for D-09's reason, not D-36's.
@@ -649,9 +661,9 @@ test.describe('SPEC Req 8 / DEF-1 — a dense `.btn` row stays dense at desktop'
     });
 
     expect(
-      probe.height,
-      `the planted bare .btn probe measured ${probe.height}px tall at 1280 (min-height: ${probe.minHeight}) — anything >= 44 means a blanket .btn height floor has appeared at desktop. That is what 87.8 AF-2 rejected and 88-01 D-36 re-rejected for all viewports, because it deforms square-by-design controls; the phone floor is globals.css's @media (width < 48rem) block and it must not reach this viewport. D-09's floor lives on Button's cva base, NOT on the class — if you widened the media rule to satisfy something, you widened the wrong half`,
-    ).toBeLessThan(44);
+      Math.abs(probe.height - 44),
+      `the planted bare .btn probe measured ${probe.height}px tall at 1280 (min-height: ${probe.minHeight}), not 44px. Since Phase 89.6-06 (CI-04, owner pick DT-1 = 44, 2026-11-23) the .btn CLASS floor applies at every width: min-height 2.75rem is the last declaration of the .btn rule in globals.css. Under 44 means that declaration was dropped or moved back behind a phone-only media rule; over 44 means something else is sizing a bare .btn`,
+    ).toBeLessThanOrEqual(0.5);
     expect(
       probe.height,
       `the planted bare .btn probe measured ${probe.height}px tall — under 20px means the probe rendered without its authored CSS or without its text content, which would make the < 44 assertion above pass vacuously. .btn and .btn-secondary are authored rules in globals.css, not scanned utilities, so they do not depend on the @source globs seeing this file`,
