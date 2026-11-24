@@ -314,7 +314,8 @@ describe('the custom-named token families de-dupe pairwise, last-wins', () => {
   it('min-w-11 / min-w-0 — the WIDTH axis of the two-axis icon floor', () => {
     // At seeding time the `icon` rung in src/components/ui/Button.tsx read `icon: 'min-h-11 min-w-11 p-0'`; the `min-w` half is
     // what floors `size="icon"` in WIDTH. RE-DERIVED 2026-09-15: plan 06 landed and the rung is
-    // now `icon: 'min-h-11 min-w-11'` (src/components/ui/Button.tsx ("icon: 'min-h-11 min-w-11',")) — the zero-padding utility was dead
+    // now `icon: 'min-h-11 min-w-11'` (src/components/ui/Button.tsx ("icon: 'btn-icon-lozenge min-h-11 min-w-11',")) — the zero-padding utility was dead
+    // AMENDED Phase 89.6-06 (O-M4): the rung now leads with btn-icon-lozenge (the cite above follows it); both rem floors are still there.
     // (`.btn` is unlayered) and was deleted, so the shipped control is a lozenge, not a square;
     // that is the PRESERVED look, per the `DECISION Phase 88.6-06 (C.1 / D-09)` marker.
     // Seeding only the `min-h-*` axis would leave the width axis

@@ -281,6 +281,11 @@ const buttonVariants = cva(
          AMENDED Phase 88.9-52 (R5, owner 2026-11-17): the floating feedback button takes
          iconSquare too (a fixed 56px box needs the zero padding), so the chevrons are no longer
          its only users and FeedbackButton's floating button leaves the size icon list above.
+         AMENDED Phase 89.6-06 (O-M4): owner pick O-M4 = Fixed+, 2026-11-22 ('The box stays 44px, and
+         the icon inside grows with the text up to 32px'): size icon emits btn-icon-lozenge, which
+         keeps the 52x44 lozenge N1 chose at normal text, pixel for pixel, and holds it at enlarged
+         text; the rem min-h-11 min-w-11 stay as the floor for any browser that drops the unlayered
+         rule. The rules are at src/app/globals.css ("DECISION Phase 89.6-06 (O-M4)").
 
          (2) `min-h-11` LIVES ON THE cva BASE — chosen OVER widening the
          `@media (width < 48rem)` rule on the `.btn` class. D-36's reasoning is
@@ -300,7 +305,8 @@ const buttonVariants = cva(
         default: '',
         // D-02's "legitimate 44x44 home" for bare icon buttons, delivered once
         // here instead of invented per call site.
-        icon: 'min-h-11 min-w-11',
+        // 89.6-06 O-M4: btn-icon-lozenge is the unlayered px box (52x44, held at every text size).
+        icon: 'btn-icon-lozenge min-h-11 min-w-11',
         // 88.9-28 N1: the month-nav square (44x44, padding 0 from the unlayered .btn-icon-square rule).
         iconSquare: 'btn-icon-square min-h-11 min-w-11',
         // 88.6 D-09, the compact row-action rung. `btn-sm` ONLY: the compact

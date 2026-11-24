@@ -524,6 +524,24 @@ describe('Button', () => {
   });
 });
 
+// Phase 89.6-06 (owner pick O-M4 = Fixed+): the two icon-only sizes each emit their own unlayered
+// box class; the boxes themselves are measured in e2e/primitives-large-text.spec.ts ("O-M4 normal text (89.6-06)").
+describe('89.6-06 O-M4: icon-only sizes emit the held-box classes', () => {
+  it('size="icon" carries btn-icon-lozenge and not btn-icon-square', () => {
+    const toks = tokensOf(buttonVariants({ variant: 'ghost', size: 'icon' }));
+    expect(toks).toContain('btn-icon-lozenge');
+    expect(toks).not.toContain('btn-icon-square');
+    expect(toks).toContain('min-h-11');
+    expect(toks).toContain('min-w-11');
+  });
+
+  it('size="iconSquare" carries btn-icon-square and not btn-icon-lozenge', () => {
+    const toks = tokensOf(buttonVariants({ variant: 'ghost', size: 'iconSquare' }));
+    expect(toks).toContain('btn-icon-square');
+    expect(toks).not.toContain('btn-icon-lozenge');
+  });
+});
+
 // Phase 89.6-06: a string or number child renders inside span.bb-label, so the label can shrink
 // to its control and wrap inside it (src/components/ui/Button.tsx ("DECISION Phase 89.6-06 (bb-label)")).
 // jsdom draws nothing, so the spill itself is read in Chromium, in

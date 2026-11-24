@@ -3728,8 +3728,31 @@ body {
    (owner pick N1, 88.9-PICKS-B7A.json, 2026-11-07).
    AMENDED Phase 88.9-52 (R5, owner 2026-11-17): the floating feedback button takes the same size
    key, for a fixed 56px box with no side padding. */
+/* DECISION Phase 89.6-06 (O-M4): an icon-only .btn holds its normal-text px box at every text size
+   while its icon follows the text up to 32px (SPEC A9 item 3; owner pick O-M4 = Fixed+,
+   2026-11-22: 'The box stays 44px, and the icon inside grows with the text up to 32px'): the
+   square at 44 by 44, the lozenge at 52 by 44, its padding giving back exactly what the house
+   icon (min of 1.25rem and 32px) takes. At normal text the lozenge's padding is 16px inline (the
+   .btn padding it replaces) and its height is the 44px floor either way, so the N1 lozenge (owner
+   pick N1, 88.9-28) is pixel-identical; chosen OVER the rem padding and floor that doubled the
+   box at 200% and OVER turning the lozenge into the square (a normal-text look change N1 ruled
+   out). A child that grows past the cap grows the box only by its excess. Min sizes and padding
+   only, never width or height, so the floating feedback button keeps its larger box. Supersedes
+   the UI-SPEC floor row 'grows with text, never shrinks' for icon-only controls only. Both rules
+   stay UNLAYERED and after .btn and its floor: the px minimums must beat the rem min-h-11 and
+   min-w-11 utilities, and every utilities-layer rule loses to an unlayered one. Changing this is
+   a decision, not a cleanup. */
 .btn-icon-square {
   padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.btn-icon-lozenge {
+  padding-block: calc((44px - min(1.25rem, 32px)) / 2);
+  padding-inline: calc((52px - min(1.25rem, 32px)) / 2);
+  min-width: 44px;
+  min-height: 44px;
 }
 
 /* DECISION Phase 88.9-36 G2a (owner pick G2a, 88.9-PICKS-B6.json item G2, 2026-11-07 3:07 AM Pacific):

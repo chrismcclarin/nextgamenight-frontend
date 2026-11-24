@@ -4,8 +4,19 @@ import postcss, { type AcceptedPlugin } from 'postcss';
 import tailwindcss from '@tailwindcss/postcss';
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { X } from 'lucide-react';
 import { Button } from '../src/components/ui/Button';
-import { THIRTY_LETTER_WORD, expectLargeTextCell, readLargeTextCell, setTextMode, type TextMode } from './support/wordLines';
+import { Icon } from '../src/components/ui/Icon';
+import {
+  THIRTY_LETTER_WORD,
+  expectLargeTextCell,
+  expectPageZoomUsable,
+  readLargeTextCell,
+  readPageZoomCell,
+  setTextMode,
+  type PageZoomRead,
+  type TextMode,
+} from './support/wordLines';
 
 // Phase 89.6-06 (SPEC R3, R4, R10): the shared primitives at large text, RENDERED from the real
 // components.
@@ -124,4 +135,155 @@ test('bb-label (89.6-06): a capped Button with a 30-letter word wraps its label 
   expect(button.labelSpans, `${tag}: the Button's text is not inside one .bb-label span`).toBe(1);
   expect(button.labelText).toBe(`Invite ${THIRTY_LETTER_WORD}`);
   expect(requests, `${tag}: the page made a request`).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// O-M4 Fixed+ (owner pick, 2026-11-22: "The box stays 44px, and the icon inside grows with the
+// text up to 32px"). Two halves: normal text is pixel-identical to the lozenge as shipped, and at
+// enlarged text the boxes hold their normal-text size while the icon follows the text to 32px.
+// ---------------------------------------------------------------------------------------------
+
+interface ProbeBox {
+  width: number;
+  height: number;
+  /** The first element child's left and top edge, measured from the control's own box. */
+  childLeft: number;
+  childTop: number;
+  childWidth: number;
+  childHeight: number;
+}
+
+/** The box of the one control under a probe wrapper, and where its first element child sits in it. */
+async function probeBox(page: Page, probe: string): Promise<ProbeBox> {
+  return page.locator(`[data-probe="${probe}"] button`).evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const child = el.firstElementChild;
+    if (!child) throw new Error('the probed control has no element child');
+    const c = child.getBoundingClientRect();
+    return { width: r.width, height: r.height, childLeft: c.left - r.left, childTop: c.top - r.top, childWidth: c.width, childHeight: c.height };
+  });
+}
+
+/** A probe wrapper: a block of its own, so two probes never share a line. The lt- name is not styled by the app. */
+function probe(name: string, control: React.ReactElement): React.ReactElement {
+  return React.createElement('div', { key: name, 'data-probe': name, className: 'lt-probe' }, control);
+}
+
+const PX_TOLERANCE = 0.5;
+
+/** The two child shapes the three shipped size icon sites hold. */
+const ICON_CHILD_SHAPES: ReadonlyArray<{ name: string; site: string; children: () => React.ReactNode[] }> = [
+  {
+    // src/app/components/FeedbackForm.js and src/app/components/PendingMemberBanner.js: a text glyph.
+    name: 'glyph',
+    site: 'FeedbackForm Remove, PendingMemberBanner Dismiss',
+    children: () => [React.createElement('span', { key: 'g', 'aria-hidden': 'true', className: 'text-lg leading-none' }, '\u00d7')],
+  },
+  {
+    // src/components/ui/BottomSheet.tsx: a 1.25rem lucide X and an sr-only name.
+    name: 'svg',
+    site: 'BottomSheet close',
+    children: () => [
+      React.createElement(X, { key: 'x', className: 'h-5 w-5', 'aria-hidden': true }),
+      React.createElement('span', { key: 's', className: 'sr-only' }, 'Close'),
+    ],
+  },
+];
+
+test('O-M4 normal text (89.6-06): the icon lozenge is pixel-identical to the N1 lozenge as shipped', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const measured: Array<{ cell: string; shape: string; site: string; subject: ProbeBox; reference: ProbeBox }> = [];
+  for (const size of [
+    { width: 375, height: 667 },
+    { width: 1280, height: 800 },
+  ]) {
+    for (const shape of ICON_CHILD_SHAPES) {
+      const tag = `O-M4 normal text ${size.width} ${shape.name}`;
+      await renderPrimitive(
+        page,
+        { ...size, theme: 'light', mode: '100' },
+        React.createElement(
+          React.Fragment,
+          null,
+          // The subject: the real Button, as the three shipped sites write it.
+          probe('subject', React.createElement(Button, { variant: 'ghost', size: 'icon', 'aria-label': 'Close' }, ...shape.children())),
+          // The reference: the N1 lozenge as shipped at FE 8a446dc, the as-built recipe. A raw
+          // button carrying .btn and the two rem floors, the classes size icon emitted then.
+          probe('reference', React.createElement('button', { type: 'button', 'aria-label': 'Close', className: 'btn min-h-11 min-w-11' }, ...shape.children())),
+        ),
+        tag,
+      );
+      measured.push({ cell: `${size.width}`, shape: shape.name, site: shape.site, subject: await probeBox(page, 'subject'), reference: await probeBox(page, 'reference') });
+    }
+  }
+  // Attached BEFORE asserting.
+  await testInfo.attach('boxes', { body: JSON.stringify(measured, null, 2), contentType: 'application/json' });
+  expect(measured.length, 'two widths by two child shapes were to be measured').toBe(4);
+  for (const m of measured) {
+    const tag = `O-M4 normal text ${m.cell} ${m.shape} (${m.site})`;
+    for (const side of ['width', 'height', 'childLeft', 'childTop', 'childWidth', 'childHeight'] as const) {
+      expect(
+        Math.abs(m.subject[side] - m.reference[side]),
+        `${tag}: ${side} differs from the lozenge as shipped (Button ${m.subject[side]}px, as shipped ${m.reference[side]}px). Normal text must not change: fix the rule, never the reference`,
+      ).toBeLessThanOrEqual(PX_TOLERANCE);
+    }
+    // Non-vacuity: the reference really is the 44px-floored lozenge, and the svg one is 52 wide.
+    expect(Math.abs(m.reference.height - 44), `${tag}: the as-shipped lozenge is not 44px tall`).toBeLessThanOrEqual(PX_TOLERANCE);
+    if (m.shape === 'svg') expect(Math.abs(m.reference.width - 52), `${tag}: the as-shipped svg lozenge is not 52px wide`).toBeLessThanOrEqual(PX_TOLERANCE);
+  }
+  expect(requests, 'O-M4 normal text: the page made a request').toEqual([]);
+});
+
+test('O-M4 enlarged text (89.6-06): icon boxes hold their normal-text size while the icon follows text to 32px', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  /** The same child in both sizes: the house icon, 20px at normal text, following the text. */
+  const controls = () =>
+    React.createElement(
+      React.Fragment,
+      null,
+      probe('icon', React.createElement(Button, { variant: 'ghost', size: 'icon', 'aria-label': 'Close' }, React.createElement(Icon, { name: 'X', size: 20, followText: true }))),
+      probe('iconSquare', React.createElement(Button, { variant: 'ghost', size: 'iconSquare', 'aria-label': 'Next month' }, React.createElement(Icon, { name: 'X', size: 20, followText: true }))),
+    );
+  const ENLARGED: ReadonlyArray<{ width: number; height: number; mode: TextMode; svg: number }> = [
+    { width: 320, height: 568, mode: '150', svg: 30 },
+    { width: 320, height: 568, mode: '200', svg: 32 },
+    { width: 375, height: 667, mode: '150', svg: 30 },
+    { width: 375, height: 667, mode: '200', svg: 32 },
+  ];
+  const measured: Array<{ cell: string; svg: number; icon: ProbeBox; iconSquare: ProbeBox; followMarkers: number }> = [];
+  for (const cell of ENLARGED) {
+    const tag = `O-M4 enlarged ${cell.width} ${cell.mode}`;
+    const frame = await renderPrimitive(page, { width: cell.width, height: cell.height, theme: 'light', mode: cell.mode }, controls(), tag);
+    measured.push({
+      cell: `${cell.width} / ${cell.mode}`,
+      svg: cell.svg,
+      icon: await probeBox(page, 'icon'),
+      iconSquare: await probeBox(page, 'iconSquare'),
+      followMarkers: await frame.locator('svg[data-follow-text]').count(),
+    });
+  }
+  // The fifth cell: 215 wide at normal text, a 430-wide phone at 200% page zoom (SPEC A8).
+  const zoomFrame = await renderPrimitive(page, { width: 215, height: 466, theme: 'light', mode: '100' }, controls(), 'O-M4 page zoom 215');
+  const zoom: PageZoomRead = await readPageZoomCell(zoomFrame);
+  const zoomBoxes = { icon: await probeBox(page, 'icon'), iconSquare: await probeBox(page, 'iconSquare') };
+  // Attached BEFORE asserting, so a red run still leaves every box behind.
+  await testInfo.attach('boxes', { body: JSON.stringify({ enlarged: measured, pageZoom215: { read: zoom, boxes: zoomBoxes } }, null, 2), contentType: 'application/json' });
+
+  expect(measured.length, 'four enlarged cells were to be measured').toBe(4);
+  for (const m of measured) {
+    const tag = `O-M4 enlarged ${m.cell}`;
+    const near = (got: number, want: number, what: string) =>
+      expect(Math.abs(got - want), `${tag}: ${what} is ${got}px, not ${want}px`).toBeLessThanOrEqual(PX_TOLERANCE);
+    expect(m.followMarkers, `${tag}: both icons were to carry data-follow-text`).toBe(2);
+    near(m.icon.width, 52, 'the size icon box width');
+    near(m.icon.height, 44, 'the size icon box height');
+    near(m.iconSquare.width, 44, 'the size iconSquare box width');
+    near(m.iconSquare.height, 44, 'the size iconSquare box height');
+    near(m.icon.childWidth, m.svg, 'the icon in the size icon box (width)');
+    near(m.icon.childHeight, m.svg, 'the icon in the size icon box (height)');
+    near(m.iconSquare.childWidth, m.svg, 'the icon in the size iconSquare box (width)');
+    near(m.iconSquare.childHeight, m.svg, 'the icon in the size iconSquare box (height)');
+  }
+  expectPageZoomUsable(zoom, 'O-M4 page zoom 215');
+  expect(requests, 'O-M4 enlarged text: the page made a request').toEqual([]);
 });
