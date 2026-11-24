@@ -1690,7 +1690,16 @@ function GroupHomePage(){
                             variant="ghost"
                             onClick={() => setMemberModal(true)}
                             className={
-                                'whitespace-nowrap ' +
+                                // DECISION Phase 89.6-06 (cta-label-wrap): no whitespace-nowrap on this button, chosen
+                                // OVER the nowrap this string led with. A Button's text now sits in span.bb-label,
+                                // which may shrink to its control; under nowrap the words could not wrap inside it, so
+                                // at 320 wide with text at 200% the label ran 66px past the button's right edge and the
+                                // page scrolled sideways by 10px (measured 2026-11-24, and red in CI run 45397745120:
+                                // e2e/group-home-games-refresh.spec.ts ("R4-A3 (88.9-52)")). Without it the label wraps
+                                // as whole words inside the button (GR: a label wraps inside its control, never spills).
+                                // Normal text is unchanged: the label is one line at 320, 375, 640 and 1280 wide, and
+                                // the button's box is the same before and after. The Create Event button below follows
+                                // the same rule. Re-adding nowrap here is a decision, not a cleanup.
                                 'text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ' +
                                 'shadow-theme-md' +
                                 // DECISION Phase 88.9-12 T1 (census B098-B100, owner option (a)): the three
@@ -1854,7 +1863,9 @@ function GroupHomePage(){
                                `shadow-theme-lg`, white ring half preserved as
                                `ring-2 ring-white/15`. */
                             className={
-                                'whitespace-nowrap ' +
+                                // 89.6-06 (cta-label-wrap): no whitespace-nowrap, as on Manage Members above
+                                // (this file ("DECISION Phase 89.6-06 (cta-label-wrap)")): the label wraps inside
+                                // the button instead of running past its edge at large text.
                                 'shadow-theme-lg enabled-hover:shadow-theme-lg' +
                                 (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
                                 (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
