@@ -22,6 +22,7 @@
  *                                 (SPEC AC-4 includes each surface's empty state); printed, and
  *                                 failed only with --close. It never says pending:, so a plan's
  *                                 own "no pending line" check is not tripped by it.
+ * First the lane (lane: <mode>, <n> cells, and what rows.json says it ran);
  * then the counts, each enforced row's time and their sum, and a last line RESULT: PASS or
  * RESULT: FAIL (exit 0 or 1). In pr mode a sum above 900 s is a failure too: the first plan
  * whose row pushes the sweep over its budget sees it in its own run.
@@ -86,6 +87,9 @@ function check(dir, { mode = 'pr', close = false } = {}) {
   if (!existsSync(manifestFile)) return fail('missing: rows.json');
   const manifest = readJson(manifestFile);
   if (!manifest || !Array.isArray(manifest.rows) || !Array.isArray(manifest.cells)) return fail('missing: rows.json (unreadable, or no rows and cells lists)');
+
+  // The lane by name, so a green log says which cells were held (CI prints no line per passing test).
+  lines.push(`lane: ${mode}, ${expected.length} cells (rows.json: mode ${manifest.mode}, ${manifest.cells.length} cells)`);
 
   let bad = 0;
   const listed = [...manifest.cells].sort().join(' ');
