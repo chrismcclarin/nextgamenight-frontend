@@ -8,7 +8,8 @@
   The 30-letter case holds two more parts than the others, so that each of the two width caps is
   seen on its own: a plain line of text that is not a chip inside the cluster (only the cap on
   cluster items holds it to the row) and one chip outside any cluster (only the chip's own cap does).
-  The plain line has no side padding: the split read does not take padding off a row.
+  The plain line has no side padding, so its room is the whole row (side padding would come off
+  the room: the split read takes off every edge between a word and its row).
   Every state is static markup: this file holds no script and no outside address.
 -->
 

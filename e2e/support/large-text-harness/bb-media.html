@@ -3,8 +3,8 @@
   before a word breaks, and the picture is dropped by its own container variant when the card is
   too narrow for picture, gap and words) in its four content cases.
   The first picture is 4rem and drops under 15rem; the second is 3rem and drops under 14rem.
-  Each picture row is named with data-room: the words sit in a paragraph inside the words box, and
-  the split read would otherwise measure a word against that paragraph and never see it squeezed.
+  The picture rows carry no data-room mark: the words sit in a paragraph inside the words box, and
+  the split read finds the picture row above that paragraph by itself (orchestrator fix R3).
   One section per content case, marked with data-case; the matrix spec renders ONE section at a time.
   The wrappers carry lt- hook names the app never styles, so nothing here collides with a shipped rule.
   The frame and the card carry the thin edges at their phone values at every width (16px page edge,
@@ -16,7 +16,7 @@
   <main data-frame class="lt-frame px-edge-page py-4">
     <div data-card class="lt-card rounded-card border border-line bg-surface-card p-edge-card">
       <div class="bb-media">
-        <div data-room class="bb-media-row">
+        <div class="bb-media-row">
           <div aria-hidden="true" class="w-16 h-16 rounded-sm bg-surface-sunken @max-[15rem]:hidden"></div>
           <div class="bb-media-text">
             <p class="font-semibold text-base text-content-primary">Ticket to Ride</p>
@@ -25,7 +25,7 @@
         </div>
       </div>
       <div class="bb-media mt-3">
-        <div data-room class="bb-media-row">
+        <div class="bb-media-row">
           <div aria-hidden="true" class="w-12 h-12 rounded-sm bg-surface-sunken @max-[14rem]:hidden"></div>
           <div class="bb-media-text">
             <p class="font-semibold text-base text-content-primary">Azul</p>
@@ -49,7 +49,7 @@
   <main data-frame class="lt-frame px-edge-page py-4">
     <div data-card class="lt-card rounded-card border border-line bg-surface-card p-edge-card">
       <div class="bb-media">
-        <div data-room class="bb-media-row">
+        <div class="bb-media-row">
           <div aria-hidden="true" class="w-16 h-16 rounded-sm bg-surface-sunken @max-[15rem]:hidden"></div>
           <div class="bb-media-text">
             <p class="font-semibold text-base text-content-primary">Grandmasterboardgamecollective</p>
@@ -58,7 +58,7 @@
         </div>
       </div>
       <div class="bb-media mt-3">
-        <div data-room class="bb-media-row">
+        <div class="bb-media-row">
           <div aria-hidden="true" class="w-12 h-12 rounded-sm bg-surface-sunken @max-[14rem]:hidden"></div>
           <div class="bb-media-text">
             <p class="font-semibold text-base text-content-primary">Azul</p>
@@ -74,7 +74,7 @@
   <main data-frame class="lt-frame px-edge-page py-4">
     <div data-card class="lt-card rounded-card border border-line bg-surface-card p-edge-card">
       <div class="bb-media">
-        <div data-room class="bb-media-row">
+        <div class="bb-media-row">
           <div aria-hidden="true" class="w-16 h-16 rounded-sm bg-surface-sunken @max-[15rem]:hidden"></div>
           <div class="bb-media-text">
             <p class="font-semibold text-base text-content-primary">Weekend Warriors 🎲</p>
@@ -83,7 +83,7 @@
         </div>
       </div>
       <div class="bb-media mt-3">
-        <div data-room class="bb-media-row">
+        <div class="bb-media-row">
           <div aria-hidden="true" class="w-12 h-12 rounded-sm bg-surface-sunken @max-[14rem]:hidden"></div>
           <div class="bb-media-text">
             <p class="font-semibold text-base text-content-primary">Azul</p>
