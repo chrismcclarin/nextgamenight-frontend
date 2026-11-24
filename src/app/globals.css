@@ -2989,6 +2989,7 @@ body {
   padding: 0.5rem 1rem;
   transition: var(--theme-transition);
   cursor: pointer;
+  min-height: 2.75rem;
 }
 
 /* DECISION Phase 88.9-22 O20c (owner direction 8b, confirmed page 9, 88.9-PICKS-B8B.json): the
@@ -3218,6 +3219,8 @@ body {
    AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): the opt-out half of that answer is gone. The
    two steppers are 44x44 squares now and `.btn-compact` no longer exists; the phone floor is
    unchanged. The full note is at the place the rule used to stand, below.
+   AMENDED Phase 89.6-06 (CI-04, owner pick DT-1 = 44, 2026-11-23): desktop is no longer floorless;
+   the .btn floor applies at every width. Why both reasons above lapsed is at the D-36 marker below.
    AMENDED BY PHASE 88.8 (plan 13, DR-C) — the SELECTOR was narrowed, the RULE was
    not. It now reads `.btn:active:not(:disabled):not([aria-disabled="true"])`, so a
    control gated with `aria-disabled` no longer brightens to 0.75 on press while
@@ -3604,12 +3607,22 @@ body {
    is untouched: still unlayered, still phone-only. The REJECTED all-viewport floor stays rejected
    on the record as written; its stated reason (it would deform the 32px steppers) no longer has a
    subject, and whether desktop `.btn` should now take the floor is a separate question nobody
-   has ruled on, not something this amendment decides. */
-@media (width < 48rem) {
-  .btn {
-    min-height: 2.75rem;
-  }
-}
+   has ruled on, not something this amendment decides.
+   AMENDED Phase 89.6-06 (btn-floor), owner pick DT-1 = 44, 2026-11-23 ('Dt-1 fine'): DECISION the
+   .btn floor applies at every width, chosen OVER leaving desktop without a floor (the phone-only
+   floor above). Neither reason this note gave for keeping desktop floorless still holds: (a) a
+   global floor deforms square-by-design controls, but the two steppers it meant became 44 by 44
+   squares in 88.9-52 (the amendment above), so nothing square wears .btn below 44; (b) desktop
+   was to stay floorless until the Button migration sets each height with intent, and that
+   migration is done: every real button is the shared Button with its own min-h-11. Measured
+   2026-11-23 at 1280: every visible .btn on nine signed-in routes was already 44px tall, so
+   nothing on screen changes; only a bare .btn with no Button classes grows, from about 37px to
+   44px. The floor is a safety net for a .btn built by hand later. Register CI-04 (carried from
+   Phase 88.9-52) routed the question here. Still unlayered; still loses nothing to utilities.
+   WHERE THE RULE IS NOW: the phone-only media block that stood directly below this note is gone,
+   and the one declaration it held, a min-height of 2.75rem, is the last declaration of the .btn
+   rule itself, far above. Every rule that must beat it (.btn-sm, .btn-icon-square,
+   .btn-icon-lozenge) is still authored after it. Changing this is a decision, not a cleanup. */
 
 /* DECISION Phase 88.6-05 (A-6 amended): `.btn-sm` sits BEFORE `.btn-compact` — chosen OVER the
    A-6 after-`.btn-compact` position the record named. Owner ruling 2026-09-09 (AC-9).

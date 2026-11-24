@@ -136,9 +136,15 @@ describe('D-36 — the eight rejected-floor markers are amended, never deleted',
   // e2e/touch-targets.spec.ts cites it.
   it('5. the phone floor and its opt-out really are shipped, so the markers are not lying', () => {
     const css = fs.readFileSync(path.join(__dirname, 'globals.css'), 'utf8');
-    expect(css).toMatch(/@media\s*\(\s*width\s*<\s*48rem\s*\)[\s\S]*?\.btn\s*\{[\s\S]*?min-height:\s*2\.75rem/);
     // No rule: every remaining mention in the stylesheet is marker prose inside a comment.
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    // AMENDED Phase 89.6-06 (CI-04, owner pick DT-1 = 44, 2026-11-23): the floor is read in the .btn
+    // rule itself, at every width, chosen OVER the phone-only media block this line matched: that
+    // block is gone and its one declaration moved into the rule. The floor is still shipped, which
+    // is what this test is for; it is no longer phone-only. Read on comment-stripped source, so
+    // marker prose cannot satisfy it.
+    expect(rules).toMatch(/^\.btn\s*\{[^}]*min-height:\s*2\.75rem;[^}]*\}/m);
+    expect(rules).not.toMatch(/@media\s*\(\s*width\s*<\s*48rem\s*\)\s*\{\s*\.btn\s*\{/);
     expect(rules).not.toMatch(/\.btn-compact/);
     const stepper = fs.readFileSync(path.join(SRC, 'app/components/BrowseMoreModal.js'), 'utf8');
     const stepperClasses = [...stepper.matchAll(/className="(btn [^"]*)"/g)].map((m) => m[1]);

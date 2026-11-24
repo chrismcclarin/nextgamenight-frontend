@@ -463,21 +463,23 @@ describe('Phase 88.6 — the focus ring has exactly one home (UI-SPEC §12 A-2)'
 
 describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-6 / D10)', () => {
   /**
-   * The `@media (width < 48rem)` block that carries the D-36 phone floor, located by its CONTENT
-   * rather than by "the first `@media (width < 48rem)`" — three such blocks exist in this file and
-   * the other two are the `.surface-flat-phone` flatten inside `@layer utilities`. Pinning the
-   * content also means this anchor reds if the floor rule itself is ever moved or renamed, instead
-   * of silently re-anchoring onto an unrelated media query and passing.
+   * The `.btn` rule that carries the 44px floor, located by its CONTENT: the `.btn {` block at the
+   * start of a line, holding `min-height: 2.75rem;` before its closing brace. Pinning the content
+   * means this anchor reds if the floor is ever moved or renamed, instead of silently re-anchoring
+   * onto another rule and passing.
+   * AMENDED Phase 89.6-06 (CI-04, owner pick DT-1 = 44, 2026-11-23): this anchor was PHONE_FLOOR,
+   * the `@media (width < 48rem)` block that held the D-36 phone-only floor. The floor now applies at
+   * every width and lives in the `.btn` rule itself, so the anchor follows it.
    */
-  const PHONE_FLOOR = /@media \(width < 48rem\)\s*\{\s*\.btn\s*\{\s*min-height:\s*2\.75rem;/;
+  const BTN_FLOOR = /^\.btn\s*\{[^}]*min-height:\s*2\.75rem;[^}]*\}/m;
 
   it('7. the ruled source order holds in BOTH directions, on comment-stripped source', () => {
     const css = strip(readGlobals());
 
-    const floor = css.match(PHONE_FLOOR);
+    const floor = css.match(BTN_FLOOR);
     expect(
       floor,
-      'The D-36 phone floor `@media (width < 48rem) { .btn { min-height: 2.75rem } }` was not ' +
+      'The .btn floor (min-height 2.75rem in the .btn block, every width, 89.6-06 CI-04) was not ' +
         'found in comment-stripped globals.css. Every ordering assertion below is anchored on it, ' +
         'so this reds FIRST rather than letting them re-anchor somewhere meaningless.',
     ).not.toBeNull();
@@ -488,7 +490,7 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
 
     expect(
       smAt,
-      '`.btn-sm` must be authored AFTER the `@media (width < 48rem)` phone-floor block.',
+      '`.btn-sm` must be authored AFTER the `.btn` rule that holds the floor.',
     ).toBeGreaterThan(floorAt);
 
     // AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18): the second direction this test pinned

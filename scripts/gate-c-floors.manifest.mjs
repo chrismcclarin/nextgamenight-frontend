@@ -90,7 +90,7 @@ export const floors = [
   { spec: 'e2e/participant-row-one-line.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone (the third added by 88.9-52 R4 D6); the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/phone-home-event-discovery.spec.ts', project: 'journeys', floor: 1, why: '1 of 9 listed run in journeys; 8 skipped here by an isMobile predicate' },
   { spec: 'e2e/phone-home-event-discovery.spec.ts', project: 'phone', floor: 8, why: '8 of 9 listed run in phone; 1 skipped here by an isMobile predicate' },
-  { spec: 'e2e/primitives-large-text.spec.ts', project: 'journeys', floor: 3, why: '3 of 3 listed run in journeys; the other project is skipped by an isMobile predicate (the primitives at large text, Phase 89.6-06: the bb-label case and the two O-M4 cases; Task 3 raises it)' },
+  { spec: 'e2e/primitives-large-text.spec.ts', project: 'journeys', floor: 4, why: '4 of 4 listed run in journeys; the other project is skipped by an isMobile predicate (the primitives at large text, Phase 89.6-06: the bb-label case, the two O-M4 cases and the btn-floor case)' },
   { spec: 'e2e/profile-identity-refresh.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/prompt-schedule-readonly-notice-phone.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/recurring-checkins-phone.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone; the other project is skipped by an isMobile predicate' },

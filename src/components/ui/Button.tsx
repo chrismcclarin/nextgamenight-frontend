@@ -35,6 +35,7 @@
  *   class-level floor deforms them, while a floor on the PRIMITIVE reaches only
  *   elements that opted in by being a `Button`. See the `DECISION Phase
  *   88.6-06 (D-09)` marker on the base entry below.
+ *   AMENDED Phase 89.6-06 (CI-04): the .btn class floor applies at every width since owner pick DT-1 = 44 (2026-11-23); see the D-09 marker.
  * - **No `compact` rung** (88.6 D-10). It would convert a closed two-site
  *   exemption (src/app/components/BrowseMoreModal.js ("Decrease player"), src/app/components/BrowseMoreModal.js ("Increase player")) into an open sub-44 API
  *   affordance, and would silently add the base's elevation pair to two 32px
@@ -76,6 +77,7 @@ import { DelayedSpinner } from './DelayedSpinner';
    `text-xs px-3 py-1` utilities are dead on arrival. Dropping `.btn` entirely instead is not
    free either: `.btn` is what carries the phone 44px floor (88-01 D-36), the untransitioned
    press (87.8 D-12) and the disabled rule, all of which would silently vanish.
+   AMENDED Phase 89.6-06 (CI-04): the .btn class floor applies at every width since owner pick DT-1 = 44 (2026-11-23); see the D-09 marker.
 
    WHY THE ADDITIONS BELOW ARE STILL SAFE AS UTILITIES: `.btn` declares NO background, NO
    box-shadow, NO min-height and NO outline (verified against the `.btn` rule at src/app/globals.css ("UNLAYERED with every other declaration it has today")), so the
@@ -191,6 +193,12 @@ const buttonVariants = cva(
        and the two steppers named above are 44x44 squares; the note is at
        src/app/globals.css ("the stepper opt-out is RETIRED"). The floor on this
        base is unchanged.
+       AMENDED Phase 89.6-06 (btn-floor), owner pick DT-1 = 44, 2026-11-23 ('Dt-1 fine'): the .btn
+       CLASS floor now applies at every width too, chosen OVER leaving desktop without a floor, so
+       the D-36 rejection this note keeps literally true is itself amended
+       (src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")): the steppers it protected are
+       44 by 44 squares and every real button is a Button. The min-h-11 floor on this base stays;
+       it and the class floor now agree at every width, so no Button changes size.
 
        ANY SUB-44 `Button` IS A PHASE 88.9 DECISION, not a cleanup — see the
        `DECISION Phase 88.6-06 (C.1 / D-09)` marker in the size map below. */
@@ -291,6 +299,7 @@ const buttonVariants = cva(
          `@media (width < 48rem)` rule on the `.btn` class. D-36's reasoning is
          at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC"); the full argument is on the base entry
          above.
+         AMENDED Phase 89.6-06 (CI-04): the .btn class floor applies at every width since owner pick DT-1 = 44 (2026-11-23); see the D-09 marker.
 
          (3) THE `sm` RUNG IS HEIGHT-FLOORED AT 44px (from the base) AND
          DELIBERATELY NOT FLOORED IN WIDTH. It is a wide-text row-action rung —

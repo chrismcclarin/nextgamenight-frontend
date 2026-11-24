@@ -287,3 +287,49 @@ test('O-M4 enlarged text (89.6-06): icon boxes hold their normal-text size while
   expectPageZoomUsable(zoom, 'O-M4 page zoom 215');
   expect(requests, 'O-M4 enlarged text: the page made a request').toEqual([]);
 });
+
+// ---------------------------------------------------------------------------------------------
+// CI-04 (owner pick DT-1 = 44, 2026-11-23: "Dt-1 fine"): the .btn class floor at every width.
+// The only .btn shape with no floor at desktop width was a BARE .btn (no Button classes); a Button
+// carries its own min-h-11 and must measure the same before and after.
+// ---------------------------------------------------------------------------------------------
+
+test('btn-floor (89.6-06): a bare .btn is 44px tall at every width and a Button is unchanged (CI-04)', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const boxOf = (name: string) =>
+    page.locator(`[data-probe="${name}"] button`).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { width: r.width, height: r.height };
+    });
+  const measured: Array<{ cell: string; bare: { width: number; height: number }; button: { width: number; height: number } }> = [];
+  // Phone first, then desktop.
+  for (const size of [
+    { width: 375, height: 667 },
+    { width: 1280, height: 800 },
+  ]) {
+    await renderPrimitive(
+      page,
+      { ...size, theme: 'light', mode: '100' },
+      React.createElement(
+        React.Fragment,
+        null,
+        // A bare .btn: the class by hand, none of the Button primitive's own classes.
+        probe('bare', React.createElement('button', { type: 'button', className: 'btn btn-secondary' }, 'Save')),
+        // The real Button, default variant.
+        probe('button', React.createElement(Button, null, 'Save')),
+      ),
+      `btn-floor ${size.width}`,
+    );
+    measured.push({ cell: `${size.width}`, bare: await boxOf('bare'), button: await boxOf('button') });
+  }
+  // Both subjects are measured and attached BEFORE any assertion, so a red run still records the Button's box.
+  await testInfo.attach('boxes', { body: JSON.stringify(measured, null, 2), contentType: 'application/json' });
+  expect(measured.length, 'two widths were to be measured').toBe(2);
+  for (const m of measured) {
+    expect(Math.abs(m.bare.height - 44), `btn-floor ${m.cell}: a bare .btn is ${m.bare.height}px tall, not 44px`).toBeLessThanOrEqual(PX_TOLERANCE);
+    expect(Math.abs(m.button.height - 44), `btn-floor ${m.cell}: a Button is ${m.button.height}px tall, not 44px`).toBeLessThanOrEqual(PX_TOLERANCE);
+  }
+  // The Button's box does not depend on the viewport width.
+  expect(Math.abs(measured[0].button.width - measured[1].button.width), 'btn-floor: the Button is not the same width at 375 and at 1280').toBeLessThanOrEqual(PX_TOLERANCE);
+  expect(requests, 'btn-floor: the page made a request').toEqual([]);
+});
