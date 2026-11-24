@@ -152,6 +152,12 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
     await target.setViewportSize({ width: cell.width, height: cell.height });
     await setTextMode(target, cell.mode, tag);
     await settleLayout(target, reached.root);
+    // A dialog's own box eases to its new height after a viewport change (its height cap is in
+    // dvh and the box carries a max-height transition), and the root of a dialog row may sit
+    // INSIDE that box, where the wait above does not look. So the box itself is settled too.
+    // Added by Phase 89.6-10: CI run 45476434216 read three dialog shell rows mid-ease at
+    // 187 x 333 (the header "starts above the page") on the first attempt and passed on the retry.
+    if (reached.dialog) await settleAnimations(reached.dialog);
     // Immediately before the read: the size and width this cell is really measured at.
     const at = await target.evaluate(() => ({ fontSize: getComputedStyle(document.documentElement).fontSize, window: document.documentElement.clientWidth }));
     // A page-zoom cell only records split and held words, so only the cut exceptions matter there.
