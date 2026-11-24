@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   LEAVING_WAIT_CAP_MS,
+  announceInOpenDialog,
   announceStatus,
   getHostSnapshot,
   getServerSnapshot,
@@ -32,6 +33,40 @@ afterEach(() => {
   vi.runAllTimers();
   unsubscribe();
   vi.useRealTimers();
+});
+
+// A dialog's three moments, shared by the A-47 describe and the 89.6-03 toast-bridge describe
+// below: it opens (registerAnnounceHost), its open prop turns false (the returned close), and its
+// content leaves the page (releaseAnnounceHost).
+const closers = new Map<AnnounceHost, () => void>();
+/** The dialog opens. */
+function open(host: AnnounceHost): void {
+  closers.set(host, registerAnnounceHost(host));
+}
+/** The open prop turns false; the content is still on the page (exit animation). */
+function startClosing(host: AnnounceHost): void {
+  closers.get(host)?.();
+  closers.delete(host);
+}
+/** The content leaves the page. */
+function leavePage(host: AnnounceHost): void {
+  releaseAnnounceHost(host);
+}
+/** Closed and unmounted in one commit (createEvent, GroupSettings; every dialog in jsdom). */
+function shut(host: AnnounceHost): void {
+  startClosing(host);
+  leavePage(host);
+}
+const everyHost: AnnounceHost[] = [];
+function host(): AnnounceHost {
+  const next: AnnounceHost = {};
+  everyHost.push(next);
+  return next;
+}
+
+afterEach(() => {
+  // Every host leaves, so no test hands an open or a closing host to the next one.
+  for (const each of everyHost.splice(0)) shut(each);
 });
 
 describe('announcer store (88.9-24, R-F1)', () => {
@@ -82,37 +117,6 @@ describe('announcer store (88.9-24, R-F1)', () => {
 // content leaves the page (releaseAnnounceHost). Between the last two it is still mounted for
 // its exit animation.
 describe('announcer store routes to the top open dialog host (88.9-52, A-47)', () => {
-  const closers = new Map<AnnounceHost, () => void>();
-  /** The dialog opens. */
-  function open(host: AnnounceHost): void {
-    closers.set(host, registerAnnounceHost(host));
-  }
-  /** The open prop turns false; the content is still on the page (exit animation). */
-  function startClosing(host: AnnounceHost): void {
-    closers.get(host)?.();
-    closers.delete(host);
-  }
-  /** The content leaves the page. */
-  function leavePage(host: AnnounceHost): void {
-    releaseAnnounceHost(host);
-  }
-  /** Closed and unmounted in one commit (createEvent, GroupSettings; every dialog in jsdom). */
-  function shut(host: AnnounceHost): void {
-    startClosing(host);
-    leavePage(host);
-  }
-  const everyHost: AnnounceHost[] = [];
-  function host(): AnnounceHost {
-    const next: AnnounceHost = {};
-    everyHost.push(next);
-    return next;
-  }
-
-  afterEach(() => {
-    // Every host leaves, so no test hands an open or a closing host to the next one.
-    for (const each of everyHost.splice(0)) shut(each);
-  });
-
   it('with one host open the words land in that host and never in the root', () => {
     const dialog = host();
     open(dialog);
@@ -322,5 +326,31 @@ describe('announcer store routes to the top open dialog host (88.9-52, A-47)', (
     expect(getHostSnapshot(dialog)).toBe('');
     vi.advanceTimersByTime(1);
     expect(getHostSnapshot(dialog)).toBe('Role updated');
+  });
+});
+
+// 89.6-03 (toast-bridge). MEASURED on the owner's iPhone with VoiceOver: with Customize Group
+// open and Save Changes failing, the error toast was not spoken (register B4-02, "Error notices
+// are not spoken while a dialog is open"). Sonner's live region sits outside the aria-modal
+// dialog, the case A-47 measured silent for the root region. announceInOpenDialog is the bridge's
+// one way into this store: it hands a toast's words to the A-47 landing while a house dialog is
+// on the page, and writes nothing when none is (Sonner's own region speaks there). Tests are
+// numbered as the plan numbers them.
+describe('89.6-03 (toast-bridge): announceInOpenDialog', () => {
+  it('1. with one host open the toast words wait out the dwell, land in that host and never reach the root', () => {
+    const dialog = host();
+    open(dialog);
+    announceInOpenDialog('Could not save your settings');
+    // Empty before the dwell: the region is cleared first, as for every announcement.
+    expect(getHostSnapshot(dialog)).toBe('');
+    vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS - 1);
+    expect(getHostSnapshot(dialog)).toBe('');
+    vi.advanceTimersByTime(1);
+    expect(getHostSnapshot(dialog)).toBe('Could not save your settings');
+    expect(getSnapshot()).toBe('');
+    vi.advanceTimersByTime(INLINE_RECEIPT_MS);
+    expect(getHostSnapshot(dialog)).toBe('');
+    // log holds the ROOT view at every store change: the words never reached it.
+    expect(log).not.toContain('Could not save your settings');
   });
 });
