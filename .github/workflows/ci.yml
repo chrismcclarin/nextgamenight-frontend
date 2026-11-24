@@ -708,6 +708,7 @@ jobs:
       # Folding the two invocations back into one, or moving the env var into `env:`, is a
       # decision, not a cleanup. Lockstep-pinned by src/lib/ci-grep-gate.fixture.test.ts
       # ("88.6 R2-H5").
+      # [AMENDED Phase 89.6-05 (R6-step): the journeys and phone invocation leaves out e2e/large-text-blocks.spec.ts by file name; that spec runs once, in the large-text matrix step after this one. The --project allowlist is unchanged.]
       - name: Run Playwright journeys (setup logs in once; all specs in the journeys project reuse storageState)
         env:
           # Auth credentials cross into the runner ONLY via env — never echoed (T-82-11).
@@ -715,7 +716,26 @@ jobs:
           E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
         run: |
           PLAYWRIGHT_NO_COPY_PROMPT=1 npx playwright test --project=setup --reporter=github
-          npx playwright test --project=journeys --project=phone --no-deps
+          npx playwright test --project=journeys --project=phone --no-deps --grep-invert 'large-text-blocks\.spec\.ts'
+
+      - name: Large-text matrix — every building block in every cell, run once (SPEC R6)
+        # DECISION Phase 89.6-05 (R6-step): the building-block matrix runs once per CI run, in its
+        # own named step after the main Playwright run, floored on the shared script's flags, chosen
+        # OVER leaving it in the main run (with a named step it would run twice) and OVER a new
+        # Playwright project (lane P F7; the phone preset is untouched). The main run drops it by
+        # file name; its JSON report goes to its own root file (PLAYWRIGHT_JSON_OUTPUT_FILE wins
+        # over the config's outputFile), so the report the floor steps read is never overwritten;
+        # its artifacts go to a sub-folder of test-results (Playwright clears its output folder,
+        # and the main run's month-tile screenshots live there), which the failure encrypt step
+        # already packs. Its floor lives here, not in scripts/gate-c-floors.manifest.mjs: a
+        # manifest row would read NOT COLLECTED in the main report. No if:, for Gate C's reason.
+        # Lockstep-pinned by src/lib/ci-grep-gate.fixture.test.ts. Changing this is a decision,
+        # not a cleanup.
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAYWRIGHT_JSON_OUTPUT_FILE=playwright-results-large-text.json npx playwright test --project=journeys --no-deps --output=test-results/large-text-blocks e2e/large-text-blocks.spec.ts
+          node scripts/gate-c-executed-floor.mjs playwright-results-large-text.json --spec e2e/large-text-blocks.spec.ts --project journeys --floor 142
 
       # Phase 88.3-cr, CR-09: the pinned `--project=phone` above is what makes Gate C
       # RUN, and the lockstep test in `src/lib/ci-grep-gate.fixture.test.ts` is what

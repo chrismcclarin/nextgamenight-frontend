@@ -1013,7 +1013,7 @@ describe('Phase 88.6.2-26 — executed floors for every conditional-skip e2e spe
     expect(bad).toEqual([]);
   });
 
-  test('every spec with a conditional skip has an entry (contrast.spec.ts keeps Gate C)', () => {
+  test('every spec with a conditional skip has an entry (contrast.spec.ts keeps Gate C; large-text-blocks.spec.ts keeps its own step)', () => {
     // The population is read from the tree, comments stripped by the shared lexer, so a skip
     // mentioned in a comment does not count and a new conditional spec cannot ship unfloored.
     const e2eDir = resolve(FE_ROOT, 'e2e');
@@ -1023,9 +1023,10 @@ describe('Phase 88.6.2-26 — executed floors for every conditional-skip e2e spe
       .map((f) => `e2e/${f}`);
     expect(population.length, 'the population scan found too few specs; the regex or the lexer broke').toBeGreaterThanOrEqual(45);
     const floored = new Set((floors as Array<{ spec: string }>).map((e) => e.spec));
-    const missing = population.filter((f) => f !== 'e2e/contrast.spec.ts' && !floored.has(f));
+    const missing = population.filter((f) => f !== 'e2e/contrast.spec.ts' && f !== 'e2e/large-text-blocks.spec.ts' && !floored.has(f));
     expect(missing, 'a spec with a conditional skip has no executed floor in scripts/gate-c-floors.manifest.mjs').toEqual([]);
     expect(floored.has('e2e/contrast.spec.ts'), 'contrast.spec.ts is floored by Gate C, not by the config').toBe(false);
+    expect(floored.has('e2e/large-text-blocks.spec.ts'), 'large-text-blocks.spec.ts is floored by its own step (Phase 89.6-05); a manifest row would read NOT COLLECTED in the main report').toBe(false);
   });
 
   test('config mode passes at floor, reds DISARMED below it, and matches specs on a path boundary', () => {
@@ -1562,5 +1563,118 @@ describe('Phase 88.6.2-27 — failure evidence leaves CI only as age ciphertext 
     const sweep = spawnSync('git', ['grep', '-IiEl', AGE_IDENTITY_RE], { cwd: FE_ROOT, encoding: 'utf8' });
     expect(sweep.status, `git grep exited ${sweep.status} (0 = a tracked file holds an age identity, other = git failed):\n${sweep.stdout}${sweep.stderr}`).toBe(1);
     expect(sweep.stdout).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 89.6-05 (SPEC R6): the large-text matrix runs ONCE per CI run, in its own named step.
+//
+// THE MOVE. e2e/large-text-blocks.spec.ts ran inside the journeys and phone invocation from the
+// push that added it. This plan gives it a named step, so the main invocation leaves it out by
+// file name; otherwise every cell would run twice.
+//
+// WHY THE FLOOR SITS ON THE STEP. The step writes its own JSON report, and the shared floor
+// script reads ONE report per call: a row in scripts/gate-c-floors.manifest.mjs would read
+// NOT COLLECTED against the main report for ever. The step's own third run line is the floor.
+//
+// WHY A SEPARATE REPORT AND OUTPUT FOLDER. A second Playwright run writing the main report's name
+// would overwrite what the three floor steps read; a second run writing into test-results itself
+// would clear the main run's month-tile screenshots before the encrypt steps pack them.
+//
+// The exclusion is a negative filter on a run line whose --project list is a positive allowlist,
+// so the pattern is pinned here to match exactly one spec file and no title in any other spec:
+// Playwright matches it against the whole title path (project, file, describe and test titles).
+// ---------------------------------------------------------------------------
+
+const LARGE_TEXT_STEP = 'Large-text matrix — every building block in every cell, run once (SPEC R6)';
+const LARGE_TEXT_SPEC = 'e2e/large-text-blocks.spec.ts';
+
+/** Every *.spec.ts under e2e/, as a path relative to e2e/. */
+function e2eSpecFiles(dir = resolve(FE_ROOT, 'e2e'), prefix = ''): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.isDirectory()) return e2eSpecFiles(join(dir, entry.name), `${prefix}${entry.name}/`);
+    return entry.name.endsWith('.spec.ts') ? [`${prefix}${entry.name}`] : [];
+  });
+}
+
+describe('Phase 89.6-05 — the large-text matrix runs once, in its own step, floored there (SPEC R6)', () => {
+  /** The one large-text step, or a thrown sentence naming what is wrong. */
+  const largeTextStep = (): { step: CiStep; steps: CiStep[] } => {
+    const steps = ciSteps();
+    const found = steps.filter((s) => s.name === LARGE_TEXT_STEP);
+    if (found.length !== 1) throw new Error(`ci.yml holds ${found.length} steps named "${LARGE_TEXT_STEP}"; it must hold exactly one`);
+    return { step: found[0], steps };
+  };
+
+  test('the step exists once, directly after the main Playwright step, with no if:, and runs the matrix then its floor', () => {
+    const { step, steps } = largeTextStep();
+    const at = steps.indexOf(step);
+    expect(steps[at - 1]?.name.startsWith(PLAYWRIGHT_STEP), 'the large-text step must sit directly after Run Playwright journeys (the encrypt self-test step is pinned directly before it)').toBe(true);
+    expect(steps[at - 1].end, 'Run Playwright journeys and the large-text step are not adjacent steps of one job').toBe(step.start);
+    expect(stepKey(step, 'if'), 'the large-text step must carry no if: (an if: exempts a trigger, and the matrix then never runs there)').toBeUndefined();
+    expect(stepKey(step, 'shell')).toBe('bash');
+
+    const run = runLines(step);
+    expect(run.length, 'the large-text step must hold exactly three run lines: the bash options, the matrix run, the floor').toBe(3);
+    expect(run[0]).toBe('set -euo pipefail');
+    expect(run[1]).toBe(
+      `PLAYWRIGHT_JSON_OUTPUT_FILE=playwright-results-large-text.json npx playwright test --project=journeys --no-deps --output=test-results/large-text-blocks ${LARGE_TEXT_SPEC}`,
+    );
+    const floor = run[2].match(/^node scripts\/gate-c-executed-floor\.mjs playwright-results-large-text\.json --spec e2e\/large-text-blocks\.spec\.ts --project journeys --floor (\d+)$/);
+    expect(floor, `the third run line is not the shared floor script in flag mode on the step's own report: ${run[2]}`).not.toBeNull();
+    expect(Number(floor?.[1]), 'the floor must be a positive number; 0 passes a run that skipped every cell').toBeGreaterThanOrEqual(1);
+
+    const body = step.lines.filter((l) => !isYamlComment(l)).join('\n');
+    expect(body, 'the large-text step must not swallow a failure with ||').not.toContain('||');
+    expect(body, 'the large-text step must not carry continue-on-error').not.toContain('continue-on-error');
+  });
+
+  test('the journeys and phone invocation leaves the matrix out by a pattern that matches that one spec and nothing else', () => {
+    const invocations = stepWindow(PLAYWRIGHT_STEP).filter((l) => !isYamlComment(l) && l.includes('npx playwright test') && l.includes('--no-deps'));
+    expect(invocations.length, 'the --no-deps Playwright run line is missing').toBe(1);
+    const source = invocations[0].match(/--grep-invert '([^']+)'/)?.[1];
+    expect(source, 'the journeys and phone invocation carries no --grep-invert, so the matrix runs twice: there and in its own step').toBe('large-text-blocks\\.spec\\.ts');
+    const pattern = new RegExp(source ?? '(?!)');
+
+    const specs = e2eSpecFiles();
+    expect(specs.length, 'the e2e spec scan found too few files').toBeGreaterThanOrEqual(45);
+    expect(specs.filter((f) => pattern.test(f)), 'the exclusion pattern must match exactly one e2e spec file; every other match is a spec the main run silently drops').toEqual([LARGE_TEXT_SPEC.slice('e2e/'.length)]);
+
+    // A title elsewhere that quotes the file name would drop that test from the main run too.
+    const TITLE = /\btest(?:\.[A-Za-z]+)*\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
+    const dropped: string[] = [];
+    let titlesRead = 0;
+    for (const f of specs) {
+      if (pattern.test(f)) continue;
+      const code = withoutComments(readFileSync(resolve(FE_ROOT, 'e2e', f), 'utf8'));
+      for (const m of code.matchAll(TITLE)) {
+        titlesRead += 1;
+        if (pattern.test(m[2])) dropped.push(`e2e/${f}: "${m[2]}"`);
+      }
+    }
+    expect(titlesRead, 'the title scan read too few test and describe titles; its regex broke').toBeGreaterThanOrEqual(300);
+    expect(dropped, 'these titles in other specs match the exclusion pattern, so the main run would drop them').toEqual([]);
+  });
+
+  test('the step writes its own report outside every upload input and its artifacts under a sub-folder of test-results', () => {
+    const { step } = largeTextStep();
+    const run = runLines(step);
+    const report = run[1]?.match(/^PLAYWRIGHT_JSON_OUTPUT_FILE=(\S+) /)?.[1] ?? '';
+    expect(report, 'the matrix run does not name its own JSON report').not.toBe('');
+    expect(report.includes('/'), 'the report must be a root file: inside a folder it could sit under an upload input').toBe(false);
+    expect(report, 'the report must not be the main run report, which the three floor steps read').not.toBe('playwright-results.json');
+    expect(run[2]?.includes(` ${report} `), 'the floor line must read the report the matrix run wrote').toBe(true);
+    const ignored = readFileSync(resolve(FE_ROOT, '.gitignore'), 'utf8').split('\n').map((l) => l.trim());
+    expect(ignored, 'the report file is not in .gitignore').toContain(`/${report}`);
+
+    const output = run[1]?.match(/ --output=(\S+) /)?.[1] ?? '';
+    expect(/^test-results\/[^/.][^/]*$/.test(output), `the artifacts must go to a strict sub-folder of test-results/, got "${output}": Playwright clears its output folder at the start of a run, and the main run's month-tile screenshots live in test-results/`).toBe(true);
+
+    const failurePack = encryptInvocations().filter((e) => e.name === 'playwright-report');
+    expect(failurePack.length, 'the failure-evidence encrypt invocation was not found').toBe(1);
+    expect(failurePack[0].inputs, 'the failure-evidence encrypt step no longer packs test-results/, so a red matrix cell leaves no evidence').toContain('test-results/');
+    for (const e of encryptInvocations()) {
+      expect(e.inputs.includes(report), `the encrypt step "${e.step}" packs the matrix report`).toBe(false);
+    }
   });
 });
