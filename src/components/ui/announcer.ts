@@ -185,12 +185,34 @@ export function announceStatus(next: string): void {
    (planning:.planning/deferred/phase-89.6.md ("Error notices are not spoken while a dialog is open")).
    Sonner's live region sits outside the aria-modal dialog, the case A-47 measured silent for the
    root region.
-   THE GATE IS READ AT THE CALL, THE TARGET WHEN THE WORDS LAND. With no house dialog open
-   nothing is written: Sonner's own region is the one that speaks there, so nothing is read twice
-   outside dialogs. With one open the words go through announceStatus as they are, so the clear,
-   the dwell, the one-text rule and the landing are A-47's own, not a copy.
-   Not verifiable off the device: whether VoiceOver speaks the words in the dialog region. The
-   listen check is plan 89.6-32's. Changing this is a decision, not a cleanup. */
+   THE GATE IS READ AT THE CALL (a house dialog open, or one closing whose exit still runs), THE
+   TARGET WHEN THE WORDS LAND. With neither, nothing is written: Sonner's own region is the one
+   that speaks there, so nothing is read twice outside dialogs. Otherwise the words go through
+   announceStatus, so the clear, the dwell and the landing are A-47's own, not a copy.
+   THE EDGES:
+   - The store holds ONE text, so a toast inside a save outcome's 100 ms dwell replaces it
+     (src/components/ui/announcer.test.ts ("4. a toast inside a save outcome dwell replaces it")).
+   - A second toast inside an earlier toast's dwell JOINS it, as one text. Sonner publishes each
+     toast in a timer of its own, so two toasts reach here as two calls inside one dwell and the
+     second would otherwise replace the first
+     (src/components/ui/announcer.test.ts ("5. a second toast inside the first toast dwell joins it")).
+   - A dialog that closes inside the dwell hands the words to what is beneath it. That is right:
+     Sonner's region was unheard when the toast appeared.
+   - A toast that arrives while the only dialog is closing is held and lands in the root once
+     the dialog has left the page, never inside the leaving dialog (the A-47 wait)
+     (src/components/ui/announcer.test.ts ("3. while the only host is closing the toast words are held")).
+   - A stuck closing dialog is forgotten at LEAVING_WAIT_CAP_MS, so at most one toast after it
+     can be read twice.
+   - Sonner's section is hidden from assistive tech while a dialog is open or closing, and after
+     the leave while it still shows a toast whose words went to the root
+     (src/components/ui/ToastAnnouncer.tsx ("DECISION Phase 89.6-03 (toast-single-reading)")).
+   WHAT IS CHECKED: Chromium's accessibility tree holds the words once with the dialog open and
+   at most once after it closes (this plan's e2e spec, its first test); jsdom pins the attribute
+   (src/components/ui/ToastAnnouncer.test.tsx ("6. Sonner section is aria-hidden while a house Modal is open or closing"),
+   src/components/ui/ToastAnnouncer.test.tsx ("7. after the leave Sonner section stays aria-hidden"));
+   the iPhone and Mac rows of plan 89.6-32 check by ear, with the dialog open only.
+   NOT CHECKED: the close path by ear, and Android by ear.
+   Changing this is a decision, not a cleanup. */
 export function announceInOpenDialog(next: string): void {
   if (!dialogHostActive()) return;
   const words = bridgeWaiting === null ? next : joinSentences(bridgeWaiting, next);
