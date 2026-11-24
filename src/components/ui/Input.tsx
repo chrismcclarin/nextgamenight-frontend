@@ -128,7 +128,8 @@ const controlClass = cn(
   // §7.2: `focus:outline-hidden` keeps a transparent outline for forced-colors mode
   // (v4's `outline-none` removes it outright). The ring itself is `focus-visible` ONLY —
   // a bare `focus:` variant would also fire on programmatic and pointer focus.
-  'focus:outline-hidden focus-visible:border-line-strong',
+  // AMENDED Phase 89.6-09 (E1): the focused edge is border-input, the same token as the resting edge, chosen OVER border-line-strong, which stayed purple-500 in dark when E1 lightened border-input, so keyboard focus would have faded the edge from 4.02 to 2.79 on the input fill; light is unchanged (both are warm-500). Changing this is a decision, not a cleanup.
+  'focus:outline-hidden focus-visible:border-input',
   'focus-visible:ring-2 focus-visible:ring-focus-ring'
 );
 

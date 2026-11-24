@@ -277,7 +277,12 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
       // was authorised for under owner ruling R6, and the same hazard carry-forward #2
       // flagged for plan 06). Editing it here is FORCED by an exact-match freeze, not
       // authorised in advance; disclosed in `.planning/WINDOWS.md` and `88.6-30-SUMMARY.md`.
-      'block w-full p-2 max-md:min-h-11 rounded-btn border border-input bg-surface-input text-base text-content-primary focus:outline-hidden focus-visible:border-line-strong focus-visible:ring-2 focus-visible:ring-focus-ring pr-11 rounded-card'
+      //
+      // RE-SEEDED Phase 89.6-09 (E1, 2026-11-24), by running the assertion and pasting the real
+      // output back: ONE token moved, the focus arm, from the strong border to the input edge
+      // (the marker is on that arm in `Input.tsx`). Every other class is byte-identical and in
+      // the same order; nothing was dropped by `tailwind-merge`. Plan 89.6-09 declares this file.
+      'block w-full p-2 max-md:min-h-11 rounded-btn border border-input bg-surface-input text-base text-content-primary focus:outline-hidden focus-visible:border-input focus-visible:ring-2 focus-visible:ring-focus-ring pr-11 rounded-card'
     );
   });
 });
