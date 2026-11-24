@@ -8,7 +8,7 @@
 // of the lane.
 //
 // HOW A SWEEP PLAN TURNS A ROW ON (plans 89.6-10, -11, -16 to -29). In its OWN module only:
-//   1. set status: 'enforced' and add reach, which opens the surface on the page it is given and
+//   1. set the status to enforced and add reach, which opens the surface on the page it is given and
 //      returns the root to read (and the dialog's content box when the surface is a dialog);
 //   2. where needed add answers (reads answered in the browser), reachAt (the viewport the surface
 //      is reached at, when it exists only at some widths), extras (the row's own assertions per
@@ -41,7 +41,22 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { holdWrites, type WriteHold } from '../inFlight';
+import { rows as browseRows } from './browse';
+import { rows as chromeRows } from './chrome';
+import { rows as dialogsRows } from './dialogs';
+import { rows as dialogShellRows } from './dialogShell';
+import { rows as eventRows } from './event';
+import { rows as friendsRows } from './friends';
+import { rows as gameRows } from './game';
+import { rows as groupRows } from './group';
+import { rows as homeRows } from './home';
 import { rows as linksRows } from './links';
+import { rows as membersRows } from './members';
+import { rows as nightRows } from './night';
+import { rows as planningRows } from './planning';
+import { rows as profileARows } from './profileA';
+import { rows as profileBRows } from './profileB';
+import { rows as qrRows } from './qr';
 
 export type RowKind = 'route' | 'dialog' | 'overlay';
 
@@ -98,6 +113,25 @@ export const PR_CELLS: readonly SweepCell[] = [
   cell(768, 1024, 'dark', 'font32'),
 ];
 
+// The full lane (plan 89.6-34's close run, by the large-text-full dispatch input): the two page-zoom
+// widths, then 320, 375 and 768 at normal text and at 200%, each in both themes, and the
+// default-font-32 cell at 768 in both themes. 18 cells; the PR lane is a subset of it.
+const BOTH_THEMES = ['dark', 'light'] as const;
+const MATRIX_SIZES = [
+  [320, 568],
+  [375, 667],
+  [768, 1024],
+] as const;
+export const FULL_CELLS: readonly SweepCell[] = [
+  ...BOTH_THEMES.flatMap((theme) => [cell(215, 466, theme, '100', true), cell(187, 333, theme, '100', true)]),
+  ...BOTH_THEMES.flatMap((theme) => MATRIX_SIZES.map(([width, height]) => cell(width, height, theme, '100'))),
+  ...BOTH_THEMES.flatMap((theme) => MATRIX_SIZES.map(([width, height]) => cell(width, height, theme, '200'))),
+  ...BOTH_THEMES.map((theme) => cell(768, 1024, theme, 'font32')),
+];
+
+/** The cells a run reads: the full lane when the mode is full, else the PR lane. */
+export const laneOf = (mode: 'pr' | 'full'): readonly SweepCell[] => (mode === 'full' ? FULL_CELLS : PR_CELLS);
+
 // The GETs that write, as path patterns: the two invite-token reads lazily mint a token, the
 // RSVP link records an answer, and the prompt-settings read persists a clean-up. The self read is
 // NOT here: it is sent on without its timezone parameter.
@@ -105,6 +139,30 @@ export const WRITE_GETS: readonly RegExp[] = [
   /\/invite-token$/,
   /\/rsvp\/respond$/,
   /\/prompt-settings$/,
+];
+
+// Every backend GET handler that writes, one per line, measured with the scan of the sweep's
+// row-list test (backend 6c31542: eight handlers). held: the request never leaves the browser
+// unless the row answers it, and its path end is in WRITE_GETS. allowed: it is let through, with
+// the reason. An entry is added only with its reason, and a new held entry also extends
+// WRITE_GETS. The row-list test fails when the backend gains a writing GET this list does not name.
+export interface WriteGetHandler {
+  /** The route file under the backend's Sonnet/routes. */
+  file: string;
+  /** The router path of the handler. */
+  path: string;
+  guard: 'held' | 'allowed';
+  why: string;
+}
+export const WRITE_GET_HANDLERS: readonly WriteGetHandler[] = [
+  { file: 'groups.js', path: '/:group_id/invite-token', guard: 'held', why: 'lazily mints and saves the group invite token' },
+  { file: 'events.js', path: '/:event_id/invite-token', guard: 'held', why: 'lazily mints and saves the game-night invite token' },
+  { file: 'rsvp.js', path: '/respond', guard: 'held', why: 'the email RSVP link: records the answer and spends the token' },
+  { file: 'groupPromptSettings.js', path: '/:group_id/prompt-settings', guard: 'held', why: 'persists a clean-up of stale settings while reading them' },
+  { file: 'users.js', path: '/:user_id', guard: 'allowed', why: 'the self read: sent on without timezone so its backfill cannot run; its provisioning repair rewrites only the signed-in user own row from the token claims, a no-op on the seeded user' },
+  { file: 'groups.js', path: '/user/:user_id', guard: 'allowed', why: 'the same provisioning repair of the signed-in user own row, a no-op on the seeded user' },
+  { file: 'events.js', path: '/user/:user_id', guard: 'allowed', why: 'the same provisioning repair of the signed-in user own row, a no-op on the seeded user' },
+  { file: 'googleAuth.js', path: '/google/callback', guard: 'allowed', why: 'the Google OAuth redirect target; no page in the sweep fetches it' },
 ];
 
 export const isWriteGet = (url: URL): boolean => WRITE_GETS.some((pattern) => pattern.test(url.pathname));
@@ -154,5 +212,118 @@ export async function sweepWriteGuard(page: Page, row: Pick<SurfaceRow, 'answers
   return { ...hold, writeGets };
 }
 
+// The census ids of the sweep, one per line: the 17 routes, the 33 in-sweep dialogs and the 9
+// overlays of 89.6-census.json. D14, D15 and D36 to D42 are owned by a written removal (decision
+// D-07) and must NEVER appear here or on a row. The row-list test holds the rows to this list, and
+// tools/census-check.cjs in the phase folder holds this list to the census.
+export const CENSUS_IDS: readonly string[] = [
+  'R01',
+  'R02',
+  'R03',
+  'R04',
+  'R05',
+  'R06',
+  'R07',
+  'R08',
+  'R09',
+  'R10',
+  'R11',
+  'R12',
+  'R13',
+  'R14',
+  'R15',
+  'R16',
+  'R17',
+  'D01',
+  'D02',
+  'D03',
+  'D04',
+  'D05',
+  'D06',
+  'D07',
+  'D08',
+  'D09',
+  'D10',
+  'D11',
+  'D12',
+  'D13',
+  'D16',
+  'D17',
+  'D18',
+  'D19',
+  'D20',
+  'D21',
+  'D22',
+  'D23',
+  'D24',
+  'D25',
+  'D26',
+  'D27',
+  'D28',
+  'D29',
+  'D30',
+  'D31',
+  'D32',
+  'D33',
+  'D34',
+  'D35',
+  'O01',
+  'O02',
+  'O03',
+  'O04',
+  'O05',
+  'O06',
+  'O07',
+  'O08',
+  'O09',
+];
+
+// The empty states the census names for in-sweep surfaces (SPEC AC-4: "empty states included"),
+// one per line, read from 89.6-census.json at planning. row is the row expected to hold the state
+// and owner the plan that owns it. An entry is never removed. It is held only by an ENFORCED row:
+// its row, or a shownBy row, which only the owning plan sets, with a comment line beside it saying
+// how that enforced row's reach shows the state. The coverage script prints every entry no
+// enforced row holds, and with --close fails on any.
+export interface EmptyState {
+  census: string;
+  state: string;
+  row: string;
+  owner: string;
+  shownBy?: string;
+}
+export const EMPTY_STATES: readonly EmptyState[] = [
+  { census: 'R01', state: 'No groups yet', row: 'R01-empty', owner: '89.6-16' },
+  { census: 'R01', state: 'Nothing on the calendar (the Upcoming Events card)', row: 'R01-upcoming-empty', owner: '89.6-16' },
+  { census: 'R04', state: 'No friends yet', row: 'R04-empty', owner: '89.6-21' },
+  { census: 'R05', state: 'No game sessions yet', row: 'R05-game-sessions-empty', owner: '89.6-29' },
+  { census: 'R05', state: 'No reviews yet', row: 'R05-game-reviews-empty', owner: '89.6-29' },
+  // R07-games holds this state once its reach answers the play-history games read with an empty list.
+  { census: 'R07', state: 'No game nights logged yet', row: 'R07-games', owner: '89.6-17' },
+  { census: 'R07', state: 'This library is empty', row: 'R07-library-empty', owner: '89.6-42' },
+  // Plan 89.6-20 enforces the row and may hand it to 89.6-41; the enforced row id decides, only this label changes then.
+  { census: 'R08', state: 'No check-ins running', row: 'R08-empty', owner: '89.6-20' },
+  { census: 'R08', state: 'No schedules yet', row: 'R08-noschedules', owner: '89.6-41' },
+  { census: 'D02', state: 'No friends yet.', row: 'D02-empty', owner: '89.6-21' },
+  { census: 'D04', state: 'the list view with no night: its empty lines and no Next game night hero', row: 'D04-empty', owner: '89.6-40' },
+  { census: 'D28', state: 'the empty-collection line', row: 'D28-empty', owner: '89.6-18' },
+];
+
 // Every module's rows, in the order the sweep lists them.
-export const ALL_ROWS: readonly SurfaceRow[] = [...linksRows];
+export const ALL_ROWS: readonly SurfaceRow[] = [
+  ...linksRows,
+  ...homeRows,
+  ...groupRows,
+  ...browseRows,
+  ...nightRows,
+  ...planningRows,
+  ...friendsRows,
+  ...profileARows,
+  ...eventRows,
+  ...dialogsRows,
+  ...chromeRows,
+  ...profileBRows,
+  ...qrRows,
+  ...gameRows,
+  ...membersRows,
+  ...dialogShellRows,
+];

@@ -15,6 +15,10 @@
 // the same page); 'font32' is Chromium's default font size set to 32px, which is one-way on a
 // page, so each font32 cell runs on a fresh page of the same context.
 //
+// EXCEPTIONS. The five texts of e2e/support/largeTextExceptions.ts ("DECISION Phase 89.6-08 (exceptions): the cut check skips exactly five texts")
+// are skipped by the cut check, and nothing else is. Inside the three surfaces another phase owns,
+// split and held words are cleared too and written into the cell's record as cleared.
+//
 // RESULTS. The row test writes test-results/large-text-sweep/results/<row id>.json (every cell
 // with its verdict and read, and the row's wall time) BEFORE it asserts, and the row-list test
 // writes rows.json there. scripts/large-text-sweep-coverage.mjs reads that folder in CI and says
@@ -29,14 +33,26 @@
 // and the guard would be copied). Pending rows stay listed and skipped, so the --list count never
 // moves when a row turns on; the executed count rises through the coverage script, not a typed
 // floor. Changing this is a decision, not a cleanup.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { test, expect, type Locator, type Page, type TestInfo } from '@playwright/test';
 
 import { assertTheme, forceLightMode } from './support/contrast';
 import { expectNoApiWrites, settleAnimations } from './support/inFlight';
-import { ALL_ROWS, PR_CELLS, sweepWriteGuard, type SurfaceRow, type SweepCell, type SweepHold } from './support/largeTextSurfaces/index';
+import { EXCEPTIONS, EXCEPTION_SELECTORS, readCellUnderExceptions, type ClearedBySurface } from './support/largeTextExceptions';
+import {
+  ALL_ROWS,
+  CENSUS_IDS,
+  EMPTY_STATES,
+  PR_CELLS,
+  WRITE_GETS,
+  WRITE_GET_HANDLERS,
+  sweepWriteGuard,
+  type SurfaceRow,
+  type SweepCell,
+  type SweepHold,
+} from './support/largeTextSurfaces/index';
 import {
   expectLargeTextCell,
   expectPageZoomUsable,
@@ -61,10 +77,6 @@ const MODE: 'pr' | 'full' = RAW_MODE === 'full' ? 'full' : 'pr';
 const RESULTS_DIR = process.env.LARGE_TEXT_SWEEP_RESULTS ?? join('test-results', 'large-text-sweep', 'results');
 const LANE: readonly SweepCell[] = PR_CELLS;
 
-// The exceptions list (SPEC A3 and A10) arrives with the other surface modules; the not-found
-// page holds none of those texts.
-const EXCEPTION_SELECTORS: readonly string[] = [];
-
 function writeResult(name: string, body: unknown): string {
   mkdirSync(RESULTS_DIR, { recursive: true });
   const text = JSON.stringify(body, null, 2);
@@ -79,6 +91,8 @@ interface CellRecord {
   fontSize: string;
   window: number;
   read: LargeTextCellRead | PageZoomRead;
+  /** The split and held entries inside a surface another phase owns (SPEC A3 (2) to (4)); absent when there are none. */
+  cleared?: ClearedBySurface;
   /** The first line of what failed, when the verdict is fail. */
   why?: string;
 }
@@ -138,9 +152,11 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
     await settleLayout(target, reached.root);
     // Immediately before the read: the size and width this cell is really measured at.
     const at = await target.evaluate(() => ({ fontSize: getComputedStyle(document.documentElement).fontSize, window: document.documentElement.clientWidth }));
-    const options = { exceptions: EXCEPTION_SELECTORS, dialog: reached.dialog };
-    const read = cell.zoom ? await readPageZoomCell(reached.root, options) : await readLargeTextCell(reached.root, options);
+    // A page-zoom cell only records split and held words, so only the cut exceptions matter there.
+    const matrix = cell.zoom ? null : await readCellUnderExceptions(reached.root, { dialog: reached.dialog });
+    const read = matrix ? matrix.read : await readPageZoomCell(reached.root, { exceptions: EXCEPTION_SELECTORS, dialog: reached.dialog });
     const record: CellRecord = { cell: cell.id, verdict: 'pass', fontSize: at.fontSize, window: at.window, read };
+    if (matrix && matrix.cleared.split.length + matrix.cleared.held.length > 0) record.cleared = matrix.cleared;
     try {
       expectCell(record, cell, tag);
     } catch (error) {
@@ -232,7 +248,50 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
   ).toEqual([]);
 }
 
-test('sweep rows (89.6-08): every surface row is declared once, with a census id, an owner and a status', () => {
+// The backend's route files: where CI's e2e job checks the backend out, else this machine's layout.
+const BACKEND_ROUTE_DIRS = [join('backend', 'Sonnet', 'routes'), join('..', 'periodictabletopbackend_v2', 'Sonnet', 'routes')];
+const WRITING_CALL = /\.(?:update|save|create|destroy|bulkCreate|upsert|increment|findOrCreate)\(|\bgenerate\w*Token\(|\bprovisionOrRepair\(/;
+
+/** Every GET handler in the backend's route files that writes, as "<file> <router path>". */
+function writingGetHandlers(): string[] {
+  const dir = BACKEND_ROUTE_DIRS.find((candidate) => existsSync(candidate));
+  if (!dir) throw new Error(`the backend's route files were found at neither ${BACKEND_ROUTE_DIRS.join(' nor ')}`);
+  const found: string[] = [];
+  for (const file of readdirSync(dir).filter((name) => name.endsWith('.js')).sort()) {
+    // Comments out: block comments keep their line breaks, then line comments (not the // of a URL).
+    const code = readFileSync(join(dir, file), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '))
+      .replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
+    // A handler runs from a column-0 router.get( to the next column-0 router. call.
+    const starts = [...code.matchAll(/^router\.\w+\(/gm)].map((match) => ({ at: match.index ?? 0, get: match[0] === 'router.get(' }));
+    starts.forEach((start, index) => {
+      if (!start.get) return;
+      const body = code.slice(start.at, index + 1 < starts.length ? starts[index + 1].at : code.length);
+      if (!WRITING_CALL.test(body)) return;
+      found.push(`${file} ${body.match(/^router\.get\(\s*(['"`])([^'"`]+)\1/)?.[2] ?? '(no literal path)'}`);
+    });
+  }
+  return found.sort();
+}
+
+const occurrences = (hay: string, needle: string): number => hay.split(needle).length - 1;
+
+// One page for the exceptions control: a squeezed word (split) in the open, in the month grid's
+// selector and in the description's, and a word held by a 40px box in the open and in the tutorial's.
+const squeezed = (word: string) => `<div style="display:flex"><div style="flex:0 0 250px">x</div><div style="min-width:0;overflow-wrap:anywhere">${word}</div></div>`;
+const heldBox = (word: string) => `<div style="width:40px;overflow-wrap:anywhere">${word}</div>`;
+const EXCEPTIONS_CONTROL =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
+  '<body style="margin:0;font:16px/1.4 sans-serif"><main style="width:300px">' +
+  squeezed('Weekend') +
+  `<div class="grid grid-cols-7">${squeezed('Warriors')}</div>` +
+  `<div id="game-description">${squeezed('Tuesday')}</div>` +
+  heldBox('Saturday') +
+  `<div class="fixed inset-0 z-60">${heldBox('Thursday')}</div>` +
+  '</main></body></html>';
+const wordsOf = (entries: readonly string[]): string[] => entries.map((entry) => entry.match(/^"([^"]+)"/)?.[1] ?? entry).sort();
+
+test('sweep rows (89.6-08): every surface row is declared once, with a census id, an owner and a status', async ({ page }) => {
   const ids = ALL_ROWS.map((row) => row.id);
   expect(ids.filter((id, at) => ids.indexOf(id) !== at), 'a row id is declared twice').toEqual([]);
   expect(ALL_ROWS.filter((row) => !/^89\.6-\d\d$/.test(row.owner)).map((row) => row.id), 'a row has no owning plan (89.6-NN)').toEqual([]);
@@ -243,10 +302,50 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
   expect(PR_CELLS.filter((cell) => cell.theme === 'light').map((cell) => cell.id), 'the PR lane holds exactly one light cell').toEqual(['375x667-light-200']);
   expect(new Set(LANE.map((cell) => cell.id)).size, 'a cell id is declared twice').toBe(LANE.length);
 
+  // The rows and the census cannot drift apart: a module removed, or a skipped id given a row.
+  expect([...new Set(ALL_ROWS.map((row) => row.census))].sort(), 'the census ids of the surface rows differ from CENSUS_IDS').toEqual([...new Set(CENSUS_IDS)].sort());
+  expect(CENSUS_IDS.length, 'CENSUS_IDS is 17 routes, 33 in-sweep dialogs and 9 overlays, each once').toBe(59);
+  expect(new Set(CENSUS_IDS).size, 'a census id is listed twice').toBe(CENSUS_IDS.length);
+  expect(EMPTY_STATES.length, 'the census names twelve empty states for in-sweep surfaces; an entry is never removed').toBeGreaterThanOrEqual(12);
+  expect(EMPTY_STATES.filter((entry) => !CENSUS_IDS.includes(entry.census)).map((entry) => entry.row), 'an empty state names a census id outside the sweep').toEqual([]);
+  expect(EMPTY_STATES.filter((entry) => !/^89\.6-\d\d$/.test(entry.owner) || entry.row === '' || entry.state === '').map((entry) => entry.row), 'an empty state has no row, state or owner').toEqual([]);
+
+  // The exceptions list: exactly five, each bound to its source.
+  expect(EXCEPTIONS.map((entry) => entry.id), 'the exceptions list is exactly SPEC A3 (1) to (4) and A10; a sixth needs a SPEC amendment').toEqual(['A3-1', 'A3-2', 'A3-3', 'A3-4', 'A10']);
+  expect(EXCEPTIONS.filter((entry) => entry.clears === 'surface').map((entry) => entry.id), 'split and held words are cleared only inside the three surfaces another phase owns').toEqual(['A3-2', 'A3-3', 'A3-4']);
+  for (const entry of EXCEPTIONS) {
+    expect(entry.selector.trim(), `${entry.id}: no selector`).not.toBe('');
+    const source = readFileSync(entry.source.file, 'utf8');
+    for (const snippet of [entry.source.snippet, ...(entry.source.alsoOnce ?? [])]) {
+      expect(occurrences(source, snippet), `${entry.id}: its source snippet must occur exactly once in ${entry.source.file}: ${snippet}`).toBe(1);
+    }
+    if (entry.source.folder) expect(existsSync(entry.source.folder) && statSync(entry.source.folder).isDirectory(), `${entry.id}: ${entry.source.folder} is not a folder`).toBe(true);
+  }
+
+  // The exceptions at work, on a page of this test's own (no request leaves it).
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.setContent(EXCEPTIONS_CONTROL);
+  const control = page.locator('main');
+  const raw = await readLargeTextCell(control);
+  expect(wordsOf(raw.split), 'the control page holds three squeezed words').toEqual(['Tuesday', 'Warriors', 'Weekend']);
+  expect(wordsOf(raw.held), 'the control page holds two held words').toEqual(['Saturday', 'Thursday']);
+  const under = await readCellUnderExceptions(control);
+  expect(wordsOf(under.read.split), 'a split word inside the month grid is cleared; one in the open, and one in a cut-only exception, are not').toEqual(['Tuesday', 'Weekend']);
+  expect(wordsOf(under.read.held), 'a held word inside the tutorial is cleared; one in the open is not').toEqual(['Saturday']);
+  expect({ split: wordsOf(under.cleared.split), held: wordsOf(under.cleared.held) }, 'what the surfaces cleared is written down').toEqual({ split: ['Warriors'], held: ['Thursday'] });
+  expect(await page.locator('style').count(), 'the read left its hiding style on the page').toBe(0);
+
+  // Every backend GET that writes is named, with what the guard does about it.
+  const named = WRITE_GET_HANDLERS.map((entry) => `${entry.file} ${entry.path}`).sort();
+  expect(writingGetHandlers(), 'the backend GET handlers that write differ from WRITE_GET_HANDLERS: name the new one, with its reason').toEqual(named);
+  const unheld = WRITE_GET_HANDLERS.filter((entry) => entry.guard === 'held').filter((entry) => !WRITE_GETS.some((pattern) => pattern.test(entry.path) || pattern.test(`/${entry.file.replace(/\.js$/, '')}${entry.path}`)));
+  expect(unheld.map((entry) => `${entry.file} ${entry.path}`), 'a held writing GET is matched by no WRITE_GETS pattern').toEqual([]);
+
   writeResult('rows.json', {
     mode: MODE,
     cells: LANE.map((cell) => cell.id),
     rows: ALL_ROWS.map((row) => ({ id: row.id, census: row.census, kind: row.kind, owner: row.owner, status: row.status, state: row.state })),
+    emptyStates: EMPTY_STATES,
   });
 });
 

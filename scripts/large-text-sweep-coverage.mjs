@@ -3,9 +3,12 @@
  * Large-text sweep coverage (Phase 89.6-08, SPEC R4).
  *
  * Usage: node scripts/large-text-sweep-coverage.mjs [--results <dir>] [--mode pr|full] [--close]
- *   --results  the folder e2e/large-text-sweep.spec.ts wrote (default test-results/large-text-sweep/results)
- *   --mode     the lane that was run: pr (7 cells, the default) or full (18 cells)
- *   --close    the phase-close run: a pending row is a failure too
+ *        node scripts/large-text-sweep-coverage.mjs --self-test
+ *   --results    the folder e2e/large-text-sweep.spec.ts wrote (default test-results/large-text-sweep/results)
+ *   --mode       the lane that was run: pr (7 cells, the default) or full (18 cells)
+ *   --close      the phase-close run: a pending row and an open empty state are failures too
+ *   --self-test  plants eleven faults in folders under the system temp folder; exits 0 only when
+ *                each is caught (takes no other flag)
  *   anything else exits 1, so a mistyped invocation reds instead of passing
  *
  * WHAT IT CHECKS. The sweep spec writes rows.json (every surface row with its owner and status,
@@ -14,6 +17,11 @@
  *   pending: <id> until <owner>   a row no plan has turned on yet (printed, failed only with --close)
  *   missing: <id> <cell>          an enforced row has no result for a cell of the lane
  *   failed: <id> <cell>           an enforced row's cell did not hold the checks
+ *   empty-state open: <row> (<census> "<state>") until <owner>
+ *                                 an empty state the census names that no ENFORCED row holds
+ *                                 (SPEC AC-4 includes each surface's empty state); printed, and
+ *                                 failed only with --close. It never says pending:, so a plan's
+ *                                 own "no pending line" check is not tripped by it.
  * then the counts, each enforced row's time and their sum, and a last line RESULT: PASS or
  * RESULT: FAIL (exit 0 or 1). In pr mode a sum above 900 s is a failure too: the first plan
  * whose row pushes the sweep over its budget sees it in its own run.
@@ -25,7 +33,8 @@
  * Builtins only and JSON only: the e2e job's Node cannot read TypeScript, so the cell lists are
  * written here too and the spec's rows.json must name exactly the mode's list.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const cells = (sizes, themes, mode, zoom = false) =>
@@ -107,6 +116,8 @@ function check(dir, { mode = 'pr', close = false } = {}) {
     }
   }
 
+  if (!Array.isArray(manifest.emptyStates)) return fail('missing: emptyStates (rows.json holds no emptyStates list)');
+
   const enforced = manifest.rows.filter((row) => row?.status === 'enforced');
   const pending = manifest.rows.filter((row) => row?.status === 'pending');
   let missing = 0;
@@ -134,6 +145,12 @@ function check(dir, { mode = 'pr', close = false } = {}) {
   lines.push(`missing: ${missing}`);
   lines.push(`failed: ${failed}`);
 
+  // An empty state is held only by an enforced row: its own row, or the row named in shownBy.
+  const enforcedIds = new Set(enforced.map((row) => row.id));
+  const open = manifest.emptyStates.filter((entry) => !enforcedIds.has(entry?.row) && !enforcedIds.has(entry?.shownBy));
+  for (const entry of open) lines.push(`empty-state open: ${entry?.row} (${entry?.census} "${entry?.state}") until ${entry?.owner}`);
+  lines.push(`empty-state parity: ${open.length}`);
+
   for (const [id, ms] of times) lines.push(`time: ${id} ${seconds(ms)}s`);
   const sum = seconds(times.reduce((total, [, ms]) => total + ms, 0));
   lines.push(`sweep time (sum of rows): ${sum}s`);
@@ -142,12 +159,65 @@ function check(dir, { mode = 'pr', close = false } = {}) {
     lines.push(`over budget: ${sum}s, the pr-mode budget is ${BUDGET_SECONDS}s (two CI workers make that about 7.5 minutes inside the 30-minute e2e job)`);
   }
 
-  const ok = bad === 0 && missing === 0 && failed === 0 && !overBudget && !(close && pending.length > 0);
+  const ok = bad === 0 && missing === 0 && failed === 0 && !overBudget && !(close && pending.length > 0) && !(close && open.length > 0);
   lines.push(ok ? 'RESULT: PASS' : 'RESULT: FAIL');
   return { lines, ok };
 }
 
+/** Plant eleven faults, each in its own results folder; true only when every one is caught. */
+function selfTest() {
+  const base = mkdtempSync(join(tmpdir(), 'large-text-sweep-coverage-'));
+  const passCell = (cell) => ({ cell, verdict: 'pass' });
+  const rowsFile = (over = {}) => ({
+    mode: 'pr',
+    cells: PR_CELL_IDS,
+    rows: [
+      { id: 'R17', census: 'R17', kind: 'route', owner: '89.6-08', status: 'enforced' },
+      { id: 'R02', census: 'R02', kind: 'route', owner: '89.6-23', status: 'pending' },
+    ],
+    emptyStates: [{ census: 'R17', state: 'nothing here', row: 'R17', owner: '89.6-08' }],
+    ...over,
+  });
+  const resultFile = (cellIds = PR_CELL_IDS, over = {}) => ({ id: 'R17', mode: 'pr', ms: 2000, cells: cellIds.map(passCell), ...over });
+  let made = 0;
+  const folder = (files) => {
+    const dir = join(base, String((made += 1)));
+    mkdirSync(dir, { recursive: true });
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), JSON.stringify(body));
+    return dir;
+  };
+  const allEnforced = [
+    { id: 'R17', census: 'R17', kind: 'route', owner: '89.6-08', status: 'enforced' },
+  ];
+  // name, the results folder, the options, the expected verdict, a line the output must hold
+  const cases = [
+    ['no rows.json', folder({ 'R17.json': resultFile() }), {}, false, /^missing: rows\.json$/],
+    ['an enforced row with no results file', folder({ 'rows.json': rowsFile() }), {}, false, /^missing: R17 320x568-dark-200$/],
+    ['an enforced row missing one cell', folder({ 'rows.json': rowsFile(), 'R17.json': resultFile(PR_CELL_IDS.filter((id) => id !== '375x667-light-200')) }), {}, false, /^missing: R17 375x667-light-200$/],
+    ['a failed cell', folder({ 'rows.json': rowsFile(), 'R17.json': resultFile(PR_CELL_IDS, { cells: PR_CELL_IDS.map((cell) => ({ cell, verdict: cell === '320x568-dark-200' ? 'fail' : 'pass' })) }) }), {}, false, /^failed: R17 320x568-dark-200$/],
+    ['a pending row under --close', folder({ 'rows.json': rowsFile(), 'R17.json': resultFile() }), { close: true }, false, /^pending: R02 until 89\.6-23$/],
+    ['a row with no owner', folder({ 'rows.json': rowsFile({ rows: [...allEnforced, { id: 'R02', census: 'R02', kind: 'route', status: 'pending' }] }), 'R17.json': resultFile() }), {}, false, /^bad row: R02 has no owning plan$/],
+    ['a duplicate id', folder({ 'rows.json': rowsFile({ rows: [...allEnforced, ...allEnforced] }), 'R17.json': resultFile() }), {}, false, /^bad row: R17 is declared twice$/],
+    ['a full-mode run whose rows.json lists the 7 PR cells', folder({ 'rows.json': rowsFile({ mode: 'full' }), 'R17.json': resultFile() }), { mode: 'full' }, false, /^cells: rows\.json lists 7 cells, and the full lane is 18 /],
+    ['a pr-mode run whose rows take 901 s', folder({ 'rows.json': rowsFile(), 'R17.json': resultFile(PR_CELL_IDS, { ms: 901_000 }) }), {}, false, /^over budget: 901s, /],
+    ['an empty state no enforced row holds, under --close', folder({ 'rows.json': rowsFile({ rows: allEnforced, emptyStates: [{ census: 'R01', state: 'No groups yet', row: 'R01-empty', owner: '89.6-16', shownBy: 'R01' }] }), 'R17.json': resultFile() }), { close: true }, false, /^empty-state open: R01-empty \(R01 "No groups yet"\) until 89\.6-16$/],
+    ['a clean folder, its one empty state held by an enforced row, under --close', folder({ 'rows.json': rowsFile({ rows: allEnforced }), 'R17.json': resultFile() }), { close: true }, true, /^empty-state parity: 0$/],
+  ];
+  let held = 0;
+  for (const [name, dir, options, expectOk, expectLine] of cases) {
+    const { lines, ok } = check(dir, options);
+    const last = lines[lines.length - 1];
+    const good = ok === expectOk && last === (expectOk ? 'RESULT: PASS' : 'RESULT: FAIL') && lines.some((line) => expectLine.test(line));
+    if (good) held += 1;
+    console.log(`${good ? (expectOk ? 'passes' : 'caught') : 'NOT CAUGHT'}: ${name}${good ? '' : ` (got ${last}; ${lines.join(' | ')})`}`);
+  }
+  rmSync(base, { recursive: true, force: true });
+  console.log(`self-test: ${held} of ${cases.length}`);
+  return held === cases.length && cases.length === 11 ? 0 : 1;
+}
+
 function main(argv) {
+  if (argv.length === 1 && argv[0] === '--self-test') return selfTest();
   const options = { results: join('test-results', 'large-text-sweep', 'results'), mode: 'pr', close: false };
   for (let at = 0; at < argv.length; at += 1) {
     const flag = argv[at];
