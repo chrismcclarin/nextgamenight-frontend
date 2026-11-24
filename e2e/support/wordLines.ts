@@ -221,3 +221,260 @@ export async function expectHeldInside(card: Locator, tag: string): Promise<{ pa
   expect(read.leftmost, `${tag}: a part of the card starts left of the card (${line})`).toBeGreaterThanOrEqual(read.left - 0.5);
   return { pageSideways: read.pageSideways };
 }
+
+// ---------------------------------------------------------------------------------------------
+// THE LARGE-TEXT CHECKS (Phase 89.6).
+//
+// DECISION Phase 89.6-02 (checks): the large-text checks are page reads in this ONE shared file
+// (sideways on the page and inside an open dialog's content box; cut; split; then spill and
+// select-fit), chosen OVER a read per spec and OVER the three SPEC R4 checks alone (text spilling
+// out of its control and a cut select value pass all three: research M F4). DECISION Phase 88.9-52
+// (R4-E) above stands: these extend the one shared read. Changing this is a decision, not a cleanup.
+//
+// HOW A CELL IS READ. One in-page read under a root element, after the layout has settled. Text
+// that draws nothing is not read: a text node whose element is visibility hidden, or whose element
+// (or an ancestor) draws a box of 1px by 1px or less, which is the house sr-only.
+// ---------------------------------------------------------------------------------------------
+
+/** The 30-letter word with no space (UI-SPEC content case "One 30-letter word"). */
+export const THIRTY_LETTER_WORD = 'Grandmasterboardgamecollective';
+
+/** The owner's two-word name plus one emoji, the game die (UI-SPEC content case "Name with an emoji"). */
+export const EMOJI_NAME = `${TWO_WORD_NAME} \u{1F3B2}`;
+
+/** How the root text size of a cell is produced: '100' adds nothing, '200' is the 200% style tag. */
+export type TextMode = '100' | '200';
+
+/** Every style tag setTextMode adds carries this attribute, so the next call can take it away. */
+const TEXT_MODE_ATTRIBUTE = 'data-lt-text-mode';
+
+/**
+ * Put the page in a text mode. A mode can be set from any earlier style-tag mode on the same page:
+ * every call first removes the style tag an earlier call added. The 200% tag has the same content
+ * setNarrowLargeText uses; that helper and its callers are not changed.
+ */
+export async function setTextMode(page: Page, mode: TextMode, tag: string): Promise<void> {
+  await page.evaluate((attribute) => {
+    for (const style of Array.from(document.querySelectorAll(`style[${attribute}]`))) style.remove();
+  }, TEXT_MODE_ATTRIBUTE);
+  if (mode === '200') {
+    const handle = await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+    await handle.evaluate((style, attribute) => (style as Element).setAttribute(attribute, '200'), TEXT_MODE_ATTRIBUTE);
+  }
+  const expected = mode === '200' ? '32px' : '16px';
+  await expect
+    .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
+      message: `${tag}: the root font size did not become ${expected} in text mode ${mode}`,
+    })
+    .toBe(expected);
+}
+
+export interface LargeTextReadOptions {
+  /** An open dialog's content box: its own sideways scroll is read as well as the page's. */
+  dialog?: Locator;
+  /** Selectors of the exceptions list (SPEC A3 / A10): the cut check skips text in or under them. */
+  exceptions?: readonly string[];
+}
+
+export interface LargeTextCellRead {
+  rootFontSize: number;
+  window: number;
+  /** scrollWidth minus clientWidth of the document: above 0 the page scrolls sideways. */
+  pageSideways: number;
+  /** The same for the dialog content box that was named; null when none was. */
+  dialogSideways: number | null;
+  /** One entry per hit, written kind: "first 30 characters"; kinds ellipsis, clamp, nowrap, hidden, shrunk. */
+  cut: string[];
+  /** One entry per word drawn on more than one line although it fits its row on one. */
+  split: string[];
+}
+
+interface LargeTextPageArg {
+  dialogEl: Element | null;
+  exceptions: string[];
+}
+
+// The ONE in-page read behind every large-text check. It runs in the browser, so it uses nothing
+// from this file: every helper it needs is declared inside it.
+function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextCellRead {
+  const doc = document.documentElement;
+  const px = (value: string) => Number.parseFloat(value) || 0;
+  const round = (value: number) => Math.round(value * 100) / 100;
+  const rootFontSize = px(getComputedStyle(doc).fontSize);
+  // Read before the ruler below joins the page.
+  const pageSideways = doc.scrollWidth - doc.clientWidth;
+  const dialogSideways = arg.dialogEl ? arg.dialogEl.scrollWidth - arg.dialogEl.clientWidth : null;
+
+  const excepted = (el: Element) => arg.exceptions.some((selector) => el.closest(selector) !== null);
+  const first30 = (el: Element) => (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 30);
+
+  // Text that draws nothing: visibility hidden on its element, or a box of 1px by 1px or less on
+  // the element or an ancestor (the house sr-only). A display: contents element has no box of its own.
+  const drawsNothingMemo = new Map<Element, boolean>();
+  const drawsNothing = (el: Element): boolean => {
+    const known = drawsNothingMemo.get(el);
+    if (known !== undefined) return known;
+    let nothing = getComputedStyle(el).visibility === 'hidden';
+    for (let a: Element | null = el; a && !nothing; a = a.parentElement) {
+      const display = getComputedStyle(a).display;
+      if (display === 'none') nothing = true;
+      else if (display !== 'contents') {
+        const r = a.getBoundingClientRect();
+        if (r.width <= 1 && r.height <= 1) nothing = true;
+      }
+    }
+    drawsNothingMemo.set(el, nothing);
+    return nothing;
+  };
+
+  // The nearest element that is a box of its own (not inline, not display: contents).
+  const boxOf = (el: Element): Element => {
+    let a = el;
+    while (a.parentElement && ['inline', 'contents'].includes(getComputedStyle(a).display)) a = a.parentElement;
+    return a;
+  };
+
+  const ruler = document.createElement('span');
+  ruler.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;left:-9999px;top:0;';
+  document.body.appendChild(ruler);
+  /** The word's own width on one line, in the font of the element that holds it. */
+  const naturalWidth = (word: string, el: Element) => {
+    const own = getComputedStyle(el);
+    ruler.style.font = own.font;
+    ruler.style.letterSpacing = own.letterSpacing;
+    ruler.style.textTransform = own.textTransform;
+    ruler.textContent = word;
+    return ruler.getBoundingClientRect().width;
+  };
+
+  interface Word {
+    text: string;
+    el: Element;
+    rects: DOMRect[];
+    lines: number;
+  }
+  const words: Word[] = [];
+  const textElements: Element[] = [];
+  const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const el = node.parentElement;
+    const content = node.textContent ?? '';
+    if (!el || !/\S/.test(content)) continue;
+    if (el.closest('script, style, noscript, template')) continue;
+    if (drawsNothing(el)) continue;
+    let drawn = false;
+    for (const match of content.matchAll(/\S+/g)) {
+      const range = document.createRange();
+      range.setStart(node, match.index ?? 0);
+      range.setEnd(node, (match.index ?? 0) + match[0].length);
+      const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+      if (!rects.length) continue;
+      drawn = true;
+      words.push({ text: match[0], el, rects, lines: new Set(rects.map((r) => Math.round(r.top))).size });
+    }
+    if (drawn && !textElements.includes(el)) textElements.push(el);
+  }
+
+  // ---- cut -------------------------------------------------------------------------------------
+  const cut: string[] = [];
+  const cutSeen = new Map<Element, Set<string>>();
+  const addCut = (kind: string, el: Element) => {
+    const kinds = cutSeen.get(el) ?? new Set<string>();
+    if (kinds.has(kind)) return;
+    kinds.add(kind);
+    cutSeen.set(el, kinds);
+    cut.push(`${kind}: "${first30(el)}"`);
+  };
+
+  // The hidden kind, judged per axis. A text rect is cut when it lies more than 1px past, in that
+  // axis, the padding box of an element whose overflow in that axis is hidden or clip, among the
+  // elements met climbing from the text's own element toward the root element of the page. The
+  // climb in an axis STOPS at the first element whose overflow in that axis is auto or scroll:
+  // content past a scroller is reachable by scrolling, so a hidden ancestor above the scroller
+  // (the house Modal's content box around its scrolling body) never makes scrolled-away text a cut.
+  type Axis = 'x' | 'y';
+  const clippedBy = (el: Element, rects: DOMRect[], axis: Axis): Element | null => {
+    for (let a: Element | null = el; a && a !== doc; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      const overflow = axis === 'x' ? cs.overflowX : cs.overflowY;
+      if (overflow === 'auto' || overflow === 'scroll') return null;
+      if (overflow !== 'hidden' && overflow !== 'clip') continue;
+      const box = a.getBoundingClientRect();
+      const start = axis === 'x' ? box.left + px(cs.borderLeftWidth) : box.top + px(cs.borderTopWidth);
+      const end = axis === 'x' ? box.right - px(cs.borderRightWidth) : box.bottom - px(cs.borderBottomWidth);
+      for (const r of rects) {
+        const from = axis === 'x' ? r.left : r.top;
+        const to = axis === 'x' ? r.right : r.bottom;
+        if (from < start - 1 || to > end + 1) return a;
+      }
+    }
+    return null;
+  };
+
+  for (const el of textElements) {
+    if (excepted(el)) continue;
+    const box = boxOf(el);
+    const boxStyle = getComputedStyle(box);
+    const wider = box.scrollWidth > box.clientWidth + 1;
+    if (boxStyle.textOverflow === 'ellipsis' && wider) addCut('ellipsis', box);
+    if ((boxStyle.whiteSpace === 'nowrap' || boxStyle.whiteSpace === 'pre') && wider) addCut('nowrap', box);
+    for (let a: Element | null = el; a; a = a === rootEl ? null : a.parentElement) {
+      const clamp = getComputedStyle(a).getPropertyValue('-webkit-line-clamp');
+      if (clamp && clamp !== 'none') {
+        addCut('clamp', a);
+        break;
+      }
+    }
+    if (px(getComputedStyle(el).fontSize) < 0.75 * rootFontSize - 0.01) addCut('shrunk', el);
+    const rects = words.filter((w) => w.el === el).flatMap((w) => w.rects);
+    if (clippedBy(el, rects, 'x') || clippedBy(el, rects, 'y')) addCut('hidden', el);
+  }
+
+  // ---- split -----------------------------------------------------------------------------------
+  // A word's row: the nearest [data-room] ancestor when there is one; otherwise start at the text's
+  // own box and climb while the parent is a flex or grid container. So a label inside a button
+  // inside .bb-row-end measures against the whole .bb-row: a word that would fit the row but
+  // breaks because a neighbour squeezed it is a letter-stack. Text inside .bb-breakable is not
+  // read here (emails and links may break anywhere).
+  const rowOf = (el: Element): Element => {
+    const marked = el.closest('[data-room]');
+    if (marked) return marked;
+    let row = boxOf(el);
+    while (row.parentElement && /flex|grid/.test(getComputedStyle(row.parentElement).display)) row = row.parentElement;
+    return row;
+  };
+  const contentWidth = (el: Element) => {
+    const cs = getComputedStyle(el);
+    return el.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight);
+  };
+  const split: string[] = [];
+  for (const w of words) {
+    if (w.lines <= 1 || w.el.closest('.bb-breakable')) continue;
+    const room = contentWidth(rowOf(w.el));
+    const natural = naturalWidth(w.text, w.el);
+    if (natural <= room + 0.5) split.push(`"${w.text}" ${w.lines} lines, ${round(natural)}px fits its row ${round(room)}px`);
+  }
+
+  ruler.remove();
+  return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split };
+}
+
+/**
+ * Read one cell: every large-text check under `root`, in one page read. Name the open dialog's
+ * content box to read its sideways scroll too, and pass the exceptions list as selectors.
+ */
+export async function readLargeTextCell(root: Locator, options: LargeTextReadOptions = {}): Promise<LargeTextCellRead> {
+  const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
+  return root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])] });
+}
+
+/** Expect a cell read to hold every large-text check. */
+export function expectLargeTextCell(read: LargeTextCellRead, tag: string): void {
+  const line = JSON.stringify(read);
+  expect(read.pageSideways, `${tag}: the page scrolls sideways by ${read.pageSideways}px (${line})`).toBeLessThanOrEqual(0);
+  if (read.dialogSideways !== null) {
+    expect(read.dialogSideways, `${tag}: the dialog's content box scrolls sideways by ${read.dialogSideways}px (${line})`).toBeLessThanOrEqual(0);
+  }
+  expect(read.cut, `${tag}: text is capped, shrunk or cut (${line})`).toEqual([]);
+  expect(read.split, `${tag}: a word is split inside itself although it fits its row (${line})`).toEqual([]);
+}

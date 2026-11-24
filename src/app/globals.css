@@ -786,6 +786,53 @@
     appearance: none;
     min-width: 0;
   }
+
+  /* DECISION Phase 89.6-02 (HR-1): a word breaks only when that word alone is wider than its
+     line: break-word in the base layer, chosen OVER wrap-anywhere (it lowers min-content and lets
+     flex items shrink into letter-stacks) and OVER a per-site wrap class (a site that forgets one
+     scrolls sideways). It loses to every utility, so a site's own wrap class still wins. Removing
+     it brings back sideways scroll on long words. Changing this is a decision, not a cleanup. */
+  html {
+    overflow-wrap: break-word;
+  }
+}
+
+/* ===== LARGE-TEXT BUILDING BLOCKS (Phase 89.6) =====
+   Shared layout blocks, applied by class. They sit in the components layer BY NAME, so a call-site
+   utility still wins over them and their order does not depend on where a stylesheet chunk lands.
+   Rendered in every matrix cell by e2e/large-text-blocks.spec.ts ("DECISION Phase 89.6-02 (harness)"). */
+@layer components {
+  /* DECISION Phase 89.6-02 (bb-row): GR, the governing rule (owner, 2026-11-22: 'A row stays a row
+     while everything in it fits whole. When it does not, items stack. Nothing is squeezed, shrunk,
+     cut or broken to avoid stacking. Scrolling down is fine; scrolling sideways is not.'), in CSS:
+     the actions move under the text before the text narrows past its longest word. A wrap-first
+     row with a 6rem text basis (it scales with text) and no min-width on the text, chosen OVER
+     min-w-0 with wrap-break-word (the Modal title letter-stacked at 200%), OVER wrap-anywhere (the
+     Heading base: the same failure through min-content) and OVER a media query (it cannot see the
+     text size). Adding a min-width of 0 to the text slot is a decision, not a cleanup. */
+  .bb-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
+  }
+
+  .bb-row > .bb-row-text {
+    flex: 1 1 var(--bb-row-min, 6rem);
+    max-width: 100%;
+    overflow-wrap: break-word;
+  }
+
+  .bb-row > .bb-row-end {
+    flex: 0 0 auto;
+    max-width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-inline-start: auto;
+  }
 }
 
 /* ===== DESIGN SYSTEM: Palette Primitives ===== */

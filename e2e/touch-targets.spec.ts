@@ -1606,7 +1606,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       // without the wrap utility MUST overflow. If it does not, the container is not
       // constraining anything and the positive probe proves nothing.
       const control = document.createElement('h2');
+      // AMENDED Phase 89.6-02 (HR-1): html now carries overflow-wrap: break-word (src/app/globals.css ("DECISION Phase 89.6-02 (HR-1)")), which this h2 would inherit and wrap under; the inline normal keeps the control wrap-less, so it still overflows and the paired probe still proves something.
       control.className = 'font-bold text-xl';
+      control.style.overflowWrap = 'normal';
       control.textContent = TOKEN;
       host.appendChild(control);
 

@@ -1,0 +1,84 @@
+<!--
+  The bb-row building block (a text with trailing actions) in its four content cases.
+  One section per content case, marked with data-case; the matrix spec renders ONE section at a time.
+  The wrappers carry lt- hook names the app never styles, so nothing here collides with a shipped rule.
+  Every state is static markup: this file holds no script and no outside address.
+-->
+
+<section data-case="ordinary">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div data-card class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="bb-row">
+        <div class="bb-row-text font-semibold text-base text-content-primary">Bob</div>
+        <div class="bb-row-end">
+          <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Invite</span></button>
+          <button type="button" aria-label="More" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-muted text-2xl leading-none">⋮</button>
+        </div>
+      </div>
+      <hr class="my-3 border-line">
+      <div class="bb-row">
+        <h2 class="bb-row-text text-xl font-bold leading-tight text-content-primary">Participants (6)</h2>
+        <div class="bb-row-end">
+          <button type="button" class="btn btn-primary min-h-11"><span class="bb-label">Share Game QR</span></button>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="empty">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div data-card class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="bb-row">
+        <h2 class="bb-row-text text-xl font-bold leading-tight text-content-primary">Participants (0)</h2>
+        <div class="bb-row-end">
+          <button type="button" class="btn btn-primary min-h-11"><span class="bb-label">Share Game QR</span></button>
+        </div>
+      </div>
+      <p class="text-sm text-content-muted">No one has said they are coming yet.</p>
+    </div>
+  </main>
+</section>
+
+<section data-case="word30">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div data-card class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="bb-row">
+        <div class="bb-row-text font-semibold text-base text-content-primary">Grandmasterboardgamecollective</div>
+        <div class="bb-row-end">
+          <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Invite</span></button>
+          <button type="button" aria-label="More" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-muted text-2xl leading-none">⋮</button>
+        </div>
+      </div>
+      <hr class="my-3 border-line">
+      <div class="bb-row">
+        <h2 class="bb-row-text text-xl font-bold leading-tight text-content-primary">Grandmasterboardgamecollective</h2>
+        <div class="bb-row-end">
+          <button type="button" class="btn btn-primary min-h-11"><span class="bb-label">Share Game QR</span></button>
+        </div>
+      </div>
+      <p class="mt-3 text-base text-content-primary">Hosted by Grandmasterboardgamecollective</p>
+    </div>
+  </main>
+</section>
+
+<section data-case="emoji">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div data-card class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="bb-row">
+        <div class="bb-row-text font-semibold text-base text-content-primary">Weekend Warriors 🎲</div>
+        <div class="bb-row-end">
+          <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Invite</span></button>
+          <button type="button" aria-label="More" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-muted text-2xl leading-none">⋮</button>
+        </div>
+      </div>
+      <hr class="my-3 border-line">
+      <div class="bb-row">
+        <h2 class="bb-row-text text-xl font-bold leading-tight text-content-primary">Weekend Warriors 🎲</h2>
+        <div class="bb-row-end">
+          <button type="button" class="btn btn-primary min-h-11"><span class="bb-label">Share Game QR</span></button>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
