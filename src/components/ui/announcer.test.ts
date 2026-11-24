@@ -353,4 +353,85 @@ describe('89.6-03 (toast-bridge): announceInOpenDialog', () => {
     // log holds the ROOT view at every store change: the words never reached it.
     expect(log).not.toContain('Could not save your settings');
   });
+
+  // A pin (green before Task 2): Sonner's own region is the one that speaks outside dialogs.
+  it('2. with no host open and none closing nothing is written: the root stays empty and the store never changes', () => {
+    announceInOpenDialog('Could not save your settings');
+    vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS + INLINE_RECEIPT_MS);
+    expect(getSnapshot()).toBe('');
+    // Not one store change: no clear, no words, no second clear.
+    expect(log).toEqual([]);
+  });
+
+  // FIX a: a dialog that is closing is still on the page and still holds focus, so the A-47 hold
+  // applies to a toast that arrives then.
+  it('3. while the only host is closing the toast words are held, then land in the ROOT one dwell after it leaves, never in that host', () => {
+    const dialog = host();
+    open(dialog);
+    startClosing(dialog);
+    const hostLog: string[] = [];
+    const stop = subscribe(() => hostLog.push(getHostSnapshot(dialog)));
+    announceInOpenDialog('Could not save your settings');
+    // The dwell passes while the exit still runs: nothing lands anywhere.
+    vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    expect(getSnapshot()).toBe('');
+    expect(getHostSnapshot(dialog)).toBe('');
+    vi.advanceTimersByTime(100);
+    expect(getSnapshot()).toBe('');
+    // The content leaves the page. One more dwell, then the root has the words.
+    leavePage(dialog);
+    expect(getSnapshot()).toBe('');
+    vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS - 1);
+    expect(getSnapshot()).toBe('');
+    vi.advanceTimersByTime(1);
+    expect(getSnapshot()).toBe('Could not save your settings');
+    vi.advanceTimersByTime(INLINE_RECEIPT_MS);
+    stop();
+    // Once in the root, never in the leaving host.
+    expect(log.filter((words) => words === 'Could not save your settings')).toHaveLength(1);
+    expect(hostLog.filter((words) => words !== '')).toEqual([]);
+  });
+
+  // A pin (green before Task 2), the recorded one-text edge: the store holds ONE text, so a
+  // toast inside a save outcome's dwell replaces it.
+  it('4. a toast inside a save outcome dwell replaces it: only the toast words land', () => {
+    const dialog = host();
+    open(dialog);
+    const hostLog: string[] = [];
+    const stop = subscribe(() => hostLog.push(getHostSnapshot(dialog)));
+    announceStatus('Settings saved');
+    vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS / 2);
+    announceInOpenDialog('Could not save your settings');
+    vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    expect(getHostSnapshot(dialog)).toBe('Could not save your settings');
+    vi.advanceTimersByTime(INLINE_RECEIPT_MS);
+    stop();
+    expect(hostLog).toContain('Could not save your settings');
+    expect(hostLog).not.toContain('Settings saved');
+    expect(log).not.toContain('Settings saved');
+  });
+
+  // FIX c: Sonner publishes each toast in a timer of its own, so two toasts reach the bridge as
+  // two calls inside one dwell. The second joins the first instead of replacing it.
+  it('5. a second toast inside the first toast dwell joins it: both sentences land as one text, once', () => {
+    const dialog = host();
+    open(dialog);
+    const hostLog: string[] = [];
+    const stop = subscribe(() => hostLog.push(getHostSnapshot(dialog)));
+    announceInOpenDialog('Could not save your settings');
+    vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS / 2);
+    announceInOpenDialog('Could not load the members');
+    vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    const joined = 'Could not save your settings. Could not load the members';
+    expect(getHostSnapshot(dialog)).toBe(joined);
+    expect(getSnapshot()).toBe('');
+    vi.advanceTimersByTime(INLINE_RECEIPT_MS);
+    // The joined text landed once; neither sentence ever stood alone.
+    expect(hostLog.filter((words) => words !== '')).toEqual([joined]);
+    // Once the joined words have landed, the next toast starts a text of its own.
+    announceInOpenDialog('Could not remove the member');
+    vi.advanceTimersByTime(REGION_EMPTY_DWELL_MS);
+    expect(getHostSnapshot(dialog)).toBe('Could not remove the member');
+    stop();
+  });
 });
