@@ -734,7 +734,16 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             ported: it existed only so the parent's backdrop onClick could not fire through
             a child overlay, and Radix's outside-interaction handling makes it moot.
             Re-adding either is a decision, not a cleanup. */}
-        <Modal open={modal} onClose={modaltoggle} className="max-w-2xl">
+        {/* DECISION Phase 89.6-11 (J2): owner pick J = J2, 2026-11-22 ('On phones the dialog opens at full height
+            straight away, so nothing moves'): below md this one dialog is 90dvh tall from its first frame, so the
+            title and the footer Close stay still when the list lands (measured 161px each way at 375 x 667 before:
+            the loading dialog was 265px tall), chosen OVER anchoring every dialog near the top (J1 sent the footer
+            Close 335px) and OVER a fixed height at every width (the owner's pick leaves the desktop jump as built).
+            Under a default font of 32 the md query reads 1536px, so this height also applies at 768 there: the
+            phone form at large text, expected. The D-30 marker's 'centre-anchored, a max rather than a floor'
+            (src/app/components/Modal.tsx ("DECISION Phase 88.6-08 (D-30 / W34)")) stays true for the family; this
+            is one site. Changing this is a decision, not a cleanup. */}
+        <Modal open={modal} onClose={modaltoggle} className="max-w-2xl max-md:h-[90dvh]">
             <Modal.Header>
                 {canManageMembers ? 'Manage Group Members' : 'Members'}
             </Modal.Header>
