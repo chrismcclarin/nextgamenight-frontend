@@ -2,6 +2,8 @@
   Negative controls for the large-text checks: a bad twin and a good twin for each check.
   One section per twin, marked with data-case; the matrix spec renders ONE section at a time.
   A bad twin holds the defect its check must report; its good twin holds the same content without it.
+  The split check has more than one pair: a bad form with no twin holds a defect the check must
+  report, and split-block-only and split-padded-good hold a broken word the check must NOT report.
   The wrappers carry lt- hook names the app never styles. Every state is static markup:
   this file holds no script and no outside address.
 -->
@@ -73,7 +75,7 @@
   </main>
 </section>
 
-<!-- split: a text that may shrink to nothing beside a fixed button, then the same content in bb-row. -->
+<!-- split: a text that may shrink to nothing beside a fixed button, then the same content in bb-row. The text is the row's own item here; the twins after these put it one or two levels down. -->
 <section data-case="split-bad">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3">
@@ -92,6 +94,98 @@
         <div class="bb-row-text font-semibold text-base text-content-primary">Weekend Warriors</div>
         <div class="bb-row-end">
           <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- split through a wrapper: the text sits in a paragraph inside the item that may shrink to nothing, beside a fixed button; then the same content in bb-row, where the row wraps and the words stay whole. -->
+<section data-case="split-wrapper-bad">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="split-wrapper-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="bb-row">
+        <div class="bb-row-text">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div class="bb-row-end">
+          <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- split through a column container, bad form only: the item that may shrink is itself a column of two lines. -->
+<section data-case="split-column-pass">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex gap-2">
+        <div class="lt-stack flex min-w-0 flex-1 flex-col">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+          <p class="text-sm text-content-secondary">Host</p>
+        </div>
+        <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- the same, with the column of two lines one level down, inside a plain wrapper that is the item that may shrink. -->
+<section data-case="split-column-wrapper">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="flex gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <div class="lt-stack flex flex-col">
+            <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+            <p class="text-sm text-content-secondary">Host</p>
+          </div>
+        </div>
+        <button type="button" class="btn btn-secondary min-h-11 w-24"><span class="bb-label">Invite</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- a plain narrow block, with no flex or grid row above it inside the frame: its word is wider than the block, so the word may break and nothing is reported. -->
+<section data-case="split-block-only">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-narrow w-8">
+        <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!--
+  a padded pill directly in a row. The first line sizes the box: it is the word plus 36px wide, so
+  the row under it has room for the word, and the pill (16px of padding and a 4px border on each
+  side, 40px in all) has 4px less than the word needs. The word breaks, and it may: it is wider
+  than its row less the pill's own padding and border. Taking off the padding alone (32px) or the
+  border alone (8px) still leaves room for the word, so both must come off.
+-->
+<section data-case="split-padded-good">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-fit w-fit max-w-full">
+        <p class="lt-sizer pr-[36px] font-semibold text-base text-content-primary">Weekend</p>
+        <div class="lt-pill-row flex w-0 min-w-full">
+          <span class="lt-pill max-w-full rounded-full border-4 border-line px-2 font-semibold text-base text-content-primary">Weekend</span>
         </div>
       </div>
     </div>
