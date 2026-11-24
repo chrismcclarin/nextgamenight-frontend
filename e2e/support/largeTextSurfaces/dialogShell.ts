@@ -45,6 +45,8 @@ export interface ShellGeometry {
   dialog: ShellBox;
   /** scrollWidth minus clientWidth of the dialog box: above 0 the dialog scrolls sideways. */
   sideways: number;
+  /** The width of the dialog box inside its border, in rem: the size its container query reads. */
+  containerRem: number;
   header: ShellBox | null;
   title: ShellBox | null;
   /** One box per drawn line of the title's text. */
@@ -109,6 +111,7 @@ export async function readShell(dialog: Locator): Promise<ShellGeometry> {
     return {
       dialog: box(el),
       sideways: el.scrollWidth - el.clientWidth,
+      containerRem: el.clientWidth / (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16),
       header: header ? box(header) : null,
       title: title ? box(title) : null,
       titleLines,
@@ -120,6 +123,9 @@ export async function readShell(dialog: Locator): Promise<ShellGeometry> {
     };
   });
 }
+
+/** The dialog container width, in rem, under which the footer stacks: src/app/components/Modal.tsx ("DECISION Phase 89.6-10 (F4)"). */
+const SHELL_STACK_REM = 12;
 
 const inside = (inner: ShellBox, outer: ShellBox): boolean =>
   inner.left >= outer.left - 0.5 && inner.right <= outer.right + 0.5 && inner.top >= outer.top - 0.5 && inner.bottom <= outer.bottom + 0.5;
@@ -161,6 +167,23 @@ export function shellProblems(read: ShellGeometry, mode: string, tag: string): s
   }
   // The dialog box does not scroll sideways.
   if (read.sideways > 0) problems.push(`${tag}: the dialog box scrolls sideways by ${read.sideways}px`);
+  // The footer's buttons are seen in the order of the page (owner pick F4): each one sits right of
+  // the one before it on its row, or below it. Under the 12rem dialog container (large text on a
+  // phone) they are stacked, each as wide as the footer's content box.
+  const footerButtons = read.buttons.filter((button) => button.part === 'footer');
+  const stacked = read.containerRem < SHELL_STACK_REM;
+  footerButtons.forEach((button, at) => {
+    if (stacked && read.footerContent && !near(button.box.width, read.footerContent.width)) {
+      problems.push(`${tag}: the footer button "${button.label}" is ${px(button.box.width)}px wide in a dialog ${px(read.containerRem)}rem wide, expected the footer's ${px(read.footerContent.width)}px (stacked full width under ${SHELL_STACK_REM}rem, F4)`);
+    }
+    if (at === 0) return;
+    const before = footerButtons[at - 1];
+    const below = button.box.top >= before.box.bottom - 0.5;
+    const rightOf = button.box.left >= before.box.right - 0.5 && button.box.top < before.box.bottom && before.box.top < button.box.bottom;
+    if (stacked ? !below : !below && !rightOf) {
+      problems.push(`${tag}: the footer button "${button.label}" is not ${stacked ? 'below' : 'right of or below'} "${before.label}", the button before it in the page's order (F4: seen order is page order)`);
+    }
+  });
   return problems;
 }
 
@@ -219,6 +242,14 @@ const reachCustomizeGroup: SurfaceRow['reach'] = async (page) => {
   return { root: await headerOf(dialog, 'D07-shell'), dialog };
 };
 
+// Customize Group always mounts the check-in schedule summary, which reads the group's prompt
+// settings (src/app/components/PromptScheduleReadOnly.js ("() => promptSettingsAPI.getGroupPromptSettings(groupId),")),
+// and the backend's handler for that read saves a clean-up: a GET that writes. It is answered in
+// the browser with the empty settings body, the answer of
+// e2e/toast-bridge-offset.spec.ts ("const EMPTY_PROMPT_SETTINGS = { id: null, schedules: [], games: [], members: [] };").
+const answerPromptSettings: NonNullable<SurfaceRow['answers']> = (url) =>
+  url.pathname.endsWith('/prompt-settings') ? { id: null, schedules: [], games: [], members: [] } : undefined;
+
 /**
  * The extras of a shell row, per cell: the footer holds the cell's checks, and the shell's
  * geometry holds (shellProblems). Every problem of the cell is thrown as ONE line, because the
@@ -245,7 +276,7 @@ const shellExtras =
   };
 
 export const rows: SurfaceRow[] = [
-  { id: 'D07-shell', census: 'D07', kind: 'dialog', owner: '89.6-10', status: 'enforced', reach: reachCustomizeGroup, extras: shellExtras('D07-shell', customizeGroup) },
+  { id: 'D07-shell', census: 'D07', kind: 'dialog', owner: '89.6-10', status: 'enforced', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: shellExtras('D07-shell', customizeGroup) },
   { id: 'D12-shell', census: 'D12', kind: 'dialog', owner: '89.6-10', status: 'enforced', reach: reachManageMembers, extras: shellExtras('D12-shell', manageMembers) },
   { id: 'D19-shell', census: 'D19', kind: 'dialog', owner: '89.6-10', status: 'enforced', reach: reachResetConfirm, extras: shellExtras('D19-shell', resetConfirm) },
 ];

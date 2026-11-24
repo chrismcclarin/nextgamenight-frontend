@@ -19,7 +19,8 @@
  *   - Content: radius 12px, max-h 90dvh, scroll contained to the Body
  *   - Header:  `px-3 py-2 md:px-6 md:py-3`, 1px bottom border, title 20px/700
  *   - Body:    `p-3 md:p-6`, flex:1, scroll-y
- *   - Footer:  `px-3 py-4 md:px-6`, 1px top border, justify-end, gap 0.75rem (12)
+ *   - Footer:  `px-3 py-4 md:px-6`, 1px top border, justify-end, gap 0.75rem (12); wraps, and
+ *              stacks full width in DOM order below the 12rem dialog container (89.6-10 F4)
  *
  * Copy-agnostic: every title/label/CTA is supplied by the consumer; nothing is
  * hardcoded. No `dangerouslySetInnerHTML` — children render as escaped React
@@ -56,7 +57,7 @@ export const SIZE_CLASS: Record<ModalSize, string> = {
    dialog-shell block, which renders them in every cell. One string per line, and SIZE_CLASS
    above is exported for the same reason. Each part's decisions stay at its use site below; a
    change to a string here is a change to every dialog, so read that part's markers first. */
-export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full';
+export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full @container/dialog';
 /* DECISION Phase 89.6-10 (T1b): GR (owner, 2026-11-22: 'A row stays a row while everything in it
    fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid
    stacking.'): the close sits beside the title while the title's longest word fits beside it,
@@ -74,7 +75,7 @@ export const MODAL_HEADER_CLASS = 'flex flex-wrap-reverse items-center justify-b
 export const MODAL_TITLE_CLASS = 'grow basis-[min-content] max-w-full wrap-break-word text-content-primary';
 export const MODAL_CLOSE_CLASS = 'ml-auto inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-btn text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring';
 export const MODAL_BODY_CLASS = 'relative flex-1 overflow-y-auto p-3 md:p-6';
-export const MODAL_FOOTER_CLASS = 'flex justify-end gap-3 border-t border-border px-3 py-4 md:px-6';
+export const MODAL_FOOTER_CLASS = 'flex flex-wrap justify-end gap-3 border-t border-border px-3 py-4 md:px-6 @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch';
 
 /**
  * Outside-dismiss guard (D-09). When the modal is NOT dismissable, cancel the
@@ -425,6 +426,13 @@ function ModalRoot({
              Gated by `Modal.test.tsx`: the rendered shell carries `max-h-[90dvh]`, and a
              comment-stripped scan of this file finds no viewport-height unit but `dvh`. */
           /* Phase 89.6-10: the string both markers above describe is MODAL_SHELL_CLASS, at the top of this file. */
+          /* DECISION Phase 89.6-10 (dialog-container): the shell is the inline-size container named
+             dialog, so the dialog switches into its large-text-on-a-phone form at one rem width
+             (12rem) for its parts (the footer here, the Body in plan 89.6-11's O-8 C), chosen OVER
+             a media query (it cannot see the text size, HR-4) and OVER a per-part threshold. The
+             shell's width never depended on its content (a percentage or md:w-full, capped by
+             SIZE_CLASS), so the containment moves nothing; the transform already made it the
+             containing block for fixed descendants. Changing this is a decision, not a cleanup. */
           MODAL_SHELL_CLASS,
           SIZE_CLASS[size],
           className
@@ -641,7 +649,17 @@ function ModalFooter({ children, className }: ModalFooterProps) {
       /* 88-33 Task 3 (fork 6): the footer rides the SAME horizontal scale as the header and
          body — otherwise the footer's actions sit on a third, different left/right edge at
          phone width. Vertical padding is unchanged; the footer has no 44px box driving it.
-         Phase 89.6-10: the string this note describes is MODAL_FOOTER_CLASS, at the top of this file. */
+         Phase 89.6-10: the string this note describes is MODAL_FOOTER_CLASS, at the top of this file.
+         DECISION Phase 89.6-10 (F4): owner pick F1-F3 = F4, 2026-11-22 ('At large text on a phone
+         the buttons stack full width, Cancel on top, the action below: the order you see is the
+         order a keyboard or screen reader moves through'): below the 12rem dialog container the
+         buttons stack full width in DOM order; above it they sit in a row that wraps only when they
+         do not fit (GR). Chosen OVER column-reverse or an order utility, which put the confirming
+         button on top while focus still reached Cancel first (seen order differing from
+         moved-through order: WCAG 1.3.2 and 2.4.3, technique C27), and OVER the no-wrap row that
+         pushed Cancel off the left edge under the shell's clip (research F-D3). ConfirmDialog
+         inherits it: its Cancel is the first child (CT-2c) and a full-width confirm keeps one width
+         at the live edge (X69 width). Changing this is a decision, not a cleanup. */
       className={cn(MODAL_FOOTER_CLASS, className)}
     >
       {children}

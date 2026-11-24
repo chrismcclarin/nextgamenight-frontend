@@ -9,7 +9,11 @@
   dialog box is the room its words are measured against, as on the real pages, where the sweep reads a dialog with
   the dialog itself as the root; without the mark the split check would measure a word against the page behind the
   dialog and call the dialog's own gutter a box that holds the word narrow. Bodies are one line each, so no dialog
-  reaches its height cap (the tall dialog is another plan's case).
+  reaches its height cap (the tall dialog is another plan's case). Footers hold one button (Close) or, on the Create Event shell,
+  two in the order of the page: Cancel first and the action second. A two-button footer under a title of three
+  lines is not here: stacked, it is taller than the height cap at 320 by 568 with text at 200% (measured: the
+  emoji title with Cancel and Save by 14px, Reset the invite link? with Cancel and Reset link by 4px), which is
+  the tall dialog of the next plan.
   Every state is static markup: this file holds no script and no outside address.
 -->
 
@@ -24,7 +28,8 @@
         <p class="text-base text-content-secondary">Pick a day and a time.</p>
       </div>
       <div class="{{MODAL_FOOTER_CLASS}}">
-        <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Close</span></button>
+        <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Cancel</span></button>
+        <button type="button" class="btn btn-primary min-h-11"><span class="bb-label">Create</span></button>
       </div>
     </div>
     <div role="dialog" aria-modal="true" data-room class="lt-shell border border-line {{MODAL_SHELL_CLASS}} {{SIZE_DEFAULT}} mx-auto mt-4">

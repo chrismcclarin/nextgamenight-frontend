@@ -988,6 +988,28 @@ describe('89.6-10 — the dialog shell is rendered from its exported class const
     expect(title.parentElement, 'the title sits in the header').toBe(header);
     expect(close.parentElement, 'the close sits in the header').toBe(header);
   });
+
+  // F4 (owner pick 2026-11-22): below the 12rem dialog container the footer's buttons stack full
+  // width in the order of the page, Cancel first; above it they sit in a row that wraps only when
+  // they do not fit. The shell names the container the footer's variant reads. The markers are at
+  // src/app/components/Modal.tsx ("DECISION Phase 89.6-10 (F4)") and
+  // src/app/components/Modal.tsx ("DECISION Phase 89.6-10 (dialog-container)").
+  it('F4: the footer wraps and stacks in page order under the dialog container, which the shell names', () => {
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    const footer = screen.getByRole('button', { name: 'Cancel' }).parentElement as HTMLElement;
+    const footerTokens = tokensOf(footer.getAttribute('class') ?? '');
+    for (const token of ['flex-wrap', '@max-[12rem]/dialog:flex-col', '@max-[12rem]/dialog:items-stretch']) {
+      expect(footerTokens, `the footer lacks ${token}`).toContain(token);
+    }
+    expect(tokensOf(dialog.getAttribute('class') ?? ''), 'the shell names the dialog container').toContain('@container/dialog');
+    // Seen order is page order: nothing in the footer string, or anywhere in this file's code,
+    // reverses a column or reorders an item.
+    expect(tokensOf(MODAL_FOOTER_CLASS).filter((token) => /col-reverse|row-reverse|(^|:)-?order-/.test(token)), 'the footer string reverses or reorders').toEqual([]);
+    expect(MODAL_SRC.match(/col-reverse|[\s'"`:]-?order-(first|last|none|\d|\[)/g) ?? [], 'Modal.tsx reverses a column or reorders an item').toEqual([]);
+    // DOM order: Cancel first.
+    expect(Array.from(footer.querySelectorAll('button')).map((button) => button.textContent), 'the footer buttons in page order').toEqual(['Cancel', 'Start poll']);
+  });
 });
 
 // ---------------------------------------------------------------------------
