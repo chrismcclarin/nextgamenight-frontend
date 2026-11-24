@@ -32,6 +32,11 @@ const leaving = new Set<AnnounceHost>();
 /* Words whose dwell has passed and that are waiting for `leaving` to empty. */
 let held: string | null = null;
 const listeners = new Set<Listener>();
+/* Told whenever "is a house dialog open or closing" can have changed (89.6-03, the bridge). */
+const hostListeners = new Set<Listener>();
+/* The toast bridge's words that have not landed yet (in their dwell, or held for a closing
+   dialog). A second toast before they land joins them; see announceInOpenDialog. */
+let bridgeWaiting: string | null = null;
 /* The ONE timer: the dwell, then the clear window; or, while words are held, the wait cap. */
 let pending: ReturnType<typeof setTimeout> | null = null;
 
@@ -39,6 +44,10 @@ function set(next: string): void {
   if (text === next) return;
   text = next;
   for (const listener of listeners) listener();
+}
+
+function hostStateChanged(): void {
+  for (const listener of hostListeners) listener();
 }
 
 function clearPending(): void {
@@ -52,6 +61,7 @@ function clearPending(): void {
    when the words land, never when announceStatus was called. */
 function commit(next: string): void {
   held = null;
+  bridgeWaiting = null;
   target = hosts.length > 0 ? hosts[hosts.length - 1] : null;
   set(next);
   pending = setTimeout(() => {
@@ -71,6 +81,7 @@ function land(next: string): void {
   pending = setTimeout(() => {
     // The cap: whatever is still "leaving" is given up on, so it cannot delay later words too.
     leaving.clear();
+    hostStateChanged();
     commit(next);
   }, LEAVING_WAIT_CAP_MS);
 }
@@ -107,6 +118,8 @@ function settle(): void {
 export function announceStatus(next: string): void {
   clearPending();
   held = null;
+  // Whatever the toast bridge had waiting is replaced with the rest (the one-text rule).
+  bridgeWaiting = null;
   set('');
   pending = setTimeout(() => land(next), REGION_EMPTY_DWELL_MS);
 }
@@ -179,8 +192,33 @@ export function announceStatus(next: string): void {
    Not verifiable off the device: whether VoiceOver speaks the words in the dialog region. The
    listen check is plan 89.6-32's. Changing this is a decision, not a cleanup. */
 export function announceInOpenDialog(next: string): void {
-  if (hosts.length === 0) return;
-  announceStatus(next);
+  if (!dialogHostActive()) return;
+  const words = bridgeWaiting === null ? next : joinSentences(bridgeWaiting, next);
+  announceStatus(words);
+  bridgeWaiting = words;
+}
+
+/* Two toasts' words as one text: a full stop between them unless the first already ends one. */
+function joinSentences(first: string, second: string): string {
+  return /[.?!]$/.test(first) ? `${first} ${second}` : `${first}. ${second}`;
+}
+
+/** Is a house dialog on the page: one open, or one closed whose exit is still running. */
+export function dialogHostActive(): boolean {
+  return hosts.length > 0 || leaving.size > 0;
+}
+
+/** Is a house dialog open (a closing one does not count). */
+export function dialogHostOpen(): boolean {
+  return hosts.length > 0;
+}
+
+/** Called whenever dialogHostActive() or dialogHostOpen() can have changed. */
+export function subscribeHostState(listener: Listener): () => void {
+  hostListeners.add(listener);
+  return () => {
+    hostListeners.delete(listener);
+  };
 }
 
 /** A dialog opened: it becomes the top announce target. Returns its close (the open prop went false). */
@@ -188,6 +226,7 @@ export function registerAnnounceHost(host: AnnounceHost): () => void {
   hosts.push(host);
   // Opened again before its exit finished: it is no longer leaving.
   if (leaving.delete(host)) settle();
+  hostStateChanged();
   return () => {
     const index = hosts.lastIndexOf(host);
     if (index !== -1) hosts.splice(index, 1);
@@ -196,12 +235,15 @@ export function registerAnnounceHost(host: AnnounceHost): () => void {
       clearPending();
       set('');
     }
+    hostStateChanged();
   };
 }
 
 /** A dialog's content left the page (unmount). Held words may land now. */
 export function releaseAnnounceHost(host: AnnounceHost): void {
-  if (leaving.delete(host)) settle();
+  if (!leaving.delete(host)) return;
+  settle();
+  hostStateChanged();
 }
 
 export function subscribe(listener: Listener): () => void {
