@@ -39,10 +39,18 @@ export const GET = handleAuth({
   // VERIFIED against Auth0's own docs (2026-09-04,
   // auth0.com/docs/authenticate/login/logout/redirect-users-after-logout): "the
   // query string, and hash information provided as part of the URL are not taken
-  // into account" when validating `returnTo` against Allowed Logout URLs. So the
-  // already-allow-listed https://www.nextgamenight.app/goodbye covers the reason
-  // variant and NO Auth0 dashboard change is needed (owner confirmed the base
-  // URL is on that list, 2026-09-02).
+  // into account" when validating `returnTo` against Allowed Logout URLs. So ONE
+  // Allowed Logout URL per host, https://<host>/goodbye, covers both literals.
+  // CORRECTED Phase 89.6-03 (D1): until 2026-11-22 this note said the www goodbye
+  // address was already on that list and that no dashboard change was needed. That
+  // rested on the base URL being listed (owner, 2026-09-02); the goodbye address
+  // itself was not. On 2026-11-22 a live Delete My Account ended on Auth0's
+  // "something went wrong" page. The owner then added
+  // https://www.nextgamenight.app/goodbye and https://preview.nextgamenight.app/goodbye
+  // to the Auth0 application's Allowed Logout URLs and landed on the goodbye page
+  // (1:23 PM Pacific). A new host needs its own goodbye entry there: a human
+  // dashboard step, not a code change. Record:
+  // planning:.planning/deferred/phase-89.6.md ("D1: after Delete My Account").
   logout: handleLogout((req) => {
     const returnTo = new URL(req.url).searchParams.get('returnTo');
     if (returnTo === '/goodbye') return { returnTo: '/goodbye' };
