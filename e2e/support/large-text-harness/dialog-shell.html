@@ -1,0 +1,94 @@
+<!--
+  The dialog shell (the house Modal: its box, header with title and close, body and footer) in its four content cases.
+  One block per content case, marked with data-case; the matrix spec renders ONE case at a time.
+  The class tokens in double curly braces are filled by the matrix spec from the strings the Modal component exports,
+  and the close icon from the Icon component, so nothing here is a copy of a shipped class string.
+  The wrappers carry lt- hook names the app never styles. The frame has no side padding: the shell's percentage width
+  resolves against the window, as the shipped dialog's does. The border on the shell is the one-pixel border the dialog
+  primitive under the Modal draws, kept so the header has the shipped room. Each shell is marked data-room: the
+  dialog box is the room its words are measured against, as on the real pages, where the sweep reads a dialog with
+  the dialog itself as the root; without the mark the split check would measure a word against the page behind the
+  dialog and call the dialog's own gutter a box that holds the word narrow. Bodies are one line each, so no dialog
+  reaches its height cap (the tall dialog is another plan's case).
+  Every state is static markup: this file holds no script and no outside address.
+-->
+
+<section data-case="ordinary">
+  <main data-frame class="lt-frame py-4">
+    <div role="dialog" aria-modal="true" data-room class="lt-shell border border-line {{MODAL_SHELL_CLASS}} {{SIZE_DEFAULT}} mx-auto mt-4">
+      <div class="{{MODAL_HEADER_CLASS}}">
+        <h2 class="text-xl font-bold leading-tight {{MODAL_TITLE_CLASS}}">Create Event</h2>
+        <button type="button" aria-label="Close" data-modal-close="" class="{{MODAL_CLOSE_CLASS}}">{{CLOSE_ICON}}</button>
+      </div>
+      <div class="{{MODAL_BODY_CLASS}}">
+        <p class="text-base text-content-secondary">Pick a day and a time.</p>
+      </div>
+      <div class="{{MODAL_FOOTER_CLASS}}">
+        <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Close</span></button>
+      </div>
+    </div>
+    <div role="dialog" aria-modal="true" data-room class="lt-shell border border-line {{MODAL_SHELL_CLASS}} {{SIZE_DEFAULT}} mx-auto mt-4">
+      <div class="{{MODAL_HEADER_CLASS}}">
+        <h2 class="text-xl font-bold leading-tight {{MODAL_TITLE_CLASS}}">Manage Group Members</h2>
+        <button type="button" aria-label="Close" data-modal-close="" class="{{MODAL_CLOSE_CLASS}}">{{CLOSE_ICON}}</button>
+      </div>
+      <div class="{{MODAL_BODY_CLASS}}">
+        <p class="text-base text-content-secondary">Four members.</p>
+      </div>
+      <div class="{{MODAL_FOOTER_CLASS}}">
+        <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Close</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="empty">
+  <main data-frame class="lt-frame py-4">
+    <div role="dialog" aria-modal="true" data-room class="lt-shell border border-line {{MODAL_SHELL_CLASS}} {{SIZE_DEFAULT}} mx-auto mt-4">
+      <div class="{{MODAL_HEADER_CLASS}}">
+        <h2 class="text-xl font-bold leading-tight {{MODAL_TITLE_CLASS}}">Manage Group Members</h2>
+        <button type="button" aria-label="Close" data-modal-close="" class="{{MODAL_CLOSE_CLASS}}">{{CLOSE_ICON}}</button>
+      </div>
+      <div class="{{MODAL_BODY_CLASS}}">
+        <p class="text-base text-content-secondary">Loading members...</p>
+      </div>
+      <div class="{{MODAL_FOOTER_CLASS}}">
+        <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Close</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="word30">
+  <main data-frame class="lt-frame py-4">
+    <div role="dialog" aria-modal="true" data-room class="lt-shell border border-line {{MODAL_SHELL_CLASS}} {{SIZE_DEFAULT}} mx-auto mt-4">
+      <div class="{{MODAL_HEADER_CLASS}}">
+        <h2 class="text-xl font-bold leading-tight {{MODAL_TITLE_CLASS}}">Grandmasterboardgamecollective</h2>
+        <button type="button" aria-label="Close" data-modal-close="" class="{{MODAL_CLOSE_CLASS}}">{{CLOSE_ICON}}</button>
+      </div>
+      <div class="{{MODAL_BODY_CLASS}}">
+        <p class="text-base text-content-secondary">Hosted by Grandmasterboardgamecollective</p>
+      </div>
+      <div class="{{MODAL_FOOTER_CLASS}}">
+        <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Close</span></button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<section data-case="emoji">
+  <main data-frame class="lt-frame py-4">
+    <div role="dialog" aria-modal="true" data-room class="lt-shell border border-line {{MODAL_SHELL_CLASS}} {{SIZE_DEFAULT}} mx-auto mt-4">
+      <div class="{{MODAL_HEADER_CLASS}}">
+        <h2 class="text-xl font-bold leading-tight {{MODAL_TITLE_CLASS}}">Weekend Warriors 🎲</h2>
+        <button type="button" aria-label="Close" data-modal-close="" class="{{MODAL_CLOSE_CLASS}}">{{CLOSE_ICON}}</button>
+      </div>
+      <div class="{{MODAL_BODY_CLASS}}">
+        <p class="text-base text-content-secondary">Six members play on Saturdays.</p>
+      </div>
+      <div class="{{MODAL_FOOTER_CLASS}}">
+        <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Close</span></button>
+      </div>
+    </div>
+  </main>
+</section>

@@ -3,6 +3,19 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import postcss, { type AcceptedPlugin } from 'postcss';
 import tailwindcss from '@tailwindcss/postcss';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import {
+  MODAL_BODY_CLASS,
+  MODAL_CLOSE_CLASS,
+  MODAL_FOOTER_CLASS,
+  MODAL_HEADER_CLASS,
+  MODAL_SHELL_CLASS,
+  MODAL_TITLE_CLASS,
+  SIZE_CLASS,
+} from '../src/app/components/Modal';
+import { Icon, iconTextSize } from '../src/components/ui/Icon';
+import { readShell, shellProblems, type ShellGeometry } from './support/largeTextSurfaces/dialogShell';
 import {
   THIRTY_LETTER_WORD,
   expectLargeTextCell,
@@ -47,6 +60,12 @@ import {
 // change R6, which replaced its method): its rule has parts, and each part has a case that goes
 // red when that part alone is taken out. The last tests pin the harness cut.
 //
+// THE DIALOG SHELL (Phase 89.6-10). The sixth block is not a class set in globals.css: it is the
+// house Modal's shell, rendered from the class strings src/app/components/Modal.tsx exports and
+// the real close icon. Its harness holds tokens in double curly braces, which BLOCK_OPTIONS fills,
+// and each cell also reads the shell's own geometry (the close box, its icon, the buttons, the
+// title) and attaches it as shell-geometry.
+//
 // HOW 200% IS PRODUCED. A style tag sets the root font size to 200%, so every rem doubles, as
 // e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED") explains. Browser zoom is not used.
 //
@@ -70,7 +89,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 const HARNESS_DIR = resolve(__dirname, 'support/large-text-harness');
 
 /** The building blocks under test; each has a harness file of the same name. Later plans append. */
-const BLOCKS = ['bb-row', 'bb-cluster', 'bb-media', 'bb-columns', 'bb-frame'] as const;
+const BLOCKS = ['bb-row', 'bb-cluster', 'bb-media', 'bb-columns', 'bb-frame', 'dialog-shell'] as const;
 /** The four content cases every block is rendered with, each a section of the harness file. */
 const CASES = ['ordinary', 'empty', 'word30', 'emoji'] as const;
 
@@ -129,10 +148,80 @@ const BLOCK_BOX_SCOPE = '[data-frame], [data-frame] *';
 /** src/app/globals.css as the app ships it, plus the utilities the harness pages use. */
 let compiledCss = '';
 
+/** What a block may add to the shared cell test. A block with no entry is a class set in globals.css. */
+interface BlockOptions {
+  /** Fills the tokens of one harness case before it is rendered. */
+  fill: (section: string, file: string) => string;
+  /** The block's own read of the rendered case: what it measured (attached) and what is wrong with it. */
+  extras: (page: Page, mode: TextMode, tag: string) => Promise<{ geometry: unknown; problems: string[] }>;
+  /** The name the geometry is attached under. */
+  attachment: string;
+  /** false: the two 768 / 200% renders are not compared box by box. */
+  compareModes: boolean;
+  /** The class tokens the compiled stylesheet must hold a rule for, in place of a rule named after the block. */
+  ruleTokens: () => string[];
+}
+
+const tokensOf = (value: string): string[] => value.split(/\s+/).filter(Boolean);
+
+/** The real close icon of the Modal header: the Icon call of src/app/components/Modal.tsx ("size={20} strokeWidth={2} followText"), rendered on the server side of this process. */
+const closeIconMarkup = (): string => renderToStaticMarkup(createElement(Icon, { name: 'X', size: 20, strokeWidth: 2, followText: true }));
+
+/** The tokens of the dialog-shell harness and the shipped string each stands for. */
+const shellTokens = (): Record<string, string> => ({
+  MODAL_SHELL_CLASS,
+  MODAL_HEADER_CLASS,
+  MODAL_TITLE_CLASS,
+  MODAL_CLOSE_CLASS,
+  MODAL_BODY_CLASS,
+  MODAL_FOOTER_CLASS,
+  SIZE_DEFAULT: SIZE_CLASS.default,
+  CLOSE_ICON: closeIconMarkup(),
+});
+
+// DECISION Phase 89.6-10 (dialog-shell-block): the shell block renders the exported Modal.tsx
+// strings, chosen OVER a harness copy (it passes while Modal.tsx drifts), and it skips the
+// cross-mode box comparison because the shell's width and padding switch on the md media query,
+// which the default-font-32 mode moves on purpose (research M1); both modes still pass the five
+// checks. Changing this is a decision, not a cleanup.
+const BLOCK_OPTIONS: Partial<Record<(typeof BLOCKS)[number], BlockOptions>> = {
+  'dialog-shell': {
+    fill: (section, file) => {
+      const tokens = shellTokens();
+      for (const [name, value] of Object.entries(tokens)) {
+        if (typeof value !== 'string' || value.trim() === '') throw new Error(`${file}: the shell token ${name} has no value, so the case would render without a shipped string`);
+      }
+      if (!tokens.CLOSE_ICON.includes(`width:${iconTextSize(20)}`)) throw new Error(`${file}: the close icon markup does not carry the size that follows the text (${tokens.CLOSE_ICON})`);
+      const filled = section.replace(/\{\{([A-Z_0-9]+)\}\}/g, (whole, name: string) => tokens[name] ?? whole);
+      if (filled.includes('{{')) throw new Error(`${file}: a token was left unfilled (${filled.match(/\{\{[^}]*\}\}/)?.[0] ?? 'an open brace pair'})`);
+      return filled;
+    },
+    extras: async (page, mode, tag) => {
+      const dialogs = page.locator('[data-frame] [role="dialog"]');
+      const count = await dialogs.count();
+      const geometry: ShellGeometry[] = [];
+      const problems: string[] = count > 0 ? [] : [`${tag}: the case holds no dialog shell`];
+      for (let at = 0; at < count; at += 1) {
+        const read = await readShell(dialogs.nth(at));
+        geometry.push(read);
+        if (!read.footer) problems.push(`${tag} shell ${at}: the shell holds no footer (a direct child with a top border)`);
+        if (read.buttons.filter((button) => button.part === 'footer').length === 0) problems.push(`${tag} shell ${at}: the footer holds no button`);
+        problems.push(...shellProblems(read, mode, `${tag} shell ${at}`));
+      }
+      return { geometry, problems };
+    },
+    attachment: 'shell-geometry',
+    compareModes: false,
+    ruleTokens: () => [MODAL_SHELL_CLASS, MODAL_HEADER_CLASS, MODAL_TITLE_CLASS, MODAL_CLOSE_CLASS, MODAL_BODY_CLASS, MODAL_FOOTER_CLASS, SIZE_CLASS.default].flatMap(tokensOf),
+  },
+};
+
 test.beforeAll(async () => {
   // The entry is a string, not a file: it imports the real stylesheet and adds the harness folder
   // to the sources Tailwind scans. The from path only anchors the two relative paths.
-  const entry = '@import "../../../src/app/globals.css";\n@source "./*.html";\n';
+  // Modal.tsx is a source too (Phase 89.6-10): the dialog-shell block renders the class strings it
+  // exports, so every class in them must be in the stylesheet.
+  const entry = '@import "../../../src/app/globals.css";\n@source "./*.html";\n@source "../../../src/app/components/Modal.tsx";\n';
   // The cast: @tailwindcss/postcss is typed against its own nested copy of postcss, so its plugin
   // type and this file's postcss differ by name only. postcss.config.js loads the same plugin.
   const plugin = tailwindcss() as unknown as AcceptedPlugin;
@@ -225,8 +314,24 @@ async function blockBoxesOf(page: Page): Promise<Box[]> {
  * reads pass with no rules at all still fails here. It is not part of beforeAll, where one missing
  * block would fail every test with the hook's error and hide which cell broke.
  */
-function expectBlockRule(block: string, tag: string): void {
-  expect(new RegExp(`\\.${block}\\s*\\{`).test(compiledCss), `${tag}: the compiled stylesheet holds no .${block} rule, so this cell rendered without the block`).toBe(true);
+function expectBlockRule(block: (typeof BLOCKS)[number], tag: string): void {
+  const options = BLOCK_OPTIONS[block];
+  if (!options) {
+    expect(new RegExp(`\\.${block}\\s*\\{`).test(compiledCss), `${tag}: the compiled stylesheet holds no .${block} rule, so this cell rendered without the block`).toBe(true);
+    return;
+  }
+  // A block rendered from exported class strings has no rule of its own name: every token of
+  // those strings must have a rule instead (a utility is written with its special characters escaped).
+  const missing = options.ruleTokens().filter((token) => !compiledCss.includes(`.${token.replace(/[^a-zA-Z0-9_-]/g, '\\$&')}`));
+  expect(missing, `${tag}: the compiled stylesheet holds no rule for these class tokens of ${block}, so this cell rendered without them`).toEqual([]);
+}
+
+/** One case of a block's harness, cut and, for a block with tokens, filled. */
+function caseOf(block: (typeof BLOCKS)[number], harness: string, name: string): string {
+  const file = `${block}.html`;
+  const cut = sectionOf(harness, name, file);
+  const options = BLOCK_OPTIONS[block];
+  return options ? options.fill(cut, file) : cut;
 }
 
 for (const block of BLOCKS) {
@@ -237,17 +342,22 @@ for (const block of BLOCKS) {
         const requests = await countRequests(page);
         const harness = harnessOf(block);
         const reads: Array<{ case: string; window: number; read: PageZoomRead }> = [];
+        const options = BLOCK_OPTIONS[block];
+        const extras: Record<string, { geometry: unknown; problems: string[] }> = {};
         for (const name of CASES) {
-          await renderSection(page, cell, sectionOf(harness, name, `${block}.html`), `${zoomName} ${name}`);
+          await renderSection(page, cell, caseOf(block, harness, name), `${zoomName} ${name}`);
           const window = await page.evaluate(() => document.documentElement.clientWidth);
           reads.push({ case: name, window, read: await readPageZoomCell(frameOf(page)) });
+          if (options) extras[name] = await options.extras(page, cell.mode, `${zoomName} ${name}`);
         }
         // Attached BEFORE asserting: what is only recorded at these widths lives here.
         await testInfo.attach('cell-read', { body: JSON.stringify(reads, null, 2), contentType: 'application/json' });
+        if (options) await testInfo.attach(options.attachment, { body: JSON.stringify(extras, null, 2), contentType: 'application/json' });
         for (const { case: name, window, read } of reads) {
           const tag = `${zoomName} ${name}`;
           expect(window, `${tag}: the window is not ${cell.width}px wide`).toBe(cell.width);
           expectPageZoomUsable(read, tag);
+          if (options) expect(extras[name].problems, `${tag}: the block's own read found problems`).toEqual([]);
         }
         expect(reads.length, `${zoomName}: four content cases were to be read`).toBe(4);
         expect(requests, `${zoomName}: the page made a request`).toEqual([]);
@@ -261,17 +371,22 @@ for (const block of BLOCKS) {
       const harness = harnessOf(block);
       const reads: Array<{ case: string; read: LargeTextCellRead }> = [];
       const styleTagBoxes: Record<string, Box[]> = {};
+      const options = BLOCK_OPTIONS[block];
+      const extras: Record<string, { geometry: unknown; problems: string[] }> = {};
       for (const name of CASES) {
-        await renderSection(page, cell, sectionOf(harness, name, `${block}.html`), `${cellName} ${name}`);
+        await renderSection(page, cell, caseOf(block, harness, name), `${cellName} ${name}`);
         reads.push({ case: name, read: await readLargeTextCell(frameOf(page)) });
         styleTagBoxes[name] = await blockBoxesOf(page);
+        if (options) extras[name] = await options.extras(page, cell.mode, `${cellName} ${name}`);
       }
       // Attached BEFORE asserting, so a red cell still leaves its four reads behind.
       await testInfo.attach('cell-read', { body: JSON.stringify(reads, null, 2), contentType: 'application/json' });
+      if (options) await testInfo.attach(options.attachment, { body: JSON.stringify(extras, null, 2), contentType: 'application/json' });
       for (const { case: name, read } of reads) {
         const tag = `${cellName} ${name}`;
         expect(read.window, `${tag}: the window is not ${cell.width}px wide`).toBe(cell.width);
         expectLargeTextCell(read, tag);
+        if (options) expect(extras[name].problems, `${tag}: the block's own read found problems`).toEqual([]);
       }
       expect(reads.length, `${cellName}: four content cases were to be read`).toBe(4);
       expect(requests, `${cellName}: the page made a request`).toEqual([]);
@@ -287,16 +402,22 @@ for (const block of BLOCKS) {
         const secondRequests = await countRequests(second);
         const font32Reads: Array<{ case: string; read: LargeTextCellRead }> = [];
         const font32Boxes: Record<string, Box[]> = {};
+        const font32Extras: Record<string, { geometry: unknown; problems: string[] }> = {};
         for (const name of CASES) {
           // setTextMode is a no-op on this page after the first case: font32 is a page setting.
-          await renderSection(second, { ...cell, mode: 'font32' }, sectionOf(harness, name, `${block}.html`), `${cellName} font32 ${name}`);
+          await renderSection(second, { ...cell, mode: 'font32' }, caseOf(block, harness, name), `${cellName} font32 ${name}`);
           font32Reads.push({ case: name, read: await readLargeTextCell(frameOf(second)) });
           font32Boxes[name] = await blockBoxesOf(second);
+          if (options) font32Extras[name] = await options.extras(second, 'font32', `${cellName} font32 ${name}`);
         }
         await testInfo.attach('mode-boxes', { body: JSON.stringify({ styleTag: styleTagBoxes, font32: font32Boxes, font32Reads }, null, 2), contentType: 'application/json' });
+        if (options) await testInfo.attach(`${options.attachment}-font32`, { body: JSON.stringify(font32Extras, null, 2), contentType: 'application/json' });
         for (const { case: name, read } of font32Reads) {
           const tag = `${cellName} font32 ${name}`;
           expectLargeTextCell(read, tag);
+          if (options) expect(font32Extras[name].problems, `${tag}: the block's own read found problems`).toEqual([]);
+          // A block whose layout switches on a media query is not compared box by box: see its entry in BLOCK_OPTIONS.
+          if (options && !options.compareModes) continue;
           const want = styleTagBoxes[name];
           const got = font32Boxes[name];
           expect(got.length, `${tag}: the two modes drew a different number of block boxes`).toBe(want.length);

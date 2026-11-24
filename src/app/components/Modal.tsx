@@ -45,11 +45,36 @@ import { cn } from '@/lib/cn';
 export type ModalSize = 'sm' | 'default' | 'lg';
 
 /** size -> max-width. `default` matches the legacy `max-w-lg` modal width. */
-const SIZE_CLASS: Record<ModalSize, string> = {
+export const SIZE_CLASS: Record<ModalSize, string> = {
   sm: 'max-w-sm',
   default: 'max-w-lg',
   lg: 'max-w-4xl',
 };
+
+/* The dialog parts' class strings (Phase 89.6-10), exported so three renderers use the SAME
+   strings: the parts below, FriendInvitePanel's own header, and the large-text matrix's
+   dialog-shell block, which renders them in every cell. One string per line, and SIZE_CLASS
+   above is exported for the same reason. Each part's decisions stay at its use site below; a
+   change to a string here is a change to every dialog, so read that part's markers first. */
+export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full';
+/* DECISION Phase 89.6-10 (T1b): GR (owner, 2026-11-22: 'A row stays a row while everything in it
+   fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid
+   stacking.'): the close sits beside the title while the title's longest word fits beside it,
+   centred on the title block (owner pick E8b), and on its own top row at the right when it does
+   not, chosen OVER the UI-SPEC Close row 'sits on the title's first line' (UI-SPEC correction
+   R-C2) and OVER a float beside the title (lane D measured Chromium breaking the word beside the
+   float). rounded-btn on the close is ring geometry G1 (focus ring only; the close has no fill).
+   Why the stacked close may be drawn above the title while it follows the title in the DOM, when
+   the F4 footer refuses column-reverse: the close is the header's only focusable, so keyboard
+   order equals seen order (Tab reaches the close first either way); a screen reader's swipe reads
+   the title, then the close, which is the dialog's own name first, as on open; putting the close
+   first in the DOM would make every dialog read Close before its title. Checked on VoiceOver at
+   plan 89.6-32. Changing this is a decision, not a cleanup. */
+export const MODAL_HEADER_CLASS = 'flex flex-wrap-reverse items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-6 md:py-3';
+export const MODAL_TITLE_CLASS = 'grow basis-[min-content] max-w-full wrap-break-word text-content-primary';
+export const MODAL_CLOSE_CLASS = 'ml-auto inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-btn text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring';
+export const MODAL_BODY_CLASS = 'relative flex-1 overflow-y-auto p-3 md:p-6';
+export const MODAL_FOOTER_CLASS = 'flex justify-end gap-3 border-t border-border px-3 py-4 md:px-6';
 
 /**
  * Outside-dismiss guard (D-09). When the modal is NOT dismissable, cancel the
@@ -399,7 +424,8 @@ function ModalRoot({
 
              Gated by `Modal.test.tsx`: the rendered shell carries `max-h-[90dvh]`, and a
              comment-stripped scan of this file finds no viewport-height unit but `dvh`. */
-          'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full',
+          /* Phase 89.6-10: the string both markers above describe is MODAL_SHELL_CLASS, at the top of this file. */
+          MODAL_SHELL_CLASS,
           SIZE_CLASS[size],
           className
         )}
@@ -486,13 +512,27 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
          letting the close box shrink (it is the 44px floor of 88-CODE-REVIEW D1). A title whose
          words fit beside the close box, every title at ordinary text, is laid out as before.
          Arithmetic on the class sizes; the rendered proof is
-         e2e/manage-members-refresh.spec.ts ("G4 (88.9-52): the member menu is whole"). */
-      className={cn(
-        'flex items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-6 md:py-3',
-        className
-      )}
+         e2e/manage-members-refresh.spec.ts ("G4 (88.9-52): the member menu is whole").
+
+         AMENDED Phase 89.6-10 (T1b): measured at 320 with 200% text, the rule above gave the title
+         118px beside an 88px close, so wrap-break-word broke every word of Manage Group Members
+         (research lane D F-D1). Now the header wraps reversed, the title's basis is its longest
+         word and it grows, and the close keeps its line with ml-auto: when the longest word cannot
+         sit beside the close, the close moves to its own row ABOVE the title and the title takes
+         the whole row; a word breaks only when it is wider than that row. The title carries
+         max-w-full and no min-w-0 (HR-2: the automatic minimum is clamped by the max-width, so the
+         word30 case still breaks at the row), chosen OVER lane D's min-w-0. The close box is 44 CSS
+         px at every text size and its icon follows the text up to 32px (owner pick O-M4 = Fixed+,
+         2026-11-22: 'The box stays 44px, and the icon inside grows with the text up to 32px'),
+         chosen OVER the rem box that doubled to 88px. The CHOSEN OVER wrap-anywhere reasoning above
+         stands as history. The rendered proof is the dialog-shell block of
+         e2e/large-text-blocks.spec.ts ("DECISION Phase 89.6-10 (dialog-shell-block)").
+
+         Phase 89.6-10: the header, title and close strings these markers describe are
+         MODAL_HEADER_CLASS, MODAL_TITLE_CLASS and MODAL_CLOSE_CLASS, at the top of this file. */
+      className={cn(MODAL_HEADER_CLASS, className)}
     >
-      <DialogTitle className="min-w-0 wrap-break-word text-content-primary">
+      <DialogTitle className={MODAL_TITLE_CLASS}>
         {children}
       </DialogTitle>
       {/* 88-CODE-REVIEW D1 (2026-08-06): 44px REAL box (min-h-11/min-w-11, the KebabMenu/88-28
@@ -504,7 +544,9 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
           ~84px.
           DECISION Phase 88.9-29 E8b: a stroked 20px X icon over the 24px text glyph (owner pick
           E8b, 88.9-PICKS-B4.json, 2026-11-06) — one close icon on every dialog; the 44px box is
-          unchanged. */}
+          unchanged.
+          AMENDED Phase 89.6-10: the 44px box is now px (O-M4 Fixed+); it still never changes
+          boundingBox to below 44. */}
       {/* 88.6.1 code review A-44: `data-modal-close` is the STABLE hook a consumer uses to ask "is
           focus still on the header close?" (createEvent.js's late initial focus), so no consumer
           matches the label text, which a rename or translation would silently break. Removing it is
@@ -514,7 +556,7 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
         aria-label="Close"
         aria-disabled={closeDisabled || undefined}
         className={cn(
-          'inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
+          MODAL_CLOSE_CLASS,
           // Unavailable presentation only — stays focusable (a real `disabled`
           // would drop keyboard focus mid-interaction); the consumer's onClose
           // guard is what makes the click inert. See `closeDisabled` doc above.
@@ -527,7 +569,7 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
           closeClassName
         )}
       >
-        <Icon name="X" size={20} strokeWidth={2} />
+        <Icon name="X" size={20} strokeWidth={2} followText />
       </DialogClose>
     </div>
   );
@@ -581,8 +623,9 @@ function ModalBody({ children, className }: ModalBodyProps) {
        not. The kebab's fit-on-open reads overflow, not position. Focus rings were clipped by
        the Body before and are clipped by it now.
        Pinned by this dialog's own test, "L3: an sr-only box straight in the Body, and one
-       nested in it, are held by the Body". Removing `relative` is a decision, not a cleanup. */
-    <div className={cn('relative flex-1 overflow-y-auto p-3 md:p-6', className)}>{children}</div>
+       nested in it, are held by the Body". Removing `relative` is a decision, not a cleanup.
+       Phase 89.6-10: the string these markers describe is MODAL_BODY_CLASS, at the top of this file. */
+    <div className={cn(MODAL_BODY_CLASS, className)}>{children}</div>
   );
 }
 
@@ -597,11 +640,9 @@ function ModalFooter({ children, className }: ModalFooterProps) {
     <div
       /* 88-33 Task 3 (fork 6): the footer rides the SAME horizontal scale as the header and
          body — otherwise the footer's actions sit on a third, different left/right edge at
-         phone width. Vertical padding is unchanged; the footer has no 44px box driving it. */
-      className={cn(
-        'flex justify-end gap-3 border-t border-border px-3 py-4 md:px-6',
-        className
-      )}
+         phone width. Vertical padding is unchanged; the footer has no 44px box driving it.
+         Phase 89.6-10: the string this note describes is MODAL_FOOTER_CLASS, at the top of this file. */
+      className={cn(MODAL_FOOTER_CLASS, className)}
     >
       {children}
     </div>

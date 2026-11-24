@@ -24,7 +24,16 @@ import { DialogTitle } from '../../components/ui/dialog';
 import { announceStatus } from '../../components/ui/announcer';
 import { RootAnnouncer } from '../../components/ui/RootAnnouncer';
 import { REGION_EMPTY_DWELL_MS } from '../../components/ui/StatusRegion';
-import { Modal, preventNonDismissableClose } from './Modal';
+import {
+  MODAL_BODY_CLASS,
+  MODAL_CLOSE_CLASS,
+  MODAL_FOOTER_CLASS,
+  MODAL_HEADER_CLASS,
+  MODAL_SHELL_CLASS,
+  MODAL_TITLE_CLASS,
+  Modal,
+  preventNonDismissableClose,
+} from './Modal';
 
 afterEach(cleanup);
 
@@ -901,9 +910,14 @@ describe('Modal padding scale (fork 6)', () => {
     expect(headerEl().className).toContain('md:py-3');
     expect(headerEl().className).not.toMatch(/(^|\s)py-5(\s|$)/);
 
+    // AMENDED Phase 89.6-10 (T1b): the 44px box is in px now (owner pick O-M4 = Fixed+), so it is
+    // 44 at every text size; the rem box doubled to 88 at 200% text.
     const close = screen.getByRole('button', { name: 'Close' });
-    expect(close.className).toContain('min-h-11');
-    expect(close.className).toContain('min-w-11');
+    const closeTokens = close.className.split(/\s+/);
+    expect(closeTokens).toContain('min-h-[44px]');
+    expect(closeTokens).toContain('min-w-[44px]');
+    expect(closeTokens).not.toContain('min-h-11');
+    expect(closeTokens).not.toContain('min-w-11');
   });
 
   // R4 B3 (88.9-52, the round-4 re-shoot: in Manage Members at 320 with 200% text the close
@@ -912,16 +926,25 @@ describe('Modal padding scale (fork 6)', () => {
   // was pushed out. The title may now shrink and breaks inside a word only when that word cannot
   // fit; the close box never shrinks and keeps a gap from the title.
   // The marker is at src/app/components/Modal.tsx ("AMENDED Phase 88.9-52 (R4 B3, round 4").
+  // AMENDED Phase 89.6-10 (T1b): the title no longer shrinks beside the close. The header wraps
+  // reversed, the title's basis is its longest word and it grows, and the close keeps its line
+  // (ml-auto): when the longest word cannot sit beside the close, the close moves to its own row
+  // above the title. The title carries max-w-full and no min-w-0, so a word breaks only when it
+  // is wider than the whole row. The marker is at
+  // src/app/components/Modal.tsx ("AMENDED Phase 89.6-10 (T1b): measured at 320 with 200% text").
   it('R4 B3 (88.9-52): the header title may shrink and break, and the close box never shrinks', () => {
     renderModal();
     const header = headerEl();
-    expect(header.className.split(/\s+/)).toContain('gap-2');
+    for (const t of ['gap-2', 'flex-wrap-reverse', 'items-center']) expect(header.className.split(/\s+/), `the header lacks ${t}`).toContain(t);
     const title = header.querySelector('h2') as HTMLElement;
     expect(title, 'the header holds the dialog title').not.toBeNull();
-    for (const t of ['min-w-0', 'wrap-break-word']) expect(title.className.split(/\s+/), `the title lacks ${t}`).toContain(t);
+    for (const t of ['grow', 'basis-[min-content]', 'max-w-full', 'wrap-break-word', 'text-content-primary']) {
+      expect(title.className.split(/\s+/), `the title lacks ${t}`).toContain(t);
+    }
+    expect(title.className.split(/\s+/), 'the title shares a line, so it carries no min-w-0 (HR-2)').not.toContain('min-w-0');
     const close = screen.getByRole('button', { name: 'Close' });
     expect(close.parentElement).toBe(header);
-    expect(close.className.split(/\s+/)).toContain('shrink-0');
+    for (const t of ['shrink-0', 'ml-auto']) expect(close.className.split(/\s+/), `the close lacks ${t}`).toContain(t);
   });
 
   it('88.6.1 code review A-44: the header close carries the stable `data-modal-close` hook (consumers never match its label text)', () => {
@@ -929,6 +952,41 @@ describe('Modal padding scale (fork 6)', () => {
     const close = screen.getByRole('button', { name: 'Close' });
     expect(close).toHaveAttribute('data-modal-close');
     expect(document.querySelectorAll('[data-modal-close]')).toHaveLength(1);
+  });
+});
+
+// Phase 89.6-10: the shell, its header, title, close, body and footer render from the class
+// constants Modal.tsx exports, which FriendInvitePanel's own header and the large-text matrix's
+// dialog-shell block use too. A part that stopped rendering its constant would leave the matrix
+// reading strings the app no longer ships.
+describe('89.6-10 — the dialog shell is rendered from its exported class constants', () => {
+  const tokensOf = (value: string): string[] => value.split(/\s+/).filter(Boolean);
+
+  it('the shell, header, title, close, body and footer each carry every token of their constant', () => {
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    const header = dialog.firstElementChild as HTMLElement;
+    const title = screen.getByRole('heading', { level: 2, name: 'Start a check-in' });
+    const close = screen.getByRole('button', { name: 'Close' });
+    const body = screen.getByText('When are you free?').parentElement as HTMLElement;
+    const footer = screen.getByRole('button', { name: 'Cancel' }).parentElement as HTMLElement;
+    const parts: Array<[string, unknown, Element]> = [
+      ['MODAL_SHELL_CLASS', MODAL_SHELL_CLASS, dialog],
+      ['MODAL_HEADER_CLASS', MODAL_HEADER_CLASS, header],
+      ['MODAL_TITLE_CLASS', MODAL_TITLE_CLASS, title],
+      ['MODAL_CLOSE_CLASS', MODAL_CLOSE_CLASS, close],
+      ['MODAL_BODY_CLASS', MODAL_BODY_CLASS, body],
+      ['MODAL_FOOTER_CLASS', MODAL_FOOTER_CLASS, footer],
+    ];
+    for (const [name, value, el] of parts) {
+      expect(typeof value, `${name} is exported as a string`).toBe('string');
+      const want = tokensOf(String(value));
+      expect(want.length, `${name} holds class tokens`).toBeGreaterThanOrEqual(3);
+      const got = tokensOf(el.getAttribute('class') ?? '');
+      expect(want.filter((token) => !got.includes(token)), `${name}: tokens its part does not render`).toEqual([]);
+    }
+    expect(title.parentElement, 'the title sits in the header').toBe(header);
+    expect(close.parentElement, 'the close sits in the header').toBe(header);
   });
 });
 
@@ -954,7 +1012,10 @@ describe('Phase 88.9 round 2 — dialog fleet (C6a, E8b, C2a)', () => {
     // The header passes ink only: re-passing a text size makes tailwind-merge drop the base's leading.
     // AMENDED Phase 88.9-52 (R4 B3): ink plus the two tokens that let a long title shrink and break
     // (the test R4 B3 below); still no text size.
-    expect(MODAL_SRC).toContain('<DialogTitle className="min-w-0 wrap-break-word text-content-primary">');
+    // AMENDED Phase 89.6-10: the title renders the exported constant, which holds ink and layout
+    // tokens only; still no text size.
+    expect(MODAL_SRC).toContain('<DialogTitle className={MODAL_TITLE_CLASS}>');
+    expect(MODAL_TITLE_CLASS.split(/\s+/).filter((token) => /^text-(xs|sm|base|lg|xl|\dxl|\[)/.test(token)), 'the title constant passes no text size').toEqual([]);
   });
 
   it('E8b: header close is the stroked SVG, label Close, 44 box', () => {
@@ -968,9 +1029,15 @@ describe('Phase 88.9 round 2 — dialog fleet (C6a, E8b, C2a)', () => {
     expect(svg.getAttribute('stroke-width')).toBe('2');
     expect(svg.getAttribute('aria-hidden')).toBe('true');
     expect((close.textContent ?? '').trim()).toBe('');
+    // AMENDED Phase 89.6-10 (owner pick O-M4 = Fixed+): the icon follows the text up to 32px. The
+    // marker of the prop is read, never the inline size: jsdom drops an inline min() width, so the
+    // drawn 20 and 32 boxes are read in the browser by the dialog shell sweep rows.
+    expect(svg.hasAttribute('data-follow-text'), 'the close icon follows the text (Icon followText)').toBe(true);
     const t = tokens(close);
-    expect(t).toContain('min-h-11');
-    expect(t).toContain('min-w-11');
+    expect(t).toContain('min-h-[44px]');
+    expect(t).toContain('min-w-[44px]');
+    expect(t).not.toContain('min-h-11');
+    expect(t).not.toContain('min-w-11');
     expect(t).not.toContain('text-2xl');
     expect(t).not.toContain('leading-none');
   });

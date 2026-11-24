@@ -899,9 +899,13 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
           }
         }
         // R4 B3: the header's close box, with its 2px focus ring, ends inside the dialog and starts after the title.
+        // AMENDED Phase 89.6-10 (T1b): it may also sit on its own row above the title; it never overlaps the title.
         if (!read.shell || !read.close || !read.title) throw new Error(`${label}: the dialog, its close button or its title was not found`);
         expect(read.close.right + 2, `${label}: the close button's focus box ends past the dialog's right edge (${line})`).toBeLessThanOrEqual(read.shell.right + 0.5);
-        expect(read.close.left, `${label}: the close button starts over the title (${line})`).toBeGreaterThanOrEqual(read.title.right - 0.5);
+        expect(
+          read.close.left >= read.title.right - 0.5 || read.close.bottom <= read.title.top + 0.5,
+          `${label}: the close button overlaps the title (${line})`,
+        ).toBe(true);
         expect(read.close.right - read.close.left, `${label}: the close button is ${read.close.right - read.close.left}px wide`).toBeGreaterThanOrEqual(44);
         // Closed from its trigger (a tap does not focus the item on WebKit, so no Escape here).
         await trigger.scrollIntoViewIfNeeded();
@@ -922,7 +926,12 @@ test.describe('Phase 88.9-67 — a gated confirm keeps one width at 375px (phone
     // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
     // the large-text method and owns this read. When the screen is fixed this test reports an
     // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
-    test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
+    // AMENDED Phase 89.6-10 (T1b): the expected-failure mark is removed, as the note above asks.
+    // The read failed on the third menu item, which could not be scrolled whole into the menu: the
+    // letter-stacked title and the 88px close left the dialog body too short for it. With the
+    // header fixed (a 44px close, on its own row above the title) the body is tall enough, and
+    // this read passed with the mark still on, which the mark reports as a failure (local run on
+    // the seeded group, 2026-11-24). It is a gate now, and plan 89.6-11 adds the 320 x 568 arm.
     await memberMenuProof(page, [['200%', [320]]]);
   });
 });
