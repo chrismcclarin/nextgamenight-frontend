@@ -1078,4 +1078,58 @@ test.describe('Phase 89.6-11 — Manage Members on a phone at large text (phone 
     ).toBeLessThanOrEqual(sheetBox.y + 0.5);
     expectNoApiWrites(hold);
   });
+
+  // J2 (owner pick J = J2, 2026-11-22: 'On phones the dialog opens at full height straight away, so
+  // nothing moves'). The dialog's own first members read is held, the title and the footer Close
+  // are read while "Loading members..." shows, the read is released, and both are read again once
+  // the list has landed. The roster route is installed only after the group page has made its own
+  // members read and shown the Manage Members button, so the page's read is never held.
+  test('J2 (89.6-11): on a phone Manage Members opens at full height, so nothing moves when the list lands', async ({ page }) => {
+    const hold = await holdWrites(page);
+    const pageMembersRead = page.waitForResponse(
+      (response) => isMembersRead(new URL(response.url())) && response.request().method() === 'GET',
+    );
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await pageMembersRead;
+    const manage = page.getByRole('button', { name: 'Manage Members' });
+    await expect(manage).toBeVisible({ timeout: 15_000 });
+
+    let release: () => void = () => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await routeMemberRoster(page, E2E_GROUP_ID, async (rows) => {
+      await released;
+      return rows;
+    });
+    try {
+      expect(page.viewportSize()).toEqual({ width: 375, height: 667 });
+      // The first open on a fresh page: a reopen would paint the kept roster at once.
+      await manage.tap();
+      const dialog = page.getByRole('dialog', { name: 'Manage Group Members' });
+      await expect(dialog).toBeVisible({ timeout: 15_000 });
+      await expect(dialog.getByText('Loading members...', { exact: true })).toBeVisible({ timeout: 15_000 });
+      await settleAnimations(dialog);
+      const title = dialog.getByRole('heading', { name: 'Manage Group Members' });
+      const footerClose = dialog.getByRole('button', { name: 'Close', exact: true }).filter({ hasText: 'Close' });
+      const read = async () => {
+        const boxes = { title: await title.boundingBox(), close: await footerClose.boundingBox(), dialog: await dialog.boundingBox() };
+        if (!boxes.title || !boxes.close || !boxes.dialog) throw new Error('J2: the title, the footer Close or the dialog has no box');
+        return { titleTop: boxes.title.y, closeTop: boxes.close.y, dialogTop: boxes.dialog.y, dialogHeight: boxes.dialog.height };
+      };
+      const heldRead = await read();
+
+      release();
+      await expect(dialog.getByText('(You)', { exact: true })).toBeVisible({ timeout: 15_000 });
+      await settleAnimations(dialog);
+      const landed = await read();
+      const line = JSON.stringify({ held: heldRead, landed });
+      expect(Math.abs(landed.titleTop - heldRead.titleTop), `J2: the title moved when the list landed (${line})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(landed.closeTop - heldRead.closeTop), `J2: the footer Close moved when the list landed (${line})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(heldRead.dialogHeight - 0.9 * 667), `J2: while its list loads the dialog is not 90% of the screen tall (${line})`).toBeLessThanOrEqual(1);
+      expectNoApiWrites(hold);
+    } finally {
+      release();
+    }
+  });
 });
