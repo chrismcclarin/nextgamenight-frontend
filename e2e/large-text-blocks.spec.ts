@@ -145,10 +145,23 @@ function harnessOf(block: string): string {
   return readFileSync(resolve(HARNESS_DIR, `${block}.html`), 'utf8');
 }
 
-/** One section of a harness file, by its data-case attribute. */
-function sectionOf(harness: string, name: string): string {
+/**
+ * One section of a harness file, by its data-case attribute; `file` names the harness in an error.
+ *
+ * DECISION Phase 89.6-05 (section-cut), orchestrator fix R3, 2026-11-24: a case is cut at the
+ * FIRST closing section tag, and a case that nests a section element THROWS, chosen OVER the
+ * silent cut it was (the case rendered only as far as the inner element's end and every cell
+ * passed on half a page: plan 89.6-05 met it with two column sections) and OVER a cut that
+ * balances nested tags (a parser in a test helper, for a shape a div serves as well). Making the
+ * match greedy instead joins every case after this one into it. Changing this is a decision, not
+ * a cleanup.
+ */
+function sectionOf(harness: string, name: string, file: string): string {
   const match = harness.match(new RegExp(`<section data-case="${name}"[^>]*>[\\s\\S]*?</section>`));
-  if (!match) throw new Error(`the harness has no section with data-case="${name}"`);
+  if (!match) throw new Error(`${file}: the harness has no section with data-case="${name}"`);
+  if ((match[0].match(/<section\b/g) ?? []).length > 1) {
+    throw new Error(`${file}: the case "${name}" nests a section element. A case is cut at the first closing section tag, so only part of it would render: use a div.`);
+  }
   return match[0];
 }
 
@@ -218,7 +231,7 @@ for (const block of BLOCKS) {
         const harness = harnessOf(block);
         const reads: Array<{ case: string; window: number; read: PageZoomRead }> = [];
         for (const name of CASES) {
-          await renderSection(page, cell, sectionOf(harness, name), `${zoomName} ${name}`);
+          await renderSection(page, cell, sectionOf(harness, name, `${block}.html`), `${zoomName} ${name}`);
           const window = await page.evaluate(() => document.documentElement.clientWidth);
           reads.push({ case: name, window, read: await readPageZoomCell(frameOf(page)) });
         }
@@ -242,7 +255,7 @@ for (const block of BLOCKS) {
       const reads: Array<{ case: string; read: LargeTextCellRead }> = [];
       const styleTagBoxes: Record<string, Box[]> = {};
       for (const name of CASES) {
-        await renderSection(page, cell, sectionOf(harness, name), `${cellName} ${name}`);
+        await renderSection(page, cell, sectionOf(harness, name, `${block}.html`), `${cellName} ${name}`);
         reads.push({ case: name, read: await readLargeTextCell(frameOf(page)) });
         styleTagBoxes[name] = await blockBoxesOf(page);
       }
@@ -269,7 +282,7 @@ for (const block of BLOCKS) {
         const font32Boxes: Record<string, Box[]> = {};
         for (const name of CASES) {
           // setTextMode is a no-op on this page after the first case: font32 is a page setting.
-          await renderSection(second, { ...cell, mode: 'font32' }, sectionOf(harness, name), `${cellName} font32 ${name}`);
+          await renderSection(second, { ...cell, mode: 'font32' }, sectionOf(harness, name, `${block}.html`), `${cellName} font32 ${name}`);
           font32Reads.push({ case: name, read: await readLargeTextCell(frameOf(second)) });
           font32Boxes[name] = await blockBoxesOf(second);
         }
@@ -307,7 +320,7 @@ const ZOOM_CHECK_CELL = { width: 215, height: 466, theme: 'light', mode: '100' }
 
 /** Render one twin of the checks harness and hand back the frame to read. */
 async function renderTwin(page: Page, name: string, cell: { width: number; height: number; theme: Theme; mode: TextMode } = CHECK_CELL): Promise<Locator> {
-  await renderSection(page, cell, sectionOf(harnessOf('checks'), name), `check twin ${name}`);
+  await renderSection(page, cell, sectionOf(harnessOf('checks'), name, 'checks.html'), `check twin ${name}`);
   return frameOf(page);
 }
 
@@ -471,13 +484,27 @@ test('check: A8 (89.6-02): reports its bad twin and passes its good twin', async
 });
 
 // ---------------------------------------------------------------------------------------------
+// The harness cut: a content case that nests a section element must fail loudly, not render half.
+// ---------------------------------------------------------------------------------------------
+
+test('harness (89.6-05, R3): a content case that nests a section throws, naming the file and the case', () => {
+  const nested = '<section data-case="word30"><main data-frame><section class="lt-col">One</section><div class="lt-col">Two</div></main></section>';
+  expect(() => sectionOf(nested, 'word30', 'doctored.html'), 'a case that nests a section was cut at the inner closing tag without a word').toThrow(
+    'doctored.html: the case "word30" nests a section element',
+  );
+  // The same case with a div in place of the inner section is handed back whole.
+  const flat = nested.replace('<section class="lt-col">One</section>', '<div class="lt-col">One</div>');
+  expect(sectionOf(flat, 'word30', 'doctored.html')).toBe(flat);
+});
+
+// ---------------------------------------------------------------------------------------------
 // The mode probe: the second 200% mode is the real browser setting, and the first can be left.
 // ---------------------------------------------------------------------------------------------
 
 test("mode (89.6-02): Chromium's default font 32 turns the 48rem media query off at 768 while a rem container query reads the same as the style tag", async ({ page }) => {
   const requests = await countRequests(page);
   const tag = 'mode probe';
-  const section = sectionOf(harnessOf('modes'), 'modes');
+  const section = sectionOf(harnessOf('modes'), 'modes', 'modes.html');
   const probes = () =>
     page.evaluate(() => {
       const shown = (name: string) => {
