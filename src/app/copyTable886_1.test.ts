@@ -174,7 +174,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'P82e', text: 'Group home page — events fetch', site: 'app/groupHomePage/page.js', kind: 'chunk' },
   // Not changing (the copy table's list; deferred register :238)
   { id: 'NC-1', text: 'Press again to confirm: {item}', site: 'app/components/KebabMenu.js', kind: 'fragments', fragments: ['Press again to confirm: ', ''] },
-  { id: 'NC-2', text: 'Confirmation cancelled.', site: 'app/components/KebabMenu.js', kind: 'chunk' },
+  // AMENDED Phase 89.6-07 (OW-2a / OW-2b): NC-2 is defined once, as DISARM_ANNOUNCEMENT in the two-tap hook (plan 89.6-04); the kebab imports it (IMPORTERS row NC-2).
+  { id: 'NC-2', text: 'Confirmation cancelled.', site: 'components/ui/useConfirmAction.ts', kind: 'chunk' },
   { id: 'NC-3', text: '{n} results available', site: 'components/ui/Combobox.tsx', kind: 'fragments', fragments: [' result', '', 's', ' available'] },
   { id: 'NC-4', text: 'Invite link copied to the clipboard.', site: 'app/components/FriendInvitePanel.js', kind: 'chunk' },
   // Code-review rulings CR-1..CR-7 (owner 2026-10-19, "ratify all"; close ledger §I, COPY-TABLE.html group
@@ -253,6 +254,7 @@ const IMPORTERS: Importer[] = [
   { importer: 'P80', file: 'app/components/EventCalendar.js', constant: 'CalendarLoadingCard', from: './CalendarLoadingCard', minUses: 1, noCopyOf: ['Loading calendar...'] },
   { importer: 'R2', file: 'app/components/FriendInvitePanel.js', constant: 'allFailedBatchLine', from: './friendBatchInviteOutcome', minUses: 1, noCopyOf: ["We couldn't send those invites. Please try again."] },
   { importer: 'R2', file: 'app/friends/page.js', constant: 'allFailedBatchLine', from: '../components/friendBatchInviteOutcome', minUses: 1, noCopyOf: ["We couldn't send those invites. Please try again."] },
+  { importer: 'NC-2', file: 'app/components/KebabMenu.js', constant: 'DISARM_ANNOUNCEMENT', from: '@/components/ui/useConfirmAction', minUses: 1, noCopyOf: ['Confirmation cancelled.'] },
 ];
 
 type RetiredScope = 'tree' | string[];

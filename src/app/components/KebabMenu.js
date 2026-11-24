@@ -12,7 +12,7 @@ import {
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { DelayedSpinner } from '@/components/ui/DelayedSpinner';
 import { ReservedLabel } from '@/components/ui/ReservedLabel';
-import { DEFAULT_ARMED_LABEL, DEFAULT_ARMED_NAME } from '@/components/ui/useConfirmAction';
+import { DEFAULT_ARMED_LABEL, DEFAULT_ARMED_NAME, DISARM_ANNOUNCEMENT } from '@/components/ui/useConfirmAction';
 import { useDismissal } from '@/components/ui/useDismissal';
 import { hostGroundHalo } from '@/components/ui/hostGround';
 import { cn } from '@/lib/cn';
@@ -50,10 +50,6 @@ import { cn } from '@/lib/cn';
 
 /* G4 (88.9-52): the clear space kept between an open menu and the edge of the box that clips it. */
 const MENU_EDGE_GAP_PX = 8;
-
-/* The sr-only copy emitted when an armed twoTap item reverts. It is NOT emitted
-   on a successful commit — see the close-resets effect below. */
-const REVERT_ANNOUNCEMENT = 'Confirmation cancelled.';
 
 /**
  * The Items API. This enumerated list IS the contract — there is deliberately no
@@ -274,12 +270,15 @@ export default function KebabMenu({
   // so a menu left open across a locked phone still shows its armed item, on its red band, when
   // the person returns. Inside a dialog, Escape closes the dialog and this menu with it
   // (this file ("THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD")),
-  // which unmounts the region and says nothing; nothing is left armed. Adding a revert timer back
-  // is a decision, not a cleanup.
+  // which unmounts the region and says nothing; nothing is left armed. The words are
+  // DISARM_ANNOUNCEMENT from
+  // src/components/ui/useConfirmAction.ts ("export const DISARM_ANNOUNCEMENT"),
+  // the one home the page buttons say too (owner OW-2b: Yes), chosen OVER a second copy of the
+  // sentence here. Adding a revert timer back is a decision, not a cleanup.
   useEffect(() => {
     if (!open) {
       if (armedIndex !== null) {
-        setAnnouncement(REVERT_ANNOUNCEMENT);
+        setAnnouncement(DISARM_ANNOUNCEMENT);
       }
       setArmedIndex(null);
     }
