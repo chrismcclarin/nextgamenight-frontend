@@ -726,6 +726,21 @@ test('check: split, T8 (89.6-02, R6): the read leaves the page as it found it: e
   expect(after.scrollerScroll, "the scrolling box's scroll offset moved").toEqual(before.scrollerScroll);
   expect(after.boxes, 'a box moved or changed size: the layout was not put back').toEqual(before.boxes);
   expect(again, 'a second read of the same page differs from the first').toEqual(read);
+  // The order of the page's own sheets, on a page where the read adopts its sheet exactly ONCE (one
+  // word, whole when its columns stack): on the page above the sheet list is put back an even
+  // number of times, and a list put back reversed each time would come out in order again.
+  const once = await renderTwin(page, 'split-multicol');
+  const sheetOrder = () => page.evaluate(() => document.adoptedStyleSheets.map((sheet) => Array.from(sheet.cssRules).map((rule) => rule.cssText).join(' ')));
+  await page.evaluate(() => {
+    const first = new CSSStyleSheet();
+    first.replaceSync('.lt-own-first { color: red; }');
+    const second = new CSSStyleSheet();
+    second.replaceSync('.lt-own-second { color: blue; }');
+    document.adoptedStyleSheets = [first, second];
+  });
+  const onceRead = await readLargeTextCell(once);
+  expect(onceRead.split.length, `the one-word page did not stack exactly one word (${JSON.stringify(onceRead)})`).toBe(1);
+  expect(await sheetOrder(), "the page's two adopted stylesheets are not in their order after a read that adopted its sheet once").toEqual(['.lt-own-first { color: red; }', '.lt-own-second { color: blue; }']);
   expect(requests, 'the page made a request').toEqual([]);
 });
 
