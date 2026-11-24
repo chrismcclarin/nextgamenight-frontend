@@ -625,12 +625,22 @@
   row makes it much shorter (a letter-stack becomes two lines): the scrolling box then has nothing
   left to scroll, and neither has the page, so both scroll offsets drop to 0 while a row is
   stacked, and an offset that drops to 0 does not come back by itself (measured; one that is only
-  shortened does). After the read every box, both scroll offsets and the page's adopted stylesheet
-  list are as they were.
+  shortened does). A third squeezed name sits in a box that scrolls SIDEWAYS, beside two fixed
+  boxes: stacked, nothing is left to scroll there either. After the read every box, all three
+  scroll offsets and the page's adopted stylesheet list are as they were.
 -->
 <section data-case="split-put-back">
   <main data-frame class="lt-frame px-4 py-4">
-    <div class="lt-scroller h-40 overflow-y-auto">
+    <div class="lt-xscroller h-24 overflow-x-auto overflow-y-hidden">
+      <div class="lt-row flex gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <p class="font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-2 w-[200px] flex-none bg-surface-sunken"></div>
+        <div aria-hidden="true" class="lt-fixed h-2 w-[200px] flex-none bg-surface-sunken"></div>
+      </div>
+    </div>
+    <div class="lt-scroller h-32 overflow-y-auto">
       <div class="lt-row flex gap-2">
         <div class="lt-wrap min-w-0 flex-1">
           <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
@@ -761,6 +771,148 @@
       <div class="lt-row flex gap-2">
         <div class="lt-name w-0 flex-1 font-semibold text-base text-content-primary">Weekend</div>
         <div aria-hidden="true" class="lt-fixed h-11 w-16 flex-none rounded-btn bg-surface-sunken"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!--
+  THE REPAIR CASES (after scoped check 1 of orchestrator change R6, 2026-11-24). Each says the list
+  its word must land in, and what the read as first built made of it.
+-->
+
+<!-- a full-bleed row, bad form only: the row is pulled into its card's padding by a negative side margin, so the name, whole once the row stacks, starts inside that padding. A box placed by its own margin has not spilled. SPLIT; the first build called it wide. -->
+<section data-case="split-full-bleed">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row -mx-3 flex gap-2">
+        <div class="lt-wrap min-w-0 flex-1">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- the same full-bleed row with its own side padding put back, bad form only. SPLIT. -->
+<section data-case="split-full-bleed-padded">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row -mx-3 flex gap-2 px-3">
+        <div class="lt-wrap min-w-0 flex-1">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+        </div>
+        <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- two squeezed rows in a box that scrolls sideways, bad form only: one at its start and one 330px in, past the first screen. Inside a sideways scroller a word is where the scroller's own scrolling puts it; that is no spill, at any scroll offset. SPLIT for both, read at two scroll offsets; the first build's verdict moved with the offset. -->
+<section data-case="split-sideways-scroller">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-xscroller overflow-x-auto">
+      <div class="lt-wide w-[600px]">
+        <div class="lt-row flex w-[250px] gap-2">
+          <div class="lt-wrap min-w-0 flex-1">
+            <p class="font-semibold text-base text-content-primary">Weekend</p>
+          </div>
+          <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+        </div>
+        <div class="lt-indent pl-[330px]">
+          <div class="lt-row flex w-[250px] gap-2">
+            <div class="lt-wrap min-w-0 flex-1">
+              <p class="font-semibold text-base text-content-primary">Warriors</p>
+            </div>
+            <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- places the browser breaks anyway, in 150px boxes with nothing to stack: a soft hyphen, an en dash and a slash. A break there is ordinary wrapping, found by measuring (the word is read again with forced breaks switched off), not by a list of characters. Not split; the first build called the first two split, as glued. -->
+<section data-case="split-natural-breaks">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-narrow w-[150px]"><p class="font-semibold text-base text-content-primary">Week&shy;enders</p></div>
+      <div class="lt-narrow w-[150px]"><p class="font-semibold text-base text-content-primary">Mon&ndash;Friday</p></div>
+      <div class="lt-narrow w-[150px]"><p class="font-semibold text-base text-content-primary">Mon/Friday</p></div>
+    </div>
+  </main>
+</section>
+
+<!--
+  a hyphenated word letter-stacked by a box beside it, bad form only. The first line sizes the box:
+  stacked, the paragraph has room for "Go auto-clo", so what is left is an ordinary wrap at the
+  hyphen. The word was broken inside itself only because of the row. SPLIT.
+-->
+<section data-case="split-hyphen-letter-stacked">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-fit w-fit max-w-full">
+      <p class="lt-sizer text-base text-content-primary">Go auto-clo</p>
+      <div class="lt-pill-row flex w-0 min-w-full">
+        <div class="lt-wrap min-w-0 flex-1">
+          <p class="lt-name text-base text-content-primary">Go auto-close</p>
+        </div>
+        <span aria-hidden="true" class="lt-fixed h-2 w-[120px] flex-none"></span>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- a word whose wrapping is important inside a cascade layer, bad form only: its forced breaks cannot be switched off, so its natural break points cannot be measured. COULD NOT UNWRAP in the split list, not a guess. -->
+<section data-case="split-important-wrap">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-narrow w-[150px]">
+        <p class="lt-name wrap-anywhere! font-semibold text-base text-content-primary">Weekenders</p>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- a label of fixed width with an icon positioned in its left padding: the word is wider than the label's content, so no line of the label would hold it. HELD by the label; the first build called it split, as glued to the icon. -->
+<section data-case="split-icon-label">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-name relative w-[170px] pl-[28px] font-semibold text-base text-content-primary"><span aria-hidden="true" class="absolute left-0 top-0 h-[40px] w-[20px] bg-surface-sunken"></span>Weekenders</div>
+    </div>
+  </main>
+</section>
+
+<!-- the breadcrumb of T11 with the text before the crumb drawn by the crumb's own ::before, bad form only: no element stands before the crumb, it is glued the same way, and a line of its own would hold it. SPLIT, as for the real separator; the first build called this one held. -->
+<section data-case="split-crumb-before">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <nav aria-label="Sample breadcrumb" class="lt-crumbs inline-block max-w-full px-3 font-semibold text-base text-content-primary"><span class="lt-name before:mr-2 before:content-['Up_>']">Weekend</span></nav>
+    </div>
+  </main>
+</section>
+
+<!-- a table of three rows with the squeezed row second, bad form only: the whole table is stacked with the row, so the row is not left bound to the first column. SPLIT; the first build called it held by the row. -->
+<section data-case="split-table-second-row">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-table table w-full table-fixed">
+        <div class="table-row-group">
+          <div class="table-row">
+            <div class="table-cell text-base text-content-primary">A</div>
+            <div aria-hidden="true" class="lt-fixed table-cell h-2 w-20 bg-surface-sunken"></div>
+          </div>
+          <div class="table-row">
+            <div class="lt-cell table-cell align-top">
+              <p class="lt-name font-semibold text-base text-content-primary">Weekend Warriors</p>
+            </div>
+            <div aria-hidden="true" class="table-cell h-2"></div>
+          </div>
+          <div class="table-row">
+            <div class="table-cell text-base text-content-primary">B</div>
+            <div aria-hidden="true" class="table-cell h-2"></div>
+          </div>
+        </div>
       </div>
     </div>
   </main>

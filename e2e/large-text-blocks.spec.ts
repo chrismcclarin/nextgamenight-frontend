@@ -508,6 +508,9 @@ test('check: split in a table row (89.6-02, R3 repair; R6): reports a name squee
   const cellLast = await splitCase(page, 'split-table-cell-last');
   await testInfo.attach('twin-read', { body: JSON.stringify({ row, cells, bareRow, cellLast }, null, 2), contentType: 'application/json' });
   expectReported(cellLast, 'a name in a table cell after a fixed cell that holds a box of fixed width');
+  const secondRow = await splitCase(page, 'split-table-second-row');
+  await testInfo.attach('twin-read-second-row', { body: JSON.stringify({ secondRow }, null, 2), contentType: 'application/json' });
+  expectReported(secondRow, 'a name in the second of three table rows, beside a fixed column');
   expectReported(row, 'a name in a table cell beside a fixed cell');
   expectReported(cells, 'a name in a table cell beside a fixed cell, the two cells directly in the table');
   expectReported(bareRow, 'a name directly in a table row beside a fixed cell');
@@ -680,16 +683,21 @@ test('check: split, T8 (89.6-02, R6): the read leaves the page as it found it: e
   const frame = await renderTwin(page, 'split-put-back');
   // The page gets a stylesheet of its own in the adopted list, and both scrollers go to their end.
   await page.evaluate(() => {
-    const own = new CSSStyleSheet();
-    own.replaceSync('.lt-own-sheet { color: red; }');
-    document.adoptedStyleSheets = [own];
+    const first = new CSSStyleSheet();
+    first.replaceSync('.lt-own-first { color: red; }');
+    const second = new CSSStyleSheet();
+    second.replaceSync('.lt-own-second { color: blue; }');
+    document.adoptedStyleSheets = [first, second];
     const scroller = document.querySelector('.lt-scroller');
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    const sideways = document.querySelector('.lt-xscroller');
+    if (sideways) sideways.scrollLeft = sideways.scrollWidth;
     window.scrollTo(0, document.documentElement.scrollHeight);
   });
   const stateOf = () =>
     page.evaluate(() => {
       const scroller = document.querySelector('.lt-scroller');
+      const sideways = document.querySelector('.lt-xscroller');
       return {
         boxes: Array.from(document.querySelectorAll('body, body *')).map((el) => {
           const r = el.getBoundingClientRect();
@@ -697,6 +705,7 @@ test('check: split, T8 (89.6-02, R6): the read leaves the page as it found it: e
         }),
         windowScroll: [window.scrollX, window.scrollY],
         scrollerScroll: scroller ? [scroller.scrollLeft, scroller.scrollTop] : null,
+        sidewaysScroll: sideways ? [sideways.scrollLeft, sideways.scrollTop] : null,
         sheets: document.adoptedStyleSheets.map((sheet) => Array.from(sheet.cssRules).map((rule) => rule.cssText).join(' ')),
       };
     });
@@ -706,11 +715,13 @@ test('check: split, T8 (89.6-02, R6): the read leaves the page as it found it: e
   const again = await readLargeTextCell(frame);
   await testInfo.attach('twin-read', { body: JSON.stringify({ read, before, after }, null, 2), contentType: 'application/json' });
   // The read did change the page for a moment: every squeezed name was stacked and found whole.
-  expect(entriesFor(read.split, 'Weekend').length, `the read stacked nothing, so there was nothing to put back (${JSON.stringify(read)})`).toBe(2);
+  expect(entriesFor(read.split, 'Weekend').length, `the read stacked nothing, so there was nothing to put back (${JSON.stringify(read)})`).toBe(3);
   expect(before.windowScroll[1], 'the page is not scrolled down: the harness is not the shape it says').toBeGreaterThan(0);
   expect(before.scrollerScroll?.[1] ?? 0, 'the scrolling box is not scrolled down: the harness is not the shape it says').toBeGreaterThan(0);
-  expect(before.sheets, 'the page does not hold its own adopted stylesheet: the test did not set it').toEqual(['.lt-own-sheet { color: red; }']);
-  expect(after.sheets, "the adopted stylesheet list is not what it was: the read's temporary sheet is still in it, or the page's own sheet is gone").toEqual(before.sheets);
+  expect(before.sidewaysScroll?.[0] ?? 0, 'the sideways box is not scrolled sideways: the harness is not the shape it says').toBeGreaterThan(0);
+  expect(before.sheets, 'the page does not hold its own two adopted stylesheets in order: the test did not set them').toEqual(['.lt-own-first { color: red; }', '.lt-own-second { color: blue; }']);
+  expect(after.sheets, "the adopted stylesheet list is not what it was: the read's temporary sheet is still in it, a sheet of the page is gone, or their order changed").toEqual(before.sheets);
+  expect(after.sidewaysScroll, "the sideways box's scroll offset moved").toEqual(before.sidewaysScroll);
   expect(after.windowScroll, 'the page scroll offset moved').toEqual(before.windowScroll);
   expect(after.scrollerScroll, "the scrolling box's scroll offset moved").toEqual(before.scrollerScroll);
   expect(after.boxes, 'a box moved or changed size: the layout was not put back').toEqual(before.boxes);
@@ -788,6 +799,179 @@ test('check: split, a width of 0 that shares a row (89.6-02, R6, unsettled in th
   const item = await splitCase(page, 'split-zero-width-share');
   await testInfo.attach('twin-read', { body: JSON.stringify({ item }, null, 2), contentType: 'application/json' });
   expectHeld(item, 'a word in an item whose width of 0 exists only to share its row', 'width 0px');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+// ---- the repair cases (after scoped check 1 of R6) ----
+
+test('check: split, a full-bleed row (89.6-02, R6 repair): reports a name squeezed in a row pulled into its card padding by a negative side margin, with and without its own padding', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const bleed = await splitCase(page, 'split-full-bleed');
+  const margin = await page.locator('.lt-row').evaluate((el) => Number.parseFloat(getComputedStyle(el).marginLeft));
+  const padded = await splitCase(page, 'split-full-bleed-padded');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ bleed, margin, padded }, null, 2), contentType: 'application/json' });
+  expect(margin, 'the row has no negative side margin: the harness is not the shape it says').toBeLessThan(0);
+  expectReported(bleed, 'a name squeezed in a full-bleed row, whole once stacked and starting inside the card padding');
+  expect(entriesFor(bleed.read.split, 'Weekend').join(' | '), 'the name in the full-bleed row was not measured as whole when stacked').toContain('whole on one line');
+  expectReported(padded, 'a name squeezed in a full-bleed row that puts its own side padding back');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, a sideways scroller (89.6-02, R6 repair): reports two squeezed names in a box that scrolls sideways, one past its first screen, and the verdict is the same at two scroll offsets', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const frame = await renderTwin(page, 'split-sideways-scroller');
+  const broken = await brokenWordsOf(page.locator('.lt-wide'));
+  const scroller = page.locator('.lt-xscroller');
+  const atStart = await readLargeTextCell(frame);
+  const offsets = await scroller.evaluate((el) => {
+    el.scrollLeft = 300;
+    return { scrollLeft: el.scrollLeft, max: el.scrollWidth - el.clientWidth };
+  });
+  const scrolled = await readLargeTextCell(frame);
+  const after = await scroller.evaluate((el) => el.scrollLeft);
+  await testInfo.attach('twin-read', { body: JSON.stringify({ broken, atStart, offsets, scrolled, after }, null, 2), contentType: 'application/json' });
+  expect(broken, 'the case does not squeeze both names, so the harness is not the shape it says').toEqual(['Weekend', 'Warriors']);
+  expect(offsets.scrollLeft, 'the box did not scroll sideways to 300: the harness is not the shape it says').toBe(300);
+  for (const [read, when] of [
+    [atStart, 'at scroll offset 0'],
+    [scrolled, 'at scroll offset 300'],
+  ] as const) {
+    for (const word of ['Weekend', 'Warriors']) {
+      expect(entriesFor(read.split, word).join(' | '), `${word} ${when}: not measured as whole when its row stacks (${JSON.stringify(read)})`).toContain('whole on one line');
+    }
+    expect(read.held, `${when}: a word reads as held`).toEqual([]);
+    expect(read.wide, `${when}: a word reads as wide`).toEqual([]);
+  }
+  expect(scrolled.split, 'the split list differs between the two scroll offsets').toEqual(atStart.split);
+  expect(after, 'the read moved the sideways scroll offset').toBe(300);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, places the browser breaks anyway (89.6-02, R6 repair): a wrap at a soft hyphen, an en dash or a slash is ordinary wrapping, a hyphenated word letter-stacked by its row is reported, and a word whose forced breaks cannot be switched off is said so', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const SOFT = 'Week­enders';
+  const DASH = 'Mon–Friday';
+  const SLASH = 'Mon/Friday';
+  const natural = await splitCase(page, 'split-natural-breaks', '.lt-card');
+  const stacked = await splitCase(page, 'split-hyphen-letter-stacked');
+  const sizerBroken = await brokenWordsOf(page.locator('.lt-sizer'));
+  const important = await splitCase(page, 'split-important-wrap');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ natural, stacked, sizerBroken, important }, null, 2), contentType: 'application/json' });
+  expect(natural.broken, 'the three words are not each on more than one line: the harness is not the shape it says').toEqual([SOFT, DASH, SLASH]);
+  expect(natural.read.split, `a wrap at a place the browser breaks anyway reads as split (${JSON.stringify(natural.read)})`).toEqual([]);
+  expect(natural.read.held, `a wrap at a place the browser breaks anyway reads as held (${JSON.stringify(natural.read)})`).toEqual([]);
+  for (const word of [SOFT, DASH, SLASH]) {
+    expect(entriesFor(natural.read.wide, word).join(' | '), `${JSON.stringify(word)} is not written down as ordinary wrapping (${JSON.stringify(natural.read)})`).toContain('ordinary wrapping');
+  }
+  // A hyphenated word broken inside itself by a box beside it: stacked, only the wrap at its hyphen is left.
+  expect(sizerBroken, 'the sizing line breaks a word: the row is not as wide as its sizing line').toEqual([]);
+  expectReported(stacked, 'a hyphenated word letter-stacked by a box beside it', 'auto-close');
+  expect(entriesFor(stacked.read.split, 'auto-close').join(' | '), 'the word is not reported as losing its forced breaks when its row stacks').toContain('ordinary wrap');
+  // A word whose wrapping is important inside a cascade layer: its natural break points cannot be measured.
+  expect(important.broken, 'the case does not break its word, so the harness is not the shape it says').toContain('Weekenders');
+  expect(entriesFor(important.read.split, 'Weekenders').join(' | '), `a word whose forced breaks could not be switched off is not reported as COULD NOT UNWRAP (${JSON.stringify(important.read)})`).toContain('COULD NOT UNWRAP');
+  expect(important.read.wide, 'a word that could not be measured reads as wide').toEqual([]);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, a forced break (89.6-02, R6 repair): a word wider than the content of its fixed label is held whatever stands before it, and a crumb glued to its separator is reported the same way for a real separator and for one drawn by ::before', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const label = await splitCase(page, 'split-icon-label');
+  const span = await splitCase(page, 'split-glued-crumb');
+  const before = await splitCase(page, 'split-crumb-before');
+  const drawn = await page.locator('.lt-name').evaluate((el) => getComputedStyle(el, '::before').content);
+  await testInfo.attach('twin-read', { body: JSON.stringify({ label, span, before, drawn }, null, 2), contentType: 'application/json' });
+  expectHeld(label, 'a word wider than the content of a 170px label, an icon positioned in the label padding', 'width 170px', 'Weekenders');
+  expect(drawn, 'the crumb draws no separator before itself: the harness is not the shape it says').toContain('>');
+  expectReported(span, 'a crumb glued to a separator that is an element');
+  expectReported(before, 'a crumb glued to a separator drawn by its own ::before');
+  expect(entriesFor(before.read.split, 'Weekend'), 'the two crumbs are not reported the same way').toEqual(entriesFor(span.read.split, 'Weekend'));
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, a page that is not put back (89.6-02, R6 repair): when the page refuses the put-back of the stylesheet list or of a scroll offset, the read says NOT RESTORED for the sheets, the layout and the scroll', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  // The page lets a stylesheet be adopted and refuses to let one go: every stack stays on.
+  const frame = await renderTwin(page, 'split-bad');
+  await page.evaluate(() => {
+    const own = Object.getOwnPropertyDescriptor(Document.prototype, 'adoptedStyleSheets');
+    if (!own?.get || !own.set) throw new Error('Document.prototype.adoptedStyleSheets is not an accessor');
+    const { get, set } = own;
+    Object.defineProperty(document, 'adoptedStyleSheets', {
+      configurable: true,
+      get: () => get.call(document),
+      set: (list: CSSStyleSheet[]) => {
+        if (list.length >= (get.call(document) as CSSStyleSheet[]).length) set.call(document, list);
+      },
+    });
+  });
+  const stuck = await readLargeTextCell(frame);
+  // The page refuses a scroll offset written back to its scrolling box.
+  const second = await renderTwin(page, 'split-put-back');
+  await page.evaluate(() => {
+    const scroller = document.querySelector('.lt-scroller');
+    const own = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+    if (!scroller || !own?.get) throw new Error('no scrolling box, or Element.prototype.scrollTop is not an accessor');
+    const { get } = own;
+    scroller.scrollTop = scroller.scrollHeight;
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, get: () => get.call(scroller), set: () => undefined });
+  });
+  const unscrolled = await readLargeTextCell(second);
+  await testInfo.attach('twin-read', { body: JSON.stringify({ stuck, unscrolled }, null, 2), contentType: 'application/json' });
+  const said = (read: LargeTextCellRead) => read.split.filter((entry) => entry.startsWith('NOT RESTORED')).join(' | ');
+  expect(said(stuck), `a stylesheet list that kept the read's sheet was not reported (${JSON.stringify(stuck)})`).toContain('adopted stylesheets after the read');
+  expect(said(stuck), `a layout left stacked was not reported (${JSON.stringify(stuck)})`).toContain('the layout differs after the read');
+  expect(said(unscrolled), `a scroll offset that was not put back was not reported (${JSON.stringify(unscrolled)})`).toContain('a scroll offset moved during the read');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: split, a throw part-way (89.6-02, R6 repair): when the read throws while a row is stacked, the stack, the scroll offsets and its measuring span are released all the same', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const frame = await renderTwin(page, 'split-put-back');
+  await page.evaluate(() => {
+    const scroller = document.querySelector('.lt-scroller');
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
+  const stateOf = () =>
+    page.evaluate(() => {
+      const scroller = document.querySelector('.lt-scroller');
+      return {
+        boxes: Array.from(document.querySelectorAll('body, body *')).map((el) => {
+          const r = el.getBoundingClientRect();
+          return `${el.tagName} ${r.left} ${r.top} ${r.width} ${r.height}`;
+        }),
+        bodyChildren: document.body.children.length,
+        windowScroll: [window.scrollX, window.scrollY],
+        scrollerScroll: scroller ? [scroller.scrollLeft, scroller.scrollTop] : null,
+        sheets: document.adoptedStyleSheets.length,
+      };
+    });
+  const clean = await readLargeTextCell(frame);
+  const before = await stateOf();
+  // The first time a word's box is asked for while a temporary sheet is adopted, the page throws.
+  await page.evaluate(() => {
+    const native = Range.prototype.getBoundingClientRect;
+    let armed = true;
+    Range.prototype.getBoundingClientRect = function getBoundingClientRect(this: Range) {
+      if (armed && document.adoptedStyleSheets.length > 0) {
+        armed = false;
+        throw new Error('lt forced throw');
+      }
+      return native.call(this);
+    };
+  });
+  await expect(readLargeTextCell(frame), 'the read did not throw: nothing was forced part-way').rejects.toThrow('lt forced throw');
+  const after = await stateOf();
+  const again = await readLargeTextCell(frame);
+  await testInfo.attach('twin-read', { body: JSON.stringify({ clean, before, after, again }, null, 2), contentType: 'application/json' });
+  expect(before.windowScroll[1], 'the page is not scrolled down: the harness is not the shape it says').toBeGreaterThan(0);
+  expect(after.sheets, "the read's temporary sheet is still adopted after the throw").toBe(before.sheets);
+  expect(after.bodyChildren, "the read's measuring span is still in the page after the throw").toBe(before.bodyChildren);
+  expect(after.windowScroll, 'the page scroll offset was not put back after the throw').toEqual(before.windowScroll);
+  expect(after.scrollerScroll, "the scrolling box's scroll offset was not put back after the throw").toEqual(before.scrollerScroll);
+  expect(after.boxes, 'a box moved or changed size: the layout was not put back after the throw').toEqual(before.boxes);
+  expect(again, 'a read after the throw differs from the read before it').toEqual(clean);
   expect(requests, 'the page made a request').toEqual([]);
 });
 
