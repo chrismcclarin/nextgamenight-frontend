@@ -483,11 +483,14 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   // own narrow box. R3's first build (the nearest row, then that old climb) still stopped at a row
   // INSIDE the squeezed item, went up through column containers, and went above the root.
   //
-  // THE ROW. Walk from the word up to the root of the read, and never above it:
-  //   - an element marked [data-room] is the row, at once. The mark is an explicit row, named by
-  //     the caller, and it wins over the rules below (the nearest mark; one above the root is not
-  //     seen). The edges between the word and a marked row come off the room like any other row's;
-  //   - otherwise every container met from the text's own box up to the root, the root included,
+  // THE ROW:
+  //   - the nearest ancestor marked [data-room] is the row, WHEREVER it is, above the root of the
+  //     read too. The mark is the author's deliberate statement of the row and wins over the search
+  //     below; it is not bounded by the root, chosen OVER a mark seen only at or under the root (the
+  //     repair batch first built that): plan 89.6-22 marks a row above its read root.
+  //     The edges between the word and a marked row come off the room like any other row's;
+  //   - otherwise walk from the word up to the root of the read, and never above it: only this
+  //     unmarked search is bounded. Every container met up to the root, the root included,
   //     that lays its children out SIDE BY SIDE is a candidate: a row-direction flex container, a
   //     grid with more than one column, a table row (a table-row box, and whatever holds a table
   //     cell: the browser builds the row around cells). The row is the OUTERMOST candidate;
@@ -527,10 +530,11 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   const rowOf = (el: Element): Element => {
     // With no candidate, the text's own box. The inline boxes under it are never candidates: an
     // inline box is no flex, grid or table-row box and holds no table cell.
+    const marked = el.closest('[data-room]');
+    if (marked) return marked;
     let row = boxOf(el);
     let child: Element | null = null;
     for (let a: Element | null = el; a; child = a, a = a.parentElement) {
-      if (a.hasAttribute('data-room')) return a;
       if (sideBySide(a, child)) row = a;
       if (a === rootEl) break;
     }
