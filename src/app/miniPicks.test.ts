@@ -488,22 +488,35 @@ describe('88.9 RULING A mini-page picks', () => {
     expect(mounts, 'DelayedSpinner mounts in src (want at least 9: Button 1, AvailabilityForm 2, KebabMenu 1, NextGameNightCard 1, ResponseDashboard 1, RsvpSection 2, friends 1)').toBeGreaterThanOrEqual(9);
   });
 
-  it('8. 88.9-52 W40 — on a phone the one Toaster starts below the header strip, so a toast and its close button never lie over the logo', () => {
-    // The header strip is 64px tall (h-16) and sticky; Sonner pins a phone toast (600px and under)
-    // at its mobile top offset, 16px by default, which is inside the strip. The layout gives the
-    // Toaster a mobile top offset of the strip's height plus an 8px gap. jsdom has no layout, so
-    // this pins the two numbers at their source; the other three sides keep Sonner's default.
+  it('8. 88.9-52 W40 + 89.6-03 O-9e — the one Toaster starts below the header strip on a phone and on a desktop, in rem, so a toast never lies over the header at any text size', () => {
+    // The header strip is 4rem tall (h-16: 16 x the 0.25rem spacing unit) and sticky. Sonner pins
+    // the toast list at its top offset, by default 24px on a desktop and 16px on a phone (600px
+    // and under), both inside the strip. The layout gives the Toaster ONE top offset for both: the
+    // strip's height plus a 0.5rem gap, written in rem. The strip is rem, so at 200% text it is
+    // 128px tall and an offset in px would leave the toast over its lower half. jsdom has no
+    // layout, so this pins the numbers at their source; the real-browser read is
+    // e2e/toast-bridge-offset.spec.ts ("2. the toast list starts just under the header strip").
+    // Only the top is given, so the other three sides keep Sonner's default.
     const layout = withoutComments(fs.readFileSync(path.join(__dirname, 'layout.js'), 'utf8'));
     const header = withoutComments(fs.readFileSync(path.join(__dirname, 'Header.js'), 'utf8'));
     const toasters = layout.match(/<Toaster\b[^>]*\/>/g) ?? [];
     expect(toasters, 'layout.js mounts exactly one Toaster').toHaveLength(1);
-    const offset = /\bmobileOffset=\{\{\s*top:\s*(\d+)\s*\}\}/.exec(toasters[0] ?? '');
-    expect(offset, 'the Toaster carries a mobile top offset and no other side').not.toBeNull();
+    const toaster = toasters[0] ?? '';
     const strip = /className="w-full (h-(\d+)) bg-surface-header [^"]*\bsticky top-0\b/.exec(header);
     expect(strip, 'anti-vacuity: the sticky header strip with its height class is present').not.toBeNull();
-    const stripPx = Number((strip as RegExpExecArray)[2]) * 4;
-    expect(stripPx).toBe(64);
-    expect(Number((offset as RegExpExecArray)[1]), 'mobile top offset = strip height + 8px').toBe(stripPx + 8);
-    expect(toasters[0], 'the desktop position is unchanged').toContain('position="top-right"');
+    const stripRem = Number((strip as RegExpExecArray)[2]) * 0.25;
+    expect(stripRem).toBe(4);
+    const want = `${stripRem + 0.5}rem`;
+    expect(want).toBe('4.5rem');
+    const desktop = /\boffset=\{\{\s*top:\s*'([^']+)'\s*\}\}/.exec(toaster);
+    const phone = /\bmobileOffset=\{\{\s*top:\s*'([^']+)'\s*\}\}/.exec(toaster);
+    expect(desktop, 'the Toaster carries a desktop top offset of its own, a string, and no other side').not.toBeNull();
+    expect(phone, 'the Toaster carries a phone top offset, a string, and no other side').not.toBeNull();
+    expect((desktop as RegExpExecArray)[1], 'desktop top offset = strip height + 0.5rem').toBe(want);
+    expect((phone as RegExpExecArray)[1], 'phone top offset = strip height + 0.5rem').toBe(want);
+    // No offset is a bare number (Sonner reads a number as px, which does not grow with the text).
+    expect(toaster, 'no offset is given as one bare number').not.toMatch(/\b(?:offset|mobileOffset)=\{\s*\d/);
+    expect(toaster, 'no side of an offset is a bare number').not.toMatch(/\b(?:offset|mobileOffset)=\{\{[^}]*:\s*\d/);
+    expect(toaster, 'the toast stays in the top right corner').toContain('position="top-right"');
   });
 });

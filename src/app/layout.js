@@ -64,8 +64,20 @@ export default function RootLayout({ children }) {
               and the keyboard live there). Only the top is given, so the 16px side gutters stay
               Sonner's own. The desktop position is unchanged. The number follows the strip's
               height at src/app/Header.js ("w-full h-16 bg-surface-header border-b border-line-strong"); pinned by
-              src/app/miniPicks.test.ts ("8. 88.9-52 W40"). */}
-          <Toaster position="top-right" richColors closeButton theme="system" mobileOffset={{ top: 72 }} />
+              src/app/miniPicks.test.ts ("8. 88.9-52 W40").
+              AMENDED Phase 89.6-03 (O-9e, owner pick 2026-11-22, card O-9e = B: "The pop-up starts
+              just under the header, as it already does on phones"): the desktop toast starts
+              under the strip too, and BOTH offsets are 4.5rem: the strip's 4rem (h-16) plus a
+              0.5rem gap. Chosen OVER the px number this marker set for phones (seventy-two), which
+              equals 4.5rem only at the default 16px text: the strip is sized in rem and doubles at
+              200% text (128px), so an offset in px puts the toast over its lower half. "The
+              desktop position is unchanged" above no longer holds: the corner is the same, the
+              top offset is new. Still only the top is given, so the side gutters stay Sonner's
+              own. Pinned at source by the test cited above and in a real browser by
+              e2e/toast-bridge-offset.spec.ts ("2. the toast list starts just under the header strip").
+              If the strip's height changes, both offsets are re-derived. Changing this is a
+              decision, not a cleanup. */}
+          <Toaster position="top-right" richColors closeButton theme="system" offset={{ top: '4.5rem' }} mobileOffset={{ top: '4.5rem' }} />
           <RootAnnouncer />
           <ToastAnnouncer />
           {/* PRIM-07 (Plan 84-04): TanStack Query provider mounted at the app
