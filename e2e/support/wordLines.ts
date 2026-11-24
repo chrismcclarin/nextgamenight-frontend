@@ -505,9 +505,10 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   //      and a grid of one column are never in it: they stack their items already.
   //   3. ONE constructed stylesheet, added to a COPY of document.adoptedStyleSheets, lays each of
   //      them out as a stack, its items stretched to its width, every declaration important. The
-  //      read then checks that every declaration took. One that did not (an important declaration
-  //      on the element itself, or inside a cascade layer, wins) is said so in the split list as
-  //      COULD NOT STACK: nothing was measured, and guessing would be silent.
+  //      read then checks that every declaration took on each container, and that the item that
+  //      holds the word did stretch. One that did not (an important declaration on the element
+  //      itself, or inside a cascade layer, wins) is said so in the split list as COULD NOT
+  //      STACK: nothing was measured, and guessing would be silent.
   //   4. SPLIT when the word is now on one line AND lies inside the CONTENT box of every box from
   //      its own up to the bound. Whole only by spilling out of a box is not room.
   //   5. Otherwise a word whose only breaks fall right after its own hyphens is ordinary wrapping:
@@ -603,13 +604,13 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   interface Stack {
     /** The temporary declarations, per element. */
     changes: Map<Element, Record<string, string>>;
-    /** The stacked containers whose items are stretched across them. */
-    stretched: Set<Element>;
+    /** The stacked containers whose items are stretched across them, each with its item that holds the word (null when the word is the container's own text). */
+    stretched: Map<Element, Element | null>;
     /** The side-by-side containers, nearest the word first. */
     rows: Element[];
   }
   const stackOf = (from: Element, bound: Element): Stack => {
-    const stack: Stack = { changes: new Map(), stretched: new Set(), rows: [] };
+    const stack: Stack = { changes: new Map(), stretched: new Map(), rows: [] };
     const change = (el: Element, declarations: Record<string, string>) => stack.changes.set(el, { ...stack.changes.get(el), ...declarations });
     let child: Element | null = null;
     for (let a: Element | null = from; a; child = a, a = a.parentElement) {
@@ -619,11 +620,11 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       const grid = /grid/.test(display);
       if (flex && !cs.flexDirection.startsWith('column')) {
         change(a, { 'flex-direction': 'column', 'flex-wrap': 'nowrap', 'align-items': 'stretch' });
-        stack.stretched.add(a);
+        stack.stretched.set(a, child);
         stack.rows.push(a);
       } else if (grid && gridColumns(cs) > 1) {
         change(a, { display: display === 'inline-grid' ? 'inline-flex' : 'flex', 'flex-direction': 'column', 'flex-wrap': 'nowrap', 'align-items': 'stretch' });
-        stack.stretched.add(a);
+        stack.stretched.set(a, child);
         stack.rows.push(a);
       } else if (display === 'table-row' || (child !== null && getComputedStyle(child).display === 'table-cell')) {
         // A table-row box, or whatever holds the cell the word is in (the browser builds the row around cells).
@@ -657,14 +658,18 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     }
     return rules.join('\n');
   };
-  /** The elements of a stack on which a temporary declaration did not take. */
+  /**
+   * The elements of a stack on which a temporary declaration did not take: a stacked container,
+   * or the item of it that holds the word when that item did not stretch. Only that item is
+   * looked at: a box beside it that keeps its own alignment takes nothing from the word.
+   */
   const notStacked = (stack: Stack): Element[] => {
     const missed: Element[] = [];
     for (const [el, declarations] of stack.changes) {
       const cs = getComputedStyle(el);
-      const took = Object.entries(declarations).every(([property, value]) => cs.getPropertyValue(property) === value);
-      const stretched = !stack.stretched.has(el) || Array.from(el.children).every((item) => getComputedStyle(item).alignSelf === 'stretch');
-      if (!took || !stretched) missed.push(el);
+      if (!Object.entries(declarations).every(([property, value]) => cs.getPropertyValue(property) === value)) missed.push(el);
+      const item = stack.stretched.get(el);
+      if (item && getComputedStyle(item).alignSelf !== 'stretch') missed.push(item);
     }
     return missed;
   };

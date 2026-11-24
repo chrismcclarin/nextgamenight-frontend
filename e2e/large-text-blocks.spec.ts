@@ -651,11 +651,20 @@ test('check: split, T6 (89.6-02, R6): a label in a button of fixed width is held
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split, T7 (89.6-02, R6): a row that cannot be stacked (its direction is important inside a cascade layer) is said so in the split list, not guessed at', async ({ page }, testInfo) => {
+test('check: split, T7 (89.6-02, R6): a row that cannot be stacked (its direction, or the alignment of the item that holds the word, is important inside a cascade layer) is said so in the split list, not guessed at', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
   const row = await splitCase(page, 'split-important-row');
   const direction = await page.locator('.lt-row').evaluate((el) => getComputedStyle(el).flexDirection);
-  await testInfo.attach('twin-read', { body: JSON.stringify({ row, direction }, null, 2), contentType: 'application/json' });
+  const item = await splitCase(page, 'split-important-item');
+  const sibling = await splitCase(page, 'split-important-sibling');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ row, direction, item, sibling }, null, 2), contentType: 'application/json' });
+  // The item that holds the word could not be stretched: nothing is measured, and the item is named.
+  expect(item.broken, 'the item case does not squeeze its short word, so the harness is not the shape it says').toContain('Weekend');
+  expect(entriesFor(item.read.split, 'Weekend').join(' | '), `a word whose own item could not be stretched is not reported as COULD NOT STACK (${JSON.stringify(item.read)})`).toContain('COULD NOT STACK div.lt-name');
+  expect(item.read.wide, 'a word that could not be measured reads as wide').toEqual([]);
+  // The same alignment on the box beside the words stops nothing: the short word is measured and reported.
+  expectReported(sibling, 'a short word squeezed beside a box whose own alignment is important');
+  expect(entriesFor(sibling.read.split, 'Weekend').join(' | '), `a word was not measured because a box beside its item could not be stretched (${JSON.stringify(sibling.read)})`).toContain('whole on one line');
   expect(direction, 'the row is not a row: the harness is not the shape it says').toBe('row');
   expect(row.broken, 'the case does not squeeze its name, so the harness is not the shape it says').toContain('Weekend');
   expect(entriesFor(row.read.split, 'Weekend').join(' | '), `a word whose row could not be stacked is not reported as COULD NOT STACK (${JSON.stringify(row.read)})`).toContain('COULD NOT STACK');

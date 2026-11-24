@@ -560,6 +560,36 @@
   </main>
 </section>
 
+<!-- T7, the same for the ITEM that holds the words, bad form only: its own alignment is important inside a cascade layer, so it cannot be stretched across its stacked row. Left centred it would be as wide as its 30-letter word, spill, and hide the short word beside it. COULD NOT STACK, naming the item. -->
+<section data-case="split-important-item">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row flex items-center gap-2">
+        <div aria-hidden="true" class="lt-fixed h-11 w-16 flex-none rounded-btn bg-surface-sunken"></div>
+        <div class="lt-name min-w-0 flex-1 self-center!">
+          <h3 class="font-semibold text-base text-content-primary">Grandmasterboardgamecollective</h3>
+          <p class="text-base text-content-primary">Weekend</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- T7, the important alignment on the box BESIDE the words, bad form only: only the item that holds the word has to stretch, so the row is stacked and measured as any other. SPLIT, measured. -->
+<section data-case="split-important-sibling">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-row flex items-center gap-2">
+        <div aria-hidden="true" class="lt-fixed h-11 w-16 flex-none self-center! rounded-btn bg-surface-sunken"></div>
+        <div class="lt-name min-w-0 flex-1">
+          <h3 class="font-semibold text-base text-content-primary">Grandmasterboardgamecollective</h3>
+          <p class="text-base text-content-primary">Weekend</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
 <!--
   T8, the put-back proof: squeezed names inside a scrolling box and under it. Stacking a row makes
   the content much shorter (a letter-stack becomes two lines), so a scroll offset at the bottom is
