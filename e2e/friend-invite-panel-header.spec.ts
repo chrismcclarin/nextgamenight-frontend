@@ -201,6 +201,15 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text the found person\'s two-word n
   ).toBe(true);
 
   await setNarrowLargeText(page, 'R4 D2 invite panel');
+  // Phase 89.6-10 (owner pick O-M4 = Fixed+): the panel's own header close renders the Modal
+  // header's strings, and its icon follows the text up to 32px. jsdom drops the inline size, so
+  // the drawn box is read here. This close carries no data-modal-close attribute.
+  const closeIcon = await dialog.getByRole('button', { name: 'Close' }).first().locator('svg').boundingBox();
+  expect(closeIcon, 'FIP close icon at 320 / 200%: the close holds no svg box').not.toBeNull();
+  expect(
+    Math.abs(closeIcon!.width - 32) <= 0.5 && Math.abs(closeIcon!.height - 32) <= 0.5,
+    `FIP close icon at 320 / 200%: ${closeIcon!.width} x ${closeIcon!.height}, expected 32 x 32 (Icon followText, O-M4 Fixed+)`,
+  ).toBe(true);
   // The row is named: a word may break only once the name has the row's whole width to itself.
   const read = await readWordLines(name, row);
   // eslint-disable-next-line no-console -- the measured row is recorded from the CI log

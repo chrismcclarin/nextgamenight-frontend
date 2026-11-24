@@ -6,8 +6,9 @@ import { QRCodeSVG } from 'qrcode.react';
 import { UserChip } from '@/components/ui/UserChip';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { DialogClose, DialogTitle } from '../../components/ui/dialog';
-import { Modal } from './Modal';
+import { Modal, MODAL_CLOSE_CLASS, MODAL_HEADER_CLASS, MODAL_TITLE_CLASS } from './Modal';
 import { Input } from '@/components/ui/Input';
+import { cn } from '@/lib/cn';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
 import { Icon } from '@/components/ui/Icon';
@@ -1212,16 +1213,24 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                 bottom on a phone, 24px and 12px from the md breakpoint. Chosen OVER
                 keeping the fixed padding with a recorded deviation. Measured in
                 e2e/friend-invite-panel-header.spec.ts at both widths. Changing this
-                is a decision, not a cleanup. */}
-            <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 md:px-6 md:py-3">
+                is a decision, not a cleanup.
+
+                AMENDED Phase 89.6-10 (T1b): this header renders from the exported Modal.tsx
+                strings, so it wraps out like every Modal header (the close on its own top row
+                when the longest word of the title or lead-in cannot sit beside it) and its close
+                is the 44 CSS px Fixed+ box, chosen OVER a third copy of the strings; gap-3 and
+                E8b's items-center stay. */}
+            <div className={cn(MODAL_HEADER_CLASS, 'gap-3')}>
                 {/* UAT3-D2 (owner device check 2026-09-30) + code review round 6: the user-supplied group
                     name lands in this column on EVERY entry point — in the title after creation
                     ("<name> is live — who's in?"), in the lead-in otherwise ("to <name>"). A 40-character
                     unbroken name overflowed the column and painted under the × beside it. `wrap-break-word`
                     sits on the COLUMN because overflow-wrap inherits — a class on the title alone left the
                     lead-in (a sibling) overflowing, which is what round 6 caught. Pinned for both paths in
-                    FriendInvitePanel.test.tsx. */}
-                <div className="min-w-0 wrap-break-word">
+                    FriendInvitePanel.test.tsx.
+                    AMENDED Phase 89.6-10: max-w-full replaces min-w-0 as the load-bearing half (see the
+                    R7-M1 amendment in FriendInvitePanel.test.tsx). */}
+                <div className={MODAL_TITLE_CLASS}>
                     <DialogTitle className="text-content-primary">
                         {headerTitle}
                     </DialogTitle>
@@ -1233,9 +1242,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                     ModalHeader DialogClose — this is the one freeform copy of that idiom. */}
                 <DialogClose
                     aria-label="Close"
-                    className="inline-flex min-h-11 min-w-11 items-center justify-center shrink-0 text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className={MODAL_CLOSE_CLASS}
                 >
-                    <Icon name="X" size={20} strokeWidth={2} />
+                    <Icon name="X" size={20} strokeWidth={2} followText />
                 </DialogClose>
             </div>
 

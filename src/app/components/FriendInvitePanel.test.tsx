@@ -999,7 +999,8 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
     expect(screen.queryByRole('heading', { name: 'Invite Members' })).not.toBeInTheDocument();
   });
 
-  // DECISION Phase 88.6.2-17 (R7-M1): pin min-w-0 beside the wrap class on the column, src/app/components/FriendInvitePanel.js ("min-w-0 wrap-break-word"), over switching the column to wrap-anywhere — that is a production className change this phase does not make (SPEC R11), and it would replace the device-checked UAT3-D2 fix with an unchecked one.
+  // DECISION Phase 88.6.2-17 (R7-M1): pin min-w-0 beside the wrap class on the column (then the two tokens min-w-0 and wrap-break-word; the column is now src/app/components/FriendInvitePanel.js ("<div className={MODAL_TITLE_CLASS}>")), over switching the column to wrap-anywhere — that is a production className change this phase does not make (SPEC R11), and it would replace the device-checked UAT3-D2 fix with an unchecked one.
+  // AMENDED Phase 89.6-10 (T1b): the column now carries max-w-full and no min-w-0, chosen OVER keeping min-w-0 beside the wrap class: a flex item's automatic minimum is clamped by a definite max-width, so the column still narrows to the row and the 40-letter name still breaks there (HR-2; the dialog-shell matrix block's word30 cells), while the close moves to its own row above instead of squeezing the column.
   it("the post-creation header wraps a long unbroken group name instead of running under the close button (UAT3-D2, 2026-09-30)", async () => {
     // Owner device check 2026-09-30: a 40-character name with no spaces overflowed the dialog and
     // painted under the ×. jsdom has no layout, so the pin is the wrap class on the header's shared
@@ -1007,9 +1008,12 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
     // owner's re-check on preview after CI. min-w-0 is the load-bearing half: overflow-wrap does not
     // shrink a flex item's min-content, so without it the column cannot narrow below the unbroken
     // word and the overflow returns (R7-M1/M4).
+    // AMENDED Phase 89.6-10: max-w-full is the load-bearing half now (the marker above this test).
     renderPanel({ openedFrom: 'create', group: { ...GROUP, name: 'M'.repeat(40) } });
     const heading = await screen.findByRole('heading', { name: `${'M'.repeat(40)} is live — who's in?` });
-    expect(heading.closest('div')?.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-w-0', 'wrap-break-word']));
+    const columnTokens = heading.closest('div')?.className.split(/\s+/) ?? [];
+    expect(columnTokens).toEqual(expect.arrayContaining(['grow', 'basis-[min-content]', 'max-w-full', 'wrap-break-word']));
+    expect(columnTokens).not.toContain('min-w-0');
   });
 
   it("the default-path header's 'to <group>' lead-in wraps a long unbroken group name too (code review round 6 HIGH, 2026-09-30)", async () => {
@@ -1018,9 +1022,12 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
     // inherits nothing from a class on the title. Pinned on the shared column for the same reason.
     // min-w-0 is the load-bearing half here too: overflow-wrap does not shrink a flex item's
     // min-content, so without it the column cannot narrow below the unbroken word (R7-M1/M4).
+    // AMENDED Phase 89.6-10: max-w-full is the load-bearing half now (the marker above the test before this one).
     renderPanel({ group: { ...GROUP, name: 'M'.repeat(40) } });
     const leadIn = await screen.findByText(`to ${'M'.repeat(40)}`);
-    expect(leadIn.closest('div')?.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-w-0', 'wrap-break-word']));
+    const columnTokens = leadIn.closest('div')?.className.split(/\s+/) ?? [];
+    expect(columnTokens).toEqual(expect.arrayContaining(['grow', 'basis-[min-content]', 'max-w-full', 'wrap-break-word']));
+    expect(columnTokens).not.toContain('min-w-0');
   });
   it('leaves every other entry point on the generic header', async () => {
     renderPanel();
@@ -1465,9 +1472,13 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     renderPanel();
     const column = (await screen.findByRole('heading', { name: 'Invite Members' })).closest('div');
     const tokens = column?.parentElement?.className.split(/\s+/) ?? [];
-    for (const cls of ['px-3', 'py-2', 'md:px-6', 'md:py-3', 'items-center', 'gap-3']) {
+    // AMENDED Phase 89.6-10: the row renders the Modal header string, so it wraps reversed (the
+    // close moves to its own row above when the longest word cannot sit beside it); gap-3 wins
+    // over that string's gap-2.
+    for (const cls of ['px-3', 'py-2', 'md:px-6', 'md:py-3', 'items-center', 'gap-3', 'flex-wrap-reverse']) {
       expect(tokens).toContain(cls);
     }
+    expect(tokens).not.toContain('gap-2');
     expect(tokens).not.toContain('items-start');
     expect(tokens).not.toContain('px-6');
     expect(tokens).not.toContain('py-5');
@@ -1484,9 +1495,17 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     expect(svgs[0].getAttribute('width')).toBe('20');
     expect(svgs[0].getAttribute('aria-hidden')).toBe('true');
     expect((close.textContent ?? '').trim()).toBe('');
+    // AMENDED Phase 89.6-10 (owner pick O-M4 = Fixed+): the 44 box is in px and the icon follows
+    // the text up to 32px. The marker of the prop is read, never the inline size (jsdom drops an
+    // inline min() width); the drawn 32px icon is read in the browser by
+    // e2e/friend-invite-panel-header.spec.ts ("expected 32 x 32 (Icon followText, O-M4 Fixed+)").
+    expect(svgs[0].hasAttribute('data-follow-text'), 'the close icon follows the text (Icon followText)').toBe(true);
     const tokens = close.className.split(/\s+/);
-    expect(tokens).toContain('min-h-11');
-    expect(tokens).toContain('min-w-11');
+    expect(tokens).toContain('min-h-[44px]');
+    expect(tokens).toContain('min-w-[44px]');
+    expect(tokens).toContain('ml-auto');
+    expect(tokens).not.toContain('min-h-11');
+    expect(tokens).not.toContain('min-w-11');
     expect(tokens).not.toContain('text-2xl');
   });
 
