@@ -7,6 +7,7 @@ import {
   settleFocusTransitions,
   type RingMeasurement,
 } from './support/contrast';
+import { expectFocusRingClearOfText } from './support/ringGeometry';
 
 // Phase 89.6-14 — the ring reader's self-test, on a fixture page.
 //
@@ -87,6 +88,10 @@ const STYLE = `
   .cue-d7 { --tw-inset-shadow: inset 0 -2px 0 0 ${CUE}; box-shadow: var(--tw-inset-shadow); }
   .new-inset:focus-visible { ${FOCUS_RING_INSET} }
   .old-inset:focus-visible { ${OLD_OPAQUE_INSET} }
+  .geo { display: flex; align-items: center; gap: 3px; padding: 0 16px 16px; }
+  .geo span { font-size: 16px; }
+  #geo-out:focus-visible { ${FOCUS_RING} }
+  #geo-in:focus-visible { ${FOCUS_RING_INSET} }
 `;
 
 const PAINTED = [
@@ -112,7 +117,11 @@ const BODY =
   PAINTED.map(
     (p) => `<button id="${p.id}" type="button" class="${cueClass(p.shape)} ${p.body === 'new' ? 'new-inset' : 'old-inset'}">${p.id}</button>`
   ).join('') +
-  '</div>';
+  '</div>' +
+  // The geometry fixtures: a line of text, and 3px to its right a control whose ring reaches 4px out
+  // (outset) or 0 (inset).
+  '<div class="geo"><span id="geo-text-out">Username</span><button id="geo-out" type="button">edit</button></div>' +
+  '<div class="geo"><span id="geo-text-in">Username</span><button id="geo-in" type="button">edit</button></div>';
 
 async function read(page: Page, id: string): Promise<RingMeasurement> {
   return focusRingMeasurement(page, page.locator(`#${id}`), id);
@@ -221,4 +230,13 @@ test.describe('89.6-14 ring reader (fixture page, no server, no sign-in)', () =>
     expect(problems, problems.join('\n')).toEqual([]);
   });
 
+  test('geometry: an outset ring 3px from the text reaches over it (reach 4), so the clearance read fails', async ({ page }) => {
+    await expect(
+      expectFocusRingClearOfText(page, page.locator('#geo-out'), page.locator('#geo-text-out'), 'outset ring 3px from the text')
+    ).rejects.toThrow(/covers the text/);
+  });
+
+  test('geometry: an inset ring 3px from the text paints nothing outside the control, so the clearance read passes', async ({ page }) => {
+    await expectFocusRingClearOfText(page, page.locator('#geo-in'), page.locator('#geo-text-in'), 'inset ring 3px from the text');
+  });
 });
