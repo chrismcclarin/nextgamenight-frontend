@@ -16,7 +16,7 @@ import {
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
-import { statusTagLabel } from '../../lib/upcomingEvents';
+import { isNightNotOver, statusTagLabel } from '../../lib/upcomingEvents';
 import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
@@ -209,7 +209,9 @@ export default function EventDayModal({
                    renders, carries an id the row names through aria-describedby (MED-80) — a description
                    ADDS to the computed name and never replaces it (the NO aria-label note below stands).
                    AMENDED Phase 88.9-61 (X26): only Cancelled reaches the muted arm; a future completed
-                   night reads Upcoming, chosen OVER a Completed tag on an unreachable state. */
+                   night reads Upcoming, chosen OVER a Completed tag on an unreachable state.
+                   AMENDED Phase 89.6-28 (X42): the Share Game QR gate is now isNightNotOver (owner A2), not
+                   isPastEvent; isPastEvent still drives the tag, border and description. */
                 const statusTag = statusTagLabel(event);
                 const dayTagId = `day-tag-${event.id}`;
                 const groupProfilePic = event.Group?.profile_picture_url;
@@ -393,7 +395,7 @@ export default function EventDayModal({
                      `onClick`; `role="button"` / `tabIndex` / `onKeyDown` live on
                      the title `<div>` (NO aria-label — see the note there). Why: the card
                      CONTAINS a native "Share Game QR" `<button>` (upcoming
-                     events). With the handler on the card, Enter on that button
+                     events) [AMENDED Phase 89.6-28: and running nights]. With the handler on the card, Enter on that button
                      bubbled up, was `preventDefault()`ed and navigated to the
                      event instead of showing the QR — a keyboard path that
                      worked before 2c37a4e — and `role="button"` is
@@ -698,8 +700,8 @@ export default function EventDayModal({
                             <span>Duration: {event.duration_minutes} min</span>
                           )}
                         </div>
-                        {/* Share Game QR button - visible for upcoming events */}
-                        {!isPastEvent && (
+                        {/* Share Game QR button - visible for upcoming events AMENDED Phase 89.6-28 (X42, SPEC A2): and while the night is still running, by the same isNightNotOver rule as the night page. */}
+                        {isNightNotOver(event, Date.now()) && (
                           <Button
                             variant="accent"
                             onClick={(e) => handleShowGameQR(e, event)}

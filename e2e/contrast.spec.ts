@@ -2388,7 +2388,7 @@ async function assertStatusTextLanded(page: Page, theme: 'light' | 'dark'): Prom
  * PLANTED, not driven at a shipped site — and this is the one place in this file that plants.
  * The two shipped `.btn-accent` controls are src/app/components/EventDayModal.js ("onClick={(e) => handleShowGameQR(e, event)}") (inside a day modal that has
  * to be opened from the month grid) and src/app/gameDetail/page.js ("onClick={handleShowGameQR}"), whose render is gated on
- * `userScope === 'group-member'` (src/app/gameDetail/page.js ("{userScope === 'group-member' && !hasStarted(")) [AMENDED Phase 88.9-65 (X42): and now also on the night not having started]. Neither is a steady-state element of a page this
+ * `userScope === 'group-member'` (src/app/gameDetail/page.js ("{userScope === 'group-member' && isNightNotOver(")) [AMENDED Phase 88.9-65 (X42): and now also on the night not having started] [AMENDED Phase 89.6-28 (X42): gate now isNightNotOver]. Neither is a steady-state element of a page this
  * spec already visits, and the alternative — a new fixture plus a modal-opening journey inside a
  * CONTRAST gate — buys nothing this measurement needs: the quantity under test is a compiled CSS
  * rule, not a layout or a data path. The same reasoning is already on the record one file over,

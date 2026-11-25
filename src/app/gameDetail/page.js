@@ -7,7 +7,7 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL, ApiError } from '../../lib/api';
 import { isUuid } from '../../lib/isUuid';
 import { collapseBlankLines } from '../../lib/collapseBlankLines';
-import { hasStarted } from '../../lib/upcomingEvents';
+import { hasStarted, isNightNotOver } from '../../lib/upcomingEvents';
 import { formatScore } from '../../lib/formatScore';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
@@ -72,7 +72,9 @@ import { toast } from 'sonner';
    of a finished night (RSVP closes at the start, so the pill described nothing anyone could act
    on) and OVER dropping every RSVP pill after the start (Going / Maybe / No are a record of what
    was said). The same hasStarted clock as the Share Game QR gate (X42). Bringing the pill back on
-   a started night is a decision, not a cleanup. */
+   a started night is a decision, not a cleanup.
+   AMENDED Phase 89.6-28 (X42): the Share Game QR gate now reads isNightNotOver; this pill keeps
+   hasStarted (P-5 No change), so the two clocks differ on purpose. */
 function RsvpStatusPill({ status, nightStarted = false }) {
     const map = {
         yes: { label: 'Going', cls: 'bg-surface-pill-green text-content-pill-green' },
@@ -3014,14 +3016,15 @@ export default function GameDetailPage() {
                     only). The Share Game QR button stays group-member-only
                     per CONTEXT (admin/owner-initiated invites only — not
                     surfaced to game-only callers).
-                    AMENDED Phase 88.9-65 (X42, orchestrator decision, veto open): Share Game QR only before the night starts (hasStarted, as the calendar popup and RSVP controls), chosen OVER an ungated button reachable from an old link; a started night shows heading and chips. */}
+                    AMENDED Phase 88.9-65 (X42, orchestrator decision, veto open): Share Game QR only before the night starts (hasStarted, as the calendar popup and RSVP controls), chosen OVER an ungated button reachable from an old link; a started night shows heading and chips.
+                    AMENDED Phase 89.6-28 (X42, D-04 / SPEC A2, owner 2026-11-19 'they should follow the same rule, agreed.' and P-5 2026-11-22 'people might want to join still'): the button shows until the night is over (isNightNotOver: before the start, or still running by D47's window), chosen OVER hiding it at the start; RSVP keeps hasStarted (P-5 No change). */}
                 {(userScope === 'group-member' || userScope === 'game-only') && userRole !== 'pending' && participants.length > 0 && (
                     <div className="card p-edge-card md:p-edge-wide mb-6">
                         <div className="bb-row items-center mb-3">
                             <Heading level={2} size="heading" className="bb-row-text text-content-primary">
                                 Participants ({participants.length})
                             </Heading>
-                            {userScope === 'group-member' && !hasStarted(singleEvent, Date.now()) && (
+                            {userScope === 'group-member' && isNightNotOver(singleEvent, Date.now()) && (
                                 <div className="bb-row-end">
                                 <Button
                                     variant="accent"

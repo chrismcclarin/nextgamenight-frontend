@@ -163,6 +163,9 @@ export const isLiveUpcoming = (event: UpcomingEventLike, nowMs: number): boolean
  *
  * The unit is MINUTES because that is the unit the column and this module already speak.
  * Changing this number is a PRODUCT decision, not a cleanup.
+ *
+ * AMENDED Phase 89.6-28: backend twin backend:Sonnet/utils/isNightOver.js ("DECISION Phase 89.6-28 (X42 backend twin)")
+ * copies this coercion and default for the invite preview and join gates; change both or neither.
  */
 export const DEFAULT_RUN_WINDOW_MINUTES = 480; // 8 hours
 
@@ -255,6 +258,33 @@ export const isStillRunning = (event: UpcomingEventLike, nowMs: number): boolean
   const startMs = new Date(event.start_date).getTime();
   return nowMs < startMs + runWindowMs(event);
 };
+
+/*
+ * DECISION Phase 89.6-28 (X42): ONE exported predicate for 'the night is not over' composed from
+ * hasStarted and isStillRunning (D47's window, no new threshold) OVER inlining the composition at
+ * the two call sites (they could drift; the module's DECISION Phase 88.5 rule) and OVER
+ * isLiveUpcoming OR isStillRunning (would hide the button on a not-yet-started night with a
+ * non-live status, which today shows it). Backend twin:
+ * backend:Sonnet/utils/isNightOver.js ("DECISION Phase 89.6-28 (X42 backend twin)")
+ * gates invite preview and join on the same window, so the QR's link works exactly while the
+ * button shows; change both or neither. Changing this is a decision, not a cleanup.
+ */
+
+/**
+ * Is this night not over yet: not started, or started and still inside its run window?
+ *
+ * The Share Game QR gate on the night page and in the calendar's day popup (SPEC A2, D-04: the
+ * owner's 'they should follow the same rule, agreed.'). Before the start it is status-blind, as the
+ * old `!hasStarted` gate was; after the start a cancelled or completed night is over at once, and a
+ * live one is over when D47's run window closes (the stored length, else eight hours). An
+ * unparseable start reads as not started, so as not over (the old `!hasStarted` reading).
+ *
+ * @param event - the event to test
+ * @param nowMs - the instant to measure against, in epoch ms (callers share a clock)
+ * @returns true until the night is over
+ */
+export const isNightNotOver = (event: UpcomingEventLike, nowMs: number): boolean =>
+  !hasStarted(event, nowMs) || isStillRunning(event, nowMs);
 
 /**
  * Filter an event list down to the next 7 days, sorted soonest-first.
