@@ -757,6 +757,40 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
   });
 
+  it('89.6 R8 O-1b: the checkbox accent clears 3:1 on every ground in both themes', () => {
+    // Owner pick O-1b = c, 2026-11-22 ('Keep the browser's own checkbox; set its tick colour to
+    // ours (one value for light, a lighter one for dark)'). A ticked box carries meaning, so WCAG
+    // 1.4.11 applies: 3.0 against every ground a checkbox can sit on. The as-built box on the
+    // selected invite row measured 2.8 there.
+    //
+    // Measured 2026-11-24 with the WCAG formula, unrounded. Light purple-600 #536889: page 4.3366,
+    // card / input / elevated 5.6617, muted 3.7628, sunken / hover 5.3409. Dark purple-400 #8a9bba:
+    // page 6.0217, card 4.9316, muted / input / elevated / hover 4.0156, sunken 5.5485. Purple-600
+    // in dark measures 1.9917 on #2f3b50, which is why dark takes the lighter step.
+    //
+    // RED shape: before the token exists the resolver throws on --color-checkbox-accent.
+    const req = 'R8 O-1b (89.6) / 1.4.11 (the ticked checkbox)';
+    const picked = { light: '#536889', dark: '#8a9bba' } as const;
+    const grounds = [
+      '--color-bg-page',
+      '--color-bg-card',
+      '--color-bg-muted',
+      '--color-bg-input',
+      '--color-bg-elevated',
+      '--color-bg-sunken',
+      '--color-bg-hover',
+    ];
+    for (const theme of ['light', 'dark'] as const) {
+      for (const ground of grounds) {
+        expectRatio(theme, '--color-checkbox-accent', ground, 3.0, req);
+      }
+      expect(
+        resolve(theme, '--color-checkbox-accent'),
+        `O-1b: [${theme}] --color-checkbox-accent must resolve to the picked ${picked[theme]}`,
+      ).toBe(picked[theme]);
+    }
+  });
+
   // ===================================================================================
   // Req 3 — shadows (UI-SPEC §5.4)
   // ===================================================================================

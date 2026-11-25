@@ -19,7 +19,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { lineAt, stringChunks, withoutComments } from '../test-utils/sourceScan';
+import { lineAt, readOpeningTag, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const GLOBALS = path.join(__dirname, 'globals.css');
 const raw = fs.readFileSync(GLOBALS, 'utf8');
@@ -218,7 +218,82 @@ describe('Phase 89.6-12 — the two-tone focus-ring utilities (owner pick O-1 = 
       );
     }
   });
+
+  it('7. native checkboxes take the accent from one base rule', () => {
+    // Owner pick O-1b = c: the browser's own checkbox, ticked in our colour. One rule on checkbox
+    // inputs in the base layer, so an accent utility at a call site still wins over it.
+    const layerOpens = [...css.matchAll(/^@layer base[ \t]*\{/gm)].map((m) => m.index);
+    expect(layerOpens.length, 'globals.css must hold an @layer base block').toBeGreaterThan(0);
+    const rules = layerOpens.flatMap((open) => {
+      const base = blockAt(open);
+      return [...base.matchAll(/(^|[\s}])input\[type=(['"]?)checkbox\2\][ \t]*\{([^}]*)\}/g)].map((m) => m[3]);
+    });
+    expect(rules, 'the base layer must hold exactly one rule for checkbox inputs').toHaveLength(1);
+    expect(decl(rules[0], 'accent-color'), 'the checkbox base rule paints the accent token').toBe(
+      'var(--color-checkbox-accent)',
+    );
+    const everywhere = [...css.matchAll(/accent-color[ \t]*:[ \t]*var\(--color-checkbox-accent\)/g)];
+    expect(everywhere, 'the accent token is applied by that one rule only').toHaveLength(1);
+  });
+
+  it('8. written exception: the app-ringed checkboxes carry no ring', () => {
+    // WRITTEN EXCEPTION to the one-ring rule (DECISION Phase 89.6-12 (O-1b) in globals.css; owner
+    // pick O-1b = c, 2026-11-22: 'remove the extra ring the app adds on the invite panel so the
+    // browser's rounded ring shows there'): a native checkbox keeps the browser's own rounded focus
+    // ring and carries no app ring class. Plan 89.6-13's ring codemod skips checkbox inputs and must
+    // keep this green.
+    //
+    // An outline-hidden or outline-none on a checkbox is an offender too: it would remove the only
+    // focus indicator the box has. An accent utility stays allowed (AvailabilityGrid's toggle).
+    const srcRoot = path.join(__dirname, '..');
+    const offenders: string[] = [];
+    let population = 0;
+    for (const file of sourceFiles(srcRoot)) {
+      const text = withoutComments(fs.readFileSync(file, 'utf8'));
+      for (const m of text.matchAll(/<input\b/g)) {
+        const tag = readOpeningTag(text, m.index);
+        if (!tag || !/\btype=(?:"checkbox"|'checkbox'|\{\s*['"]checkbox['"]\s*\})/.test(tag)) continue;
+        population += 1;
+        const where = `${path.relative(path.join(srcRoot, '..'), file)}:${lineAt(text, m.index)}`;
+        for (const token of classTokens(tag)) {
+          const utility = token.replace(/^!/, '').split(':').pop() ?? '';
+          if (/^(ring|focus-ring)(-|$)/.test(utility) || /^outline-(hidden|none)$/.test(utility)) {
+            offenders.push(`${where} ${token}`);
+          }
+        }
+      }
+    }
+    // A population floor, so the scan cannot pass on an empty list (ten checkbox inputs at FE b10aede).
+    expect(population, 'the scan must find at least ten checkbox inputs in src').toBeGreaterThanOrEqual(10);
+    expect(offenders, `checkbox inputs carrying an app ring or a hidden outline:\n${offenders.join('\n')}`).toEqual([]);
+  });
 });
+
+/** Every class token in an opening tag's className value (a string or a template literal). */
+function classTokens(tag: string): string[] {
+  const at = tag.search(/\bclassName=/);
+  if (at < 0) return [];
+  let i = tag.indexOf('=', at) + 1;
+  let value: string;
+  if (tag[i] === '"' || tag[i] === "'") {
+    const end = tag.indexOf(tag[i], i + 1);
+    value = tag.slice(i, end + 1);
+  } else if (tag[i] === '{') {
+    let depth = 0;
+    const start = i;
+    for (; i < tag.length; i += 1) {
+      if (tag[i] === '{') depth += 1;
+      else if (tag[i] === '}') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    value = tag.slice(start, i + 1);
+  } else {
+    return [];
+  }
+  return stringChunks(value).flatMap((chunk) => chunk.text.split(/\s+/).filter((t) => t.length > 0));
+}
 
 /** The body of the block whose opening brace is at or after offset, read from the stripped CSS. */
 function blockAt(offset: number): string {

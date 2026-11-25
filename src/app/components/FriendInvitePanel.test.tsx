@@ -190,6 +190,29 @@ describe('FriendInvitePanel invite list', () => {
     expect(screen.getByRole('checkbox')).not.toBeDisabled();
   });
 
+  it("89.6-12 O-1b c: the invite checkbox carries no app ring, so the browser's ring shows", async () => {
+    // Owner pick O-1b = c, 2026-11-22: 'remove the extra ring the app adds on the invite panel so the
+    // browser's rounded ring shows there'. The written exception to the one-ring rule
+    // (DECISION Phase 89.6-12 (O-1b) in globals.css). Read before and after selection, because the
+    // box used to carry a different ring literal per arm. The dimming class stays: the in-group box
+    // (checked and disabled) relies on it.
+    renderPanel();
+    expect(await screen.findByText('Dana')).toBeInTheDocument();
+    const ringless = (when: string) => {
+      const classes = [...screen.getByRole('checkbox').classList];
+      expect(
+        classes.filter((c) => c.includes('ring')),
+        `${when}: the invite checkbox must carry no ring class`,
+      ).toEqual([]);
+      expect(classes, `${when}: the invite checkbox must not hide its outline`).not.toContain('focus:outline-hidden');
+      expect(classes, `${when}: the invite checkbox keeps its disabled dimming`).toContain('disabled:opacity-40');
+    };
+    ringless('before selection');
+    fireEvent.click(screen.getByRole('checkbox'));
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked());
+    ringless('after selection');
+  });
+
   it('renders an already-in-group friend as a disabled, checked row', async () => {
     renderPanel({
       friends: [MEMBER_FRIENDSHIP],
