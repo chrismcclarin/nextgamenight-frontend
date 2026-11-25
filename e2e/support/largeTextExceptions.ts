@@ -19,6 +19,18 @@
 // of those surfaces set to visibility hidden (every box keeps its place, and the read skips text
 // that draws nothing), and the split and held lists of the second read are the cell's. What the
 // second read no longer reports is written into the cell's record as cleared, never dropped.
+//
+// DECISION Phase 89.6-16 (exceptions, spill): inside the same three surfaces a SPILL entry (a word
+// painting outside its filled box) is cleared too, and a spill alone also starts the second read,
+// chosen OVER leaving spill uncleared there (Home at 768 / 200% stacks its columns by GR, the month
+// grid leaves its compact mode, and full month tiles show game names that spill: Phase 88.9.2's
+// defect, whose own pick R22 = List replaces the grid at large text) and OVER narrowing the Home
+// row's root (the calendar column's header and legend would go unswept). Orchestrator ruling D12:
+// planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/DECISIONS.md ("D12. Plan 16")
+// The split and held lists are taken from the second read exactly when they were before (the first
+// read reported a split or a held word), so nothing about how cut, split or held clear changes; the
+// cut-only entries (A3-1, A10) clear no spill. Undo: drop spill here and the Home 768 cell reds.
+// Changing this is a decision, not a cleanup.
 import type { Locator } from '@playwright/test';
 
 import { readLargeTextCell, type LargeTextCellRead } from './wordLines';
@@ -32,7 +44,7 @@ export interface LargeTextException {
   source: { file: string; snippet: string; alsoOnce?: readonly string[]; folder?: string };
   /** Matches the excepted element only: an existing attribute or role first, then its class chain. */
   selector: string;
-  /** cut: only the cut check skips the text. surface: split and held words inside it are cleared too. */
+  /** cut: only the cut check skips the text. surface: split, held and spilling words inside it are cleared too. */
   clears: 'cut' | 'surface';
 }
 
@@ -92,6 +104,8 @@ export const SURFACE_EXCEPTION_SELECTORS: readonly string[] = EXCEPTIONS.filter(
 export interface ClearedBySurface {
   split: string[];
   held: string[];
+  /** Words that spill out of their box inside one of the three surfaces (ruling D12, plan 89.6-16). */
+  spill: string[];
 }
 
 /** a minus b as lists: each entry of b takes away one equal entry of a. */
@@ -106,15 +120,17 @@ function minus(a: readonly string[], b: readonly string[]): string[] {
 }
 
 /**
- * Read one cell under the exceptions list. The cut check skips all five texts; the split and held
- * lists are those of the page with the three owned surfaces' text hidden. cleared holds what the
- * surfaces accounted for.
+ * Read one cell under the exceptions list. The cut check skips all five texts; the split, held and
+ * spill lists are those of the page with the three owned surfaces' text hidden. cleared holds what
+ * the surfaces accounted for.
  */
 export async function readCellUnderExceptions(root: Locator, options: { dialog?: Locator } = {}): Promise<{ read: LargeTextCellRead; cleared: ClearedBySurface }> {
   const readOptions = { dialog: options.dialog, exceptions: EXCEPTION_SELECTORS };
   const read = await readLargeTextCell(root, readOptions);
-  const none = { read, cleared: { split: [], held: [] } };
-  if (read.split.length === 0 && read.held.length === 0) return none;
+  const none = { read, cleared: { split: [], held: [], spill: [] } };
+  const splitOrHeld = read.split.length > 0 || read.held.length > 0;
+  const spills = read.spill.length > 0;
+  if (!splitOrHeld && !spills) return none;
   const page = root.page();
   const present = await page.evaluate((selectors) => selectors.some((selector) => document.querySelector(selector) !== null), [...SURFACE_EXCEPTION_SELECTORS]);
   if (!present) return none;
@@ -128,8 +144,13 @@ export async function readCellUnderExceptions(root: Locator, options: { dialog?:
   } finally {
     await style.evaluate((element) => (element as Element).remove());
   }
+  // Each list comes from the second read only when the first read reported something in it, so a
+  // read started by a spill alone leaves split and held exactly as the first read gave them.
+  const split = splitOrHeld ? without.split : read.split;
+  const held = splitOrHeld ? without.held : read.held;
+  const spill = spills ? without.spill : read.spill;
   return {
-    read: { ...read, split: without.split, held: without.held },
-    cleared: { split: minus(read.split, without.split), held: minus(read.held, without.held) },
+    read: { ...read, split, held, spill },
+    cleared: { split: minus(read.split, split), held: minus(read.held, held), spill: minus(read.spill, spill) },
   };
 }

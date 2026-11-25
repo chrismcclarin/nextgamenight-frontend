@@ -17,7 +17,8 @@
 //
 // EXCEPTIONS. The five texts of e2e/support/largeTextExceptions.ts ("DECISION Phase 89.6-08 (exceptions): the cut check skips exactly five texts")
 // are skipped by the cut check, and nothing else is. Inside the three surfaces another phase owns,
-// split and held words are cleared too and written into the cell's record as cleared.
+// split, held and spilling words are cleared too (spill by orchestrator ruling D12, plan 89.6-16)
+// and written into the cell's record as cleared.
 //
 // RESULTS. The row test writes test-results/large-text-sweep/results/<row id>.json (every cell
 // with its verdict and read, and the row's wall time) BEFORE it asserts, and the row-list test
@@ -94,7 +95,7 @@ interface CellRecord {
   fontSize: string;
   window: number;
   read: LargeTextCellRead | PageZoomRead;
-  /** The split and held entries inside a surface another phase owns (SPEC A3 (2) to (4)); absent when there are none. */
+  /** The split, held and spill entries inside a surface another phase owns (SPEC A3 (2) to (4); spill by ruling D12); absent when there are none. */
   cleared?: ClearedBySurface;
   /** The first line of what failed, when the verdict is fail. */
   why?: string;
@@ -187,7 +188,7 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
     const matrix = cell.zoom ? null : await readCellUnderExceptions(reached.root, { dialog: reached.dialog });
     const read = matrix ? matrix.read : await readPageZoomCell(reached.root, { exceptions: EXCEPTION_SELECTORS, dialog: reached.dialog });
     const record: CellRecord = { cell: cell.id, verdict: 'pass', fontSize: at.fontSize, window: at.window, read };
-    if (matrix && matrix.cleared.split.length + matrix.cleared.held.length > 0) record.cleared = matrix.cleared;
+    if (matrix && matrix.cleared.split.length + matrix.cleared.held.length + matrix.cleared.spill.length > 0) record.cleared = matrix.cleared;
     try {
       expectCell(record, cell, tag);
     } catch (error) {
@@ -321,6 +322,19 @@ const EXCEPTIONS_CONTROL =
   heldBox('Saturday') +
   `<div class="fixed inset-0 z-60">${heldBox('Thursday')}</div>` +
   '</main></body></html>';
+// The spill half of the exceptions control (orchestrator ruling D12, plan 89.6-16): a word wider than
+// its 30px filled box spills out of it, in the open, in the month grid's selector, and in the two
+// cut-only exceptions' (the description's and the header site name's). The second page holds spills
+// only, so it shows that a spill alone starts the second read.
+const spillBox = (word: string) => `<div style="width:30px;background:#eee">${word}</div>`;
+const SPILLS =
+  spillBox('Carcassonne') +
+  `<div class="grid grid-cols-7">${spillBox('Gloomhaven')}</div>` +
+  `<div id="game-description">${spillBox('Wingspan')}</div>` +
+  '<nav><a href="/" style="display:block;width:30px"><span class="whitespace-nowrap">Nextgamenight</span></a></nav>';
+const SPILL_CONTROL = (body: string) =>
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
+  `<body style="margin:0;font:16px/1.4 sans-serif"><main style="width:300px">${body}</main></body></html>`;
 // One page for the held-clock control: a frame callback that makes the page taller, and a
 // two-second timer that removes a line, both armed after the clock is paused.
 const CLOCK_CONTROL =
@@ -375,6 +389,27 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
   expect(wordsOf(under.read.held), 'a held word inside the tutorial is cleared; one in the open is not').toEqual(['Saturday']);
   expect({ split: wordsOf(under.cleared.split), held: wordsOf(under.cleared.held) }, 'what the surfaces cleared is written down').toEqual({ split: ['Warriors'], held: ['Thursday'] });
   expect(await page.locator('style').count(), 'the read left its hiding style on the page').toBe(0);
+
+  // Spill too (orchestrator ruling D12): a spill inside the month grid is cleared; one in the open,
+  // and one inside a cut-only exception (A3-1, A10), are not. First beside the split and held words
+  // above, whose lists must come out exactly as before; then on a page with spills only.
+  await page.setContent(EXCEPTIONS_CONTROL.replace('</main>', `${SPILLS}</main>`));
+  const rawWithSpill = await readLargeTextCell(control);
+  expect(wordsOf(rawWithSpill.spill), 'the control page holds four spilling words').toEqual(['Carcassonne', 'Gloomhaven', 'Nextgamenight', 'Wingspan']);
+  const underWithSpill = await readCellUnderExceptions(control);
+  expect(wordsOf(underWithSpill.read.spill), 'a spill inside the month grid is cleared; one in the open, and one in a cut-only exception (A3-1, A10), are not').toEqual(['Carcassonne', 'Nextgamenight', 'Wingspan']);
+  expect({ split: wordsOf(underWithSpill.read.split), held: wordsOf(underWithSpill.read.held) }, 'clearing spill changed what split and held clear').toEqual({ split: ['Tuesday', 'Weekend'], held: ['Saturday'] });
+  expect({ split: wordsOf(underWithSpill.cleared.split), held: wordsOf(underWithSpill.cleared.held), spill: wordsOf(underWithSpill.cleared.spill) }, 'what the surfaces cleared, spill included, is written down').toEqual({
+    split: ['Warriors'],
+    held: ['Thursday'],
+    spill: ['Gloomhaven'],
+  });
+  await page.setContent(SPILL_CONTROL(SPILLS));
+  const spillOnly = await readCellUnderExceptions(control);
+  expect({ split: spillOnly.read.split, held: spillOnly.read.held }, 'the spill-only page holds no split or held word').toEqual({ split: [], held: [] });
+  expect(wordsOf(spillOnly.read.spill), 'a spill alone does not start the second read: the month-grid spill is not cleared').toEqual(['Carcassonne', 'Nextgamenight', 'Wingspan']);
+  expect(wordsOf(spillOnly.cleared.spill), 'the spill-only page did not write down the cleared spill').toEqual(['Gloomhaven']);
+  expect(await page.locator('style').count(), 'the spill read left its hiding style on the page').toBe(0);
 
   // Every backend GET that writes is named, with what the guard does about it.
   const named = WRITE_GET_HANDLERS.map((entry) => `${entry.file} ${entry.path}`).sort();
