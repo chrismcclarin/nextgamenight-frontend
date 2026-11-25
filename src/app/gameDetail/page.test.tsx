@@ -2726,22 +2726,68 @@ describe('gameDetail Share Game QR in flight (88.6.1-47, D-35)', () => {
 // starts (the shared start test against the live clock, as the calendar popup and the RSVP
 // controls). Both sides of the comparison are fixed points: the event fixture's start and a
 // clock pinned on either side of it.
+// AMENDED Phase 89.6-28 (X42, D-04 / SPEC A2): the button now shows until the night is OVER
+// (isNightOver's FE twin isNightNotOver: before the start, or still running by D47's window), so
+// the absent half is re-pinned to one minute after the fixture's 120-minute night ended.
 describe('gameDetail Share Game QR only before the night starts (X42, 88.9-65)', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('X42 (88.9-65): Share Game QR renders before the night starts and is absent once it has started', async () => {
+  it('X42 (88.9-65): Share Game QR renders before the night starts and is absent once the night is over', async () => {
     pinClockBeforeTheNight();
     renderEventDetail({ role: 'member' });
     expect(await screen.findByRole('button', { name: 'Share Game QR' })).toBeInTheDocument();
     cleanup();
 
     // One minute after the fixture's start: the night has started. Heading and chips stay.
-    vi.setSystemTime(new Date('2026-03-01T18:01:00Z'));
+    // AMENDED Phase 89.6-28 (X42): one minute after the fixture's 120-minute night ENDED (18:00 + 2h),
+    // because a started night still running now keeps the button (SPEC A2).
+    vi.setSystemTime(new Date('2026-03-01T20:01:00Z'));
     renderEventDetail({ role: 'member' });
     expect(await screen.findByRole('heading', { name: 'Participants (1)' })).toBeInTheDocument();
     expect(screen.getAllByText('Someone Else').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Share Game QR' })).toBeNull();
+  });
+});
+
+// 89.6-28 X42 (D-04, SPEC A2): Share Game QR shows until the night is OVER, by one predicate
+// (isNightNotOver) shared with the day popup. The event's start and length are staged from the
+// pinned instant, never seeded dates; the RSVP pill keeps hasStarted (P-5 No change).
+describe('89.6-28 X42 — Share Game QR until the night is over', () => {
+  const PIN = new Date('2026-05-10T20:00:00Z');
+  const MIN = 60 * 1000;
+  const startedAgo = (minutes: number) => new Date(PIN.getTime() - minutes * MIN).toISOString();
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(PIN);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is present one hour after the start of a 120-minute night, and the RSVP pill still reads the night as started', async () => {
+    renderEventDetail({ role: 'member', eventOverrides: { start_date: startedAgo(60), duration_minutes: 120 } });
+    expect(await screen.findByRole('button', { name: 'Share Game QR' })).toBeInTheDocument();
+    expect(screen.getAllByText('Someone Else').length).toBeGreaterThan(0);
+    // nightStarted true: the No reply pill is dropped on a started night (W26, hasStarted kept).
+    expect(screen.queryAllByText('No reply')).toHaveLength(0);
+  });
+
+  it('is absent 121 minutes after the start of a 120-minute night', async () => {
+    renderEventDetail({ role: 'member', eventOverrides: { start_date: startedAgo(121), duration_minutes: 120 } });
+    expect(await screen.findByRole('heading', { name: 'Participants (1)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Share Game QR' })).toBeNull();
+  });
+
+  it('with no stored length is present seven hours after the start (the eight-hour default)', async () => {
+    renderEventDetail({ role: 'member', eventOverrides: { start_date: startedAgo(7 * 60), duration_minutes: null } });
+    expect(await screen.findByRole('button', { name: 'Share Game QR' })).toBeInTheDocument();
+  });
+
+  it('with no stored length is absent eight hours and one minute after the start', async () => {
+    renderEventDetail({ role: 'member', eventOverrides: { start_date: startedAgo(8 * 60 + 1), duration_minutes: null } });
+    expect(await screen.findByRole('heading', { name: 'Participants (1)' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Share Game QR' })).toBeNull();
   });
 });

@@ -539,3 +539,48 @@ describe('EventDayModal — round-2 look (88.9-39)', () => {
     expect(plainCard.style.getPropertyValue('--group-ground')).toBe('');
   });
 });
+
+// 89.6-28 X42 (D-04, SPEC A2): the row's Share Game QR follows the night page's rule, shown until the
+// night is OVER (isNightNotOver), not hidden at the start. The start and length are staged from
+// the pinned instant, never seeded dates.
+describe('89.6-28 X42 — Share Game QR until the night is over', () => {
+  const PIN = new Date('2026-05-10T20:00:00Z');
+  const MIN = 60 * 1000;
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(PIN);
+    h.getEventInviteToken.mockReset();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  function renderStarted(minutesAgo: number, duration: number | null) {
+    const start = new Date(PIN.getTime() - minutesAgo * MIN);
+    const event = { ...upcomingEvent, id: 'evt-x42', start_date: start.toISOString(), duration_minutes: duration };
+    render(<EventDayModal selectedDay={{ date: start, events: [event] }} onClose={vi.fn()} onEventClick={vi.fn()} />);
+  }
+
+  it('is present one hour after the start of a 120-minute night', () => {
+    renderStarted(60, 120);
+    expect(screen.getByRole('button', { name: 'Share Game QR' })).toBeInTheDocument();
+  });
+
+  it('is absent 121 minutes after the start of a 120-minute night', () => {
+    renderStarted(121, 120);
+    expect(screen.getByRole('button', { name: rowName })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Share Game QR' })).toBeNull();
+  });
+
+  it('with no stored length is present seven hours after the start (the eight-hour default)', () => {
+    renderStarted(7 * 60, null);
+    expect(screen.getByRole('button', { name: 'Share Game QR' })).toBeInTheDocument();
+  });
+
+  it('with no stored length is absent eight hours and one minute after the start', () => {
+    renderStarted(8 * 60 + 1, null);
+    expect(screen.getByRole('button', { name: rowName })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Share Game QR' })).toBeNull();
+  });
+});

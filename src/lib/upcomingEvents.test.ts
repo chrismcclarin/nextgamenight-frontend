@@ -23,6 +23,7 @@ import {
   hasStarted,
   hasStartedRecently,
   isLiveUpcoming,
+  isNightNotOver,
   isStillRunning,
   selectNextUpcoming,
   selectUpcomingWithin7Days,
@@ -394,5 +395,44 @@ describe('Phase 88.6-27 — hasStarted / isStillRunning / hasStartedRecently', (
     expect(hasStartedRecently(ancient, NOW_MS)).toBe(false);
     // ...and an unparseable date is dropped, the same O1a rule the sibling applies.
     expect(hasStartedRecently(ev('bad', 'not a date'), NOW_MS)).toBe(false);
+  });
+});
+
+describe('Phase 89.6-28 — isNightNotOver (X42, D-04)', () => {
+  const MIN = 60 * 1000;
+  const START_MS = NOW_MS;
+  const night = (overrides: Record<string, unknown> = {}) => ({
+    id: 'x42',
+    start_date: new Date(START_MS).toISOString(),
+    duration_minutes: 120,
+    status: 'scheduled',
+    ...overrides,
+  });
+
+  it('is true before the start, whatever the status (status-blind, as the old !hasStarted gate)', () => {
+    expect(isNightNotOver(night(), START_MS - 60 * MIN)).toBe(true);
+    expect(isNightNotOver(night({ status: 'cancelled' }), START_MS - 60 * MIN)).toBe(true);
+  });
+
+  it('is true at the start instant', () => {
+    expect(isNightNotOver(night(), START_MS)).toBe(true);
+  });
+
+  it('is true one minute before start + duration_minutes and false at start + duration', () => {
+    expect(isNightNotOver(night(), START_MS + 119 * MIN)).toBe(true);
+    expect(isNightNotOver(night(), START_MS + 120 * MIN)).toBe(false);
+  });
+
+  it('with no stored length it is true at +7h59m and false at +8h (D47 default, AC-9 fixture)', () => {
+    expect(isNightNotOver(night({ duration_minutes: null }), START_MS + (8 * 60 - 1) * MIN)).toBe(true);
+    expect(isNightNotOver(night({ duration_minutes: null }), START_MS + 8 * 60 * MIN)).toBe(false);
+  });
+
+  it('a cancelled night that has started is over', () => {
+    expect(isNightNotOver(night({ status: 'cancelled' }), START_MS + MIN)).toBe(false);
+  });
+
+  it('an unparseable start reads as not over (the old !hasStarted reading, unchanged)', () => {
+    expect(isNightNotOver(night({ start_date: 'not a date' }), START_MS)).toBe(true);
   });
 });
