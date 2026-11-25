@@ -130,7 +130,9 @@ const reachGroupsLoading: SurfaceRow['reach'] = async (page) => {
       await closed;
     });
   }
-  await openHome(page);
+  // The loading return renders no Your Groups heading (only the loading line), so the reach waits for
+  // the line itself (flip run 45612916541: the heading wait timed out).
+  await page.goto('/');
   await page.getByText('Loading groups...', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
   return { root: page.locator('main') };
 };
