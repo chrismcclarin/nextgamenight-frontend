@@ -1,5 +1,5 @@
 // Surface rows: the night page (the event view of census R05), Participants and Delete this session. Owner: plan 89.6-19.
-// One row per line, each with its census id. R05-event is enforced (Phase 89.6-19); D27 and D31 are pending.
+// One row per line, each with its census id. All three are enforced (Phase 89.6-19).
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
 // WHAT IS STAGED (stageNight). The real event read of the CI fixture night, answered in the browser
@@ -17,10 +17,12 @@
 // its id is in no database, and nothing is written (the sweep's guard holds every write).
 import type { Locator, Page, Route } from '@playwright/test';
 
+import { E2E_FAKE_GAME_ID, E2E_GAME_PATH, routeFakeGameSuccess } from '../fakeGame';
 import { settleAnimations } from '../inFlight';
+import { EXCEPTION_SELECTORS } from '../largeTextExceptions';
 import { routeMemberRoster } from '../memberRoster';
 import { scrubbedFetch } from '../scrubbedFetch';
-import { TWO_WORD_NAME } from '../wordLines';
+import { TWO_WORD_NAME, expectLargeTextCell, expectPageZoomUsable, readLargeTextCell, readPageZoomCell } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login owns.
@@ -210,8 +212,142 @@ const nightExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: 
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+const firstLine = (error: unknown): string => String(error instanceof Error ? error.message : error).split('\n')[0];
+
+/** Scroll every scrolled box of a dialog back to its top: the header at the top, as plans 10 and 11 read a tall dialog. */
+async function toDialogTop(dialog: Locator): Promise<void> {
+  await dialog.evaluate((el) => {
+    for (const node of [el, ...Array.from(el.querySelectorAll('*'))]) if (node.scrollTop > 0) node.scrollTop = 0;
+  });
+}
+
+// D27: the staged night's See all (7) opens the Participants dialog.
+const participantsDialog = (page: Page): Locator => page.getByRole('dialog', { name: 'Participants (7)', exact: true });
+const reachParticipants: SurfaceRow['reach'] = async (page) => {
+  const main = await openNight(page);
+  await main.getByRole('button', { name: 'See all (7) →', exact: true }).click();
+  const dialog = participantsDialog(page);
+  await dialog.getByRole('button', { name: `Remove ${LONG_NAME} from this event`, exact: true }).waitFor({ state: 'attached', timeout: 15_000 });
+  await settleAnimations(dialog);
+  await toDialogTop(dialog);
+  return { root: dialog, dialog };
+};
+
+// D27 extras, every cell: the long-name guest's Remove is pressed ONCE (it arms to Tap again; the
+// two-tap has no timer since plan 89.6-04, and nothing commits on one press), the armed dialog is
+// read with the cell's checks, then the dialog heading is pressed (an outside press disarms and
+// says Confirmation cancelled.). One page serves every cell, so the disarm is ASSERTED before the
+// extras return: a heading press that did not disarm would make the next cell's single press the
+// committing second tap (review M023). An armed control found before the press fails the cell
+// with nothing pressed.
+const RESTING_REMOVE = `Remove ${LONG_NAME} from this event`;
+const ARMED_REMOVE = 'Tap again to confirm';
+const participantsExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const tag = `D27 ${cell.id}`;
+  const dialog = participantsDialog(page);
+  const resting = dialog.getByRole('button', { name: RESTING_REMOVE, exact: true });
+  const armed = dialog.getByRole('button', { name: ARMED_REMOVE, exact: true });
+  if ((await armed.count()) > 0) throw new Error(`${tag}: a Remove was already armed before this cell's press; nothing was pressed`);
+  await resting.click();
+  await armed.waitFor({ state: 'visible', timeout: 10_000 });
+  if ((await resting.count()) !== 0) throw new Error(`${tag}: the armed Remove is not the long-name guest's`);
+  await settleAnimations(dialog);
+  const problems: string[] = [];
+  try {
+    const at = `${tag} with Remove armed`;
+    if (cell.zoom) expectPageZoomUsable(await readPageZoomCell(dialog, { exceptions: EXCEPTION_SELECTORS, dialog }), at);
+    else expectLargeTextCell(await readLargeTextCell(dialog, { exceptions: EXCEPTION_SELECTORS, dialog }), at);
+  } catch (error) {
+    problems.push(firstLine(error));
+  }
+  await dialog.getByRole('heading', { name: 'Participants (7)', exact: true }).click();
+  try {
+    await resting.waitFor({ state: 'attached', timeout: 5_000 });
+  } catch {
+    throw new Error(`${tag}: pressing the dialog heading did not disarm the long-name Remove; no further press is made${problems.length > 0 ? ` || ${problems.join(' || ')}` : ''}`);
+  }
+  if ((await armed.count()) !== 0) throw new Error(`${tag}: a button still reads ${ARMED_REMOVE} after the heading press`);
+  await toDialogTop(dialog);
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
+// D31: the game view (the shared fake custom game) with one past session of that game added to the
+// group's events read in the browser, a winner and two participants; the session's Delete opens the
+// Delete this session? dialog (the phone's Session actions menu below md, the Delete button from md
+// up). The dialog's Delete is NEVER pressed.
+const pastSession = () => ({
+  id: uuid('5e5510'),
+  group_id: groupId(),
+  game_id: E2E_FAKE_GAME_ID,
+  start_date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+  duration_minutes: 90,
+  status: 'completed',
+  is_group_win: false,
+  comments: null,
+  Winner: { id: null, username: TWO_WORD_NAME, is_custom: true },
+  EventParticipations: [
+    { id: uuid('a8'), user_id: null, username: TWO_WORD_NAME, is_guest: true, is_custom: true },
+    { id: uuid('a9'), user_id: uuid('e3'), username: SHORT_GUEST, is_guest: true, is_custom: false },
+  ],
+});
+const sessionStaged = new WeakSet<Page>();
+async function stageGameSession(page: Page): Promise<void> {
+  if (sessionStaged.has(page)) return;
+  sessionStaged.add(page);
+  await routeMemberRoster(page, groupId(), everyMemberAnOwner);
+  await routeFakeGameSuccess(page);
+  await page.route(
+    (url) => url.pathname === `/api/events/group/${groupId()}`,
+    (route) =>
+      onGet(route, async (r) => {
+        const real = await realJson(r);
+        await r.fulfill({ json: [...(Array.isArray(real) ? real : []), pastSession()] });
+      }),
+  );
+}
+const deleteSessionDialog = (page: Page): Locator => page.getByRole('dialog', { name: 'Delete this session?', exact: true });
+const reachDeleteSession: SurfaceRow['reach'] = async (page) => {
+  await stageGameSession(page);
+  await page.goto(E2E_GAME_PATH);
+  const kebab = page.getByRole('button', { name: 'Session actions', exact: true }).filter({ visible: true });
+  const desktopDelete = page.getByTitle('Delete this session', { exact: true }).filter({ visible: true });
+  await kebab.or(desktopDelete).first().waitFor({ state: 'visible', timeout: 15_000 });
+  if (await kebab.count()) {
+    await kebab.first().click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).filter({ visible: true }).first().click();
+  } else {
+    await desktopDelete.first().click();
+  }
+  const dialog = deleteSessionDialog(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(dialog);
+  await toDialogTop(dialog);
+  return { root: dialog, dialog };
+};
+
+// D31 extras (a tall dialog scrolls, plans 89.6-10 and -11): each footer button, scrolled into view,
+// lies inside the dialog box and is the thing under a finger at its centre. readShell is the shell
+// module's read, imported when the extras run (the shell module imports the dialogs module).
+const deleteSessionExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const { readShell } = await import('./dialogShell');
+  const read = await readShell(deleteSessionDialog(page));
+  const footer = read.buttons.filter((button) => button.part === 'footer');
+  const problems: string[] = [];
+  if (footer.length === 0) problems.push(`D31 ${cell.id}: the dialog footer holds no button`);
+  for (const button of footer) {
+    const at = button.reached?.box ?? button.box;
+    const box = button.reached?.dialog ?? read.dialog;
+    if (at.left < box.left - 0.5 || at.right > box.right + 0.5 || at.top < box.top - 0.5 || at.bottom > box.bottom + 0.5) {
+      problems.push(`D31 ${cell.id}: the footer button "${button.label}", scrolled into view, is outside the dialog box`);
+    }
+    if (!button.reached?.onTop) problems.push(`D31 ${cell.id}: the footer button "${button.label}", scrolled into view, is not the thing under a finger at its centre`);
+  }
+  await toDialogTop(deleteSessionDialog(page));
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R05-event', census: 'R05', kind: 'route', owner: '89.6-19', status: 'enforced', reach: reachNight, extras: nightExtras },
-  { id: 'D27', census: 'D27', kind: 'dialog', owner: '89.6-19', status: 'pending' },
-  { id: 'D31', census: 'D31', kind: 'dialog', owner: '89.6-19', status: 'pending' },
+  { id: 'D27', census: 'D27', kind: 'dialog', owner: '89.6-19', status: 'enforced', reach: reachParticipants, extras: participantsExtras },
+  { id: 'D31', census: 'D31', kind: 'dialog', owner: '89.6-19', status: 'enforced', reach: reachDeleteSession, extras: deleteSessionExtras },
 ];
