@@ -276,7 +276,18 @@ const reachTerms = reachStatic('/terms', 'Terms of Service');
 export const rows: SurfaceRow[] = [
   { id: 'R17', census: 'R17', kind: 'route', owner: '89.6-08', status: 'enforced', reach: reachNotFound },
   { id: 'R02', census: 'R02', kind: 'route', owner: '89.6-23', status: 'enforced', reach: reachAbout },
-  { id: 'R03', census: 'R03', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'ready', reach: reachAvailability, answers: availabilityAnswers },
+  // DECISION Phase 89.6-23 (R03 pending under plan 89.6-20; orchestrator decision D19 of 2026-11-25, the owner can
+  // veto): this row goes from enforced to PENDING under plan 89.6-20, which owns the paint grid's headers, chosen OVER
+  // leaving it enforced and red (every later CI read on the branch red, hiding other plans' results) and OVER fixing the
+  // headers here (plan 89.6-23's text hands them to plan 89.6-20). Everything else R03 needed on the page is fixed: no
+  // sideways scroll in any cell, and D35 green (runs 45657896544 and 45659427885). Its only remaining entries are in the
+  // grid headers. The day headers, src/app/components/AvailabilityGrid.js ("w-[76px] sm:w-28 shrink-0 text-center py-2"),
+  // read as spill only because the spill check measured grid content scrolled away inside the grid's scroll box against
+  // the card's edge, a false read being fixed in the read itself (orchestrator decision D20). The compact time labels
+  // spill 2 to 5px out of their 48px gutter at every 200% and font32 cell, a real squeeze that is plan 89.6-20's. Plan
+  // 89.6-20 turns this row back on with its fix; the coverage script's --close run fails on any pending row, so the phase
+  // cannot close with it off. Changing this is a decision, not a cleanup.
+  { id: 'R03', census: 'R03', kind: 'route', owner: '89.6-20', status: 'pending', state: 'ready', reach: reachAvailability, answers: availabilityAnswers },
   { id: 'R06', census: 'R06', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'default', reach: reachGoodbye },
   { id: 'R06-deleted', census: 'R06', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'account deleted', reach: reachGoodbyeDeleted },
   { id: 'R09', census: 'R09', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'signed out', reach: reachInviteAccept, answers: inviteInfoAnswers },
