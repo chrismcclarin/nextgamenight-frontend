@@ -263,7 +263,9 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
       },
       // The title block's opening tag. Comments in this file quote `role="button"` in prose, so
       // the anchor is the CODE form — attribute plus the `tabIndex` that always follows it.
-      counterpartAnchor: 'role="button"\n                        tabIndex={0}',
+      // AMENDED 89.6-16: the title block sits one level deeper (the home-title wrapper), so the
+      // anchor's indent is two spaces wider; the counterpart itself is unchanged.
+      counterpartAnchor: 'role="button"\n                          tabIndex={0}',
       window: 2500,
     },
   };
