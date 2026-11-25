@@ -288,8 +288,7 @@ describe('formatTzLegend', () => {
       }
       return new original(locales, options);
     } as unknown as typeof Intl.DateTimeFormat;
-    Object.assign(Stub, { supportedLocalesOf: original.supportedLocalesOf });
-    Stub.prototype = original.prototype;
+    Object.assign(Stub, { supportedLocalesOf: original.supportedLocalesOf, prototype: original.prototype });
     Intl.DateTimeFormat = Stub;
     try {
       expect(formatTzLegend(MARCH, 'America/Los_Angeles')).toBe(formatWithTzAbbr(MARCH, 'America/Los_Angeles', 'zzz'));
@@ -297,6 +296,12 @@ describe('formatTzLegend', () => {
     } finally {
       Intl.DateTimeFormat = original;
     }
+  });
+
+  // A zone with no generic name (UTC) gets an offset from the formatter ('GMT+00:00' in Chromium
+  // and Node, 'GMT' in WebKit), not a name: the abbreviation ('UTC') reads better and is today's.
+  it('keeps the abbreviation for a zone whose generic name is only an offset (UTC stays UTC)', () => {
+    expect(formatTzLegend(MARCH, 'UTC')).toBe('UTC');
   });
 
   it('returns null for a missing, blank or invalid zone (never the host zone)', () => {

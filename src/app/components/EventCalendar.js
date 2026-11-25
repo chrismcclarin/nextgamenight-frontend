@@ -11,7 +11,7 @@ import CalendarMonthView from './CalendarMonthView';
 import CalendarListView from './CalendarListView';
 import EventDayModal from './EventDayModal';
 import { useTimezone } from './TimezoneProvider';
-import { formatWithTzAbbr } from '../../lib/datetime';
+import { formatTzLegend } from '../../lib/datetime';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
@@ -408,9 +408,14 @@ export default function EventCalendar({
   // render a single "Times shown in {abbr}" line on the header. We
   // use `formatWithTzAbbr` against `currentDate` (or now if missing)
   // so DST changes flip MST<->MDT correctly when navigating months.
-  const tzLegend = timezone
-    ? formatWithTzAbbr(currentDate || new Date(), timezone, 'zzz')
-    : null;
+  // AMENDED Phase 89.6-40 (W1): owner ruling W1 (2026-11-22, 'W1) yes'): both calendar legends
+  // name the zone without a season ('Times shown in Pacific Time'), from the browser's formatter
+  // (timeZoneName longGeneric), chosen OVER an abbreviation that flips by month, because the list
+  // view shows several months under one label and the two views must read the same; rows keep
+  // their own abbreviation; an engine without the option keeps the abbreviation. The old text above
+  // is history. Memoised: a new Intl formatter is the costly part, built only when the month or the
+  // zone changes.
+  const tzLegend = useMemo(() => formatTzLegend(currentDate || new Date(), timezone), [currentDate, timezone]);
 
   // CAL-01: getDaysInMonth now returns {date, isCurrentMonth}[] — whole weeks, 28, 35 or 42 cells (CS-05).
   const days = getDaysInMonth(currentDate);

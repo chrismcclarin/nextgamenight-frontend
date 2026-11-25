@@ -18,7 +18,7 @@ import {
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
-import { formatTime, formatWithTzAbbr, withYearOutsideCurrent } from '../../lib/datetime';
+import { formatTime, formatTzLegend, formatWithTzAbbr, withYearOutsideCurrent } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
@@ -675,15 +675,11 @@ export default function CalendarListView({
   const scrollRegionStyle = isSheet ? undefined : { height: containerHeight };
 
   // tz legend — mirror EventCalendar's "Times shown in {abbr}" pattern.
-  const tzAbbr = timezone
-    ? (() => {
-        try {
-          return formatWithTzAbbr(new Date(), timezone, 'zzz');
-        } catch {
-          return null;
-        }
-      })()
-    : null;
+  // AMENDED Phase 89.6-40 (W1): the season-free name, as EventCalendar's (one helper, never a copy):
+  // src/lib/datetime.ts ("export function formatTzLegend"). Season-free, so it is stable across
+  // renders and memoised on the zone alone; the helper returns null for a missing or invalid zone,
+  // so the local try / catch is gone. A hook, so it sits above every early return.
+  const tzLegend = useMemo(() => formatTzLegend(new Date(), timezone), [timezone]);
 
   // Loading skeleton — only when no data has arrived yet AND parent signals
   // loading. Empty state is the right answer once data has resolved. The
@@ -696,10 +692,10 @@ export default function CalendarListView({
   if (loading && (!Array.isArray(events) || events.length === 0)) {
     return (
       <div className={shellClassName}>
-        {tzAbbr && (
+        {tzLegend && (
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
             <span className="text-xs text-content-muted">
-              Times shown in {tzAbbr}
+              Times shown in {tzLegend}
             </span>
           </div>
         )}
@@ -729,10 +725,10 @@ export default function CalendarListView({
           when there is one (88.9-61, X25a: the Upcoming events heading moved inside the region,
           where it can stick over its own rows and fold; the caption stays at the start edge, as
           the picked frame shows it). */}
-      {tzAbbr && (
+      {tzLegend && (
         <div className="flex items-baseline justify-between gap-3 flex-wrap">
           <span className="text-xs text-content-muted">
-            Times shown in {tzAbbr}
+            Times shown in {tzLegend}
           </span>
         </div>
       )}

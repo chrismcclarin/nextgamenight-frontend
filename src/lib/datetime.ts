@@ -169,6 +169,51 @@ export function formatWithTzAbbr(
 }
 
 /**
+ * The calendar legend's zone name: the reader's zone without a season ('Pacific Time', never
+ * 'PST' in January and 'PDT' in March), from the browser's own formatter (Intl.DateTimeFormat with
+ * timeZoneName 'longGeneric', en-US like the rest of the app's zone labels).
+ *
+ * Owner ruling W1 (Phase 89.6, 2026-11-22 10:53 PM Pacific, 'W1) yes'): both calendar legends (the
+ * month view and the list view) read 'Times shown in <season-free zone name>'; event rows keep their
+ * own abbreviation. FALLBACK: an engine without the longGeneric option keeps today's abbreviation
+ * label, formatWithTzAbbr(date, timezone, 'zzz'); so does a zone whose generic name is only an offset
+ * (UTC reads 'UTC', not 'GMT+00:00').
+ *
+ * @param date - the instant the legend stands beside (the month on screen, or now).
+ * @param timezone - the reader's IANA zone.
+ * @returns the zone name, the abbreviation on an engine without the option, or null for a missing,
+ *   blank or invalid zone (never the host's zone: a bare formatter would name it while the rows
+ *   render in UTC).
+ */
+export function formatTzLegend(date: Date, timezone: string | null | undefined): string | null {
+  if (timezone === null || timezone === undefined || !String(timezone).trim()) return null;
+  // The zone on its own first: an invalid zone and an unsupported option both throw RangeError, so
+  // they are told apart here, and formatWithTzAbbr (which also throws on an invalid zone) is never
+  // reached with one.
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+  } catch {
+    return null;
+  }
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      timeZoneName: 'longGeneric' as Intl.DateTimeFormatOptions['timeZoneName'],
+    });
+    const resolved = formatter.resolvedOptions() as Intl.ResolvedDateTimeFormatOptions & { timeZoneName?: string };
+    const part = formatter.formatToParts(date).find((p) => p.type === 'timeZoneName')?.value;
+    // DECISION Phase 89.6-40 (W1-offset): a zone with no generic name (UTC) is given an offset
+    // ('GMT+00:00' in Chromium, 'GMT' in WebKit), not a name; the abbreviation ('UTC', today's
+    // label) is kept for it, chosen OVER printing the offset, which reads worse and differs by
+    // browser. Every named zone ('Pacific Time') is unaffected.
+    if (resolved.timeZoneName === 'longGeneric' && part && !/^GMT(?:[+-]\d|$)/.test(part)) return part;
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+  }
+  return formatWithTzAbbr(date, timezone, 'zzz');
+}
+
+/**
  * The year rule for a date heading: hand back `pattern` as it is when `date` falls in the
  * viewer's current calendar year (read in `timezone`), else the same pattern with the year
  * appended (`, yyyy`). It returns a date-fns PATTERN, not a formatted string, so each caller
