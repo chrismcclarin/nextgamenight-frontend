@@ -1,5 +1,5 @@
 // Surface rows: the night page (the event view of census R05), Participants and Delete this session. Owner: plan 89.6-19.
-// One row per line, each with its census id. All three are enforced (Phase 89.6-19).
+// One row per line, each with its census id. Plan 89.6-19 turned all three on; D31 waits under plan 89.6-29 (its marker).
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
 // WHAT IS STAGED (stageNight). The real event read of the CI fixture night, answered in the browser
@@ -330,19 +330,6 @@ const reachDeleteSession: SurfaceRow['reach'] = async (page) => {
 // module's read, imported when the extras run (the shell module imports the dialogs module).
 const deleteSessionExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
   const { readShell } = await import('./dialogShell');
-  // TEMPORARY DIAGNOSTIC (plan 89.6-19, removed before the plan closes): names the boxes outside the
-  // dialog that reach past the window when the page scrolls sideways (flip run 45637143022: 30px at
-  // 320 / 200%). It reads only; it fails nothing.
-  const wide = await page.evaluate(() => {
-    const limit = document.documentElement.clientWidth + 0.5;
-    if (document.documentElement.scrollWidth <= document.documentElement.clientWidth) return [];
-    const dialog = document.querySelector('[role="dialog"]');
-    const over = Array.from(document.body.querySelectorAll('*')).filter((el) => !dialog?.contains(el) && el.getBoundingClientRect().right > limit && el.getBoundingClientRect().width > 0);
-    const leaves = over.filter((el) => !over.some((other) => other !== el && el.contains(other)));
-    return leaves.slice(0, 6).map((el) => `${el.tagName.toLowerCase()}.${String(el.getAttribute('class') ?? '').slice(0, 90)} right=${Math.round(el.getBoundingClientRect().right)} text=${(el.textContent ?? '').trim().slice(0, 40)}`);
-  });
-  // eslint-disable-next-line no-console -- the temporary diagnostic is read from the CI log
-  for (const line of wide) console.log(`[89.6-19 D31 wide] ${cell.id} ${line}`);
   const read = await readShell(deleteSessionDialog(page));
   const footer = read.buttons.filter((button) => button.part === 'footer');
   const problems: string[] = [];
@@ -362,5 +349,15 @@ const deleteSessionExtras: NonNullable<SurfaceRow['extras']> = async (page: Page
 export const rows: SurfaceRow[] = [
   { id: 'R05-event', census: 'R05', kind: 'route', owner: '89.6-19', status: 'enforced', reach: reachNight, extras: nightExtras },
   { id: 'D27', census: 'D27', kind: 'dialog', owner: '89.6-19', status: 'enforced', reach: reachParticipants, extras: participantsExtras },
-  { id: 'D31', census: 'D31', kind: 'dialog', owner: '89.6-19', status: 'enforced', reach: reachDeleteSession, extras: deleteSessionExtras },
+  // DECISION Phase 89.6-19 (D31 pending under plan 89.6-29; orchestrator decision D17 B of 2026-11-25, the owner can
+  // veto): this row goes from enforced to PENDING under plan 89.6-29, which owns the game view, chosen OVER fixing the
+  // red here and OVER leaving it enforced and red. The dialog itself holds every cell; its one red is the page behind
+  // it scrolling sideways at 320 x 568, 200% text (30px, runs 45637143022 and 45641026757), and a read-only diagnostic
+  // in run 45641026757 named the game view's Add Review button reaching x=350 there: the Reviews header,
+  // src/app/gameDetail/page.js ("Reviews{reviewsLoadState.showError"), is a flex justify-between items-center mb-4 row
+  // whose button does not move under the heading. That header carries the owner-ruled D-39 / DEF-88-24-02 markers, and
+  // weighing them belongs to the plan that sweeps that surface with its context. Plan 89.6-29 turns this row back on
+  // with its fix; the coverage script's --close run fails on any pending row, so the phase cannot close with it off.
+  // Changing this is a decision, not a cleanup.
+  { id: 'D31', census: 'D31', kind: 'dialog', owner: '89.6-29', status: 'pending', reach: reachDeleteSession, extras: deleteSessionExtras },
 ];
