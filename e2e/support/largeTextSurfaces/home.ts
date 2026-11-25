@@ -394,7 +394,11 @@ interface ListReach {
 // Every night can be reached (pick CAL S2): the element that scrolls the list (the nearest ancestor
 // of the last row, the row included, whose overflow-y is auto or scroll) is at least one row tall,
 // and the last row, scrolled into view, lies inside that scroller's visible box and the viewport
-// (0.5px). A row inside a 0px region still reports a box after scrolling, hence both checks.
+// (0.5px). A row inside a 0px region still reports a box after scrolling, hence both checks. The row
+// is scrolled to the scroller's END, as a finger scrolls a list to its last row: block nearest
+// honours the region's 5.75rem scroll padding (W17, a keyboard-focus margin), which at 200% text is
+// 184px of a 227px region at 768 x 1024 and put the row's top at the padding's edge, below the
+// visible box (evidence run 45718098297); that is a focus read, not a reach read.
 async function readListReach(dialog: Locator): Promise<ListReach> {
   return calendarRows(dialog).evaluateAll((found) => {
     const viewport = { width: document.documentElement.clientWidth, height: window.innerHeight };
@@ -407,7 +411,7 @@ async function readListReach(dialog: Locator): Promise<ListReach> {
       scroller = scroller.parentElement;
     }
     const firstRow = found[0].getBoundingClientRect().height;
-    last.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    last.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'instant' });
     const box = last.getBoundingClientRect();
     const rect = scroller?.getBoundingClientRect() ?? null;
     return {
