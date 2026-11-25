@@ -48,6 +48,7 @@ import {
 import { deltaE2000, oklch } from './colourDistance';
 import { GROUP_COLOUR_PRESETS, PRESET_IDS, presetByName } from './groupColourPresets';
 import { blend, contrastRatio, lStar, parseHex } from './wcag';
+import { FOCUS_RING_CLASSES } from '@/test-utils/focusRingAssert';
 
 type Theme = 'light' | 'dark';
 type Preset = (typeof GROUP_COLOUR_PRESETS)[number];
@@ -950,7 +951,7 @@ describe('the swatch resting boundary in DARK mode — FIXED by D-17, owner re-r
     );
 
     // The focus ring itself survives, on the project string.
-    expect(src).toContain('focus-visible:ring-focus-ring');
+    for (const t of FOCUS_RING_CLASSES) expect(src, `the project focus ring lost ${t}`).toContain(t);
 
     // (b) the band's colour against all eight fills, per theme. Measured 2026-09-16:
     // dark 10.6544-14.5319, light 13.2663-13.3918.

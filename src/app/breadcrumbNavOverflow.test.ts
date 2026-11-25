@@ -49,13 +49,14 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { lineAt, readOpeningTag, sourceFiles, withoutComments } from '../test-utils/sourceScan';
+import { FOCUS_RING_CLASSES } from '@/test-utils/focusRingAssert';
 
 const SRC = path.resolve(__dirname, '..');
 const NAV_OPEN = /<nav(?=[\s>])/g;
 const BREADCRUMB_LABEL = /aria-label\s*=\s*(?:"Breadcrumb"|'Breadcrumb'|\{\s*['"`]Breadcrumb['"`]\s*\})/;
 const REQUIRED = ['inline-block', 'max-w-full', 'wrap-break-word', 'min-w-0'];
 /** The house ring, outset form (DECISION Phase 88.3-17, per-site ring); the inset form is for flush strips and tight boxes, and every breadcrumb uses the outset form (plans 16, 52, 53). */
-const RING = ['focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-offset-2'];
+const RING = ['focus:outline-hidden', ...FOCUS_RING_CLASSES];
 /** A crumb link: a Link or a raw anchor opening tag. */
 const LINK_OPEN = /<(?:Link|a)(?=[\s>])/g;
 /** A separator glyph: the right angle in braces in any quoting, its entities, or the single right-pointing angle character. */
@@ -262,7 +263,7 @@ function separatorFailures(crumbs: Nav[]): string[] {
 }
 
 // Fixture sources for tests 8-10: line 2 is the nav, line 3 the Home link, line 4 the separator.
-const RING_CLASS = 'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+const RING_CLASS = RING.join(' ');
 const CLEAN = [
   'const A = () => (',
   '  <nav aria-label="Breadcrumb" className="inline-block max-w-full wrap-break-word min-w-0">',
@@ -359,8 +360,10 @@ describe('breadcrumb pills cap at their container (UAT3-D1, 2026-09-30)', () => 
     expect(crumbsOf(CLEAN)[0].links).toHaveLength(1);
 
     // A Link missing one ring token is reported once, naming the token.
-    const missingRing2 = withLine(CLEAN, 2, '    <Link href="/" className="text-content-link focus:outline-hidden focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>');
-    expect(ringFailures(crumbsOf(missingRing2))).toEqual(['app/fixture.js:3 — missing focus-visible:ring-2']);
+    // The dropped token is the first ring token after focus:outline-hidden, read from RING.
+    const dropped = RING[1];
+    const missingRing2 = withLine(CLEAN, 2, '    <Link href="/" className="text-content-link ' + RING.filter((t) => t !== dropped).join(' ') + '">Home</Link>');
+    expect(ringFailures(crumbsOf(missingRing2))).toEqual([`app/fixture.js:3 — missing ${dropped}`]);
 
     // A Link whose className is an expression cannot be read, so it fails as non-literal.
     const expression = withLine(CLEAN, 2, '    <Link href="/" className={homeClass}>Home</Link>');
@@ -369,7 +372,7 @@ describe('breadcrumb pills cap at their container (UAT3-D1, 2026-09-30)', () => 
     // A raw anchor without the ring is a crumb link too.
     const rawAnchor = withLine(CLEAN, 2, '    <a href="/" className="text-content-link">Home</a>');
     expect(ringFailures(crumbsOf(rawAnchor))).toEqual([
-      'app/fixture.js:3 — missing focus:outline-hidden, focus-visible:ring-2, focus-visible:ring-focus-ring, focus-visible:ring-offset-2',
+      `app/fixture.js:3 — missing ${RING.join(', ')}`,
     ]);
 
     // A ringless link that exists only inside a JSX block comment does not count.

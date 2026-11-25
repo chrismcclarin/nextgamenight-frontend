@@ -75,12 +75,16 @@ const GROUND_HALO: Record<RingGround, string> = {
 const OUTSIDE_OFFSET = /^focus-visible:ring-offset-[1-9][0-9]*$/;
 const HALO_COLOUR = /^focus-visible:ring-offset-(?![0-9]+$).+$/;
 
+// A class string may be a slice of SOURCE text (a source scan hands over a whole open tag), so
+// quotes, backticks and braces split tokens as whitespace does: className="a b" reads as a, b.
+const TOKEN_SPLIT = /[\s"'\x60{}]+/;
+
 function tokensOf(target: RingTarget): string[] {
-  if (typeof target === 'string') return target.split(/\s+/).filter(Boolean);
+  if (typeof target === 'string') return target.split(TOKEN_SPLIT).filter(Boolean);
   if (typeof (target as Element).getAttribute === 'function') {
-    return ((target as Element).getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+    return ((target as Element).getAttribute('class') ?? '').split(TOKEN_SPLIT).filter(Boolean);
   }
-  return (target as readonly string[]).flatMap((t) => t.split(/\s+/)).filter(Boolean);
+  return (target as readonly string[]).flatMap((t) => t.split(TOKEN_SPLIT)).filter(Boolean);
 }
 
 function expectAll(tokens: string[], wanted: readonly string[], what: string, label?: string) {

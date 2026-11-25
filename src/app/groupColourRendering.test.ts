@@ -65,6 +65,7 @@ import CalendarMonthView from './components/CalendarMonthView';
 import CalendarListView from './components/CalendarListView';
 import { contrastRatio } from '../lib/wcag';
 import { lineAt, readOpeningTag, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
+import { FOCUS_RING_CLASSES, FOCUS_RING_INSET_CLASSES, FOCUS_RING_SOURCE_TOKEN, expectFocusRing, expectFocusRingInset } from '@/test-utils/focusRingAssert';
 
 const SRC = path.resolve(__dirname, '..');
 const raw = (rel: string): string => fs.readFileSync(path.join(SRC, rel), 'utf8');
@@ -836,9 +837,10 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
           expect(classAt, `${at}: the inner keyboard target has no className (it needs the focus ring)`).toBeGreaterThan(-1);
           const classEnd = inner.indexOf('"', classAt + 'className="'.length);
           const innerTag = inner.slice(innerOpen, inner.indexOf('>', classEnd) + 1);
-          for (const need of ['role="button"', 'tabIndex={0}', 'onKeyDown', 'focus-visible:ring-focus-ring']) {
+          for (const need of ['role="button"', 'tabIndex={0}', 'onKeyDown']) {
             expect(innerTag, `${at}: the INNER keyboard target (title block) lost ${need}`).toContain(need);
           }
+          expectFocusRing(innerTag, `${at}: the INNER keyboard target (title block)`);
           // Run-4 H1 (2026-08-28): NO aria-label on the title block — it would replace the
           // content-computed name and silence the start time rendered in the <p>.
           expect(innerTag, `${at}: the inner keyboard target must NOT carry aria-label (it silences the time)`).not.toContain('aria-label=');
@@ -854,9 +856,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
           /'Enter'[\s\S]*' '/,
         );
         expect(tag, `${at}: the clickable div lost its accessible name`).toContain('aria-label=');
-        expect(tag, `${at}: the clickable div lost its focus ring`).toContain(
-          'focus-visible:ring-focus-ring',
-        );
+        expectFocusRingInset(tag, `${at}: the clickable div lost its focus ring`);
       }
     }
   });
@@ -1365,15 +1365,17 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // one. `cascadeOrder.test.ts` owns the XOR itself; this is the per-file half.
     const controls = headerControls(src);
     expect(controls.length).toBe(3);
-    expect(
-      code('components/ui/Button.tsx'),
-      'the cva base these three now depend on carries no ring',
-    ).toContain('focus-visible:ring-focus-ring');
+    for (const t of FOCUS_RING_CLASSES) {
+      expect(
+        code('components/ui/Button.tsx'),
+        `the cva base these three now depend on carries no ring (${t})`,
+      ).toContain(t);
+    }
     for (const c of controls) {
       expect(
         c.attrs,
         'a header control carries its OWN focus ring beside the primitive base\'s — two rings',
-      ).not.toContain('focus-visible:ring-focus-ring');
+      ).not.toContain(FOCUS_RING_SOURCE_TOKEN);
     }
 
     // and no `useTheme` — the theme half rides the cascade, as it does at plan
@@ -1736,7 +1738,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       expect(
         code(rel),
         `<${tag}> is exempted at its call sites only because ${rel} carries the ring in its own base class`,
-      ).toContain('focus-visible:ring-');
+      ).toContain(FOCUS_RING_SOURCE_TOKEN);
     }
     expect(
       Object.keys(PRIMITIVE_RING_SOURCE).sort(),
@@ -1770,7 +1772,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         if (tag === 'Link' || isAnchor) {
           if (slottedInAsChild(src, tags, offset)) continue;
         }
-        if (!attrs.includes('focus-visible:ring-')) {
+        if (!attrs.includes(FOCUS_RING_SOURCE_TOKEN)) {
           offenders.push(`${file}:${line} <${tag}> has no focus-visible:ring-* class`);
         }
       }
@@ -1834,9 +1836,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
 
     // FOCUS: the project string, byte-identical to the group-page header CTAs and both
     // calendar tiles.
-    expect(control, 'the swatch lost the project focus ring').toContain('focus-visible:ring-focus-ring');
-    expect(control).toContain('focus-visible:ring-2');
-    expect(control).toContain('focus-visible:ring-offset-2');
+    expectFocusRing(control, 'the swatch lost the project focus ring');
     // …and the accessible name and toggle state stay on this element, not on the chip.
     expect(control).toContain('aria-label={preset.label}');
     expect(control).toContain('aria-pressed={isSelected}');
@@ -1979,12 +1979,9 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     ).toContain('stopPropagation');
     // The ring is INSET here, like both tiles in this file — not EventDayModal's ring-offset-2.
     const ringWindow = src.slice(spreadAt, src.indexOf('{date.getDate()}', spreadAt));
-    expect(ringWindow, 'the inner target lost its visible focus ring').toContain(
-      'focus-visible:ring-focus-ring',
-    );
-    expect(ringWindow, 'the inner target\'s ring must be INSET, as both tiles in this file are').toContain(
-      'focus-visible:ring-inset',
-    );
+    for (const t of FOCUS_RING_INSET_CLASSES) {
+      expect(ringWindow, `the inner target lost its visible INSET focus ring (${t}), as both tiles in this file are`).toContain(t);
+    }
     // THE NARROWING, pinned in source: a `cellClickable`-only gate would put a second stop on a
     // 1-event day for the action its tile already owns.
     expect(

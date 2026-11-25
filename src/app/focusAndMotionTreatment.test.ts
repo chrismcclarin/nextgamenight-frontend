@@ -66,6 +66,7 @@ import { describe, expect, it } from 'vitest';
 
 import { sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 import { assertExactCounts, assertRosterShape, type Exemption } from '../test-utils/exemption';
+import { FOCUS_RING_SOURCE_TOKEN } from '@/test-utils/focusRingAssert';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -228,7 +229,7 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
 
      A className text scan cannot see a control's keyboard counterpart living one element down,
      which is why this is an entry rather than a rule change. It KEEPS TEETH, and NOT by a
-     file-level presence check: a bare `src.includes('focus-visible:ring-2')` is satisfied by any
+     file-level presence check: a bare `src.includes(FOCUS_RING_SOURCE_TOKEN)` is satisfied by any
      other control in the same file (measured — `grouplist.js`'s settings cog carries its own
      ring, so the file-level form stayed green with the title block's ring deleted). The entry
      therefore names an ANCHOR identifying the counterpart ELEMENT and a byte window, the same
@@ -246,7 +247,7 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
      It is now a D-19 roster row (`sites`, `why`, `owner`, `src/test-utils/exemption.ts`) and
      test 2 compares the measured unpaired hits in each exempt file EXACTLY, both directions.
      The counterpart window is read through `withoutComments`, so a comment quoting
-     `focus-visible:ring-2` near the anchor can no longer stand in for the real ring. */
+     the ring token (FOCUS_RING_SOURCE_TOKEN) near the anchor can no longer stand in for the real ring. */
   const PRESS_WITHOUT_OWN_FOCUS: Record<
     string,
     Exemption & { counterpartAnchor: string; window: number }
@@ -307,7 +308,7 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
       ).toBeGreaterThan(-1);
       const slice = src.slice(at, at + entry.counterpartAnchor.length + entry.window);
       expect(
-        slice.includes('focus-visible:ring-2'),
+        slice.includes(FOCUS_RING_SOURCE_TOKEN),
         `${rel}: the keyboard counterpart this exemption rests on carries no house ring within ` +
           `${entry.window} chars of its anchor. The card's press state is then paired with ` +
           'nothing a keyboard user can see.',
@@ -330,7 +331,7 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
       ['app/components/StarRatingPicker.js', 2],
       ['components/ui/ErrorFallback.tsx', 2],
     ] as const) {
-      expect(withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8')).split('focus-visible:ring-2').length - 1, rel).toBeGreaterThanOrEqual(rings);
+      expect(withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8')).split(FOCUS_RING_SOURCE_TOKEN).length - 1, rel).toBeGreaterThanOrEqual(rings);
     }
   });
 
@@ -344,7 +345,7 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
       ['app/components/form/SelectField.tsx', 1],
     ] as const) {
       const src = withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8'));
-      expect(src.split('focus-visible:ring-2').length - 1, rel).toBeGreaterThanOrEqual(rings);
+      expect(src.split(FOCUS_RING_SOURCE_TOKEN).length - 1, rel).toBeGreaterThanOrEqual(rings);
     }
   });
 
@@ -366,7 +367,7 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
     expect(isBareFocusVisibleTreatment('dark:focus:ring-2')).toBe(true);
     expect(isBareFocusVisibleTreatment('data-[state=open]:focus:ring-2')).toBe(true);
     // the correct forms, and the near-miss variants that must NOT be flagged
-    expect(isBareFocusVisibleTreatment('focus-visible:ring-2')).toBe(false);
+    expect(isBareFocusVisibleTreatment('focus-visible:ring-2')).toBe(false); // ring-literal: classifier input; its verdict on this string does not change with the app's ring
     expect(isBareFocusVisibleTreatment('focus-within:ring-2')).toBe(false);
     expect(isBareFocusVisibleTreatment('group-focus:ring-2')).toBe(false);
     expect(isBareFocusVisibleTreatment('peer-focus:ring-2')).toBe(false);
@@ -382,7 +383,7 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
       'const x = (',
       '  <button',
       '    className={`',
-      '      px-3 focus:outline-hidden focus-visible:ring-2',
+      '      px-3 focus:outline-hidden ' + FOCUS_RING_SOURCE_TOKEN,
       "      ${disabled ? 'opacity-50' : 'active:opacity-75'}",
       '    `}',
       '  />',
@@ -391,7 +392,7 @@ describe('focus treatment (Req 4 / UI-SPEC §7.2)', () => {
     const values = classNameValues(fixture);
     expect(values).toHaveLength(1);
     expect(values[0].text).toContain('active:opacity-75');
-    expect(values[0].text).toContain('focus-visible:ring-2');
+    expect(values[0].text).toContain(FOCUS_RING_SOURCE_TOKEN);
   });
 });
 
