@@ -835,12 +835,13 @@ export default function AvailabilityGrid({
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         {/* Timezone display */}
+        {/* DECISION Phase 89.6-23 (links-row): GR, the governing rule (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking. Scrolling down is fine; scrolling sideways is not.'), on a link page read on a phone: the mode toggle and Clear All, and the three legend keys, are a bb-cluster that stacks whole items when they do not fit, chosen OVER a fixed width or a nowrap row (they pushed the availability link 227px sideways at 320 / 200%, sweep row R03). The zone name is a code (an IANA id with no spaces), so it is .bb-breakable and breaks where it must instead of spilling. The gaps stay the call site's. Changing this is a decision, not a cleanup. */}
         <div className="text-sm text-content-secondary">
-          Times shown in: <span className="font-bold">{getTimezoneDisplay(timezone)}</span>
+          Times shown in: <span className="font-bold bb-breakable">{getTimezoneDisplay(timezone)}</span>
         </div>
 
         {/* Controls */}
-        <div className="flex items-center gap-3">
+        <div className="bb-cluster gap-3">
           {/* Paint mode toggle.
 
               DECISION Phase 88.6-25 (D-11 / SPEC-88.6 R2): this is a CONTROL, not a grid cell —
@@ -972,7 +973,7 @@ export default function AvailabilityGrid({
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mb-3 text-sm">
+      <div className="bb-cluster gap-4 mb-3 text-sm">
         <div className="flex items-center gap-1.5">
           <div className="w-4 h-4 bg-green-300 dark:bg-surface-avail-preferred border border-line rounded-xs" />
           <span className="text-content-secondary">Preferred</span>

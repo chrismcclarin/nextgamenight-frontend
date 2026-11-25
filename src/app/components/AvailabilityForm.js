@@ -469,7 +469,8 @@ export default function AvailabilityForm({
     <form onSubmit={handleFormSubmit} className="space-y-6">
       {/* Header Section */}
       <div className="border-b border-line pb-4">
-        <div className="flex items-center gap-2 text-sm text-content-secondary">
+        {/* DECISION Phase 89.6-23 (links-row): GR, the governing rule (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking. Scrolling down is fine; scrolling sideways is not.'), on a link page read on a phone: the name stacks under "Submitting as:" when the two do not fit side by side, chosen OVER a fixed width or a nowrap row (a two-word name was squeezed to its longest word and spilled 20px past the page at 320 / 200%, sweep row R03). Changing this is a decision, not a cleanup. */}
+        <div className="bb-cluster gap-2 text-sm text-content-secondary">
           <span>Submitting as:</span>
           <span className="text-content-primary font-bold">{userName}</span>
         </div>

@@ -226,7 +226,8 @@ const routeMagicValidate = async (page: Page): Promise<void> => {
     });
   });
 };
-const availabilityAnswers: SurfaceRow['answers'] = (url) => (url.pathname.includes('/availability-responses/') ? null : undefined);
+// Exported for plan 89.6-20's R03-grid row, which reuses R03's reach and answers by import.
+export const availabilityAnswers: SurfaceRow['answers'] = (url) => (url.pathname.includes('/availability-responses/') ? null : undefined);
 const openAvailabilityForm = async (page: Page): Promise<void> => {
   await routeMagicValidate(page);
   await signedOut(page);
@@ -234,7 +235,7 @@ const openAvailabilityForm = async (page: Page): Promise<void> => {
   await page.getByRole('heading', { level: 1, name: 'Submit Your Availability' }).waitFor({ state: 'visible', timeout: 15_000 });
   await page.getByRole('button', { name: 'Use my saved availability' }).waitFor({ state: 'visible' });
 };
-const reachAvailability: SurfaceRow['reach'] = async (page) => {
+export const reachAvailability: SurfaceRow['reach'] = async (page) => {
   await openAvailabilityForm(page);
   return { root: page.locator('main') };
 };
