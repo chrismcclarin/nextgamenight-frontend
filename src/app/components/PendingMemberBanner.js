@@ -39,7 +39,8 @@ export default function PendingMemberBanner({ groupId }) {
                 `<Button variant="ghost" size="icon">` with the mark in a CHILD — the shipped
                 src/components/ui/BottomSheet.tsx ("<DialogClose asChild>") glyph idiom — chosen OVER leaving it a bare `<button>`
                 and OVER the alternative bare idiom (`inline-flex items-center justify-center
-                min-h-11 min-w-11`, the src/app/components/QRCodeModal.js ("inline-flex min-h-11 min-w-11 items-center justify-center") shape), which would have bought the
+                min-h-11 min-w-11`, the shape of QRCodeModal's old corner close, retired by Phase 89.6-28 for the
+                header close src/app/components/Modal.tsx ("inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center")), which would have bought the
                 same 44px floor with no look change at all. The default is implemented; the bare
                 alternative is named in `88.6-34-SUMMARY.md` as a residual owner call.
 

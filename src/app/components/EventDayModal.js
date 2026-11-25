@@ -113,6 +113,8 @@ export default function EventDayModal({
     setQrEventId(event.id);
     try {
       const data = await eventsAPI.getEventInviteToken(event.id);
+      // DECISION Phase 89.6-28 (R-C10): an empty invite_url takes the existing failure arm OVER opening a QR box that encodes nothing.
+      if (typeof data?.invite_url !== 'string' || data.invite_url === '') throw new Error('The invite read returned no invite_url');
       if (isNewest()) {
         setGameInviteUrl(data.invite_url);
         setShowGameQR(true);

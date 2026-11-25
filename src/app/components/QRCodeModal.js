@@ -1,16 +1,17 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
 import { Button } from '../../components/ui/Button';
-import { Icon } from '@/components/ui/Icon';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { logger, errCtx } from '@/lib/logger';
 
 // Copy row G3 (88.6.1-COPY-TABLE.html, ratified 2026-10-04; D-30 placement rule: a hoisted
 // constant at the site). Byte-equal to the table; it holds no apostrophe and no ellipsis.
 const LINK_COPIED_ANNOUNCEMENT = 'Invite link copied to the clipboard.';
+// The caption under the code: pick O-2 B (owner-ratified copy, 2026-11-22, outline rule 14; D-30
+// placement rule: a hoisted constant at the site). Byte-equal to the ratified card.
+const QR_CAPTION = 'Scan with a phone camera to join this game night.';
 // How long the visible label reads Copied! after a successful copy.
 const COPIED_LABEL_MS = 2000;
 // Copy ruling CR-1 (88.6.1 code review A-25, owner ratified 2026-10-19; D-30 placement rule: a
@@ -45,6 +46,15 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
   // cleanup.
   const copiedTimerRef = useRef(null);
   const openGenerationRef = useRef(0);
+  // The failure block (sentence, then link): scrolled into view on each refused copy (C9, O-2 B;
+  // see the CR-1 / A-25 marker at the block).
+  const failureRef = useRef(null);
+
+  useEffect(() => {
+    const node = failureRef.current;
+    // jsdom does not implement it, so it is guarded (the src/app/components/ParticipantRow.js idiom).
+    if (copyFailed && node && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' });
+  }, [failSeq, copyFailed]);
 
   useEffect(() => {
     if (isOpen) return;
@@ -111,15 +121,14 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
     }
   };
 
-  // size="sm" maps to the legacy `max-w-sm` width. This modal is freeform (no
-  // header/footer chrome): the title + QR + actions live in <Modal.Body>. The
-  // centered title is rendered as the DialogTitle so Radix auto-wires
-  // aria-labelledby (the modal's accessible name) while keeping the original
-  // centered visual. Esc / focus-trap / aria-modal come from <Modal>.
+  // size="sm" maps to the legacy `max-w-sm` width. AMENDED Phase 89.6-28 (O-2 B): this modal is no
+  // longer freeform. It is the standard dialog: Modal.Header carries the title (the DialogTitle, so
+  // Radix wires aria-labelledby, the accessible name) left with the shared close on its line;
+  // Modal.Body holds the code, the caption, the two status regions and the failure block; and
+  // Modal.Footer holds Close then Copy Invite Link. Esc / focus-trap / aria-modal come from <Modal>.
   return (
     <Modal open={isOpen} onClose={onClose} size="sm">
-      <Modal.Body className="relative">
-        {/* Delta review 2026-08-06 (MED): same 44px real-box idiom as Modal.tsx's
+      {/* Delta review 2026-08-06 (MED): same 44px real-box idiom as Modal.tsx's
             ModalHeader DialogClose — this headerless modal was the one fleet member
             the D1 fix missed.
             88-33 Task 3 (fork 6, UAT row 333): TWO corrections. (1) `leading-none` was
@@ -183,47 +192,32 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
             forbidden. The 88-33 Task 3 correction (1) above (leading-none) leaves with the text
             glyph: the icon is a fixed 20px box centred by inline-flex, with no line box to ride;
             correction (2), the fleet-header insets, is unchanged.
+            AMENDED Phase 89.6-28: the ring and 20px icon now come from MODAL_CLOSE_CLASS.
 
             AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22: the ring is the focus-ring
             utility. Only the ring sentence of 88.9-29 changes: its no-offset ring is now the outset
             two-tone ring (2px off the box, measured whole at 320 and 375 in light). The × stays bare;
-            reasons 1-3 stand. */}
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-3 md:top-3 md:right-6 inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:focus-ring"
-          aria-label="Close"
-        >
-          <Icon name="X" size={20} strokeWidth={2} />
-        </button>
+            reasons 1-3 stand.
 
-        <DialogTitle className="text-content-primary mb-4 text-center">
-          {title}
-        </DialogTitle>
-
-        {/* QR Code */}
+            AMENDED Phase 89.6-28 (O-2 B, owner 2026-11-22: 'The standard dialog layout: title left with
+            the × on its line ...'): the bespoke bare × is retired for Modal.Header's shared close, which
+            is itself a bare control (reasons 1-3 stand: no Button migration); the fleet-inconsistency
+            reason 3 now favours this move. */}
+      <Modal.Header>{title}</Modal.Header>
+      <Modal.Body>
+        {/* QR Code: a 4-module white quiet zone (O-2 B, 'the code with a full white border'), the
+            default dark-on-white colours in both themes (never inverted: the O-2 card read). */}
         <div className="flex justify-center mb-4">
           <QRCodeSVG
             value={url || ''}
             size={200}
             level="M"
-            marginSize={2}
+            marginSize={4}
             title="QR code for the invite link"
           />
         </div>
 
-        {/* Copy Invite Link Button.
-            88.6-33 (§3.2/§3.3): `<Button variant="primary" size="default">`. `py-2.5` was DEAD
-            under unlayered `.btn`'s `padding` (`src/app/globals.css`, anchor
-            `padding: 0.5rem 1rem;`) and is deleted rather than
-            moved; `w-full`, `text-center` and `mb-3` all SURVIVE — `.btn` declares no width, no
-            `text-align` and no margin, so none of the three was ever dead. */}
-        <Button
-          variant="primary"
-          onClick={handleCopyLink}
-          className="w-full text-center mb-3"
-        >
-          {copied ? 'Copied!' : 'Copy Invite Link'}
-        </Button>
+        <p className="text-content-secondary text-center mb-4">{QR_CAPTION}</p>
 
         {/* DECISION Phase 88.6.1-12 (copy row G3, D-30; Req 8): the copy outcome on this
             game-night share QR is ANNOUNCED, and the visible Copied! swap on the copy button is
@@ -253,30 +247,51 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
             (the URL is data, not copy, and is not read out with the sentence). REJECTED: a
             read-only input (a long-press on an anchor offers Copy Link on both phone platforms).
             Cleared by the next successful copy and on close; a late rejection after the close sets
-            nothing (the generation guard). Changing any of this is a decision, not a cleanup. */}
-        <StatusRegion srOnlyWhenEmpty className="mb-3 text-content-status-error">
-          <span key={failSeq}>{copyFailed ? COPY_FAILED_MESSAGE : ''}</span>
-        </StatusRegion>
-        {copyFailed && url ? (
-          <a
-            href={url}
-            className="block mb-3 text-sm text-content-link underline break-all focus:outline-hidden focus-visible:focus-ring"
-          >
-            {url}
-          </a>
-        ) : null}
-
-        {/* Close Button.
-            88.6-33 (§3.2/§3.3): `<Button variant="secondary" size="default">`. `w-full` survives
-            (`.btn` declares no width); nothing else rode this className, so nothing was deleted. */}
+            nothing (the generation guard). Changing any of this is a decision, not a cleanup.
+            AMENDED Phase 89.6-28 (C9; O-2 B): the child renders only on failure, chosen OVER an
+            always-mounted empty span, which defeated the empty test and put 24px between the
+            buttons. The sentence and link now sit in one plain wrapper at the end of Modal.Body,
+            before the footer's Close and Copy Invite Link in DOM and reading order (the order O-2 B
+            gives). Each failure scrolls that wrapper into view with block 'nearest' (sentence first
+            when it is taller than the visible Body), chosen OVER leaving it below the fold under a
+            footer Copy, and OVER moving focus to the link (CR-1 keeps focus on Copy). */}
+        <div ref={failureRef}>
+          <StatusRegion srOnlyWhenEmpty className="mb-3 text-content-status-error">
+            {copyFailed ? <span key={failSeq}>{COPY_FAILED_MESSAGE}</span> : null}
+          </StatusRegion>
+          {copyFailed && url ? (
+            <a
+              href={url}
+              className="block mb-3 text-sm text-content-link underline break-all focus:outline-hidden focus-visible:focus-ring"
+            >
+              {url}
+            </a>
+          ) : null}
+        </div>
+      </Modal.Body>
+      {/* DECISION Phase 89.6-28 (O-2): Close before Copy Invite Link in Modal.Footer per the owner's
+          O-2 B order and F4's seen-equals-moved-through order, OVER the old stacked body buttons with
+          Copy first. Changing this is a decision, not a cleanup.
+          88.6-33 (§3.2/§3.3) notes kept as history: Close is `<Button variant="secondary">` and Copy
+          `<Button variant="primary">`; `py-2.5` on Copy was DEAD under unlayered `.btn`'s `padding`
+          and was deleted. AMENDED Phase 89.6-28: `w-full` and `mb-3` leave both buttons (the footer
+          owns the gap and the stacking, F4); `text-center` stays on Copy (`.btn` declares no
+          `text-align`). */}
+      <Modal.Footer>
         <Button
           variant="secondary"
           onClick={onClose}
-          className="w-full"
         >
           Close
         </Button>
-      </Modal.Body>
+        <Button
+          variant="primary"
+          onClick={handleCopyLink}
+          className="text-center"
+        >
+          {copied ? 'Copied!' : 'Copy Invite Link'}
+        </Button>
+      </Modal.Footer>
     </Modal>
   );
 }

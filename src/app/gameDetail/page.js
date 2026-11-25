@@ -1460,6 +1460,8 @@ export default function GameDetailPage() {
         setQrLoading(true);
         try {
             const data = await eventsAPI.getEventInviteToken(singleEvent.id);
+            // DECISION Phase 89.6-28 (R-C10): an empty invite_url takes the existing failure arm OVER opening a QR box that encodes nothing.
+            if (typeof data?.invite_url !== 'string' || data.invite_url === '') throw new Error('The invite read returned no invite_url');
             setGameInviteUrl(data.invite_url);
             setShowGameQR(true);
         } catch (err) {
