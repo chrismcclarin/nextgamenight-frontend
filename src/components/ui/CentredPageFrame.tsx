@@ -5,6 +5,8 @@ import { cn } from '@/lib/cn';
 import { Heading } from './Heading';
 
 // DECISION Phase 88.9-66 (X64, X70a, X70b; owner 2026-11-14): ONE frame for a page-replacing banner, the group page's centred column at the UI-SPEC phone gutter (16px, 24px from md), chosen OVER the group page's 24px at 375 and OVER per-page wrappers (they drifted: none on planning, top-aligned on Profile).
+// AMENDED Phase 89.6-23 (frame): the banner is centred in the space between the header and the footer, not in a screen-tall box below the header. The owner's X06 'Fine' (2026-11-22) was on the old centring; he then picked this change from a rendered comparison, owner pick DT-3 = Move, 2026-11-23: 'Dt-3 : move it so it doesn't scroll at normal text. Change is approved.' Measured on Friends signed out at 375 by 667: the banner rises 96.5px and the page stops scrolling (860 to 667); at 320 with doubled text nothing changes.
+// DECISION Phase 89.6-23 (frame): the frame fills what main leaves between the header and the footer (flex-1, with main a column only when the frame is its direct child), chosen OVER min-h-screen (a full screen tall starting under the 64px header: the banner sat low and a one-banner page scrolled by the header plus the footer, 193px at 375 by 667, register FL-07; owner pick DT-3 = Move, 2026-11-23) and OVER making every main a column (a child with a max width and auto side margins would shrink to its content on every page). The column rule is src/app/globals.css ("FL-07 (89.6-23): main is a column only when the banner frame"). Changing this is a decision, not a cleanup.
 
 /**
  * The frame a page uses when ONE banner replaces its whole body (the signed-out return, the
@@ -33,7 +35,7 @@ export interface CentredPageFrameProps extends React.HTMLAttributes<HTMLDivEleme
 
 const CentredPageFrame = React.forwardRef<HTMLDivElement, CentredPageFrameProps>(
   ({ className, children, srHeading, ...props }, ref) => (
-    <div className="flex min-h-screen flex-col items-center justify-center p-edge-page md:p-edge-wide">
+    <div data-page-frame="" className="flex flex-1 flex-col items-center justify-center p-edge-page md:p-edge-wide">
       {srHeading ? (
         <Heading level={1} className="sr-only">
           {srHeading}

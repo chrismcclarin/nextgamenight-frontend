@@ -1013,6 +1013,12 @@
   .bb-breakable {
     overflow-wrap: anywhere;
   }
+
+  /* FL-07 (89.6-23): main is a column only when the banner frame is its direct child. Why: src/components/ui/CentredPageFrame.tsx ("DECISION Phase 89.6-23 (frame)") */
+  main:has(> [data-page-frame]) {
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 /* ===== DESIGN SYSTEM: Palette Primitives ===== */

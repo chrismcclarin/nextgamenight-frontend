@@ -124,7 +124,8 @@ const PAGE_ROOTS: { file: string; snippet: string | null }[] = [
   { file: 'app/userHome/UserHomePage.js', snippet: 'user-home-container max-w-[100rem] mx-auto w-full p-edge-page md:p-edge-wide' },
   { file: 'app/groupHomePage/page.js', snippet: 'p-edge-page md:p-edge-wide max-w-7xl mx-auto' },
   { file: 'app/groupPlanning/page.js', snippet: 'p-edge-page md:p-edge-wide max-w-7xl mx-auto' },
-  { file: 'components/ui/CentredPageFrame.tsx', snippet: 'flex min-h-screen flex-col items-center justify-center p-edge-page md:p-edge-wide' },
+  // AMENDED Phase 89.6-23 (FL-07): the frame fills main (flex-1) instead of a screen-tall box; the gutter pair is unchanged.
+  { file: 'components/ui/CentredPageFrame.tsx', snippet: 'flex flex-1 flex-col items-center justify-center p-edge-page md:p-edge-wide' },
   { file: 'app/availability-form/[token]/page.js', snippet: 'min-h-screen bg-surface-page py-8 px-edge-page md:px-edge-wide' },
   { file: 'app/about/page.js', snippet: 'max-w-3xl mx-auto px-edge-page py-16' },
   { file: 'app/privacy/page.js', snippet: 'max-w-3xl mx-auto px-edge-page py-16' },
