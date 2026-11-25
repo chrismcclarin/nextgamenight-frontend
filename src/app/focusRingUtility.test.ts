@@ -201,20 +201,29 @@ describe('Phase 89.6-12 — the two-tone focus-ring utilities (owner pick O-1 = 
     }
   });
 
-  it('6. both header sites keep the old ring scope beside the new pair until plan 89.6-13', () => {
+  it('6. both header sites carry the two-tone pair and no old ring scope; both notification-panel arms reset to the page pair', () => {
     // The header chrome is dark in both themes, so it scopes the pair to amber-400 outside and
-    // purple-950 inside. The old ring scope stays beside it: removing it now would recolour the
-    // rings no plan has converted yet. Plan 89.6-13 converts the consumers and removes it.
+    // purple-950 inside. AMENDED Phase 89.6-13 (owner pick O-1 = B): every consumer is on the
+    // utility, so the old --ring scope is gone and the pair is the subtree's only ring scope. The
+    // notification panel nested in the header is a light card: both arms reset the pair to the page
+    // pair, so its rings look like every other light card's (DECISION Phase 88.9-05, amended).
     const header = fs.readFileSync(path.join(__dirname, 'Header.js'), 'utf8');
-    const sites = stringChunks(header).filter((chunk) => chunk.text.includes('[--ring:var(--amber-400)]'));
-    expect(sites, 'Header.js: expected exactly two class strings carrying the old ring scope').toHaveLength(2);
+    const old = stringChunks(header).filter((chunk) => chunk.text.includes('[--ring:'));
+    expect(old.map((c) => `Header.js:${lineAt(header, c.offset)}`), 'Header.js: no class string carries the old ring scope').toEqual([]);
+    const sites = stringChunks(header).filter((chunk) => chunk.text.includes('[--focus-ring-outer:var(--amber-400)]'));
+    expect(sites, 'Header.js: expected exactly two class strings carrying the pair').toHaveLength(2);
     for (const site of sites) {
-      const line = lineAt(header, site.offset);
-      expect(site.text, `Header.js line ${line}: the new outer scope must sit beside the old one`).toContain(
-        '[--focus-ring-outer:var(--amber-400)]',
-      );
-      expect(site.text, `Header.js line ${line}: the new inner scope must sit beside the old one`).toContain(
+      expect(site.text, `Header.js line ${lineAt(header, site.offset)}: the inner half of the pair`).toContain(
         '[--focus-ring-inner:var(--purple-950)]',
+      );
+    }
+    const bell = fs.readFileSync(path.join(__dirname, 'components', 'NotificationBell.js'), 'utf8');
+    expect(stringChunks(bell).filter((c) => c.text.includes('[--ring:')), 'NotificationBell.js: no old ring scope').toEqual([]);
+    const arms = stringChunks(bell).filter((c) => c.text.includes('[--focus-ring-outer:var(--focus-ring-page-outer)]'));
+    expect(arms, 'NotificationBell.js: both panel arms reset the outer ring to the page pair').toHaveLength(2);
+    for (const arm of arms) {
+      expect(arm.text, `NotificationBell.js line ${lineAt(bell, arm.offset)}: the inner reset`).toContain(
+        '[--focus-ring-inner:var(--focus-ring-page-inner)]',
       );
     }
   });

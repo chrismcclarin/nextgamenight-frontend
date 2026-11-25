@@ -51,16 +51,22 @@ const ROW_COMPONENTS = [
   'app/components/FeedbackButton.js',
 ];
 
+// The OLD ring scope (the --ring property set to amber-400). AMENDED Phase 89.6-13: it is
+// retired; test 1 holds Header.js at zero chunks carrying it.
 const RING_OVERRIDE = '[--ring:var(--amber-400)]';
+// The override the header carries since owner pick O-1 = B (2026-11-22): the two-tone pair,
+// amber-400 outside and purple-950 inside, on the runtime properties the focus-ring utility reads.
+const RING_PAIR_OUTER = '[--focus-ring-outer:var(--amber-400)]';
+const RING_PAIR_INNER = '[--focus-ring-inner:var(--purple-950)]';
 const INERT_SHAPE = '[--color-focus-ring:';
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(SRC, rel), 'utf8');
 }
 
-/** Class-string chunks (comments already dropped by the lexer) carrying the ring override. */
+/** Class-string chunks (comments already dropped by the lexer) carrying the ring override (the pair). */
 function ringOverrideChunks(src: string) {
-  return stringChunks(src).filter((c) => c.text.includes(RING_OVERRIDE));
+  return stringChunks(src).filter((c) => c.text.includes(RING_PAIR_OUTER));
 }
 
 /**
@@ -83,14 +89,14 @@ describe('Phase 88.3 Req 7/8 — dark-chrome ring, muted labels, and the closed 
     expect(sourceFiles(SRC).length).toBeGreaterThan(100);
 
     // Anti-vacuity, half two: the detector really matches the override token in code...
-    expect(ringOverrideChunks(`const c = "bg-surface-header ${RING_OVERRIDE}";`)).toHaveLength(1);
+    expect(ringOverrideChunks(`const c = "bg-surface-header ${RING_PAIR_OUTER}";`)).toHaveLength(1);
     expect(
-      ringOverrideChunks(`const c = \`bg-surface-header ${RING_OVERRIDE} \${open ? 'a' : 'b'}\`;`),
+      ringOverrideChunks(`const c = \`bg-surface-header ${RING_PAIR_OUTER} \${open ? 'a' : 'b'}\`;`),
     ).toHaveLength(1);
     // ...and does NOT match a comment mentioning it. This is the assertion a future author
     // will break: every marker this plan wrote quotes the token it pins.
-    expect(ringOverrideChunks(`// the override is ${RING_OVERRIDE}, do not remove`)).toEqual([]);
-    expect(ringOverrideChunks(`/* scoped via ${RING_OVERRIDE}\n   on the header */\nconst x = 1;`)).toEqual([]);
+    expect(ringOverrideChunks(`// the override is ${RING_PAIR_OUTER}, do not remove`)).toEqual([]);
+    expect(ringOverrideChunks(`/* scoped via ${RING_PAIR_OUTER}\n   on the header */\nconst x = 1;`)).toEqual([]);
   });
 
   it('1. the ring override exists at BOTH header containers, on a bg-surface-header element', () => {
@@ -110,7 +116,15 @@ describe('Phase 88.3 Req 7/8 — dark-chrome ring, muted labels, and the closed 
     // AMENDED Phase 88.9-05: 12 — Header.js gains three (the brand link and the two desktop
     // list arms, A10c); the bell panel section now re-scopes --ring to the page ring (A3d),
     // so its rings no longer take this override.
+    // AMENDED Phase 89.6-13 (owner pick O-1 = B, 2026-11-22): the override is the two-tone pair;
+    // the old --ring scope is gone from both containers, and no class string in Header.js may
+    // carry it again (a leftover would re-colour nothing the utility reads, and hide that).
     const src = read(HEADER);
+    const old = stringChunks(src).filter((c) => c.text.includes(RING_OVERRIDE));
+    expect(
+      old.map((c) => `Header.js:${lineAt(src, c.offset)}`),
+      'the old --ring amber-400 scope must be gone from Header.js; the pair is the only ring scope',
+    ).toEqual([]);
     const chunks = ringOverrideChunks(src);
     expect(
       chunks.map((c) => lineAt(src, c.offset)),
@@ -124,6 +138,7 @@ describe('Phase 88.3 Req 7/8 — dark-chrome ring, muted labels, and the closed 
         c.text,
         `ring override at Header.js:${lineAt(src, c.offset)} is not on a bg-surface-header element`,
       ).toContain('bg-surface-header');
+      expect(c.text, `Header.js:${lineAt(src, c.offset)}: the inner half of the pair`).toContain(RING_PAIR_INNER);
     }
   });
 

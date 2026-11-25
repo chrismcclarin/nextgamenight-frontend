@@ -106,10 +106,11 @@ describe('Phase 88.9-33 — the landing hero (O01a, L1b, B4a)', () => {
     }
   });
 
-  it('B4a: the amber ring is dark-only on the hero root; Get Started takes the hero halo; Google drops its own re-point', () => {
+  it('B4a: the hero root carries no ring scope; Get Started and Google carry no halo token', () => {
+    // AMENDED Phase 89.6-13 (owner pick O-1 = B, 2026-11-22): the dark defaults are the picked pair
+    // (amber-400 outside, purple-950 inside), so the hero needs no ring scope and no halo.
     const { root, getStarted, google } = renderHero();
-    expect(tokensOf(root)).toContain('dark:[--ring:var(--amber-400)]');
-    expect(tokensOf(root)).not.toContain('[--ring:var(--amber-400)]');
+    expect(tokensOf(root).filter((t) => /\[--(?:ring|focus-ring)/.test(t)), 'the hero root scopes no ring').toEqual([]);
     // AMENDED Phase 89.6-13 (owner pick O-1 = B): the hero halo is retired with every halo; Get
     // Started wears the Button base's two-tone ring and no ring-offset token.
     const gs = tokensOf(getStarted);
@@ -117,6 +118,7 @@ describe('Phase 88.9-33 — the landing hero (O01a, L1b, B4a)', () => {
     expect(gs).toContain('focus-visible:focus-ring');
     const g = tokensOf(google);
     expect(g).not.toContain('[--ring:var(--amber-400)]');
+    expect(g.filter((t) => t.includes('ring-offset-')), 'Google carries no halo token').toEqual([]);
     expect(g).toEqual(
       expect.arrayContaining([
         'bg-btn-secondary',
