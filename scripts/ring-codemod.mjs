@@ -23,8 +23,9 @@
  *     a blocking hand site.
  *
  * Files: git ls-files src, non-test .js .jsx .ts .tsx only, minus
- *   - src/components/ui/hostGround.ts: its halo map and its consumers are plan 89.6-38's; the
- *     cascadeOrder test 12 allowance names the same file.
+ *   - (until plan 89.6-38) the host-ground halo map, whose consumers that plan owned; AMENDED
+ *     Phase 89.6-38 (host-ground): the map's file is deleted and test 12's allowance with it, so
+ *     no single file is excluded any more.
  *   - everything under src/test-utils/: test helpers hold old ring tokens as DATA (the reject list
  *     in focusRingAssert.ts); a --write would turn that list into the new utility and make the
  *     helper reject correct rings, and --check would never exit 0. The helper is hand-edited.
@@ -68,9 +69,8 @@ const say = (line) => process.stdout.write(`${line}\n`);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // Files skipped on purpose, each with its reason (see the header).
-export const EXCLUDED_FILES = new Map([
-  ['src/components/ui/hostGround.ts', 'halo map and consumers retire in plan 89.6-38'],
-]);
+// Empty since plan 89.6-38 deleted the one file it held (the host-ground halo map).
+export const EXCLUDED_FILES = new Map();
 export const EXCLUDED_PREFIXES = new Map([
   ['src/test-utils/', 'test helpers hold old ring tokens as data'],
 ]);
@@ -549,7 +549,7 @@ function selfTest() {
   // 15 file list
   {
     const list = buildFileList(
-      'src/test-utils/focusRingAssert.ts\nsrc/components/ui/Button.tsx\nsrc/components/ui/Button.test.tsx\nsrc/components/ui/hostGround.ts\nsrc/app/globals.css\n',
+      'src/test-utils/focusRingAssert.ts\nsrc/components/ui/Button.tsx\nsrc/components/ui/Button.test.tsx\nsrc/app/globals.css\n',
     );
     ok('15 file list', list.length === 1 && list[0] === 'src/components/ui/Button.tsx', JSON.stringify(list));
   }
