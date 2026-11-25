@@ -213,10 +213,10 @@ function fixtureCard(page: Page): Locator {
  * takes this helper, because `f696732` moved `role`/`tabIndex`/`onKeyDown` off the card and the
  * card can no longer match `:focus-visible` at all. Handing the card to `focusRingMeasurement`
  * does not fail softly: it focuses the anchor (e2e/support/contrast.ts ("await focusByKeyboard(page, anchor);")) and then
- * `requireColor`s `--tw-ring-color` (e2e/support/contrast.ts ("focus ring (--tw-ring-color; empty means the element never matched")), which THROWS on an empty value (e2e/support/contrast.ts ("the computed value did not normalise to a colour")) — and the
- * compiled stylesheet declares `@property --tw-ring-color` with `syntax: "*"` and NO
- * `initial-value`, so an element that never matched returns the empty string. Re-basing
+ * reads the outline, which THROWS when the element never matched (e2e/support/contrast.ts ("no outline: the element did not match :focus-visible")):
+ * an element that never matched has no outline at all. Re-basing
  * `fixtureCard` without minting this second helper would have traded one red for another.
+ * AMENDED Phase 89.6-14: the reader reads the two-tone outline ring now, not the old ring colour variable.
  */
 function fixtureCardKeyboardTarget(page: Page): Locator {
   return fixtureCard(page)

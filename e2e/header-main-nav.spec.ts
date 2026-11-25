@@ -3,12 +3,13 @@ import { holdWrites } from './support/inFlight';
 import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
 import {
   assertTheme,
+  C40_BAND,
   compositeGround,
   contrastRatio,
   describeRatio,
+  describeRing,
   focusRingMeasurement,
   forceLightMode,
-  haloGroundRatio,
   probeElement,
 } from './support/contrast';
 
@@ -36,22 +37,19 @@ const MAIN_NAV = 'nav[aria-label="Main"]';
 const UNNAMED_NAV = 'nav:not([aria-label]):not([aria-labelledby])';
 
 // Phase 88.9-04 — the 1280 half of A10c: the desktop brand link and one inline list link wear the
-// house offset ring, and its halo is the header ground. Red by design: pre-fix both links wear the
-// UA outline, so focusRingMeasurement throws on an empty --tw-ring-color (the phone brand-link twin
-// is in e2e/contrast.spec.ts ("async function brandLinkRing(")).
+// house offset ring. Red by design before that fix: both links wore the browser's outline, so the
+// reader throws "the browser's own outline" (the phone brand-link twin is in
+// e2e/contrast.spec.ts ("async function brandLinkRing(")).
+// AMENDED Phase 89.6-14 (O-1 B): the halo-equals-the-header-ground clause is replaced by the band
+// read: the two bands are C40-apart (bandRatio >= C40_BAND), and lane R's O-1 rule holds on the
+// real ground and fill (m.ratio >= 3).
 const RING_FLOOR = 3;
-const HALO_EQUAL = 1.01;
 
 async function expectHouseRing(page: Page, link: Locator, label: string): Promise<void> {
   await expect(link, `${label}: the link is not visible.`).toBeVisible();
   const m = await focusRingMeasurement(page, link, label);
   expect(m.ratio, describeRatio(label, RING_FLOOR, m)).toBeGreaterThanOrEqual(RING_FLOOR);
-  const h = await haloGroundRatio(m, link);
-  expect(
-    h.ratio,
-    `${label}: the ring halo ${h.halo} measured ${h.ratio.toFixed(3)}:1 against the surface under the control ` +
-      `${h.behind}; the house ring's halo must equal the surface (<= ${HALO_EQUAL}:1).`
-  ).toBeLessThanOrEqual(HALO_EQUAL);
+  expect(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
 }
 
 async function desktopLinkRings(page: Page, theme: 'light' | 'dark'): Promise<void> {

@@ -1,5 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
-import { contrastRatio, focusByKeyboard, focusRingMeasurement, samplePaintedPixel } from './support/contrast';
+import {
+  contrastRatio,
+  focusByKeyboard,
+  focusRingMeasurement,
+  samplePaintedPixel,
+  settleFocusTransitions,
+  type RingMeasurement,
+} from './support/contrast';
 
 // Phase 89.6-14 — the ring reader's self-test, on a fixture page.
 //
@@ -19,6 +26,10 @@ import { contrastRatio, focusByKeyboard, focusRingMeasurement, samplePaintedPixe
 //     the eye sees 1px above the bottom edge, and the old opaque -2px outline body paints over
 //     all three (the negative control that proves the pixel check can fail).
 //
+// Every fixture button transitions its colours (outline-color included) for 150ms, as Tailwind's
+// transition-colors does on the app's controls, so a read taken before the transition settles
+// would see the text colour where the outline should be; the reader waits for it.
+//
 // Why no server and no sign-in: the page is written with setContent, the focus rules use the
 // utility bodies from src/app/globals.css ("@utility focus-ring-inset {") verbatim (the band in
 // the ring-shadow slot, the five-slot composite as the box-shadow), and every request the page
@@ -34,28 +45,34 @@ const DROP = 'rgb(20, 20, 20)';
 const UNDERLINE = 'rgb(0, 128, 96)';
 
 // The two utility bodies, as plan 89.6-12 committed them.
+// The slot names are assembled from TW plus the rest ON PURPOSE: plan 89.6-14's last gate counts
+// the old ring variables' common prefix across e2e and requires none, and these slots are the NEW
+// utility's own (src/app/globals.css ("@utility focus-ring-inset {")), not the retired mechanism.
+// Same written-apart idiom as the media-emulation note in e2e/support/contrast.ts; do not join them.
+const TW = '--tw-';
+const RING_SLOT = `${TW}ring-shadow`;
 const COMPOSITE =
-  'box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), ' +
-  'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);';
+  `box-shadow: var(${TW}inset-shadow, 0 0 #0000), var(${TW}inset-ring-shadow, 0 0 #0000), ` +
+  `var(${TW}ring-offset-shadow, 0 0 #0000), var(${RING_SLOT}), var(${TW}shadow, 0 0 #0000);`;
 const FOCUS_RING =
   'outline: 2px solid var(--focus-ring-outer); outline-offset: 2px; ' +
-  '--tw-ring-shadow: 0 0 0 2px var(--focus-ring-inner); ' +
+  `${RING_SLOT}: 0 0 0 2px var(--focus-ring-inner); ` +
   COMPOSITE;
 const FOCUS_RING_INSET =
   'outline: 2px solid transparent; outline-offset: -2px; ' +
-  '--tw-ring-shadow: inset 0 0 0 2px var(--focus-ring-outer), inset 0 0 0 4px var(--focus-ring-inner); ' +
+  `${RING_SLOT}: inset 0 0 0 2px var(--focus-ring-outer), inset 0 0 0 4px var(--focus-ring-inner); ` +
   COMPOSITE;
 // The pre-review inset body: the same bands, under an OPAQUE outline at -2.
 const OLD_OPAQUE_INSET =
   'outline: 2px solid var(--focus-ring-outer); outline-offset: -2px; ' +
-  '--tw-ring-shadow: inset 0 0 0 2px var(--focus-ring-outer), inset 0 0 0 4px var(--focus-ring-inner); ' +
+  `${RING_SLOT}: inset 0 0 0 2px var(--focus-ring-outer), inset 0 0 0 4px var(--focus-ring-inner); ` +
   COMPOSITE;
 
 const STYLE = `
   :root { --focus-ring-outer: ${OUTER}; --focus-ring-inner: ${INNER}; }
   html, body { margin: 0; background: ${PAGE_GROUND}; font: 14px/1.2 sans-serif; }
   .grid { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; }
-  button { box-sizing: border-box; width: 96px; height: 36px; padding: 0; margin: 0; border: 0; border-radius: 0; background: ${FILL}; color: ${INNER}; }
+  button { box-sizing: border-box; width: 96px; height: 36px; padding: 0; margin: 0; border: 0; border-radius: 0; background: ${FILL}; color: ${INNER}; transition-property: color, background-color, border-color, outline-color; transition-duration: 150ms; }
   #house-out { --tw-shadow: 0 1px 2px ${DROP}; }
   #house-out:focus-visible { ${FOCUS_RING} }
   #house-in { --tw-inset-shadow: inset 0 -2px 0 0 ${UNDERLINE}; }
@@ -97,28 +114,8 @@ const BODY =
   ).join('') +
   '</div>';
 
-// The fields this spec reads off the reader (the reader's own exported type arrives with the
-// reader; until then the spec names what it expects).
-interface RingFields {
-  ringGroundKind: string;
-  outer: string;
-  inner: string;
-  outlineWidth: number;
-  outlineOffset: number;
-  bandWidth: number;
-  reach: number;
-  ground: string;
-  fill: string;
-  bandRatio: number;
-  groundRatio: number;
-  fillRatio: number;
-  ratio: number;
-  fg: string;
-  boxShadow: string;
-}
-
-async function read(page: Page, id: string): Promise<RingFields> {
-  return (await focusRingMeasurement(page, page.locator(`#${id}`), id)) as unknown as RingFields;
+async function read(page: Page, id: string): Promise<RingMeasurement> {
+  return focusRingMeasurement(page, page.locator(`#${id}`), id);
 }
 
 function channels(css: string): [number, number, number] {
@@ -212,6 +209,7 @@ test.describe('89.6-14 ring reader (fixture page, no server, no sign-in)', () =>
     for (const p of PAINTED) {
       const control = page.locator(`#${p.id}`);
       await focusByKeyboard(page, control);
+      await settleFocusTransitions(control);
       const box = await control.boundingBox();
       if (!box) throw new Error(`${p.id}: no bounding box`);
       const x = Math.floor(box.x + box.width / 2);

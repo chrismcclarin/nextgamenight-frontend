@@ -290,9 +290,27 @@ export interface ProbeLevel extends GroundLevel {
   color: NormalisedColor;
 }
 
+/**
+ * One layer of a computed box-shadow list (Phase 89.6-14). Chromium serialises each layer as
+ * colour, then the lengths, then the inset keyword; the colour is whatever remains once the
+ * keyword and the px lengths are taken out, normalised by probeElement's one normaliser.
+ */
+export interface ShadowLayer {
+  inset: boolean;
+  /** x, y, blur, spread, in px, in the order they were written. */
+  lengths: number[];
+  colour: NormalisedColor;
+}
+
 export interface ElementProbe {
   /** Requested properties (longhand or custom property), normalised where they are colours. */
   computed: Record<string, NormalisedColor>;
+  /**
+   * Phase 89.6-14: present only when box-shadow was among the wanted properties. Every layer of
+   * the list, in list order (the first is painted on top). A focused control may carry several:
+   * Tailwind's empty slots, an inset underline band, a drop shadow, the ring's band.
+   */
+  shadowLayers?: ShadowLayer[];
   levels: ProbeLevel[];
   resolvedAt: number;
   /** Index of the first FULLY OPAQUE rung, or -1 when the walk never found one. */
@@ -356,6 +374,37 @@ export async function probeElement(anchor: Locator, props: string[] = ['color'])
       );
     }
 
+    // Phase 89.6-14: the box-shadow list split into layers, on commas outside parentheses, each
+    // layer's colour through the SAME normaliser as every other colour this probe returns.
+    let shadowLayers: ShadowLayer[] | undefined;
+    if (wanted.includes('box-shadow')) {
+      shadowLayers = [];
+      const list = style.getPropertyValue('box-shadow').trim();
+      if (list !== '' && list !== 'none') {
+        const parts: string[] = [];
+        let depth = 0;
+        let current = '';
+        for (const ch of list) {
+          if (ch === '(') depth += 1;
+          if (ch === ')') depth -= 1;
+          if (ch === ',' && depth === 0) {
+            parts.push(current);
+            current = '';
+          } else {
+            current += ch;
+          }
+        }
+        parts.push(current);
+        const lengthPattern = /(-?\d*\.?\d+)px/g;
+        for (const part of parts) {
+          const inset = /\binset\b/.test(part);
+          const lengths = Array.from(part.matchAll(lengthPattern), (m) => Number.parseFloat(m[1]));
+          const colour = part.replace(/\binset\b/, '').replace(lengthPattern, '').trim();
+          shadowLayers.push({ inset, lengths, colour: normalise(colour) });
+        }
+      }
+    }
+
     const levels: ProbeLevel[] = [];
     let node: Element | null = start;
     let outermost: Element = start;
@@ -401,6 +450,7 @@ export async function probeElement(anchor: Locator, props: string[] = ['color'])
 
     return {
       computed,
+      ...(shadowLayers ? { shadowLayers } : {}),
       levels,
       resolvedAt,
       opaqueAt,
@@ -593,8 +643,8 @@ export async function assertTheme(page: Page, theme: 'light' | 'dark'): Promise<
  * Both halves are load-bearing. `locator.focus()` alone is programmatic focus, and
  * Chromium only matches `:focus-visible` on programmatic focus when the user's most recent
  * interaction was a KEYBOARD one — hence the `Tab` press first, purely to set that
- * modality. Without it the ring rules never apply and `--tw-ring-color` comes back empty,
- * which `requireColor` would (correctly) turn into a probe failure. A bare `:focus`
+ * modality. Without it the ring rules never apply and the computed outline style comes back
+ * none, which focusRingMeasurement (correctly) turns into a no-outline throw. A bare `:focus`
  * variant would not help: src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:focus-ring'") and src/components/ui/Input.tsx ("focus:outline-hidden focus-visible:border-input") both use `focus-visible:`
  * deliberately, so that pointer and programmatic focus do NOT draw a ring.
  */
@@ -604,7 +654,7 @@ export async function focusByKeyboard(page: Page, anchor: Locator): Promise<void
 }
 
 /**
- * The focus ring's colour and its ratio against THE GROUND THE RING IS ACTUALLY DRAWN ON.
+ * The focus ring's colours and their ratios against THE GROUNDS THE RING IS ACTUALLY DRAWN ON.
  *
  * ---------------------------------------------------------------------------------------
  * DECISION Phase 88.3 (Req 7): the ring is measured against its ADJACENT ground, which is
@@ -613,8 +663,8 @@ export async function focusByKeyboard(page: Page, anchor: Locator): Promise<void
  * CHOSEN: three cases, decided from the element's own computed ring variables.
  *   - `ring-inset` -> the ring is painted INSIDE the border box, so its ground is the
  *     element's own composited background (`from = 0`).
- *   - a non-zero `ring-offset-width` -> Tailwind paints an offset ring in
- *     `--tw-ring-offset-color` (unset default: white) between the border box and the ring,
+ *   - a non-zero `ring-offset-width` -> Tailwind paints an offset ring in its ring offset
+ *     colour variable (unset default: white) between the border box and the ring,
  *     so THAT is what the ring sits against — not the element's fill, which the offset
  *     hides.
  *   - otherwise -> the ring is painted immediately outside the border box, on the
@@ -636,115 +686,206 @@ export async function focusByKeyboard(page: Page, anchor: Locator): Promise<void
  *
  * Collapsing these three cases back into one is a decision, not a cleanup — and it is one
  * that changes what the numbers MEAN, not merely how they are computed.
+ *
+ * AMENDED Phase 89.6-14 (O-1 B, owner pick 2026-11-22: 'Two-colour ring, 2px: a thin inner
+ * band plus a darker outer ring'): the three cases read Tailwind ring variables that no
+ * converted control sets. The ring is now an outline over a band; both neighbours are measured:
+ * the surface outside (the parent) and the control's own fill, lane R's O-1 rule.
+ * (Wording note, same plan: the offset colour variable is named in words above because the
+ * plan's e2e gate counts the old ring variables' common prefix and requires none.)
  */
-export async function focusRingMeasurement(
-  page: Page,
-  anchor: Locator,
-  label: string
-): Promise<Measurement & { boxShadow: string; ringGroundKind: 'inset' | 'offset' | 'outside' }> {
-  await focusByKeyboard(page, anchor);
-  const probe = await probeElement(anchor, [
-    '--tw-ring-color',
-    '--tw-ring-inset',
-    '--tw-ring-offset-width',
-    '--tw-ring-offset-color',
-    'box-shadow',
-  ]);
-  const ring = requireColor(
-    `${label} — focus ring (--tw-ring-color; empty means the element never matched :focus-visible)`,
-    probe.computed['--tw-ring-color']
+
+/** What focusRingMeasurement returns for the house ring (Phase 89.6-14). */
+export interface RingMeasurement extends Measurement {
+  /** 'offset': an opaque outline at a positive offset over a band. 'inset': a transparent outline at a negative offset, two inset bands. */
+  ringGroundKind: 'offset' | 'inset';
+  /** offset kind: the outline colour. inset kind: the inset layer of spread = outline width. */
+  outer: string;
+  /** offset kind: the band filling the gap. inset kind: the inset layer of spread = width + |offset|. */
+  inner: string;
+  outlineWidth: number;
+  outlineOffset: number;
+  /** The spread of the inner band's layer (2 outset, 4 inset). */
+  bandWidth: number;
+  /** How far the ring paints outside the border box: offset + width, or the widest outward spread. */
+  reach: number;
+  /** The control's own composited ground. `ground` is the surface outside it, read from the parent. */
+  fill: string;
+  /** outer vs inner (C40 asks for 9:1). */
+  bandRatio: number;
+  /** The better band against `ground`. */
+  groundRatio: number;
+  /** The better band against `fill`. */
+  fillRatio: number;
+  /** The raw computed box-shadow, for failure messages. */
+  boxShadow: string;
+}
+
+/** WCAG technique C40: two bands at least 9:1 apart, so one of them is at least 3:1 on any solid colour. */
+export const C40_BAND = 9;
+
+/**
+ * Wait for the control's own transitions to finish, so the computed ring is the ring at rest.
+ *
+ * A control with transition-colors also transitions outline-color: read the instant focus lands,
+ * an inset ring's transparent outline is still the text colour at full alpha, and an outset
+ * ring's outer colour is still on its way from the text colour. Infinite animations are left out.
+ */
+export async function settleFocusTransitions(anchor: Locator): Promise<void> {
+  await anchor.evaluate((el) =>
+    Promise.all(
+      el
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined))
+    )
   );
-
-  const inset = (probe.computed['--tw-ring-inset']?.raw ?? '').trim() === 'inset';
-  const offsetWidth = Number.parseFloat(probe.computed['--tw-ring-offset-width']?.raw ?? '0') || 0;
-
-  let ground: string | null;
-  let ringGroundKind: 'inset' | 'offset' | 'outside';
-  if (inset) {
-    ringGroundKind = 'inset';
-    ground = compositeGround(probe, 0);
-  } else if (offsetWidth > 0) {
-    ringGroundKind = 'offset';
-    const offset = probe.computed['--tw-ring-offset-color'];
-    const offsetCss = requireColor(`${label} — ring offset colour`, offset);
-    const behind = compositeGround(probe, 1) ?? compositeGround(probe, 0);
-    // The offset ring can itself be translucent; blend it onto whatever is behind it.
-    ground = offset?.alpha === 1 || behind === null ? offsetCss : blend(offsetCss, offset?.alpha ?? 1, behind);
-  } else {
-    ringGroundKind = 'outside';
-    // A non-inset, zero-offset ring is a box-shadow drawn just OUTSIDE the border box, so it
-    // overlaps the PARENT's background, not the element's own fill. `compositeGround(probe, 1)`
-    // gives that whenever the element itself is transparent — but when the element PAINTS (the
-    // `Input` primitive carries `bg-surface-input`, src/components/ui/Input.tsx ("rounded-btn border border-input bg-surface-input")), the walk already stopped on
-    // the element's own rung and there is nothing above index 0 to composite. Probing the parent
-    // is the only way to see what the ring actually sits on. Falling back to `compositeGround(probe, 0)`
-    // here would silently report the ring's contrast against the fill it is drawn OUTSIDE OF.
-    const outside = compositeGround(probe, 1);
-    ground = outside ?? compositeGround(await probeElement(anchor.locator('xpath=..'), []), 0);
-  }
-
-  if (ground === null) {
-    throw new Error(
-      `${label}: no opaque ground under the focus ring (kind=${ringGroundKind}).\n` +
-        describeGround(label, groundResolutionOf(probe))
-    );
-  }
-  const ratio = contrastRatio(ring, ground);
-  if (ratio === null) throw new Error(`${label}: could not compute a ring ratio from ${ring} on ${ground}.`);
-  return {
-    ratio,
-    fg: ring,
-    ground,
-    probe,
-    resolution: groundResolutionOf(probe),
-    boxShadow: probe.computed['box-shadow']?.raw ?? '',
-    ringGroundKind,
-  };
 }
 
 /**
- * Phase 88.9-01 — the HALO of an offset focus ring against the surface the control sits on.
+ * The two-tone keyboard ring (plan 89.6-12's focus-ring and focus-ring-inset utilities), read from
+ * the OUTLINE plus the band layer of the box-shadow list.
  *
- * The contract it pins: planning:.planning/phases/88.9-fe-look-decisions-design-phase-mockup-gated-split-from-88-6/88.9-UI-SPEC.md ("## Contract item — the house offset ring takes the surface colour").
- * An offset ring paints a halo (`--tw-ring-offset-color`) between the control and the ring; the
- * house ring's halo must BE the surface under the control, so a ratio of 1.00 between the two
- * means the halo is invisible as a band. The shipped default halo is white, which is a visible
- * white stripe on every non-white surface.
+ * DECISION Phase 89.6-14 (ring-reader): read the outline and the band and THROW on any other shape,
+ * OVER returning a best-effort reading — a reader that accepts the old box-shadow ring passes on the
+ * wrong ring. Scope: once bandRatio >= C40_BAND, ratio >= 3 follows on any solid ground, so these
+ * reads prove the tokens and the ring's shape, NOT that the ring is visible at a given site (a
+ * clipping ancestor or a child background painted over an inset band is not seen here); plan
+ * 89.6-31's readRingClip census is the read that shows the ring is whole at each site. Changing
+ * this is a decision, not a cleanup.
  *
- * WHY THE SURFACE IS READ FROM THE PARENT, ALWAYS. `probeElement`'s ground walk STOPS at the
- * first fully opaque rung. For an opaque-fill control (every filled `<Button>`) that rung is the
- * control itself: `probe.opaqueAt` is 0, `compositeGround(probe, 1)` is null (`from > opaqueAt`),
- * and a fallback to `compositeGround(probe, 0)` would return the control's OWN FILL — the halo
- * would be compared with the button, never with the surface. So this helper probes the parent
- * element and composites from there, the same move `focusRingMeasurement`'s 'outside' branch
- * makes (probing the parent is the only way to see what the ring sits on when the element paints).
- * For a transparent control the parent's composite equals `compositeGround(probe, 1)`, so both
- * arms read the same surface. `ownFill` is returned beside it so a caller can prove which arm ran.
+ * The band is searched for among ALL the box-shadow layers by its geometry, never taken as the
+ * first or only layer: a focused control may also carry an inset underline band (the Friends tab),
+ * a drop shadow, or Tailwind's empty slots, and those are ignored for the band. An outward spread
+ * on any other layer still counts toward reach.
  *
- * Throws unless the ring is an OFFSET ring (`ringGroundKind === 'offset'`): an inset or outside
- * ring has no halo, and a halo ratio for it would be a number about nothing.
+ * WHY THE SURFACE IS READ FROM THE PARENT, ALWAYS. probeElement's ground walk STOPS at the first
+ * fully opaque rung. For an opaque-fill control (every filled Button) that rung is the control
+ * itself, so compositeGround(probe, 1) is null and a fallback to compositeGround(probe, 0) would
+ * return the control's OWN FILL. So this helper probes the parent element and composites from
+ * there; the fill is read separately, and both are measured (lane R's O-1 rule: one band at least
+ * 3:1 against the ground AND one band at least 3:1 against the fill).
+ */
+export async function focusRingMeasurement(page: Page, anchor: Locator, label: string): Promise<RingMeasurement> {
+  await focusByKeyboard(page, anchor);
+  await settleFocusTransitions(anchor);
+  const probe = await probeElement(anchor, ['outline-style', 'outline-width', 'outline-offset', 'outline-color', 'box-shadow']);
+  const style = (probe.computed['outline-style']?.raw ?? '').trim();
+  const width = Number.parseFloat(probe.computed['outline-width']?.raw ?? '') || 0;
+  const offset = Number.parseFloat(probe.computed['outline-offset']?.raw ?? '') || 0;
+  const colour = probe.computed['outline-color'];
+  const boxShadow = probe.computed['box-shadow']?.raw ?? '';
+  const layers = probe.shadowLayers ?? [];
+  const raw =
+    `outline-style ${JSON.stringify(style)}, outline-width ${JSON.stringify(probe.computed['outline-width']?.raw ?? '')}, ` +
+    `outline-offset ${JSON.stringify(probe.computed['outline-offset']?.raw ?? '')}, outline-color ${JSON.stringify(colour?.raw ?? '')}; ` +
+    `box-shadow ${JSON.stringify(boxShadow)}`;
+  const fail = (why: string): never => {
+    throw new Error(`${label}: ${why}. Computed: ${raw}.`);
+  };
+
+  if (style === 'none' || style === '') fail("no outline: the element did not match :focus-visible, or it still wears the pre-89.6 box-shadow ring");
+  if (style === 'auto') fail("the browser's own outline, not the house ring");
+  if (offset === 0) fail('offset 0: neither house form');
+  if (width < 2) fail('transparent or thin outline');
+  const alpha = colour?.alpha ?? 0;
+  if (offset > 0 && alpha < 1) fail('transparent or thin outline');
+  if (offset < 0 && alpha > 0) fail("inset outline paints over the control's border cue");
+
+  const near = (a: number | undefined, b: number): boolean => a !== undefined && Math.abs(a - b) < 0.01;
+  const spreadOnly = (layer: ShadowLayer, spread: number): boolean =>
+    layer.lengths.length === 4 && near(layer.lengths[0], 0) && near(layer.lengths[1], 0) && near(layer.lengths[2], 0) && near(layer.lengths[3], spread);
+
+  let ringGroundKind: 'offset' | 'inset';
+  let outer: string;
+  let inner: string;
+  let bandWidth: number;
+  if (offset > 0) {
+    ringGroundKind = 'offset';
+    const band = layers.find((layer) => !layer.inset && spreadOnly(layer, offset));
+    if (!band) fail(`outline without its inner band (no outward box-shadow layer 0 0 0 ${offset}px)`);
+    const bandLayer = band as ShadowLayer;
+    if (bandLayer.colour.alpha !== 1) fail('the inner band is not opaque');
+    outer = requireColor(`${label} — outline colour`, colour);
+    inner = requireColor(`${label} — inner band colour`, bandLayer.colour);
+    bandWidth = bandLayer.lengths[3];
+  } else {
+    ringGroundKind = 'inset';
+    const outerLayer = layers.find((layer) => layer.inset && spreadOnly(layer, width));
+    const innerLayer = layers.find((layer) => layer.inset && spreadOnly(layer, width + Math.abs(offset)));
+    if (!outerLayer || !innerLayer) {
+      fail(`outline without its inner band (needs inset layers 0 0 0 ${width}px and 0 0 0 ${width + Math.abs(offset)}px)`);
+    }
+    const o = outerLayer as ShadowLayer;
+    const i = innerLayer as ShadowLayer;
+    if (o.colour.alpha !== 1 || i.colour.alpha !== 1) fail('an inset band is not opaque');
+    outer = requireColor(`${label} — outer inset band colour`, o.colour);
+    inner = requireColor(`${label} — inner inset band colour`, i.colour);
+    bandWidth = i.lengths[3];
+  }
+  const outward = layers.filter((layer) => !layer.inset).map((layer) => layer.lengths[3] ?? 0);
+  const reach = Math.max(0, offset + width, ...outward);
+
+  const parent = await probeElement(anchor.locator('xpath=..'), []);
+  const ground = compositeGround(parent, 0);
+  if (ground === null) {
+    fail(`no opaque surface outside the control.\n${describeGround(`${label} (parent walk)`, groundResolutionOf(parent))}`);
+  }
+  const fill = compositeGround(probe, 0);
+  if (fill === null) {
+    fail(`no opaque fill under the control.\n${describeGround(label, groundResolutionOf(probe))}`);
+  }
+  const ratioOf = (a: string, b: string): number => {
+    const r = contrastRatio(a, b);
+    if (r === null) throw new Error(`${label}: could not compute a ratio from ${a} on ${b}.`);
+    return r;
+  };
+  const surface = ground as string;
+  const own = fill as string;
+  const bandRatio = ratioOf(outer, inner);
+  const groundRatio = Math.max(ratioOf(outer, surface), ratioOf(inner, surface));
+  const fillRatio = Math.max(ratioOf(outer, own), ratioOf(inner, own));
+  return {
+    ratio: Math.min(groundRatio, fillRatio),
+    fg: outer,
+    ground: surface,
+    probe,
+    resolution: groundResolutionOf(probe),
+    ringGroundKind,
+    outer,
+    inner,
+    outlineWidth: width,
+    outlineOffset: offset,
+    bandWidth,
+    reach,
+    fill: own,
+    bandRatio,
+    groundRatio,
+    fillRatio,
+    boxShadow,
+  };
+}
+
+/** One failure message for a ring read: both bands, both neighbours, the three ratios, the outline and the raw list. */
+export function describeRing(label: string, m: RingMeasurement): string {
+  return (
+    `${label}: ${m.ringGroundKind} ring, outer ${m.outer}, inner ${m.inner}, ground ${m.ground}, fill ${m.fill}; ` +
+    `bandRatio ${m.bandRatio.toFixed(3)}:1 (C40 floor ${C40_BAND}), groundRatio ${m.groundRatio.toFixed(3)}:1, ` +
+    `fillRatio ${m.fillRatio.toFixed(3)}:1; outline ${m.outlineWidth}px at offset ${m.outlineOffset}px, band ${m.bandWidth}px, ` +
+    `reach ${m.reach}px; box-shadow ${m.boxShadow}`
+  );
+}
+
+/**
+ * Retired by plan 89.6-14 (owner pick O-1 B): the halo is a fixed inner band now, so the
+ * "halo equals the surface" read is replaced by the band read. Kept as a throwing stub for one
+ * commit only, so a caller not yet moved fails loudly; plan 89.6-14 Task 4 deletes it.
  */
 export async function haloGroundRatio(
-  m: Measurement & { ringGroundKind: 'inset' | 'offset' | 'outside' },
-  anchor: Locator
+  _m: Measurement & { ringGroundKind: string },
+  _anchor: Locator
 ): Promise<{ ratio: number; halo: string; behind: string; ownFill: string | null; behindSource: 'parent' }> {
-  if (m.ringGroundKind !== 'offset') {
-    throw new Error(
-      `haloGroundRatio: the ring is '${m.ringGroundKind}', not an offset ring, so it paints no halo ` +
-        `(ring ${m.fg} on ${m.ground}). The house ring is an offset ring; this is a ring-shape failure.`
-    );
-  }
-  const parent = await probeElement(anchor.locator('xpath=..'), []);
-  const behind = compositeGround(parent, 0);
-  if (behind === null) {
-    throw new Error(
-      `haloGroundRatio: the parent walk never reached a fully opaque rung, so there is no surface ` +
-        `to compare the halo with.\n${describeGround('halo surface (parent walk)', groundResolutionOf(parent))}`
-    );
-  }
-  const ratio = contrastRatio(m.ground, behind);
-  if (ratio === null) throw new Error(`haloGroundRatio: could not compute a ratio from halo ${m.ground} on ${behind}.`);
-  return { ratio, halo: m.ground, behind, ownFill: compositeGround(m.probe, 0), behindSource: 'parent' };
+  throw new Error('haloGroundRatio is retired by 89.6-14 under pick O-1 B: assert m.bandRatio against C40_BAND');
 }
 
 /**
