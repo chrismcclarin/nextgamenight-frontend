@@ -497,9 +497,20 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     // more by the owner-ruled last batch (R9, the same day). The read MEASURES whether a broken
     // word would be whole if the rows above it stacked, and whether its breaks are forced, chosen
     // OVER working either out from the page's structure, from its characters or from line counts.
+    // AMENDED 2026-11-25 by the owner's ruling on question D, his words "a" (a break at a hyphen is
+    // fine; orchestrator change R12): step 0 below, a word whose every break falls where the browser
+    // breaks anyway is ordinary wrapping BEFORE stacking is asked, chosen OVER asking first whether
+    // stacking would make it whole (which listed a name broken only at its hyphen beside a box, a
+    // dialog title's long name beside the close, as split). A forced break is judged as before.
     //
     // WHAT IT DOES, for each word drawn on more than one line (text inside .bb-breakable is not read
     // here: emails and links may break anywhere):
+    //   0. FIRST, with nothing stacked (R12): the breaks of the word in the page as it is are
+    //      sorted as step 6 sorts them. When none is forced the word is ORDINARY WRAPPING, written
+    //      into the wide list (as wider than its whole room when step 5 says so), and steps 1 to
+    //      10 are not taken: whether stacking would make it whole is not asked. A word with a
+    //      forced break anywhere (letter-stacked, or broken inside one half of a hyphenated name)
+    //      goes on to step 1.
     //   1. THE BOUND is the nearest ancestor marked [data-room], WHEREVER it is, above the root of
     //      the read too (plan 89.6-22 marks a row above its read root); with no mark, the root.
     //   2. THE STACK SET is every element from the word's own element up to the bound, the bound
@@ -542,11 +553,10 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     //      the same three properties switched off, on the word's OWN element only, through one
     //      more temporary sheet (step 8 uses that read); a declaration that did not take is said
     //      as COULD NOT UNWRAP.
-    //   7. When no break is forced: with nothing stacked it is ordinary wrapping, written into
-    //      the wide list. With rows stacked, the breaks of the word in the page AS IT IS are
-    //      sorted the same way: if one is forced there, stacking took it away, and that is SPLIT
-    //      (the word was broken inside itself only because of the row); otherwise ordinary
-    //      wrapping.
+    //   7. When no break is forced once stacked: step 0 saw a forced break in the page AS IT IS,
+    //      so stacking took it away, and that is SPLIT (the word was broken inside itself only
+    //      because of the row). Before R12 this step also wrote ordinary wrapping, for a word
+    //      with no forced break; step 0 now takes that word before anything is stacked.
     //   8. When a forced break is left: SPLIT, as glued, when the word unbroken would fit a line
     //      of its own block: with its forced breaks off it is on ONE line, and its width there,
     //      plus the side padding, border and margin of every inline box that holds only this
@@ -984,18 +994,21 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
         const ownRoom = contentWidth(own);
         const free = unwrapped(w, own);
         if (!free.took) return couldNotUnwrap;
-        if (!hasForcedBreak()) return rows.length === 0 ? ordinary('and nothing above it stacks') : null;
+        // Step 0 saw a forced break in the page as it is; none left once stacked is step 7's split.
+        if (!hasForcedBreak()) return null;
         // A forced break is left.
         if (free.lines === 1 && free.needs <= ownRoom + 0.5) {
           return { verdict: 'split', text: `${quoted} ${w.lines} lines: a line of its own block would hold it (${round(free.needs)}px of ${round(ownRoom)}px), so it is glued to what stands before it` };
         }
         return heldOrWide();
       };
+      // Step 0, the owner's ruling on question D (2026-11-25, "a": a break at a hyphen is fine): with nothing stacked,
+      // a word whose every break falls where the browser breaks anyway is ordinary wrapping. Stacking is not asked.
+      if (!hasForcedBreak()) return widerThanItsRoom() ?? ordinary(rows.length === 0 ? 'and nothing above it stacks' : 'whether or not stacking would make it whole (the owner, 2026-11-25)');
       const found = stack.changes.size === 0 ? stacked() : withSheet(sheetTextOf(stack), stacked);
       if (found) return found;
-      // Step 7, rows stacked: was the word broken inside itself in the page as it is? (The stack is off again here.)
-      if (hasForcedBreak()) return { verdict: 'split', text: `${quoted} ${w.lines} lines: its forced breaks go when ${stacking}, and what is left is an ordinary wrap` };
-      return ordinary('and stacking does not make it whole');
+      // Step 7, rows stacked: the word has a forced break in the page as it is (step 0), and stacking took every one away.
+      return { verdict: 'split', text: `${quoted} ${w.lines} lines: its forced breaks go when ${stacking}, and what is left is an ordinary wrap` };
     };
 
     const split: string[] = [];
