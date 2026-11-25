@@ -41,7 +41,6 @@ import { QueryClientContext, hashKey, type QueryKey } from '@tanstack/react-quer
 import { cn } from '@/lib/cn';
 
 import { Banner } from './Banner';
-import { hostGroundHalo, type HostGround } from './hostGround';
 import { Icon } from './Icon';
 import { Spinner } from './Spinner';
 import { useDelayedSpinner } from './useDelayedSpinner';
@@ -92,11 +91,6 @@ export interface FetchErrorBannerProps {
    * behaviour).
    */
   focusTarget?: React.RefObject<HTMLElement | null>;
-  /**
-   * The ground the compact notice's HOST paints under its `Retry` (R073), resolved to a literal
-   * halo by `hostGroundHalo`; absent, `card`. Read by the compact branch only.
-   */
-  hostGround?: HostGround;
 }
 
 /**
@@ -375,8 +369,6 @@ interface NoticeRowProps {
    *  `Retry`'s description and a swipe through the page carry it; absent, the line is `text` alone.
    *  Only `RefreshFailedNotice` passes it (its `sectionName`, close ruling P-78). */
   spokenPrefix?: string;
-  /** The host's ground under the `Retry`, for its halo (R073); absent, `card`. */
-  hostGround?: HostGround;
 }
 
 /* DECISION Phase 88.6.1-70 (one row): ONE row element for the small notices — the compact
@@ -399,7 +391,8 @@ interface NoticeRowProps {
    comes from the host through hostGround (default card, byte-identical output); every other class
    token is unchanged. (b) stands: the host passes a typed key resolved from a literal map, never a
    class string, and the default card token stays inside the literal with the host's key merged
-   after it (the last one wins). */
+   after it (the last one wins).
+   AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key and its file are retired. */
 // R-C3b reach (88.9-56): both retry controls' icon slot. The slot must stay filled, so the RefreshCw
 // icon stays until the delayed spinner shows (200 ms) and the spinner then keeps 500 ms; one small
 // component so no hook call sits in the banner's body below its compact early return.
@@ -416,7 +409,7 @@ function RetrySlot({ retrying }: { retrying: boolean }) {
   );
 }
 
-function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, hostGround }: NoticeRowProps) {
+function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: NoticeRowProps) {
   const textId = React.useId();
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm text-content-secondary">
@@ -478,9 +471,9 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, host
         aria-disabled={retrying || undefined}
         aria-describedby={textId}
         className={cn(
-          'inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring',
-          hostGroundHalo(hostGround)
+          'inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring'
         )}
+        /* DECISION Phase 89.6-38 (host-ground): the host-ground halo (the hostGround.ts module and every hostGround prop) is deleted OVER kept as an ignored prop, under the one exception CONTEXT D-08 allows: brief disposition 8 names this file for retirement with the ring work. Nothing renders differently: the two-tone ring carries its own inner band. Changing this is a decision, not a cleanup. */
       >
         {/* DECISION Phase 88.9-46 (rule 1 B37/B38): both retry controls (this shared row's Retry and
             the full branch's Try again) keep their label and swap the spinning RefreshCw icon for the
@@ -512,7 +505,6 @@ export function FetchErrorBanner({
   reportContext,
   compact = false,
   focusTarget,
-  hostGround,
 }: FetchErrorBannerProps) {
   // Never the feedback context: its value changes on every feedback-button open / close and route
   // change, and this banner would re-render on each (review #150). Null outside the host.
@@ -673,7 +665,6 @@ export function FetchErrorBanner({
             retrying={retrying}
             handleRetry={handleRetry}
             watchFocus={watchFocus}
-            hostGround={hostGround}
           />
         ) : null}
       </>
@@ -771,11 +762,12 @@ export function FetchErrorBanner({
           (the card halo would paint a card band on the elevated Banner). The three strings differ
           on purpose; making them byte-identical again is a decision, not a cleanup.
           AMENDED Phase 88.9-26 (owner pick B1a, 88.9-PICKS-B1.json, 2026-11-04): the compact
-          Retry's halo is its HOST's ground through src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO"),
+          Retry's halo was its HOST's ground through a typed host-ground key (the retired hostGround file's six-key map),
           default card, chosen OVER round 1's fixed card halo of the host majority (a 1.31 / 1.22
           band on the 48 page paths). Try again, Report this and Sign in stay elevated.
           AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22: the halo this marker chose is
-          retired; the ring is the focus-ring utility. */}
+          retired; the ring is the focus-ring utility.
+          AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key and its file are retired. */}
       {/* DECISION Phase 88.9-26 (O22d, owner pick page 9, 88.9-PICKS-B9.json): for code unauthorized
           the full banner's action is a Sign in link IN PLACE OF Try again (a 401 cannot be
           retried), chosen OVER F8a's Sign in BESIDE Try again (88.9-PICKS-B5.json, superseded in

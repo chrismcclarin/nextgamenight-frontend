@@ -390,7 +390,7 @@ const GroupList = ({
             its header row and the compact notice yields — one sentence for a dead session. */}
         {!sessionBannerShown && (
           <div className="py-8 px-4">
-            <FetchErrorBanner state={selfIdentityErrorState} compact hostGround="page" />
+            <FetchErrorBanner state={selfIdentityErrorState} compact />
           </div>
         )}
       </div>

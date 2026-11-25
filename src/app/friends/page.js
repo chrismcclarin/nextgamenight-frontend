@@ -1460,7 +1460,7 @@ function FriendsPage() {
                             the friends list beside it is intact, so this must not blank it. */}
                         {groupsErrorState.showError && (
                             <div className="mb-4">
-                                <FetchErrorBanner state={groupsErrorState} compact hostGround="page" />
+                                <FetchErrorBanner state={groupsErrorState} compact />
                             </div>
                         )}
                         {/* DECISION Phase 88-14 (Req 6 / Req 14, UI-SPEC §9.2): empty and failed-to-load
