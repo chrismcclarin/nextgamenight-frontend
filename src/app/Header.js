@@ -188,7 +188,12 @@ function Header(){
 
                 AMENDED Phase 88.9-05 (owner pick A3d, 2026-10-31): the amber scope ends at the bell panel — its
                 light card section re-scopes --ring to the page ring
-                (src/app/components/NotificationBell.js ("DECISION Phase 88.9-05")); the chrome itself keeps amber-400. */}
+                (src/app/components/NotificationBell.js ("DECISION Phase 88.9-05")); the chrome itself keeps amber-400.
+
+                AMENDED Phase 89.6-12 (focus-ring): owner pick O-1 = B, 2026-11-22: this subtree also scopes the
+                two-tone pair (amber-400 outside, purple-950 inside), the same values as the dark theme, because
+                the header is dark in both themes; the old ring scope stays beside it until plan 89.6-13 converts
+                the consumers and removes it. */}
             {/* DECISION Phase 88.9-52 (R4 S2, the round-3 capture: at 768px with doubled text the
                 40px site name ran straight into Home, and the desktop list ran off the right edge
                 of the screen: Profile cut, Logout and the theme switch out of reach): from md the
@@ -249,7 +254,7 @@ function Header(){
                 102px. The floating feedback button's own box switches at the same 40rem
                 (src/app/components/FeedbackButton.js ("AMENDED Phase 88.9-52 (R4 D5, owner 2026-11-18): 40rem")).
                 Header.test.tsx (S2 arithmetic) shows the sum and holds a 47px floor. */}
-            <div ref={stripRef} className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)] @container/header">
+            <div ref={stripRef} className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)] [--focus-ring-outer:var(--amber-400)] [--focus-ring-inner:var(--purple-950)] @container/header">
                 {/* DECISION Phase 88.6.1-45 (AC-18, HEADER-NAV-LANDMARK-RULING, copy row H5):
                     CHOSEN — this inner container is the ONE nav landmark, named by
                     MAIN_NAV_LABEL. It is the nearest element that holds BOTH lists — the desktop
@@ -473,6 +478,7 @@ function Header(){
                         AMENDED Phase 88.9-05 (owner pick A3d, 2026-10-31): the amber scope ends at the bell panel — its
                         light card section re-scopes --ring to the page ring
                         (src/app/components/NotificationBell.js ("DECISION Phase 88.9-05")); the chrome itself keeps amber-400.
+                        AMENDED Phase 89.6-12: the phone menu scopes the two-tone pair too.
 
                         DECISION Phase 88.3 (owner ruling R3-D, 2026-08-25): `inert` while the
                         menu is CLOSED — chosen OVER a conditional mount (Rejected). The comment directly
@@ -498,7 +504,7 @@ function Header(){
                         88.9-52 R4 S2: drawn again from md while the strip is under 40rem (the
                         marker on the strip). */}
                     {sessionKnown && <div
-                        className={`md:hidden absolute top-16 left-0 right-0 md:@max-[40rem]/header:block bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
+                        className={`md:hidden absolute top-16 left-0 right-0 md:@max-[40rem]/header:block bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] [--focus-ring-outer:var(--amber-400)] [--focus-ring-inner:var(--purple-950)] ${
                             mobileMenuOpen
                                 ? 'translate-y-0 opacity-100'
                                 : '-translate-y-full opacity-0 pointer-events-none'
