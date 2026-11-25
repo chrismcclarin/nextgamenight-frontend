@@ -14,7 +14,7 @@ afterEach(cleanup);
 const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
 
 describe('CentredPageFrame (88.9-66: X64 / X70)', () => {
-  it('X64 / X70 (88.9): the frame centres its child in a full-height column with a 16px phone gutter widening to 24px at md, the child capped at max-w-xl', () => {
+  it('X64 / X70 (88.9): the frame centres its child in a column filling main with a 16px phone gutter widening to 24px at md, the child capped at max-w-xl', () => {
     render(
       <CentredPageFrame>
         <p>the banner</p>
@@ -22,10 +22,16 @@ describe('CentredPageFrame (88.9-66: X64 / X70)', () => {
     );
     const inner = screen.getByText('the banner').parentElement as HTMLElement;
     const outer = inner.parentElement as HTMLElement;
-    // The outer box: a full-height column that centres on both axes.
-    for (const token of ['flex', 'flex-col', 'min-h-screen', 'items-center', 'justify-center']) {
+    // The outer box: a column that centres on both axes.
+    // AMENDED Phase 89.6-23 (FL-07, owner pick DT-3 = Move): the outer box fills what main leaves
+    // between the header and the footer (flex-1, main a column only when the frame is its direct
+    // child, through the data-page-frame attribute), never a screen-tall box of its own
+    // (min-h-screen made a one-banner page scroll by the header plus the footer).
+    for (const token of ['flex', 'flex-col', 'flex-1', 'items-center', 'justify-center']) {
       expect(classesOf(outer), `the outer box lacks ${token}`).toContain(token);
     }
+    expect(classesOf(outer), 'the outer box is a screen tall again (FL-07)').not.toContain('min-h-screen');
+    expect(outer, 'the outer box lacks the data-page-frame mark the column rule selects').toHaveAttribute('data-page-frame');
     // The gutter: 16px on a phone, 24px from md, and no other padding utility.
     // AMENDED Phase 89.6-15 (O-M1-sites): the pair is the px edge tokens (p-edge-page md:p-edge-wide).
     const padding = classesOf(outer).filter((t) => /^(?:[a-z0-9]+:)*p[xytrbl]?-/.test(t));

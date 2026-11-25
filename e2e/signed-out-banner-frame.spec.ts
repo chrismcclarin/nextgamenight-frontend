@@ -5,6 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 import { E2E_GROUP_ID } from './support/groupSettings';
 import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
+import { expectLargeTextCell, expectPageZoomUsable, readLargeTextCell, readPageZoomCell, setTextMode, type PageZoomRead } from './support/wordLines';
 
 // Phase 88.9 plan 66 (X64, X70a, X70b; owner 2026-11-14) — the screen a signed-out person lands on
 // when they come back from sign-in without signing in, on the four pages that show it, measured
@@ -45,6 +46,11 @@ interface FrameRead {
   parent: { top: number; bottom: number };
   clientWidth: number;
   scrollWidth: number;
+  /** FL-07 (89.6-23): the tag of the frame's outer box's parent, main's box, and the page's height against the window's. */
+  outerParent: string;
+  main: { top: number; bottom: number };
+  scrollHeight: number;
+  innerHeight: number;
 }
 
 // Opens the page signed out with the latch already set, waits for the banner's Sign in, checks the
@@ -70,11 +76,17 @@ async function readFrame(page: Page, path: string, heading: string): Promise<Fra
   return frame.evaluate((el) => {
     const box = el.getBoundingClientRect();
     const parent = (el.parentElement as HTMLElement).getBoundingClientRect();
+    const outer = el.parentElement as HTMLElement;
+    const main = document.querySelector('main')?.getBoundingClientRect();
     return {
       frame: { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width },
       parent: { top: parent.top, bottom: parent.bottom },
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
+      outerParent: (outer.parentElement as HTMLElement).tagName.toLowerCase(),
+      main: { top: main?.top ?? Number.NaN, bottom: main?.bottom ?? Number.NaN },
+      scrollHeight: document.documentElement.scrollHeight,
+      innerHeight: window.innerHeight,
     };
   });
 }
@@ -97,6 +109,19 @@ function expectFrameGeometry(read: FrameRead, isMobile: boolean, what: string) {
     `${what}: the frame's centre is at ${frameCentre}px, the column's at ${columnCentre}px`,
   ).toBeLessThanOrEqual(1);
   expect(read.scrollWidth, `${what}: the page scrolls sideways: ${read.scrollWidth}px vs ${read.clientWidth}px`).toBeLessThanOrEqual(read.clientWidth);
+  // FL-07 (89.6-23, owner pick DT-3 = Move): the frame fills what main leaves between the header and
+  // the footer, so its outer box sits directly in main, the banner is centred in main, and a page
+  // whose body is one banner does not scroll at normal text.
+  expect(read.outerParent, `${what}: the frame's outer box sits in a ${read.outerParent}, not in main`).toBe('main');
+  const mainCentre = (read.main.top + read.main.bottom) / 2;
+  expect(
+    Math.abs(frameCentre - mainCentre),
+    `${what}: the frame's centre is at ${frameCentre}px, main's at ${mainCentre}px (between the header and the footer)`,
+  ).toBeLessThanOrEqual(1);
+  expect(
+    read.scrollHeight - read.innerHeight,
+    `${what}: the page scrolls: it is ${read.scrollHeight}px tall in a ${read.innerHeight}px window`,
+  ).toBeLessThanOrEqual(1);
 }
 
 test.describe('the signed-out banner frame (plan 88.9-66: X64, X70)', () => {
@@ -131,5 +156,54 @@ test.describe('the signed-out banner frame (plan 88.9-66: X64, X70)', () => {
   test('X64 / X70 (88.9): the group page signed out uses the same frame', async ({ page, isMobile }) => {
     const read = await readFrame(page, `/groupHomePage?id=${E2E_GROUP_ID}`, 'Group');
     expectFrameGeometry(read, isMobile, 'the group page');
+  });
+
+  // FL-07 (89.6-23, register FL-07; owner pick DT-3 = Move, 2026-11-23: 'Dt-3 : move it so it doesn't
+  // scroll at normal text. Change is approved.'). Friends signed out at the two phone sizes, normal
+  // text: the page is exactly one window tall (it was 860 against 667 and 761 against 568, the
+  // header plus the footer below a screen-tall frame). Both reads are attached before the assert.
+  test('FL-07 (89.6-23): no scroll at normal text at 375 x 667 and 320 x 568', async ({ page }, testInfo) => {
+    const reads: Array<{ size: string; scrollHeight: number; innerHeight: number; frameTop: number; frameCentre: number; mainCentre: number }> = [];
+    for (const size of [
+      { width: 375, height: 667 },
+      { width: 320, height: 568 },
+    ]) {
+      await page.setViewportSize(size);
+      const read = await readFrame(page, '/friends', 'Friends');
+      reads.push({
+        size: `${size.width}x${size.height}`,
+        scrollHeight: read.scrollHeight,
+        innerHeight: read.innerHeight,
+        frameTop: read.frame.top,
+        frameCentre: (read.frame.top + read.frame.bottom) / 2,
+        mainCentre: (read.main.top + read.main.bottom) / 2,
+      });
+    }
+    await testInfo.attach('FL-07-scroll-height', { body: JSON.stringify(reads, null, 2), contentType: 'application/json' });
+    for (const read of reads) {
+      expect(read.scrollHeight - read.innerHeight, `Friends signed out at ${read.size}: the page is ${read.scrollHeight}px tall in a ${read.innerHeight}px window`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  // The frame at large text: the five checks at 320 x 568 with 200% text, and the lighter A8 check at
+  // the two page-zoom widths with normal text (SPEC A8). The reads are attached before the asserts.
+  test('FL-07 (89.6-23): the signed-out banner holds the large-text checks at 320 / 200% and the A8 widths', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await readFrame(page, '/friends', 'Friends');
+    const frame = page.locator('[data-slot="page-frame"]');
+    await setTextMode(page, '200', 'FL-07 320x568-200');
+    const large = await readLargeTextCell(frame);
+    const zoom: Record<string, PageZoomRead> = {};
+    await setTextMode(page, '100', 'FL-07 normal');
+    for (const size of [
+      { width: 215, height: 466 },
+      { width: 187, height: 333 },
+    ]) {
+      await page.setViewportSize(size);
+      zoom[`${size.width}x${size.height}`] = await readPageZoomCell(frame);
+    }
+    await testInfo.attach('FL-07-large-text', { body: JSON.stringify({ '320x568-200': large, ...zoom }, null, 2), contentType: 'application/json' });
+    expectLargeTextCell(large, 'FL-07 320x568-200');
+    for (const [size, read] of Object.entries(zoom)) expectPageZoomUsable(read, `FL-07 ${size}-100-zoom`);
   });
 });
