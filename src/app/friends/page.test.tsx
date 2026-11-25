@@ -1169,7 +1169,7 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     expect(statusRegion()).toBe(status);
     const classes = status?.className.split(/\s+/) ?? [];
     expect(classes).not.toContain('sr-only');
-    for (const token of ['mt-3', 'p-3', 'rounded-lg', 'bg-status-success-subtle', 'text-content-status-success', 'border-status-success']) {
+    for (const token of ['mt-3', 'p-edge-card', 'rounded-lg', 'bg-status-success-subtle', 'text-content-status-success', 'border-status-success']) {
       expect(classes).toContain(token);
     }
     expect(errorRegion()).toBe(error);
@@ -2948,7 +2948,7 @@ describe('friends rows are cards (88.9-58: X14 family)', () => {
       const tokens = classesOf(row as Element);
       expect(tokens, `${what}: the row must paint the card colour`).toContain('bg-surface-card');
       expect(tokens, `${what}: the row keeps its own border`).toContain('border-line');
-      expect(tokens, `${what}: the row is a list row, not the card utility (its p-4 is right for a list item)`).not.toContain('card');
+      expect(tokens, `${what}: the row is a list row, not the card utility (its 16px page-edge padding is right for a list item)`).not.toContain('card');
       expect(
         tokens.filter((t) => t.split(':').includes('hover')),
         `${what}: the row is not clickable, so it must not react to hover`,

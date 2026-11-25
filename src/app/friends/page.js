@@ -1139,7 +1139,7 @@ function FriendsPage() {
                         re-inserted and is announced again; an empty always-mounted alert would add
                         a second assertive region to the surface for no listener gain. */}
                     {searchError && (
-                        <div role="alert" className="mt-4 p-3 bg-surface-page border border-line rounded-lg">
+                        <div role="alert" className="mt-4 p-edge-card bg-surface-page border border-line rounded-lg">
                             <p className="text-content-secondary">{searchError}</p>
                         </div>
                     )}
@@ -1180,7 +1180,7 @@ function FriendsPage() {
                         e2e/friends-long-address.spec.ts ("a friend request from a long name keeps Accept and Decline inside a 375 screen").
                         At ordinary text with an ordinary name nothing moves. */}
                     {searchResult && !searching && (
-                        <div data-found-row="" className="mt-4 p-4 border border-line rounded-lg flex flex-wrap items-center justify-between gap-3">
+                        <div data-found-row="" className="mt-4 p-edge-page border border-line rounded-lg flex flex-wrap items-center justify-between gap-3">
                             <div className="flex-1 max-w-full">
                                 <p className="font-bold text-content-primary wrap-break-word">
                                     {searchResult.username}
@@ -1606,7 +1606,7 @@ function FriendsPage() {
                                                     srOnlyWhenEmpty
                                                     message={batchStatusText}
                                                     className={batchStatusText
-                                                        ? `mt-3 p-3 rounded-lg text-sm ${bulkInviteResult.failCount === 0
+                                                        ? `mt-3 p-edge-card rounded-lg text-sm ${bulkInviteResult.failCount === 0
                                                             ? 'bg-status-success-subtle text-content-status-success border border-status-success'
                                                             : 'bg-status-warning-subtle text-content-status-warning border border-status-warning'}`
                                                         : 'mt-3'}
@@ -1617,7 +1617,7 @@ function FriendsPage() {
                                                     srOnlyWhenEmpty
                                                     message={batchErrorText}
                                                     className={batchErrorText
-                                                        ? 'mt-3 p-3 rounded-lg text-sm bg-status-error-subtle text-content-status-error border border-status-error'
+                                                        ? 'mt-3 p-edge-card rounded-lg text-sm bg-status-error-subtle text-content-status-error border border-status-error'
                                                         : 'mt-3'}
                                                 />
                                             </div>
@@ -1637,11 +1637,12 @@ function FriendsPage() {
                                                 const checkboxDisabled = !selectedGroupId || isInGroup;
 
                                                 // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
+                                                // AMENDED Phase 89.6-39 (O-M1-bare): the row's 16px padding is the page edge token, the same 16px at normal text and held at 16px at 200% text (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin'); still a list row, not the card utility.
                                                 return (
                                                     <div
                                                         key={friendship.id}
                                                         data-friend-row={friendship.id}
-                                                        className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
+                                                        className="flex flex-wrap items-center justify-between gap-3 p-edge-page bg-surface-card border border-line rounded-card"
                                                     >
                                                         {/* 88.9-52 R4 B1 (marker above the found-person row): the column's floor is the checkbox plus the longest word, capped at the row. */}
                                                         <div className="flex items-center gap-3 flex-1 max-w-full">
@@ -1845,11 +1846,12 @@ function FriendsPage() {
                                             if (!requester) return null;
 
                                             // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
+                                            // AMENDED Phase 89.6-39 (O-M1-bare): the row's 16px padding is the page edge token, the same 16px at normal text and held at 16px at 200% text (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin'); still a list row, not the card utility.
                                             return (
                                                 <div
                                                     key={request.id}
                                                     data-request-row={request.id}
-                                                    className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
+                                                    className="flex flex-wrap items-center justify-between gap-3 p-edge-page bg-surface-card border border-line rounded-card"
                                                 >
                                                     <div className="flex-1 max-w-full">
                                                         <p className="font-bold text-content-primary wrap-break-word">
@@ -1959,11 +1961,12 @@ function FriendsPage() {
                                             if (!addressee) return null;
 
                                             // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
+                                            // AMENDED Phase 89.6-39 (O-M1-bare): the row's 16px padding is the page edge token, the same 16px at normal text and held at 16px at 200% text (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin'); still a list row, not the card utility.
                                             return (
                                                 <div
                                                     key={request.id}
                                                     data-sent-row={request.id}
-                                                    className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-card border border-line rounded-card"
+                                                    className="flex flex-wrap items-center justify-between gap-3 p-edge-page bg-surface-card border border-line rounded-card"
                                                 >
                                                     <div className="flex-1 max-w-full">
                                                         <p className="font-bold text-content-primary wrap-break-word">

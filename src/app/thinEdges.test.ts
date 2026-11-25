@@ -20,6 +20,10 @@
 // PENDING, and test 5 holds it EXACT: a higher count is a new rem edge (red), a lower one must
 // lower the entry in the same commit (red until it does). An entry can only fall.
 //
+// AMENDED Phase 89.6-39 (O-M1-bare): the card rule reaches elevated, sunken and accent-subtle fills
+// and a breakpoint radius; a bar is pinned to the top or bottom; a grid label pinned to the left is
+// not a bar. Owner pick O-M1 = D, 2026-11-22, HR-9 per SPEC A9: every card and bar.
+//
 // EVERY READ IS COMMENT-STRIPPED. Markers quote the very idioms this file forbids; the class
 // strings are read with the shared lexer, which drops comments, after withoutComments.
 import fs from 'node:fs';
@@ -46,7 +50,10 @@ const LINK_CARD_RULE = {
 const RADIUS = new Set(['rounded-card', 'rounded-lg', 'rounded-xl']);
 const STRIP_VARIANTS = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 
-/** A card: a radius together with a border, a card or page ground, a status fill or a theme shadow; or the card utility. */
+/**
+ * A card: a radius (any breakpoint) together with a border, a card, page, elevated, sunken or
+ * accent-subtle ground, a status fill or a theme shadow; or the card utility.
+ */
 function CARD_RULE(tokens: string[]): boolean {
   if (tokens.includes('card')) return true;
   const bare = tokens.map((t) => t.replace(STRIP_VARIANTS, ''));
@@ -56,14 +63,19 @@ function CARD_RULE(tokens: string[]): boolean {
       t === 'border' ||
       t === 'bg-surface-card' ||
       t === 'bg-surface-page' ||
+      t === 'bg-surface-elevated' ||
+      t === 'bg-surface-sunken' ||
+      t === 'bg-surface-accent-subtle' ||
       t.startsWith('bg-status-') ||
       t.startsWith('shadow-theme-'),
   );
 }
 
-/** A bar: a sticky strip. */
+/** A bar: a strip pinned to the top or bottom. A label pinned to the left of a grid row is not a bar. */
 function BAR_RULE(tokens: string[]): boolean {
-  return tokens.includes('sticky');
+  if (!tokens.includes('sticky')) return false;
+  const bare = tokens.map((t) => t.replace(STRIP_VARIANTS, ''));
+  return bare.some((t) => t.startsWith('top-') || t.startsWith('bottom-'));
 }
 
 /** A control's own padding is not an edge. A NAMED_CARDS entry outranks every rule here. */
@@ -104,9 +116,8 @@ const EDGE_VALUE = /^(?:edge-(?:card|page|wide|roomy)|\[[^\]]*--spacing-edge-[^\
  */
 const PENDING: Record<string, { count: number; owner: '89.6-15' | '89.6-39' }> = {
   'app/components/AvailabilityForm.js': { count: 2, owner: '89.6-39' },
-  'app/components/AvailabilityGrid.js': { count: 2, owner: '89.6-39' },
   'app/components/BallotOptionsEditor.js': { count: 1, owner: '89.6-39' },
-  'app/components/BallotSection.js': { count: 4, owner: '89.6-39' },
+  'app/components/BallotSection.js': { count: 5, owner: '89.6-39' },
   'app/components/CalendarListView.js': { count: 1, owner: '89.6-39' },
   'app/components/ClickableMemberName.js': { count: 2, owner: '89.6-39' },
   'app/components/EventScheduler.tsx': { count: 1, owner: '89.6-39' },
@@ -117,13 +128,15 @@ const PENDING: Record<string, { count: number; owner: '89.6-15' | '89.6-39' }> =
   'app/components/MemberSelector.js': { count: 1, owner: '89.6-39' },
   'app/components/PendingMemberBanner.js': { count: 1, owner: '89.6-39' },
   'app/components/ResponseDashboard.js': { count: 3, owner: '89.6-39' },
+  'app/components/RsvpSection.js': { count: 1, owner: '89.6-39' },
   'app/components/ScheduleList.js': { count: 1, owner: '89.6-39' },
   'app/components/TimezoneNudgeBanner.js': { count: 1, owner: '89.6-39' },
   'app/components/createEvent.js': { count: 1, owner: '89.6-39' },
-  'app/components/heatmap/WeekGrid.tsx': { count: 1, owner: '89.6-39' },
-  'app/friends/page.js': { count: 6, owner: '89.6-39' },
-  'app/groupPlanning/page.js': { count: 1, owner: '89.6-39' },
-  'app/userProfile/page.js': { count: 9, owner: '89.6-39' },
+  'app/gameDetail/page.js': { count: 2, owner: '89.6-39' },
+  'app/groupHomePage/page.js': { count: 1, owner: '89.6-39' },
+  'app/groupPlanning/page.js': { count: 2, owner: '89.6-39' },
+  'app/invite/game/[token]/page.js': { count: 2, owner: '89.6-39' },
+  'app/userProfile/page.js': { count: 10, owner: '89.6-39' },
   'components/ui/Banner.tsx': { count: 1, owner: '89.6-39' },
   'components/ui/dialog.tsx': { count: 1, owner: '89.6-39' },
 };
@@ -270,6 +283,17 @@ describe('Phase 89.6-15 (O-M1 D, HR-9): every page gutter, card and bar edge is 
       expect(violationsIn('planted.js', planted), `the planted control "${marker}" was read as a card`).toEqual([]);
     }
     expect(markers.length, 'a control rule has no planted string here').toBe(CONTROL_RULES.length);
+    // Phase 89.6-39: the widened card rule and the narrowed bar rule, each shown both ways.
+    const rulesOf = (classes: string) => violationsIn('planted.js', `const d = '${classes}';\n`).map((v) => v.rule);
+    expect(rulesOf('sm:rounded-lg border p-6'), 'a card whose radius has a breakpoint prefix was not read as a card').toEqual(['card-or-bar']);
+    expect(rulesOf('rounded-card bg-surface-elevated p-4'), 'a borderless elevated card was not read as a card').toEqual(['card-or-bar']);
+    expect(rulesOf('rounded-lg bg-surface-sunken px-3'), 'a borderless sunken card was not read as a card').toEqual(['card-or-bar']);
+    expect(rulesOf('rounded-card bg-surface-accent-subtle p-4'), 'a borderless accent-subtle card was not read as a card').toEqual(['card-or-bar']);
+    expect(rulesOf('sticky top-0 px-4'), 'a strip pinned to the top was not read as a bar').toEqual(['card-or-bar']);
+    expect(rulesOf('sticky bottom-0 px-4'), 'a strip pinned to the bottom was not read as a bar').toEqual(['card-or-bar']);
+    expect(rulesOf('sticky left-0 pr-2'), 'a grid label pinned to the left was read as a bar').toEqual([]);
+    expect(rulesOf('rounded-lg border px-3 min-h-11 min-w-11'), 'a 44 x 44 control was read as a card').toEqual([]);
+    expect(rulesOf('p-[16px] border border-2 rounded-lg text-3xl'), 'the emoji tile on its plan 89.6-25 padding was read as a card').toEqual([]);
   });
 
   it('2. no class string outside PENDING holds a rem edge idiom', () => {
