@@ -190,10 +190,72 @@ const reachRestore: SurfaceRow['reach'] = async (page) => {
   return { root: page.locator('main') };
 };
 
+// R03: the availability link (src/app/availability-form/[token]/page.js), ready state. The page
+// validates its token with a POST on load (src/lib/api.ts ("validateToken: async (token: string, formLoadedAt = null) =>")):
+// the guard holds every non-GET and a held /api request fails the test, so the POST is answered
+// here by its own route (registered after the guard, so it runs first), never sent on. The body is
+// the backend's success shape (backend:Sonnet/routes/magicAuth.js ("// Success response with info needed by frontend")),
+// with saved availability on (so "Use my saved availability" is pressable), Google off (so Import
+// is absent), an expiry 30 minutes out (so the expiry warning shows), the emoji name as the person
+// and the 30-letter word as the game. The backend sends no game today (found-new, plan 89.6-23
+// SUMMARY), so a real link reads "Game TBD"; the name is answered so the longest text is read.
+// The existing-response read is answered with null (no earlier answer).
+const isMagicValidate = (url: URL): boolean => url.pathname.endsWith('/magic-auth/validate');
+const routedValidate = new WeakSet<Page>();
+const routeMagicValidate = async (page: Page): Promise<void> => {
+  if (routedValidate.has(page)) return;
+  routedValidate.add(page);
+  await page.route(isMagicValidate, async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      json: {
+        valid: true,
+        user: { name: EMOJI_NAME, timezone: 'America/Los_Angeles' },
+        prompt_id: 'large-text-sweep-prompt',
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        graceUsed: false,
+        gcal_connected: false,
+        has_saved_availability: true,
+        window_start: new Date().toISOString().slice(0, 10),
+        game: { name: THIRTY_LETTER_WORD },
+      },
+    });
+  });
+};
+const availabilityAnswers: SurfaceRow['answers'] = (url) => (url.pathname.includes('/availability-responses/') ? null : undefined);
+const openAvailabilityForm = async (page: Page): Promise<void> => {
+  await routeMagicValidate(page);
+  await signedOut(page);
+  await page.goto(`/availability-form/${LINK_TOKEN}`);
+  await page.getByRole('heading', { level: 1, name: 'Submit Your Availability' }).waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('button', { name: 'Use my saved availability' }).waitFor({ state: 'visible' });
+};
+const reachAvailability: SurfaceRow['reach'] = async (page) => {
+  await openAvailabilityForm(page);
+  return { root: page.locator('main') };
+};
+
+// D35: "Replace your current selections?", opened by painting one slot and pressing "Use my saved
+// availability" (src/app/components/AvailabilityForm.js ("title: 'Replace your current selections?',")).
+// The dialog is its own root (a portal outside main). Nothing in it is pressed: Replace would send
+// the saved-availability read, and Cancel would close it.
+const reachReplaceDialog: SurfaceRow['reach'] = async (page) => {
+  await openAvailabilityForm(page);
+  await page.locator('[data-slot-id]').first().click();
+  await page.getByRole('button', { name: 'Use my saved availability' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Replace your current selections?' });
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: dialog, dialog };
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R17', census: 'R17', kind: 'route', owner: '89.6-08', status: 'enforced', reach: reachNotFound },
   { id: 'R02', census: 'R02', kind: 'route', owner: '89.6-23', status: 'pending' },
-  { id: 'R03', census: 'R03', kind: 'route', owner: '89.6-23', status: 'pending' },
+  { id: 'R03', census: 'R03', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'ready', reach: reachAvailability, answers: availabilityAnswers },
   { id: 'R06', census: 'R06', kind: 'route', owner: '89.6-23', status: 'pending' },
   { id: 'R09', census: 'R09', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'signed out', reach: reachInviteAccept, answers: inviteInfoAnswers },
   { id: 'R10', census: 'R10', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'signed-out preview', reach: reachGameInvite, answers: gameInviteAnswers },
@@ -204,5 +266,5 @@ export const rows: SurfaceRow[] = [
   { id: 'R14', census: 'R14', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'recorded yes', reach: reachRsvp, answers: rsvpAnswers },
   { id: 'R14-used', census: 'R14', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'used link', reach: reachRsvpUsed },
   { id: 'R15', census: 'R15', kind: 'route', owner: '89.6-23', status: 'pending' },
-  { id: 'D35', census: 'D35', kind: 'dialog', owner: '89.6-23', status: 'pending' },
+  { id: 'D35', census: 'D35', kind: 'dialog', owner: '89.6-23', status: 'enforced', reach: reachReplaceDialog, answers: availabilityAnswers },
 ];
