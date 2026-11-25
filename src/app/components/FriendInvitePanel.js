@@ -624,7 +624,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
     const body = (
         <>
                     {/* Friends section */}
-                    <div className="p-4 md:p-5">
+                    {/* DECISION Phase 89.6-21 (dialog-gutter): the invite panel's body sections hold their side room in px (16px, 20px from md), chosen OVER the rem p-4 md:p-5 (it doubles at 200% text and eats a phone's width, O-M1 D) and OVER moving md to the 24px edge-wide token (a visible normal-text change); there is no 20px token, so md:p-[20px] keeps normal text identical. Changing this is a decision, not a cleanup. */}
+                    <div className="p-edge-page md:p-[20px]">
                         <Heading level={3} size="label" className="text-content-muted uppercase tracking-wider mb-3">
                             Your Friends
                         </Heading>
@@ -807,7 +808,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                     </div>
 
                     {/* Email invite section */}
-                    <div className="p-4 md:p-5">
+                    <div className="p-edge-page md:p-[20px]">
                         {/* `id` CARRIED THROUGH THE MIGRATION (WCAG 4.1.2): the `<Input>` below is
                             `aria-labelledby="invite-by-email-heading"`, so this heading is that
                             field's ONLY accessible name. Dropping the `id` here leaves an input
@@ -1048,7 +1049,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             </div>
 
                             {/* QR Code section */}
-                            <div className="p-4 md:p-5">
+                            <div className="p-edge-page md:p-[20px]">
                                 <Heading level={3} size="label" className="text-content-muted uppercase tracking-wider mb-3">
                                     Share QR Code
                                 </Heading>
@@ -1254,7 +1255,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                 </DialogClose>
             </div>
 
-            {/* p-0: every body section below carries its own p-4 md:p-5 —
+            {/* p-0: every body section below carries its own p-edge-page md:p-[20px] —
                 DECISION Phase 88.9-29 O13a: 16px at phone, 20px from md, chosen OVER a fixed
                 20px at every width (owner pick O13a, 88.9-PICKS-B8B.json, 2026-11-07): the
                 section content widens 309 to 317px at 375. */}

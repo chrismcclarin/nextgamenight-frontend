@@ -1552,13 +1552,15 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     expect(tokens).not.toContain('text-2xl');
   });
 
+  // AMENDED 89.6-21 (dialog-gutter): the sections hold 16px and 20px in px.
+  // The marker is at src/app/components/FriendInvitePanel.js ("DECISION Phase 89.6-21 (dialog-gutter)").
   it('O13a (88.9): invite panel body sections are p-4 at phone and p-5 from md', async () => {
     renderPanel();
     const heading = await screen.findByRole('heading', { level: 3, name: 'Your Friends' });
     const tokens = heading.parentElement?.className.split(/\s+/) ?? [];
-    expect(tokens).toContain('p-4');
-    expect(tokens).toContain('md:p-5');
-    expect(tokens).not.toContain('p-5');
+    expect(tokens).toContain('p-edge-page');
+    expect(tokens).toContain('md:p-[20px]');
+    for (const rem of ['p-4', 'md:p-5', 'p-5']) expect(tokens).not.toContain(rem);
   });
 });
 
