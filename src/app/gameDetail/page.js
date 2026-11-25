@@ -141,9 +141,11 @@ function canInviteGuest(participant, viewerRole) {
 function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId, rsvpUnavailable = false, nightStarted = false }) {
     const isCustom = !!participant.is_custom;
     return (
-        /* DECISION Phase 88.9-65 (X63, owner at N43: the chip grows too thick): the invite sits beside its chip, as at its other two sites, chosen OVER a sub-44 button inside it (the .btn phone floor is unlayered; .btn-compact is closed) and OVER a 44px box in a slim chip (its ring would cross the chip edge, as in X19). Heard name owner-ratified 2026-11-14. The error arm keeps the visible word Retry and its name adds inviting <name> to the group (owner 2026-11-14 Q7 B), chosen OVER a bare Retry (it does not say what is retried or for whom) and OVER Retry, invite <name> to the group. */
-        <span className="inline-flex flex-wrap items-center gap-1.5 max-w-full">
-        <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
+        /* DECISION Phase 88.9-65 (X63, owner at N43: the chip grows too thick): the invite sits beside its chip, as at its other two sites, chosen OVER a sub-44 button inside it (the .btn phone floor is unlayered; .btn-compact is closed) and OVER a 44px box in a slim chip (its ring would cross the chip edge, as in X19). Heard name owner-ratified 2026-11-14. The error arm keeps the visible word Retry and its name adds inviting <name> to the group (owner 2026-11-14 Q7 B), chosen OVER a bare Retry (it does not say what is retried or for whom) and OVER Retry, invite <name> to the group.
+           AMENDED Phase 89.6-19 (O-9c): Invite now stays beside a long chip on its first line while the chip's longest piece fits beside it; it drops under the chip only when that does not fit (owner pick O-9c = B). The name rule above is unchanged. */
+        /* DECISION Phase 89.6-19 (O-9c): owner pick O-9c = B (2026-11-22, 'Invite stays beside the chip on its first line'; built at its normal size per his note and the answer in 89.6-PICKS-READ.md). The chip is the house row's text with a 0px basis, so Invite stays beside while the chip's longest piece fits beside it and drops under when it does not (GR: nothing squeezed to keep it beside; at 320 / 200% it drops). Chosen OVER the 6rem default basis (a short chip with no pill would push Invite under and widen the chip box at normal text) and OVER nowrap (how the pick was drawn: at 200% it squeezes the chip below its longest word). Baseline alignment OVER items-center (a three-line chip would centre Invite on its middle line) and OVER items-start (a one-line chip would move up against the 44px Invite at normal text). self-center on the outer, chosen OVER leaving the strip's stretch: a stretched outer holding only a chip would put that chip at the top of the line under baseline alignment, out of line with a chip beside Invite on the same strip line; centred, every chip on a line sits where it sat. Changing this is a decision, not a cleanup. */
+        <span className="bb-row items-baseline self-center gap-1.5 max-w-full">
+        <span className="bb-row-text [--bb-row-min:0px] inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
             {/* 88.9-63 (X16 / X17a): the name is 600 and the pills below are sentence case on the pill
                 family; the marker is at the See-all row's name.
                 AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the chip's name wraps in full, by
@@ -162,10 +164,12 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
                 line clamp (still a cut). The sum at 320 wide with text at 200%: the strip is 222px
                 (320 - 48 page - 48 card - 2), the chip's sides take 34, and Weekend at 28px is
                 about 121px, so the name has its line and the pills sit under it. At ordinary text
-                a chip whose pieces fit on one line is unchanged. */}
+                a chip whose pieces fit on one line is unchanged.
+                AMENDED Phase 89.6-19 (O-9c): Invite now stays beside a long chip on its first line while the chip's longest piece fits beside it; it drops under the chip only when that does not fit (owner pick O-9c = B). The name rule above is unchanged.
+                DECISION Phase 89.6-19 (guest-tag): a typed-in name and its (Guest) tag are two words, a real space plus ml-0.5, chosen OVER the tag glued to the name with ml-1 (Warriors(Guest) was one unbreakable word that broke inside itself, register R5-01b) and OVER the space alone (the space is 2px in this font at 12 and 14px, measured, so the gap would shrink from 4px to 2px). The same pair is at the See-all row and the session winner; the session participants' tag is a flex item and keeps ml-1. Changing this is a decision, not a cleanup. */}
             <span className="text-content-primary max-w-full wrap-break-word font-semibold">
                 {isCustom ? (
-                    <>{participant.username || 'Guest'}<span className="text-content-muted ml-1">(Guest)</span></>
+                    <>{participant.username || 'Guest'}{' '}<span className="text-content-muted ml-0.5">(Guest)</span></>
                 ) : (
                     participant.username || 'Unknown'
                 )}
@@ -2401,7 +2405,7 @@ export default function GameDetailPage() {
                                             <p className="text-sm text-content-secondary mb-1">
                                                 Winner: <span className="text-content-link">
                                                     {event.Winner.is_custom ? (
-                                                        <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                        <>{event.Winner.username || event.Winner.name || 'Unknown'}{' '}<span className="text-xs text-content-muted ml-0.5">(Guest)</span></>
                                                     ) : (
                                                         <ClickableMemberName userId={event.Winner.id} username={event.Winner.username || 'Unknown'} />
                                                     )}
@@ -3401,7 +3405,7 @@ export default function GameDetailPage() {
                                             not a cleanup. */}
                                         <span className="text-content-primary font-semibold">
                                             {p.is_custom ? (
-                                                <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                <>{p.username || 'Guest'}{' '}<span className="text-xs text-content-muted ml-0.5">(Guest)</span></>
                                             ) : isSelfRow ? (
                                                 // Self renders as a plain span on both viewports.
                                                 // ClickableMemberName already returns a plain <span> for

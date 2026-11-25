@@ -1217,8 +1217,11 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
       expect(chip.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
       await waitFor(() => expect(within(chip).getByText('No reply')).toBeInTheDocument());
       // The chip and its Invite button: the button drops under the chip.
+      // AMENDED Phase 89.6-19 (O-9c): the pair is the house row (it wraps); the chip is its text with
+      // a 0px basis, so Invite stays beside while the chip's longest piece fits beside it.
       const outer = chip.parentElement as HTMLElement;
-      expect(outer).toHaveClass('inline-flex', 'flex-wrap', 'max-w-full');
+      expect(outer).toHaveClass('bb-row', 'items-baseline', 'self-center', 'max-w-full');
+      expect(chip).toHaveClass('bb-row-text', '[--bb-row-min:0px]');
     } finally {
       vi.useRealTimers();
     }
@@ -2097,7 +2100,8 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     // AMENDED 88.9-52 R4 D2 (owner 2026-11-18): the pair may wrap, so the button drops under the chip, and
     // the chip no longer carries min-w-0 (it let the button squeeze the name; the chip is capped at the
     // strip by max-w-full instead).
-    expect(group.className.split(/\s+/)).toEqual(expect.arrayContaining(['inline-flex', 'flex-wrap', 'items-center', 'max-w-full']));
+    // AMENDED Phase 89.6-19 (O-9c): the pair is the house row (bb-row wraps) with baseline alignment.
+    expect(group.className.split(/\s+/)).toEqual(expect.arrayContaining(['bb-row', 'items-baseline', 'self-center', 'max-w-full']));
     expect(chip.className.split(/\s+/)).toContain('max-w-full');
     expect(chip.className.split(/\s+/)).not.toContain('min-w-0');
 
