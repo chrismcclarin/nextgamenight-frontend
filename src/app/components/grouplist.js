@@ -369,7 +369,7 @@ const GroupList = ({
   // lives in selfIdentityErrorSource.ts, so this condition reads the error state alone.
   if (selfIdentityErrorState.showError) {
     return (
-      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-edge-page flex flex-col overflow-hidden h-full">
+      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-edge-page flex flex-col h-full">
         {/* 88.9-52 (W2 / W18): the same wrapping header row as the main return below; see its marker. */}
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4 pb-3 border-b border-line">
           <Heading level={2} size="heading" className="text-content-primary shrink-0 max-w-full">Your Groups</Heading>
@@ -398,7 +398,7 @@ const GroupList = ({
 
   if (!hasLoaded) {
     return (
-      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-edge-page flex flex-col overflow-hidden h-full">
+      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-edge-page flex flex-col h-full">
         <div className="text-center py-8 px-4 text-content-muted">Loading groups...</div>
       </div>
     );
@@ -427,7 +427,16 @@ const GroupList = ({
     // the two early-return roots fill the home column, chosen OVER the 400px desktop cap (60px
     // dead). Column width: src/app/userHome/UserHomePage.js ("DECISION Phase 88.9-42 F4b"). A cap
     // back here is a decision, not a cleanup.
-    <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-edge-page flex flex-col overflow-hidden h-full">
+    // AMENDED Phase 89.6-16 (home-ring): 'the list fills it' is now true: the scroll area keeps 4px
+    // of ring room and pulls itself out by the same amount, card 428 in a 460 column (register
+    // H-01, owner 'Fix later').
+    //
+    // DECISION Phase 89.6-16 (home-ring): the panel does not clip, so the Create button's focus ring
+    // is drawn whole at the panel edge where the phone flatten leaves no padding, chosen OVER an
+    // inset ring on the button (it would sit on the label at 200%) and OVER padding the header row
+    // (a 4px move at normal text). The same holds for the two early-return roots above. Changing
+    // this is a decision, not a cleanup.
+    <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-edge-page flex flex-col h-full">
       {/* DECISION Phase 88.9-52 (W2 / W18, after-build look page, no objection from the owner
           2026-11-16): the header row wraps. When the heading and the Create button do not fit on one
           line with a 12px gap, the button drops under the heading, chosen OVER the one-line row,
@@ -508,7 +517,7 @@ const GroupList = ({
 
       {/* 88.9-52 (W22): max-md:pt-0.5 leaves the 2px a hovered card lifts by (hover:-translate-y-0.5);
           below md this scroll area has no padding and cut the first card's lifted top edge. */}
-      <div className="flex-1 overflow-y-auto surface-flat-phone md:p-edge-page max-md:pt-0.5 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
+      <div className="flex-1 overflow-y-auto surface-flat-phone md:py-edge-page md:px-[4px] md:-mx-[4px] max-md:pt-0.5 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
         {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary
             that put the full banner in place of retained cards (see DECISION Phase 88.6.1-41
             (D-37, Req 9) above). The banner holds the list's place only while nothing loaded. */}
@@ -1428,16 +1437,21 @@ const GroupList = ({
                          nearly vanished) and OVER the strong line (2.79 on the hovered card; the
                          REJECTED list above keeps it out). The edge reads 2.45 on the card, 1.99 on
                          the hovered card and 2.00-2.72 on the eight preset grounds. The G2 fill pair
-                         does not move; light keeps the transparent edge. */
+                         does not move; light keeps the transparent edge.
+                         AMENDED Phase 89.6-16 (home-gear): owner pick O-M4 = Fixed+ ('The box stays
+                         44px, and the icon inside grows with the text up to 32px'): the 46 x 44 box is
+                         held in CSS px at every text size and the icon follows the text, chosen OVER
+                         the rem box that doubled at 200% and was cut by its card edge;
+                         pixel-identical at normal text. */
                       <button
-                        className="min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:focus-ring"
+                        className="inline-flex items-center justify-center min-h-[44px] min-w-[46px] p-0 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:focus-ring"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);
                         }}
                         title={customizeGroupLabel(group.name)}
                       >
-                        <Icon name="Settings" size={20} />
+                        <Icon name="Settings" size={20} followText />
                       </button>
                     )}
                   </div>
