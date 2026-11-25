@@ -1038,11 +1038,19 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     // background colour that is not transparent), a left or right border, or is a control. A word
     // with any rect more than 1px past that box's left or right edge paints outside it: no page
     // scroll, no cut and no split see that (research M F4, "Member" 4px out of Invite Member).
+    // DECISION Phase 89.6-02 R13 (orchestrator decision D20, 2026-11-25): the search STOPS at the first
+    // element, from the text's own up, whose overflow-x is not visible (auto, scroll, hidden, clip), and a
+    // word past that box's edge is no spill, chosen OVER climbing past it to the next filled box: content
+    // past a box that scrolls or clips sideways is clipped by it and reachable by scrolling, it paints
+    // nowhere outside the card (the availability grid's day headers read as spilling up to 972px at
+    // 768 / 200%). Clipped text is judged by the cut check's hidden kind and the page-zoom reach.
+    // Changing this is a decision, not a cleanup.
     const CONTROL = 'button, a[href], select, input, textarea, label, [role="button"]';
     const transparent = (colour: string) => colour === 'transparent' || /,\s*0\)$/.test(colour) || /\/\s*0\)$/.test(colour);
     const spillBoxOf = (el: Element): Element | null => {
       for (let a: Element | null = el; a && a !== doc; a = a.parentElement) {
         const cs = getComputedStyle(a);
+        if (cs.overflowX !== 'visible') return null;
         if (!transparent(cs.backgroundColor) || px(cs.borderLeftWidth) > 0 || px(cs.borderRightWidth) > 0 || a.matches(CONTROL)) return a;
       }
       return null;
