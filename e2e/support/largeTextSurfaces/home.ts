@@ -234,6 +234,77 @@ const homeExtras: SurfaceRow['extras'] = async (page, cell) => {
   await expectRingWhole(page, page.getByRole('button', { name: 'Create new group' }).first(), 'R01: the Create button');
 };
 
+// D01: Create a new Group, opened from Home's first "+ Create New Group" (its name is "Create new
+// group"). The dialog is its own root (a tall dialog scrolls as one below the 12rem dialog
+// container), returned as the dialog so the sweep settles its box before each cell.
+const createDialog = (page: Page): Locator => page.getByRole('dialog', { name: 'Create a new Group', exact: true });
+async function openCreateGroup(page: Page): Promise<Locator> {
+  await openHome(page);
+  await page.getByRole('button', { name: 'Create new group' }).first().click();
+  const dialog = createDialog(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  return dialog;
+}
+const reachCreateGroup: SurfaceRow['reach'] = async (page) => {
+  const dialog = await openCreateGroup(page);
+  return { root: dialog, dialog };
+};
+
+// The create POST, the matcher of e2e/home-loading-and-create-group.spec.ts ("const isCreateGroupPath = (url: URL) => url.pathname === '/api/groups';").
+// Each route below is registered inside the reach, after the sweep's write guard, so it runs first:
+// the write never leaves the browser and never reaches the guard's hold. A held write is released
+// to the network if interception is switched off while it is held (CI 41396760316, see
+// e2e/lane-a-tap-floors-desktop.spec.ts ("A held write is released")), so nothing may unroute this
+// page while D01-busy holds its POST; the sweep test unroutes nothing before its pages close.
+const isCreateGroup = (url: URL): boolean => url.pathname === '/api/groups';
+const createRouted = new WeakSet<Page>();
+
+/** Type the emoji name and press Create Group. */
+async function submitCreate(dialog: Locator): Promise<void> {
+  await dialog.getByRole('textbox', { name: 'Group Name' }).fill(EMOJI_NAME);
+  await dialog.getByRole('button', { name: 'Create Group', exact: true }).click();
+}
+
+// D01-error: the create POST answered 500 in the browser; the dialog shows its alert line.
+const reachCreateError: SurfaceRow['reach'] = async (page) => {
+  if (!createRouted.has(page)) {
+    createRouted.add(page);
+    await page.route(isCreateGroup, async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ status: 500, json: { error: 'large-text sweep: the create failed' } });
+    });
+  }
+  const dialog = await openCreateGroup(page);
+  await submitCreate(dialog);
+  await dialog.locator('#create-group-error[role="alert"]').waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: dialog, dialog };
+};
+
+// D01-busy: the create POST held in the browser until the page closes, then ANSWERED 500 (never
+// handed on: no fallback, no continue), so the button stays busy for every cell.
+const reachCreateBusy: SurfaceRow['reach'] = async (page) => {
+  if (!createRouted.has(page)) {
+    createRouted.add(page);
+    const release = new Promise<void>((resolve) => page.once('close', () => resolve()));
+    await page.route(isCreateGroup, async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.fallback();
+        return;
+      }
+      await release;
+      await route.fulfill({ status: 500 }).catch(() => undefined);
+    });
+  }
+  const dialog = await openCreateGroup(page);
+  await submitCreate(dialog);
+  // Busy keeps the label and an sr-only suffix adds ", creating" (Chromium puts a space before the comma).
+  await dialog.getByRole('button', { name: /^create group ?, creating$/i }).and(dialog.locator('[aria-disabled="true"]')).waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: dialog, dialog };
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R01', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', reach: reachHome, extras: homeExtras },
   { id: 'R01-one', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'one group', reach: reachWithGroups(oneGroup), extras: oneCardNotStretched },
@@ -242,7 +313,9 @@ export const rows: SurfaceRow[] = [
   { id: 'R01-upcoming-empty', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'nothing on the calendar', reach: reachNothingUpcoming, answers: (url) => (isEventsRead(url) ? [] : undefined), extras: upcomingEmptyShown },
   { id: 'R01-error', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'the groups read failed', reach: reachGroupsError },
   { id: 'R01-loading', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'the groups read in flight', reach: reachGroupsLoading },
-  { id: 'D01', census: 'D01', kind: 'dialog', owner: '89.6-16', status: 'pending' },
+  { id: 'D01', census: 'D01', kind: 'dialog', owner: '89.6-16', status: 'enforced', reach: reachCreateGroup },
+  { id: 'D01-error', census: 'D01', kind: 'dialog', owner: '89.6-16', status: 'enforced', state: 'the create failed', reach: reachCreateError },
+  { id: 'D01-busy', census: 'D01', kind: 'dialog', owner: '89.6-16', status: 'enforced', state: 'the create in flight', reach: reachCreateBusy },
   // The Calendar sheet is the second half of the 89.6-16 block (orchestrator split, 2026-11-23).
   { id: 'D04', census: 'D04', kind: 'dialog', owner: '89.6-40', status: 'pending' },
 ];
