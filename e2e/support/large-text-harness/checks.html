@@ -758,9 +758,11 @@
 </section>
 
 <!--
-  T14, a hyphenated heading squeezed by a box beside it, bad form only. The first line sizes the
-  box: the heading has room for "Check-i", so it wraps at its hyphen; stacked, it has 60px more and
-  is whole. SPLIT: a break at a hyphen is ordinary only when stacking does not undo it.
+  T14, a hyphenated heading squeezed by a box beside it. The first line sizes the box: the heading
+  has room for "Check-i", so it wraps at its hyphen; stacked, it has 60px more and is whole. WIDE
+  (ordinary wrapping) since the owner's ruling on question D, 2026-11-25 ("a": a break at a hyphen is
+  fine): a word whose every break falls where the browser breaks anyway is ordinary wrapping whether
+  or not stacking would make it whole. Before that ruling (R6 to R12) this read SPLIT.
 -->
 <section data-case="split-hyphen-squeezed">
   <main data-frame class="lt-frame px-4 py-4">
@@ -770,6 +772,30 @@
         <div class="lt-pill-row flex w-0 min-w-full items-center">
           <h3 class="lt-name min-w-0 font-semibold text-base text-content-primary">Check-ins</h3>
           <span aria-hidden="true" class="lt-fixed h-2 w-[60px] flex-none"></span>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!--
+  T14's dialog twin (R12): the shape the sweep met in the Remove and Make admin confirms (rows D18
+  and D20) and on the night page (R05-event): a confirm title holding a long hyphenated name, beside
+  a close-sized box (44px, a gap of 8px) in a room marked as the dialog's, with no padding of its
+  own so the name has the room a 768 cell gives it. The first line sizes the room: the title has
+  room for the name less its last letter, so the name wraps at its hyphen and nowhere else;
+  stacked, it has 52px more and is whole. Read at 768 wide, dark, text at 200%, the cell the sweep
+  met it in. WIDE (ordinary wrapping), by the owner's ruling on question D; the read before the
+  ruling called it SPLIT.
+-->
+<section data-case="split-hyphen-dialog-title">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div data-room class="lt-card rounded-card border border-line bg-surface-card">
+      <div class="lt-fit w-fit max-w-full">
+        <p class="lt-sizer pr-[52px] text-xl font-bold leading-tight text-content-primary">Featherstonehaugh-Cholmondele</p>
+        <div class="lt-pill-row flex w-0 min-w-full items-start gap-2">
+          <h2 class="lt-name min-w-0 text-xl font-bold leading-tight text-content-primary">Make Bartholomew Featherstonehaugh-Cholmondeley an admin?</h2>
+          <span aria-hidden="true" class="lt-fixed h-11 w-11 flex-none rounded-btn bg-surface-sunken"></span>
         </div>
       </div>
     </div>

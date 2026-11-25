@@ -979,13 +979,30 @@ test('check: split, T13 (89.6-02, R6): a word wider than the content of its padd
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split, T14 (89.6-02, R6): reports a hyphenated heading that wraps at its hyphen only because a box beside it squeezes it', async ({ page }, testInfo) => {
+// T14 since the owner's ruling on question D, 2026-11-25 ("a": a break at a hyphen is fine; R12): a
+// word whose every break falls where the browser breaks anyway is ordinary wrapping, WHETHER OR NOT
+// stacking the rows above it would make it whole. Before the ruling this test said "reports" and
+// expected split. The words broken by force inside a hyphenated name (letter-stacked, or broken
+// inside one of its halves) are still split or held: the cases of the two tests on places the
+// browser breaks anyway and on a forced break that leaves the line count as it was.
+test('check: split, T14 (89.6-02, R6; owner ruling R12): a hyphenated heading that wraps only at its hyphen because a box beside it squeezes it is ordinary wrapping, and so is a dialog title whose long name wraps only at its hyphen beside a close-sized box', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
+  const NAME = 'Featherstonehaugh-Cholmondeley';
   const heading = await splitCase(page, 'split-hyphen-squeezed');
   const sizerBroken = await brokenWordsOf(page.locator('.lt-sizer'));
-  await testInfo.attach('twin-read', { body: JSON.stringify({ heading, sizerBroken }, null, 2), contentType: 'application/json' });
+  const dialogRead = await readLargeTextCell(await renderTwin(page, 'split-hyphen-dialog-title', { width: 768, height: 1024, theme: 'dark', mode: '200' }));
+  const dialog: SplitCase = { read: dialogRead, broken: await brokenWordsOf(page.locator('.lt-name')) };
+  const dialogLines = await linesOf(page.locator('.lt-name'));
+  const dialogSizer = await brokenWordsOf(page.locator('.lt-sizer'));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ heading, sizerBroken, dialog, dialogLines, dialogSizer }, null, 2), contentType: 'application/json' });
   expect(sizerBroken, 'the sizing line breaks its word: the row is not that line plus 60px wide').toEqual([]);
-  expectReported(heading, 'a hyphenated heading beside a 60px box, in a row 60px wider than the heading has', 'Check-ins');
+  expectWide(heading, 'a hyphenated heading beside a 60px box, in a row 60px wider than the heading has', 'Check-ins');
+  expect(entriesFor(heading.read.wide, 'Check-ins').join(' | '), 'the heading is not written down as ordinary wrapping').toContain('ordinary wrapping');
+  expect(dialogSizer, 'the sizing line of the dialog title breaks its word: the room is not that line plus 52px wide').toEqual([]);
+  expect(dialog.broken, 'the long name is not the one word on more than one line: the harness is not the shape it says').toEqual([NAME]);
+  expect(dialogLines[NAME], 'the long name is not on two lines (wrapped at its hyphen only): the harness is not the shape it says').toBe(2);
+  expectWide(dialog, 'a long hyphenated name in a dialog title beside a close-sized box, whole if the close stacked', NAME);
+  expect(entriesFor(dialog.read.wide, NAME).join(' | '), 'the long name is not written down as ordinary wrapping').toContain('ordinary wrapping');
   expect(requests, 'the page made a request').toEqual([]);
 });
 
