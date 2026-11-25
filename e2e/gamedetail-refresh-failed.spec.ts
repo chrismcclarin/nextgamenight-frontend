@@ -368,6 +368,10 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a Participants chip keeps each
   // 45552452088 (FE aa3f29e) reported the unexpected pass on the first try and on the retry, once
   // the gameDetail page root and its cards moved to the px edge tokens (12px a side at 200% text,
   // was 24): the chip strip gained the room its two-word name needs. This read is a plain test now.
+  // AMENDED Phase 89.6-19 (participants): the read stays enforced, and the typed-in name's tag is its
+  // own word now: a real space before the tag (it was one unbreakable word, Warriors(Guest), which
+  // broke inside itself whenever the strip was narrower than it) and pick O-9c = B on the chip row
+  // (owner 2026-11-22). Re-marking it as an expected failure is a decision, not a cleanup.
   await participantChipProof(page, true);
 });
 

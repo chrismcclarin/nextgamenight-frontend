@@ -1718,6 +1718,28 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
   // (owner-ruled removal condition — see the amended DECISION in page.js's
   // GuestInviteButton). The bare-409 safety net stays pinned by the
   // "UNCODED conflict" test above.
+
+  // Phase 89.6-19 (register R5-01b, pick O-9c = B): the typed-in guest's tag was glued to the name
+  // (Warriors(Guest), one unbreakable word), and the strip chip is the house row's text.
+  it('89.6-19 (participants): a typed-in guest reads <name> (Guest) as two words on the strip chip and the See-all row, and the chip row is the house row', async () => {
+    const user = userEvent.setup();
+    const typedIn = participantRow({ user_id: null, username: 'Weekend Warriors', is_guest: true, is_custom: true });
+    renderEventDetail({ role: 'owner', participants: [typedIn, ...SIX_PARTICIPANTS.slice(0, 5)] });
+    await screen.findByRole('heading', { name: 'Participants (6)' });
+    const stripName = Array.from(document.querySelectorAll('span.font-semibold.wrap-break-word')).find((node) =>
+      (node.textContent ?? '').startsWith('Weekend Warriors')
+    );
+    expect(stripName, 'the strip chip of the typed-in guest never rendered').toBeDefined();
+    expect(stripName?.textContent).toBe('Weekend Warriors (Guest)');
+    const chip = stripName?.parentElement;
+    expect(chip).toHaveClass('bb-row-text');
+    expect(chip?.parentElement).toHaveClass('bb-row');
+    const dialog = await openParticipantsModal(user);
+    const rowName = Array.from(dialog.querySelectorAll('span.font-semibold')).find((node) =>
+      (node.textContent ?? '').startsWith('Weekend Warriors')
+    );
+    expect(rowName?.textContent).toBe('Weekend Warriors (Guest)');
+  });
 });
 
 // ---------------------------------------------------------------------------
