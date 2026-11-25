@@ -962,8 +962,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
           // judges each ring chunk and would red).
           // AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 
           // ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground.
+          // DECISION Phase 89.6-21 (friends-row, ring): the name's focus ring is concentric at 4px with 4px side room (rule 10 G1 + G2, owner pick O-1 B), chosen OVER the 2px radius flush to the letters (register 'rings are drawn several ways', 2px on names). The side room is paid back by an equal negative margin (px-1 with -mx-1), so the name's advance in its line is unchanged and running layout does not move. Changing this is a decision, not a cleanup.
           className: cn(
-            'cursor-pointer hover:underline rounded-xs focus:outline-hidden focus-visible:focus-ring',
+            'cursor-pointer hover:underline rounded-sm px-1 -mx-1 focus:outline-hidden focus-visible:focus-ring',
           ),
           onClick: (e) => {
             e.stopPropagation();
