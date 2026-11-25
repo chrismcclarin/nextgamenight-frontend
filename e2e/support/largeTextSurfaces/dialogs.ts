@@ -11,16 +11,18 @@
 import { test, type Locator, type Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
+import { routeMemberRoster } from '../memberRoster';
 import { readLargeTextCell, setTextMode } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
 // owns. No fallback id: a row that opened some other group would read a dialog the fixtures do not own.
-export const groupPage = (): string => {
+const groupId = (): string => {
   const id = process.env.E2E_GROUP_ID ?? '';
   if (id === '') throw new Error('E2E_GROUP_ID must be set: the CI step that runs scripts/e2e-fixtures.js exports it, and the group dialog rows open that group');
-  return `/groupHomePage?id=${id}`;
+  return id;
 };
+export const groupPage = (): string => `/groupHomePage?id=${groupId()}`;
 
 export const customizeGroup = (page: Page): Locator => page.getByRole('dialog', { name: 'Customize Group', exact: true });
 
@@ -210,12 +212,76 @@ const reachCustomizeGroup: SurfaceRow['reach'] = async (page) => {
   return { root: dialog, dialog };
 };
 
+// D07-leave: an admin sees the Leave arm. The roster is answered with the owner's row made an
+// admin's and one synthetic member added (the Leave arm hides for the only member); the synthetic
+// row exists only in the answer. Confirm Leave is NEVER pressed.
+const SYNTHETIC_MEMBER = {
+  id: '00000000-0000-4000-8000-0000000000d7',
+  user_id: 'auth0|e2e-synthetic-leave',
+  username: 'Synthetic Member',
+  email: null,
+  UserGroup: { role: 'member' },
+};
+type RosterRow = { UserGroup?: { role?: string } };
+const ownerAsAdmin = (rows: unknown[]): unknown[] => [
+  ...rows.map((row) => {
+    const member = row as RosterRow;
+    return member.UserGroup?.role === 'owner' ? { ...member, UserGroup: { ...member.UserGroup, role: 'admin' } } : row;
+  }),
+  SYNTHETIC_MEMBER,
+];
+// One roster route per page: the sweep runs a reach again on the same page for the light cell, and a page's routes outlive its navigations.
+const rostered = new WeakSet<Page>();
+
+const reachLeaveConfirm: SurfaceRow['reach'] = async (page) => {
+  if (!rostered.has(page)) {
+    await routeMemberRoster(page, groupId(), ownerAsAdmin);
+    rostered.add(page);
+  }
+  const dialog = await openCustomizeGroup(page);
+  await dialog.getByRole('button', { name: 'Leave Group', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Confirm Leave', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: dialog, dialog };
+};
+
+// D08: the owner's Delete Group opens the typed confirm. Its Delete is NEVER pressed and nothing is typed.
+const deleteConfirm = (page: Page): Locator => page.getByRole('dialog', { name: /^Delete .*\?$/ });
+const reachDeleteConfirm: SurfaceRow['reach'] = async (page) => {
+  const settings = await openCustomizeGroup(page);
+  await settings.getByRole('button', { name: 'Delete Group', exact: true }).click();
+  const dialog = deleteConfirm(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: dialog, dialog };
+};
+
+// D08 extras (a tall dialog scrolls, plan 89.6-11): each footer button, scrolled into view, lies
+// inside the dialog box and is the thing under a finger at its centre. readShell is the shell
+// module's read; it is imported when the extras run, because the shell module imports this one.
+const deleteConfirmExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const { readShell } = await import('./dialogShell');
+  const read = await readShell(deleteConfirm(page));
+  const footer = read.buttons.filter((button) => button.part === 'footer');
+  const problems: string[] = [];
+  if (footer.length === 0) problems.push(`D08 ${cell.id}: the dialog footer holds no button`);
+  for (const button of footer) {
+    const at = button.reached?.box ?? button.box;
+    const box = button.reached?.dialog ?? read.dialog;
+    if (at.left < box.left - 0.5 || at.right > box.right + 0.5 || at.top < box.top - 0.5 || at.bottom > box.bottom + 0.5) {
+      problems.push(`D08 ${cell.id}: the footer button "${button.label}", scrolled into view, is outside the dialog box (${r2(at.left)} to ${r2(at.right)} by ${r2(at.top)} to ${r2(at.bottom)}; dialog ${r2(box.left)} to ${r2(box.right)} by ${r2(box.top)} to ${r2(box.bottom)})`);
+    }
+    if (!button.reached?.onTop) problems.push(`D08 ${cell.id}: the footer button "${button.label}", scrolled into view, is not the thing under a finger at its centre`);
+  }
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'D07', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: customizeGroupExtras },
-  { id: 'D08', census: 'D08', kind: 'dialog', owner: '89.6-25', status: 'pending' },
+  { id: 'D07-leave', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'leave-confirm', reach: reachLeaveConfirm, answers: answerPromptSettings },
+  { id: 'D08', census: 'D08', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachDeleteConfirm, answers: answerPromptSettings, extras: deleteConfirmExtras },
   { id: 'D09', census: 'D09', kind: 'dialog', owner: '89.6-25', status: 'pending' },
   { id: 'D10', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'pending' },
   { id: 'D11', census: 'D11', kind: 'dialog', owner: '89.6-25', status: 'pending' },
-  { id: 'D24', census: 'D24', kind: 'dialog', owner: '89.6-25', status: 'pending' },
+  // pending: D24 until 89.6-41 (the planning page scrolls sideways at 320 / 200% until 89.6-20; plan 41 depends on 20 and on this plan)
+  { id: 'D24', census: 'D24', kind: 'dialog', owner: '89.6-41', status: 'pending' },
   { id: 'O09', census: 'O09', kind: 'overlay', owner: '89.6-25', status: 'pending' },
 ];
